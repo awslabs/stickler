@@ -1,6 +1,6 @@
 [project]
-name = "stickler"
-version = "0.1.0"
+name = "stickler-eval"
+version = "0.1.1"
 description = "Structured object comparison and evaluation library"
 authors = [
     {name = "Spencer Romo", email = "sromo@amazon.com"}

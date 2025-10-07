@@ -1,8 +1,13 @@
-# stickler-lib
+# stickler
 
 A Python library for structured object comparison and evaluation with configurable comparison strategies and detailed metrics.
 
 ## Installation
+```bash
+pip install stickler-eval
+```
+
+
 
 ### Requirements
 - Python 3.12+
@@ -133,6 +138,3 @@ See [`examples/scripts/json_to_evaluation_demo.py`](examples/scripts/json_to_eva
 
 Check out the `examples/` directory for more detailed usage examples and notebooks.
 
-## License
-
-© 2025 Amazon Web Services, Inc. or its affiliates. All Rights Reserved.
