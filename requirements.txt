@@ -1,0 +1,2 @@
+# Simple installation for stickler
+-e .
