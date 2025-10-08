@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document provides a comprehensive guide to Hungarian matching for `List[StructuredModel]` fields in the GenAIDP library, including concrete examples, expected behavior, and validation of the current implementation.
+This document provides a comprehensive guide to Hungarian matching for `List[StructuredModel]` fields in the stickler library, including concrete examples, expected behavior, and validation of the current implementation.
 
 ## Core Algorithm: Threshold-Gated Recursive Evaluation
 

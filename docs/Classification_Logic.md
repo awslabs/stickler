@@ -1,6 +1,6 @@
 # Classification Logic for Evaluation Metrics
 
-This document defines the classification logic used in the GenAIDP library for evaluating predictions against ground truth.
+This document defines the classification logic used in the stickler library for evaluating predictions against ground truth.
 
 ## Core Definitions
 
