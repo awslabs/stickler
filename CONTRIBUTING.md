@@ -44,6 +44,7 @@ To send us a pull request, please:
 
 When creating a pull request, please use the following template to ensure all necessary information is included:
 
+<<<<<<< HEAD
 ```markdown
 ## Description
 Brief description of what this PR does and why it's needed.
@@ -79,6 +80,15 @@ If this is a breaking change, describe what changes users need to make to their 
 - [ ] My changes generate no new warnings
 - [ ] I have added tests that prove my fix is effective or that my feature works
 - [ ] New and existing unit tests pass locally with my changes
+=======
+```
+*Issue #, if available:*
+
+*Description of changes:*
+
+
+By submitting this pull request, I confirm that you can use, modify, copy, and redistribute this contribution, under the terms of your choice.
+>>>>>>> 1a7d723 (Added github actions for running pytest on every push and PR with contributing guidelines)
 ```
 
 ### Branch Guidelines
