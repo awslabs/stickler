@@ -44,43 +44,6 @@ To send us a pull request, please:
 
 When creating a pull request, please use the following template to ensure all necessary information is included:
 
-<<<<<<< HEAD
-```markdown
-## Description
-Brief description of what this PR does and why it's needed.
-
-## Type of Change
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] Documentation update
-- [ ] Code refactoring
-- [ ] Performance improvement
-- [ ] Test improvements
-
-## Testing
-Describe how you tested your changes:
-- [ ] Unit tests pass locally
-- [ ] Integration tests pass locally
-- [ ] Manual testing performed (describe scenarios)
-- [ ] New tests added for new functionality
-
-## Related Issues
-Closes #(issue number)
-Related to #(issue number)
-
-## Breaking Changes
-If this is a breaking change, describe what changes users need to make to their code.
-
-## Checklist
-- [ ] My code follows the project's coding standards
-- [ ] I have performed a self-review of my code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have updated documentation as needed
-- [ ] My changes generate no new warnings
-- [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] New and existing unit tests pass locally with my changes
-=======
 ```
 *Issue #, if available:*
 
@@ -88,7 +51,6 @@ If this is a breaking change, describe what changes users need to make to their 
 
 
 By submitting this pull request, I confirm that you can use, modify, copy, and redistribute this contribution, under the terms of your choice.
->>>>>>> 1a7d723 (Added github actions for running pytest on every push and PR with contributing guidelines)
 ```
 
 ### Branch Guidelines
