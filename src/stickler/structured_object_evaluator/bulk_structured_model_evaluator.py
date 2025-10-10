@@ -20,6 +20,7 @@ import s3fs
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.utils.process_evaluation import ProcessEvaluation
+from stickler.structured_object_evaluator.models.metrics_helper import MetricsHelper
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,8 @@ class BulkStructuredModelEvaluator:
         document_non_matches: bool = True,
         elide_errors: bool = False,
         individual_results_jsonl: Optional[str] = None,
-        include_aggregates: bool = False
+        include_aggregates: bool = False,
+        recall_with_fd: bool = False,
     ):
         """
         Initialize the stateful bulk evaluator.
@@ -75,6 +77,7 @@ class BulkStructuredModelEvaluator:
         self.elide_errors = elide_errors
         self.individual_results_jsonl = individual_results_jsonl
         self.include_aggregates = include_aggregates
+        self.recall_with_fd = recall_with_fd
         
         # Initialize state
         self.reset()
@@ -441,41 +444,6 @@ class BulkStructuredModelEvaluator:
             if "fields" in field_data and isinstance(field_data["fields"], dict):
                 self._accumulate_field_aggregate_metrics(field_data["fields"], current_path)
 
-    def _calculate_derived_metrics(self, cm_dict: Dict[str, Union[int, float]]) -> Dict[str, float]:
-        """
-        Calculate derived confusion matrix metrics (precision, recall, f1, accuracy).
-        
-        This method replicates the derivation logic that was previously handled
-        by StructuredModelEvaluator.
-        
-        Args:
-            cm_dict: Dictionary with basic confusion matrix counts
-            
-        Returns:
-            Dictionary with derived metrics
-        """
-        tp = cm_dict.get("tp", 0)
-        fp = cm_dict.get("fp", 0)
-        tn = cm_dict.get("tn", 0)
-        fn = cm_dict.get("fn", 0)
-        
-        # Calculate derived metrics with safe division
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        f1 = (
-            2 * (precision * recall) / (precision + recall)
-            if (precision + recall) > 0
-            else 0.0
-        )
-        accuracy = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0.0
-        
-        return {
-            "cm_precision": precision,
-            "cm_recall": recall,
-            "cm_f1": f1,
-            "cm_accuracy": accuracy,
-        }
-
     def _build_process_evaluation(self) -> ProcessEvaluation:
         """
         Build ProcessEvaluation from current accumulated state.
@@ -483,23 +451,24 @@ class BulkStructuredModelEvaluator:
         Returns:
             ProcessEvaluation with computed metrics from accumulated state
         """
+        metrics_helper = MetricsHelper()
         # Calculate derived metrics for overall results
         overall_cm = dict(self._confusion_matrix["overall"])
-        overall_derived = self._calculate_derived_metrics(overall_cm)
+        overall_derived = metrics_helper.calculate_derived_metrics(overall_cm, recall_with_fd=self.recall_with_fd)
         overall_metrics = {**overall_cm, **overall_derived}
         
         # Add aggregate metrics to overall if enabled
         if self.include_aggregates:
             overall_aggregate = dict(self._aggregate_metrics["overall"])
             if any(overall_aggregate.values()):  # Only add if there are aggregate metrics
-                overall_aggregate_derived = self._calculate_derived_metrics(overall_aggregate)
+                overall_aggregate_derived = metrics_helper.calculate_derived_metrics(overall_aggregate, recall_with_fd=self.recall_with_fd)
                 overall_metrics["aggregate"] = {**overall_aggregate, **overall_aggregate_derived}
         
         # Calculate derived metrics for each field
         field_metrics = {}
         for field_path, field_cm in self._confusion_matrix["fields"].items():
             field_cm_dict = dict(field_cm)
-            field_derived = self._calculate_derived_metrics(field_cm_dict)
+            field_derived = metrics_helper.calculate_derived_metrics(field_cm_dict, recall_with_fd=self.recall_with_fd)
             field_metrics[field_path] = {**field_cm_dict, **field_derived}
         
         # Add aggregate metrics to fields if enabled
@@ -507,7 +476,7 @@ class BulkStructuredModelEvaluator:
             for field_path, field_aggregate in self._aggregate_metrics["fields"].items():
                 field_aggregate_dict = dict(field_aggregate)
                 if any(field_aggregate_dict.values()):  # Only add if there are aggregate metrics
-                    field_aggregate_derived = self._calculate_derived_metrics(field_aggregate_dict)
+                    field_aggregate_derived = metrics_helper.calculate_derived_metrics(field_aggregate_dict, recall_with_fd=self.recall_with_fd)
                     if field_path not in field_metrics:
                         field_metrics[field_path] = {}
                     field_metrics[field_path]["aggregate"] = {**field_aggregate_dict, **field_aggregate_derived}
