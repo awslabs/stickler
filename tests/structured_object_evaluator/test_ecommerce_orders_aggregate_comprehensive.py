@@ -1,6 +1,6 @@
 """
 Comprehensive test suite for aggregate counts functionality in structured_model.py
-Based on an e-commerce orders domain (transformed from police reports)
+Based on an e-commerce orders domain
 
 This test file verifies that the aggregate confusion matrix counts work correctly
 for complex hierarchical structures with nested objects and lists.
