@@ -71,7 +71,6 @@ class CategoryOnly(StructuredModel):
     match_threshold = 1.0
 
 class OrderDetails(StructuredModel):
-    match_threshold = 1.0
     Order_Status: Union[Optional[List[CategoryDescription]], Any] = category_description_field
     Total_Amount: Union[Optional[str], Any] = exact_number
     Store_Location: Union[Optional[str], Any] = exact_field
@@ -98,7 +97,7 @@ class Discount(StructuredModel):
     Discount_Code: Union[Optional[List[CategoryDescription]], Any] = category_description_field
 
 class Order(StructuredModel):
-    Order_Info: OrderDetails = aggregate_field
+    Order_Info: OrderDetails = exact_field
     Customers: List[Customer] = aggregate_field
     Products: List[Product] = aggregate_field
     Discounts: List[Discount] = aggregate_field
@@ -139,7 +138,7 @@ class TestEcommerceOrdersAggregateComprehensive:
    "Is_Premium_Member": "Y",
    "Customer_Name": "SARAH",
    "Shipping_Address": "123 MAIN ST SUITE 100"}],
- "Discounts": [{"Discount_Code": [{"Category_Code": "", "Category_Name": "SAVE10"}]}],
+ "Discounts": [{"Customer_Id": "1", "Discount_Code": [{"Category_Code": "", "Category_Name": "SAVE10"}]}],
  "Products": [{"Product_Id": "1",
    "Product_Category": [{"Category_Code": "04", "Category_Name": "Electronics"}]}, 
   {"Product_Id": "2",
@@ -166,7 +165,7 @@ class TestEcommerceOrdersAggregateComprehensive:
    "Is_Premium_Member": "Y",
    "Customer_Name": "SARAH",
    "Shipping_Address": "123 MAIN ST SUITE 3203"}],
- "Discounts": [{"Discount_Code": [{"Category_Code": "", "Category_Name": "SAVE20"}]}],
+ "Discounts": [{"Customer_Id": "1", "Discount_Code": [{"Category_Code": "", "Category_Name": "SAVE20"}]}],
  "Products": [{"Product_Id": "01",
    "Product_Category": [{"Category_Code": "04"}]},
   {"Product_Id": "02",
@@ -205,15 +204,15 @@ class TestEcommerceOrdersAggregateComprehensive:
         print(f"\n=== AGGREGATE COUNTS ===")
         print(f"TP: {aggregate.get('tp', 'MISSING')}, Expected: 19")
         print(f"FA: {aggregate.get('fa', 'MISSING')}, Expected: 3")
-        print(f"FD: {aggregate.get('fd', 'MISSING')}, Expected: 4")
-        print(f"TN: {aggregate.get('tn', 'MISSING')}, Expected: 5")
+        print(f"FD: {aggregate.get('fd', 'MISSING')}, Expected: 3")
+        print(f"TN: {aggregate.get('tn', 'MISSING')}, Expected: 4")
         print(f"FN: {aggregate.get('fn', 'MISSING')}, Expected: 11")
         
-        # Verify the corrected aggregate counts
+        # Verify the corrected aggregate counts (updated after implementing threshold-gated overall vs aggregate)
         assert aggregate["tp"] == 19, f"Expected TP=19, got {aggregate['tp']}"
         assert aggregate["fa"] == 3, f"Expected FA=3, got {aggregate['fa']}"
-        assert aggregate["fd"] == 4, f"Expected FD=4, got {aggregate['fd']}"
-        assert aggregate["tn"] == 5, f"Expected TN=5, got {aggregate['tn']}"
+        assert aggregate["fd"] == 3, f"Expected FD=3, got {aggregate['fd']}"  # Updated: was 4, now 3 after threshold fix
+        assert aggregate["tn"] == 4, f"Expected TN=4, got {aggregate['tn']}"  # Updated: was 5, now 4 after threshold fix
         assert aggregate["fn"] == 11, f"Expected FN=11, got {aggregate['fn']}"
 
     def test_order_info_field_aggregate_counts(self):
@@ -224,27 +223,87 @@ class TestEcommerceOrdersAggregateComprehensive:
         )
         
         cm = result["confusion_matrix"]
-        order_info_metrics = cm["fields"]["Order_Info"]["aggregate"]
         
-        # Expected results from comments:
-        # result['confusion_matrix']['fields']['Order_Info']['aggregate']['tp']: 5
-        # result['confusion_matrix']['fields']['Order_Info']['aggregate']['fa']: 2
-        # result['confusion_matrix']['fields']['Order_Info']['aggregate']['fd']: 0
-        # result['confusion_matrix']['fields']['Order_Info']['aggregate']['tn']: 2
-        # result['confusion_matrix']['fields']['Order_Info']['aggregate']['fn']: 0
-        
-        print(f"\n=== ORDER_INFO AGGREGATE COUNTS ===")
-        print(f"TP: {order_info_metrics.get('tp', 'MISSING')}, Expected: 4")
-        print(f"FA: {order_info_metrics.get('fa', 'MISSING')}, Expected: 2")
-        print(f"FD: {order_info_metrics.get('fd', 'MISSING')}, Expected: 1")
-        print(f"TN: {order_info_metrics.get('tn', 'MISSING')}, Expected: 2")
-        print(f"FN: {order_info_metrics.get('fn', 'MISSING')}, Expected: 0")
-        
-        assert order_info_metrics["tp"] == 4, f"Expected Order_Info TP=4, got {order_info_metrics['tp']}"
-        assert order_info_metrics["fa"] == 2, f"Expected Order_Info FA=2, got {order_info_metrics['fa']}"
-        assert order_info_metrics["fd"] == 1, f"Expected Order_Info FD=1, got {order_info_metrics['fd']}"
-        assert order_info_metrics["tn"] == 2, f"Expected Order_Info TN=2, got {order_info_metrics['tn']}"
-        assert order_info_metrics["fn"] == 0, f"Expected Order_Info FN=0, got {order_info_metrics['fn']}"
+        # Order_Status at object level 1 tp
+        assert cm["fields"]["Order_Info"]['fields']['Order_Status']['overall']['tp'] == 1, f"Expected Order_Status overall TP=1, got {cm["fields"]["Order_Info"]['fields']['Order_Status']['overall']['tp']}"
+        assert cm["fields"]["Order_Info"]['fields']['Order_Status']['overall']['fa'] == 0, f"Expected Order_Status overall FA=0, got {cm["fields"]["Order_Info"]['fields']['Order_Status']['overall']['fa']}"
+        assert cm["fields"]["Order_Info"]['fields']['Order_Status']['overall']['fd'] == 0, f"Expected Order_Status overall FD=0, got {cm["fields"]["Order_Info"]['fields']['Order_Status']['overall']['fd']}"
+        assert cm["fields"]["Order_Info"]['fields']['Order_Status']['overall']['tn'] == 0, f"Expected Order_Status overall TN=0, got {cm["fields"]["Order_Info"]['fields']['Order_Status']['overall']['tn']}"
+        assert cm["fields"]["Order_Info"]['fields']['Order_Status']['overall']['fn'] == 0, f"Expected Order_Status overall FN=0, got {cm["fields"]["Order_Info"]['fields']['Order_Status']['overall']['fn']}"
+
+        # Order_Status at field level 2 tp: Category_Code, Category_Name
+        assert cm["fields"]["Order_Info"]['fields']['Order_Status']['aggregate']['tp'] == 2, f"Expected Order_Status aggregate TP=2, got {cm["fields"]["Order_Info"]['fields']['Order_Status']['aggregate']['tp']}"
+        assert cm["fields"]["Order_Info"]['fields']['Order_Status']['aggregate']['fa'] == 0, f"Expected Order_Status aggregate FA=0, got {cm["fields"]["Order_Info"]['fields']['Order_Status']['aggregate']['fa']}"
+        assert cm["fields"]["Order_Info"]['fields']['Order_Status']['aggregate']['fd'] == 0, f"Expected Order_Status aggregate FD=0, got {cm["fields"]["Order_Info"]['fields']['Order_Status']['aggregate']['fd']}"
+        assert cm["fields"]["Order_Info"]['fields']['Order_Status']['aggregate']['tn'] == 0, f"Expected Order_Status aggregate TN=0, got {cm["fields"]["Order_Info"]['fields']['Order_Status']['aggregate']['tn']}"
+        assert cm["fields"]["Order_Info"]['fields']['Order_Status']['aggregate']['fn'] == 0, f"Expected Order_Status aggregate FN=0, got {cm["fields"]["Order_Info"]['fields']['Order_Status']['aggregate']['fn']}"
+
+        # Total_Amount has no nested fields, so overall (object level) metrics == aggregate (field level) metrics
+        assert cm["fields"]["Order_Info"]['fields']['Total_Amount']['overall']['tp'] == 1, f"Expected Total_Amount overall TP=1, got {cm["fields"]["Order_Info"]['fields']['Total_Amount']['overall']['tp']}"
+        assert cm["fields"]["Order_Info"]['fields']['Total_Amount']['overall']['fa'] == 0, f"Expected Total_Amount overall FA=0, got {cm["fields"]["Order_Info"]['fields']['Total_Amount']['overall']['fa']}"
+        assert cm["fields"]["Order_Info"]['fields']['Total_Amount']['overall']['fd'] == 0, f"Expected Total_Amount overall FD=0, got {cm["fields"]["Order_Info"]['fields']['Total_Amount']['overall']['fd']}"
+        assert cm["fields"]["Order_Info"]['fields']['Total_Amount']['overall']['tn'] == 0, f"Expected Total_Amount overall TN=0, got {cm["fields"]["Order_Info"]['fields']['Total_Amount']['overall']['tn']}"
+        assert cm["fields"]["Order_Info"]['fields']['Total_Amount']['overall']['fn'] == 0, f"Expected Total_Amount overall FN=0, got {cm["fields"]["Order_Info"]['fields']['Total_Amount']['overall']['fn']}"
+
+        assert cm["fields"]["Order_Info"]['fields']['Total_Amount']['aggregate']['tp'] == 1, f"Expected Total_Amount aggregate TP=1, got {cm["fields"]["Order_Info"]['fields']['Total_Amount']['aggregate']['tp']}"
+        assert cm["fields"]["Order_Info"]['fields']['Total_Amount']['aggregate']['fa'] == 0, f"Expected Total_Amount aggregate FA=0, got {cm["fields"]["Order_Info"]['fields']['Total_Amount']['aggregate']['fa']}"
+        assert cm["fields"]["Order_Info"]['fields']['Total_Amount']['aggregate']['fd'] == 0, f"Expected Total_Amount aggregate FD=0, got {cm["fields"]["Order_Info"]['fields']['Total_Amount']['aggregate']['fd']}"
+        assert cm["fields"]["Order_Info"]['fields']['Total_Amount']['aggregate']['tn'] == 0, f"Expected Total_Amount aggregate TN=0, got {cm["fields"]["Order_Info"]['fields']['Total_Amount']['aggregate']['tn']}"
+        assert cm["fields"]["Order_Info"]['fields']['Total_Amount']['aggregate']['fn'] == 0, f"Expected Total_Amount aggregate FN=0, got {cm["fields"]["Order_Info"]['fields']['Total_Amount']['aggregate']['fn']}"
+
+        # Store_Location has no nested fields, so overall (object level) metrics == aggregate (field level) metrics
+        assert cm["fields"]["Order_Info"]['fields']['Store_Location']['overall']['tp'] == 0, f"Expected Store_Location overall TP=0, got {cm["fields"]["Order_Info"]['fields']['Store_Location']['overall']['tp']}"
+        assert cm["fields"]["Order_Info"]['fields']['Store_Location']['overall']['fa'] == 0, f"Expected Store_Location overall FA=0, got {cm["fields"]["Order_Info"]['fields']['Store_Location']['overall']['fa']}"
+        assert cm["fields"]["Order_Info"]['fields']['Store_Location']['overall']['fd'] == 0, f"Expected Store_Location overall FD=0, got {cm["fields"]["Order_Info"]['fields']['Store_Location']['overall']['fd']}"
+        assert cm["fields"]["Order_Info"]['fields']['Store_Location']['overall']['tn'] == 1, f"Expected Store_Location overall TN=1, got {cm["fields"]["Order_Info"]['fields']['Store_Location']['overall']['tn']}"
+        assert cm["fields"]["Order_Info"]['fields']['Store_Location']['overall']['fn'] == 0, f"Expected Store_Location overall FN=0, got {cm["fields"]["Order_Info"]['fields']['Store_Location']['overall']['fn']}"
+
+        assert cm["fields"]["Order_Info"]['fields']['Store_Location']['aggregate']['tp'] == 0, f"Expected Store_Location aggregate TP=0, got {cm["fields"]["Order_Info"]['fields']['Store_Location']['aggregate']['tp']}"
+        assert cm["fields"]["Order_Info"]['fields']['Store_Location']['aggregate']['fa'] == 0, f"Expected Store_Location aggregate FA=0, got {cm["fields"]["Order_Info"]['fields']['Store_Location']['aggregate']['fa']}"
+        assert cm["fields"]["Order_Info"]['fields']['Store_Location']['aggregate']['fd'] == 0, f"Expected Store_Location aggregate FD=0, got {cm["fields"]["Order_Info"]['fields']['Store_Location']['aggregate']['fd']}"
+        assert cm["fields"]["Order_Info"]['fields']['Store_Location']['aggregate']['tn'] == 1, f"Expected Store_Location aggregate TN=1, got {cm["fields"]["Order_Info"]['fields']['Store_Location']['aggregate']['tn']}"
+        assert cm["fields"]["Order_Info"]['fields']['Store_Location']['aggregate']['fn'] == 0, f"Expected Store_Location aggregate FN=0, got {cm["fields"]["Order_Info"]['fields']['Store_Location']['aggregate']['fn']}"
+
+         # Payment_Method at object level 1 tp, 1 fa
+        assert cm["fields"]["Order_Info"]['fields']['Payment_Method']['overall']['tp'] == 1, f"Expected Payment_Method overall TP=1, got {cm["fields"]["Order_Info"]['fields']['Payment_Method']['overall']['tp']}"
+        assert cm["fields"]["Order_Info"]['fields']['Payment_Method']['overall']['fa'] == 1, f"Expected Payment_Method overall FA=1, got {cm["fields"]["Order_Info"]['fields']['Payment_Method']['overall']['fa']}"
+        assert cm["fields"]["Order_Info"]['fields']['Payment_Method']['overall']['fd'] == 0, f"Expected Payment_Method overall FD=0, got {cm["fields"]["Order_Info"]['fields']['Payment_Method']['overall']['fd']}"
+        assert cm["fields"]["Order_Info"]['fields']['Payment_Method']['overall']['tn'] == 0, f"Expected Payment_Method overall TN=0, got {cm["fields"]["Order_Info"]['fields']['Payment_Method']['overall']['tn']}"
+        assert cm["fields"]["Order_Info"]['fields']['Payment_Method']['overall']['fn'] == 0, f"Expected Payment_Method overall FN=0, got {cm["fields"]["Order_Info"]['fields']['Payment_Method']['overall']['fn']}"
+
+        # Payment_Method at field level 2 tp, 2 fa: Category_Code, Category_Name
+        assert cm["fields"]["Order_Info"]['fields']['Payment_Method']['aggregate']['tp'] == 2, f"Expected Payment_Method aggregate TP=2, got {cm["fields"]["Order_Info"]['fields']['Payment_Method']['aggregate']['tp']}"
+        assert cm["fields"]["Order_Info"]['fields']['Payment_Method']['aggregate']['fa'] == 2, f"Expected Payment_Method aggregate FA=2, got {cm["fields"]["Order_Info"]['fields']['Payment_Method']['aggregate']['fa']}"
+        assert cm["fields"]["Order_Info"]['fields']['Payment_Method']['aggregate']['fd'] == 0, f"Expected Payment_Method aggregate FD=0, got {cm["fields"]["Order_Info"]['fields']['Payment_Method']['aggregate']['fd']}"
+        assert cm["fields"]["Order_Info"]['fields']['Payment_Method']['aggregate']['tn'] == 0, f"Expected Payment_Method aggregate TN=0, got {cm["fields"]["Order_Info"]['fields']['Payment_Method']['aggregate']['tn']}"
+        assert cm["fields"]["Order_Info"]['fields']['Payment_Method']['aggregate']['fn'] == 0, f"Expected Payment_Method aggregate FN=0, got {cm["fields"]["Order_Info"]['fields']['Payment_Method']['aggregate']['fn']}"
+
+        # Order_Notes has no nested fields, so overall (object level) metrics == aggregate (field level) metrics
+        assert cm["fields"]["Order_Info"]['fields']['Order_Notes']['overall']['tp'] == 0, f"Expected Order_Notes overall TP=0, got {cm["fields"]["Order_Info"]['fields']['Order_Notes']['overall']['tp']}"
+        assert cm["fields"]["Order_Info"]['fields']['Order_Notes']['overall']['fa'] == 0, f"Expected Order_Notes overall FA=0, got {cm["fields"]["Order_Info"]['fields']['Order_Notes']['overall']['fa']}"
+        assert cm["fields"]["Order_Info"]['fields']['Order_Notes']['overall']['fd'] == 1, f"Expected Order_Notes overall FD=1, got {cm["fields"]["Order_Info"]['fields']['Order_Notes']['overall']['fd']}"
+        assert cm["fields"]["Order_Info"]['fields']['Order_Notes']['overall']['tn'] == 0, f"Expected Order_Notes overall TN=0, got {cm["fields"]["Order_Info"]['fields']['Order_Notes']['overall']['tn']}"
+        assert cm["fields"]["Order_Info"]['fields']['Order_Notes']['overall']['fn'] == 0, f"Expected Order_Notes overall FN=0, got {cm["fields"]["Order_Info"]['fields']['Order_Notes']['overall']['fn']}"
+
+        assert cm["fields"]["Order_Info"]['fields']['Order_Notes']['aggregate']['tp'] == 0, f"Expected Order_Notes aggregate TP=0, got {cm["fields"]["Order_Info"]['fields']['Order_Notes']['aggregate']['tp']}"
+        assert cm["fields"]["Order_Info"]['fields']['Order_Notes']['aggregate']['fa'] == 0, f"Expected Order_Notes aggregate FA=0, got {cm["fields"]["Order_Info"]['fields']['Order_Notes']['aggregate']['fa']}"
+        assert cm["fields"]["Order_Info"]['fields']['Order_Notes']['aggregate']['fd'] == 1, f"Expected Order_Notes aggregate FD=1, got {cm["fields"]["Order_Info"]['fields']['Order_Notes']['aggregate']['fd']}"
+        assert cm["fields"]["Order_Info"]['fields']['Order_Notes']['aggregate']['tn'] == 0, f"Expected Order_Notes aggregate TN=0, got {cm["fields"]["Order_Info"]['fields']['Order_Notes']['aggregate']['tn']}"
+        assert cm["fields"]["Order_Info"]['fields']['Order_Notes']['aggregate']['fn'] == 0, f"Expected Order_Notes aggregate FN=0, got {cm["fields"]["Order_Info"]['fields']['Order_Notes']['aggregate']['fn']}"
+
+        # at the object level with exact match, 1 false discovery
+        assert cm["fields"]["Order_Info"]["overall"]["tp"] == 0, f"Expected Order_Info overall TP=5, got {cm["fields"]["Order_Info"]["overall"]['tp']}"
+        assert cm["fields"]["Order_Info"]["overall"]["fa"] == 0, f"Expected Order_Info overall FA=2, got {cm["fields"]["Order_Info"]["overall"]['fa']}"
+        assert cm["fields"]["Order_Info"]["overall"]["fd"] == 1, f"Expected Order_Info overall FD=1, got {cm["fields"]["Order_Info"]["overall"]['fd']}"
+        assert cm["fields"]["Order_Info"]["overall"]["tn"] == 0, f"Expected Order_Info overall TN=1, got {cm["fields"]["Order_Info"]["overall"]['tn']}"
+        assert cm["fields"]["Order_Info"]["overall"]["fn"] == 0, f"Expected Order_Info overall FN=0, got {cm["fields"]["Order_Info"]["overall"]['fn']}"
+
+        # at the field level within all nested fields, 5 true positives, 2 false alarms, 1 false discovery and 1 true negative
+        assert cm["fields"]["Order_Info"]["aggregate"]["tp"] == 5, f"Expected Order_Info aggregate TP=5, got {cm["fields"]["Order_Info"]["aggregate"]['tp']}"
+        assert cm["fields"]["Order_Info"]["aggregate"]["fa"] == 2, f"Expected Order_Info aggregate FA=2, got {cm["fields"]["Order_Info"]["aggregate"]['fa']}"
+        assert cm["fields"]["Order_Info"]["aggregate"]["fd"] == 1, f"Expected Order_Info aggregate FD=1, got {cm["fields"]["Order_Info"]["aggregate"]['fd']}"
+        assert cm["fields"]["Order_Info"]["aggregate"]["tn"] == 1, f"Expected Order_Info aggregate TN=1, got {cm["fields"]["Order_Info"]["aggregate"]['tn']}"
+        assert cm["fields"]["Order_Info"]["aggregate"]["fn"] == 0, f"Expected Order_Info aggregate FN=0, got {cm["fields"]["Order_Info"]["aggregate"]['fn']}"
 
     def test_customers_field_aggregate_counts(self):
         """Test the Customers field aggregate counts with Hungarian matching."""
@@ -254,23 +313,87 @@ class TestEcommerceOrdersAggregateComprehensive:
         )
         
         cm = result["confusion_matrix"]
-        customers_metrics = cm["fields"]["Customers"]["aggregate"]
-        
-        # Updated expected results based on correct Hungarian matching:
-        # Hungarian matches GT[1]->Pred[0] and GT[3]->Pred[1], not GT[0]->Pred[0] as originally assumed
-        
-        print(f"\n=== CUSTOMERS AGGREGATE COUNTS ===")
-        print(f"TP: {customers_metrics.get('tp', 'MISSING')}, Expected: 12")
-        print(f"FA: {customers_metrics.get('fa', 'MISSING')}, Expected: 0")
-        print(f"FD: {customers_metrics.get('fd', 'MISSING')}, Expected: 2")
-        print(f"TN: {customers_metrics.get('tn', 'MISSING')}, Expected: 2")
-        print(f"FN: {customers_metrics.get('fn', 'MISSING')}, Expected: 10")
-        
-        assert customers_metrics["tp"] == 12, f"Expected Customers TP=12, got {customers_metrics['tp']}"
-        assert customers_metrics["fa"] == 0, f"Expected Customers FA=0, got {customers_metrics['fa']}"
-        assert customers_metrics["fd"] == 2, f"Expected Customers FD=2, got {customers_metrics['fd']}"
-        assert customers_metrics["tn"] == 2, f"Expected Customers TN=2, got {customers_metrics['tn']}"
-        assert customers_metrics["fn"] == 10, f"Expected Customers FN=10, got {customers_metrics['fn']}"
+
+        # Hungarian matches GT[1]->Pred[0] and GT[3]->Pred[1]
+
+        # gt_json['Customers'][0]['Customer_Id'], pred_json['Customers'][0]['Customer_Id']:  1 true positive
+        # gt_json['Customers'][3]['Customer_Id'], pred_json['Customers'][1]['Customer_Id']:  1 false discovery
+        # gt_json['Customers'][1]['Customer_Id'], gt_json['Customers'][2]['Customer_Id']:  2 false neagtive
+        assert cm["fields"]["Customers"]['fields']['Customer_Id']['aggregate']['tp'] == 1, f"Expected Customer_Id aggregate TP=1, got {cm["fields"]["Customers"]['fields']['Customer_Id']['aggregate']['tp']}"
+        assert cm["fields"]["Customers"]['fields']['Customer_Id']['aggregate']['fa'] == 0, f"Expected Customer_Id aggregate FA=0, got {cm["fields"]["Customers"]['fields']['Customer_Id']['aggregate']['fa']}"
+        assert cm["fields"]["Customers"]['fields']['Customer_Id']['aggregate']['fd'] == 1, f"Expected Customer_Id aggregate FD=1, got {cm["fields"]["Customers"]['fields']['Customer_Id']['aggregate']['fd']}"
+        assert cm["fields"]["Customers"]['fields']['Customer_Id']['aggregate']['tn'] == 0, f"Expected Customer_Id aggregate TN=0, got {cm["fields"]["Customers"]['fields']['Customer_Id']['aggregate']['tn']}"
+        assert cm["fields"]["Customers"]['fields']['Customer_Id']['aggregate']['fn'] == 2, f"Expected Customer_Id aggregate FN=2, got {cm["fields"]["Customers"]['fields']['Customer_Id']['aggregate']['fn']}"
+
+        # gt_json['Customers'][0]['Customer_Type'], pred_json['Customers'][0]['Customer_Type']:  1 false discovery
+        # gt_json['Customers'][3]['Customer_Type'], pred_json['Customers'][1]['Customer_Type']:  1 true positive
+        # gt_json['Customers'][1]['Customer_Type'], gt_json['Customers'][2]['Customer_Type']:  2 false neagtive
+        assert cm["fields"]["Customers"]['fields']['Customer_Type']['aggregate']['tp'] == 1, f"Expected Customer_Type aggregate TP=1, got {cm["fields"]["Customers"]['fields']['Customer_Type']['aggregate']['tp']}"
+        assert cm["fields"]["Customers"]['fields']['Customer_Type']['aggregate']['fa'] == 0, f"Expected Customer_Type aggregate FA=0, got {cm["fields"]["Customers"]['fields']['Customer_Type']['aggregate']['fa']}"
+        assert cm["fields"]["Customers"]['fields']['Customer_Type']['aggregate']['fd'] == 1, f"Expected Customer_Type aggregate FD=1, got {cm["fields"]["Customers"]['fields']['Customer_Type']['aggregate']['fd']}"
+        assert cm["fields"]["Customers"]['fields']['Customer_Type']['aggregate']['tn'] == 0, f"Expected Customer_Type aggregate TN=0, got {cm["fields"]["Customers"]['fields']['Customer_Type']['aggregate']['tn']}"
+        assert cm["fields"]["Customers"]['fields']['Customer_Type']['aggregate']['fn'] == 2, f"Expected Customer_Type aggregate FN=2, got {cm["fields"]["Customers"]['fields']['Customer_Type']['aggregate']['fn']}"
+
+        # gt_json['Customers'][0]['Account_Number'], pred_json['Customers'][0]['Account_Number']:  1 true positive
+        # gt_json['Customers'][3]['Account_Number'], pred_json['Customers'][1]['Account_Number']:  1 true positive
+        # gt_json['Customers'][1]['Account_Number'], gt_json['Customers'][2]['Account_Number']:  2 false neagtive
+        assert cm["fields"]["Customers"]['fields']['Account_Number']['aggregate']['tp'] == 2, f"Expected Account_Number aggregate TP=2, got {cm["fields"]["Customers"]['fields']['Account_Number']['aggregate']['tp']}"
+        assert cm["fields"]["Customers"]['fields']['Account_Number']['aggregate']['fa'] == 0, f"Expected Account_Number aggregate FA=0, got {cm["fields"]["Customers"]['fields']['Account_Number']['aggregate']['fa']}"
+        assert cm["fields"]["Customers"]['fields']['Account_Number']['aggregate']['fd'] == 0, f"Expected Account_Number aggregate FD=0, got {cm["fields"]["Customers"]['fields']['Account_Number']['aggregate']['fd']}"
+        assert cm["fields"]["Customers"]['fields']['Account_Number']['aggregate']['tn'] == 0, f"Expected Account_Number aggregate TN=0, got {cm["fields"]["Customers"]['fields']['Account_Number']['aggregate']['tn']}"
+        assert cm["fields"]["Customers"]['fields']['Account_Number']['aggregate']['fn'] == 2, f"Expected Account_Number aggregate FN=2, got {cm["fields"]["Customers"]['fields']['Account_Number']['aggregate']['fn']}"
+
+        # gt_json['Customers'][0]['Is_Premium_Member'], pred_json['Customers'][0]['Is_Premium_Member']:  1 false alarm
+        # gt_json['Customers'][3]['Is_Premium_Member'], pred_json['Customers'][1]['Is_Premium_Member']:  1 true positive
+        # gt_json['Customers'][1]['Is_Premium_Member']:  1 false neagtive
+        # gt_json['Customers'][2]['Is_Premium_Member']: 1 true negative
+        assert cm["fields"]["Customers"]['fields']['Is_Premium_Member']['aggregate']['tp'] == 1, f"Expected Is_Premium_Member aggregate TP=1, got {cm["fields"]["Customers"]['fields']['Is_Premium_Member']['aggregate']['tp']}"
+        assert cm["fields"]["Customers"]['fields']['Is_Premium_Member']['aggregate']['fa'] == 1, f"Expected Is_Premium_Member aggregate FA=1, got {cm["fields"]["Customers"]['fields']['Is_Premium_Member']['aggregate']['fa']}"
+        assert cm["fields"]["Customers"]['fields']['Is_Premium_Member']['aggregate']['fd'] == 0, f"Expected Is_Premium_Member aggregate FD=0, got {cm["fields"]["Customers"]['fields']['Is_Premium_Member']['aggregate']['fd']}"
+        assert cm["fields"]["Customers"]['fields']['Is_Premium_Member']['aggregate']['tn'] == 1, f"Expected Is_Premium_Member aggregate TN=1, got {cm["fields"]["Customers"]['fields']['Is_Premium_Member']['aggregate']['tn']}"
+        assert cm["fields"]["Customers"]['fields']['Is_Premium_Member']['aggregate']['fn'] == 1, f"Expected Is_Premium_Member aggregate FN=1, got {cm["fields"]["Customers"]['fields']['Is_Premium_Member']['aggregate']['fn']}"
+
+        # gt_json['Customers'][0]['Customer_Name'], pred_json['Customers'][0]['Customer_Name']:  1 true positive
+        # gt_json['Customers'][3]['Customer_Name'], pred_json['Customers'][1]['Customer_Name']:  1 true positive
+        # gt_json['Customers'][1]['Customer_Name'], gt_json['Customers'][2]['Customer_Name']:  2 false neagtive
+        assert cm["fields"]["Customers"]['fields']['Customer_Name']['aggregate']['tp'] == 2, f"Expected Customer_Name aggregate TP=2, got {cm["fields"]["Customers"]['fields']['Customer_Name']['aggregate']['tp']}"
+        assert cm["fields"]["Customers"]['fields']['Customer_Name']['aggregate']['fa'] == 0, f"Expected Customer_Name aggregate FA=0, got {cm["fields"]["Customers"]['fields']['Customer_Name']['aggregate']['fa']}"
+        assert cm["fields"]["Customers"]['fields']['Customer_Name']['aggregate']['fd'] == 0, f"Expected Customer_Name aggregate FD=0, got {cm["fields"]["Customers"]['fields']['Customer_Name']['aggregate']['fd']}"
+        assert cm["fields"]["Customers"]['fields']['Customer_Name']['aggregate']['tn'] == 0, f"Expected Customer_Name aggregate TN=0, got {cm["fields"]["Customers"]['fields']['Customer_Name']['aggregate']['tn']}"
+        assert cm["fields"]["Customers"]['fields']['Customer_Name']['aggregate']['fn'] == 2, f"Expected Customer_Name aggregate FN=2, got {cm["fields"]["Customers"]['fields']['Customer_Name']['aggregate']['fn']}"
+
+        # gt_json['Customers'][0]['Shipping_Address'], pred_json['Customers'][0]['Shipping_Address']:  1 true positive
+        # gt_json['Customers'][3]['Shipping_Address'], pred_json['Customers'][1]['Shipping_Address']:  1 true positive
+        # gt_json['Customers'][1]['Shipping_Address'], gt_json['Customers'][2]['Shipping_Address']:  2 false neagtive
+        assert cm["fields"]["Customers"]['fields']['Shipping_Address']['aggregate']['tp'] == 2, f"Expected Shipping_Address aggregate TP=2, got {cm["fields"]["Customers"]['fields']['Shipping_Address']['aggregate']['tp']}"
+        assert cm["fields"]["Customers"]['fields']['Shipping_Address']['aggregate']['fa'] == 0, f"Expected Shipping_Address aggregate FA=0, got {cm["fields"]["Customers"]['fields']['Shipping_Address']['aggregate']['fa']}"
+        assert cm["fields"]["Customers"]['fields']['Shipping_Address']['aggregate']['fd'] == 0, f"Expected Shipping_Address aggregate FD=0, got {cm["fields"]["Customers"]['fields']['Shipping_Address']['aggregate']['fd']}"
+        assert cm["fields"]["Customers"]['fields']['Shipping_Address']['aggregate']['tn'] == 0, f"Expected Shipping_Address aggregate TN=0, got {cm["fields"]["Customers"]['fields']['Shipping_Address']['aggregate']['tn']}"
+        assert cm["fields"]["Customers"]['fields']['Shipping_Address']['aggregate']['fn'] == 2, f"Expected Shipping_Address aggregate FN=2, got {cm["fields"]["Customers"]['fields']['Shipping_Address']['aggregate']['fn']}"
+
+        # gt_json['Customers'][0]['Loyalty_Status'], pred_json['Customers'][0]['Loyalty_Status']:  1 false alarm (object level) or 2 false alarm (aggregate level)
+        # gt_json['Customers'][3]['Loyalty_Status'], pred_json['Customers'][1]['Loyalty_Status']:  1 true negative (object level) or 2 true negative (aggregate level)
+        # gt_json['Customers'][1]['Loyalty_Status']: 1 false negative (object level) or 2 false negative (aggregate level)
+        # gt_json['Customers'][2]['Loyalty_Status']: 1 true negative (object level) or 2 true negative (aggregate level)
+        assert cm["fields"]["Customers"]['fields']['Loyalty_Status']['aggregate']['tp'] == 0, f"Expected Loyalty_Status aggregate TP=0, got {cm["fields"]["Customers"]['fields']['Loyalty_Status']['aggregate']['tp']}"
+        assert cm["fields"]["Customers"]['fields']['Loyalty_Status']['aggregate']['fa'] == 2, f"Expected Loyalty_Status aggregate FA=2, got {cm["fields"]["Customers"]['fields']['Loyalty_Status']['aggregate']['fa']}"
+        assert cm["fields"]["Customers"]['fields']['Loyalty_Status']['aggregate']['fd'] == 0, f"Expected Loyalty_Status aggregate FD=0, got {cm["fields"]["Customers"]['fields']['Loyalty_Status']['aggregate']['fd']}"
+        assert cm["fields"]["Customers"]['fields']['Loyalty_Status']['aggregate']['tn'] == 4, f"Expected Loyalty_Status aggregate TN=4, got {cm["fields"]["Customers"]['fields']['Loyalty_Status']['aggregate']['tn']}"
+        assert cm["fields"]["Customers"]['fields']['Loyalty_Status']['aggregate']['fn'] == 2, f"Expected Loyalty_Status aggregate FN=2, got {cm["fields"]["Customers"]['fields']['Loyalty_Status']['aggregate']['fn']}"
+
+        # at the object level with match_threshold = 1.0, 2 false discoveries and 2 false negatives (2 entries are matched, but below threshold, 2 entries are missing in prediction)
+        assert cm["fields"]["Customers"]["overall"]["tp"] == 0, f"Expected Customers overall TP=0, got {cm["fields"]["Customers"]["overall"]["tp"]}"
+        assert cm["fields"]["Customers"]["overall"]["fa"] == 0, f"Expected Customers overall FA=0, got {cm["fields"]["Customers"]["overall"]['fa']}"
+        assert cm["fields"]["Customers"]["overall"]["fd"] == 2, f"Expected Customers overall FD=2, got {cm["fields"]["Customers"]["overall"]['fd']}"
+        assert cm["fields"]["Customers"]["overall"]["tn"] == 0, f"Expected Customers overall TN=0, got {cm["fields"]["Customers"]["overall"]['tn']}"
+        assert cm["fields"]["Customers"]["overall"]["fn"] == 2, f"Expected Customers overall FN=2, got {cm["fields"]["Customers"]["overall"]['fn']}"
+
+        # at the field level within all matched entries (2 matched entries are considered for the sub field comparison, 2 unmatched entries are contributing to the fn)     
+        assert cm["fields"]["Customers"]["aggregate"]["tp"] == 9, f"Expected Customers aggregate TP=9, got {cm["fields"]["Customers"]["aggregate"]['tp']}"
+        assert cm["fields"]["Customers"]["aggregate"]["fa"] == 3, f"Expected Customers aggregate FA=3, got {cm["fields"]["Customers"]["aggregate"]['fa']}"
+        assert cm["fields"]["Customers"]["aggregate"]["fd"] == 2, f"Expected Customers aggregate FD=2, got {cm["fields"]["Customers"]["aggregate"]['fd']}"
+        assert cm["fields"]["Customers"]["aggregate"]["tn"] == 5, f"Expected Customers aggregate TN=5, got {cm["fields"]["Customers"]["aggregate"]['tn']}"
+        assert cm["fields"]["Customers"]["aggregate"]["fn"] == 13, f"Expected Customers aggregate FN=13, got {cm["fields"]["Customers"]["aggregate"]['fn']}"
 
     def test_products_field_aggregate_counts(self):
         """Test the Products field aggregate counts."""
@@ -280,23 +403,37 @@ class TestEcommerceOrdersAggregateComprehensive:
         )
         
         cm = result["confusion_matrix"]
-        products_metrics = cm["fields"]["Products"]["aggregate"]
         
-        # Expected results from original comments - Category_Name fields should be ignored
-        # since CategoryOnly model only defines Category_Code field, not Category_Name field
-        
-        print(f"\n=== PRODUCTS AGGREGATE COUNTS ===")
-        print(f"TP: {products_metrics.get('tp', 'MISSING')}, Expected: 3")
-        print(f"FA: {products_metrics.get('fa', 'MISSING')}, Expected: 1") # Current implementation: Hungarian matching fails for Product_Category, treats as unmatched
-        print(f"FD: {products_metrics.get('fd', 'MISSING')}, Expected: 0") # Current implementation: Hungarian matching fails for Product_Category, treats as unmatched
-        print(f"TN: {products_metrics.get('tn', 'MISSING')}, Expected: 0")
-        print(f"FN: {products_metrics.get('fn', 'MISSING')}, Expected: 1")
-        
-        assert products_metrics["tp"] == 3, f"Expected Products TP=3, got {products_metrics['tp']}"
-        assert products_metrics["fa"] == 1, f"Expected Products FA=1, got {products_metrics['fa']}"
-        assert products_metrics["fd"] == 0, f"Expected Products FD=0, got {products_metrics['fd']}"
-        assert products_metrics["tn"] == 0, f"Expected Products TN=0, got {products_metrics['tn']}"
-        assert products_metrics["fn"] == 1, f"Expected Products FN=1, got {products_metrics['fn']}"
+        # gt_json['Products'][0]['Product_Id'], pred_json['Products'][0]['Product_Id']:  1 true positive
+        # gt_json['Products'][1]['Product_Id'], pred_json['Products'][1]['Product_Id']:  1 true positive
+        assert cm["fields"]["Products"]['fields']['Product_Id']['aggregate']['tp'] == 2, f"Expected Product_Id aggregate TP=2, got {cm["fields"]["Products"]['fields']['Product_Id']['aggregate']['tp']}"
+        assert cm["fields"]["Products"]['fields']['Product_Id']['aggregate']['fa'] == 0, f"Expected Product_Id aggregate FA=0, got {cm["fields"]["Products"]['fields']['Product_Id']['aggregate']['fa']}"
+        assert cm["fields"]["Products"]['fields']['Product_Id']['aggregate']['fd'] == 0, f"Expected Product_Id aggregate FD=0, got {cm["fields"]["Products"]['fields']['Product_Id']['aggregate']['fd']}"
+        assert cm["fields"]["Products"]['fields']['Product_Id']['aggregate']['tn'] == 0, f"Expected Product_Id aggregate TN=0, got {cm["fields"]["Products"]['fields']['Product_Id']['aggregate']['tn']}"
+        assert cm["fields"]["Products"]['fields']['Product_Id']['aggregate']['fn'] == 0, f"Expected Product_Id aggregate FN=0, got {cm["fields"]["Products"]['fields']['Product_Id']['aggregate']['fn']}"
+
+        # gt_json['Products'][0]['Product_Category'], pred_json['Products'][0]['Product_Category']:  1 true positive
+        # gt_json['Products'][1]['Product_Category'], pred_json['Products'][1]['Product_Category']:  1 false discovery
+        # Category_Name fields should be ignored since CategoryOnly model only defines Category_Code field, not Category_Name field
+        assert cm["fields"]["Products"]['fields']['Product_Category']['aggregate']['tp'] == 1, f"Expected Product_Category aggregate TP=1, got {cm["fields"]["Products"]['fields']['Product_Category']['aggregate']['tp']}"
+        assert cm["fields"]["Products"]['fields']['Product_Category']['aggregate']['fa'] == 0, f"Expected Product_Category aggregate FA=0, got {cm["fields"]["Products"]['fields']['Product_Category']['aggregate']['fa']}"
+        assert cm["fields"]["Products"]['fields']['Product_Category']['aggregate']['fd'] == 1, f"Expected Product_Category aggregate FD=1, got {cm["fields"]["Products"]['fields']['Product_Category']['aggregate']['fd']}"
+        assert cm["fields"]["Products"]['fields']['Product_Category']['aggregate']['tn'] == 0, f"Expected Product_Category aggregate TN=0, got {cm["fields"]["Products"]['fields']['Product_Category']['aggregate']['tn']}"
+        assert cm["fields"]["Products"]['fields']['Product_Category']['aggregate']['fn'] == 0, f"Expected Product_Category aggregate FN=0, got {cm["fields"]["Products"]['fields']['Product_Category']['aggregate']['fn']}"
+
+        # at the object level with match_threshold = 1.0, 1 true positve, 1 false discovery (2 entries are matched, but only one match is above threshold)
+        assert cm["fields"]["Products"]["overall"]["tp"] == 1, f"Expected Products overall TP=1, got {cm["fields"]["Products"]["overall"]["tp"]}"
+        assert cm["fields"]["Products"]["overall"]["fa"] == 0, f"Expected Products overall FA=0, got {cm["fields"]["Products"]["overall"]['fa']}"
+        assert cm["fields"]["Products"]["overall"]["fd"] == 1, f"Expected Products overall FD=1, got {cm["fields"]["Products"]["overall"]['fd']}"
+        assert cm["fields"]["Products"]["overall"]["tn"] == 0, f"Expected Products overall TN=0, got {cm["fields"]["Products"]["overall"]['tn']}"
+        assert cm["fields"]["Products"]["overall"]["fn"] == 0, f"Expected Products overall FN=0, got {cm["fields"]["Products"]["overall"]['fn']}"
+
+        # at the field level within all matched entries (2 matched entries are considered for the sub field comparison)     
+        assert cm["fields"]["Products"]["aggregate"]["tp"] == 3, f"Expected Products aggregate TP=3, got {cm["fields"]["Products"]["aggregate"]['tp']}"
+        assert cm["fields"]["Products"]["aggregate"]["fa"] == 0, f"Expected Products aggregate FA=0, got {cm["fields"]["Products"]["aggregate"]['fa']}"
+        assert cm["fields"]["Products"]["aggregate"]["fd"] == 1, f"Expected Products aggregate FD=1, got {cm["fields"]["Products"]["aggregate"]['fd']}"
+        assert cm["fields"]["Products"]["aggregate"]["tn"] == 0, f"Expected Products aggregate TN=0, got {cm["fields"]["Products"]["aggregate"]['tn']}"
+        assert cm["fields"]["Products"]["aggregate"]["fn"] == 0, f"Expected Products aggregate FN=0, got {cm["fields"]["Products"]["aggregate"]['fn']}"
 
     def test_discounts_field_aggregate_counts(self):
         """Test the Discounts field aggregate counts."""
@@ -306,27 +443,28 @@ class TestEcommerceOrdersAggregateComprehensive:
         )
         
         cm = result["confusion_matrix"]
-        discounts_metrics = cm["fields"]["Discounts"]["aggregate"]
-        
-        # Expected results from comments:
-        # result['confusion_matrix']['fields']['Discounts']['aggregate']['tp']: 0
-        # result['confusion_matrix']['fields']['Discounts']['aggregate']['fa']: 0
-        # result['confusion_matrix']['fields']['Discounts']['aggregate']['fd']: 1
-        # result['confusion_matrix']['fields']['Discounts']['aggregate']['tn']: 1
-        # result['confusion_matrix']['fields']['Discounts']['aggregate']['fn']: 0
-        
-        print(f"\n=== DISCOUNTS AGGREGATE COUNTS ===")
-        print(f"TP: {discounts_metrics.get('tp', 'MISSING')}, Expected: 0")
-        print(f"FA: {discounts_metrics.get('fa', 'MISSING')}, Expected: 0")
-        print(f"FD: {discounts_metrics.get('fd', 'MISSING')}, Expected: 1")
-        print(f"TN: {discounts_metrics.get('tn', 'MISSING')}, Expected: 1")
-        print(f"FN: {discounts_metrics.get('fn', 'MISSING')}, Expected: 0")
-        
-        assert discounts_metrics["tp"] == 0, f"Expected Discounts TP=0, got {discounts_metrics['tp']}"
-        assert discounts_metrics["fa"] == 0, f"Expected Discounts FA=0, got {discounts_metrics['fa']}"
-        assert discounts_metrics["fd"] == 1, f"Expected Discounts FD=1, got {discounts_metrics['fd']}"
-        assert discounts_metrics["tn"] == 1, f"Expected Discounts TN=1, got {discounts_metrics['tn']}"
-        assert discounts_metrics["fn"] == 0, f"Expected Discounts FN=0, got {discounts_metrics['fn']}"
+
+        # gt_json['Customers'][0]['Customer_Id'], pred_json['Customers'][0]['Customer_Id']: 1 true positive
+        # gt_json['Customers'][3]['Customer_Id'], pred_json['Customers'][1]['Customer_Id']: 1 false discovery
+        assert cm["fields"]["Discounts"]['fields']['Customer_Id']['aggregate']['tp'] == 1, f"Expected Customer_Id aggregate TP=1, got {cm["fields"]["Discounts"]['fields']['Customer_Id']['aggregate']['tp']}"
+        assert cm["fields"]["Discounts"]['fields']['Customer_Id']['aggregate']['fa'] == 0, f"Expected Customer_Id aggregate FA=0, got {cm["fields"]["Discounts"]['fields']['Customer_Id']['aggregate']['fa']}"
+        assert cm["fields"]["Discounts"]['fields']['Customer_Id']['aggregate']['fd'] == 1, f"Expected Customer_Id aggregate FD=1, got {cm["fields"]["Discounts"]['fields']['Customer_Id']['aggregate']['fd']}"
+        assert cm["fields"]["Discounts"]['fields']['Customer_Id']['aggregate']['tn'] == 0, f"Expected Customer_Id aggregate TN=0, got {cm["fields"]["Discounts"]['fields']['Customer_Id']['aggregate']['tn']}"
+        assert cm["fields"]["Discounts"]['fields']['Customer_Id']['aggregate']['fn'] == 2, f"Expected Customer_Id aggregate FN=2, got {cm["fields"]["Discounts"]['fields']['Customer_Id']['aggregate']['fn']}"
+
+        # at the object level with match_threshold = 1.0, 1 false discovery (no matches are made)
+        assert cm["fields"]["Discounts"]["overall"]["tp"] == 0, f"Expected Discounts overall TP=0, got {cm["fields"]["Discounts"]["overall"]["tp"]}"
+        assert cm["fields"]["Discounts"]["overall"]["fa"] == 0, f"Expected Discounts overall FA=0, got {cm["fields"]["Discounts"]["overall"]['fa']}"
+        assert cm["fields"]["Discounts"]["overall"]["fd"] == 1, f"Expected Discounts overall FD=1, got {cm["fields"]["Discounts"]["overall"]['fd']}"
+        assert cm["fields"]["Discounts"]["overall"]["tn"] == 0, f"Expected Discounts overall TN=0, got {cm["fields"]["Discounts"]["overall"]['tn']}"
+        assert cm["fields"]["Discounts"]["overall"]["fn"] == 0, f"Expected Discounts overall FN=0, got {cm["fields"]["Discounts"]["overall"]['fn']}"
+
+        # at the field level within all matched entries (no matches, but same length, so the two entries are compared)  
+        assert cm["fields"]["Discounts"]["aggregate"]["tp"] == 1, f"Expected Discounts aggregate TP=1, got {cm["fields"]["Discounts"]["aggregate"]['tp']}"
+        assert cm["fields"]["Discounts"]["aggregate"]["fa"] == 0, f"Expected Discounts aggregate FA=0, got {cm["fields"]["Discounts"]["aggregate"]['fa']}"
+        assert cm["fields"]["Discounts"]["aggregate"]["fd"] == 1, f"Expected Discounts aggregate FD=1, got {cm["fields"]["Discounts"]["aggregate"]['fd']}"
+        assert cm["fields"]["Discounts"]["aggregate"]["tn"] == 1, f"Expected Discounts aggregate TN=1, got {cm["fields"]["Discounts"]["aggregate"]['tn']}"
+        assert cm["fields"]["Discounts"]["aggregate"]["fn"] == 0, f"Expected Discounts aggregate FN=0, got {cm["fields"]["Discounts"]["aggregate"]['fn']}"
 
     def test_hungarian_matching_verification(self):
         """Test that Hungarian matching works correctly for the Customers list."""
