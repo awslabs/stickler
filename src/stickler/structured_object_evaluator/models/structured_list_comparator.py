@@ -681,17 +681,19 @@ class StructuredListComparator:
                                matched_pred_indices: set) -> Dict[str, Any]:
         """Handle primitive fields with proper threshold-based classification for matched pairs.
         
-        CRITICAL FIX: Now properly handles threshold-based classification for matched pairs.
-        Pairs below threshold are treated as unmatched for field-level purposes.
+        CRITICAL FIX: Now creates both 'overall' and 'aggregate' sections:
+        - 'overall': Only includes matches above the threshold
+        - 'aggregate': Includes ALL matches (existing behavior)
         """
-        
-        # Initialize collection for primitive fields across all objects
-        sub_field_metrics = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
         
         # Get match threshold from the model class
         match_threshold = getattr(gt_list[0].__class__, 'match_threshold', 0.7) if gt_list else 0.7
         
-        # Process matched pairs with field-level classification (regardless of object-level similarity)
+        # Initialize metrics for both overall (threshold-gated) and aggregate (all matches)
+        overall_metrics = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
+        aggregate_metrics = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
+        
+        # Process matched pairs with field-level classification
         for gt_idx, pred_idx, similarity in matched_pairs:
             if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                 gt_item = gt_list[gt_idx]
@@ -699,33 +701,47 @@ class StructuredListComparator:
                 gt_sub_value = getattr(gt_item, sub_field_name, None)
                 pred_sub_value = getattr(pred_item, sub_field_name, None)
                 
-                # CRITICAL FIX: Always use field-level classification for matched pairs
-                # The object-level similarity doesn't affect field-level metrics
+                # Get field-level classification for this pair
                 field_classification = gt_item._classify_field_for_confusion_matrix(sub_field_name, pred_sub_value)
+                
+                # AGGREGATE: Always include all matched pairs
                 for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-                    sub_field_metrics[metric] += field_classification.get(metric, 0)
+                    aggregate_metrics[metric] += field_classification.get(metric, 0)
+                
+                # OVERALL: Only include pairs above the threshold
+                if similarity >= match_threshold:
+                    for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
+                        overall_metrics[metric] += field_classification.get(metric, 0)
         
         # Handle unmatched GT objects (contribute FN for non-null fields, TN for null fields)
+        # These apply to both overall and aggregate since they're not threshold-dependent
         for gt_idx, gt_item in enumerate(gt_list):
             if gt_idx not in matched_gt_indices:
                 gt_sub_value = getattr(gt_item, sub_field_name, None)
                 if gt_sub_value is not None and gt_sub_value != "" and gt_sub_value != []:
-                    sub_field_metrics["fn"] += 1
+                    overall_metrics["fn"] += 1
+                    aggregate_metrics["fn"] += 1
                 else:
                     # GT field is None/empty - this is a TN (correctly predicted as absent)
-                    sub_field_metrics["tn"] += 1
+                    overall_metrics["tn"] += 1
+                    aggregate_metrics["tn"] += 1
         
-        # Handle unmatched pred objects (contribute FA to field-level for each non-null field)  
+        # Handle unmatched pred objects (contribute FA to field-level for each non-null field)
+        # These apply to both overall and aggregate since they're not threshold-dependent  
         for pred_idx, pred_item in enumerate(pred_list):
             if pred_idx not in matched_pred_indices:
                 pred_sub_value = getattr(pred_item, sub_field_name, None)
                 if pred_sub_value is not None and pred_sub_value != "" and pred_sub_value != []:
-                    sub_field_metrics["fa"] += 1
-                    sub_field_metrics["fp"] += 1
+                    overall_metrics["fa"] += 1
+                    overall_metrics["fp"] += 1
+                    aggregate_metrics["fa"] += 1
+                    aggregate_metrics["fp"] += 1
         
-        # UNIFIED STRUCTURE: Wrap primitive field metrics in 'overall' for consistency
-        # This ensures all fields use the same access pattern: field_data['overall']
-        return {"overall": sub_field_metrics}
+        # Return both overall and aggregate sections
+        return {
+            "overall": overall_metrics,
+            "aggregate": aggregate_metrics
+        }
 
 
 # Import needed at bottom to avoid circular imports

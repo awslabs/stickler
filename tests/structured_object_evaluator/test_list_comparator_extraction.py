@@ -332,16 +332,25 @@ class TestHungarianMatchingBaseline:
         assert txn_overall["tp"] == 0  # No good matches
         assert txn_overall["fd"] >= 1  # All matches are poor
 
-        # CORRECTED: With threshold-gated recursion fixed, poor matches don't generate nested field metrics
+        # UPDATED: With universal aggregate feature, nested fields are always generated
+        # but "overall" should be empty for poor matches, "aggregate" should have the metrics
         if "fields" in cm["fields"]["transactions"]:
             nested_fields = cm["fields"]["transactions"]["fields"]
-            # Threshold-gating working correctly - should be empty for all poor matches
-            assert (
-                len(nested_fields) == 0
-            )  # FIXED: No nested field metrics for poor matches
-        else:
-            # This is also acceptable - no nested fields structure at all
-            pass
+            # Should have nested fields for aggregate metrics
+            assert len(nested_fields) > 0, "Should have nested fields for aggregate metrics"
+            
+            # Check that overall sections are empty (no matches above threshold)
+            for field_name, field_metrics in nested_fields.items():
+                overall_metrics = field_metrics["overall"]
+                aggregate_metrics = field_metrics["aggregate"]
+                
+                # Overall should be empty (no matches above threshold)
+                assert all(overall_metrics[metric] == 0 for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]), \
+                    f"Field {field_name} overall should be empty for poor matches"
+                
+                # Aggregate should have the actual metrics from poor matches
+                assert aggregate_metrics["fd"] > 0, \
+                    f"Field {field_name} aggregate should have FD metrics from poor matches"
 
     def test_all_good_matches_scenario(self):
         """Test scenario where all matches are above threshold."""

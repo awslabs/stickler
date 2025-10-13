@@ -1393,8 +1393,15 @@ class StructuredModel(BaseModel):
         
         # If this is a leaf node (no subfields and no nested_fields), collect its metrics
         if not has_subfields and not has_nested_fields:
-            if "overall" in node and isinstance(node["overall"], dict) and self._has_basic_metrics(node["overall"]):
-                # Hierarchical leaf node: collect from overall
+            # CRITICAL FIX: For aggregate calculation, prefer "aggregate" section over "overall"
+            # This ensures we collect metrics from ALL matches, not just those above threshold
+            if "aggregate" in node and isinstance(node["aggregate"], dict) and self._has_basic_metrics(node["aggregate"]):
+                # Hierarchical leaf node with aggregate: collect from aggregate (includes all matches)
+                aggregate = node["aggregate"]
+                for metric in total_counts:
+                    total_counts[metric] += aggregate.get(metric, 0)
+            elif "overall" in node and isinstance(node["overall"], dict) and self._has_basic_metrics(node["overall"]):
+                # Hierarchical leaf node: collect from overall (fallback for nodes without aggregate)
                 overall = node["overall"]
                 for metric in total_counts:
                     total_counts[metric] += overall.get(metric, 0)
