@@ -178,32 +178,6 @@ class TestEcommerceOrdersAggregateComprehensive:
         self.gt_order = Order.from_json(self.gt_json)
         self.pred_order = Order.from_json(self.pred_json)
 
-    def test_full_comparison_with_expected_aggregate_counts(self):
-        """Test the full comparison with expected aggregate counts."""
-        result = self.gt_order.compare_with(
-            self.pred_order, 
-            include_confusion_matrix=True, 
-            document_non_matches=True
-        )
-        
-        # Print the result for debugging
-        print("\n=== FULL COMPARISON RESULT ===")
-        print(json.dumps(result, indent=2, default=str))
-        
-        # Verify that confusion matrix is included
-        assert "confusion_matrix" in result
-        cm = result["confusion_matrix"]
-        
-        # Verify that aggregate metrics are calculated
-        assert "aggregate" in cm
-        aggregate = cm["aggregate"]
-        
-        assert aggregate["tp"] == 17, f'Expected TP=17, got {aggregate["tp"]}'
-        assert aggregate["fa"] == 5, f'Expected FA=5, got {aggregate["fa"]}'
-        assert aggregate["fd"] == 5, f'Expected FD=5, got {aggregate["fd"]}'
-        assert aggregate["tn"] == 8, f'Expected TN=8, got {aggregate["tn"]}'
-        assert aggregate["fn"] == 13, f'Expected FN=11, got {aggregate["fn"]}'
-
     def test_order_info_field_aggregate_counts(self):
         """Test the Order_Info field aggregate counts specifically."""
         result = self.gt_order.compare_with(
@@ -281,10 +255,10 @@ class TestEcommerceOrdersAggregateComprehensive:
         assert cm["fields"]["Order_Info"]["fields"]["Order_Notes"]["aggregate"]["fn"] == 0, f'Expected Order_Notes aggregate FN=0, got {cm["fields"]["Order_Info"]["fields"]["Order_Notes"]["aggregate"]["fn"]}'
 
         # at the object level with exact match, 1 false discovery
-        assert cm["fields"]["Order_Info"]["overall"]["tp"] == 0, f'Expected Order_Info overall TP=5, got {cm["fields"]["Order_Info"]["overall"]["tp"]}'
-        assert cm["fields"]["Order_Info"]["overall"]["fa"] == 0, f'Expected Order_Info overall FA=2, got {cm["fields"]["Order_Info"]["overall"]["fa"]}'
+        assert cm["fields"]["Order_Info"]["overall"]["tp"] == 0, f'Expected Order_Info overall TP=0, got {cm["fields"]["Order_Info"]["overall"]["tp"]}'
+        assert cm["fields"]["Order_Info"]["overall"]["fa"] == 0, f'Expected Order_Info overall FA=0, got {cm["fields"]["Order_Info"]["overall"]["fa"]}'
         assert cm["fields"]["Order_Info"]["overall"]["fd"] == 1, f'Expected Order_Info overall FD=1, got {cm["fields"]["Order_Info"]["overall"]["fd"]}'
-        assert cm["fields"]["Order_Info"]["overall"]["tn"] == 0, f'Expected Order_Info overall TN=1, got {cm["fields"]["Order_Info"]["overall"]["tn"]}'
+        assert cm["fields"]["Order_Info"]["overall"]["tn"] == 0, f'Expected Order_Info overall TN=0, got {cm["fields"]["Order_Info"]["overall"]["tn"]}'
         assert cm["fields"]["Order_Info"]["overall"]["fn"] == 0, f'Expected Order_Info overall FN=0, got {cm["fields"]["Order_Info"]["overall"]["fn"]}'
 
         # at the field level within all nested fields, 5 true positives, 2 false alarms, 1 false discovery and 1 true negative
@@ -305,70 +279,69 @@ class TestEcommerceOrdersAggregateComprehensive:
 
         # Hungarian matches GT[1]->Pred[0] and GT[3]->Pred[1]
 
-        # gt_json["Customers"][0]["Customer_Id"], pred_json["Customers"][0]["Customer_Id"]:  1 true positive
+        # gt_json["Customers"][1]["Customer_Id"], pred_json["Customers"][0]["Customer_Id"]:  1 false discovery
         # gt_json["Customers"][3]["Customer_Id"], pred_json["Customers"][1]["Customer_Id"]:  1 false discovery
-        # gt_json["Customers"][1]["Customer_Id"], gt_json["Customers"][2]["Customer_Id"]:  2 false neagtive
-        assert cm["fields"]["Customers"]["fields"]["Customer_Id"]["aggregate"]["tp"] == 1, f'Expected Customer_Id aggregate TP=1, got {cm["fields"]["Customers"]["fields"]["Customer_Id"]["aggregate"]["tp"]}'
+        # gt_json["Customers"][0]["Customer_Id"], gt_json["Customers"][2]["Customer_Id"]:  2 false neagtive
+        assert cm["fields"]["Customers"]["fields"]["Customer_Id"]["aggregate"]["tp"] == 0, f'Expected Customer_Id aggregate TP=0, got {cm["fields"]["Customers"]["fields"]["Customer_Id"]["aggregate"]["tp"]}'
         assert cm["fields"]["Customers"]["fields"]["Customer_Id"]["aggregate"]["fa"] == 0, f'Expected Customer_Id aggregate FA=0, got {cm["fields"]["Customers"]["fields"]["Customer_Id"]["aggregate"]["fa"]}'
-        assert cm["fields"]["Customers"]["fields"]["Customer_Id"]["aggregate"]["fd"] == 1, f'Expected Customer_Id aggregate FD=1, got {cm["fields"]["Customers"]["fields"]["Customer_Id"]["aggregate"]["fd"]}'
+        assert cm["fields"]["Customers"]["fields"]["Customer_Id"]["aggregate"]["fd"] == 2, f'Expected Customer_Id aggregate FD=2, got {cm["fields"]["Customers"]["fields"]["Customer_Id"]["aggregate"]["fd"]}'
         assert cm["fields"]["Customers"]["fields"]["Customer_Id"]["aggregate"]["tn"] == 0, f'Expected Customer_Id aggregate TN=0, got {cm["fields"]["Customers"]["fields"]["Customer_Id"]["aggregate"]["tn"]}'
         assert cm["fields"]["Customers"]["fields"]["Customer_Id"]["aggregate"]["fn"] == 2, f'Expected Customer_Id aggregate FN=2, got {cm["fields"]["Customers"]["fields"]["Customer_Id"]["aggregate"]["fn"]}'
 
-        # gt_json["Customers"][0]["Customer_Type"], pred_json["Customers"][0]["Customer_Type"]:  1 false discovery
+        # gt_json["Customers"][1]["Customer_Type"], pred_json["Customers"][0]["Customer_Type"]:  1 true positive
         # gt_json["Customers"][3]["Customer_Type"], pred_json["Customers"][1]["Customer_Type"]:  1 true positive
-        # gt_json["Customers"][1]["Customer_Type"], gt_json["Customers"][2]["Customer_Type"]:  2 false neagtive
-        assert cm["fields"]["Customers"]["fields"]["Customer_Type"]["aggregate"]["tp"] == 1, f'Expected Customer_Type aggregate TP=1, got {cm["fields"]["Customers"]["fields"]["Customer_Type"]["aggregate"]["tp"]}'
+        # gt_json["Customers"][0]["Customer_Type"], gt_json["Customers"][2]["Customer_Type"]:  2 false neagtive
+        assert cm["fields"]["Customers"]["fields"]["Customer_Type"]["aggregate"]["tp"] == 2, f'Expected Customer_Type aggregate TP=2, got {cm["fields"]["Customers"]["fields"]["Customer_Type"]["aggregate"]["tp"]}'
         assert cm["fields"]["Customers"]["fields"]["Customer_Type"]["aggregate"]["fa"] == 0, f'Expected Customer_Type aggregate FA=0, got {cm["fields"]["Customers"]["fields"]["Customer_Type"]["aggregate"]["fa"]}'
-        assert cm["fields"]["Customers"]["fields"]["Customer_Type"]["aggregate"]["fd"] == 1, f'Expected Customer_Type aggregate FD=1, got {cm["fields"]["Customers"]["fields"]["Customer_Type"]["aggregate"]["fd"]}'
+        assert cm["fields"]["Customers"]["fields"]["Customer_Type"]["aggregate"]["fd"] == 0, f'Expected Customer_Type aggregate FD=0, got {cm["fields"]["Customers"]["fields"]["Customer_Type"]["aggregate"]["fd"]}'
         assert cm["fields"]["Customers"]["fields"]["Customer_Type"]["aggregate"]["tn"] == 0, f'Expected Customer_Type aggregate TN=0, got {cm["fields"]["Customers"]["fields"]["Customer_Type"]["aggregate"]["tn"]}'
         assert cm["fields"]["Customers"]["fields"]["Customer_Type"]["aggregate"]["fn"] == 2, f'Expected Customer_Type aggregate FN=2, got {cm["fields"]["Customers"]["fields"]["Customer_Type"]["aggregate"]["fn"]}'
 
-        # gt_json["Customers"][0]["Account_Number"], pred_json["Customers"][0]["Account_Number"]:  1 true positive
+        # gt_json["Customers"][1]["Account_Number"], pred_json["Customers"][0]["Account_Number"]:  1 true positive
         # gt_json["Customers"][3]["Account_Number"], pred_json["Customers"][1]["Account_Number"]:  1 true positive
-        # gt_json["Customers"][1]["Account_Number"], gt_json["Customers"][2]["Account_Number"]:  2 false neagtive
+        # gt_json["Customers"][0]["Account_Number"], gt_json["Customers"][2]["Account_Number"]:  2 false neagtive
         assert cm["fields"]["Customers"]["fields"]["Account_Number"]["aggregate"]["tp"] == 2, f'Expected Account_Number aggregate TP=2, got {cm["fields"]["Customers"]["fields"]["Account_Number"]["aggregate"]["tp"]}'
         assert cm["fields"]["Customers"]["fields"]["Account_Number"]["aggregate"]["fa"] == 0, f'Expected Account_Number aggregate FA=0, got {cm["fields"]["Customers"]["fields"]["Account_Number"]["aggregate"]["fa"]}'
         assert cm["fields"]["Customers"]["fields"]["Account_Number"]["aggregate"]["fd"] == 0, f'Expected Account_Number aggregate FD=0, got {cm["fields"]["Customers"]["fields"]["Account_Number"]["aggregate"]["fd"]}'
         assert cm["fields"]["Customers"]["fields"]["Account_Number"]["aggregate"]["tn"] == 0, f'Expected Account_Number aggregate TN=0, got {cm["fields"]["Customers"]["fields"]["Account_Number"]["aggregate"]["tn"]}'
         assert cm["fields"]["Customers"]["fields"]["Account_Number"]["aggregate"]["fn"] == 2, f'Expected Account_Number aggregate FN=2, got {cm["fields"]["Customers"]["fields"]["Account_Number"]["aggregate"]["fn"]}'
 
-        # gt_json["Customers"][0]["Is_Premium_Member"], pred_json["Customers"][0]["Is_Premium_Member"]:  1 false alarm
+        # gt_json["Customers"][1]["Is_Premium_Member"], pred_json["Customers"][0]["Is_Premium_Member"]:  1 true positive
         # gt_json["Customers"][3]["Is_Premium_Member"], pred_json["Customers"][1]["Is_Premium_Member"]:  1 true positive
-        # gt_json["Customers"][1]["Is_Premium_Member"]:  1 false neagtive
-        # gt_json["Customers"][2]["Is_Premium_Member"]: 1 true negative
-        assert cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["tp"] == 1, f'Expected Is_Premium_Member aggregate TP=1, got {cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["tp"]}'
-        assert cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fa"] == 1, f'Expected Is_Premium_Member aggregate FA=1, got {cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fa"]}'
+        # gt_json["Customers"][0]["Is_Premium_Member"], gt_json["Customers"][2]["Is_Premium_Member"]: 2 true negative
+        assert cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["tp"] == 2, f'Expected Is_Premium_Member aggregate TP=2, got {cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["tp"]}'
+        assert cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fa"] == 0, f'Expected Is_Premium_Member aggregate FA=0, got {cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fa"]}'
         assert cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fd"] == 0, f'Expected Is_Premium_Member aggregate FD=0, got {cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fd"]}'
-        assert cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["tn"] == 1, f'Expected Is_Premium_Member aggregate TN=1, got {cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["tn"]}'
-        assert cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fn"] == 1, f'Expected Is_Premium_Member aggregate FN=1, got {cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fn"]}'
+        assert cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["tn"] == 2, f'Expected Is_Premium_Member aggregate TN=2, got {cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["tn"]}'
+        assert cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fn"] == 0, f'Expected Is_Premium_Member aggregate FN=0, got {cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fn"]}'
 
-        # gt_json["Customers"][0]["Customer_Name"], pred_json["Customers"][0]["Customer_Name"]:  1 true positive
+        # gt_json["Customers"][1]["Customer_Name"], pred_json["Customers"][0]["Customer_Name"]:  1 true positive
         # gt_json["Customers"][3]["Customer_Name"], pred_json["Customers"][1]["Customer_Name"]:  1 true positive
-        # gt_json["Customers"][1]["Customer_Name"], gt_json["Customers"][2]["Customer_Name"]:  2 false neagtive
+        # gt_json["Customers"][0]["Customer_Name"], gt_json["Customers"][2]["Customer_Name"]:  2 false neagtive
         assert cm["fields"]["Customers"]["fields"]["Customer_Name"]["aggregate"]["tp"] == 2, f'Expected Customer_Name aggregate TP=2, got {cm["fields"]["Customers"]["fields"]["Customer_Name"]["aggregate"]["tp"]}'
         assert cm["fields"]["Customers"]["fields"]["Customer_Name"]["aggregate"]["fa"] == 0, f'Expected Customer_Name aggregate FA=0, got {cm["fields"]["Customers"]["fields"]["Customer_Name"]["aggregate"]["fa"]}'
         assert cm["fields"]["Customers"]["fields"]["Customer_Name"]["aggregate"]["fd"] == 0, f'Expected Customer_Name aggregate FD=0, got {cm["fields"]["Customers"]["fields"]["Customer_Name"]["aggregate"]["fd"]}'
         assert cm["fields"]["Customers"]["fields"]["Customer_Name"]["aggregate"]["tn"] == 0, f'Expected Customer_Name aggregate TN=0, got {cm["fields"]["Customers"]["fields"]["Customer_Name"]["aggregate"]["tn"]}'
         assert cm["fields"]["Customers"]["fields"]["Customer_Name"]["aggregate"]["fn"] == 2, f'Expected Customer_Name aggregate FN=2, got {cm["fields"]["Customers"]["fields"]["Customer_Name"]["aggregate"]["fn"]}'
 
-        # gt_json["Customers"][0]["Shipping_Address"], pred_json["Customers"][0]["Shipping_Address"]:  1 true positive
+        # gt_json["Customers"][1]["Shipping_Address"], pred_json["Customers"][0]["Shipping_Address"]:  1 true positive
         # gt_json["Customers"][3]["Shipping_Address"], pred_json["Customers"][1]["Shipping_Address"]:  1 true positive
-        # gt_json["Customers"][1]["Shipping_Address"], gt_json["Customers"][2]["Shipping_Address"]:  2 false neagtive
+        # gt_json["Customers"][0]["Shipping_Address"], gt_json["Customers"][2]["Shipping_Address"]:  2 false neagtive
         assert cm["fields"]["Customers"]["fields"]["Shipping_Address"]["aggregate"]["tp"] == 2, f'Expected Shipping_Address aggregate TP=2, got {cm["fields"]["Customers"]["fields"]["Shipping_Address"]["aggregate"]["tp"]}'
         assert cm["fields"]["Customers"]["fields"]["Shipping_Address"]["aggregate"]["fa"] == 0, f'Expected Shipping_Address aggregate FA=0, got {cm["fields"]["Customers"]["fields"]["Shipping_Address"]["aggregate"]["fa"]}'
         assert cm["fields"]["Customers"]["fields"]["Shipping_Address"]["aggregate"]["fd"] == 0, f'Expected Shipping_Address aggregate FD=0, got {cm["fields"]["Customers"]["fields"]["Shipping_Address"]["aggregate"]["fd"]}'
         assert cm["fields"]["Customers"]["fields"]["Shipping_Address"]["aggregate"]["tn"] == 0, f'Expected Shipping_Address aggregate TN=0, got {cm["fields"]["Customers"]["fields"]["Shipping_Address"]["aggregate"]["tn"]}'
         assert cm["fields"]["Customers"]["fields"]["Shipping_Address"]["aggregate"]["fn"] == 2, f'Expected Shipping_Address aggregate FN=2, got {cm["fields"]["Customers"]["fields"]["Shipping_Address"]["aggregate"]["fn"]}'
 
-        # gt_json["Customers"][0]["Loyalty_Status"], pred_json["Customers"][0]["Loyalty_Status"]:  1 false alarm (object level) or 2 false alarm (aggregate level)
+        # gt_json["Customers"][1]["Loyalty_Status"], pred_json["Customers"][0]["Loyalty_Status"]:  1 true positive (object level) or 2 true positive (aggregate level)
         # gt_json["Customers"][3]["Loyalty_Status"], pred_json["Customers"][1]["Loyalty_Status"]:  1 true negative (object level) or 2 true negative (aggregate level)
-        # gt_json["Customers"][1]["Loyalty_Status"]: 1 false negative (object level) or 2 false negative (aggregate level)
+        # gt_json["Customers"][0]["Loyalty_Status"]: 1 true negative (object level) or 2 true negative (aggregate level)
         # gt_json["Customers"][2]["Loyalty_Status"]: 1 true negative (object level) or 2 true negative (aggregate level)
-        assert cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["tp"] == 0, f'Expected Loyalty_Status aggregate TP=0, got {cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["tp"]}'
-        assert cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fa"] == 2, f'Expected Loyalty_Status aggregate FA=2, got {cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fa"]}'
+        assert cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["tp"] == 2, f'Expected Loyalty_Status aggregate TP=2, got {cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["tp"]}'
+        assert cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fa"] == 0, f'Expected Loyalty_Status aggregate FA=0, got {cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fa"]}'
         assert cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fd"] == 0, f'Expected Loyalty_Status aggregate FD=0, got {cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fd"]}'
-        assert cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["tn"] == 4, f'Expected Loyalty_Status aggregate TN=4, got {cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["tn"]}'
-        assert cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fn"] == 2, f'Expected Loyalty_Status aggregate FN=2, got {cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fn"]}'
+        assert cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["tn"] == 6, f'Expected Loyalty_Status aggregate TN=6, got {cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["tn"]}'
+        assert cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fn"] == 0, f'Expected Loyalty_Status aggregate FN=0, got {cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fn"]}'
 
         # at the object level with match_threshold = 1.0, 2 false discoveries and 2 false negatives (2 entries are matched, but below threshold, 2 entries are missing in prediction)
         assert cm["fields"]["Customers"]["overall"]["tp"] == 0, f'Expected Customers overall TP=0, got {cm["fields"]["Customers"]["overall"]["tp"]}'
@@ -377,12 +350,12 @@ class TestEcommerceOrdersAggregateComprehensive:
         assert cm["fields"]["Customers"]["overall"]["tn"] == 0, f'Expected Customers overall TN=0, got {cm["fields"]["Customers"]["overall"]["tn"]}'
         assert cm["fields"]["Customers"]["overall"]["fn"] == 2, f'Expected Customers overall FN=2, got {cm["fields"]["Customers"]["overall"]["fn"]}'
 
-        # at the field level within all matched entries (2 matched entries are considered for the sub field comparison, 2 unmatched entries are contributing to the fn)     
-        assert cm["fields"]["Customers"]["aggregate"]["tp"] == 9, f'Expected Customers aggregate TP=9, got {cm["fields"]["Customers"]["aggregate"]["tp"]}'
-        assert cm["fields"]["Customers"]["aggregate"]["fa"] == 3, f'Expected Customers aggregate FA=3, got {cm["fields"]["Customers"]["aggregate"]["fa"]}'
+        # at the field level within all matched entries (2 matched entries are considered for the sub field comparison, 2 unmatched entries are contributing to the fn or tn)     
+        assert cm["fields"]["Customers"]["aggregate"]["tp"] == 12, f'Expected Customers aggregate TP=12, got {cm["fields"]["Customers"]["aggregate"]["tp"]}'
+        assert cm["fields"]["Customers"]["aggregate"]["fa"] == 0, f'Expected Customers aggregate FA=0, got {cm["fields"]["Customers"]["aggregate"]["fa"]}'
         assert cm["fields"]["Customers"]["aggregate"]["fd"] == 2, f'Expected Customers aggregate FD=2, got {cm["fields"]["Customers"]["aggregate"]["fd"]}'
-        assert cm["fields"]["Customers"]["aggregate"]["tn"] == 5, f'Expected Customers aggregate TN=5, got {cm["fields"]["Customers"]["aggregate"]["tn"]}'
-        assert cm["fields"]["Customers"]["aggregate"]["fn"] == 13, f'Expected Customers aggregate FN=13, got {cm["fields"]["Customers"]["aggregate"]["fn"]}'
+        assert cm["fields"]["Customers"]["aggregate"]["tn"] == 8, f'Expected Customers aggregate TN=8, got {cm["fields"]["Customers"]["aggregate"]["tn"]}'
+        assert cm["fields"]["Customers"]["aggregate"]["fn"] == 10, f'Expected Customers aggregate FN=10, got {cm["fields"]["Customers"]["aggregate"]["fn"]}'
 
     def test_products_field_aggregate_counts(self):
         """Test the Products field aggregate counts."""
@@ -393,6 +366,8 @@ class TestEcommerceOrdersAggregateComprehensive:
         
         cm = result["confusion_matrix"]
         
+        # Hungarian matches GT[0]->Pred[0] and GT[1]->Pred[1]
+
         # gt_json["Products"][0]["Product_Id"], pred_json["Products"][0]["Product_Id"]:  1 true positive
         # gt_json["Products"][1]["Product_Id"], pred_json["Products"][1]["Product_Id"]:  1 true positive
         assert cm["fields"]["Products"]["fields"]["Product_Id"]["aggregate"]["tp"] == 2, f'Expected Product_Id aggregate TP=2, got {cm["fields"]["Products"]["fields"]["Product_Id"]["aggregate"]["tp"]}'
@@ -433,36 +408,75 @@ class TestEcommerceOrdersAggregateComprehensive:
         
         cm = result["confusion_matrix"]
 
-        # gt_json["Customers"][0]["Customer_Id"], pred_json["Customers"][0]["Customer_Id"]: 1 true positive
-        # gt_json["Customers"][3]["Customer_Id"], pred_json["Customers"][1]["Customer_Id"]: 1 false discovery
+        # Hungarian matches GT[0]->Pred[0] 
+        # gt_json["Discounts"][0]["Customer_Id"], pred_json["Discounts"][0]["Customer_Id"]: 1 true positive
         assert cm["fields"]["Discounts"]["fields"]["Customer_Id"]["aggregate"]["tp"] == 1, f'Expected Customer_Id aggregate TP=1, got {cm["fields"]["Discounts"]["fields"]["Customer_Id"]["aggregate"]["tp"]}'
         assert cm["fields"]["Discounts"]["fields"]["Customer_Id"]["aggregate"]["fa"] == 0, f'Expected Customer_Id aggregate FA=0, got {cm["fields"]["Discounts"]["fields"]["Customer_Id"]["aggregate"]["fa"]}'
-        assert cm["fields"]["Discounts"]["fields"]["Customer_Id"]["aggregate"]["fd"] == 1, f'Expected Customer_Id aggregate FD=1, got {cm["fields"]["Discounts"]["fields"]["Customer_Id"]["aggregate"]["fd"]}'
+        assert cm["fields"]["Discounts"]["fields"]["Customer_Id"]["aggregate"]["fd"] == 0, f'Expected Customer_Id aggregate FD=0, got {cm["fields"]["Discounts"]["fields"]["Customer_Id"]["aggregate"]["fd"]}'
         assert cm["fields"]["Discounts"]["fields"]["Customer_Id"]["aggregate"]["tn"] == 0, f'Expected Customer_Id aggregate TN=0, got {cm["fields"]["Discounts"]["fields"]["Customer_Id"]["aggregate"]["tn"]}'
-        assert cm["fields"]["Discounts"]["fields"]["Customer_Id"]["aggregate"]["fn"] == 2, f'Expected Customer_Id aggregate FN=2, got {cm["fields"]["Discounts"]["fields"]["Customer_Id"]["aggregate"]["fn"]}'
+        assert cm["fields"]["Discounts"]["fields"]["Customer_Id"]["aggregate"]["fn"] == 0, f'Expected Customer_Id aggregate FN=0, got {cm["fields"]["Discounts"]["fields"]["Customer_Id"]["aggregate"]["fn"]}'
 
-        # at the object level with match_threshold = 1.0, 1 false discovery (no matches are made)
+        # gt_json["Discounts"][0]["Discount_Code"], pred_json["Discounts"][0]["Discount_Code"]: 1 false discovery at object level
+        assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["tp"] == 0, f'Expected Discount_Code overall TP=0, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["tp"]}'
+        assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fa"] == 0, f'Expected Discount_Code overall FA=0, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fa"]}'
+        assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fd"] == 1, f'Expected Discount_Code overall FD=1, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fd"]}'
+        assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["tn"] == 0, f'Expected Discount_Code overall TN=0, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["tn"]}'
+        assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fn"] == 0, f'Expected Discount_Code overall FN=0, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fn"]}'
+
+        # Discount_Code at field level 1 tn (Category_Code), 1 fp (Category_Name)
+        assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["aggregate"]["tp"] == 0, f'Expected Discount_Code aggregate TP=0, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["aggregate"]["tp"]}'
+        assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["aggregate"]["fa"] == 0, f'Expected Discount_Code aggregate FA=0, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["aggregate"]["fa"]}'
+        assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["aggregate"]["fd"] == 1, f'Expected Discount_Code aggregate FD=1, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["aggregate"]["fd"]}'
+        assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["aggregate"]["tn"] == 1, f'Expected Discount_Code aggregate TN=1, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["aggregate"]["tn"]}'
+        assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["aggregate"]["fn"] == 0, f'Expected Discount_Code aggregate FN=0, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["aggregate"]["fn"]}'
+
+        # at the object level with match_threshold = 1.0, 1 false discovery (1 entry is matched, but below threshold)
         assert cm["fields"]["Discounts"]["overall"]["tp"] == 0, f'Expected Discounts overall TP=0, got {cm["fields"]["Discounts"]["overall"]["tp"]}'
         assert cm["fields"]["Discounts"]["overall"]["fa"] == 0, f'Expected Discounts overall FA=0, got {cm["fields"]["Discounts"]["overall"]["fa"]}'
         assert cm["fields"]["Discounts"]["overall"]["fd"] == 1, f'Expected Discounts overall FD=1, got {cm["fields"]["Discounts"]["overall"]["fd"]}'
         assert cm["fields"]["Discounts"]["overall"]["tn"] == 0, f'Expected Discounts overall TN=0, got {cm["fields"]["Discounts"]["overall"]["tn"]}'
         assert cm["fields"]["Discounts"]["overall"]["fn"] == 0, f'Expected Discounts overall FN=0, got {cm["fields"]["Discounts"]["overall"]["fn"]}'
 
-        # at the field level within all matched entries (no matches, but same length, so the two entries are compared)  
+        # at the field level within all matched entries (1 entry is matched, compared for field level metrics)  
         assert cm["fields"]["Discounts"]["aggregate"]["tp"] == 1, f'Expected Discounts aggregate TP=1, got {cm["fields"]["Discounts"]["aggregate"]["tp"]}'
         assert cm["fields"]["Discounts"]["aggregate"]["fa"] == 0, f'Expected Discounts aggregate FA=0, got {cm["fields"]["Discounts"]["aggregate"]["fa"]}'
         assert cm["fields"]["Discounts"]["aggregate"]["fd"] == 1, f'Expected Discounts aggregate FD=1, got {cm["fields"]["Discounts"]["aggregate"]["fd"]}'
         assert cm["fields"]["Discounts"]["aggregate"]["tn"] == 1, f'Expected Discounts aggregate TN=1, got {cm["fields"]["Discounts"]["aggregate"]["tn"]}'
         assert cm["fields"]["Discounts"]["aggregate"]["fn"] == 0, f'Expected Discounts aggregate FN=0, got {cm["fields"]["Discounts"]["aggregate"]["fn"]}'
 
+    def test_full_comparison_with_expected_aggregate_counts(self):
+        """Test the full comparison with expected aggregate counts."""
+        result = self.gt_order.compare_with(
+            self.pred_order, 
+            include_confusion_matrix=True, 
+            document_non_matches=True
+        )
+        
+        # Print the result for debugging
+        print("\n=== FULL COMPARISON RESULT ===")
+        print(json.dumps(result, indent=2, default=str))
+        
+        # Verify that confusion matrix is included
+        assert "confusion_matrix" in result
+        cm = result["confusion_matrix"]
+        
+        # Verify that aggregate metrics are calculated
+        assert "aggregate" in cm
+        aggregate = cm["aggregate"]
+        
+        assert aggregate["tp"] == 20, f'Expected TP=20, got {aggregate["tp"]}'
+        assert aggregate["fa"] == 2, f'Expected FA=2, got {aggregate["fa"]}'
+        assert aggregate["fd"] == 5, f'Expected FD=5, got {aggregate["fd"]}'
+        assert aggregate["tn"] == 11, f'Expected TN=11, got {aggregate["tn"]}'
+        assert aggregate["fn"] == 10, f'Expected FN=10, got {aggregate["fn"]}'
+        
     def test_hungarian_matching_verification(self):
         """Test that Hungarian matching works correctly for the Customers list."""
         from stickler.structured_object_evaluator.models.hungarian_helper import HungarianHelper
         
         hungarian_helper = HungarianHelper()
         hungarian_info = hungarian_helper.get_complete_matching_info(
-            self.gt_json["Customers"], 
-            self.pred_json["Customers"]
+            getattr(self.gt_order, "Customers"), getattr(self.pred_order, "Customers")
         )
         matched_pairs = hungarian_info["matched_pairs"]
         
@@ -470,14 +484,14 @@ class TestEcommerceOrdersAggregateComprehensive:
         print(f"Matched pairs: {matched_pairs}")
         
         # Expected from comments:
-        # matched_pairs[0] should be (0, 0, some_number)
+        # matched_pairs[0] should be (1, 0, some_number)
         # matched_pairs[1] should be (3, 1, some_number)
         
         assert len(matched_pairs) == 2, f"Expected 2 matched pairs, got {len(matched_pairs)}"
         
         # Check the first match (GT index 0 should match with Pred index 0)
         gt_idx_0, pred_idx_0, similarity_0 = matched_pairs[0]
-        assert gt_idx_0 == 0, f"Expected GT index 0, got {gt_idx_0}"
+        assert gt_idx_0 == 1, f"Expected GT index 0, got {gt_idx_0}"
         assert pred_idx_0 == 0, f"Expected Pred index 0, got {pred_idx_0}"
         
         # Check the second match (GT index 3 should match with Pred index 1)
@@ -491,8 +505,7 @@ class TestEcommerceOrdersAggregateComprehensive:
         
         hungarian_helper = HungarianHelper()
         hungarian_info = hungarian_helper.get_complete_matching_info(
-            self.gt_json["Products"], 
-            self.pred_json["Products"]
+            getattr(self.gt_order, "Products"), getattr(self.pred_order, "Products")
         )
         matched_pairs = hungarian_info["matched_pairs"]
         
@@ -518,8 +531,7 @@ class TestEcommerceOrdersAggregateComprehensive:
         
         hungarian_helper = HungarianHelper()
         hungarian_info = hungarian_helper.get_complete_matching_info(
-            self.gt_json["Discounts"], 
-            self.pred_json["Discounts"]
+            getattr(self.gt_order, "Discounts"), getattr(self.pred_order, "Discounts")
         )
         matched_pairs = hungarian_info["matched_pairs"]
         
