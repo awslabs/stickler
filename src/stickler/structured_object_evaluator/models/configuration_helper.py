@@ -9,7 +9,6 @@ import inspect
 
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.structured import StructuredModelComparator
-from .comparison_info import ComparableFieldConfig
 
 class ConfigurationHelper:
     """Helper class for StructuredModel configuration and schema operations."""
@@ -193,6 +192,8 @@ class ConfigurationHelper:
                 weight = getattr(json_func, "_weight", 1.0)
                 clip_under_threshold = getattr(json_func, "_clip_under_threshold", True)
                 aggregate = getattr(json_func, "_aggregate", False)
+
+                from .comparison_info import ComparableFieldConfig
 
                 return ComparableFieldConfig(
                     comparator=comparator,
