@@ -628,7 +628,7 @@ class TestDeepNesting6Levels:
         )
 
         print("✅ Nested lists test passed")
-        print(f"   Found hierarchical nested structure in departments")
+        print("   Found hierarchical nested structure in departments")
         print(f"   Overall score: {result['overall']['anls_score']:.3f}")
 
     def test_null_handling_at_deep_levels(self):

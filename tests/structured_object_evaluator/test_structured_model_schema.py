@@ -5,7 +5,6 @@ with all comparison metadata intact.
 """
 
 import json
-import pytest
 from typing import List, Optional
 
 

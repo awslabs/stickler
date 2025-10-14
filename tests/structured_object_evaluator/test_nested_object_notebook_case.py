@@ -170,7 +170,7 @@ def create_prediction_order(case: str) -> Order:
 
 def print_detailed_results(result: dict, case_name: str):
     """Print detailed results in a nice, readable format."""
-    print(f"\n" + "=" * 60)
+    print("=" * 60)
     print(f"DETAILED RESULTS FOR: {case_name}")
     print("=" * 60)
 

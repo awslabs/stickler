@@ -235,10 +235,10 @@ def main():
     # Summary
     print("\n🎯 SUMMARY")
     print("=" * 50)
-    print(f"✅ Individual object comparison works great!")
-    print(f"✅ List comparison uses Hungarian algorithm for optimal matching")
-    print(f"✅ Get detailed metrics: precision, recall, F1, confusion matrices")
-    print(f"✅ Configure thresholds and weights per field")
+    print("✅ Individual object comparison works great!")
+    print("✅ List comparison uses Hungarian algorithm for optimal matching")
+    print("✅ Get detailed metrics: precision, recall, F1, confusion matrices")
+    print("✅ Configure thresholds and weights per field")
 
     print("\n🚀 Perfect Use Cases:")
     print("  • Document extraction evaluation (invoices, forms, receipts)")
