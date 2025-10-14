@@ -211,26 +211,29 @@ class HungarianMatcher:
             else:
                 score = self.comparator(prepared_list1[0], prepared_list2[0])
 
-            if score > 0:
-                return {
-                    "matched_pairs": [(0, 0, score)],
-                    "tp": 1,
-                    "fp": 0,
-                    "fn": 0,
-                    "precision": 1.0,
-                    "recall": 1.0,
-                    "f1": 1.0,
-                }
-            else:
-                return {
-                    "matched_pairs": [],
-                    "tp": 0,
-                    "fp": 1,
-                    "fn": 1,
-                    "precision": 0.0,
-                    "recall": 0.0,
-                    "f1": 0.0,
-                }
+            # Always match single items regardless of score (optimal assignment)
+            # Only use threshold for TP classification, not for matching decision
+            tp = 1 if score >= self.match_threshold else 0
+            fp = 1 - tp  # If not TP, then it's FP
+            fn = 1 - tp  # If not TP, then it's FN
+            
+            precision = tp / (tp + fp) if tp + fp > 0 else 0.0
+            recall = tp / (tp + fn) if tp + fn > 0 else 0.0
+            f1 = (
+                2 * precision * recall / (precision + recall)
+                if precision + recall > 0
+                else 0.0
+            )
+            
+            return {
+                "matched_pairs": [(0, 0, score)],  # Always match, regardless of score
+                "tp": tp,
+                "fp": fp,
+                "fn": fn,
+                "precision": precision,
+                "recall": recall,
+                "f1": f1,
+            }
 
         # Handle empty lists
         if not prepared_list1 and not prepared_list2:

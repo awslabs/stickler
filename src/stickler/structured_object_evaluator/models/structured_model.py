@@ -494,6 +494,45 @@ class StructuredModel(BaseModel):
                 # Both non-null and non-empty, return None to continue processing
                 return None
 
+    def _get_nested_field_count(self, field_name: str) -> int:
+        """Get the count of nested fields for List[StructuredModel] types.
+        
+        Args:
+            field_name: Name of the field to analyze
+            
+        Returns:
+            Number of nested fields in the StructuredModel, or 0 if not a hierarchical field
+        """
+        if not field_name:
+            return 0
+            
+        field_info = self.__class__.model_fields.get(field_name)
+        if not field_info or not self._is_structured_field_type(field_info):
+            return 0
+            
+        from typing import get_origin, get_args, Union
+        field_type = field_info.annotation if hasattr(field_info, 'annotation') else None
+        if not field_type:
+            return 0
+            
+        # Handle Union types (Optional[List[StructuredModel]])
+        if get_origin(field_type) is Union:
+            # Find the List type in the Union
+            for arg in get_args(field_type):
+                if get_origin(arg) is list:
+                    field_type = arg
+                    break
+        
+        # Check if it's a List[StructuredModel]
+        if get_origin(field_type) is list:
+            args = get_args(field_type)
+            if args and hasattr(args[0], 'model_fields'):
+                nested_model_class = args[0]
+                # Count non-extra_fields
+                return len([f for f in nested_model_class.model_fields.keys() if f != 'extra_fields'])
+        
+        return 0
+
     def _create_true_negative_result(self, weight: float, field_name: str = None) -> dict:
         """Create a true negative result.
         
@@ -506,19 +545,10 @@ class StructuredModel(BaseModel):
         """
         tn_count = 1
         
-        # CRITICAL FIX: For hierarchical fields, count nested field contributions
-        if field_name:
-            field_info = self.__class__.model_fields.get(field_name)
-            if field_info and self._is_structured_field_type(field_info):
-                # This is a hierarchical field - count nested fields
-                from typing import get_origin, get_args
-                field_type = field_info.annotation if hasattr(field_info, 'annotation') else None
-                if field_type and get_origin(field_type) is list:
-                    args = get_args(field_type)
-                    if args and hasattr(args[0], 'model_fields'):
-                        nested_model_class = args[0]
-                        nested_field_count = len([f for f in nested_model_class.model_fields.keys() if f != 'extra_fields'])
-                        tn_count += nested_field_count  # Both GT and Pred are None, so count nested fields as TN
+        # For hierarchical fields, count nested field contributions
+        nested_field_count = self._get_nested_field_count(field_name)
+        if nested_field_count > 0:
+            tn_count += nested_field_count  # Both GT and Pred are None, so count nested fields as TN
         
         return {
             "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": tn_count, "fn": 0},
@@ -543,24 +573,14 @@ class StructuredModel(BaseModel):
         fa_count = 1
         fp_count = 1
         
-        # CRITICAL FIX: For hierarchical fields, count nested field contributions
-        if field_name and pred_val is not None:
-            field_info = self.__class__.model_fields.get(field_name)
-            if field_info and self._is_structured_field_type(field_info):
-                # This is a hierarchical field - count nested fields
-                from typing import get_origin, get_args
-                field_type = field_info.annotation if hasattr(field_info, 'annotation') else None
-                if field_type and get_origin(field_type) is list:
-                    args = get_args(field_type)
-                    if args and hasattr(args[0], 'model_fields'):
-                        nested_model_class = args[0]
-                        nested_field_count = len([f for f in nested_model_class.model_fields.keys() if f != 'extra_fields'])
-                        
-                        # Count the list items and their nested fields
-                        if isinstance(pred_val, list):
-                            list_length = len(pred_val)
-                            fa_count += list_length * nested_field_count
-                            fp_count += list_length * nested_field_count
+        # For hierarchical fields, count nested field contributions
+        nested_field_count = self._get_nested_field_count(field_name)
+        if nested_field_count > 0 and pred_val is not None:
+            # Count the list items and their nested fields
+            if isinstance(pred_val, list):
+                list_length = len(pred_val)
+                fa_count += list_length * nested_field_count
+                fp_count += list_length * nested_field_count
         
         return {
             "overall": {"tp": 0, "fa": fa_count, "fd": 0, "fp": fp_count, "tn": 0, "fn": 0},
@@ -584,23 +604,13 @@ class StructuredModel(BaseModel):
         """
         fn_count = 1
         
-        # CRITICAL FIX: For hierarchical fields, count nested field contributions
-        if field_name and gt_val is not None:
-            field_info = self.__class__.model_fields.get(field_name)
-            if field_info and self._is_structured_field_type(field_info):
-                # This is a hierarchical field - count nested fields
-                from typing import get_origin, get_args
-                field_type = field_info.annotation if hasattr(field_info, 'annotation') else None
-                if field_type and get_origin(field_type) is list:
-                    args = get_args(field_type)
-                    if args and hasattr(args[0], 'model_fields'):
-                        nested_model_class = args[0]
-                        nested_field_count = len([f for f in nested_model_class.model_fields.keys() if f != 'extra_fields'])
-                        
-                        # Count the list items and their nested fields
-                        if isinstance(gt_val, list):
-                            list_length = len(gt_val)
-                            fn_count += list_length * nested_field_count
+        # For hierarchical fields, count nested field contributions
+        nested_field_count = self._get_nested_field_count(field_name)
+        if nested_field_count > 0 and gt_val is not None:
+            # Count the list items and their nested fields
+            if isinstance(gt_val, list):
+                list_length = len(gt_val)
+                fn_count += list_length * nested_field_count
         
         return {
             "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": fn_count},
@@ -1621,79 +1631,29 @@ class StructuredModel(BaseModel):
             # TN: Both null
             tn_count = 1
             # CRITICAL FIX: For hierarchical fields, count nested field contributions
-            field_info = self.__class__.model_fields.get(field_name)
-            if field_info and self._is_structured_field_type(field_info):
-                from typing import get_origin, get_args, Union
-                field_type = field_info.annotation if hasattr(field_info, 'annotation') else None
-                if field_type:
-                    # Handle Union types (e.g., Union[List[CodeDescription], None, Any])
-                    if get_origin(field_type) is Union:
-                        # Find the List type in the Union
-                        for arg in get_args(field_type):
-                            if get_origin(arg) is list:
-                                field_type = arg
-                                break
-                    
-                    if get_origin(field_type) is list:
-                        args = get_args(field_type)
-                        if args and hasattr(args[0], 'model_fields'):
-                            nested_model_class = args[0]
-                            nested_field_count = len([f for f in nested_model_class.model_fields.keys() if f != 'extra_fields'])
-                            tn_count += nested_field_count
+            nested_field_count = self._get_nested_field_count(field_name)
+            if nested_field_count > 0:
+                tn_count += nested_field_count
             result = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": tn_count, "fn": 0}
         elif gt_is_null and not pred_is_null:
             # FA: GT null, prediction non-null (False Alarm)
             fa_count = 1
             fp_count = 1
             # CRITICAL FIX: For hierarchical fields, count nested field contributions
-            field_info = self.__class__.model_fields.get(field_name)
-            if field_info and self._is_structured_field_type(field_info):
-                from typing import get_origin, get_args, Union
-                field_type = field_info.annotation if hasattr(field_info, 'annotation') else None
-                if field_type:
-                    # Handle Union types (e.g., Union[List[CodeDescription], None, Any])
-                    if get_origin(field_type) is Union:
-                        # Find the List type in the Union
-                        for arg in get_args(field_type):
-                            if get_origin(arg) is list:
-                                field_type = arg
-                                break
-                    
-                    if get_origin(field_type) is list:
-                        args = get_args(field_type)
-                        if args and hasattr(args[0], 'model_fields'):
-                            nested_model_class = args[0]
-                            nested_field_count = len([f for f in nested_model_class.model_fields.keys() if f != 'extra_fields'])
-                            if isinstance(pred_value, list):
-                                list_length = len(pred_value)
-                                fa_count += list_length * nested_field_count
-                                fp_count += list_length * nested_field_count
+            nested_field_count = self._get_nested_field_count(field_name)
+            if nested_field_count > 0 and isinstance(pred_value, list):
+                list_length = len(pred_value)
+                fa_count += list_length * nested_field_count
+                fp_count += list_length * nested_field_count
             result = {"tp": 0, "fa": fa_count, "fd": 0, "fp": fp_count, "tn": 0, "fn": 0}
         elif not gt_is_null and pred_is_null:
             # FN: GT non-null, prediction null
             fn_count = 1
             # CRITICAL FIX: For hierarchical fields, count nested field contributions
-            field_info = self.__class__.model_fields.get(field_name)
-            if field_info and self._is_structured_field_type(field_info):
-                from typing import get_origin, get_args, Union
-                field_type = field_info.annotation if hasattr(field_info, 'annotation') else None
-                if field_type:
-                    # Handle Union types (e.g., Union[List[CodeDescription], None, Any])
-                    if get_origin(field_type) is Union:
-                        # Find the List type in the Union
-                        for arg in get_args(field_type):
-                            if get_origin(arg) is list:
-                                field_type = arg
-                                break
-                    
-                    if get_origin(field_type) is list:
-                        args = get_args(field_type)
-                        if args and hasattr(args[0], 'model_fields'):
-                            nested_model_class = args[0]
-                            nested_field_count = len([f for f in nested_model_class.model_fields.keys() if f != 'extra_fields'])
-                            if isinstance(gt_value, list):
-                                list_length = len(gt_value)
-                                fn_count += list_length * nested_field_count
+            nested_field_count = self._get_nested_field_count(field_name)
+            if nested_field_count > 0 and isinstance(gt_value, list):
+                list_length = len(gt_value)
+                fn_count += list_length * nested_field_count
             result = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": fn_count}
         elif values_match:
             # TP: Both non-null and match
