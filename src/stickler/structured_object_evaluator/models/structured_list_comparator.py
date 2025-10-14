@@ -276,11 +276,12 @@ class StructuredListComparator:
                                        matched_pred_indices: set,
         match_threshold: float,
     ) -> Dict[str, Dict[str, Any]]:
-        """Calculate field-level details for nested structure processing ALL matched pairs.
+        """Calculate field-level details with threshold-aware metric population.
         
-        Process ALL matched pairs for field-level metrics regardless of similarity threshold.
-        The threshold is only used for object-level classification, not field-level analysis.
-        This ensures field-level analysis is performed for all matched pairs from Hungarian algorithm.
+        Process ALL matched pairs for field-level analysis, but populate metrics sections
+        based on object-level similarity threshold:
+        - Above threshold: populate both "overall" and "aggregate" sections
+        - Below threshold: populate only "aggregate" section
         
         Args:
             list_field_name: Name of the parent list field
@@ -289,7 +290,7 @@ class StructuredListComparator:
             matched_pairs: List of (gt_idx, pred_idx, similarity) tuples
             matched_gt_indices: Set of matched GT indices
             matched_pred_indices: Set of matched pred indices
-            match_threshold: Match threshold (used only for object-level classification)
+            match_threshold: Match threshold for determining metric section population
             
         Returns:
             Dictionary mapping field names to their metrics
@@ -299,10 +300,8 @@ class StructuredListComparator:
         if gt_list and isinstance(gt_list[0], StructuredModel):
             model_class = gt_list[0].__class__
             
-            # CRITICAL FIX: Process ALL matched pairs for field-level metrics, regardless of threshold
-            # The threshold is only used for object-level classification, not field-level analysis
-            # This ensures field-level metrics are calculated for all matched pairs
-            all_matched_pairs = matched_pairs  # Process all matched pairs, not just good ones
+            # Process ALL matched pairs for field-level analysis
+            all_matched_pairs = matched_pairs
             
             # Generate field details if we have any matched pairs OR unmatched objects
             has_matched_pairs = len(all_matched_pairs) > 0
@@ -320,20 +319,266 @@ class StructuredListComparator:
                     )
                     
                     if is_hierarchical_field:
-                        # Handle hierarchical fields with recursive aggregation - for ALL matched pairs
-                        field_details[sub_field_name] = self._handle_hierarchical_field(
+                        # Handle hierarchical fields with threshold-aware metric population
+                        field_details[sub_field_name] = self._handle_hierarchical_field_threshold_aware(
                             sub_field_name, gt_list, pred_list, all_matched_pairs, 
                             matched_gt_indices, matched_pred_indices, match_threshold
                         )
                     else:
-                        # Handle primitive fields with simple aggregation - for ALL matched pairs
-                        field_details[sub_field_name] = self._handle_primitive_field(
+                        # Handle primitive fields with threshold-aware metric population
+                        field_details[sub_field_name] = self._handle_primitive_field_threshold_aware(
                             sub_field_name, gt_list, pred_list, all_matched_pairs,
-                            matched_gt_indices, matched_pred_indices
+                            matched_gt_indices, matched_pred_indices, match_threshold
                         )
         
         return field_details
     
+    def _handle_hierarchical_field_threshold_aware(
+        self,
+        sub_field_name: str,
+        gt_list: List["StructuredModel"],
+        pred_list: List["StructuredModel"],
+        matched_pairs: List,
+        matched_gt_indices: set,
+        matched_pred_indices: set,
+        match_threshold: float) -> Dict[str, Any]:
+        """Handle hierarchical List[StructuredModel] fields with threshold-aware metric population.
+        
+        This method processes ALL matched pairs for field-level analysis but populates
+        metrics sections based on object-level similarity threshold.
+        """
+        
+        # Collect pair results for recursive aggregation
+        above_threshold_results = []  # For overall metrics
+        all_pair_results = []  # For aggregate metrics
+        
+        # Process matched pairs with threshold-aware field-level comparison
+        for gt_idx, pred_idx, similarity in matched_pairs:
+            if gt_idx < len(gt_list) and pred_idx < len(pred_list):
+                gt_item = gt_list[gt_idx]
+                pred_item = pred_list[pred_idx]
+                gt_sub_value = getattr(gt_item, sub_field_name, None)
+                pred_sub_value = getattr(pred_item, sub_field_name, None)
+                
+                # Always perform field-level comparison for aggregate metrics
+                pair_result = gt_item._dispatch_field_comparison(
+                    sub_field_name, gt_sub_value, pred_sub_value
+                )
+                
+                # Create aggregate section by summing nested field contributions
+                aggregate_metrics = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
+                
+                # Check if both GT and Pred are null
+                gt_is_null = (gt_sub_value is None or gt_sub_value == [] or gt_sub_value == "")
+                pred_is_null = (pred_sub_value is None or pred_sub_value == [] or pred_sub_value == "")
+                
+                if gt_is_null and pred_is_null:
+                    # Both GT and Pred are null - create nested field entries with TN contributions
+                    nested_field_count = gt_item._get_nested_field_count(sub_field_name)
+                    if nested_field_count > 0:
+                        self._create_nested_field_entries_for_null_case(pair_result, gt_item, sub_field_name)
+                        aggregate_metrics["tn"] = nested_field_count
+                else:
+                    # Sum up contributions from nested fields (for non-null cases)
+                    if "fields" in pair_result:
+                        for nested_field_name, nested_field_result in pair_result["fields"].items():
+                            if "aggregate" in nested_field_result:
+                                # Use aggregate metrics from nested fields
+                                for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
+                                    aggregate_metrics[metric] += nested_field_result["aggregate"].get(metric, 0)
+                            elif "overall" in nested_field_result:
+                                # Fallback to overall metrics if no aggregate
+                                for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
+                                    aggregate_metrics[metric] += nested_field_result["overall"].get(metric, 0)
+                
+                # Set the aggregate section
+                pair_result["aggregate"] = aggregate_metrics
+                
+                # Add to all results for aggregate calculation
+                all_pair_results.append(pair_result)
+                
+                # Only add to above-threshold results if similarity meets threshold
+                if self._should_populate_overall_metrics(similarity, match_threshold):
+                    above_threshold_results.append(pair_result)
+        
+        # Handle unmatched objects (contribute to aggregate only)
+        unmatched_results = self._create_unmatched_results_for_hierarchical_field(
+            sub_field_name, gt_list, pred_list, matched_gt_indices, matched_pred_indices
+        )
+        all_pair_results.extend(unmatched_results)
+        
+        # Calculate overall metrics from above-threshold results only
+        overall_aggregated = self._recursive_aggregate_metrics(above_threshold_results)
+        
+        # Calculate aggregate metrics from all results
+        aggregate_aggregated = self._recursive_aggregate_metrics(all_pair_results)
+        
+        # Preserve hierarchical fields structure from the first valid result
+        hierarchical_fields = {}
+        for pair_result in all_pair_results:
+            if "fields" in pair_result and pair_result["fields"]:
+                hierarchical_fields = pair_result["fields"]
+                break
+        
+        # Combine results with proper structure
+        final_result = {
+            "overall": overall_aggregated.get("overall", {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}),
+            "aggregate": aggregate_aggregated.get("aggregate", {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}),
+            "fields": hierarchical_fields
+        }
+        
+        # Merge field-level results with threshold-aware logic
+        if above_threshold_results:
+            overall_fields = overall_aggregated.get("fields", {})
+            for field_name, field_data in overall_fields.items():
+                if field_name not in final_result["fields"]:
+                    final_result["fields"][field_name] = {
+                        "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0},
+                        "aggregate": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
+                    }
+                final_result["fields"][field_name]["overall"] = field_data.get("overall", {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0})
+        
+        if all_pair_results:
+            aggregate_fields = aggregate_aggregated.get("fields", {})
+            for field_name, field_data in aggregate_fields.items():
+                if field_name not in final_result["fields"]:
+                    final_result["fields"][field_name] = {
+                        "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0},
+                        "aggregate": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
+                    }
+                final_result["fields"][field_name]["aggregate"] = field_data.get("aggregate", {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0})
+        
+        # Add derived metrics recursively
+        self._add_derived_metrics_recursively(final_result)
+        
+        # Add metadata from first pair if available
+        if all_pair_results:
+            for key in [
+                "raw_similarity_score",
+                "similarity_score", 
+                "threshold_applied_score",
+                "weight",
+            ]:
+                if key in all_pair_results[0]:
+                    final_result[key] = all_pair_results[0][key]
+        
+        return final_result
+
+    def _create_nested_field_entries_for_null_case(self, pair_result: Dict[str, Any], 
+                                                  gt_item: 'StructuredModel', 
+                                                  sub_field_name: str) -> None:
+        """Create nested field entries for null cases to support metric aggregation."""
+        if "fields" not in pair_result:
+            pair_result["fields"] = {}
+        
+        # Get the nested model class to find field names
+        field_info = gt_item.__class__.model_fields.get(sub_field_name)
+        if field_info:
+            from typing import get_origin, get_args, Union
+            field_type = field_info.annotation if hasattr(field_info, 'annotation') else None
+            if field_type:
+                # Handle Union types (Optional[List[StructuredModel]])
+                if get_origin(field_type) is Union:
+                    # Find the List type in the Union
+                    for arg in get_args(field_type):
+                        if get_origin(arg) is list:
+                            field_type = arg
+                            break
+                
+                # Check if it's a List[StructuredModel]
+                if get_origin(field_type) is list:
+                    args = get_args(field_type)
+                    if args and hasattr(args[0], 'model_fields'):
+                        nested_model_class = args[0]
+                        # Create TN entries for each nested field
+                        for nested_field_name in nested_model_class.model_fields:
+                            if nested_field_name != "extra_fields":
+                                pair_result["fields"][nested_field_name] = {
+                                    "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0},  # Empty for unmatched objects
+                                    "aggregate": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0}  # Add to aggregate only
+                                }
+
+    def _create_unmatched_results_for_hierarchical_field(self, sub_field_name: str,
+                                                        gt_list: List["StructuredModel"],
+                                                        pred_list: List["StructuredModel"],
+                                                        matched_gt_indices: set,
+                                                        matched_pred_indices: set) -> List[Dict[str, Any]]:
+        """Create results for unmatched objects in hierarchical fields."""
+        unmatched_results = []
+        
+        # Handle unmatched GT objects (contribute FN for non-null fields, TN for null fields)
+        for gt_idx, gt_item in enumerate(gt_list):
+            if gt_idx not in matched_gt_indices:
+                gt_sub_value = getattr(gt_item, sub_field_name, None)
+                
+                if gt_sub_value is not None and gt_sub_value != [] and gt_sub_value != "":
+                    # Non-null field - count as FN with nested field contributions
+                    nested_field_count = gt_item._get_nested_field_count(sub_field_name)
+                    if nested_field_count > 0 and isinstance(gt_sub_value, list):
+                        # Count the list items and their nested fields
+                        list_length = len(gt_sub_value)
+                        fn_count = list_length * nested_field_count
+                    else:
+                        # Not a hierarchical field or empty list, count as 1
+                        fn_count = 1
+                    
+                    unmatched_result = {
+                        "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0},  # Empty for unmatched objects
+                        "fields": {},
+                        "aggregate": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": fn_count}  # Add to aggregate only
+                    }
+                    unmatched_results.append(unmatched_result)
+                else:
+                    # Null/empty field - count as TN with nested field contributions
+                    nested_field_count = gt_item._get_nested_field_count(sub_field_name)
+                    if nested_field_count > 0:
+                        # For hierarchical fields, count nested fields as TN
+                        tn_count = nested_field_count
+                        
+                        # Create nested field entries so that _collect_all_primitive_metrics can find them
+                        unmatched_result = {
+                            "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0},  # Empty for unmatched objects
+                            "fields": {},
+                            "aggregate": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": tn_count, "fn": 0}  # Add to aggregate only
+                        }
+                        
+                        self._create_nested_field_entries_for_null_case(unmatched_result, gt_item, sub_field_name)
+                    else:
+                        # Not a hierarchical field, count as 1
+                        tn_count = 1
+                        unmatched_result = {
+                            "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0},  # Empty for unmatched objects
+                            "fields": {},
+                            "aggregate": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": tn_count, "fn": 0}  # Add to aggregate only
+                        }
+                    
+                    unmatched_results.append(unmatched_result)
+        
+        # Handle unmatched pred objects (contribute FA for hierarchical fields)
+        for pred_idx, pred_item in enumerate(pred_list):
+            if pred_idx not in matched_pred_indices:
+                pred_sub_value = getattr(pred_item, sub_field_name, None)
+                
+                if pred_sub_value is not None and pred_sub_value != [] and pred_sub_value != "":
+                    # Non-null field - count as FA with nested field contributions
+                    nested_field_count = pred_item._get_nested_field_count(sub_field_name)
+                    if nested_field_count > 0 and isinstance(pred_sub_value, list):
+                        # Count the list items and their nested fields
+                        list_length = len(pred_sub_value)
+                        fa_count = list_length * nested_field_count
+                    else:
+                        # Not a hierarchical field or empty list, count as 1
+                        fa_count = 1
+                    
+                    unmatched_result = {
+                        "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0},  # Empty for unmatched objects
+                        "fields": {},
+                        "aggregate": {"tp": 0, "fa": fa_count, "fd": 0, "fp": fa_count, "tn": 0, "fn": 0}  # Add to aggregate only
+                    }
+                    unmatched_results.append(unmatched_result)
+        
+        return unmatched_results
+
     def _handle_hierarchical_field(
         self,
         sub_field_name: str,
@@ -446,9 +691,9 @@ class StructuredListComparator:
                         fn_count = 1
                     
                     unmatched_result = {
-                        "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": fn_count},
+                        "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0},  # Empty for unmatched objects
                         "fields": {},
-                        "aggregate": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": fn_count}
+                        "aggregate": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": fn_count}  # Add to aggregate only
                     }
                     pair_results.append(unmatched_result)
                 else:
@@ -460,9 +705,9 @@ class StructuredListComparator:
                         
                         # Create nested field entries so that _collect_all_primitive_metrics can find them
                         unmatched_result = {
-                            "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": tn_count, "fn": 0},
+                            "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0},  # Empty for unmatched objects
                             "fields": {},
-                            "aggregate": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": tn_count, "fn": 0}
+                            "aggregate": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": tn_count, "fn": 0}  # Add to aggregate only
                         }
                         
                         # Get the nested model class to create field entries
@@ -488,16 +733,16 @@ class StructuredListComparator:
                                         for nested_field_name in nested_model_class.model_fields:
                                             if nested_field_name != "extra_fields":
                                                 unmatched_result["fields"][nested_field_name] = {
-                                                    "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
-                                                    "aggregate": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0}
+                                                    "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0},  # Empty for unmatched objects
+                                                    "aggregate": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0}  # Add to aggregate only
                                                 }
                     else:
                         # Not a hierarchical field, count as 1
                         tn_count = 1
                         unmatched_result = {
-                            "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": tn_count, "fn": 0},
+                            "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0},  # Empty for unmatched objects
                             "fields": {},
-                            "aggregate": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": tn_count, "fn": 0}
+                            "aggregate": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": tn_count, "fn": 0}  # Add to aggregate only
                         }
                     
                     pair_results.append(unmatched_result)
@@ -519,9 +764,9 @@ class StructuredListComparator:
                         fa_count = 1
                     
                     unmatched_result = {
-                        "overall": {"tp": 0, "fa": fa_count, "fd": 0, "fp": fa_count, "tn": 0, "fn": 0},
+                        "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0},  # Empty for unmatched objects
                         "fields": {},
-                        "aggregate": {"tp": 0, "fa": fa_count, "fd": 0, "fp": fa_count, "tn": 0, "fn": 0}
+                        "aggregate": {"tp": 0, "fa": fa_count, "fd": 0, "fp": fa_count, "tn": 0, "fn": 0}  # Add to aggregate only
                     }
                     pair_results.append(unmatched_result)
         
@@ -735,27 +980,27 @@ class StructuredListComparator:
                         field_data
                     )
                 # If neither "overall" nor "tp" is present, it might be an empty structure - skip
-    
-    def _handle_primitive_field(
+
+    def _handle_primitive_field_threshold_aware(
         self,
         sub_field_name: str,
         gt_list: List["StructuredModel"],
         pred_list: List["StructuredModel"],
-                               matched_pairs: List,
-                               matched_gt_indices: set,
-                               matched_pred_indices: set) -> Dict[str, Any]:
-        """Handle primitive fields with field-level analysis for ALL matched pairs.
+        matched_pairs: List,
+        matched_gt_indices: set,
+        matched_pred_indices: set,
+        match_threshold: float) -> Dict[str, Any]:
+        """Handle primitive fields with threshold-aware metric population.
         
-        Process ALL matched pairs for field-level metrics regardless of similarity threshold.
-        The threshold is only used for object-level classification, not field-level analysis.
-        This ensures field-level metrics are calculated for all matched pairs from Hungarian algorithm.
+        Process ALL matched pairs for field-level analysis, but populate metrics sections
+        based on object-level similarity threshold.
         """
         
-        # Initialize metrics - both overall and aggregate now include ALL matched pairs
+        # Initialize metrics sections
         overall_metrics = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
         aggregate_metrics = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
         
-        # Process ALL matched pairs with field-level classification (no threshold filtering)
+        # Process matched pairs with threshold-aware metric population
         for gt_idx, pred_idx, similarity in matched_pairs:
             if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                 gt_item = gt_list[gt_idx]
@@ -766,32 +1011,25 @@ class StructuredListComparator:
                 # Get field-level classification for this pair
                 field_classification = gt_item._classify_field_for_confusion_matrix(sub_field_name, pred_sub_value)
                 
-                # Both OVERALL and AGGREGATE: Include ALL matched pairs for field-level analysis
-                for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-                    overall_metrics[metric] += field_classification.get(metric, 0)
-                    aggregate_metrics[metric] += field_classification.get(metric, 0)
+                # Add to appropriate sections based on threshold
+                self._add_to_metric_sections(field_classification, similarity, match_threshold,
+                                           overall_metrics, aggregate_metrics)
         
-        # Handle unmatched GT objects (contribute FN for non-null fields, TN for null fields)
-        # These apply to both overall and aggregate since they're not threshold-dependent
+        # Handle unmatched GT objects (contribute to aggregate only)
         for gt_idx, gt_item in enumerate(gt_list):
             if gt_idx not in matched_gt_indices:
                 gt_sub_value = getattr(gt_item, sub_field_name, None)
                 if gt_sub_value is not None and gt_sub_value != "" and gt_sub_value != []:
-                    overall_metrics["fn"] += 1
                     aggregate_metrics["fn"] += 1
                 else:
                     # GT field is None/empty - this is a TN (correctly predicted as absent)
-                    overall_metrics["tn"] += 1
                     aggregate_metrics["tn"] += 1
         
-        # Handle unmatched pred objects (contribute FA to field-level for each non-null field)
-        # These apply to both overall and aggregate since they're not threshold-dependent  
+        # Handle unmatched pred objects (contribute to aggregate only)
         for pred_idx, pred_item in enumerate(pred_list):
             if pred_idx not in matched_pred_indices:
                 pred_sub_value = getattr(pred_item, sub_field_name, None)
                 if pred_sub_value is not None and pred_sub_value != "" and pred_sub_value != []:
-                    overall_metrics["fa"] += 1
-                    overall_metrics["fp"] += 1
                     aggregate_metrics["fa"] += 1
                     aggregate_metrics["fp"] += 1
         
@@ -801,6 +1039,72 @@ class StructuredListComparator:
             "aggregate": aggregate_metrics
         }
 
+    def _should_populate_overall_metrics(self, similarity: float, match_threshold: float) -> bool:
+        """Determine if metrics should populate the "overall" section based on threshold.
+        
+        This method implements threshold validation logic to determine whether field-level
+        metrics from a matched pair should be included in the "overall" section.
+        
+        Args:
+            similarity: The similarity score between the matched objects
+            match_threshold: The threshold for considering objects as matches
+            
+        Returns:
+            True if metrics should populate "overall" section, False otherwise
+        """
+        # Handle None or invalid threshold cases - populate both sections for backward compatibility
+        if match_threshold is None:
+            return True
+            
+        # Validate threshold is in valid range
+        if not isinstance(match_threshold, (int, float)) or not (0.0 <= match_threshold <= 1.0):
+            # Invalid threshold - default to populating both sections
+            return True
+            
+        # Use ThresholdHelper for consistent threshold checking with floating point precision
+        from .threshold_helper import ThresholdHelper
+        return ThresholdHelper.is_above_threshold(similarity, match_threshold)
+
+    def _should_populate_aggregate_metrics(self, similarity: float, match_threshold: float) -> bool:
+        """Determine if metrics should populate the "aggregate" section.
+        
+        The aggregate section is always populated for universal aggregation functionality,
+        regardless of threshold or similarity score.
+        
+        Args:
+            similarity: The similarity score between the matched objects (unused)
+            match_threshold: The threshold for considering objects as matches (unused)
+            
+        Returns:
+            Always True - aggregate metrics are always populated
+        """
+        return True
+
+    def _add_to_metric_sections(self, field_classification: dict, similarity: float, 
+                               match_threshold: float, overall_metrics: dict, 
+                               aggregate_metrics: dict) -> None:
+        """Add field classification results to appropriate metric sections based on threshold.
+        
+        This method implements the core threshold-aware metric population logic:
+        - Above threshold: populate both "overall" and "aggregate" sections
+        - Below threshold: populate only "aggregate" section
+        
+        Args:
+            field_classification: Dictionary with metric counts (tp, fa, fd, fp, tn, fn)
+            similarity: The similarity score between the matched objects
+            match_threshold: The threshold for considering objects as matches
+            overall_metrics: Dictionary to accumulate overall metrics
+            aggregate_metrics: Dictionary to accumulate aggregate metrics
+        """
+        # Always populate aggregate section for universal aggregation
+        if self._should_populate_aggregate_metrics(similarity, match_threshold):
+            for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
+                aggregate_metrics[metric] += field_classification.get(metric, 0)
+        
+        # Only populate overall section if above threshold
+        if self._should_populate_overall_metrics(similarity, match_threshold):
+            for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
+                overall_metrics[metric] += field_classification.get(metric, 0)
 
 # Import needed at bottom to avoid circular imports
 from .structured_model import StructuredModel

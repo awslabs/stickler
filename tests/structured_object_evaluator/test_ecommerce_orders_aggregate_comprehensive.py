@@ -416,10 +416,11 @@ class TestEcommerceOrdersAggregateComprehensive:
         assert cm["fields"]["Discounts"]["fields"]["Customer_Id"]["aggregate"]["tn"] == 0, f'Expected Customer_Id aggregate TN=0, got {cm["fields"]["Discounts"]["fields"]["Customer_Id"]["aggregate"]["tn"]}'
         assert cm["fields"]["Discounts"]["fields"]["Customer_Id"]["aggregate"]["fn"] == 0, f'Expected Customer_Id aggregate FN=0, got {cm["fields"]["Discounts"]["fields"]["Customer_Id"]["aggregate"]["fn"]}'
 
-        # gt_json["Discounts"][0]["Discount_Code"], pred_json["Discounts"][0]["Discount_Code"]: 1 false discovery at object level
+        # gt_json["Discounts"][0]["Discount_Code"], pred_json["Discounts"][0]["Discount_Code"]: 1 false discovery at field level
+        # With threshold-gated recursion: below-threshold matches should have empty "overall" metrics
         assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["tp"] == 0, f'Expected Discount_Code overall TP=0, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["tp"]}'
         assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fa"] == 0, f'Expected Discount_Code overall FA=0, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fa"]}'
-        assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fd"] == 1, f'Expected Discount_Code overall FD=1, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fd"]}'
+        assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fd"] == 0, f'Expected Discount_Code overall FD=0, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fd"]}'
         assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["tn"] == 0, f'Expected Discount_Code overall TN=0, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["tn"]}'
         assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fn"] == 0, f'Expected Discount_Code overall FN=0, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fn"]}'
 
@@ -431,6 +432,7 @@ class TestEcommerceOrdersAggregateComprehensive:
         assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["aggregate"]["fn"] == 0, f'Expected Discount_Code aggregate FN=0, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["aggregate"]["fn"]}'
 
         # at the object level with match_threshold = 1.0, 1 false discovery (1 entry is matched, but below threshold)
+        # Object-level metrics are NOT subject to threshold-gating, only field-level metrics are
         assert cm["fields"]["Discounts"]["overall"]["tp"] == 0, f'Expected Discounts overall TP=0, got {cm["fields"]["Discounts"]["overall"]["tp"]}'
         assert cm["fields"]["Discounts"]["overall"]["fa"] == 0, f'Expected Discounts overall FA=0, got {cm["fields"]["Discounts"]["overall"]["fa"]}'
         assert cm["fields"]["Discounts"]["overall"]["fd"] == 1, f'Expected Discounts overall FD=1, got {cm["fields"]["Discounts"]["overall"]["fd"]}'

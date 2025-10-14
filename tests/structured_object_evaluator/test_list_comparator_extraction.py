@@ -339,16 +339,18 @@ class TestHungarianMatchingBaseline:
             # Should have nested fields for aggregate metrics
             assert len(nested_fields) > 0, "Should have nested fields for aggregate metrics"
             
-            # Check that overall sections are empty (no matches above threshold)
+            # Check that field-level metrics are generated for poor matches
             for field_name, field_metrics in nested_fields.items():
                 overall_metrics = field_metrics["overall"]
                 aggregate_metrics = field_metrics["aggregate"]
                 
-                # Overall should be empty (no matches above threshold)
-                assert all(overall_metrics[metric] == 0 for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]), \
-                    f"Field {field_name} overall should be empty for poor matches"
+                # With threshold-gated recursion, poor matches should NOT populate overall metrics
+                # Overall metrics should be empty (all zeros) for poor matches
+                for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
+                    assert overall_metrics[metric] == 0, \
+                        f"Field {field_name} overall {metric} should be 0 for poor matches, got {overall_metrics[metric]}"
                 
-                # Aggregate should have the actual metrics from poor matches
+                # Aggregate metrics should contain the field-level analysis for poor matches
                 assert aggregate_metrics["fd"] > 0, \
                     f"Field {field_name} aggregate should have FD metrics from poor matches"
 

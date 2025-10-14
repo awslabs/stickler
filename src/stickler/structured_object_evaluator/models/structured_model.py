@@ -1764,16 +1764,29 @@ class StructuredModel(BaseModel):
             
             # If list contains StructuredModel objects, calculate nested field metrics
             if gt_list and isinstance(gt_list[0], StructuredModel):
-                nested_metrics = self._calculate_nested_field_metrics(
+                nested_metrics, hierarchical_fields = self._calculate_nested_field_metrics(
                     field_name, gt_list, pred_list, threshold
                 )
                 result["nested_fields"] = nested_metrics
+                
+                # Also preserve hierarchical fields structure if available
+                if hierarchical_fields:
+                    if "fields" not in result:
+                        result["fields"] = {}
+                    result["fields"].update(hierarchical_fields)
 
         # For List[StructuredModel], we should NOT aggregate nested fields to list level
         # List level metrics represent object-level matches from Hungarian algorithm
         # Nested field metrics represent field-level matches within those objects
         # They are separate concerns and should not be aggregated
         
+        # Convert nested_fields to hierarchical fields structure for deep nesting support
+        if "nested_fields" in result and result["nested_fields"]:
+            hierarchical_fields = self._convert_nested_fields_to_hierarchical(
+                result["nested_fields"], field_name
+            )
+            if hierarchical_fields:
+                result["fields"] = hierarchical_fields
 
         
         # Add derived metrics  
@@ -1781,6 +1794,70 @@ class StructuredModel(BaseModel):
         result["derived"] = metrics_helper.calculate_derived_metrics(result)
         
         return result
+    
+    def _convert_nested_fields_to_hierarchical(
+        self, nested_fields: Dict[str, Dict[str, Any]], parent_field_name: str
+    ) -> Dict[str, Any]:
+        """Convert flat nested_fields structure to hierarchical fields structure.
+        
+        Args:
+            nested_fields: Flat structure like {"products.attributes.name": {...}, "products.attributes.properties.key": {...}}
+            parent_field_name: Name of the parent field (e.g., "products")
+            
+        Returns:
+            Hierarchical structure with nested "fields" sections
+        """
+        hierarchical = {}
+        
+        # First, collect all the paths and group them by their immediate parent
+        path_groups = {}
+        
+        for field_path, metrics in nested_fields.items():
+            # Remove the parent field name prefix to get the relative path
+            if field_path.startswith(f"{parent_field_name}."):
+                relative_path = field_path[len(f"{parent_field_name}."):]
+                path_parts = relative_path.split(".")
+                
+                # Group by immediate parent path
+                if len(path_parts) == 1:
+                    # This is a direct child field
+                    field_name = path_parts[0]
+                    hierarchical[field_name] = {
+                        "overall": metrics.copy(),
+                        "aggregate": metrics.copy()
+                    }
+                else:
+                    # This is a nested field - group by immediate parent
+                    immediate_parent = path_parts[0]
+                    remaining_path = ".".join(path_parts[1:])
+                    
+                    if immediate_parent not in path_groups:
+                        path_groups[immediate_parent] = {}
+                    
+                    # Store with the remaining path
+                    path_groups[immediate_parent][f"{immediate_parent}.{remaining_path}"] = metrics
+        
+        # Now recursively build the hierarchical structure for grouped paths
+        for parent_field, child_paths in path_groups.items():
+            if parent_field not in hierarchical:
+                # Create the parent field structure
+                hierarchical[parent_field] = {
+                    "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0},
+                    "aggregate": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
+                }
+                
+                # Aggregate metrics from all child paths for the parent
+                for child_path, child_metrics in child_paths.items():
+                    for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
+                        hierarchical[parent_field]["overall"][metric] += child_metrics.get(metric, 0)
+                        hierarchical[parent_field]["aggregate"][metric] += child_metrics.get(metric, 0)
+            
+            # Recursively convert child paths
+            child_hierarchical = self._convert_nested_fields_to_hierarchical(child_paths, parent_field)
+            if child_hierarchical:
+                hierarchical[parent_field]["fields"] = child_hierarchical
+        
+        return hierarchical
     
     def _calculate_nested_field_metrics(
         self,
@@ -2084,7 +2161,66 @@ class StructuredModel(BaseModel):
                     }
                 )
         
-        return nested_metrics
+        # Also collect hierarchical fields structures from recursive list comparisons
+        hierarchical_fields = {}
+        
+        # Re-process the matched pairs to collect hierarchical structures
+        for gt_idx, pred_idx, similarity_score in matched_pairs_with_scores:
+            if gt_idx < len(gt_list) and pred_idx < len(pred_list):
+                gt_item = gt_list[gt_idx]
+                pred_item = pred_list[pred_idx]
+                
+                # Handle floating point precision issues
+                is_above_threshold = (
+                    similarity_score >= match_threshold
+                    or abs(similarity_score - match_threshold) < 1e-10
+                )
+                
+                # Only perform recursive field analysis if similarity meets threshold
+                if is_above_threshold:
+                    for field_name in model_class.model_fields:
+                        if field_name == "extra_fields":
+                            continue
+                            
+                        gt_value = getattr(gt_item, field_name, None)
+                        pred_value = getattr(pred_item, field_name, None)
+                        
+                        # Check if this field is a List[StructuredModel] that needs recursive processing
+                        if (
+                            isinstance(gt_value, list)
+                            and isinstance(pred_value, list)
+                            and gt_value
+                            and isinstance(gt_value[0], StructuredModel)
+                        ):
+                            # Get the hierarchical structure from the recursive call
+                            list_classification = (
+                                gt_item._calculate_list_confusion_matrix(
+                                    field_name, pred_value
+                                )
+                            )
+                            
+                            # Preserve the hierarchical fields structure
+                            if "fields" in list_classification and list_classification["fields"]:
+                                if field_name not in hierarchical_fields:
+                                    hierarchical_fields[field_name] = {}
+                                
+                                # Merge the hierarchical structure
+                                for sub_field_name, sub_field_data in list_classification["fields"].items():
+                                    if sub_field_name not in hierarchical_fields[field_name]:
+                                        hierarchical_fields[field_name][sub_field_name] = {
+                                            "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0},
+                                            "aggregate": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
+                                        }
+                                        if "fields" in sub_field_data:
+                                            hierarchical_fields[field_name][sub_field_name]["fields"] = sub_field_data["fields"]
+                                    
+                                    # Aggregate the metrics
+                                    for section in ["overall", "aggregate"]:
+                                        if section in sub_field_data:
+                                            for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
+                                                hierarchical_fields[field_name][sub_field_name][section][metric] += sub_field_data[section].get(metric, 0)
+        
+        return nested_metrics, hierarchical_fields
     
     def _calculate_single_nested_field_metrics(self, parent_field_name: str, gt_nested: 'StructuredModel', 
                         pred_nested: 'StructuredModel') -> Dict[str, Dict[str, Any]]:
@@ -2685,3 +2821,114 @@ class StructuredModel(BaseModel):
                     field_props["x-comparison"] = temp_schema["x-comparison"]
         
         return schema
+    
+    def _calculate_aggregate_metrics(self, confusion_matrix: Dict[str, Any]) -> Dict[str, Any]:
+        """Calculate universal aggregate metrics by summing from aggregate sections.
+        
+        This method implements the universal aggregate functionality by:
+        1. Summing field-level "aggregate" metrics to compute root-level aggregate totals
+        2. Ensuring consistency between field-level and root-level aggregate calculations
+        3. Using "aggregate" sections instead of "overall" sections for universal aggregation
+        
+        Args:
+            confusion_matrix: The confusion matrix result from compare_recursive
+            
+        Returns:
+            Updated confusion matrix with universal aggregate metrics added
+        """
+        # Create a copy to avoid modifying the original
+        result = confusion_matrix.copy()
+        
+        # First, recursively calculate aggregate sections for all nested fields
+        result = self._calculate_nested_aggregate_sections(result)
+        
+        # Calculate root-level aggregate metrics by summing field-level aggregate metrics
+        root_aggregate = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
+        
+        # Process all fields to sum their aggregate contributions
+        if "fields" in result:
+            for field_name, field_data in result["fields"].items():
+                if isinstance(field_data, dict) and "aggregate" in field_data:
+                    for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
+                        root_aggregate[metric] += field_data["aggregate"].get(metric, 0)
+        
+        # Add the calculated aggregate metrics to the root level
+        result["aggregate"] = root_aggregate
+        
+        return result
+    
+    def _calculate_nested_aggregate_sections(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """Calculate aggregate sections for all nested fields by summing their child contributions.
+        
+        This method recursively processes the confusion matrix structure and calculates
+        aggregate sections for fields that have nested fields by summing the aggregate
+        contributions from their children. It preserves existing aggregate sections that
+        are already correctly set by the threshold-gated recursion logic.
+        
+        Args:
+            result: The confusion matrix result structure
+            
+        Returns:
+            Updated result with calculated aggregate sections
+        """
+        if "fields" in result:
+            for field_name, field_data in result["fields"].items():
+                if isinstance(field_data, dict):
+                    # Recursively process nested fields first
+                    if "fields" in field_data and len(field_data["fields"]) > 0:
+                        field_data = self._calculate_nested_aggregate_sections(field_data)
+                        
+                        # For parent fields with non-empty nested fields, calculate aggregate by summing children's aggregates
+                        nested_aggregate = self._expand_hierarchical_field_metrics(field_data["fields"])
+                        
+                        # Only use nested aggregate if it has meaningful data
+                        if any(nested_aggregate.get(metric, 0) > 0 for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]):
+                            field_data["aggregate"] = nested_aggregate
+                        elif "aggregate" not in field_data and "overall" in field_data:
+                            # Fallback to overall if nested fields don't contribute
+                            field_data["aggregate"] = field_data["overall"].copy()
+                        
+                    elif "aggregate" not in field_data and "overall" in field_data:
+                        # For leaf fields or fields with empty nested fields, aggregate should match overall
+                        field_data["aggregate"] = field_data["overall"].copy()
+                    
+                    # Update the field data in the result
+                    result["fields"][field_name] = field_data
+        
+        return result
+    
+    def _expand_hierarchical_field_metrics(self, fields_dict: Dict[str, Any]) -> Dict[str, int]:
+        """Expand hierarchical field metrics by summing nested field contributions to aggregate section.
+        
+        This method recursively processes nested fields and sums their aggregate contributions
+        to support universal aggregate calculation for hierarchical structures.
+        
+        Args:
+            fields_dict: Dictionary of field data with potential nested structures
+            
+        Returns:
+            Dictionary with summed aggregate metrics from all nested levels
+        """
+        aggregate_sum = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
+        
+        for field_name, field_data in fields_dict.items():
+            if isinstance(field_data, dict):
+                # If field has an aggregate section, use it (it already represents the sum of nested fields)
+                if "aggregate" in field_data:
+                    field_aggregate = field_data["aggregate"]
+                    for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
+                        aggregate_sum[metric] += field_aggregate.get(metric, 0)
+                
+                # If field doesn't have aggregate but has nested fields, recurse into nested fields
+                elif "fields" in field_data and len(field_data["fields"]) > 0:
+                    nested_sum = self._expand_hierarchical_field_metrics(field_data["fields"])
+                    for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
+                        aggregate_sum[metric] += nested_sum.get(metric, 0)
+                
+                # If field has neither aggregate nor nested fields, use overall
+                elif "overall" in field_data:
+                    field_overall = field_data["overall"]
+                    for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
+                        aggregate_sum[metric] += field_overall.get(metric, 0)
+        
+        return aggregate_sum
