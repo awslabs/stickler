@@ -5,8 +5,7 @@ Test the three possible leaf conditions for comparison in a structured object.
 3. A nested object (StructuredModel)
 """
 
-import pytest
-from typing import Dict, Any, List, Optional
+from typing import List
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField

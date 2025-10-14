@@ -1,7 +1,6 @@
 """Tests for comparators used in the structured object evaluator."""
 
 import unittest
-from typing import Any, Dict, List, Optional
 
 from stickler.structured_object_evaluator import StructuredModel, ComparableField
 from stickler.comparators.base import BaseComparator

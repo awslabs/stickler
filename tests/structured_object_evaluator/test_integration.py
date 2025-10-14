@@ -1,7 +1,7 @@
 """Integration tests for the structured object evaluator."""
 
 import unittest
-from typing import Any, Dict, List, Optional, Set, Type, Union
+from typing import List
 
 from pydantic import Field
 
@@ -13,7 +13,6 @@ from stickler.structured_object_evaluator import (
     compare_structured_models,
     compare_json,
 )
-from stickler.structured_object_evaluator.utils import ScoreNode
 
 
 class Address(StructuredModel):

@@ -297,9 +297,9 @@ def create_sample_json_files():
 def demo_json_to_evaluation_workflow(config_file, data_file, demo_name):
     """Complete JSON-to-evaluation workflow."""
 
-    print(f"\n{'=' * 60}")
+    print("=" * 60)
     print(f"🚀 {demo_name}")
-    print(f"{'=' * 60}")
+    print("=" * 60)
 
     # Step 1: Load model configuration from JSON
     print("📋 Step 1: Loading model configuration from JSON...")
@@ -322,22 +322,22 @@ def demo_json_to_evaluation_workflow(config_file, data_file, demo_name):
     ground_truth_data = test_data["ground_truth"]
     prediction_data = test_data["prediction"]
 
-    print(f"   ✓ Loaded ground truth data")
-    print(f"   ✓ Loaded prediction data")
+    print("   ✓ Loaded ground truth data")
+    print("   ✓ Loaded prediction data")
 
     # Step 4: Create model instances from JSON data
     print("\n🔧 Step 4: Creating model instances from JSON data...")
     ground_truth = ModelClass(**ground_truth_data)
     prediction = ModelClass(**prediction_data)
 
-    print(f"   ✓ Created ground truth instance")
-    print(f"   ✓ Created prediction instance")
+    print("   ✓ Created ground truth instance")
+    print("   ✓ Created prediction instance")
 
     # Step 5: Perform comparison
     print("\n⚖️  Step 5: Performing comparison...")
     result = ground_truth.compare_with(prediction)
 
-    print(f"   ✓ Comparison completed")
+    print("   ✓ Comparison completed")
     print(f"   ✓ Overall Score: {result['overall_score']:.3f}")
 
     # Step 6: Display detailed results
@@ -406,7 +406,7 @@ def demo_complete_json_workflow():
             "Demo 3: Product Catalog with Hungarian List Matching",
         )
 
-        print(f"\n{'=' * 60}")
+        print("=" * 60)
         print("🎉 All JSON-to-Evaluation Demos Completed Successfully!")
         print("=" * 60)
         print("\n✨ Key Benefits Demonstrated:")
@@ -417,23 +417,23 @@ def demo_complete_json_workflow():
         print("  ✓ Detailed scoring and analysis")
         print("  ✓ Production-ready JSON-based evaluation")
 
-        print(f"\n📂 Sample JSON files created in:")
+        print("\n📂 Sample JSON files created in:")
         for filename, path in file_paths.items():
             print(f"   • {filename}")
-        print(f"\n💡 You can modify these JSON files to test different scenarios!")
+        print("\n💡 You can modify these JSON files to test different scenarios!")
 
     finally:
         # Clean up temporary files
-        print(f"\n🧹 Cleaning up temporary files...")
+        print("\n🧹 Cleaning up temporary files...")
         for file_path in file_paths.values():
             try:
                 os.unlink(file_path)
-            except:
+            except Exception:
                 pass
         # Remove temp directory
         try:
             os.rmdir(os.path.dirname(list(file_paths.values())[0]))
-        except:
+        except Exception:
             pass
         print("   ✓ Cleanup completed")
 
@@ -441,7 +441,7 @@ def demo_complete_json_workflow():
 def demo_json_batch_evaluation():
     """Demonstrate batch evaluation from multiple JSON files."""
 
-    print(f"\n{'=' * 60}")
+    print("=" * 60)
     print("🔄 Bonus Demo: Batch JSON Evaluation")
     print("=" * 60)
 
@@ -513,7 +513,7 @@ def demo_json_batch_evaluation():
             print()
 
         avg_score = total_score / len(test_cases)
-        print(f"📈 Batch Results:")
+        print("📈 Batch Results:")
         print(f"   Average Score: {avg_score:.3f}")
         print(f"   Total Cases: {len(test_cases)}")
 
@@ -523,7 +523,7 @@ def demo_json_batch_evaluation():
             if config_file is not None:
                 os.unlink(config_file)
             os.rmdir(temp_dir)
-        except:
+        except Exception:
             pass
 
 
@@ -542,7 +542,7 @@ def main():
     # Bonus batch demo
     demo_json_batch_evaluation()
 
-    print(f"\n{'=' * 60}")
+    print("=" * 60)
     print("🏁 Complete JSON-to-Evaluation Demo Finished!")
     print("=" * 60)
 

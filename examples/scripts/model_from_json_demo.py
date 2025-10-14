@@ -171,15 +171,15 @@ def demo_nested_structured_models():
     print(f"  CEO: {company2.ceo.name} (${company2.ceo.salary:,.0f})")
     print(f"  Employees: {len(company2.employees)}")
 
-    print(f"\nComparison Results:")
+    print("\nComparison Results:")
     print(f"  Overall Score: {result['overall_score']:.3f}")
-    print(f"  Field Scores:")
+    print("  Field Scores:")
     for field, score in result["field_scores"].items():
         print(f"    {field}: {score:.3f}")
 
     # Show detailed nested comparison
     if "nested_scores" in result:
-        print(f"  Nested Scores:")
+        print("  Nested Scores:")
         for field, nested in result["nested_scores"].items():
             if isinstance(nested, dict) and "overall_score" in nested:
                 print(f"    {field}: {nested['overall_score']:.3f}")
@@ -260,9 +260,9 @@ def demo_custom_comparators():
     print(f"  SKU: {product2.sku}, Price: ${product2.price}")
     print(f"  Tags: {product2.tags}")
 
-    print(f"\nComparison Results:")
+    print("\nComparison Results:")
     print(f"  Overall Score: {result['overall_score']:.3f}")
-    print(f"  Field Scores:")
+    print("  Field Scores:")
     for field, score in result["field_scores"].items():
         print(f"    {field}: {score:.3f}")
     print()
@@ -392,9 +392,9 @@ def demo_json_file_loading():
         print(f"  Total: ${invoice2.total_amount}")
         print(f"  Items: {len(invoice2.line_items)}")
 
-        print(f"\nComparison Results:")
+        print("\nComparison Results:")
         print(f"  Overall Score: {result['overall_score']:.3f}")
-        print(f"  Field Scores:")
+        print("  Field Scores:")
         for field, score in result["field_scores"].items():
             print(f"    {field}: {score:.3f}")
 

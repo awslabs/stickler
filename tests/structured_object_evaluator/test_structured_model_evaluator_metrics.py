@@ -5,7 +5,7 @@ at the field level and object level for both parent objects and nested child obj
 """
 
 import unittest
-from typing import List, Optional
+from typing import List
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparison_info import ComparisonInfo

@@ -5,8 +5,6 @@ to ensure it works correctly and maintains compatibility with existing code.
 """
 
 import unittest
-import numpy as np
-from typing import List
 
 from stickler.comparators import LevenshteinComparator, NumericComparator
 from stickler.algorithms import HungarianMatcher

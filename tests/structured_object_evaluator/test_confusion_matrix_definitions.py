@@ -22,9 +22,7 @@ For List fields:
 - Matched items below similarity threshold are counted as False Discoveries (FD)
 """
 
-import pytest
-from typing import Dict, Any, List, Optional
-from pydantic import Field
+from typing import  List, Optional
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
@@ -328,7 +326,6 @@ def test_nested_model_definitions():
 
     # Create test nested models
     details1 = SimpleModel(name="Details 1", count=1, description="First details")
-    details2 = SimpleModel(name="Details 2", count=2, description="Second details")
     details_similar = SimpleModel(name="Details 1", count=1, description="First")
     details_different = SimpleModel(name="Different", count=99, description="Other")
 

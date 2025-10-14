@@ -19,7 +19,6 @@ from stickler.structured_object_evaluator.models.comparable_field import Compara
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.numeric import NumericComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
-import json
 
 
 # Define nested data models
@@ -84,7 +83,7 @@ def print_aggregate_analysis(result, title):
     cm = result["confusion_matrix"]
 
     # Top-level aggregate
-    print(f"\n🔍 TOP-LEVEL AGGREGATE (All Primitive Fields):")
+    print("\n🔍 TOP-LEVEL AGGREGATE (All Primitive Fields):")
     top_agg = cm["aggregate"]
     print(
         f"   TP: {top_agg['tp']}, FD: {top_agg['fd']}, FP: {top_agg['fp']}, FA: {top_agg['fa']}, FN: {top_agg['fn']}"
@@ -95,7 +94,7 @@ def print_aggregate_analysis(result, title):
     print(f"   F1: {derived.get('cm_f1', 0):.3f}")
 
     # Field-level aggregates
-    print(f"\n📊 FIELD-LEVEL AGGREGATES:")
+    print("\n📊 FIELD-LEVEL AGGREGATES:")
 
     for field_name, field_data in cm["fields"].items():
         if "aggregate" in field_data:
@@ -177,32 +176,32 @@ def demonstrate_aggregate_feature():
     print_aggregate_analysis(result, "AGGREGATE METRICS ANALYSIS")
 
     # Show the structure
-    print(f"\n📋 STRUCTURE OVERVIEW:")
+    print("\n📋 STRUCTURE OVERVIEW:")
     cm = result["confusion_matrix"]
     print(f"   Top-level keys: {list(cm.keys())}")
-    print(f"   Each field has: overall, fields, aggregate")
-    print(f"   Aggregate = sum of all primitive fields below that node")
+    print("   Each field has: overall, fields, aggregate")
+    print("   Aggregate = sum of all primitive fields below that node")
 
     # Demonstrate hierarchical access
-    print(f"\n🔗 HIERARCHICAL ACCESS EXAMPLES:")
+    print("\n🔗 HIERARCHICAL ACCESS EXAMPLES:")
     print(f"   Total primitive TP across all fields: {cm['aggregate']['tp']}")
     print(f"   Contact-related TP: {cm['fields']['contact']['aggregate']['tp']}")
     print(f"   Address-related TP: {cm['fields']['address']['aggregate']['tp']}")
     print(f"   Pet-related TP: {cm['fields']['pets']['aggregate']['tp']}")
 
     # Show that no configuration was needed
-    print(f"\n✨ KEY BENEFITS:")
-    print(f"   ✅ No configuration required - works automatically")
-    print(f"   ✅ Every node has aggregate field as sibling of 'overall'")
-    print(f"   ✅ Hierarchical analysis at any level")
-    print(f"   ✅ Backward compatible - existing code unchanged")
-    print(f"   ✅ Includes derived metrics (precision, recall, F1)")
+    print("\n✨ KEY BENEFITS:")
+    print("   ✅ No configuration required - works automatically")
+    print("   ✅ Every node has aggregate field as sibling of 'overall'")
+    print("   ✅ Hierarchical analysis at any level")
+    print("   ✅ Backward compatible - existing code unchanged")
+    print("   ✅ Includes derived metrics (precision, recall, F1)")
 
 
 def demonstrate_deprecation_warning():
     """Show the deprecation warning for legacy aggregate parameter."""
 
-    print(f"\n⚠️  DEPRECATION WARNING DEMO")
+    print("\n⚠️  DEPRECATION WARNING DEMO")
     print("=" * 40)
     print("The old aggregate=True parameter is now deprecated:")
 
@@ -218,7 +217,7 @@ def demonstrate_deprecation_warning():
             print(f"   Warning: {w[0].message}")
             print(f"   Category: {w[0].category.__name__}")
 
-    print(f"   ✅ Use the new universal aggregate fields instead!")
+    print("   ✅ Use the new universal aggregate fields instead!")
 
 
 if __name__ == "__main__":
@@ -228,6 +227,6 @@ if __name__ == "__main__":
     # Show deprecation warning
     demonstrate_deprecation_warning()
 
-    print(f"\n🎉 DEMO COMPLETE!")
-    print(f"The universal aggregate field feature provides automatic")
-    print(f"field-level granularity for confusion matrix analysis.")
+    print("\n🎉 DEMO COMPLETE!")
+    print("The universal aggregate field feature provides automatic")
+    print("field-level granularity for confusion matrix analysis.")

@@ -2,7 +2,6 @@
 
 """Test to verify the single traversal optimization works correctly."""
 
-import pytest
 import time
 from typing import List
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel

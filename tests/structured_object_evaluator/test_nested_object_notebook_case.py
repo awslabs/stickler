@@ -8,7 +8,6 @@ of nested object evaluation results.
 import json
 import pytest
 from typing import List, Optional
-from pprint import pprint
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
@@ -191,12 +190,12 @@ def print_detailed_results(result: dict, case_name: str):
 
     # Handle field scores for both formats
     if "field_scores" in result:
-        print(f"\nFIELD SCORES (Method 2 format):")
+        print("\nFIELD SCORES (Method 2 format):")
         print("-" * 40)
         for field, score in result["field_scores"].items():
             print(f"  {field:20}: {score}")
     elif "fields" in result:
-        print(f"\nFIELD SCORES (Method 1 format):")
+        print("\nFIELD SCORES (Method 1 format):")
         print("-" * 40)
         for field, data in result["fields"].items():
             if isinstance(data, dict) and "anls_score" in data:
@@ -207,7 +206,7 @@ def print_detailed_results(result: dict, case_name: str):
         cm = result["confusion_matrix"]
         if "overall" in cm:
             cm_overall = cm["overall"]
-            print(f"\nCONFUSION MATRIX (Overall):")
+            print("\nCONFUSION MATRIX (Overall):")
             print("-" * 40)
             print(f"  True Positives : {cm_overall.get('tp', 'N/A')}")
             print(f"  False Positives: {cm_overall.get('fp', 'N/A')}")
@@ -220,14 +219,14 @@ def print_detailed_results(result: dict, case_name: str):
                 print(f"  Recall         : {derived.get('cm_recall', 'N/A'):.4f}")
                 print(f"  F1 Score       : {derived.get('cm_f1', 'N/A'):.4f}")
         else:
-            print(f"\nCONFUSION MATRIX:")
+            print("\nCONFUSION MATRIX:")
             print("-" * 40)
             print(f"  True Positives : {cm.get('tp', 'N/A')}")
             print(f"  False Positives: {cm.get('fp', 'N/A')}")
             print(f"  False Negatives: {cm.get('fn', 'N/A')}")
             print(f"  True Negatives : {cm.get('tn', 'N/A')}")
 
-    print(f"\nFULL JSON RESULT:")
+    print("\nFULL JSON RESULT:")
     print("-" * 40)
     print(json.dumps(result, indent=2))
 
@@ -247,14 +246,14 @@ class TestNestedObjectNotebookCase:
 
     def test_missing_item_case_detailed(self, ground_truth, evaluator):
         """Test the missing item case with detailed output for debugging."""
-        print(f"\n{'=' * 60}")
+        print("=" * 60)
         print("TESTING MISSING ITEM CASE")
         print("=" * 60)
 
         # Create prediction with missing item
         prediction = create_prediction_order("missing_item")
 
-        print(f"\nGROUND TRUTH PRODUCTS:")
+        print("\nGROUND TRUTH PRODUCTS:")
         for i, product in enumerate(ground_truth.products):
             print(
                 f"  {i + 1}. ID: {product.product_id}, Name: {product.name}, Price: {product.price}"
@@ -262,7 +261,7 @@ class TestNestedObjectNotebookCase:
             if product.attributes:
                 print(f"     Attributes: {[attr.name for attr in product.attributes]}")
 
-        print(f"\nPREDICTION PRODUCTS:")
+        print("\nPREDICTION PRODUCTS:")
         for i, product in enumerate(prediction.products):
             print(
                 f"  {i + 1}. ID: {product.product_id}, Name: {product.name}, Price: {product.price}"
@@ -271,13 +270,13 @@ class TestNestedObjectNotebookCase:
                 print(f"     Attributes: {[attr.name for attr in product.attributes]}")
 
         # Evaluate using both methods
-        print(f"\n{'-' * 40}")
+        print("-" * 40)
         print("METHOD 1: StructuredModelEvaluator.evaluate()")
         print("-" * 40)
         result1 = evaluator.evaluate(ground_truth, prediction)
         print_detailed_results(result1, "Missing Item - Method 1")
 
-        print(f"\n{'-' * 40}")
+        print("-" * 40)
         print("METHOD 2: model.compare_with()")
         print("-" * 40)
         result2 = ground_truth.compare_with(
@@ -286,7 +285,7 @@ class TestNestedObjectNotebookCase:
         print_detailed_results(result2, "Missing Item - Method 2")
 
         # Compare the two methods
-        print(f"\n{'-' * 40}")
+        print("-" * 40)
         print("COMPARISON OF METHODS")
         print("-" * 40)
 
@@ -303,7 +302,7 @@ class TestNestedObjectNotebookCase:
 
         # Check if there's a discrepancy
         if method1_score != method2_score:
-            print(f"\n⚠️  POTENTIAL ISSUE: Different overall scores!")
+            print("\n⚠️  POTENTIAL ISSUE: Different overall scores!")
             print(f"   Method 1 (StructuredModelEvaluator): {method1_score}")
             print(f"   Method 2 (compare_with): {method2_score}")
 
@@ -314,7 +313,7 @@ class TestNestedObjectNotebookCase:
         """Test all cases and compare results for debugging."""
         cases = ["good_match", "missing_item", "extra_item", "poor_match"]
 
-        print(f"\n{'=' * 80}")
+        print("=" * 80)
         print("COMPREHENSIVE COMPARISON OF ALL CASES")
         print("=" * 80)
 
@@ -348,7 +347,7 @@ class TestNestedObjectNotebookCase:
 
     def test_products_list_evaluation(self, ground_truth):
         """Focus specifically on the products list evaluation."""
-        print(f"\n{'=' * 60}")
+        print("=" * 60)
         print("DETAILED PRODUCTS LIST EVALUATION")
         print("=" * 60)
 

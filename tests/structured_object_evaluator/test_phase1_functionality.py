@@ -2,7 +2,6 @@
 
 """Test Phase 1 refactor functionality for StructuredModel enhanced compare_with method."""
 
-import pytest
 from typing import Optional, List
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField

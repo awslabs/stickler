@@ -2,7 +2,7 @@
 
 from functools import partial
 from scipy import spatial
-from typing import Callable, Dict, Any, Optional
+from typing import Callable, Optional
 
 from stickler.comparators.base import BaseComparator
 from stickler.comparators.utils import generate_bedrock_embedding
@@ -74,6 +74,6 @@ class SemanticComparator(BaseComparator):
         try:
             x, y = self.embedding_function(str1), self.embedding_function(str2)
             return self.similarity_function(x, y)
-        except Exception as e:
+        except Exception:
             # Fallback to string equality if embedding fails
             return 1.0 if str1 == str2 else 0.0

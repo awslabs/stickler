@@ -17,13 +17,11 @@ Level 4: AttributeProperty (in Optional[List[AttributeProperty]])
 
 import pytest
 from typing import List, Optional
-from pydantic import Field
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.exact import ExactComparator
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 
 # Test Models - 4 Level Hierarchy
 

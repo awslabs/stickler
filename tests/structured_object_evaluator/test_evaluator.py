@@ -2,11 +2,9 @@
 Tests for the structured_model_evaluator module.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
 
 from stickler.structured_object_evaluator.evaluator import (
-    StructuredModelEvaluator,
     get_memory_usage,
 )
 

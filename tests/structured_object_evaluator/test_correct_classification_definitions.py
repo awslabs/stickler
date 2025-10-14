@@ -10,8 +10,7 @@ These tests define the expected behavior after the classification refactor:
 This file contains NEW tests that will initially FAIL until the core implementation is updated.
 """
 
-import pytest
-from typing import Dict, Any, List, Optional
+from typing import List, Optional
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
@@ -155,10 +154,7 @@ def test_hungarian_matching_correct_fp_handling():
     item2 = SimpleModel(name="Item B", count=2, description="Second item")
     item3 = SimpleModel(name="Item C", count=3, description="Third item")
 
-    # Similar but not exact items (should be FD if similarity < threshold)
-    item1_similar = SimpleModel(
-        name="Item A", count=1, description="First"
-    )  # Similar but different description
+    
     item2_different = SimpleModel(
         name="Item X", count=99, description="Completely different"
     )  # Very different
@@ -167,7 +163,7 @@ def test_hungarian_matching_correct_fp_handling():
     )  # Unmatched (FA)
 
     # GT: [item1, item2, item3]
-    # PRED: [item1_similar, item2_different, item4_extra]
+    # PRED: [item1, item2_different, item4_extra]
     # Expected outcomes:
     # - item1 vs item1: likely TP (similar but below 0.8 threshold)
     # - item2 vs item2_different: FD (very different)
@@ -400,7 +396,6 @@ def test_precision_formula_validation():
 
     tp = overall_cm["tp"]
     fp = overall_cm["fp"]
-    fd = overall_cm["fd"]
 
     # Manual calculation: TP=1, FP=0, FD=1, FN=1
     # Total FP = FP + FD = 0 + 1 = 1

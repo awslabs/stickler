@@ -126,7 +126,6 @@ class TestBulkEvaluatorStress:
         processing_time = time.time() - start_time
 
         result = evaluator.compute()
-        total_time = time.time() - start_time
 
         # Verify processing completed successfully
         assert evaluator._processed_count == num_docs

@@ -4,14 +4,12 @@ This module provides utilities for handling field configuration, type checking,
 JSON processing, and schema generation for StructuredModel instances.
 """
 
-from typing import Any, Dict, List, Optional, Type, Union, get_origin, get_args
+from typing import Any, Dict, Union, get_origin, get_args
 import inspect
-from pydantic import BaseModel
 
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.structured import StructuredModelComparator
-from .comparable_field import ComparableField
-
+from .comparison_info import ComparableFieldConfig
 
 class ConfigurationHelper:
     """Helper class for StructuredModel configuration and schema operations."""
@@ -195,8 +193,6 @@ class ConfigurationHelper:
                 weight = getattr(json_func, "_weight", 1.0)
                 clip_under_threshold = getattr(json_func, "_clip_under_threshold", True)
                 aggregate = getattr(json_func, "_aggregate", False)
-
-                from .comparison_info import ComparableFieldConfig
 
                 return ComparableFieldConfig(
                     comparator=comparator,

@@ -1,7 +1,6 @@
 """Tests for comparators in real-world scenarios."""
 
 import unittest
-import pytest
 
 # Import from common comparators instead of anls_star_lib
 from stickler.comparators.levenshtein import LevenshteinComparator
@@ -199,7 +198,7 @@ class TestComparatorsScenarios(unittest.TestCase):
             # Some similarity but not exact match
             self.assertLess(self.levenshtein.compare(chinese1, chinese2), 1.0)
             self.assertGreater(self.levenshtein.compare(chinese1, chinese2), 0.0)
-        except:
+        except Exception:
             # Skip if non-Latin script support is limited
             pass
 

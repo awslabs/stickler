@@ -4,9 +4,8 @@ This module provides utilities for converting JSON field configurations to
 Pydantic Field instances with ComparableField functionality.
 """
 
-from typing import Dict, Any, Tuple, Type, Optional
+from typing import Dict, Any, Tuple, Type
 from pydantic import Field
-from pydantic.fields import FieldInfo
 
 from .comparable_field import ComparableField
 from .comparator_registry import create_comparator

@@ -18,14 +18,11 @@ Level 1: Company
                 └── Level 6: Subtask
 """
 
-import pytest
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 
 from stickler.structured_object_evaluator import (
     StructuredModel,
     ComparableField,
-    NonMatchField,
-    NonMatchType,
     StructuredModelEvaluator,
 )
 from stickler.comparators.levenshtein import LevenshteinComparator
@@ -518,10 +515,10 @@ class TestDeepNesting6Levels:
             f"Expected hierarchical nested field entries, got fields: {list(fields.keys())}"
         )
         assert nested_levels > 0, (
-            f"Expected hierarchical nesting, but found no nested levels"
+            "Expected hierarchical nesting, but found no nested levels"
         )
 
-        print(f"✅ Confusion matrix aggregation test passed")
+        print("✅ Confusion matrix aggregation test passed")
         print(
             f"   Overall metrics: TP={overall['tp']}, FP={overall['fp']}, FN={overall['fn']}"
         )
@@ -575,7 +572,7 @@ class TestDeepNesting6Levels:
         assert len(results) == 10, "Not all evaluations completed"
         assert all("overall" in result for result in results), "Some evaluations failed"
 
-        print(f"✅ Performance test passed")
+        print("✅ Performance test passed")
         print(f"   Evaluation time: {evaluation_time:.2f} seconds for 10 companies")
         print(f"   Memory increase: {memory_increase:.2f} MB")
         print(f"   Average time per evaluation: {evaluation_time / 10:.3f} seconds")
@@ -630,7 +627,7 @@ class TestDeepNesting6Levels:
             "Expected nested list fields in hierarchical structure"
         )
 
-        print(f"✅ Nested lists test passed")
+        print("✅ Nested lists test passed")
         print(f"   Found hierarchical nested structure in departments")
         print(f"   Overall score: {result['overall']['anls_score']:.3f}")
 

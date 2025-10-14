@@ -1,7 +1,6 @@
 """Tests for the anls_score utility functions."""
 
 import unittest
-from typing import Any, Dict, List, Tuple
 
 from stickler.structured_object_evaluator import (
     StructuredModel,

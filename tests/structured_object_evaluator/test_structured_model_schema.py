@@ -6,9 +6,8 @@ with all comparison metadata intact.
 
 import json
 import pytest
-from typing import Dict, Any, List, Optional
+from typing import List, Optional
 
-from pydantic import BaseModel, Field
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
