@@ -6,6 +6,7 @@ labels: ''
 assignees: ayushi1208
 
 ---
+Please do not include any private data in your issue. Make sure to provide fake names, email addresses, physical addresses, SSN's, DOB's, or other privacy senstiive fields.
 
 **Describe the bug**
 A clear and concise description of what the bug is.
