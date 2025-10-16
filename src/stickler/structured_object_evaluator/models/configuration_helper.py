@@ -191,7 +191,6 @@ class ConfigurationHelper:
                 threshold = getattr(json_func, "_threshold", 0.5)
                 weight = getattr(json_func, "_weight", 1.0)
                 clip_under_threshold = getattr(json_func, "_clip_under_threshold", True)
-                aggregate = getattr(json_func, "_aggregate", False)
                 
                 from .comparison_info import ComparableFieldConfig
 
@@ -199,8 +198,7 @@ class ConfigurationHelper:
                     comparator=comparator,
                     threshold=threshold,
                     weight=weight,
-                    clip_under_threshold=clip_under_threshold,
-                    aggregate=aggregate,
+                    clip_under_threshold=clip_under_threshold
                 )
         
         # FALLBACK: Legacy JSON schema approach for backward compatibility
@@ -234,7 +232,6 @@ class ConfigurationHelper:
                 clip_under_threshold = comparison_config.get(
                     "clip_under_threshold", True
                 )
-                aggregate = comparison_config.get("aggregate", False)
                 
                 from .comparison_info import ComparableFieldConfig
 
@@ -242,8 +239,7 @@ class ConfigurationHelper:
                     comparator=comparator,
                     threshold=threshold,
                     weight=weight,
-                    clip_under_threshold=clip_under_threshold,
-                    aggregate=aggregate,
+                    clip_under_threshold=clip_under_threshold
                 )
         
         # Check if this is a structured field type that needs special handling
