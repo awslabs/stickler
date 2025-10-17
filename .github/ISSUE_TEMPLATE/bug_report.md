@@ -1,6 +1,7 @@
 ---
 name: Bug report
-title: '<provide a short title on the bug>'
+title: '[BUG] <provide short title on the bug>'
+labels: bug
 branch: 'main'
 
 ---
@@ -13,6 +14,9 @@ Include:
 - what the error is 
 - any fixes tried
 - where the error may be stemming from (file, line number)
+
+**Actual Behavior**
+A clear and concise description of what actually happened, including any error messages or unexpected outcomes
 
 **Expected behavior**
 A clear and concise description of what you expected to happen.
