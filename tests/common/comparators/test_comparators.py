@@ -5,11 +5,8 @@ to ensure they work correctly and maintain compatibility with existing code.
 """
 
 import unittest
-import numpy as np
-from typing import Any
 
 from stickler.comparators import (
-    BaseComparator,
     LevenshteinComparator,
     NumericComparator,
 )

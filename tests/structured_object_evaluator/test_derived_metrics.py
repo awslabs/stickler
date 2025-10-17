@@ -4,10 +4,8 @@
 Test the derived metrics post-processing functionality.
 """
 
-import pytest
-import json
+
 from typing import List, Optional
-from pydantic import Field
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator

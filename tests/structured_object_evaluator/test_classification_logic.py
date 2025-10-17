@@ -8,8 +8,7 @@ This test file validates that the metrics evaluator correctly implements these d
 for different data types and edge cases.
 """
 
-import pytest
-from typing import Dict, Any, List, Optional
+from typing import List, Optional
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
@@ -240,7 +239,6 @@ def test_nested_model_classification_logic():
 
     # Create test nested models
     details1 = SimpleModel(name="Details 1", count=1, description="First details")
-    details2 = SimpleModel(name="Details 2", count=2, description="Second details")
     details_different = SimpleModel(name="Different", count=99, description="Other")
 
     # 1. True Positive: GT != null, EST != null, GT == EST

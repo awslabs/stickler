@@ -11,8 +11,6 @@ from typing import Optional, List
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.comparators.numeric import NumericComparator
 from stickler.comparators.exact import ExactComparator
 from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 

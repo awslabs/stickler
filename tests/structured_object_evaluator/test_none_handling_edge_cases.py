@@ -5,7 +5,6 @@ Test Optional[List[StructuredModel]] None vs populated edge cases.
 These tests validate that None vs populated scenarios generate proper FA/FN metrics.
 """
 
-import pytest
 from typing import List, Optional
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField

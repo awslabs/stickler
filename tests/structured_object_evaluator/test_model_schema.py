@@ -5,10 +5,9 @@ with all comparison metadata intact.
 """
 
 import json
-import pytest
-from typing import Dict, Any, List, Optional
+from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 # Import from structured_object_evaluator instead of anls_star_lib
 from stickler.structured_object_evaluator import StructuredModel, ComparableField

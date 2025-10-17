@@ -8,7 +8,6 @@ used threshold-applied scores, causing inconsistent results.
 SOLUTION: Make list comparison use threshold-applied scores for consistency.
 """
 
-import pytest
 from typing import List
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
@@ -127,7 +126,7 @@ class TestScoringConsistencyFix:
         batch_result = self.gt_batch.compare_with(self.pred_batch)
         actual_batch_score = batch_result["overall_score"]
 
-        print(f"\n=== BATCH VS INDIVIDUAL COMPARISON ===")
+        print("\n=== BATCH VS INDIVIDUAL COMPARISON ===")
         print(f"  Individual average: {individual_avg:.3f}")
         print(f"  Batch score:       {actual_batch_score:.3f}")
         print(f"  Difference:        {abs(actual_batch_score - individual_avg):.3f}")
@@ -184,7 +183,7 @@ class TestScoringConsistencyFix:
         invoices_field_score = batch_result["field_scores"]["invoices"]
         batch_overall_score = batch_result["overall_score"]
 
-        print(f"\n=== EXPECTED BEHAVIOR AFTER FIX ===")
+        print("\n=== EXPECTED BEHAVIOR AFTER FIX ===")
         print(f"  Individual average:    {individual_avg:.3f}")
         print(f"  Invoices field score:  {invoices_field_score:.3f}")
         print(f"  Batch overall score:   {batch_overall_score:.3f}")
@@ -220,7 +219,7 @@ class TestScoringConsistencyFix:
         # Only the similarity scoring calculation should be different
 
         invoices_cm = confusion_matrix["fields"]["invoices"]["overall"]
-        print(f"\n=== CONFUSION MATRIX (SHOULD BE UNCHANGED) ===")
+        print("\n=== CONFUSION MATRIX (SHOULD BE UNCHANGED) ===")
         print(f"  TP: {invoices_cm['tp']} (objects above threshold)")
         print(f"  FD: {invoices_cm['fd']} (objects below threshold)")
         print(f"  FA: {invoices_cm['fa']} (unmatched predictions)")
@@ -259,7 +258,7 @@ if __name__ == "__main__":
     print("\n📊 Verifying confusion matrix unchanged...")
     test_instance.test_confusion_matrix_unchanged_by_fix()
 
-    print(f"\n{'=' * 60}")
+    print("=" * 60)
     if success:
         print("✅ SCORING CONSISTENCY FIX: WORKING CORRECTLY")
     else:

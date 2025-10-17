@@ -3,7 +3,6 @@
 """Test to investigate aggregate contact totals issue from the notebook."""
 
 from typing import Optional
-from pprint import pprint
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
@@ -275,7 +274,7 @@ def test_correct_behavior_demonstration():
     print(f"Contact threshold: {contact_threshold}")
     print(f"Contact matches threshold: {contact_similarity >= contact_threshold}")
 
-    print(f"\nFor aggregate=False, contact field overall should be:")
+    print("\nFor aggregate=False, contact field overall should be:")
     if contact_similarity >= contact_threshold:
         print("tp=1, fa=0, fd=0, fp=0, tn=0, fn=0")
     else:
@@ -283,7 +282,7 @@ def test_correct_behavior_demonstration():
             "tp=0, fa=0, fd=1, fp=1, tn=0, fn=0  (1 false discovery - contact object didn't match)"
         )
 
-    print(f"\nNested field details (for debugging) should show:")
+    print("\nNested field details (for debugging) should show:")
     print("phone: fd=1 (phone values don't match)")
     print("email: fa=1 (email in pred but not in true)")
     print("But these should NOT roll up to contact overall when aggregate=False")

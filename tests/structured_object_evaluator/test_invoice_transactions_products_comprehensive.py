@@ -9,12 +9,10 @@ nested structures with multiple list fields and various error types.
 
 import unittest
 from typing import List, Optional
-import json
 
 from stickler.structured_object_evaluator import (
     StructuredModel,
     ComparableField,
-    NonMatchType,
 )
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.numeric import NumericComparator
@@ -133,7 +131,7 @@ class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
             pred_invoice, include_confusion_matrix=True
         )
 
-        print(f"\n=== Perfect Match Results ===")
+        print("\n=== Perfect Match Results ===")
         print(f"Overall similarity: {comparison_result['overall_score']:.3f}")
         print(f"All fields matched: {comparison_result['all_fields_matched']}")
         print(f"Field score count: {len(comparison_result['field_scores'])}")
@@ -158,7 +156,7 @@ class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
         # === CONFUSION MATRIX ANALYSIS ===
         cm = comparison_result["confusion_matrix"]
 
-        print(f"\n=== Confusion Matrix Analysis ===")
+        print("\n=== Confusion Matrix Analysis ===")
         print(
             f"Overall metrics: TP={cm['overall']['tp']}, TN={cm['overall']['tn']}, FP={cm['overall']['fp']}, FN={cm['overall']['fn']}"
         )
@@ -433,7 +431,7 @@ class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
         # Use compare_with method
         comparison_result = gold_invoice.compare_with(pred_invoice)
 
-        print(f"\n=== Complex Mixed Scenario Results ===")
+        print("\n=== Complex Mixed Scenario Results ===")
         print(f"Overall similarity: {comparison_result['overall_score']:.3f}")
         print(f"All fields matched: {comparison_result['all_fields_matched']}")
         print(f"Field score count: {len(comparison_result['field_scores'])}")
@@ -551,7 +549,7 @@ class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
         # Compare below threshold case
         result_below = gold_invoice.compare_with(pred_invoice_below)
 
-        print(f"\n=== Threshold Edge Cases ===")
+        print("\n=== Threshold Edge Cases ===")
         print(
             f"Above thresholds - Overall similarity: {result_above['overall_score']:.3f}"
         )
@@ -687,7 +685,7 @@ class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
         # Use compare_with method
         comparison_result = gold_invoice.compare_with(pred_invoice)
 
-        print(f"\n=== List Length Mismatch Results ===")
+        print("\n=== List Length Mismatch Results ===")
         print(f"Overall similarity: {comparison_result['overall_score']:.3f}")
         print(f"All fields matched: {comparison_result['all_fields_matched']}")
 
@@ -758,10 +756,10 @@ class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
         # Use compare_with method
         comparison_result = gold_invoice.compare_with(pred_invoice)
 
-        print(f"\n=== Deep Nesting Field Path Analysis ===")
+        print("\n=== Deep Nesting Field Path Analysis ===")
         print(f"Overall similarity: {comparison_result['overall_score']:.3f}")
         print(f"All fields matched: {comparison_result['all_fields_matched']}")
-        print(f"Field scores:")
+        print("Field scores:")
 
         # Analyze field scores at different levels
         field_count = 0
@@ -836,11 +834,11 @@ class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
         end_time = time.time()
         execution_time = end_time - start_time
 
-        print(f"\n=== Performance Stress Test ===")
+        print("\n=== Performance Stress Test ===")
         print(f"Execution time: {execution_time:.3f} seconds")
         print(f"Overall similarity: {comparison_result['overall_score']:.3f}")
         print(f"Field scores: {len(comparison_result['field_scores'])}")
-        print(f"Total products compared: 100")
+        print("Total products compared: 100")
 
         # Performance validation - adjusted for complex 3-level nesting
         self.assertLess(execution_time, 35.0, "Should complete within 35 seconds")
@@ -951,7 +949,7 @@ class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
         )
         cm = comparison_result["confusion_matrix"]
 
-        print(f"\n=== Weighted Field Test Results ===")
+        print("\n=== Weighted Field Test Results ===")
         print(f"Overall similarity: {comparison_result['overall_score']:.3f}")
         print(f"All fields matched: {comparison_result['all_fields_matched']}")
 

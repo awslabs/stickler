@@ -5,7 +5,6 @@ These tests validate that the examples shown to new users produce reasonable,
 explainable results that match intuitive expectations.
 """
 
-import pytest
 from typing import List
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField

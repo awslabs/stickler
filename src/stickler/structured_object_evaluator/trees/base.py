@@ -4,7 +4,7 @@ This module provides the ANLSTree class for structured object evaluation.
 """
 
 import abc
-from typing import Any, Optional, Tuple, List, Dict, Type, Union, cast
+from typing import Any, Optional
 
 from stickler.comparators.base import BaseComparator
 from stickler.comparators.levenshtein import LevenshteinComparator

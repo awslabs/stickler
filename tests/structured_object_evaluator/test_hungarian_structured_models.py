@@ -9,21 +9,18 @@ This test is migrated from anls_star_lib test_star_metrics.
 """
 
 import pytest
-from typing import List, Dict, Any
+from typing import List
 
 from stickler.structured_object_evaluator import StructuredModel
 from stickler.structured_object_evaluator import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
-
+from stickler.comparators.structured import StructuredModelComparator
+from stickler.algorithms.hungarian import HungarianMatcher as Hungarian
 
 # Helper function to replicate compare_structured_models from the old implementation
 def compare_structured_models(model1, model2):
     """Compare two structured models and return a comparison result dictionary."""
     return model1.compare_with(model2)
-
-
-from stickler.comparators.structured import StructuredModelComparator
-from stickler.algorithms.hungarian import HungarianMatcher as Hungarian
 
 
 # Define test models

@@ -9,7 +9,6 @@ This is a critical property for the Universal Aggregate Field feature to work co
 
 import pytest
 from typing import List
-from pydantic import Field
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField

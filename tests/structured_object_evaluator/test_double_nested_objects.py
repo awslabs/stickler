@@ -5,13 +5,11 @@ This test verifies that metrics are correctly calculated for objects with multip
 levels of nesting (e.g., A contains B contains C).
 """
 
-import pytest
 from typing import List, Optional
 
 from stickler.structured_object_evaluator import (
     StructuredModel,
     ComparableField,
-    NonMatchField,
     NonMatchType,
     StructuredModelEvaluator,
 )
@@ -171,7 +169,7 @@ def test_double_nested_metrics():
     # With object-level counting, all objects (Person, Address, ContactInfo) are present
     # so there should be no object-level false negatives, even if individual fields don't match
     assert overall["fn"] == 0, (
-        f"Expected overall fn=0 since all objects are present (object-level counting, not field rollup)"
+        "Expected overall fn=0 since all objects are present (object-level counting, not field rollup)"
     )
 
     # Print summary for demonstration purposes

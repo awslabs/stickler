@@ -5,9 +5,7 @@ Comprehensive test of the clean recursive implementation.
 This test validates that the compare_recursive method provides clean, hierarchical structure building.
 """
 
-import pytest
 from typing import List, Optional
-from pydantic import Field
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator

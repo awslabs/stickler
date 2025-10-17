@@ -1,7 +1,6 @@
 """Tests for the key_scores utility module."""
 
 import unittest
-from typing import Dict, List, Tuple
 
 from stickler.structured_object_evaluator.utils.key_scores import (
     ScoreNode,

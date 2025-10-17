@@ -7,8 +7,7 @@ This test suite validates:
 3. Handling extra fields in prediction vs ground truth
 """
 
-import pytest
-from typing import Dict, Any, List, Optional
+from typing import Optional
 from pydantic import Field
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel

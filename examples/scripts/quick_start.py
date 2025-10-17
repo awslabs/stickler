@@ -78,11 +78,11 @@ def demo_individual_comparison():
     # Compare them
     result = gt_product.compare_with(pred_product)
 
-    print(f"\n📊 Results:")
+    print("\n📊 Results:")
     print(f"  Overall Score: {result['overall_score']:.3f}")
     print(f"  All Fields Match: {result['all_fields_matched']}")
 
-    print(f"\n📋 Field Scores:")
+    print("\n📋 Field Scores:")
     for field, score in result["field_scores"].items():
         print(f"  {field:10}: {score:.3f}")
 
@@ -137,11 +137,11 @@ def demo_list_comparison():
     # Compare the orders
     result = gt_order.compare_with(pred_order, include_confusion_matrix=True)
 
-    print(f"\n📊 Comparison Results:")
+    print("\n📊 Comparison Results:")
     print(f"  Overall Score: {result['overall_score']:.3f}")
     print(f"  All Fields Match: {result['all_fields_matched']}")
 
-    print(f"\n📋 Field Scores:")
+    print("\n📋 Field Scores:")
     for field, score in result["field_scores"].items():
         print(f"  {field:10}: {score:.3f}")
 
@@ -151,12 +151,12 @@ def demo_list_comparison():
         if "fields" in cm and "products" in cm["fields"]:
             prod_metrics = cm["fields"]["products"]["overall"]
 
-            print(f"\n🎯 Products List Analysis:")
+            print("\n🎯 Products List Analysis:")
             print(f"  True Positives:  {prod_metrics.get('tp', 0)} (correct matches)")
             print(f"  False Positives: {prod_metrics.get('fp', 0)} (incorrect/extra)")
             print(f"  False Negatives: {prod_metrics.get('fn', 0)} (missed)")
 
-            print(f"\n📈 List Metrics:")
+            print("\n📈 List Metrics:")
             print(
                 f"  Precision: {prod_metrics.get('derived', {}).get('cm_precision', 0):.3f}"
             )
@@ -201,13 +201,13 @@ def demo_evaluator_detailed_analysis():
     evaluator = StructuredModelEvaluator()
     result = evaluator.evaluate(gt_order, pred_order)
 
-    print(f"\n📊 Overall Metrics:")
+    print("\n📊 Overall Metrics:")
     print(f"  Precision: {result['overall']['precision']:.3f}")
     print(f"  Recall:    {result['overall']['recall']:.3f}")
     print(f"  F1 Score:  {result['overall']['f1']:.3f}")
     print(f"  ANLS:      {result['overall']['anls_score']:.3f}")
 
-    print(f"\n📋 Field Analysis:")
+    print("\n📋 Field Analysis:")
     for field, metrics in result["fields"].items():
         if isinstance(metrics, dict):
             if "anls_score" in metrics:
@@ -233,27 +233,27 @@ def main():
     demo_evaluator_detailed_analysis()
 
     # Summary
-    print(f"\n🎯 SUMMARY")
+    print("\n🎯 SUMMARY")
     print("=" * 50)
-    print(f"✅ Individual object comparison works great!")
-    print(f"✅ List comparison uses Hungarian algorithm for optimal matching")
-    print(f"✅ Get detailed metrics: precision, recall, F1, confusion matrices")
-    print(f"✅ Configure thresholds and weights per field")
+    print("✅ Individual object comparison works great!")
+    print("✅ List comparison uses Hungarian algorithm for optimal matching")
+    print("✅ Get detailed metrics: precision, recall, F1, confusion matrices")
+    print("✅ Configure thresholds and weights per field")
 
-    print(f"\n🚀 Perfect Use Cases:")
+    print("\n🚀 Perfect Use Cases:")
     print("  • Document extraction evaluation (invoices, forms, receipts)")
     print("  • OCR quality assessment")
     print("  • Entity extraction validation")
     print("  • ML model output evaluation")
     print("  • Structured data quality measurement")
 
-    print(f"\n📚 Next Steps:")
+    print("\n📚 Next Steps:")
     print("  1. Try with your own data structures")
     print("  2. Experiment with different comparators and thresholds")
     print("  3. Run the non_match_analysis_demo.py for debugging")
     print("  4. Check out the Jupyter notebook for interactive examples")
 
-    print(f"\n✨ Key Insight:")
+    print("\n✨ Key Insight:")
     print("  The Hungarian algorithm matching in list comparison is what")
     print("  makes this library special - it finds optimal pairings even")
     print("  when objects are in different orders or partially missing!")

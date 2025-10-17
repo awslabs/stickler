@@ -14,7 +14,6 @@ Current Behavior Preserved (including bugs):
 from typing import List, Dict, Any, TYPE_CHECKING
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
-from .field_helper import FieldHelper
 from .comparable_field import ComparableField
 
 if TYPE_CHECKING:
@@ -54,7 +53,6 @@ class StructuredListComparator:
         # Get field configuration - same as original
         info = self.parent_model.__class__._get_comparison_info(field_name)
         weight = info.weight
-        threshold = info.threshold
 
         # PHASE 3 FIX: Use correct threshold source for Hungarian matching decisions
         # Should use the list element model's match_threshold, not the parent field's threshold

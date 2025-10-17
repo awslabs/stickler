@@ -9,8 +9,6 @@ to individual StructuredModel.compare_with() calls, ensuring the bulk evaluator 
 a faithful aggregation mechanism.
 """
 
-import pytest
-import json
 from typing import List, Optional, Dict, Any, Tuple
 from pydantic import Field
 

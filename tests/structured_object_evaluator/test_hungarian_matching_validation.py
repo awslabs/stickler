@@ -5,7 +5,6 @@ Test cases for Hungarian matching validation in List[StructuredModel] fields.
 These tests establish baseline behavior and validate the corrected logic.
 """
 
-import pytest
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.exact import ExactComparator

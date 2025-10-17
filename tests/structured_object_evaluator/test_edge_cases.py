@@ -1,7 +1,7 @@
 """Tests for edge cases in the structured object evaluator."""
 
 import unittest
-from typing import Any, Dict, List, Optional, Union
+from typing import Optional
 
 from pydantic import Field
 

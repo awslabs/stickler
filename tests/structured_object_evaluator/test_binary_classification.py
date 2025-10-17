@@ -6,7 +6,7 @@ classification based on threshold matching, particularly for nested objects and 
 """
 
 import pytest
-from typing import Optional, Dict, List, Any, Union
+from typing import Optional, List
 from pytest import approx
 
 from stickler.structured_object_evaluator import StructuredModel
@@ -373,7 +373,6 @@ def test_nested_model_classification():
     )
 
     non_match_result = evaluator.evaluate(gt_invoice, non_match_pred)
-    cm_non_match = non_match_result["confusion_matrix"]["fields"]
 
     # Implementation note: With the current setup, the invoice numbers "INV-2023-001" vs "INV-2023-002"
     # are similar enough to still register as a match in the structured_object_evaluator,

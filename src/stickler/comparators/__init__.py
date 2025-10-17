@@ -12,6 +12,7 @@ from stickler.comparators.numeric import NumericComparator, NumericExactC
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.llm import LLMComparator
 from stickler.comparators.structured import StructuredModelComparator
+from stickler.comparators.semantic import SemanticComparator
 
 # Import BERTComparator if evaluate is available
 try:
@@ -27,7 +28,6 @@ try:
 except ImportError:
     RAPIDFUZZ_AVAILABLE = False
 
-from stickler.comparators.semantic import SemanticComparator
 
 __all__ = [
     "BaseComparator",
@@ -37,6 +37,7 @@ __all__ = [
     "ExactComparator",
     "LLMComparator",
     "StructuredModelComparator",
+    "SemanticComparator",
     "generate_bedrock_embedding",
 ]
 
@@ -49,5 +50,3 @@ if RAPIDFUZZ_AVAILABLE:
     __all__.append("FuzzyComparator")
     __all__.append("Fuzz")
 
-# Add SemanticComparator to __all__
-__all__.append("SemanticComparator")

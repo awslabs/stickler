@@ -113,13 +113,13 @@ def demonstrate_basic_evaluation(gt_order, pred_order):
     evaluator = StructuredModelEvaluator(document_non_matches=False)
     result = evaluator.evaluate(gt_order, pred_order)
 
-    print(f"Overall Scores:")
+    print("Overall Scores:")
     print(f"  Precision: {result['overall']['precision']:.3f}")
     print(f"  Recall:    {result['overall']['recall']:.3f}")
     print(f"  F1 Score:  {result['overall']['f1']:.3f}")
     print(f"  ANLS:      {result['overall']['anls_score']:.3f}")
 
-    print(f"\nField Scores:")
+    print("\nField Scores:")
     for field, metrics in result["fields"].items():
         if field == "products":
             overall_score = metrics.get("overall", {}).get("anls_score", "N/A")
@@ -186,7 +186,7 @@ def demonstrate_compare_with_method(gt_order, pred_order):
     non_matches = result.get("non_matches", [])
 
     if non_matches:
-        print(f"\n📋 Non-Matches in JSON Format:")
+        print("\n📋 Non-Matches in JSON Format:")
         print(
             json.dumps(
                 {
@@ -306,7 +306,7 @@ def main():
     non_matches = result.get("non_matches", [])
     analyze_non_matches_for_debugging(non_matches)
 
-    print(f"\n🎯 Key Takeaways")
+    print("\n🎯 Key Takeaways")
     print("=" * 50)
     print("✅ Use document_non_matches=True to get detailed error information")
     print("✅ Look for object-level field paths like products[0], products[1]")
@@ -315,7 +315,7 @@ def main():
     print("✅ False alarms may indicate filtering or validation problems")
     print("✅ False negatives suggest missing extraction or detection")
 
-    print(f"\n📚 Next Steps:")
+    print("\n📚 Next Steps:")
     print("1. Apply this analysis to your own evaluation data")
     print("2. Focus on the highest-impact non-matches (lowest similarity scores)")
     print("3. Use field-level differences to identify systematic issues")

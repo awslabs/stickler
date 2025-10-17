@@ -1,6 +1,6 @@
 """Field operations helper for StructuredModel comparisons."""
 
-from typing import Any, List, Dict, Type, get_origin, get_args
+from typing import Any, List, Type, get_origin, get_args
 import inspect
 
 

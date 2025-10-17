@@ -2,12 +2,10 @@
 Test that custom comparators are correctly reflected in the schema metadata.
 """
 
-import pytest
 from typing import Any
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.comparators.base import BaseComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 
 

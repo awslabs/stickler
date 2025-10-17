@@ -1,5 +1,5 @@
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from typing import Dict, Any, List, Optional, Type
+from typing import Dict, Any, Type
 
 
 def compare_json(
