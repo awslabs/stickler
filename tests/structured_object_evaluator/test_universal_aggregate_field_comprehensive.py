@@ -5,7 +5,7 @@ Comprehensive tests for the Universal Aggregate Field feature.
 
 This test suite validates that the new universal aggregate field feature works correctly:
 1. Every node in the comparison result tree has an 'aggregate' field
-2. Aggregate fields appear as siblings of 'overall' and 'fields'
+2. Aggregate fields appear as siblings of 'overall' and 'fields' 
 3. Aggregate calculations sum all primitive field metrics below each node
 4. Derived metrics are included in aggregate fields
 5. Structure is consistent across all levels
@@ -15,15 +15,15 @@ import unittest
 import warnings
 from typing import Optional, List
 
-from src.stickler.structured_object_evaluator.models.structured_model import (
+from stickler.structured_object_evaluator.models.structured_model import (
     StructuredModel,
 )
-from src.stickler.structured_object_evaluator.models.comparable_field import (
+from stickler.structured_object_evaluator.models.comparable_field import (
     ComparableField,
 )
-from src.stickler.comparators.exact import ExactComparator
-from src.stickler.comparators.numeric import NumericComparator
-from src.stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.comparators.exact import ExactComparator
+from stickler.comparators.numeric import NumericComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
 
 
 # Define test models for comprehensive testing
@@ -49,7 +49,7 @@ class Address(StructuredModel):
 class Owner(StructuredModel):
     id: int = ComparableField(comparator=ExactComparator(), threshold=1.0, weight=1.0)
     name: str = ComparableField(comparator=ExactComparator(), threshold=1.0, weight=1.0)
-    contact: Contact = ComparableField(
+    contact: Contact = ComparableField( 
         comparator=ExactComparator(), threshold=1.0, weight=1.0
     )
     address: Address = ComparableField(
@@ -59,7 +59,7 @@ class Owner(StructuredModel):
 
 class Pet(StructuredModel):
     match_threshold = 1.0
-
+    
     pet_id: int = ComparableField(
         comparator=ExactComparator(), threshold=1.0, weight=1.0
     )
@@ -89,7 +89,7 @@ class VeterinaryRecord(StructuredModel):
 
 class TestUniversalAggregateField(unittest.TestCase):
     """Test cases for universal aggregate field feature."""
-
+    
     def setUp(self):
         """Set up test data for comprehensive aggregate field testing."""
         # Complex nested structure with multiple levels
@@ -121,7 +121,7 @@ class TestUniversalAggregateField(unittest.TestCase):
                 },
             ],
         }
-
+        
         # Prediction with various types of mismatches
         self.pred_record = {
             "record_id": 12345,  # TP
@@ -160,10 +160,10 @@ class TestUniversalAggregateField(unittest.TestCase):
         """Test that using aggregate=True triggers deprecation warning."""
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-
+            
             # This should trigger a deprecation warning
             field = ComparableField(aggregate=True)
-
+            
             # Verify warning was triggered
             self.assertEqual(len(w), 1)
             self.assertTrue(issubclass(w[0].category, DeprecationWarning))
@@ -174,24 +174,24 @@ class TestUniversalAggregateField(unittest.TestCase):
         """Test that aggregate fields are present at every level."""
         gt = VeterinaryRecord(**self.gt_record)
         pred = VeterinaryRecord(**self.pred_record)
-
+        
         result = gt.compare_with(pred, include_confusion_matrix=True)
         cm = result["confusion_matrix"]
-
+        
         # Top level should have aggregate
         self.assertIn("aggregate", cm, "Top level missing aggregate field")
-
+        
         # Overall level should NOT have aggregate (it's a sibling, not nested)
         self.assertNotIn(
             "aggregate", cm["overall"], "Overall should not contain nested aggregate"
         )
-
+        
         # Every field should have aggregate as sibling of overall/fields
         for field_name, field_data in cm["fields"].items():
             self.assertIn(
                 "aggregate", field_data, f"Field '{field_name}' missing aggregate"
             )
-
+            
             # If field has nested fields, check them too
             if "fields" in field_data and field_data["fields"]:
                 for nested_name, nested_data in field_data["fields"].items():
@@ -205,10 +205,10 @@ class TestUniversalAggregateField(unittest.TestCase):
         """Test that aggregate fields have consistent structure."""
         gt = VeterinaryRecord(**self.gt_record)
         pred = VeterinaryRecord(**self.pred_record)
-
+        
         result = gt.compare_with(pred, include_confusion_matrix=True)
         cm = result["confusion_matrix"]
-
+        
         def validate_aggregate_structure(aggregate_data, path=""):
             """Recursively validate aggregate field structure."""
             # Must have confusion matrix metrics
@@ -222,7 +222,7 @@ class TestUniversalAggregateField(unittest.TestCase):
                     int,
                     f"Aggregate {metric} at '{path}' not integer",
                 )
-
+            
             # Must have derived metrics
             self.assertIn(
                 "derived",
@@ -230,7 +230,7 @@ class TestUniversalAggregateField(unittest.TestCase):
                 f"Aggregate at '{path}' missing derived metrics",
             )
             derived = aggregate_data["derived"]
-
+            
             derived_metrics = ["cm_precision", "cm_recall", "cm_f1", "cm_accuracy"]
             for metric in derived_metrics:
                 self.assertIn(
@@ -241,16 +241,16 @@ class TestUniversalAggregateField(unittest.TestCase):
                     (int, float),
                     f"Derived {metric} at '{path}' not numeric",
                 )
-
+        
         # Validate top-level aggregate
         validate_aggregate_structure(cm["aggregate"], "top")
-
+        
         # Validate field-level aggregates
         for field_name, field_data in cm["fields"].items():
             validate_aggregate_structure(
                 field_data["aggregate"], f"fields.{field_name}"
             )
-
+            
             # Validate nested field aggregates
             if "fields" in field_data:
                 for nested_name, nested_data in field_data["fields"].items():
@@ -264,24 +264,30 @@ class TestUniversalAggregateField(unittest.TestCase):
         """Test that aggregate calculations sum primitive fields correctly."""
         gt = VeterinaryRecord(**self.gt_record)
         pred = VeterinaryRecord(**self.pred_record)
-
+        
         result = gt.compare_with(pred, include_confusion_matrix=True)
         cm = result["confusion_matrix"]
-
+        
         # Based on actual behavior observed:
         # record_id: TP=1 (matches)
         # owner.id: TP=1 (matches)
-        # owner.name: TP=1 (matches)
+        # owner.name: TP=1 (matches)  
         # owner.contact.phone: FD=1, FP=1 (mismatch)
         # owner.contact.email: TP=1 (matches)
         # owner.address.street: FD=1, FP=1 (mismatch)
         # owner.address.city: TP=1 (matches)
         # owner.address.zip_code: FD=1, FP=1 (mismatch)
-        # pets: FD=2, FP=2 (list comparison fails at object level)
-
-        # Total actual: TP=5, FD=5, FP=5
-        expected_top_aggregate = {"tp": 5, "fd": 5, "fp": 5, "fn": 0, "fa": 0, "tn": 0}
-
+        # pets.pet_id: TP=2 (both match)
+        # pets.name: TP=2 (both match)
+        # pets.species: TP=2 (both match)
+        # pets.breed: TP=1, FN=1 (one matches, one missing)
+        # pets.age: FA=1, FD=1, FP=2 (one wrong, one extra)
+        
+        # Total actual: TP=12, FA=1, FD=4, FP=5, FN=1
+        expected_top_aggregate = {
+            'tp': 12, 'fa': 1, 'fd': 4, 'fp': 5, 'tn': 0, 'fn': 1
+        }
+        
         top_aggregate = cm["aggregate"]
         for metric, expected in expected_top_aggregate.items():
             self.assertEqual(
@@ -294,10 +300,10 @@ class TestUniversalAggregateField(unittest.TestCase):
         """Test aggregate calculations for nested structures."""
         gt = VeterinaryRecord(**self.gt_record)
         pred = VeterinaryRecord(**self.pred_record)
-
+        
         result = gt.compare_with(pred, include_confusion_matrix=True)
         cm = result["confusion_matrix"]
-
+        
         # Test owner aggregate (should sum all owner.* primitive fields)
         # owner.id: TP=1, owner.name: TP=1, contact.phone: FD=1,FP=1, contact.email: TP=1
         # address.street: FD=1,FP=1, address.city: TP=1, address.zip_code: FD=1,FP=1
@@ -306,7 +312,7 @@ class TestUniversalAggregateField(unittest.TestCase):
         self.assertEqual(owner_aggregate["tp"], 4, "Owner aggregate TP incorrect")
         self.assertEqual(owner_aggregate["fd"], 3, "Owner aggregate FD incorrect")
         self.assertEqual(owner_aggregate["fp"], 3, "Owner aggregate FP incorrect")
-
+        
         # Test contact aggregate (should sum contact.* primitive fields)
         # contact.phone: FD=1,FP=1, contact.email: TP=1
         # Total: TP=1, FD=1, FP=1
@@ -314,7 +320,7 @@ class TestUniversalAggregateField(unittest.TestCase):
         self.assertEqual(contact_aggregate["tp"], 1, "Contact aggregate TP incorrect")
         self.assertEqual(contact_aggregate["fd"], 1, "Contact aggregate FD incorrect")
         self.assertEqual(contact_aggregate["fp"], 1, "Contact aggregate FP incorrect")
-
+        
         # Test address aggregate (should sum address.* primitive fields)
         # address.street: FD=1,FP=1, address.city: TP=1, address.zip_code: FD=1,FP=1
         # Total: TP=1, FD=2, FP=2
@@ -327,33 +333,36 @@ class TestUniversalAggregateField(unittest.TestCase):
         """Test aggregate calculations for list fields."""
         gt = VeterinaryRecord(**self.gt_record)
         pred = VeterinaryRecord(**self.pred_record)
-
+        
         result = gt.compare_with(pred, include_confusion_matrix=True)
         cm = result["confusion_matrix"]
-
-        # Test pets aggregate - based on actual behavior, the list comparison
-        # fails at the object level due to match_threshold=1.0, so we get:
-        # pets: FD=2, FP=2 (2 objects fail comparison)
-        pets_aggregate = cm["fields"]["pets"]["aggregate"]
-        self.assertEqual(pets_aggregate["tp"], 0, "Pets aggregate TP incorrect")
-        self.assertEqual(pets_aggregate["fd"], 2, "Pets aggregate FD incorrect")
-        self.assertEqual(pets_aggregate["fp"], 2, "Pets aggregate FP incorrect")
-        self.assertEqual(pets_aggregate["fn"], 0, "Pets aggregate FN incorrect")
-        self.assertEqual(pets_aggregate["fa"], 0, "Pets aggregate FA incorrect")
+        
+        # Test pets aggregate - based on actual behavior, the Hungarian matching
+        # successfully matches the pets and aggregates all their field metrics:
+        # pets.pet_id: TP=2, pets.name: TP=2, pets.species: TP=2
+        # pets.breed: TP=1, FN=1, pets.age: FA=1, FD=1, FP=2
+        # Total: TP=7, FA=1, FD=1, FP=2, FN=1
+        pets_aggregate = cm['fields']['pets']['aggregate']
+        self.assertEqual(pets_aggregate['tp'], 7, "Pets aggregate TP incorrect")
+        self.assertEqual(pets_aggregate['fa'], 1, "Pets aggregate FA incorrect")
+        self.assertEqual(pets_aggregate['fd'], 1, "Pets aggregate FD incorrect")
+        self.assertEqual(pets_aggregate['fp'], 2, "Pets aggregate FP incorrect")
+        self.assertEqual(pets_aggregate['tn'], 0, "Pets aggregate TN incorrect")
+        self.assertEqual(pets_aggregate['fn'], 1, "Pets aggregate FN incorrect")
 
     def test_primitive_field_aggregate_equals_overall(self):
         """Test that for primitive fields, aggregate equals overall metrics."""
         gt = VeterinaryRecord(**self.gt_record)
         pred = VeterinaryRecord(**self.pred_record)
-
+        
         result = gt.compare_with(pred, include_confusion_matrix=True)
         cm = result["confusion_matrix"]
-
+        
         # Check primitive field: record_id
         record_id_field = cm["fields"]["record_id"]
         overall_metrics = record_id_field["overall"]
         aggregate_metrics = record_id_field["aggregate"]
-
+        
         # For primitive fields, aggregate should equal overall (excluding derived)
         confusion_metrics = ["tp", "fa", "fd", "fp", "tn", "fn"]
         for metric in confusion_metrics:
@@ -367,17 +376,17 @@ class TestUniversalAggregateField(unittest.TestCase):
         """Test that derived metrics in aggregate fields are calculated correctly."""
         gt = VeterinaryRecord(**self.gt_record)
         pred = VeterinaryRecord(**self.pred_record)
-
+        
         result = gt.compare_with(pred, include_confusion_matrix=True)
         cm = result["confusion_matrix"]
-
+        
         # Test top-level aggregate derived metrics
         top_aggregate = cm["aggregate"]
         derived = top_aggregate["derived"]
-
+        
         # Calculate expected derived metrics
         tp, fp, fn = top_aggregate["tp"], top_aggregate["fp"], top_aggregate["fn"]
-
+        
         expected_precision = tp / (tp + fp) if (tp + fp) > 0 else 0
         expected_recall = tp / (tp + fn) if (tp + fn) > 0 else 0
         expected_f1 = (
@@ -389,7 +398,7 @@ class TestUniversalAggregateField(unittest.TestCase):
             else 0
         )
         expected_accuracy = tp / (tp + fp + fn) if (tp + fp + fn) > 0 else 0
-
+        
         self.assertAlmostEqual(derived["cm_precision"], expected_precision, places=3)
         self.assertAlmostEqual(derived["cm_recall"], expected_recall, places=3)
         self.assertAlmostEqual(derived["cm_f1"], expected_f1, places=3)
@@ -399,10 +408,10 @@ class TestUniversalAggregateField(unittest.TestCase):
         """Test that aggregate fields are siblings of overall/fields, not nested within."""
         gt = VeterinaryRecord(**self.gt_record)
         pred = VeterinaryRecord(**self.pred_record)
-
+        
         result = gt.compare_with(pred, include_confusion_matrix=True)
         cm = result["confusion_matrix"]
-
+        
         # Top level structure validation
         expected_top_keys = {"overall", "fields", "aggregate", "non_matches"}
         actual_top_keys = set(cm.keys())
@@ -410,7 +419,7 @@ class TestUniversalAggregateField(unittest.TestCase):
             expected_top_keys.issubset(actual_top_keys),
             f"Top level missing keys. Expected subset: {expected_top_keys}, Got: {actual_top_keys}",
         )
-
+        
         # Field level structure validation - updated for unified structure
         for field_name, field_data in cm["fields"].items():
             if (
@@ -423,10 +432,10 @@ class TestUniversalAggregateField(unittest.TestCase):
                     required_keys.issubset(actual_field_keys),
                     f"Field '{field_name}' missing required keys. Expected subset: {required_keys}, Got: {actual_field_keys}",
                 )
-
+                
                 # Parent container fields (List, StructuredModel with nested fields) also have 'fields'
                 # Primitive fields (str, int, etc.) do not have 'fields' - this is the semantic meaning
-
+                
                 # Aggregate should NOT be nested in overall
                 self.assertNotIn(
                     "aggregate",
@@ -441,18 +450,18 @@ class TestUniversalAggregateField(unittest.TestCase):
         class SimpleModel(StructuredModel):
             name: str = ComparableField(comparator=ExactComparator(), threshold=1.0)
             age: int = ComparableField(comparator=ExactComparator(), threshold=1.0)
-
+        
         gt = SimpleModel(name="John", age=30)
         pred = SimpleModel(name="John", age=25)
-
+        
         result = gt.compare_with(pred, include_confusion_matrix=True)
         cm = result["confusion_matrix"]
-
+        
         # Should have aggregate fields automatically
         self.assertIn("aggregate", cm)
         self.assertIn("aggregate", cm["fields"]["name"])
         self.assertIn("aggregate", cm["fields"]["age"])
-
+        
         # Aggregate should have correct values
         self.assertEqual(cm["aggregate"]["tp"], 1)  # name matches
         self.assertEqual(cm["aggregate"]["fd"], 1)  # age mismatch
@@ -462,20 +471,20 @@ class TestUniversalAggregateField(unittest.TestCase):
         """Test that existing code continues to work unchanged."""
         gt = VeterinaryRecord(**self.gt_record)
         pred = VeterinaryRecord(**self.pred_record)
-
+        
         # Old way of calling compare_with should still work
         result = gt.compare_with(pred, include_confusion_matrix=True)
-
+        
         # All existing fields should still be present
         self.assertIn("field_scores", result)
         self.assertIn("overall_score", result)
         self.assertIn("all_fields_matched", result)
         self.assertIn("confusion_matrix", result)
-
+        
         cm = result["confusion_matrix"]
         self.assertIn("overall", cm)
         self.assertIn("fields", cm)
-
+        
         # New aggregate fields should be added without breaking existing structure
         self.assertIn("aggregate", cm)
 

@@ -332,16 +332,27 @@ class TestHungarianMatchingBaseline:
         assert txn_overall["tp"] == 0  # No good matches
         assert txn_overall["fd"] >= 1  # All matches are poor
 
-        # CORRECTED: With threshold-gated recursion fixed, poor matches don't generate nested field metrics
+        # UPDATED: With universal aggregate feature, nested fields are always generated
+        # but "overall" should be empty for poor matches, "aggregate" should have the metrics
         if "fields" in cm["fields"]["transactions"]:
             nested_fields = cm["fields"]["transactions"]["fields"]
-            # Threshold-gating working correctly - should be empty for all poor matches
-            assert (
-                len(nested_fields) == 0
-            )  # FIXED: No nested field metrics for poor matches
-        else:
-            # This is also acceptable - no nested fields structure at all
-            pass
+            # Should have nested fields for aggregate metrics
+            assert len(nested_fields) > 0, "Should have nested fields for aggregate metrics"
+            
+            # Check that field-level metrics are generated for poor matches
+            for field_name, field_metrics in nested_fields.items():
+                overall_metrics = field_metrics["overall"]
+                aggregate_metrics = field_metrics["aggregate"]
+                
+                # With threshold-gated recursion, poor matches should NOT populate overall metrics
+                # Overall metrics should be empty (all zeros) for poor matches
+                for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
+                    assert overall_metrics[metric] == 0, \
+                        f"Field {field_name} overall {metric} should be 0 for poor matches, got {overall_metrics[metric]}"
+                
+                # Aggregate metrics should contain the field-level analysis for poor matches
+                assert aggregate_metrics["fd"] > 0, \
+                    f"Field {field_name} aggregate should have FD metrics from poor matches"
 
     def test_all_good_matches_scenario(self):
         """Test scenario where all matches are above threshold."""
