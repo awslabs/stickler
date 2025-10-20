@@ -2,7 +2,6 @@ name: Bug report
 description: File a bug report.
 title: "[BUG]: "
 labels: ["bug", "triage"]
-branch: 'main'
 body:
   - type: markdown
     attributes:

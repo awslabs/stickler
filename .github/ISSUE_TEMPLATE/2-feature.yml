@@ -2,7 +2,6 @@ name: Feature request
 description: File a feature request
 title: "[FEATURE]: "
 labels: ["enhancement"]
-branch: 'main'
 body:
   - type: markdown
     attributes:
