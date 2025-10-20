@@ -6,8 +6,6 @@ This test is migrated from the anls_star_lib directory to ensure test coverage
 is maintained during the refactor.
 """
 
-import pytest
-from pytest import approx
 from typing import List, Optional
 
 from stickler.structured_object_evaluator import StructuredModel, ComparableField
@@ -55,7 +53,7 @@ def test_unordered_list_scoring():
 
     # With Hungarian matching, this should be a perfect match with score 1.0
     assert result["field_scores"]["items"] == 1.0, (
-        f"Lists with same items in different order should match perfectly"
+        "Lists with same items in different order should match perfectly"
     )
 
     # Overall score should also be 1.0

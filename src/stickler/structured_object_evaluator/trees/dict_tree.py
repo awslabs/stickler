@@ -1,6 +1,6 @@
 """Dict node implementation for the ANLS* tree."""
 
-from typing import Any, Optional, Tuple, List, Dict as PyDict, Set, cast
+from typing import Any, Optional, Tuple, List, Dict as PyDict
 
 from stickler.comparators.base import BaseComparator
 from .base import ANLSTree

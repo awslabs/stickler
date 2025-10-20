@@ -60,7 +60,7 @@ def test_aggregate_false_prevents_nested_rollup():
     result = true_owner.compare_with(pred_owner, include_confusion_matrix=True)
     contact_cm = result["confusion_matrix"]["fields"]["contact"]["overall"]
 
-    print(f"\nAggregate=False contact metrics:")
+    print("\nAggregate=False contact metrics:")
     print(
         f"Contact overall: tp={contact_cm['tp']}, fa={contact_cm['fa']}, fd={contact_cm['fd']}, fp={contact_cm['fp']}"
     )
@@ -129,7 +129,7 @@ def test_aggregate_true_would_rollup():
     result = true_owner.compare_with(pred_owner, include_confusion_matrix=True)
     contact_cm = result["confusion_matrix"]["fields"]["contact"]["overall"]
 
-    print(f"\nAggregate=True contact metrics:")
+    print("\nAggregate=True contact metrics:")
     print(
         f"Contact overall: tp={contact_cm['tp']}, fa={contact_cm['fa']}, fd={contact_cm['fd']}, fp={contact_cm['fp']}"
     )

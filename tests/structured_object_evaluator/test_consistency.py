@@ -1,7 +1,6 @@
 """Tests for consistency between different evaluation methods."""
 
 import unittest
-from typing import Any, Dict, List, Optional
 
 from stickler.structured_object_evaluator import (
     StructuredModel,

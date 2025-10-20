@@ -1,7 +1,6 @@
 """Tests for NumericComparator."""
 
 import unittest
-from decimal import Decimal
 
 from stickler.comparators import NumericComparator
 

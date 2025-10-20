@@ -6,7 +6,6 @@ BUG: Batch comparison returns 94.8% when individual scores average to 66%.
 This is a CRITICAL issue affecting the core functionality of the library.
 """
 
-import pytest
 from typing import List
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
@@ -181,7 +180,7 @@ class TestCoreBugDiagnostic:
 
         # Check if weighting math is consistent
         assert abs(manual_weighted_avg - actual_overall) < 0.001, (
-            f"Weighted average math seems inconsistent"
+            "Weighted average math seems inconsistent"
         )
 
     def test_hungarian_matching_validation(self):

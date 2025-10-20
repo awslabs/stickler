@@ -156,12 +156,12 @@ def demo_basic_bulk_evaluation():
     result = evaluator.compute()
     elapsed = time.time() - start_time
 
-    print(f"\n📊 Bulk Evaluation Results:")
+    print("\n📊 Bulk Evaluation Results:")
     print(f"  Documents Processed: {len(documents):,}")
     print(f"  Processing Time: {elapsed:.2f}s")
     print(f"  Rate: {len(documents) / elapsed:.1f} docs/sec")
 
-    print(f"\n📈 Overall Metrics:")
+    print("\n📈 Overall Metrics:")
     metrics = result.metrics or {}
     derived = metrics.get("derived", {}) or {}
     print(f"  Precision: {derived.get('cm_precision', 0):.3f}")
@@ -169,7 +169,7 @@ def demo_basic_bulk_evaluation():
     print(f"  F1 Score:  {derived.get('cm_f1', 0):.3f}")
     print(f"  Accuracy:  {derived.get('cm_accuracy', 0):.3f}")
 
-    print(f"\n📋 Field-Level Performance:")
+    print("\n📋 Field-Level Performance:")
     field_metrics = result.field_metrics or {}
     for field, metrics in field_metrics.items():
         field_derived = (metrics or {}).get("derived", {}) or {}
@@ -215,7 +215,7 @@ def demo_batch_processing():
     final_result = evaluator.compute()
     elapsed = time.time() - start_time
 
-    print(f"\n📊 Final Batch Results:")
+    print("\n📊 Final Batch Results:")
     print(f"  Total Documents: {len(documents):,}")
     print(f"  Total Time: {elapsed:.2f}s")
     print(f"  Rate: {len(documents) / elapsed:.1f} docs/sec")
@@ -251,12 +251,12 @@ def demo_evaluation_with_output():
     result = evaluator.compute()
     evaluator.save_metrics(metrics_file)
 
-    print(f"\n💾 Output Files Created:")
+    print("\n💾 Output Files Created:")
     print(f"  Individual Results: {output_file}")
     print(f"  Metrics Summary: {metrics_file}")
 
     # Show sample of individual results
-    print(f"\n📋 Sample Individual Results:")
+    print("\n📋 Sample Individual Results:")
     try:
         with open(output_file, "r", encoding="utf-8") as f:
             for i, line in enumerate(f):
@@ -328,7 +328,7 @@ def demo_performance_comparison():
 
     # Show performance improvement
     speed_improvement = (100 / individual_time) / (len(documents) / bulk_time)
-    print(f"\n⚡ Performance Improvement:")
+    print("\n⚡ Performance Improvement:")
     print(f"  Bulk evaluator is {speed_improvement:.1f}x faster!")
 
 
@@ -352,7 +352,7 @@ def main():
     demo_performance_comparison()
 
     # Summary
-    print(f"\n🎯 SUMMARY")
+    print("\n🎯 SUMMARY")
     print("=" * 50)
     print("✅ Bulk evaluation handles large datasets efficiently")
     print("✅ Batch processing provides memory management")
@@ -360,21 +360,21 @@ def main():
     print("✅ Significantly faster than individual comparisons")
     print("✅ Stateful design allows streaming processing")
 
-    print(f"\n🚀 Key Benefits:")
+    print("\n🚀 Key Benefits:")
     print("  • Memory-efficient: Process datasets larger than RAM")
     print("  • Scalable: Linear performance with dataset size")
     print("  • Flexible: Stream processing or batch processing")
     print("  • Observable: Progress tracking and intermediate metrics")
     print("  • Persistent: Save results and metrics for later analysis")
 
-    print(f"\n📚 Perfect For:")
+    print("\n📚 Perfect For:")
     print("  • Large-scale model evaluation")
     print("  • Production ML pipeline assessment")
     print("  • Batch document processing evaluation")
     print("  • A/B testing of extraction models")
     print("  • Quality monitoring of live systems")
 
-    print(f"\n🗂️  Generated Files:")
+    print("\n🗂️  Generated Files:")
     print(f"  • {output_file} - Individual comparison results")
     print(f"  • {metrics_file} - Aggregated evaluation metrics")
 

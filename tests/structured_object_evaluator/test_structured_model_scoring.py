@@ -6,9 +6,8 @@ expected behavior and is consistent with the design requirements.
 Migrated from test_star_metrics to preserve test coverage.
 """
 
-import pytest
 from pytest import approx
-from typing import Optional, Dict, List, Union, Any
+from typing import Optional, Dict, List, Any
 
 from stickler.structured_object_evaluator import StructuredModel, ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator

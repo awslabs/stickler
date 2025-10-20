@@ -2,7 +2,6 @@
 
 """Simple test for StructuredModel compare_with functionality."""
 
-import pytest
 from typing import Optional
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField

@@ -15,10 +15,9 @@ Level 1: Organization (1 instance)
 Total objects: ~10 (not 64!), testing both single nesting and small lists.
 """
 
-import pytest
 import time
 import signal
-from typing import List, Optional
+from typing import List
 
 from stickler.structured_object_evaluator import (
     StructuredModel,

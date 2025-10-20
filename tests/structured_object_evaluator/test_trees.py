@@ -1,8 +1,6 @@
 """Tests for the tree-based structured object evaluation."""
 
 import unittest
-import pytest
-from typing import Any, Dict, List, Tuple
 
 from stickler.structured_object_evaluator.trees import (
     ANLSTree,

@@ -5,8 +5,7 @@ This module contains the ComparableField class used to define fields in structur
 with comparison configuration parameters.
 """
 
-from typing import Any, Dict, Optional, Callable, List, Type, Union
-from pydantic import Field, field_validator, model_validator
+from typing import Any, Dict, Optional
 from pydantic.fields import FieldInfo
 
 from stickler.comparators.base import BaseComparator

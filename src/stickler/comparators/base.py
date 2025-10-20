@@ -1,7 +1,7 @@
 """Base class for comparators."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Tuple
+from typing import Any, Tuple
 
 
 class BaseComparator(ABC):

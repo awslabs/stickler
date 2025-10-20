@@ -5,7 +5,6 @@ defining StructuredModel classes entirely through JSON configuration.
 """
 
 import pytest
-from typing import List, Optional
 from pydantic import ValidationError
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
