@@ -67,6 +67,8 @@ By submitting this pull request, I confirm that you can use, modify, copy, and r
 - Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
 - Example: `feat: add new data validation algorithm`
 
+Refer to [this guide](https://www.conventionalcommits.org/en/v1.0.0/#examples) for clear commit guidelines <br>
+
 GitHub provides additional document on [forking a repository](https://help.github.com/articles/fork-a-repo/) and
 [creating a pull request](https://help.github.com/articles/creating-a-pull-request/).
 
