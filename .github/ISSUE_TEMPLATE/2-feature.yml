@@ -3,10 +3,6 @@ description: File a feature request
 title: "[FEATURE]: "
 labels: ["enhancement"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Thanks for taking the time to submit a feature request!
   - type: textarea
     id: feature-description
     attributes:
@@ -44,9 +40,14 @@ body:
     attributes:
       label: Additional context
       description: Add any other context or screenshots about the feature request here.
-      placeholder: |
-        Links? References? Screenshots? Anything that will give us more context about the feature request!
-        
-        Tip: You can attach images or files by clicking this area to highlight it and then dragging files in.
     validations:
       required: false
+  - type: checkboxes
+    id: ack
+    attributes:
+      label: Acknowledgements
+      options:
+        - label: I may be able to implement this feature request
+          required: false
+        - label: This feature might incur a breaking change
+          required: false

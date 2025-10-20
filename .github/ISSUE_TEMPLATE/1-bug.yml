@@ -3,58 +3,64 @@ description: File a bug report.
 title: "[BUG]: "
 labels: ["bug", "triage"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Thanks for taking the time to fill out this bug report!
-  - type: input
-    id: contact
-    attributes:
-      label: Contact Details
-      description: How can we get in touch with you if we need more info?
-      placeholder: ex. email@example.com
-    validations:
-      required: false
   - type: textarea
-    id: what-happened
+    id: description
     attributes:
-      label: What happened?
-      description: Also tell us, what did you expect to happen?
-      placeholder: Tell us what you see!
-      value: "A bug happened!"
+      label: Describe the bug.
+      description: What is the problem? A clear and concise description of the bug.
     validations:
-      required: false
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Please copy and paste any relevant log output. This will be automatically formatted into code, so no need for backticks.
+      render: shell
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+      placeholder: A clear and concise description of what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current Behavior
+      description: |
+        What actually happened?
+
+        Please include full errors, uncaught exceptions, stack traces, and relevant logs.
+        If service responses are relevant, please include wire logs. Including any error messages or unexpected outcomes
+    validations:
+      required: true
   - type: textarea
     id: reproduce
     attributes:
       label: How to reproduce?
       description: What steps do we need to take to see the same error?
       placeholder: |
-        1. In this environment...
-        1. With this config...
-        1. Run '...'
-        1. See error...
+        Provide a self-contained, concise snippet of code that can be used to reproduce the issue.
+        For more complex issues provide a repo link with the smallest sample that reproduces the bug.
+
+        Please avoid including business logic or unrelated code.
     validations:
-      required: false
+      required: true
   - type: textarea
     id: fixes
     attributes:
-      label: Potential fixes?
-      description: Are there any fixes you tried or do you have idea where it could be arising from?
-      placeholder: Fix
-      value: "fix"
+      label: Potential fixes
+      description: Suggest a fix for the bug.
     validations:
       required: false
-  - type: dropdown
+  - type: textarea
     id: version
     attributes:
       label: Version
-      description: What version of our software are you running?
-      options:
-        - 0.1.1 (Default)
-      default: 0
+      description: What version of our library are you running?
     validations:
-      required: false
+      required: true
   - type: dropdown
     id: Environment
     attributes:
@@ -65,16 +71,10 @@ body:
         - MacOS
         - Windows
   - type: textarea
-    id: logs
     attributes:
-      label: Relevant log output
-      description: Please copy and paste any relevant log output. This will be automatically formatted into code, so no need for backticks.
-      render: shell
-  - type: textarea
-    attributes:
-      label: Anything else?
+      label: Other information
       description: |
-        Links? References? Anything that will give us more context about the issue you are encountering!
+        Anything that will give us more context about the issue you are encountering. For example, further explanations, stack traces, related issues, associated pull-requests, stackoverflow, etc
 
         Tip: You can attach images or log files by clicking this area to highlight it and then dragging files in.
     validations:
@@ -83,7 +83,7 @@ body:
     id: terms
     attributes:
       label: Code of Conduct
-      description: Please do not include any private data in your issue. Make sure to provide fake names, email addresses, physical addresses, SSN's, DOB's, or other privacy senstiive fields. 
+      description: Please do not include any private data in your issue. Make sure to provide fake names, email addresses, physical addresses, SSN's, DOB's, or other privacy senstiive fields. Please checkbox to agree to the [Code of Conduct](https://github.com/awslabs/stickler/blob/main/CODE_OF_CONDUCT.md).
       options:
         - label: I agree to follow this project's Code of Conduct
           required: false
