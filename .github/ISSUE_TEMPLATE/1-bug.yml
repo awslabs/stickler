@@ -28,9 +28,8 @@ body:
     id: current
     attributes:
       label: Current Behavior
-      description: |
-        What actually happened?
-
+      description: What actually happened?
+      placeholder: |
         Please include full errors, uncaught exceptions, stack traces, and relevant logs.
         If service responses are relevant, please include wire logs. Including any error messages or unexpected outcomes
     validations:
