@@ -323,6 +323,8 @@ class ComparisonEngine:
             fa_count += len(other.__pydantic_extra__)
 
         # Also recursively check nested StructuredModel objects for extra fields
+        from .structured_model import StructuredModel
+        
         for field_name in self.model.__class__.model_fields:
             if field_name == "extra_fields":
                 continue
@@ -331,7 +333,7 @@ class ComparisonEngine:
             pred_val = getattr(other, field_name, None)
 
             # Check nested StructuredModel objects
-            if isinstance(gt_val, type(self.model)) and isinstance(pred_val, type(self.model)):
+            if isinstance(gt_val, StructuredModel) and isinstance(pred_val, StructuredModel):
                 # Create engine for nested model and count its extra fields
                 nested_engine = ComparisonEngine(gt_val)
                 fa_count += nested_engine._count_extra_fields_as_false_alarms(pred_val)
