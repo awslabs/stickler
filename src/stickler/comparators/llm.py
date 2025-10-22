@@ -1,75 +1,106 @@
-"""LLM-based comparator for semantic equivalence."""
+"""LLM comparison comparator."""
 
-from typing import Any
-
+import boto3
+import json
+from typing import Any, Dict, Optional
 from stickler.comparators.base import BaseComparator
-from stickler.utils.time_util import sleep
-
 
 class LLMComparator(BaseComparator):
-    """Comparator that uses LLM to determine semantic equivalence.
-
-    This comparator uses an LLM to determine if two values are semantically
-    equivalent, returning 1.0 if True and 0.0 if False.
-
-    Attributes:
-        prompt: Prompt template to use for comparison
-        model_id: Model ID to use for LLM
-        temp: Temperature for LLM inference
-        system_prompt: System prompt for the LLM
-    """
-
     def __init__(
-        self, prompt: str, model_id: str, temp: float = 0.5, threshold: float = 0.5
+        self,
+        model_id: str = "anthropic.claude-3-haiku-20240307-v1:0",  # or your preferred model
+        region_name: str = "us-east-1",
+        prompt_template: str = None,
+        **kwargs
     ):
-        """Initialize the LLMComparator.
-
-        Args:
-            prompt: Prompt template to use for comparison
-            model_id: Model ID to use for LLM
-            temp: Temperature for LLM inference
-            threshold: Similarity threshold (0.0-1.0)
-        """
-        super().__init__(threshold=threshold)
-        self.prompt = prompt
-        self.temp = temp
+        super().__init__(**kwargs)
         self.model_id = model_id
-        self.system_prompt = "You are an evaluation assistant. Carefully decide if the two values are same or not. Respond only with 'TRUE' or 'FALSE', nothing else."
+        self.prompt_template = prompt_template or self._default_prompt_template()
+        
+        # Initialize Bedrock client
+        session = boto3.Session()
+        self.bedrock_client = session.client('bedrock-runtime')
+    
+    def _default_prompt_template(self) -> str:
+        return """Compare these two values and determine if they are equivalent:
 
-    def compare(self, str1: Any, str2: Any) -> float:
-        """Compare two values using LLM.
+Value 1: {value1}
+Value 2: {value2}
 
-        Args:
-            str1: First value
-            str2: Second value
-
-        Returns:
-            1.0 if LLM determines values are equivalent, 0.0 otherwise
-        """
-        if str1 is None or str2 is None:
-            return 0.0
-        raise Exception("This implementation is not working yet!")
-        ci = ClaudeInvoker(
-            self.prompt,
-            self.model_id,
-            system_prompt=self.system_prompt,
-            temperature=self.temp,
+Return only 'true' if they are equivalent, 'false' if they are not. Only return one word: 'true' or 'false'."""
+    
+    def _invoke_bedrock_model(self, prompt: str) -> str:
+        # Format request based on model type
+        if "anthropic" in self.model_id.lower():
+            body = {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 100,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
+            }
+        
+        response = self.bedrock_client.invoke_model(
+            modelId=self.model_id,
+            body=json.dumps(body),
+            contentType='application/json'
         )
-
-        kwargs = {"value1": str1, "value2": str2}
-
-        try:
-            response = ci.inference(kwargs)
-        except Exception as e:
-            print(f"LLM error: {str(e)}")
-            sleep(2)
-            response = ci.inference(kwargs)
-
-        result = response == "TRUE"
-        if result:
-            print(
-                "WARNING: LLM evaluation returned True. Please refine the prompt or review the result."
-            )
+        
+        response_body = json.loads(response['body'].read())
+        
+        # Extract text based on model response format
+        if "anthropic" in self.model_id.lower():
+            return response_body['content'][0]['text']
+        
+        return response_body.get('completion', '')
+    
+    def compare(self, value1: Any, value2: Any) -> bool:
+        # Handle None values
+        if value1 is None and value2 is None:
             return 1.0
-        else:
+        elif value1 is None or value2 is None:
             return 0.0
+
+        # Format the prompt with your values
+        formatted_prompt = self.prompt_template.format(
+            value1=str(value1),
+            value2=str(value2)
+        )
+        
+        try:
+            # Get LLM response
+            response = self._invoke_bedrock_model(formatted_prompt)
+            # Parse response to boolean
+            response_lower = response.strip().lower()
+            if 'true' in response_lower:
+                return 1.0
+            else:
+                return 0.0
+            
+        except Exception as e:
+            # Handle errors appropriately
+            print(f"Error in Bedrock comparison: {e}")
+            return 0.0
+    
+    def get_comparison_details(self, value1: Any, value2: Any) -> Dict[str, Any]:
+        formatted_prompt = self.prompt_template.format(
+            value1=str(value1),
+            value2=str(value2)
+        )
+        
+        try:
+            response = self._invoke_bedrock_model(formatted_prompt)
+            return {
+                "prompt": formatted_prompt,
+                "llm_response": response,
+                "model_id": self.model_id,
+                "comparison_result": self.compare(value1, value2)
+            }
+        except Exception as e:
+            return {
+                "error": str(e),
+                "comparison_result": False
+            }
