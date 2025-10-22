@@ -20,9 +20,8 @@ import inspect
 from stickler.comparators.base import BaseComparator
 
 from .comparable_field import ComparableField
-from .non_match_field import NonMatchField, NonMatchType
+from .non_match_field import NonMatchField
 from .hungarian_helper import HungarianHelper
-from .non_matches_helper import NonMatchesHelper
 from .metrics_helper import MetricsHelper
 from .field_helper import FieldHelper
 from .configuration_helper import ConfigurationHelper
@@ -223,77 +222,10 @@ class StructuredModel(BaseModel):
             >>> result["overall_score"]
             1.0
         """
-        from pydantic import create_model
-        from .field_converter import convert_fields_config, validate_fields_config
-
-        # Validate configuration structure
-        if not isinstance(config, dict):
-            raise ValueError("Configuration must be a dictionary")
-
-        if "fields" not in config:
-            raise ValueError("Configuration must contain 'fields' key")
-
-        fields_config = config["fields"]
-        if not isinstance(fields_config, dict) or len(fields_config) == 0:
-            raise ValueError("'fields' must be a non-empty dictionary")
-
-        # Validate all field configurations before proceeding (including nested schema validation)
-        try:
-            from .field_converter import get_global_converter
-
-            converter = get_global_converter()
-
-            # First validate basic field configurations
-            validate_fields_config(fields_config)
-
-            # Then validate nested schema rules
-            for field_name, field_config in fields_config.items():
-                converter.validate_nested_field_schema(field_name, field_config)
-
-        except ValueError as e:
-            raise ValueError(f"Invalid field configuration: {e}")
-
-        # Extract model configuration
-        model_name = config.get("model_name", "DynamicModel")
-        match_threshold = config.get("match_threshold", 0.7)
-
-        # Validate model name
-        if not isinstance(model_name, str) or not model_name.isidentifier():
-            raise ValueError(
-                f"model_name must be a valid Python identifier, got: {model_name}"
-            )
-
-        # Validate match threshold
-        if not isinstance(match_threshold, (int, float)) or not (
-            0.0 <= match_threshold <= 1.0
-        ):
-            raise ValueError(
-                f"match_threshold must be a number between 0.0 and 1.0, got: {match_threshold}"
-            )
-
-        # Convert field configurations to Pydantic field definitions
-        try:
-            field_definitions = convert_fields_config(fields_config)
-        except ValueError as e:
-            raise ValueError(f"Error converting field configurations: {e}")
-
-        # Create the dynamic model extending StructuredModel
-        try:
-            DynamicClass = create_model(
-                model_name,
-                __base__=cls,  # Extend StructuredModel
-                **field_definitions,
-            )
-        except Exception as e:
-            raise ValueError(f"Error creating dynamic model: {e}")
-
-        # Set class-level attributes
-        DynamicClass.match_threshold = match_threshold
-
-        # Add configuration metadata for debugging/introspection
-        DynamicClass._model_config = config
-
-        return DynamicClass
+        # Delegate to ModelFactory for dynamic model creation
+        from .model_factory import ModelFactory
+        
+        return ModelFactory.create_model_from_json(config, base_class=cls)
 
     @classmethod
     def _is_structured_field_type(cls, field_info) -> bool:
@@ -1509,6 +1441,8 @@ class StructuredModel(BaseModel):
         self, field_name: str, other_value: Any, threshold: float = None
     ) -> Dict[str, Any]:
         """Classify a field comparison according to the confusion matrix rules.
+        
+        This method delegates to ConfusionMatrixCalculator for the actual implementation.
 
         Args:
             field_name: Name of the field being compared
@@ -1518,63 +1452,16 @@ class StructuredModel(BaseModel):
         Returns:
             Dictionary with TP, FP, TN, FN, FD counts and derived metrics
         """
-        # Get field values
-        gt_value = getattr(self, field_name)
-        pred_value = other_value
-
-        # Get field configuration
-        info = self.__class__._get_comparison_info(field_name)
-        if threshold is None:
-            threshold = info.threshold
-        comparator = info.comparator
-
-        # Determine if values are null
-        gt_is_null = FieldHelper.is_null_value(gt_value)
-        pred_is_null = FieldHelper.is_null_value(pred_value)
-
-        # Calculate similarity if both aren't null
-        similarity = None
-        if not gt_is_null and not pred_is_null:
-            if isinstance(gt_value, StructuredModel) and isinstance(
-                pred_value, StructuredModel
-            ):
-                comparison = gt_value.compare_with(pred_value)
-                similarity = comparison["overall_score"]
-            else:
-                # Use the field's configured comparator for primitive comparison
-                similarity = comparator.compare(gt_value, pred_value)
-            values_match = similarity >= threshold
-        else:
-            values_match = False
-
-        # Apply confusion matrix classification
-        if gt_is_null and pred_is_null:
-            # TN: Both null
-            result = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0}
-        elif gt_is_null and not pred_is_null:
-            # FA: GT null, prediction non-null (False Alarm)
-            result = {"tp": 0, "fa": 1, "fd": 0, "fp": 1, "tn": 0, "fn": 0}
-        elif not gt_is_null and pred_is_null:
-            # FN: GT non-null, prediction null
-            result = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 1}
-        elif values_match:
-            # TP: Both non-null and match
-            result = {"tp": 1, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
-        else:
-            # FD: Both non-null but don't match (False Discovery)
-            result = {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0}
-
-        # Add derived metrics
-        metrics_helper = MetricsHelper()
-        result["derived"] = metrics_helper.calculate_derived_metrics(result)
-        # Don't include similarity_score in the result as tests don't expect it
-
-        return result
+        from .confusion_matrix_calculator import ConfusionMatrixCalculator
+        calculator = ConfusionMatrixCalculator(self)
+        return calculator.classify_field_for_confusion_matrix(field_name, other_value, threshold)
 
     def _calculate_list_confusion_matrix(
         self, field_name: str, other_list: List[Any]
     ) -> Dict[str, Any]:
         """Calculate confusion matrix for a list field, including nested field metrics.
+        
+        This method delegates to ConfusionMatrixCalculator for the actual implementation.
 
         Args:
             field_name: Name of the list field being compared
@@ -1586,120 +1473,9 @@ class StructuredModel(BaseModel):
             - nested_fields: Dict with metrics for individual fields within list items (e.g., "transactions.date")
             - non_matches: List of individual object-level non-matches for detailed analysis
         """
-        gt_list = getattr(self, field_name)
-        pred_list = other_list
-
-        # Initialize result structure
-        result = {
-            "tp": 0,
-            "fa": 0,
-            "fd": 0,
-            "fp": 0,
-            "tn": 0,
-            "fn": 0,
-            "nested_fields": {},  # Store nested field metrics here
-            "non_matches": [],  # Store individual object-level non-matches here
-        }
-
-        # Handle null cases first
-        if FieldHelper.is_null_value(gt_list) and FieldHelper.is_null_value(pred_list):
-            result.update({"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0})
-        elif FieldHelper.is_null_value(gt_list):
-            result.update(
-                {
-                    "tp": 0,
-                    "fa": len(pred_list),
-                    "fd": 0,
-                    "fp": len(pred_list),
-                    "tn": 0,
-                    "fn": 0,
-                }
-            )
-            # Add non-matches for each FA item using NonMatchesHelper
-            non_matches_helper = NonMatchesHelper()
-            result["non_matches"] = non_matches_helper.add_non_matches_for_null_cases(
-                field_name, gt_list, pred_list
-            )
-        elif FieldHelper.is_null_value(pred_list):
-            result.update(
-                {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": len(gt_list)}
-            )
-            # Add non-matches for each FN item using NonMatchesHelper
-            non_matches_helper = NonMatchesHelper()
-            result["non_matches"] = non_matches_helper.add_non_matches_for_null_cases(
-                field_name, gt_list, pred_list
-            )
-        else:
-            # Use existing comparison logic for list-level metrics
-            info = self.__class__._get_comparison_info(field_name)
-            comparator = info.comparator
-            threshold = info.threshold
-
-            # Reuse existing Hungarian matching logic
-            match_result = self._compare_unordered_lists(
-                gt_list, pred_list, comparator, threshold
-            )
-
-            # Use the detailed confusion matrix results directly from Hungarian matcher
-            result.update(
-                {
-                    "tp": match_result["tp"],
-                    "fa": match_result[
-                        "fa"
-                    ],  # False alarms (unmatched prediction items)
-                    "fd": match_result[
-                        "fd"
-                    ],  # False discoveries (matches below threshold)
-                    "fp": match_result["fp"],  # Total false positives (fa + fd)
-                    "tn": 0,
-                    "fn": match_result["fn"],  # False negatives (unmatched GT items)
-                }
-            )
-
-            # Collect individual object-level non-matches using NonMatchesHelper
-            if gt_list and isinstance(gt_list[0], StructuredModel):
-                non_matches_helper = NonMatchesHelper()
-                non_matches = non_matches_helper.collect_list_non_matches(
-                    field_name, gt_list, pred_list
-                )
-                result["non_matches"] = non_matches
-
-            # If list contains StructuredModel objects, calculate nested field metrics
-            if gt_list and isinstance(gt_list[0], StructuredModel):
-                nested_metrics = self._calculate_nested_field_metrics(
-                    field_name, gt_list, pred_list, threshold
-                )
-                result["nested_fields"] = nested_metrics
-
-        # For List[StructuredModel], we should NOT aggregate nested fields to list level
-        # List level metrics represent object-level matches from Hungarian algorithm
-        # Nested field metrics represent field-level matches within those objects
-        # They are separate concerns and should not be aggregated
-
-        # Only aggregate if this is explicitly marked as an aggregate field AND it's not a list
-        is_aggregate = self.__class__._is_aggregate_field(field_name)
-        if is_aggregate and not isinstance(gt_list, list):
-            # Initialize top-level confusion matrix values to 0
-            result["tp"] = 0
-            result["fa"] = 0
-            result["fd"] = 0
-            result["fp"] = 0
-            result["tn"] = 0
-            result["fn"] = 0
-            # Sum up the confusion matrix values from nested fields
-            for field, field_metrics in result["nested_fields"].items():
-                result["tp"] += field_metrics["tp"]
-                result["fa"] += field_metrics["fa"]
-                result["fd"] += field_metrics["fd"]
-                result["fp"] += field_metrics["fp"]
-                result["tn"] += field_metrics["tn"]
-                result["fn"] += field_metrics["fn"]
-
-        # Add derived metrics
-        metrics_helper = MetricsHelper()
-        result["derived"] = metrics_helper.calculate_derived_metrics(result)
-
-        return result
+        from .confusion_matrix_calculator import ConfusionMatrixCalculator
+        calculator = ConfusionMatrixCalculator(self)
+        return calculator.calculate_list_confusion_matrix(field_name, other_list)
 
     def _calculate_nested_field_metrics(
         self,
@@ -1709,6 +1485,8 @@ class StructuredModel(BaseModel):
         threshold: float,
     ) -> Dict[str, Dict[str, Any]]:
         """Calculate confusion matrix metrics for individual fields within list items.
+        
+        This method delegates to ConfusionMatrixCalculator for the actual implementation.
 
         THRESHOLD-GATED RECURSION: Only perform recursive field analysis for object pairs
         with similarity >= StructuredModel.match_threshold. Poor matches and unmatched
@@ -1724,286 +1502,9 @@ class StructuredModel(BaseModel):
             Dictionary mapping nested field paths to their confusion matrix metrics
             E.g., {"transactions.date": {...}, "transactions.description": {...}}
         """
-        nested_metrics = {}
-
-        if not gt_list or not isinstance(gt_list[0], StructuredModel):
-            return nested_metrics
-
-        # Get the model class from the first item
-        model_class = gt_list[0].__class__
-
-        # CRITICAL FIX: Use field's threshold, not class's match_threshold
-        # Get the field info from the parent object to use the correct threshold
-        parent_field_info = self.__class__._get_comparison_info(list_field_name)
-        match_threshold = parent_field_info.threshold
-
-        # For each field in the nested model
-        for field_name in model_class.model_fields:
-            if field_name == "extra_fields":
-                continue
-
-            nested_field_path = f"{list_field_name}.{field_name}"
-
-            # Initialize aggregated counts for this nested field
-            total_tp = total_fa = total_fd = total_fp = total_tn = total_fn = 0
-
-            # Use HungarianHelper for Hungarian matching operations - OPTIMIZED: Single call gets all info
-            hungarian_helper = HungarianHelper()
-
-            # Use HungarianHelper to get optimal assignments with similarity scores
-            assignments = []
-            matched_pairs_with_scores = []
-            if gt_list and pred_list:
-                hungarian_info = hungarian_helper.get_complete_matching_info(
-                    gt_list, pred_list
-                )
-                matched_pairs_with_scores = hungarian_info["matched_pairs"]
-                # Extract (gt_idx, pred_idx) pairs from the matched_pairs
-                assignments = [(i, j) for i, j, score in matched_pairs_with_scores]
-
-            # THRESHOLD-GATED RECURSION: Only process pairs that meet the match_threshold
-            for gt_idx, pred_idx, similarity_score in matched_pairs_with_scores:
-                if gt_idx < len(gt_list) and pred_idx < len(pred_list):
-                    gt_item = gt_list[gt_idx]
-                    pred_item = pred_list[pred_idx]
-
-                    # Handle floating point precision issues
-                    is_above_threshold = (
-                        similarity_score >= match_threshold
-                        or abs(similarity_score - match_threshold) < 1e-10
-                    )
-
-                    # Only perform recursive field analysis if similarity meets threshold
-                    if is_above_threshold:
-                        # Get field values
-                        gt_value = getattr(gt_item, field_name, None)
-                        pred_value = getattr(pred_item, field_name, None)
-
-                        # Check if this field is a List[StructuredModel] that needs recursive processing
-                        if (
-                            isinstance(gt_value, list)
-                            and isinstance(pred_value, list)
-                            and gt_value
-                            and isinstance(gt_value[0], StructuredModel)
-                        ):
-                            # Handle List[StructuredModel] recursively
-                            list_classification = (
-                                gt_item._calculate_list_confusion_matrix(
-                                    field_name, pred_value
-                                )
-                            )
-
-                            # Aggregate the list-level counts
-                            total_tp += list_classification["tp"]
-                            total_fa += list_classification["fa"]
-                            total_fd += list_classification["fd"]
-                            total_fp += list_classification["fp"]
-                            total_tn += list_classification["tn"]
-                            total_fn += list_classification["fn"]
-
-                            # IMPORTANT: Also collect the deeper nested field metrics
-                            if "nested_fields" in list_classification:
-                                for (
-                                    deeper_field_path,
-                                    deeper_metrics,
-                                ) in list_classification["nested_fields"].items():
-                                    # Create the full path: e.g., "products.attributes.name"
-                                    full_deeper_path = (
-                                        f"{list_field_name}.{deeper_field_path}"
-                                    )
-
-                                    # Initialize or aggregate into the deeper nested metrics
-                                    if full_deeper_path not in nested_metrics:
-                                        nested_metrics[full_deeper_path] = {
-                                            "tp": 0,
-                                            "fa": 0,
-                                            "fd": 0,
-                                            "fp": 0,
-                                            "tn": 0,
-                                            "fn": 0,
-                                        }
-
-                                    nested_metrics[full_deeper_path]["tp"] += (
-                                        deeper_metrics["tp"]
-                                    )
-                                    nested_metrics[full_deeper_path]["fa"] += (
-                                        deeper_metrics["fa"]
-                                    )
-                                    nested_metrics[full_deeper_path]["fd"] += (
-                                        deeper_metrics["fd"]
-                                    )
-                                    nested_metrics[full_deeper_path]["fp"] += (
-                                        deeper_metrics["fp"]
-                                    )
-                                    nested_metrics[full_deeper_path]["tn"] += (
-                                        deeper_metrics["tn"]
-                                    )
-                                    nested_metrics[full_deeper_path]["fn"] += (
-                                        deeper_metrics["fn"]
-                                    )
-                        else:
-                            # Handle primitive fields or single StructuredModel fields
-                            field_classification = (
-                                gt_item._classify_field_for_confusion_matrix(
-                                    field_name,
-                                    pred_value,
-                                    None,  # Use field's own threshold
-                                )
-                            )
-
-                            # Aggregate counts
-                            total_tp += field_classification["tp"]
-                            total_fa += field_classification["fa"]
-                            total_fd += field_classification["fd"]
-                            total_fp += field_classification["fp"]
-                            total_tn += field_classification["tn"]
-                            total_fn += field_classification["fn"]
-                    else:
-                        # Skip recursive analysis for pairs below threshold
-                        # These will be handled as FD at the object level
-                        pass
-
-            # Handle unmatched ground truth items (false negatives)
-            matched_gt_indices = set(idx for idx, _ in assignments)
-            for gt_idx, gt_item in enumerate(gt_list):
-                if gt_idx not in matched_gt_indices:
-                    gt_value = getattr(gt_item, field_name, None)
-                    if not FieldHelper.is_null_value(gt_value):
-                        # Check if this is a List[StructuredModel] that needs deeper processing for FN
-                        if (
-                            isinstance(gt_value, list)
-                            and gt_value
-                            and isinstance(gt_value[0], StructuredModel)
-                        ):
-                            # For List[StructuredModel], count each item in the list as a separate FN
-                            # and handle deeper nested fields
-                            total_fn += len(gt_value)  # Each list item is a separate FN
-
-                            # Also handle deeper nested fields for unmatched items
-                            dummy_empty_list = []  # Empty list for comparison
-                            list_classification = (
-                                gt_item._calculate_list_confusion_matrix(
-                                    field_name, dummy_empty_list
-                                )
-                            )
-                            if "nested_fields" in list_classification:
-                                for (
-                                    deeper_field_path,
-                                    deeper_metrics,
-                                ) in list_classification["nested_fields"].items():
-                                    full_deeper_path = (
-                                        f"{list_field_name}.{deeper_field_path}"
-                                    )
-                                    if full_deeper_path not in nested_metrics:
-                                        nested_metrics[full_deeper_path] = {
-                                            "tp": 0,
-                                            "fa": 0,
-                                            "fd": 0,
-                                            "fp": 0,
-                                            "tn": 0,
-                                            "fn": 0,
-                                        }
-                                    nested_metrics[full_deeper_path]["fn"] += (
-                                        deeper_metrics["fn"]
-                                    )
-                        else:
-                            # Handle primitive fields or single StructuredModel fields
-                            total_fn += 1
-
-            # Handle unmatched prediction items (false alarms)
-            matched_pred_indices = set(idx for _, idx in assignments)
-            for pred_idx, pred_item in enumerate(pred_list):
-                if pred_idx not in matched_pred_indices:
-                    pred_value = getattr(pred_item, field_name, None)
-                    if not FieldHelper.is_null_value(pred_value):
-                        # Check if this is a List[StructuredModel] that needs deeper processing for FA
-                        if (
-                            isinstance(pred_value, list)
-                            and pred_value
-                            and isinstance(pred_value[0], StructuredModel)
-                        ):
-                            # For List[StructuredModel], count each item in the list as a separate FA
-                            # and handle deeper nested fields
-                            total_fa += len(
-                                pred_value
-                            )  # Each list item is a separate FA
-                            total_fp += len(
-                                pred_value
-                            )  # Each list item is also a separate FP
-
-                            # Also handle deeper nested fields for unmatched items
-                            dummy_empty_list = []  # Empty list for comparison
-                            # We need to create a dummy GT item for comparison to get the structure
-                            if gt_list:  # Use structure from an existing GT item
-                                dummy_gt_item = gt_list[0]
-                                list_classification = (
-                                    dummy_gt_item._calculate_list_confusion_matrix(
-                                        field_name, pred_value
-                                    )
-                                )
-                                if "nested_fields" in list_classification:
-                                    for (
-                                        deeper_field_path,
-                                        deeper_metrics,
-                                    ) in list_classification["nested_fields"].items():
-                                        full_deeper_path = (
-                                            f"{list_field_name}.{deeper_field_path}"
-                                        )
-                                        if full_deeper_path not in nested_metrics:
-                                            nested_metrics[full_deeper_path] = {
-                                                "tp": 0,
-                                                "fa": 0,
-                                                "fd": 0,
-                                                "fp": 0,
-                                                "tn": 0,
-                                                "fn": 0,
-                                            }
-                                        nested_metrics[full_deeper_path]["fa"] += (
-                                            deeper_metrics["fa"]
-                                        )
-                                        nested_metrics[full_deeper_path]["fp"] += (
-                                            deeper_metrics["fp"]
-                                        )
-                        else:
-                            # Handle primitive fields or single StructuredModel fields
-                            total_fa += 1
-                            total_fp += 1
-
-            # Store the aggregated metrics for this nested field
-            nested_metrics[nested_field_path] = {
-                "tp": total_tp,
-                "fa": total_fa,
-                "fd": total_fd,
-                "fp": total_fp,
-                "tn": total_tn,
-                "fn": total_fn,
-                "derived": MetricsHelper().calculate_derived_metrics(
-                    {
-                        "tp": total_tp,
-                        "fa": total_fa,
-                        "fd": total_fd,
-                        "fp": total_fp,
-                        "tn": total_tn,
-                        "fn": total_fn,
-                    }
-                ),
-            }
-
-        # Add derived metrics for all deeper nested fields that were collected
-        for deeper_path, deeper_metrics in nested_metrics.items():
-            if deeper_path != nested_field_path and "derived" not in deeper_metrics:
-                deeper_metrics["derived"] = MetricsHelper().calculate_derived_metrics(
-                    {
-                        "tp": deeper_metrics["tp"],
-                        "fa": deeper_metrics["fa"],
-                        "fd": deeper_metrics["fd"],
-                        "fp": deeper_metrics["fp"],
-                        "tn": deeper_metrics["tn"],
-                        "fn": deeper_metrics["fn"],
-                    }
-                )
-
-        return nested_metrics
+        from .confusion_matrix_calculator import ConfusionMatrixCalculator
+        calculator = ConfusionMatrixCalculator(self)
+        return calculator.calculate_nested_field_metrics(list_field_name, gt_list, pred_list, threshold)
 
     def _calculate_single_nested_field_metrics(
         self,
@@ -2013,6 +1514,8 @@ class StructuredModel(BaseModel):
         parent_is_aggregate: bool = False,
     ) -> Dict[str, Dict[str, Any]]:
         """Calculate confusion matrix metrics for fields within a single nested StructuredModel.
+        
+        This method delegates to ConfusionMatrixCalculator for the actual implementation.
 
         Args:
             parent_field_name: Name of the parent field (e.g., "address")
@@ -2024,135 +1527,18 @@ class StructuredModel(BaseModel):
             Dictionary mapping nested field paths to their confusion matrix metrics
             E.g., {"address.street": {...}, "address.city": {...}}
         """
-        nested_metrics = {}
-
-        if not isinstance(gt_nested, StructuredModel) or not isinstance(
-            pred_nested, StructuredModel
-        ):
-            # Handle case where one of the fields is a list of StructuredModel objects
-            if (
-                not isinstance(gt_nested, list)
-                or not gt_nested
-                or not isinstance(gt_nested[0], StructuredModel)
-            ):
-                return nested_metrics
-            return nested_metrics
-
-        # Initialize aggregation metrics for parent field if it's an aggregated field
-        parent_metrics = (
-            {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
-            if parent_is_aggregate
-            else None
+        from .confusion_matrix_calculator import ConfusionMatrixCalculator
+        calculator = ConfusionMatrixCalculator(self)
+        return calculator.calculate_single_nested_field_metrics(
+            parent_field_name, gt_nested, pred_nested, parent_is_aggregate
         )
-
-        # Track which fields are aggregate fields themselves to avoid double counting
-        child_aggregate_fields = set()
-
-        # For each field in the nested model
-        for field_name in gt_nested.__class__.model_fields:
-            if field_name == "extra_fields":
-                continue
-
-            nested_field_path = f"{parent_field_name}.{field_name}"
-
-            # Check if this nested field is itself an aggregate field
-            is_child_aggregate = False
-            if hasattr(gt_nested.__class__, "_is_aggregate_field"):
-                is_child_aggregate = gt_nested.__class__._is_aggregate_field(field_name)
-                if is_child_aggregate:
-                    child_aggregate_fields.add(field_name)
-
-            # Get the field value from the prediction
-            pred_value = getattr(pred_nested, field_name, None)
-            gt_value = getattr(gt_nested, field_name)
-
-            # Handle lists of StructuredModel objects
-            if (
-                isinstance(gt_value, list)
-                and isinstance(pred_value, list)
-                and gt_value
-                and isinstance(gt_value[0], StructuredModel)
-            ):
-                # Use the list comparison logic for lists of StructuredModel objects
-                list_metrics = gt_nested._calculate_list_confusion_matrix(
-                    field_name, pred_value
-                )
-
-                # Store the metrics for this nested field
-                nested_metrics[nested_field_path] = {
-                    key: value
-                    for key, value in list_metrics.items()
-                    if key != "nested_fields"
-                }
-
-                # Add nested field metrics if available
-                if "nested_fields" in list_metrics:
-                    for sub_field, sub_metrics in list_metrics["nested_fields"].items():
-                        full_path = f"{nested_field_path}.{sub_field.split('.')[-1]}"
-                        nested_metrics[full_path] = sub_metrics
-            else:
-                # Classify this field comparison
-                field_classification = gt_nested._classify_field_for_confusion_matrix(
-                    field_name, pred_value
-                )
-
-                # Store the metrics for this nested field
-                nested_metrics[nested_field_path] = field_classification
-
-                # Recursively calculate metrics for deeper nesting
-                deeper_metrics = self._calculate_single_nested_field_metrics(
-                    nested_field_path, gt_value, pred_value, is_child_aggregate
-                )
-                nested_metrics.update(deeper_metrics)
-
-                # If this is an aggregate child field, we need to use its aggregated metrics
-                # instead of the direct field comparison metrics
-                if is_child_aggregate and nested_field_path in deeper_metrics:
-                    # For an aggregate child field, we replace its direct metrics with
-                    # the aggregation of its children's metrics
-                    nested_metrics[nested_field_path] = deeper_metrics[
-                        nested_field_path
-                    ]
-
-            # For parent aggregation, we need to be careful not to double count metrics
-            if parent_is_aggregate:
-                if is_child_aggregate:
-                    # If child is an aggregate, use its aggregated metrics for parent
-                    if nested_field_path in deeper_metrics:
-                        child_agg_metrics = deeper_metrics[nested_field_path]
-                        for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-                            parent_metrics[metric] += child_agg_metrics.get(metric, 0)
-                else:
-                    # If child is not an aggregate, use its direct field metrics
-                    field_metrics = nested_metrics[nested_field_path]
-                    for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-                        parent_metrics[metric] += field_metrics.get(metric, 0)
-
-        # If parent is an aggregated field, add the aggregated metrics to the result
-        if parent_is_aggregate:
-            # Don't include metrics from child aggregate fields in the parent's metrics
-            # as they've already been counted through their own aggregation
-            for field_name in child_aggregate_fields:
-                nested_field_path = f"{parent_field_name}.{field_name}"
-                if nested_field_path in nested_metrics:
-                    # Don't double count these metrics in the parent
-                    field_metrics = nested_metrics[nested_field_path]
-                    # Subtract these metrics from parent_metrics to avoid double counting
-                    for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-                        parent_metrics[metric] -= field_metrics.get(metric, 0)
-
-            nested_metrics[parent_field_name] = parent_metrics
-            # Add derived metrics
-            nested_metrics[parent_field_name]["derived"] = (
-                MetricsHelper().calculate_derived_metrics(parent_metrics)
-            )
-
-        return nested_metrics
 
     def _collect_enhanced_non_matches(
         self, recursive_result: dict, other: "StructuredModel"
     ) -> List[Dict[str, Any]]:
         """Collect enhanced non-matches with object-level granularity.
+        
+        This method delegates to NonMatchCollector for the actual implementation.
 
         Args:
             recursive_result: Result from compare_recursive containing field comparison details
@@ -2161,124 +1547,16 @@ class StructuredModel(BaseModel):
         Returns:
             List of non-match dictionaries with enhanced object-level information
         """
-        all_non_matches = []
-
-        # Walk through the recursive result and collect non-matches
-        for field_name, field_result in recursive_result.get("fields", {}).items():
-            gt_val = getattr(self, field_name)
-            pred_val = getattr(other, field_name, None)
-
-            # Check if this is a list field that should use object-level collection
-            if (
-                isinstance(gt_val, list)
-                and isinstance(pred_val, list)
-                and gt_val
-                and isinstance(gt_val[0], StructuredModel)
-            ):
-                # Use NonMatchesHelper for object-level collection
-                helper = NonMatchesHelper()
-                object_non_matches = helper.collect_list_non_matches(
-                    field_name, gt_val, pred_val
-                )
-                all_non_matches.extend(object_non_matches)
-
-            # Handle null list cases
-            elif (
-                (gt_val is None or (isinstance(gt_val, list) and len(gt_val) == 0))
-                and isinstance(pred_val, list)
-                and len(pred_val) > 0
-            ):
-                # GT empty, pred has items → use helper for FA entries
-                helper = NonMatchesHelper()
-                null_non_matches = helper.add_non_matches_for_null_cases(
-                    field_name, gt_val, pred_val
-                )
-                all_non_matches.extend(null_non_matches)
-
-            elif (
-                isinstance(gt_val, list)
-                and len(gt_val) > 0
-                and (
-                    pred_val is None
-                    or (isinstance(pred_val, list) and len(pred_val) == 0)
-                )
-            ):
-                # GT has items, pred empty → use helper for FN entries
-                helper = NonMatchesHelper()
-                null_non_matches = helper.add_non_matches_for_null_cases(
-                    field_name, gt_val, pred_val
-                )
-                all_non_matches.extend(null_non_matches)
-
-            else:
-                # Use existing field-level logic for non-list fields
-                # Extract metrics from field result to determine non-match type
-                if isinstance(field_result, dict) and "overall" in field_result:
-                    metrics = field_result["overall"]
-                elif isinstance(field_result, dict):
-                    metrics = field_result
-                else:
-                    continue  # Skip if we can't extract metrics
-
-                # Create field-level non-match entries based on metrics (legacy format for backward compatibility)
-                if metrics.get("fa", 0) > 0:  # False Alarm
-                    entry = {
-                        "field_path": field_name,
-                        "non_match_type": NonMatchType.FALSE_ALARM,  # Use enum value
-                        "ground_truth_value": gt_val,
-                        "prediction_value": pred_val,
-                        "details": {"reason": "unmatched prediction"},
-                    }
-                    all_non_matches.append(entry)
-                elif metrics.get("fn", 0) > 0:  # False Negative
-                    entry = {
-                        "field_path": field_name,
-                        "non_match_type": NonMatchType.FALSE_NEGATIVE,  # Use enum value
-                        "ground_truth_value": gt_val,
-                        "prediction_value": pred_val,
-                        "details": {"reason": "unmatched ground truth"},
-                    }
-                    all_non_matches.append(entry)
-                elif metrics.get("fd", 0) > 0:  # False Discovery
-                    similarity = field_result.get("raw_similarity_score")
-                    entry = {
-                        "field_path": field_name,
-                        "non_match_type": NonMatchType.FALSE_DISCOVERY,  # Use enum value
-                        "ground_truth_value": gt_val,
-                        "prediction_value": pred_val,
-                        "similarity_score": similarity,
-                        "details": {"reason": "below threshold"},
-                    }
-                    if similarity is not None:
-                        info = self._get_comparison_info(field_name)
-                        entry["details"]["reason"] = (
-                            f"below threshold ({similarity:.3f} < {info.threshold})"
-                        )
-                    all_non_matches.append(entry)
-
-                # ADDITIONAL: Handle nested StructuredModel objects for detailed non-match collection
-                if (
-                    isinstance(gt_val, StructuredModel)
-                    and isinstance(pred_val, StructuredModel)
-                    and "fields" in field_result
-                ):
-                    # Recursively collect non-matches from nested objects
-                    nested_non_matches = gt_val._collect_enhanced_non_matches(
-                        field_result, pred_val
-                    )
-                    # Prefix nested field paths with the parent field name
-                    for nested_nm in nested_non_matches:
-                        nested_nm["field_path"] = (
-                            f"{field_name}.{nested_nm['field_path']}"
-                        )
-                        all_non_matches.append(nested_nm)
-
-        return all_non_matches
+        from .non_match_collector import NonMatchCollector
+        collector = NonMatchCollector(self)
+        return collector.collect_enhanced_non_matches(recursive_result, other)
 
     def _collect_non_matches(
         self, other: "StructuredModel", base_path: str = ""
     ) -> List[NonMatchField]:
         """Collect non-matches for detailed analysis.
+        
+        This method delegates to NonMatchCollector for the actual implementation.
 
         Args:
             other: Other model to compare with
@@ -2287,80 +1565,9 @@ class StructuredModel(BaseModel):
         Returns:
             List of NonMatchField objects documenting non-matches
         """
-        non_matches = []
-
-        # Handle null cases
-        if other is None:
-            non_matches.append(
-                NonMatchField(
-                    field_path=base_path or "root",
-                    non_match_type=NonMatchType.FALSE_NEGATIVE,
-                    ground_truth_value=self,
-                    prediction_value=None,
-                )
-            )
-            return non_matches
-
-        # Compare each field
-        for field_name in self.__class__.model_fields:
-            if field_name == "extra_fields":
-                continue
-
-            field_path = f"{base_path}.{field_name}" if base_path else field_name
-            gt_value = getattr(self, field_name)
-            pred_value = getattr(other, field_name, None)
-
-            # Use existing field classification logic
-            if isinstance(pred_value, list):
-                classification = self._calculate_list_confusion_matrix(
-                    field_name, pred_value
-                )
-            else:
-                classification = self._classify_field_for_confusion_matrix(
-                    field_name, pred_value
-                )
-
-            # Document non-matches based on classification
-            if classification["fa"] > 0:  # False Alarm
-                non_matches.append(
-                    NonMatchField(
-                        field_path=field_path,
-                        non_match_type=NonMatchType.FALSE_ALARM,
-                        ground_truth_value=gt_value,
-                        prediction_value=pred_value,
-                        similarity_score=classification.get("similarity_score"),
-                    )
-                )
-            elif classification["fn"] > 0:  # False Negative
-                non_matches.append(
-                    NonMatchField(
-                        field_path=field_path,
-                        non_match_type=NonMatchType.FALSE_NEGATIVE,
-                        ground_truth_value=gt_value,
-                        prediction_value=pred_value,
-                    )
-                )
-            elif classification["fd"] > 0:  # False Discovery
-                non_matches.append(
-                    NonMatchField(
-                        field_path=field_path,
-                        non_match_type=NonMatchType.FALSE_DISCOVERY,
-                        ground_truth_value=gt_value,
-                        prediction_value=pred_value,
-                        similarity_score=classification.get("similarity_score"),
-                    )
-                )
-
-            # Handle nested models recursively
-            if isinstance(gt_value, StructuredModel) and isinstance(
-                pred_value, StructuredModel
-            ):
-                nested_non_matches = gt_value._collect_non_matches(
-                    pred_value, field_path
-                )
-                non_matches.extend(nested_non_matches)
-
-        return non_matches
+        from .non_match_collector import NonMatchCollector
+        collector = NonMatchCollector(self)
+        return collector.collect_non_matches(other, base_path)
 
     def compare(self, other: "StructuredModel") -> float:
         """Compare this model with another and return a scalar similarity score.
@@ -2475,8 +1682,10 @@ class StructuredModel(BaseModel):
 
         # Add optional non-match documentation
         if document_non_matches:
-            # NEW: Collect enhanced object-level non-matches
-            non_matches = self._collect_enhanced_non_matches(recursive_result, other)
+            # Use NonMatchCollector for enhanced object-level non-matches
+            from .non_match_collector import NonMatchCollector
+            collector = NonMatchCollector(self)
+            non_matches = collector.collect_enhanced_non_matches(recursive_result, other)
             result["non_matches"] = non_matches
 
         # If evaluator_format is requested, transform the result
