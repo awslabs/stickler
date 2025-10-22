@@ -34,12 +34,33 @@ class StructuredModel(BaseModel):
 
     This class extends Pydantic's BaseModel with the ability to compare
     instances using configurable comparison metrics for each field.
-    It supports:
-    - Field-level comparison configuration
-    - Nested model comparison
+    
+    Architecture:
+    -------------
+    StructuredModel uses a delegation pattern where comparison logic is
+    distributed across specialized helper classes:
+    
+    - ModelFactory: Creates dynamic models from JSON configuration
+    - ComparisonEngine: Orchestrates the comparison process
+    - ComparisonDispatcher: Routes field comparisons by type
+    - FieldComparator: Compares primitive and structured fields
+    - PrimitiveListComparator: Compares lists of primitives
+    - StructuredListComparator: Compares lists of StructuredModels
+    - ConfusionMatrixCalculator: Calculates confusion matrix metrics
+    - NonMatchCollector: Documents non-matching fields
+    
+    This modular design improves maintainability while preserving all
+    functionality and performance characteristics.
+    
+    Features:
+    ---------
+    - Field-level comparison configuration via ComparableField
+    - Nested model comparison with recursive evaluation
     - Integration with ANLS* comparators
     - JSON schema generation with comparison metadata
     - Unordered list comparison using Hungarian matching
+    - Confusion matrix metrics (TP, FP, FN, TN, FA, FD)
+    - Aggregate metrics rollup from nested fields
     - Retention of extra fields not defined in the model
     """
 
@@ -358,6 +379,9 @@ class StructuredModel(BaseModel):
         self, gt_val: Any, pred_val: Any, weight: float
     ) -> dict:
         """Handle list field comparison using match statements.
+        
+        DEPRECATED: This method now delegates to ComparisonDispatcher.
+        Kept for backward compatibility with any external callers.
 
         Args:
             gt_val: Ground truth list value
@@ -367,65 +391,9 @@ class StructuredModel(BaseModel):
         Returns:
             Comparison result dictionary
         """
-        gt_effectively_null = self._is_effectively_null_for_lists(gt_val)
-        pred_effectively_null = self._is_effectively_null_for_lists(pred_val)
-
-        match (gt_effectively_null, pred_effectively_null):
-            case (True, True):
-                # Both None or empty lists → True Negative
-                return {
-                    "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
-                    "fields": {},
-                    "raw_similarity_score": 1.0,
-                    "similarity_score": 1.0,
-                    "threshold_applied_score": 1.0,
-                    "weight": weight,
-                }
-            case (True, False):
-                # GT=None/empty, Pred=populated list → False Alarm
-                pred_list = pred_val if isinstance(pred_val, list) else []
-                fa_count = (
-                    len(pred_list) if pred_list else 1
-                )  # At least 1 FA for the field itself
-                return {
-                    "overall": {
-                        "tp": 0,
-                        "fa": fa_count,
-                        "fd": 0,
-                        "fp": fa_count,
-                        "tn": 0,
-                        "fn": 0,
-                    },
-                    "fields": {},
-                    "raw_similarity_score": 0.0,
-                    "similarity_score": 0.0,
-                    "threshold_applied_score": 0.0,
-                    "weight": weight,
-                }
-            case (False, True):
-                # GT=populated list, Pred=None/empty → False Negative
-                gt_list = gt_val if isinstance(gt_val, list) else []
-                fn_count = (
-                    len(gt_list) if gt_list else 1
-                )  # At least 1 FN for the field itself
-                return {
-                    "overall": {
-                        "tp": 0,
-                        "fa": 0,
-                        "fd": 0,
-                        "fp": 0,
-                        "tn": 0,
-                        "fn": fn_count,
-                    },
-                    "fields": {},
-                    "raw_similarity_score": 0.0,
-                    "similarity_score": 0.0,
-                    "threshold_applied_score": 0.0,
-                    "weight": weight,
-                }
-            case _:
-                # Both non-null and non-empty, return None to continue processing
-                return None
+        from .comparison_dispatcher import ComparisonDispatcher
+        dispatcher = ComparisonDispatcher(self)
+        return dispatcher.handle_list_field_dispatch(gt_val, pred_val, weight)
 
     def _create_true_negative_result(self, weight: float) -> dict:
         """Create a true negative result.
@@ -748,6 +716,8 @@ class StructuredModel(BaseModel):
 
         Enhanced to capture BOTH confusion matrix metrics AND similarity scores
         in a single traversal to eliminate double traversal inefficiency.
+        
+        PHASE 2: Delegates to ComparisonEngine while maintaining identical behavior.
 
         Args:
             other: Another instance of the same model to compare with
@@ -758,350 +728,35 @@ class StructuredModel(BaseModel):
             - fields: Recursive structure for each field with scores
             - non_matches: List of non-matching items
         """
-        result = {
-            "overall": {
-                "tp": 0,
-                "fa": 0,
-                "fd": 0,
-                "fp": 0,
-                "tn": 0,
-                "fn": 0,
-                "similarity_score": 0.0,
-                "all_fields_matched": False,
-            },
-            "fields": {},
-            "non_matches": [],
-        }
-
-        # Score percolation variables
-        total_score = 0.0
-        total_weight = 0.0
-        threshold_matched_fields = set()
-
-        for field_name in self.__class__.model_fields:
-            if field_name == "extra_fields":
-                continue
-
-            gt_val = getattr(self, field_name)
-            pred_val = getattr(other, field_name, None)
-
-            # Enhanced dispatch returns both metrics AND scores
-            field_result = self._dispatch_field_comparison(field_name, gt_val, pred_val)
-
-            result["fields"][field_name] = field_result
-
-            # Simple aggregation to overall metrics
-            self._aggregate_to_overall(field_result, result["overall"])
-
-            # Score percolation - aggregate scores upward
-            if "similarity_score" in field_result and "weight" in field_result:
-                weight = field_result["weight"]
-                threshold_applied_score = field_result["threshold_applied_score"]
-                total_score += threshold_applied_score * weight
-                total_weight += weight
-
-                # Track threshold-matched fields
-                info = self._get_comparison_info(field_name)
-                if field_result["raw_similarity_score"] >= info.threshold:
-                    threshold_matched_fields.add(field_name)
-
-        # CRITICAL FIX: Handle hallucinated fields (extra fields) as False Alarms
-        extra_fields_fa = self._count_extra_fields_as_false_alarms(other)
-        result["overall"]["fa"] += extra_fields_fa
-        result["overall"]["fp"] += extra_fields_fa
-
-        # Calculate overall similarity score from percolated scores
-        if total_weight > 0:
-            result["overall"]["similarity_score"] = total_score / total_weight
-
-        # Determine all_fields_matched
-        model_fields_for_comparison = set(self.__class__.model_fields.keys()) - {
-            "extra_fields"
-        }
-        result["overall"]["all_fields_matched"] = len(threshold_matched_fields) == len(
-            model_fields_for_comparison
-        )
-
-        return result
+        from .comparison_engine import ComparisonEngine
+        engine = ComparisonEngine(self)
+        return engine.compare_recursive(other)
 
     def _dispatch_field_comparison(
         self, field_name: str, gt_val: Any, pred_val: Any
     ) -> dict:
-        """Enhanced case-based dispatch using match statements for clean logic flow."""
-
-        # Get field configuration for scoring
-        info = self._get_comparison_info(field_name)
-        weight = info.weight
-        threshold = info.threshold
-
-        # Check if this field is ANY list type (including Optional[List[str]], Optional[List[StructuredModel]], etc.)
-        is_list_field = self._is_list_field(field_name)
-
-        # Get null states and hierarchical needs
-        gt_is_null = self._is_truly_null(gt_val)
-        pred_is_null = self._is_truly_null(pred_val)
-        gt_needs_hierarchy = self._should_use_hierarchical_structure(gt_val, field_name)
-        pred_needs_hierarchy = self._should_use_hierarchical_structure(
-            pred_val, field_name
-        )
-
-        # Handle list fields with match statements
-        if is_list_field:
-            list_result = self._handle_list_field_dispatch(gt_val, pred_val, weight)
-            if list_result is not None:
-                return list_result
-            # If None returned, continue to regular type-based dispatch
-
-        # Handle non-hierarchical primitive null cases with match statements
-        if not (gt_needs_hierarchy or pred_needs_hierarchy):
-            gt_effectively_null_prim = self._is_effectively_null_for_primitives(gt_val)
-            pred_effectively_null_prim = self._is_effectively_null_for_primitives(
-                pred_val
-            )
-
-            match (gt_effectively_null_prim, pred_effectively_null_prim):
-                case (True, True):
-                    return self._create_true_negative_result(weight)
-                case (True, False):
-                    return self._create_false_alarm_result(weight)
-                case (False, True):
-                    return self._create_false_negative_result(weight)
-                case _:
-                    # Both non-null, continue to type-based dispatch
-                    pass
-
-        # Type-based dispatch
-        if isinstance(gt_val, (str, int, float)) and isinstance(
-            pred_val, (str, int, float)
-        ):
-            return self._compare_primitive_with_scores(gt_val, pred_val, field_name)
-        elif isinstance(gt_val, list) and isinstance(pred_val, list):
-            # Check if this should be structured list
-            if gt_val and isinstance(gt_val[0], StructuredModel):
-                return self._compare_struct_list_with_scores(
-                    gt_val, pred_val, field_name
-                )
-            else:
-                return self._compare_primitive_list_with_scores(
-                    gt_val, pred_val, field_name
-                )
-        elif isinstance(gt_val, list) and len(gt_val) == 0:
-            # Handle empty GT list - check if it should be structured
-            field_info = self.__class__.model_fields.get(field_name)
-            if field_info and self._is_structured_field_type(field_info):
-                # Empty structured list - should still return hierarchical structure
-                return self._compare_struct_list_with_scores(
-                    gt_val, pred_val, field_name
-                )
-            else:
-                return self._compare_primitive_list_with_scores(
-                    gt_val, pred_val, field_name
-                )
-        elif isinstance(pred_val, list) and len(pred_val) == 0:
-            # Handle empty pred list - check if it should be structured
-            field_info = self.__class__.model_fields.get(field_name)
-            if field_info and self._is_structured_field_type(field_info):
-                # Empty structured list - should still return hierarchical structure
-                return self._compare_struct_list_with_scores(
-                    gt_val, pred_val, field_name
-                )
-            else:
-                return self._compare_primitive_list_with_scores(
-                    gt_val, pred_val, field_name
-                )
-        elif isinstance(gt_val, StructuredModel) and isinstance(
-            pred_val, StructuredModel
-        ):
-            # CRITICAL FIX: For StructuredModel fields, object-level metrics should be based on
-            # object similarity, not rollup of nested field metrics
-
-            # Get object-level similarity score
-            raw_score = gt_val.compare(pred_val)  # Overall object similarity
-
-            # Apply object-level binary classification based on threshold
-            if raw_score >= threshold:
-                # Object matches threshold -> True Positive
-                object_metrics = {"tp": 1, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
-                threshold_applied_score = raw_score
-            else:
-                # Object below threshold -> False Discovery
-                object_metrics = {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0}
-                threshold_applied_score = (
-                    0.0 if info.clip_under_threshold else raw_score
-                )
-
-            # Still generate nested field details for debugging, but don't roll them up
-            nested_details = gt_val.compare_recursive(pred_val)["fields"]
-
-            # Return structure with object-level metrics and nested field details kept separate
-            return {
-                "overall": {
-                    **object_metrics,
-                    "similarity_score": raw_score,
-                    "all_fields_matched": raw_score >= threshold,
-                },
-                "fields": nested_details,  # Nested details available for debugging
-                "raw_similarity_score": raw_score,
-                "similarity_score": raw_score,
-                "threshold_applied_score": threshold_applied_score,
-                "weight": weight,
-                "non_matches": [],  # Add empty non_matches for consistency
-            }
-        else:
-            # Mismatched types
-            return {
-                "overall": {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0},
-                "fields": {},
-                "raw_similarity_score": 0.0,
-                "similarity_score": 0.0,
-                "threshold_applied_score": 0.0,
-                "weight": weight,
-            }
+        """Enhanced case-based dispatch using match statements for clean logic flow.
+        
+        DEPRECATED: This method now delegates to ComparisonDispatcher.
+        Kept for backward compatibility with any external callers.
+        """
+        from .comparison_dispatcher import ComparisonDispatcher
+        dispatcher = ComparisonDispatcher(self)
+        return dispatcher.dispatch_field_comparison(field_name, gt_val, pred_val)
 
     def _compare_primitive_with_scores(
         self, gt_val: Any, pred_val: Any, field_name: str
     ) -> dict:
-        """Enhanced primitive comparison that returns both metrics AND scores."""
-        info = self.__class__._get_comparison_info(field_name)
-        raw_similarity = info.comparator.compare(gt_val, pred_val)
-        weight = info.weight
-        threshold = info.threshold
-
-        # For binary classification metrics, always use threshold
-        if raw_similarity >= threshold:
-            metrics = {"tp": 1, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
-            threshold_applied_score = raw_similarity
-        else:
-            metrics = {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0}
-            # For score calculation, respect clip_under_threshold setting
-            threshold_applied_score = (
-                0.0 if info.clip_under_threshold else raw_similarity
-            )
-
-        # UNIFIED STRUCTURE: Always use 'overall' for metrics
-        # 'fields' key omitted for primitive leaf nodes (semantic meaning: not a parent container)
-        return {
-            "overall": metrics,
-            "raw_similarity_score": raw_similarity,
-            "similarity_score": raw_similarity,
-            "threshold_applied_score": threshold_applied_score,
-            "weight": weight,
-        }
-
-    def _compare_primitive_list_with_scores(
-        self, gt_list: List[Any], pred_list: List[Any], field_name: str
-    ) -> dict:
-        """Enhanced primitive list comparison that returns both metrics AND scores with hierarchical structure.
-
-        DESIGN DECISION: Universal Hierarchical Structure
-        ===============================================
-        This method returns a hierarchical structure {"overall": {...}, "fields": {...}} even for
-        primitive lists (List[str], List[int], etc.) to maintain API consistency across all field types.
-
-        Why this approach:
-        - CONSISTENCY: All list fields use the same access pattern: cm["fields"][name]["overall"]
-        - TEST COMPATIBILITY: Multiple test files expect this pattern for both primitive and structured lists
-        - PREDICTABLE API: Consumers don't need to check field type before accessing metrics
-
-        Trade-offs:
-        - Creates vestigial "fields": {} objects for primitive lists that will never be populated
-        - Slightly more verbose structure than necessary for leaf nodes
-        - Architecturally less pure than type-based structure (primitives flat, structured hierarchical)
-
-        Alternative considered but rejected:
-        - Type-based structure where List[primitive] → flat, List[StructuredModel] → hierarchical
-        - Would require updating multiple test files and consumer code to handle mixed access patterns
-        - More architecturally pure but breaks backward compatibility
-
-        Future consideration: If we ever refactor the entire confusion matrix API, we could move to
-        type-based structure where the presence of "fields" key indicates structured vs primitive.
+        """Enhanced primitive comparison that returns both metrics AND scores.
+        
+        DEPRECATED: This method now delegates to FieldComparator for the actual implementation.
+        Kept for backward compatibility with any external callers.
         """
-        # Get field configuration
-        info = self.__class__._get_comparison_info(field_name)
-        weight = info.weight
-        threshold = info.threshold
+        from .field_comparator import FieldComparator
+        comparator = FieldComparator(self)
+        return comparator.compare_primitive_with_scores(gt_val, pred_val, field_name)
 
-        # CRITICAL FIX: Handle None values before checking length
-        # Convert None to empty list for consistent handling
-        if gt_list is None:
-            gt_list = []
-        if pred_list is None:
-            pred_list = []
 
-        # Handle empty/null list cases first - FIXED: Empty lists should be TN=1
-        if len(gt_list) == 0 and len(pred_list) == 0:
-            # Both empty lists should be TN=1
-            return {
-                "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
-                "fields": {},  # Empty for primitive lists
-                "raw_similarity_score": 1.0,  # Perfect match
-                "similarity_score": 1.0,
-                "threshold_applied_score": 1.0,
-                "weight": weight,
-            }
-        elif len(gt_list) == 0:
-            # GT empty, pred has items → False Alarms
-            return {
-                "overall": {
-                    "tp": 0,
-                    "fa": len(pred_list),
-                    "fd": 0,
-                    "fp": len(pred_list),
-                    "tn": 0,
-                    "fn": 0,
-                },
-                "fields": {},
-                "raw_similarity_score": 0.0,
-                "similarity_score": 0.0,
-                "threshold_applied_score": 0.0,
-                "weight": weight,
-            }
-        elif len(pred_list) == 0:
-            # GT has items, pred empty → False Negatives
-            return {
-                "overall": {
-                    "tp": 0,
-                    "fa": 0,
-                    "fd": 0,
-                    "fp": 0,
-                    "tn": 0,
-                    "fn": len(gt_list),
-                },
-                "fields": {},
-                "raw_similarity_score": 0.0,
-                "similarity_score": 0.0,
-                "threshold_applied_score": 0.0,
-                "weight": weight,
-            }
-
-        # For primitive lists, use the comparison logic from _compare_unordered_lists
-        # which properly handles the threshold-based matching
-        comparator = info.comparator
-        match_result = self._compare_unordered_lists(
-            gt_list, pred_list, comparator, threshold
-        )
-
-        # Extract the counts from the match result
-        tp = match_result.get("tp", 0)
-        fd = match_result.get("fd", 0)
-        fa = match_result.get("fa", 0)
-        fn = match_result.get("fn", 0)
-
-        # Use the overall_score from the match result for raw similarity
-        raw_similarity = match_result.get("overall_score", 0.0)
-
-        # CRITICAL FIX: For lists, we NEVER clip under threshold - partial matches are important
-        threshold_applied_score = raw_similarity  # Always use raw score for lists
-
-        # Return hierarchical structure expected by tests
-        return {
-            "overall": {"tp": tp, "fa": fa, "fd": fd, "fp": fa + fd, "tn": 0, "fn": fn},
-            "fields": {},  # Empty for primitive lists - no nested structure
-            "raw_similarity_score": raw_similarity,
-            "similarity_score": raw_similarity,
-            "threshold_applied_score": threshold_applied_score,
-            "weight": weight,
-        }
 
     def _compare_struct_list_with_scores(
         self,
@@ -1122,90 +777,9 @@ class StructuredModel(BaseModel):
             gt_list, pred_list, field_name
         )
 
-    def _count_extra_fields_as_false_alarms(self, other: "StructuredModel") -> int:
-        """Count hallucinated fields (extra fields) in the prediction as False Alarms.
 
-        Args:
-            other: The predicted StructuredModel instance to check for extra fields
 
-        Returns:
-            Number of hallucinated fields that should count as False Alarms
-        """
-        fa_count = 0
 
-        # Check if the other model has extra fields (hallucinated content)
-        if hasattr(other, "__pydantic_extra__"):
-            # Count each extra field as one False Alarm
-            fa_count += len(other.__pydantic_extra__)
-
-        # Also recursively check nested StructuredModel objects for extra fields
-        for field_name in self.__class__.model_fields:
-            if field_name == "extra_fields":
-                continue
-
-            gt_val = getattr(self, field_name, None)
-            pred_val = getattr(other, field_name, None)
-
-            # Check nested StructuredModel objects
-            if isinstance(gt_val, StructuredModel) and isinstance(
-                pred_val, StructuredModel
-            ):
-                fa_count += gt_val._count_extra_fields_as_false_alarms(pred_val)
-
-            # Check lists of StructuredModel objects
-            elif (
-                isinstance(gt_val, list)
-                and isinstance(pred_val, list)
-                and gt_val
-                and isinstance(gt_val[0], StructuredModel)
-                and pred_val
-                and isinstance(pred_val[0], StructuredModel)
-            ):
-                # For lists, we need to match them up properly using Hungarian matching - OPTIMIZED: Single call gets all info
-                # to avoid double-counting in cases where the list comparison already
-                # handles unmatched items as FA. For now, let's recursively check each item.
-                hungarian_helper = HungarianHelper()
-                hungarian_info = hungarian_helper.get_complete_matching_info(
-                    gt_val, pred_val
-                )
-                matched_pairs = hungarian_info["matched_pairs"]
-
-                # Count extra fields in matched pairs
-                for gt_idx, pred_idx, similarity in matched_pairs:
-                    if gt_idx < len(gt_val) and pred_idx < len(pred_val):
-                        gt_item = gt_val[gt_idx]
-                        pred_item = pred_val[pred_idx]
-                        fa_count += gt_item._count_extra_fields_as_false_alarms(
-                            pred_item
-                        )
-
-                # For unmatched prediction items, count their extra fields too
-                matched_pred_indices = {pred_idx for _, pred_idx, _ in matched_pairs}
-                for pred_idx, pred_item in enumerate(pred_val):
-                    if pred_idx not in matched_pred_indices and isinstance(
-                        pred_item, StructuredModel
-                    ):
-                        # For unmatched items, we need a dummy GT to compare against
-                        if gt_val:  # Use first GT item as template
-                            dummy_gt = gt_val[0]
-                            fa_count += dummy_gt._count_extra_fields_as_false_alarms(
-                                pred_item
-                            )
-                        else:
-                            # If no GT items, count all extra fields in this pred item
-                            if hasattr(pred_item, "__pydantic_extra__"):
-                                fa_count += len(pred_item.__pydantic_extra__)
-
-        return fa_count
-
-    def _aggregate_to_overall(self, field_result: dict, overall: dict) -> None:
-        """Simple aggregation to overall metrics."""
-        for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-            if isinstance(field_result, dict):
-                if metric in field_result:
-                    overall[metric] += field_result[metric]
-                elif "overall" in field_result and metric in field_result["overall"]:
-                    overall[metric] += field_result["overall"][metric]
 
     def _calculate_aggregate_metrics(self, result: dict) -> dict:
         """Calculate aggregate metrics for all nodes in the result tree.
@@ -1623,6 +1197,8 @@ class StructuredModel(BaseModel):
         add_derived_metrics: bool = True,
     ) -> Dict[str, Any]:
         """Compare this model with another instance using SINGLE TRAVERSAL optimization.
+        
+        PHASE 2: Delegates to ComparisonEngine while maintaining identical behavior.
 
         Args:
             other: Another instance of the same model to compare with
@@ -1641,58 +1217,16 @@ class StructuredModel(BaseModel):
             - confusion_matrix: (optional) Confusion matrix data if requested
             - non_matches: (optional) Non-match documentation if requested
         """
-        # SINGLE TRAVERSAL: Get everything in one pass
-        recursive_result = self.compare_recursive(other)
-
-        # Extract scoring information from recursive result
-        field_scores = {}
-        for field_name, field_result in recursive_result["fields"].items():
-            if isinstance(field_result, dict):
-                # Use threshold_applied_score when available, which respects clip_under_threshold setting
-                if "threshold_applied_score" in field_result:
-                    field_scores[field_name] = field_result["threshold_applied_score"]
-                # Fallback to raw_similarity_score if threshold_applied_score not available
-                elif "raw_similarity_score" in field_result:
-                    field_scores[field_name] = field_result["raw_similarity_score"]
-
-        # Extract overall metrics
-        overall_result = recursive_result["overall"]
-        overall_score = overall_result.get("similarity_score", 0.0)
-        all_fields_matched = overall_result.get("all_fields_matched", False)
-
-        # Build basic result structure
-        result = {
-            "field_scores": field_scores,
-            "overall_score": overall_score,
-            "all_fields_matched": all_fields_matched,
-        }
-
-        # Add optional features using already-computed recursive result
-        if include_confusion_matrix:
-            confusion_matrix = recursive_result
-
-            # Add universal aggregate metrics to all nodes
-            confusion_matrix = self._calculate_aggregate_metrics(confusion_matrix)
-
-            # Add derived metrics if requested
-            if add_derived_metrics:
-                confusion_matrix = self._add_derived_metrics_to_result(confusion_matrix)
-
-            result["confusion_matrix"] = confusion_matrix
-
-        # Add optional non-match documentation
-        if document_non_matches:
-            # Use NonMatchCollector for enhanced object-level non-matches
-            from .non_match_collector import NonMatchCollector
-            collector = NonMatchCollector(self)
-            non_matches = collector.collect_enhanced_non_matches(recursive_result, other)
-            result["non_matches"] = non_matches
-
-        # If evaluator_format is requested, transform the result
-        if evaluator_format:
-            return self._format_for_evaluator(result, other, recall_with_fd)
-
-        return result
+        from .comparison_engine import ComparisonEngine
+        engine = ComparisonEngine(self)
+        return engine.compare_with(
+            other,
+            include_confusion_matrix=include_confusion_matrix,
+            document_non_matches=document_non_matches,
+            evaluator_format=evaluator_format,
+            recall_with_fd=recall_with_fd,
+            add_derived_metrics=add_derived_metrics,
+        )
 
     def _convert_score_to_binary_metrics(
         self, score: float, threshold: float = 0.5
