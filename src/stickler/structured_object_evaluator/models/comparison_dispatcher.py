@@ -147,7 +147,7 @@ class ComparisonDispatcher:
         elif isinstance(gt_val, list) and isinstance(pred_val, list):
             # Check if this should be structured list
             if gt_val and isinstance(gt_val[0], StructuredModel):
-                return self.model._compare_struct_list_with_scores(
+                return self.structured_list_comparator.compare_struct_list_with_scores(
                     gt_val, pred_val, field_name
                 )
             else:
@@ -160,7 +160,7 @@ class ComparisonDispatcher:
             field_info = self.model.__class__.model_fields.get(field_name)
             if field_info and self.model._is_structured_field_type(field_info):
                 # Empty structured list - should still return hierarchical structure
-                return self.model._compare_struct_list_with_scores(
+                return self.structured_list_comparator.compare_struct_list_with_scores(
                     gt_val, pred_val, field_name
                 )
             else:
@@ -173,7 +173,7 @@ class ComparisonDispatcher:
             field_info = self.model.__class__.model_fields.get(field_name)
             if field_info and self.model._is_structured_field_type(field_info):
                 # Empty structured list - should still return hierarchical structure
-                return self.model._compare_struct_list_with_scores(
+                return self.structured_list_comparator.compare_struct_list_with_scores(
                     gt_val, pred_val, field_name
                 )
             else:

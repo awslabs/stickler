@@ -43,6 +43,7 @@ class ComparisonEngine:
         self._dispatcher = None
         self._non_match_collector = None
         self._confusion_matrix_calculator = None
+        self._confusion_matrix_builder = None
 
     @property
     def dispatcher(self):
@@ -67,6 +68,14 @@ class ComparisonEngine:
             from .confusion_matrix_calculator import ConfusionMatrixCalculator
             self._confusion_matrix_calculator = ConfusionMatrixCalculator(self.model)
         return self._confusion_matrix_calculator
+
+    @property
+    def confusion_matrix_builder(self):
+        """Lazy initialization of ConfusionMatrixBuilder."""
+        if self._confusion_matrix_builder is None:
+            from .confusion_matrix_builder import ConfusionMatrixBuilder
+            self._confusion_matrix_builder = ConfusionMatrixBuilder(self.model)
+        return self._confusion_matrix_builder
 
     def compare_recursive(self, other: "StructuredModel") -> Dict[str, Any]:
         """The core recursive comparison function.
@@ -262,14 +271,12 @@ class ComparisonEngine:
 
         # Add optional features using already-computed recursive result
         if include_confusion_matrix:
-            confusion_matrix = recursive_result
-
-            # Add universal aggregate metrics to all nodes
-            confusion_matrix = self.model._calculate_aggregate_metrics(confusion_matrix)
-
-            # Add derived metrics if requested
-            if add_derived_metrics:
-                confusion_matrix = self.model._add_derived_metrics_to_result(confusion_matrix)
+            # Use ConfusionMatrixBuilder to orchestrate metrics calculation
+            confusion_matrix = self.confusion_matrix_builder.build_confusion_matrix(
+                recursive_result,
+                add_derived_metrics=add_derived_metrics,
+                recall_with_fd=recall_with_fd
+            )
 
             result["confusion_matrix"] = confusion_matrix
 

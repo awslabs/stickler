@@ -23,7 +23,6 @@ from .comparable_field import ComparableField
 from .non_match_field import NonMatchField
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
-from .field_helper import FieldHelper
 from .configuration_helper import ConfigurationHelper
 from .comparison_helper import ComparisonHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
@@ -272,13 +271,7 @@ class StructuredModel(BaseModel):
         """
         return ConfigurationHelper.get_comparison_info(cls, field_name)
 
-    # Remove legacy ComparableField handling since ComparableField is now always a function
-    # that returns proper Pydantic Fields
-    pass
 
-    # No special __init__ needed since ComparableField is now always a function
-    # that returns proper Pydantic Fields
-    pass
 
     @classmethod
     def _is_aggregate_field(cls, field_name: str) -> bool:
@@ -294,14 +287,12 @@ class StructuredModel(BaseModel):
 
     def _is_truly_null(self, val: Any) -> bool:
         """Check if a value is truly null (None).
-
-        Args:
-            val: Value to check
-
-        Returns:
-            True if the value is None, False otherwise
+        
+        DEPRECATED: Delegates to NullHelper for consistency.
+        Kept for backward compatibility with any external callers.
         """
-        return val is None
+        from .null_helper import NullHelper
+        return NullHelper.is_truly_null(val)
 
     def _should_use_hierarchical_structure(self, val: Any, field_name: str) -> bool:
         """Check if a list value should maintain hierarchical structure.
@@ -325,27 +316,21 @@ class StructuredModel(BaseModel):
 
     def _is_effectively_null_for_lists(self, val: Any) -> bool:
         """Check if a list value is effectively null (None or empty list).
-
-        Args:
-            val: Value to check
-
-        Returns:
-            True if the value is None or an empty list, False otherwise
+        
+        DEPRECATED: Delegates to NullHelper for consistency.
+        Kept for backward compatibility with any external callers.
         """
-        return val is None or (isinstance(val, list) and len(val) == 0)
+        from .null_helper import NullHelper
+        return NullHelper.is_effectively_null_for_lists(val)
 
     def _is_effectively_null_for_primitives(self, val: Any) -> bool:
         """Check if a primitive value is effectively null.
-
-        Treats empty strings and None as equivalent for string fields.
-
-        Args:
-            val: Value to check
-
-        Returns:
-            True if the value is None or an empty string, False otherwise
+        
+        DEPRECATED: Delegates to NullHelper for consistency.
+        Kept for backward compatibility with any external callers.
         """
-        return val is None or (isinstance(val, str) and val == "")
+        from .null_helper import NullHelper
+        return NullHelper.is_effectively_null_for_primitives(val)
 
     def _is_list_field(self, field_name: str) -> bool:
         """Check if a field is ANY list type.
@@ -397,57 +382,30 @@ class StructuredModel(BaseModel):
 
     def _create_true_negative_result(self, weight: float) -> dict:
         """Create a true negative result.
-
-        Args:
-            weight: Field weight for scoring
-
-        Returns:
-            True negative result dictionary
+        
+        DEPRECATED: Delegates to ResultHelper for consistency.
+        Kept for backward compatibility with any external callers.
         """
-        return {
-            "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
-            "fields": {},
-            "raw_similarity_score": 1.0,
-            "similarity_score": 1.0,
-            "threshold_applied_score": 1.0,
-            "weight": weight,
-        }
+        from .result_helper import ResultHelper
+        return ResultHelper.create_true_negative_result(weight)
 
     def _create_false_alarm_result(self, weight: float) -> dict:
         """Create a false alarm result.
-
-        Args:
-            weight: Field weight for scoring
-
-        Returns:
-            False alarm result dictionary
+        
+        DEPRECATED: Delegates to ResultHelper for consistency.
+        Kept for backward compatibility with any external callers.
         """
-        return {
-            "overall": {"tp": 0, "fa": 1, "fd": 0, "fp": 1, "tn": 0, "fn": 0},
-            "fields": {},
-            "raw_similarity_score": 0.0,
-            "similarity_score": 0.0,
-            "threshold_applied_score": 0.0,
-            "weight": weight,
-        }
+        from .result_helper import ResultHelper
+        return ResultHelper.create_false_alarm_result(weight)
 
     def _create_false_negative_result(self, weight: float) -> dict:
         """Create a false negative result.
-
-        Args:
-            weight: Field weight for scoring
-
-        Returns:
-            False negative result dictionary
+        
+        DEPRECATED: Delegates to ResultHelper for consistency.
+        Kept for backward compatibility with any external callers.
         """
-        return {
-            "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 1},
-            "fields": {},
-            "raw_similarity_score": 0.0,
-            "similarity_score": 0.0,
-            "threshold_applied_score": 0.0,
-            "weight": weight,
-        }
+        from .result_helper import ResultHelper
+        return ResultHelper.create_false_negative_result(weight)
 
     def _handle_struct_list_empty_cases(
         self,
@@ -456,6 +414,9 @@ class StructuredModel(BaseModel):
         weight: float,
     ) -> dict:
         """Handle empty list cases with beautiful match statements.
+        
+        DEPRECATED: Delegates to ResultHelper for consistency.
+        Kept for backward compatibility with any external callers.
 
         Args:
             gt_list: Ground truth list (may be None)
@@ -465,58 +426,13 @@ class StructuredModel(BaseModel):
         Returns:
             Result dictionary if early exit needed, None if should continue processing
         """
+        from .result_helper import ResultHelper
+        
         # Normalize None to empty lists for consistent handling
         gt_len = len(gt_list or [])
         pred_len = len(pred_list or [])
-
-        match (gt_len, pred_len):
-            case (0, 0):
-                # Both empty lists → True Negative
-                return {
-                    "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
-                    "fields": {},
-                    "raw_similarity_score": 1.0,
-                    "similarity_score": 1.0,
-                    "threshold_applied_score": 1.0,
-                    "weight": weight,
-                }
-            case (0, pred_len):
-                # GT empty, pred has items → False Alarms
-                return {
-                    "overall": {
-                        "tp": 0,
-                        "fa": pred_len,
-                        "fd": 0,
-                        "fp": pred_len,
-                        "tn": 0,
-                        "fn": 0,
-                    },
-                    "fields": {},
-                    "raw_similarity_score": 0.0,
-                    "similarity_score": 0.0,
-                    "threshold_applied_score": 0.0,
-                    "weight": weight,
-                }
-            case (gt_len, 0):
-                # GT has items, pred empty → False Negatives
-                return {
-                    "overall": {
-                        "tp": 0,
-                        "fa": 0,
-                        "fd": 0,
-                        "fp": 0,
-                        "tn": 0,
-                        "fn": gt_len,
-                    },
-                    "fields": {},
-                    "raw_similarity_score": 0.0,
-                    "similarity_score": 0.0,
-                    "threshold_applied_score": 0.0,
-                    "weight": weight,
-                }
-            case _:
-                # Both non-empty, continue processing
-                return None
+        
+        return ResultHelper.create_empty_list_result(gt_len, pred_len, weight)
 
     def _calculate_object_level_metrics(
         self,
@@ -596,8 +512,6 @@ class StructuredModel(BaseModel):
             return match_result.get("overall_score", 0.0)
         else:
             return 0.0
-
-    # Necessary/sufficient field methods removed - no longer used
 
     def _compare_unordered_lists(
         self,
@@ -744,38 +658,7 @@ class StructuredModel(BaseModel):
         dispatcher = ComparisonDispatcher(self)
         return dispatcher.dispatch_field_comparison(field_name, gt_val, pred_val)
 
-    def _compare_primitive_with_scores(
-        self, gt_val: Any, pred_val: Any, field_name: str
-    ) -> dict:
-        """Enhanced primitive comparison that returns both metrics AND scores.
-        
-        DEPRECATED: This method now delegates to FieldComparator for the actual implementation.
-        Kept for backward compatibility with any external callers.
-        """
-        from .field_comparator import FieldComparator
-        comparator = FieldComparator(self)
-        return comparator.compare_primitive_with_scores(gt_val, pred_val, field_name)
 
-
-
-    def _compare_struct_list_with_scores(
-        self,
-        gt_list: List["StructuredModel"],
-        pred_list: List["StructuredModel"],
-        field_name: str,
-    ) -> dict:
-        """Enhanced structural list comparison that returns both metrics AND scores.
-
-        PHASE 2: Delegates to StructuredListComparator while maintaining identical behavior.
-        """
-        # Import here to avoid circular imports
-        from .structured_list_comparator import StructuredListComparator
-
-        # Create comparator and delegate
-        comparator = StructuredListComparator(self)
-        return comparator.compare_struct_list_with_scores(
-            gt_list, pred_list, field_name
-        )
 
 
 
@@ -783,6 +666,8 @@ class StructuredModel(BaseModel):
 
     def _calculate_aggregate_metrics(self, result: dict) -> dict:
         """Calculate aggregate metrics for all nodes in the result tree.
+
+        This method delegates to AggregateMetricsCalculator for the actual implementation.
 
         CRITICAL FIX: Enhanced deep nesting traversal to handle arbitrary nesting depth.
         The aggregate field contains the sum of all primitive field confusion matrices
@@ -794,210 +679,26 @@ class StructuredModel(BaseModel):
         Returns:
             Modified result with 'aggregate' fields added at each level
         """
-        if not isinstance(result, dict):
-            return result
+        from .aggregate_metrics_calculator import AggregateMetricsCalculator
+        calculator = AggregateMetricsCalculator()
+        return calculator.calculate_aggregate_metrics(result)
 
-        # Make a copy to avoid modifying the original
-        result_copy = result.copy()
-
-        # Calculate aggregate for this node
-        aggregate_metrics = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
-
-        # Recursively process 'fields' first to get child aggregates
-        if "fields" in result_copy and isinstance(result_copy["fields"], dict):
-            fields_copy = {}
-            for field_name, field_result in result_copy["fields"].items():
-                if isinstance(field_result, dict):
-                    # Recursively calculate aggregate for child field
-                    processed_field = self._calculate_aggregate_metrics(field_result)
-                    fields_copy[field_name] = processed_field
-
-                    # CRITICAL FIX: Sum child's aggregate metrics to parent
-                    if "aggregate" in processed_field and self._has_basic_metrics(
-                        processed_field["aggregate"]
-                    ):
-                        child_aggregate = processed_field["aggregate"]
-                        for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-                            aggregate_metrics[metric] += child_aggregate.get(metric, 0)
-                else:
-                    # Non-dict field - keep as is
-                    fields_copy[field_name] = field_result
-            result_copy["fields"] = fields_copy
-
-        # CRITICAL FIX: Enhanced leaf node detection for deep nesting
-        # Handle both empty fields dict and missing fields key as leaf indicators
-        is_leaf_node = (
-            "fields" not in result_copy
-            or not result_copy["fields"]
-            or (
-                isinstance(result_copy["fields"], dict)
-                and len(result_copy["fields"]) == 0
-            )
-        )
-
-        if is_leaf_node:
-            # Check if this is a leaf node with basic metrics (either in "overall" or directly)
-            if "overall" in result_copy and self._has_basic_metrics(
-                result_copy["overall"]
-            ):
-                # Hierarchical leaf node: aggregate = overall metrics
-                overall = result_copy["overall"]
-                for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-                    aggregate_metrics[metric] = overall.get(metric, 0)
-            elif self._has_basic_metrics(result_copy):
-                # CRITICAL FIX: Legacy primitive leaf node - wrap in "overall" structure
-                # This preserves Universal Aggregate Field structure compliance
-                legacy_metrics = {}
-                for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-                    legacy_metrics[metric] = result_copy.get(metric, 0)
-                    aggregate_metrics[metric] = result_copy.get(metric, 0)
-
-                # Wrap legacy structure in "overall" key to maintain consistency
-                if not "overall" in result_copy:
-                    # Move all basic metrics to "overall" key
-                    result_copy["overall"] = legacy_metrics
-                    # Remove basic metrics from top level to avoid duplication
-                    for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-                        if metric in result_copy:
-                            del result_copy[metric]
-                    # Preserve other keys like derived, raw_similarity_score, etc.
-
-        # CRITICAL FIX: Always sum child field metrics if no child aggregates were found
-        # This handles the deep nesting case where leaf nodes have overall metrics but empty fields
-        if (
-            aggregate_metrics["tp"] == 0
-            and aggregate_metrics["fa"] == 0
-            and aggregate_metrics["fd"] == 0
-            and aggregate_metrics["fp"] == 0
-            and aggregate_metrics["tn"] == 0
-            and aggregate_metrics["fn"] == 0
-        ):
-            # Check if we have fields with overall metrics that we can sum
-            if "fields" in result_copy and isinstance(result_copy["fields"], dict):
-                for field_name, field_result in result_copy["fields"].items():
-                    if isinstance(field_result, dict):
-                        # ENHANCED: Check for both direct metrics and overall metrics
-                        if "overall" in field_result and self._has_basic_metrics(
-                            field_result["overall"]
-                        ):
-                            field_overall = field_result["overall"]
-                            for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-                                aggregate_metrics[metric] += field_overall.get(
-                                    metric, 0
-                                )
-                        elif self._has_basic_metrics(field_result):
-                            # Direct metrics (legacy format)
-                            for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-                                aggregate_metrics[metric] += field_result.get(metric, 0)
-
-        # Add aggregate as a sibling of 'overall' and 'fields'
-        result_copy["aggregate"] = aggregate_metrics
-
-        return result_copy
-
-    def _add_derived_metrics_to_result(self, result: dict) -> dict:
+    def _add_derived_metrics_to_result(self, result: dict, recall_with_fd: bool = False) -> dict:
         """Walk through result and add 'derived' fields with F1, precision, recall, accuracy.
+        
+        This method delegates to DerivedMetricsCalculator for the actual implementation.
 
         Args:
             result: Result from compare_recursive with basic TP, FP, FN, etc. metrics
+            recall_with_fd: If True, include FD in recall denominator (TP/(TP+FN+FD))
+                           If False, use traditional recall (TP/(TP+FN))
 
         Returns:
             Modified result with 'derived' fields added at each level
         """
-        if not isinstance(result, dict):
-            return result
-
-        # Make a copy to avoid modifying the original
-        result_copy = result.copy()
-
-        # Add derived metrics to 'overall' if it exists and has basic metrics
-        if "overall" in result_copy and isinstance(result_copy["overall"], dict):
-            overall = result_copy["overall"]
-            if self._has_basic_metrics(overall):
-                metrics_helper = MetricsHelper()
-                overall["derived"] = metrics_helper.calculate_derived_metrics(overall)
-
-                # Also add derived metrics to aggregate if it exists
-                if "aggregate" in overall and self._has_basic_metrics(
-                    overall["aggregate"]
-                ):
-                    overall["aggregate"]["derived"] = (
-                        metrics_helper.calculate_derived_metrics(overall["aggregate"])
-                    )
-
-        # Add derived metrics to top-level aggregate if it exists
-        if "aggregate" in result_copy and self._has_basic_metrics(
-            result_copy["aggregate"]
-        ):
-            metrics_helper = MetricsHelper()
-            result_copy["aggregate"]["derived"] = (
-                metrics_helper.calculate_derived_metrics(result_copy["aggregate"])
-            )
-
-        # Recursively process 'fields' if it exists
-        if "fields" in result_copy and isinstance(result_copy["fields"], dict):
-            fields_copy = {}
-            for field_name, field_result in result_copy["fields"].items():
-                if isinstance(field_result, dict):
-                    # Check if this is a hierarchical field (has overall/fields) or a unified structure field
-                    if "overall" in field_result and "fields" in field_result:
-                        # Hierarchical field - process recursively
-                        fields_copy[field_name] = self._add_derived_metrics_to_result(
-                            field_result
-                        )
-                    elif "overall" in field_result and self._has_basic_metrics(
-                        field_result["overall"]
-                    ):
-                        # Unified structure field - add derived metrics to overall
-                        field_copy = field_result.copy()
-                        metrics_helper = MetricsHelper()
-                        field_copy["overall"]["derived"] = (
-                            metrics_helper.calculate_derived_metrics(
-                                field_result["overall"]
-                            )
-                        )
-
-                        # Also add derived metrics to aggregate if it exists
-                        if "aggregate" in field_copy and self._has_basic_metrics(
-                            field_copy["aggregate"]
-                        ):
-                            field_copy["aggregate"]["derived"] = (
-                                metrics_helper.calculate_derived_metrics(
-                                    field_copy["aggregate"]
-                                )
-                            )
-
-                        fields_copy[field_name] = field_copy
-                    elif self._has_basic_metrics(field_result):
-                        # CRITICAL FIX: Legacy leaf field with basic metrics - wrap in "overall" structure
-                        field_copy = field_result.copy()
-                        metrics_helper = MetricsHelper()
-
-                        # Extract basic metrics and wrap in "overall" structure
-                        legacy_metrics = {}
-                        for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-                            if metric in field_copy:
-                                legacy_metrics[metric] = field_copy[metric]
-                                del field_copy[metric]  # Remove from top level
-
-                        # Add derived metrics to the legacy metrics
-                        legacy_metrics["derived"] = (
-                            metrics_helper.calculate_derived_metrics(legacy_metrics)
-                        )
-
-                        # Wrap in "overall" structure
-                        field_copy["overall"] = legacy_metrics
-
-                        fields_copy[field_name] = field_copy
-                    else:
-                        # Other structure - keep as is
-                        fields_copy[field_name] = field_result
-                else:
-                    # Non-dict field - keep as is
-                    fields_copy[field_name] = field_result
-            result_copy["fields"] = fields_copy
-
-        return result_copy
+        from .derived_metrics_calculator import DerivedMetricsCalculator
+        calculator = DerivedMetricsCalculator()
+        return calculator.add_derived_metrics_to_result(result, recall_with_fd)
 
     def _has_basic_metrics(self, metrics_dict: dict) -> bool:
         """Check if a dictionary has basic confusion matrix metrics.
