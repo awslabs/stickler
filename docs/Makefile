@@ -4,7 +4,7 @@ install:
 	pip install -r requirements.txt
 
 docs:
-	mkdocs serve
+	mkdocs serve --livereload
 
 build:
 	mkdocs build
