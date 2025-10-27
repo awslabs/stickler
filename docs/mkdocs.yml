@@ -1,0 +1,10 @@
+site_name: Stickler
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+
+plugins:
+   - search
+   - awesome-nav
