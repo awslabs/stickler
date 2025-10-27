@@ -1,3 +1,4 @@
 mkdocs
 mkdocs-material
 mkdocs-awesome-nav
+mkdocstrings-python
