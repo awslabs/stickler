@@ -8,7 +8,7 @@ in a more readable and visually appealing format.
 import os
 import re
 import sys
-from typing import Dict, Any, Optional, List, Tuple, Union
+from typing import Dict, Any, Optional, List, Union
 
 
 # ANSI color codes for terminal output
@@ -562,10 +562,8 @@ def _print_field_details(
                 field_children[parent].append(name)
 
         # Print top-level field
-        top_level_field_data = None
         for name, field_data in fields:
             if name == top_level:  # This is the top-level field itself
-                top_level_field_data = field_data
                 is_container = top_level in field_children
                 _print_field_row(
                     name, field_data, row_format, 0, use_color, is_container

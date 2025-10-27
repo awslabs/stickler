@@ -4,7 +4,6 @@ Common utility functions for key information evaluation.
 This module contains utilities shared across both flat and structured evaluation systems.
 """
 
-import re
 import string
 
 

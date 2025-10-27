@@ -568,7 +568,7 @@ class BulkStructuredModelEvaluator:
         )
         
         # Confusion matrix
-        print(f"\nCONFUSION MATRIX:")
+        print("\nCONFUSION MATRIX:")
         print(f"  True Positives (TP):    {overall_metrics.get('tp', 0):,}")
         print(f"  False Positives (FP):   {overall_metrics.get('fp', 0):,}")  
         print(f"  True Negatives (TN):    {overall_metrics.get('tn', 0):,}")
@@ -577,7 +577,7 @@ class BulkStructuredModelEvaluator:
         print(f"  False Alarm (FA):   {overall_metrics.get('fa', 0):,}")
         
         # Derived metrics
-        print(f"\nDERIVED METRICS:")
+        print("\nDERIVED METRICS:")
         print(f"  Precision:     {overall_metrics.get('cm_precision', 0.0):.4f}")
         print(f"  Recall:        {overall_metrics.get('cm_recall', 0.0):.4f}")
         print(f"  F1 Score:      {overall_metrics.get('cm_f1', 0.0):.4f}")
@@ -601,7 +601,7 @@ class BulkStructuredModelEvaluator:
         
         # Field-level metrics
         if process_eval.field_metrics:
-            print(f"\nFIELD-LEVEL METRICS:")
+            print("\nFIELD-LEVEL METRICS:")
             print("-" * 40)
             
             # Sort fields by F1 score descending for better readability
@@ -639,7 +639,7 @@ class BulkStructuredModelEvaluator:
         
         # Error summary
         if process_eval.errors:
-            print(f"\nERROR SUMMARY:")
+            print("\nERROR SUMMARY:")
             print("-" * 40)
             print(f"Total Errors: {len(process_eval.errors):,}")
             print(
@@ -662,7 +662,7 @@ class BulkStructuredModelEvaluator:
                     print(f"  {error_type}: {count:,}")
         
         # Configuration info
-        print(f"\nCONFIGURATION:")
+        print("\nCONFIGURATION:")
         print("-" * 40)
         print(f"Target Schema: {self.target_schema.__name__}")
         print(f"Document Non-matches: {'Yes' if self.document_non_matches else 'No'}")

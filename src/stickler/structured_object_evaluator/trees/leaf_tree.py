@@ -3,7 +3,6 @@
 from typing import Any, Optional, Tuple, List, Dict
 
 from stickler.comparators.base import BaseComparator
-from stickler.comparators.levenshtein import LevenshteinComparator
 from .base import ANLSTree
 
 

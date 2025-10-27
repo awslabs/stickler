@@ -9,7 +9,6 @@ This test suite ensures that StructuredModel fields with aggregate=False behave 
 """
 
 from typing import Optional, List
-from pprint import pprint
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
@@ -125,7 +124,7 @@ def test_simple_contact_non_matching_aggregate_false():
     result = true_owner.compare_with(pred_owner, include_confusion_matrix=True)
     contact_cm = result["confusion_matrix"]["fields"]["contact"]["overall"]
 
-    print(f"\nSimple non-matching case:")
+    print("\nSimple non-matching case:")
     print(
         f"Contact overall: tp={contact_cm['tp']}, fa={contact_cm['fa']}, fd={contact_cm['fd']}, fp={contact_cm['fp']}"
     )
@@ -172,7 +171,7 @@ def test_simple_contact_matching_aggregate_false():
     result = true_owner.compare_with(pred_owner, include_confusion_matrix=True)
     contact_cm = result["confusion_matrix"]["fields"]["contact"]["overall"]
 
-    print(f"\nSimple matching case:")
+    print("\nSimple matching case:")
     print(
         f"Contact overall: tp={contact_cm['tp']}, fa={contact_cm['fa']}, fd={contact_cm['fd']}, fp={contact_cm['fp']}"
     )
@@ -209,7 +208,7 @@ def test_simple_contact_partial_match_aggregate_false():
     result = true_owner.compare_with(pred_owner, include_confusion_matrix=True)
     contact_cm = result["confusion_matrix"]["fields"]["contact"]["overall"]
 
-    print(f"\nPartial match case:")
+    print("\nPartial match case:")
     print(
         f"Contact overall: tp={contact_cm['tp']}, fa={contact_cm['fa']}, fd={contact_cm['fd']}, fp={contact_cm['fp']}"
     )
@@ -257,7 +256,7 @@ def test_double_nested_aggregate_false():
     result = true_owner.compare_with(pred_owner, include_confusion_matrix=True)
     contact_cm = result["confusion_matrix"]["fields"]["contact"]["overall"]
 
-    print(f"\nDouble nested case:")
+    print("\nDouble nested case:")
     print(
         f"Contact overall: tp={contact_cm['tp']}, fa={contact_cm['fa']}, fd={contact_cm['fd']}, fp={contact_cm['fp']}"
     )
@@ -332,7 +331,7 @@ def test_list_aggregate_false():
     result = true_order.compare_with(pred_order, include_confusion_matrix=True)
     products_cm = result["confusion_matrix"]["fields"]["products"]["overall"]
 
-    print(f"\nList aggregate=False case:")
+    print("\nList aggregate=False case:")
     print(
         f"Products overall: tp={products_cm['tp']}, fa={products_cm['fa']}, fd={products_cm['fd']}, fp={products_cm['fp']}"
     )
@@ -411,7 +410,7 @@ def test_mixed_aggregate_settings():
         "overall"
     ]
 
-    print(f"\nMixed aggregate settings:")
+    print("\nMixed aggregate settings:")
     print(
         f"Aggregated contact: tp={agg_cm['tp']}, fa={agg_cm['fa']}, fd={agg_cm['fd']}, fp={agg_cm['fp']}"
     )
@@ -446,7 +445,7 @@ def test_null_handling_aggregate_false():
     )
     contact_cm = result["confusion_matrix"]["fields"]["contact"]["overall"]
 
-    print(f"\nNull handling - both null:")
+    print("\nNull handling - both null:")
     print(
         f"Contact overall: tp={contact_cm['tp']}, fa={contact_cm['fa']}, fd={contact_cm['fd']}, fp={contact_cm['fp']}"
     )
@@ -475,7 +474,7 @@ def test_null_handling_aggregate_false():
     )
     contact_cm = result["confusion_matrix"]["fields"]["contact"]["overall"]
 
-    print(f"Null handling - GT null, pred present:")
+    print("Null handling - GT null, pred present:")
     print(
         f"Contact overall: tp={contact_cm['tp']}, fa={contact_cm['fa']}, fd={contact_cm['fd']}, fp={contact_cm['fp']}"
     )

@@ -1,6 +1,6 @@
 """Structured model comparator."""
 
-from typing import Any, Optional
+from typing import Any
 
 from stickler.comparators.base import BaseComparator
 

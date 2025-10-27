@@ -9,14 +9,12 @@ This test validates the new threshold-gated behavior where:
 3. non_matches key provides detailed information about non-matching objects
 """
 
-import pytest
-from typing import List, Dict, Any, Optional
+from typing import List
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.exact import ExactComparator
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 
 
 class Product(StructuredModel):

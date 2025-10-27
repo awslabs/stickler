@@ -9,27 +9,21 @@ from typing import (
     Any,
     Dict,
     List,
-    Optional,
     Type,
     Union,
-    TypeVar,
     ClassVar,
     get_origin,
     get_args,
 )
 import inspect
-from collections import OrderedDict
 
 from stickler.comparators.base import BaseComparator
-from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.comparators.structured import StructuredModelComparator
 
 from .comparable_field import ComparableField
 from .non_match_field import NonMatchField, NonMatchType
 from .hungarian_helper import HungarianHelper
 from .non_matches_helper import NonMatchesHelper
 from .metrics_helper import MetricsHelper
-from .threshold_helper import ThresholdHelper
 from .field_helper import FieldHelper
 from .configuration_helper import ConfigurationHelper
 from .comparison_helper import ComparisonHelper
@@ -2551,7 +2545,7 @@ class StructuredModel(BaseModel):
             pred_value = getattr(other, field_name, None)
             
             # Use existing field classification logic
-            if type(pred_value) == list:
+            if isinstance(pred_value, list):
                 classification = self._calculate_list_confusion_matrix(
                     field_name, pred_value
                 )

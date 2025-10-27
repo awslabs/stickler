@@ -5,13 +5,11 @@ This test demonstrates how to use and benefit from the non-match documentation
 functionality, which captures detailed information about false positives and false negatives.
 """
 
-import pytest
 from typing import List, Optional
 
 from stickler.structured_object_evaluator import (
     StructuredModel,
     ComparableField,
-    NonMatchField,
     NonMatchType,
     StructuredModelEvaluator,
 )

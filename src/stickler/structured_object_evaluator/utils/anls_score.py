@@ -1,6 +1,6 @@
 """ANLS score calculation for structured objects."""
 
-from typing import Any, Dict, List, Tuple, Type, Union, Optional
+from typing import Any, Dict, Tuple, Type, Union
 
 from ..models.structured_model import StructuredModel
 

@@ -5,7 +5,6 @@ These tests focus on the core functionality of the anls_score function,
 without the more complex structured model tests.
 """
 
-import pytest
 from pytest import approx
 
 from stickler.structured_object_evaluator.utils.anls_score import anls_score

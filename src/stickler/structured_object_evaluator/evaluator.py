@@ -10,10 +10,8 @@ It also supports documenting non-matches (false positives, false negatives) for 
 ## Need to remove false positives and make it a calculation
 
 import os
-import gc
 import psutil
-import time
-from typing import List, Dict, Any, Optional, Tuple, Union, Type
+from typing import List, Dict, Any, Optional, Union, Type
 
 from stickler.structured_object_evaluator.models.non_match_field import (
     NonMatchField,

@@ -1,9 +1,7 @@
 """Test that compare_with doesn't unnecessarily loop/call comparators multiple times."""
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch
 from stickler import StructuredModel, ComparableField
-from stickler.comparators.base import BaseComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 
 

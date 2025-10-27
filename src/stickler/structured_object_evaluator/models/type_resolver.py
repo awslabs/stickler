@@ -4,8 +4,7 @@ This module provides utilities for converting string type names to Python types,
 enabling configuration-based type specification in model_from_json().
 """
 
-import sys
-from typing import Dict, Type, Any, Optional, Union, List, get_origin, get_args
+from typing import Dict, Type, Any, Union, List, get_origin, get_args
 import re
 
 

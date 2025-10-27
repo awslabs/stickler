@@ -1,7 +1,6 @@
 """LLM-based comparator for semantic equivalence."""
 
-import time
-from typing import Any, Optional
+from typing import Any
 
 from stickler.comparators.base import BaseComparator
 from stickler.utils.time_util import sleep

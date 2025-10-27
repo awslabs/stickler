@@ -1,12 +1,10 @@
 """Tests for structured model comparison using the new StructuredModel implementation."""
 
 import unittest
-import json
-from typing import Any, Dict, List, Optional, Set, Type, Union
+from typing import Optional
 
 from pydantic import Field
 
-from stickler.comparators.base import BaseComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.numeric import NumericComparator
 

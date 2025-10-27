@@ -12,7 +12,6 @@ import pytest
 import json
 import pandas as pd
 from typing import List, Optional
-from pydantic import Field
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
@@ -312,7 +311,7 @@ class TestErrorHandling:
         # Process invalid data by passing None (should cause error)
         try:
             evaluator.update(None, valid_pred, "invalid_doc")
-        except:
+        except Exception:
             pass  # Expected to fail
 
         # Should have error recorded but continue processing
@@ -337,7 +336,7 @@ class TestErrorHandling:
 
         try:
             evaluator.update(None, valid_pred, "invalid_doc")
-        except:
+        except Exception:
             pass
 
         # Should not have errors recorded when eliding

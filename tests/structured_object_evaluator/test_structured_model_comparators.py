@@ -4,8 +4,7 @@ This verifies that StructuredModel classes can use different comparators
 for different fields and produce different results accordingly.
 """
 
-import pytest
-from typing import Dict, Any, List, Optional
+from typing import Any
 
 from stickler.comparators.base import BaseComparator
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
