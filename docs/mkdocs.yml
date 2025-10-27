@@ -23,6 +23,9 @@ markdown_extensions:
   - pymdownx.details
   - pymdownx.emoji
   - tables
+  - toc:
+      title: On this page
+      permalink: false
   - pymdownx.superfences:
       custom_fences:
           - name: mermaid
@@ -32,6 +35,14 @@ markdown_extensions:
 plugins:
    - search
    - awesome-nav
+   - mkdocstrings:
+        handlers:
+          python:
+            paths: [../src]
+            options:
+              docstring_style: google
+              show_root_heading: true
+              show_source: true
 
 extra_javascript:
   # Workaround for site_url breaking mermaid rendering; see the following for more info:
