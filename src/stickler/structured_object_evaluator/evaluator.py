@@ -26,7 +26,7 @@ from stickler.algorithms.hungarian import HungarianMatcher
 def get_memory_usage():
     """
     Get current memory usage of the process in MB.
-
+    
     Returns:
         float: Memory usage in MB
     """
@@ -37,12 +37,12 @@ def get_memory_usage():
 class StructuredModelEvaluator:
     """
     Evaluator for StructuredModel objects.
-
+    
     This evaluator computes comprehensive metrics for StructuredModel objects,
     leveraging their built-in comparison capabilities. It includes confusion matrix
     calculations, field-level metrics, non-match documentation, and memory optimization capabilities.
     """
-
+    
     def __init__(
         self,
         model_class: Optional[Type[StructuredModel]] = None,
@@ -52,7 +52,7 @@ class StructuredModelEvaluator:
     ):
         """
         Initialize the evaluator.
-
+        
         Args:
             model_class: Optional StructuredModel class for type checking
             threshold: Similarity threshold for considering a match
@@ -64,28 +64,28 @@ class StructuredModelEvaluator:
         self.verbose = verbose
         self.peak_memory_usage = 0
         self.start_memory = get_memory_usage()
-
+        
         # New attributes for documenting non-matches
         self.document_non_matches = document_non_matches
         self.non_match_documents: List[NonMatchField] = []
-
+        
         if self.verbose:
             print(
                 f"Initialized StructuredModelEvaluator. Starting memory: {self.start_memory:.2f} MB"
             )
-
+    
     def _check_memory(self):
         """Check current memory usage and update peak memory."""
         current_memory = get_memory_usage()
-
+        
         if current_memory > self.peak_memory_usage:
             self.peak_memory_usage = current_memory
-
+            
         if self.verbose and current_memory > self.start_memory + 100:  # 100MB increase
             print(f"Memory usage increased: {current_memory:.2f} MB")
-
+            
         return current_memory
-
+    
     def _calculate_metrics_from_binary(
         self,
         tp: float,
@@ -119,36 +119,36 @@ class StructuredModelEvaluator:
         else:
             # Traditional recall: TP / (TP + FN)
             recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-
+        
         # Calculate F1 score
         f1 = (
             2 * (precision * recall) / (precision + recall)
             if (precision + recall) > 0
             else 0.0
         )
-
+        
         # Calculate accuracy
         accuracy = (tp + tn) / (tp + fp + fn + tn) if (tp + fp + fn + tn) > 0 else 0.0
-
+        
         return {
             "precision": precision,
             "recall": recall,
             "f1": f1,
             "accuracy": accuracy,
         }
-
+    
     def calculate_derived_confusion_matrix_metrics(
         self, cm_counts: Dict[str, Union[int, float]]
     ) -> Dict[str, float]:
         """
         Calculate derived metrics from confusion matrix counts.
-
+        
         This method uses MetricsHelper to maintain consistency and avoid code duplication.
-
+        
         Args:
             cm_counts: Dictionary with confusion matrix counts containing keys:
                       'tp', 'fp', 'tn', 'fn', and optionally 'fd', 'fa'
-
+                      
         Returns:
             Dictionary with derived metrics: cm_precision, cm_recall, cm_f1, cm_accuracy
         """
@@ -156,9 +156,9 @@ class StructuredModelEvaluator:
         from stickler.structured_object_evaluator.models.metrics_helper import (
             MetricsHelper,
         )
-
+        
         metrics_helper = MetricsHelper()
-
+        
         # Convert counts to the format expected by MetricsHelper
         metrics_dict = {
             "tp": int(cm_counts.get("tp", 0)),
@@ -168,24 +168,24 @@ class StructuredModelEvaluator:
             "fd": int(cm_counts.get("fd", 0)),
             "fa": int(cm_counts.get("fa", 0)),
         }
-
+        
         # Use MetricsHelper to calculate derived metrics
         return metrics_helper.calculate_derived_metrics(metrics_dict)
-
+    
     def _convert_score_to_binary(self, score: float) -> Dict[str, float]:
         """
         Convert an ANLS Star score to binary classification counts.
-
+        
         Args:
             score: ANLS Star similarity score [0-1]
-
+            
         Returns:
             Dictionary with TP, FP, FN, TN counts
         """
         # For a single field comparison, there are different approaches
         # to convert a similarity score to binary classification:
-
-        # Approach used here: If score >= threshold, count as TP with
+        
+        # Approach used here: If score >= threshold, count as TP with 
         # proportional value, otherwise count as partial FP and partial FN
         if score >= self.threshold:
             # Handle as true positive with proportional credit
@@ -201,16 +201,16 @@ class StructuredModelEvaluator:
             fp = score  # Give partial credit for similarity even if below threshold
             fn = 1 - score  # More different = higher FN
             tn = 0
-
+            
         return {"tp": tp, "fp": fp, "fn": fn, "tn": tn}
-
+    
     def _is_null_value(self, value: Any) -> bool:
         """
         Determine if a value should be considered null or empty.
-
+        
         Args:
             value: The value to check
-
+            
         Returns:
             True if the value is null/empty, False otherwise
         """
@@ -230,11 +230,11 @@ class StructuredModelEvaluator:
     ) -> Dict[str, int]:
         """
         Combine two confusion matrix dictionaries by adding corresponding values.
-
+        
         Args:
             cm1: First confusion matrix dictionary
             cm2: Second confusion matrix dictionary
-
+            
         Returns:
             Combined confusion matrix dictionary
         """
@@ -242,19 +242,19 @@ class StructuredModelEvaluator:
             key: cm1.get(key, 0) + cm2.get(key, 0)
             for key in ["tp", "fa", "fd", "fp", "tn", "fn"]
         }
-
+        
     def add_non_match(
         self,
-        field_path: str,
-        non_match_type: NonMatchType,
-        gt_value: Any,
-        pred_value: Any,
-        similarity_score: Optional[float] = None,
+                     field_path: str, 
+                     non_match_type: NonMatchType,
+                     gt_value: Any, 
+                     pred_value: Any, 
+                     similarity_score: Optional[float] = None,
         details: Optional[Dict[str, Any]] = None,
     ):
         """
         Document a non-match with detailed information.
-
+        
         Args:
             field_path: Dot-notation path to the field (e.g., 'address.city')
             non_match_type: Type of non-match
@@ -266,7 +266,7 @@ class StructuredModelEvaluator:
         """
         if not self.document_non_matches:
             return
-
+            
         self.non_match_documents.append(
             NonMatchField(
                 field_path=field_path,
@@ -281,15 +281,15 @@ class StructuredModelEvaluator:
     def clear_non_match_documents(self):
         """Clear the stored non-match documents."""
         self.non_match_documents = []
-
+    
     def _convert_enhanced_non_match_to_field(
         self, nm_dict: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Convert enhanced non-match format to NonMatchField format.
-
+        
         Args:
             nm_dict: Enhanced non-match dictionary from StructuredModel
-
+            
         Returns:
             Dictionary in NonMatchField format
         """
@@ -301,22 +301,41 @@ class StructuredModelEvaluator:
             "similarity_score": nm_dict.get("similarity_score"),
             "details": nm_dict.get("details", {}),
         }
-
+        
         # The non_match_type is already a NonMatchType enum from StructuredModel
         converted["non_match_type"] = nm_dict.get("non_match_type")
-
+        
+        # NEW: Preserve leaf-level debugging information
+        if nm_dict.get("is_leaf_level", False):
+            if "details" not in converted:
+                converted["details"] = {}
+            converted["details"]["is_leaf_level"] = True
+            converted["details"]["comparison_type"] = nm_dict.get("comparison_type", "")
+            
+            # Add threshold information if available
+            if "threshold" in nm_dict:
+                converted["details"]["threshold"] = nm_dict["threshold"]
+            
+            # Add aggregate contribution information if available
+            if "aggregate_contribution" in nm_dict:
+                converted["details"]["aggregate_contribution"] = nm_dict["aggregate_contribution"]
+        
+        # NEW: Preserve hierarchical debugging metadata (only for first entry)
+        if "_debugging_metadata" in nm_dict:
+            converted["details"]["debugging_metadata"] = nm_dict["_debugging_metadata"]
+        
         return converted
-
+    
     def _compare_models(
         self, gt_model: StructuredModel, pred_model: StructuredModel
     ) -> Dict[str, Any]:
         """
         Compare two StructuredModel instances and return metrics.
-
+        
         Args:
             gt_model: Ground truth model
             pred_model: Predicted model
-
+            
         Returns:
             Dict with comparison metrics including tp, fp, fn, tn, field_scores, overall_score
         """
@@ -326,7 +345,7 @@ class StructuredModelEvaluator:
             and isinstance(pred_model, StructuredModel)
         ):
             raise TypeError("Both models must be StructuredModel instances")
-
+        
         # If model_class is specified, check type
         if self.model_class and not (
             isinstance(gt_model, self.model_class)
@@ -335,13 +354,13 @@ class StructuredModelEvaluator:
             raise TypeError(
                 f"Both models must be instances of {self.model_class.__name__}"
             )
-
+        
         # Use the built-in compare_with method from StructuredModel
         comparison_result = gt_model.compare_with(pred_model)
-
+        
         # Initialize metrics
         tp = fp = fn = tn = 0
-
+        
         # Determine match status
         if comparison_result["overall_score"] >= self.threshold:
             # Good enough match
@@ -349,7 +368,7 @@ class StructuredModelEvaluator:
         else:
             # Not a good enough match
             fp = 1
-
+            
         # Prepare result
         result = {
             "tp": tp,
@@ -360,9 +379,9 @@ class StructuredModelEvaluator:
             "overall_score": comparison_result["overall_score"],
             # match_status removed - now unnecessary
         }
-
+        
         return result
-
+    
     def evaluate(
         self,
         ground_truth: StructuredModel,
@@ -371,25 +390,25 @@ class StructuredModelEvaluator:
     ) -> Dict[str, Any]:
         """
         Evaluate predictions against ground truth and return comprehensive metrics.
-
+        
         Args:
             ground_truth: Ground truth data (StructuredModel instance)
             predictions: Predicted data (StructuredModel instance)
             recall_with_fd: If True, include FD in recall denominator (TP/(TP+FN+FD))
                             If False, use traditional recall (TP/(TP+FN))
-
+            
         Returns:
             Dictionary with the following structure:
-
+            
             {
                 "overall": {
                     "precision": float,     # Overall precision [0-1]
-                    "recall": float,        # Overall recall [0-1]
+                    "recall": float,        # Overall recall [0-1] 
                     "f1": float,           # Overall F1 score [0-1]
                     "accuracy": float,     # Overall accuracy [0-1]
                     "anls_score": float    # Overall ANLS similarity score [0-1]
                 },
-
+                
                 "fields": {
                     "<field_name>": {
                         # For primitive fields (str, int, float, bool):
@@ -399,7 +418,7 @@ class StructuredModelEvaluator:
                         "accuracy": float,
                         "anls_score": float
                     },
-
+                    
                     "<list_field_name>": {
                         # For list fields (e.g., products: List[Product]):
                         "overall": {
@@ -420,17 +439,17 @@ class StructuredModelEvaluator:
                         ]
                     }
                 },
-
+                
                 "confusion_matrix": {
                     "fields": {
                         # AGGREGATED metrics for all field types
                         "<field_name>": {
                             "tp": int,          # True positives
-                            "fp": int,          # False positives
+                            "fp": int,          # False positives  
                             "tn": int,          # True negatives
                             "fn": int,          # False negatives
                             "fd": int,          # False discoveries (non-null but don't match)
-                            "fa": int,          # False alarms
+                            "fa": int,          # False alarms 
                             "derived": {
                                 "cm_precision": float,
                                 "cm_recall": float,
@@ -438,7 +457,7 @@ class StructuredModelEvaluator:
                                 "cm_accuracy": float
                             }
                         },
-
+                        
                         # For list fields with nested objects, aggregated field metrics:
                         "<list_field>.<nested_field>": {
                             # Aggregated counts across ALL instances in the list
@@ -450,7 +469,7 @@ class StructuredModelEvaluator:
                             "derived": {...}
                         }
                     },
-
+                    
                     "overall": {
                         # Overall confusion matrix aggregating all fields
                         "tp": int, "fp": int, "tn": int, "fn": int, "fd": int, "fa": int
@@ -458,42 +477,42 @@ class StructuredModelEvaluator:
                     }
                 }
             }
-
+            
         Key Usage Patterns:
-
+        
         1. **Individual Item Metrics** (per-instance analysis):
            ```python
            # Access metrics for each individual item in a list
            for i, item_metrics in enumerate(results['fields']['products']['items']):
                print(f"Product {i}: {item_metrics['overall']['f1']}")
            ```
-
+           
         2. **Aggregated Field Metrics** (recommended for field performance analysis):
            ```python
            # Access aggregated metrics across all instances of a field type
            cm_fields = results['confusion_matrix']['fields']
            product_id_performance = cm_fields['products.product_id']
            print(f"Product ID field: {product_id_performance['derived']['cm_precision']}")
-
+           
            # Get all aggregated product field metrics
-           product_fields = {k: v for k, v in cm_fields.items()
+           product_fields = {k: v for k, v in cm_fields.items() 
                            if k.startswith('products.')}
            ```
-
+           
         3. **Helper Function for Aggregated Metrics**:
            ```python
            def get_aggregated_metrics(results, list_field_name):
                '''Extract aggregated field metrics for a list field.'''
                cm_fields = results['confusion_matrix']['fields']
                prefix = f"{list_field_name}."
-               return {k.replace(prefix, ''): v for k, v in cm_fields.items()
+               return {k.replace(prefix, ''): v for k, v in cm_fields.items() 
                       if k.startswith(prefix)}
-
+           
            # Usage:
            product_metrics = get_aggregated_metrics(results, 'products')
            print(f"Product name precision: {product_metrics['name']['derived']['cm_precision']}")
            ```
-
+           
         Note:
             - Use `results['fields'][field]['items']` for per-instance analysis
             - Use `results['confusion_matrix']['fields'][field.subfield]` for aggregated field analysis
@@ -502,7 +521,7 @@ class StructuredModelEvaluator:
         """
         # Clear any existing non-match documents
         self.clear_non_match_documents()
-
+        
         # Use StructuredModel's enhanced comparison with evaluator format
         # This pushes all the heavy lifting into the StructuredModel as requested
         result = ground_truth.compare_with(
@@ -512,48 +531,48 @@ class StructuredModelEvaluator:
             evaluator_format=True,  # This makes StructuredModel return evaluator-compatible format
             recall_with_fd=recall_with_fd,
         )
-
+        
         # Add non-matches to evaluator's collection if they exist
         if result.get("non_matches"):
             for nm_dict in result["non_matches"]:
                 # Convert enhanced non-match format to NonMatchField format
                 converted_nm = self._convert_enhanced_non_match_to_field(nm_dict)
                 self.non_match_documents.append(NonMatchField(**converted_nm))
-
+        
         # Process derived metrics explicitly with recall_with_fd parameter
         if "confusion_matrix" in result and "overall" in result["confusion_matrix"]:
             overall_cm = result["confusion_matrix"]["overall"]
-
+            
             # Update derived metrics directly in the result
             from stickler.structured_object_evaluator.models.metrics_helper import (
                 MetricsHelper,
             )
 
             metrics_helper = MetricsHelper()
-
+            
             # Apply correct recall_with_fd to overall metrics
             derived_metrics = metrics_helper.calculate_derived_metrics(
                 overall_cm, recall_with_fd=recall_with_fd
             )
             result["confusion_matrix"]["overall"]["derived"] = derived_metrics
-
+            
             # Copy these to the top-level metrics if needed
             if "overall" in result:
                 result["overall"]["precision"] = derived_metrics["cm_precision"]
                 result["overall"]["recall"] = derived_metrics["cm_recall"]
                 result["overall"]["f1"] = derived_metrics["cm_f1"]
-
+            
         return result
-
+    
     def _format_evaluation_results(
         self, comparison_result: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
         Format StructuredModel comparison results to match expected evaluator output format.
-
+        
         Args:
             comparison_result: Result from StructuredModel.compare_with()
-
+            
         Returns:
             Dictionary in the expected evaluator format
         """
@@ -562,10 +581,10 @@ class StructuredModelEvaluator:
         overall_score = comparison_result["overall_score"]
         confusion_matrix = comparison_result.get("confusion_matrix", {})
         non_matches = comparison_result.get("non_matches", [])
-
+        
         # Calculate field metrics using existing logic for backward compatibility
         field_metrics = {}
-
+        
         for field_name, score in field_scores.items():
             # Convert field score to binary metrics using existing method
             binary = self._convert_score_to_binary(score)
@@ -575,7 +594,7 @@ class StructuredModelEvaluator:
             )
             metrics["anls_score"] = score
             field_metrics[field_name] = metrics
-
+        
         # Calculate overall metrics
         binary = self._convert_score_to_binary(overall_score)
         # For overall metrics, use confusion_matrix data which should have fd
@@ -589,12 +608,12 @@ class StructuredModelEvaluator:
             recall_with_fd=recall_with_fd,
         )
         overall_metrics["anls_score"] = overall_score
-
+        
         # Add non-matches to evaluator's collection if they exist
         if non_matches:
             for nm_dict in non_matches:
                 self.non_match_documents.append(NonMatchField(**nm_dict))
-
+        
         # Prepare final result in expected format
         result = {
             "overall": overall_metrics,
@@ -602,19 +621,19 @@ class StructuredModelEvaluator:
             "confusion_matrix": confusion_matrix,
             "non_matches": non_matches,
         }
-
+        
         return result
-
+        
     def _compare_model_lists(
         self, gt_models: List[StructuredModel], pred_models: List[StructuredModel]
     ) -> Dict[str, Any]:
         """
         Compare two lists of StructuredModel instances using Hungarian matching.
-
+        
         Args:
             gt_models: List of ground truth models
             pred_models: List of predicted models
-
+            
         Returns:
             Dict with comparison metrics including tp, fp, fn, overall_score
         """
@@ -627,7 +646,7 @@ class StructuredModelEvaluator:
                 "tn": 0,
                 "overall_score": 1.0,  # Empty lists are a perfect match
             }
-
+            
         if not gt_models:
             return {
                 "tp": 0,
@@ -636,7 +655,7 @@ class StructuredModelEvaluator:
                 "tn": 0,
                 "overall_score": 0.0,  # All predictions are false positives
             }
-
+            
         if not pred_models:
             return {
                 "tp": 0,
@@ -645,13 +664,13 @@ class StructuredModelEvaluator:
                 "tn": 0,
                 "overall_score": 0.0,  # All ground truths are false negatives
             }
-
+            
         # Ensure all items are StructuredModel instances
         if not all(
             isinstance(model, StructuredModel) for model in gt_models + pred_models
         ):
             raise TypeError("All items in both lists must be StructuredModel instances")
-
+        
         # If model_class is specified, check type for all models
         if self.model_class:
             if not all(
@@ -660,18 +679,18 @@ class StructuredModelEvaluator:
                 raise TypeError(
                     f"All models must be instances of {self.model_class.__name__}"
                 )
-
+        
         # Create a Hungarian matcher with StructuredModelComparator
         hungarian = HungarianMatcher(StructuredModelComparator())
-
+        
         # Run Hungarian matching
         tp, fp = hungarian(gt_models, pred_models)
-
+        
         # Calculate false negatives
         fn = len(gt_models) - tp
-
+        
         # Calculate overall score (proportion of correct matches)
         max_items = max(len(gt_models), len(pred_models))
         overall_score = tp / max_items if max_items > 0 else 1.0
-
+        
         return {"tp": tp, "fp": fp, "fn": fn, "tn": 0, "overall_score": overall_score}

@@ -573,7 +573,7 @@ class TestCompatibility:
         )
 
         evaluator = BulkStructuredModelEvaluator(BankStatement)
-        result = evaluator.evaluate_dataframe(df)
+        result, error_count = evaluator.evaluate_dataframe(df)
 
         assert isinstance(result, ProcessEvaluation)
         assert result.metrics["cm_accuracy"] == 1.0  # Perfect matches
