@@ -3,7 +3,8 @@ name = "stickler-eval"
 version = "0.1.1"
 description = "Structured object comparison and evaluation library"
 authors = [
-    {name = "Spencer Romo", email = "sromo@amazon.com"}
+    {name = "Spencer Romo", email = "sromo@amazon.com"},
+    {name = "Ayushi Haria", email = "ayuharia@amazon.com"}
 ]
 readme = "README.md"
 requires-python = ">=3.12"
