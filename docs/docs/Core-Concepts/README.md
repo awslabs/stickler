@@ -1,3 +1,7 @@
+---
+title: Overview
+---
+
 # Core Concepts
 
 This section covers the fundamental evaluation principles that power Stickler's comparison engine. Understanding these concepts is essential for effectively using the library to evaluate structured data.

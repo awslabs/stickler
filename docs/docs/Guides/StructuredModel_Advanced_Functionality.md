@@ -1,3 +1,7 @@
+---
+title: StructuredModel Advanced Functionality
+---
+
 # StructuredModel Advanced Functionality: Technical Deep Dive
 
 ## Table of Contents

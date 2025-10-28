@@ -1,3 +1,7 @@
+---
+title: StructuredModel Compare
+---
+
 # StructuredModel `compare_with` Method: A Layman's Guide
 
 ## Table of Contents

@@ -1,4 +1,6 @@
 site_name: Stickler
+repo_url: https://github.com/awslabs/stickler
+repo_name: awslabs/stickler
 
 theme:
   name: material

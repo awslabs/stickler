@@ -1,3 +1,7 @@
+---
+title: Overview
+---
+
 # Guides
 
 This section provides practical guides for working with Stickler's StructuredModel comparison system. These guides cover common use cases and advanced features with working examples.
