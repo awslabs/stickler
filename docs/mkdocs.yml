@@ -34,7 +34,8 @@ markdown_extensions:
 
 plugins:
    - search
-   - awesome-nav
+   - awesome-nav:
+        index_page: Getting-Started/README.md  
    - mkdocstrings:
         handlers:
           python:
