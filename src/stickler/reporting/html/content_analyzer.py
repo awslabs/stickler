@@ -2,9 +2,9 @@
 Simple content analyzer for evaluation results - v0.
 """
 
-from typing import Dict, Any, List, Union, Optional
-from ...utils.process_evaluation import ProcessEvaluation
-from .utils import DataExtractor
+from typing import Dict, Any, Union, Optional
+from stickler.utils.process_evaluation import ProcessEvaluation
+from stickler.reporting.html.utils import DataExtractor
 
 class ContentAnalyzer:
     """
@@ -28,7 +28,7 @@ class ContentAnalyzer:
             Dictionary containing analysis results
         """
         # Extract field thresholds from model schema or results
-        field_thresholds = DataExtractor.extract_all_field_threshold(model_schema) if model_schema else None
+        field_thresholds = DataExtractor.extract_all_field_thresholds(model_schema) if model_schema else None
         
         analysis = {
             'executive_summary': self._generate_executive_summary(results, is_bulk, field_thresholds),
@@ -37,7 +37,7 @@ class ContentAnalyzer:
         
         return analysis
     
-    def _generate_executive_summary(self, results: Union[Dict, ProcessEvaluation], is_bulk: bool, field_thresholds: Dict[str, float] = None) -> Dict[str, Any]:
+    def _generate_executive_summary(self, results: Union[Dict, ProcessEvaluation]) -> Dict[str, Any]:
         """Generate executive summary data."""
         metrics = DataExtractor.extract_overall_metrics(results)
         if isinstance(results, ProcessEvaluation):

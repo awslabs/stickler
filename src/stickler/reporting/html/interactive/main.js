@@ -149,37 +149,43 @@ function addReportFilterControls() {
     // Add a filter control above the first section
     const firstSection = document.querySelector('.section');
     if (firstSection) {
-        const filterControl = document.createElement('div');
-        filterControl.className = 'report-filter-control';
-        filterControl.innerHTML = `
-            <div style="background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #007bff;">
+        const filterControl = DOMUtils.createElement('div', 
+            { className: 'report-filter-control' },
+            '',
+            `<div style="background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #007bff;">
                 <strong>Report View:</strong>
                 <select id="report-doc-filter" style="margin-left: 10px; padding: 5px 10px; border: 1px solid #dee2e6; border-radius: 4px;">
                     <option value="">All Documents (Aggregate)</option>
                 </select>
                 <button id="reset-report-filter" style="margin-left: 10px; padding: 5px 10px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Reset to Aggregate</button>
-            </div>
-        `;
+            </div>`
+        );
         
         firstSection.parentNode.insertBefore(filterControl, firstSection);
         
         // Populate document options
         const select = document.getElementById('report-doc-filter');
-        documentData.forEach(doc => {
-            const option = document.createElement('option');
-            option.value = doc.doc_id;
-            option.textContent = doc.doc_id;
-            select.appendChild(option);
-        });
+        if (select) {
+            documentData.forEach(doc => {
+                const option = DOMUtils.createElement('option', 
+                    { value: doc.doc_id },
+                    doc.doc_id
+                );
+                select.appendChild(option);
+            });
+        }
         
-        // Add event listeners
-        select.addEventListener('change', function() {
+        // Add event listeners with error handling
+        DOMUtils.addEventListenerSafe('#report-doc-filter', 'change', function() {
             filterReportToDocument(this.value || null);
         });
         
-        document.getElementById('reset-report-filter').addEventListener('click', function() {
-            select.value = '';
-            filterReportToDocument(null);
+        DOMUtils.addEventListenerSafe('#reset-report-filter', 'click', function() {
+            const select = document.getElementById('report-doc-filter');
+            if (select) {
+                select.value = '';
+                filterReportToDocument(null);
+            }
         });
     }
 }

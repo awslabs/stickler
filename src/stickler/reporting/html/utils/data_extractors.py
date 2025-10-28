@@ -4,7 +4,7 @@ Centralizes data access patterns that were previously duplicated across multiple
 """
 
 from typing import Dict, Any, Union, List, Optional
-from ....utils.process_evaluation import ProcessEvaluation
+from stickler.utils.process_evaluation import ProcessEvaluation
 
 
 class DataExtractor:

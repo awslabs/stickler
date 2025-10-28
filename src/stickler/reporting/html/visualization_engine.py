@@ -3,7 +3,7 @@ Simple visualization engine for HTML reports - v0.
 """
 
 from typing import Dict, Any, Optional
-from .utils import ColorUtils, DataExtractor
+from stickler.reporting.html.utils import ColorUtils, DataExtractor
 
 
 class VisualizationEngine:
