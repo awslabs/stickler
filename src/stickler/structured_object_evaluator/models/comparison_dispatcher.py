@@ -114,10 +114,9 @@ class ComparisonDispatcher:
         # path to take.
         is_list_field = self.model._is_list_field(field_name)
 
-        # Get null states and hierarchical needs for both ground truth and prediction.
-        # These flags control how we handle None values and empty structures.
-        gt_is_null = self.model._is_truly_null(gt_val)
-        pred_is_null = self.model._is_truly_null(pred_val)
+        # Get hierarchical needs for both ground truth and prediction.
+        # These flags control whether we need to maintain hierarchical structure
+        # for list fields (e.g., List[StructuredModel] vs List[str]).
         gt_needs_hierarchy = self.model._should_use_hierarchical_structure(gt_val, field_name)
         pred_needs_hierarchy = self.model._should_use_hierarchical_structure(
             pred_val, field_name
