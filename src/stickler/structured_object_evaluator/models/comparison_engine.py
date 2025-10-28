@@ -28,7 +28,7 @@ class ComparisonEngine:
         model: The ground truth StructuredModel instance used for comparison
         dispatcher: ComparisonDispatcher for routing field comparisons
         non_match_collector: NonMatchCollector for documenting non-matches
-        confusion_matrix_calculator: ConfusionMatrixCalculator for metrics
+        confusion_matrix_builder: ConfusionMatrixBuilder for orchestrating metrics
     """
 
     def __init__(self, model: "StructuredModel"):
@@ -42,7 +42,6 @@ class ComparisonEngine:
         # Initialize components lazily to avoid circular imports
         self._dispatcher = None
         self._non_match_collector = None
-        self._confusion_matrix_calculator = None
         self._confusion_matrix_builder = None
 
     @property
@@ -60,14 +59,6 @@ class ComparisonEngine:
             from .non_match_collector import NonMatchCollector
             self._non_match_collector = NonMatchCollector(self.model)
         return self._non_match_collector
-
-    @property
-    def confusion_matrix_calculator(self):
-        """Lazy initialization of ConfusionMatrixCalculator."""
-        if self._confusion_matrix_calculator is None:
-            from .confusion_matrix_calculator import ConfusionMatrixCalculator
-            self._confusion_matrix_calculator = ConfusionMatrixCalculator(self.model)
-        return self._confusion_matrix_calculator
 
     @property
     def confusion_matrix_builder(self):
