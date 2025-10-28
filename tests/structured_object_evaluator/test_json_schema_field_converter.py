@@ -324,3 +324,599 @@ class TestConvertPropertiesToFields:
             # Second element is a Pydantic FieldInfo
             from pydantic.fields import FieldInfo
             assert isinstance(field_def[1], FieldInfo)
+
+
+class TestRefResolution:
+    """Tests for $ref resolution functionality."""
+
+    def test_resolve_ref_from_definitions(self):
+        """Test resolving $ref from definitions."""
+        schema = {
+            "type": "object",
+            "definitions": {
+                "Address": {
+                    "type": "object",
+                    "properties": {
+                        "street": {"type": "string"},
+                        "city": {"type": "string"},
+                    },
+                }
+            },
+            "properties": {
+                "home": {"$ref": "#/definitions/Address"},
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        field_definitions = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+
+        # Should successfully resolve and create nested model
+        assert "home" in field_definitions
+        home_type = field_definitions["home"][0]
+        
+        # Verify it's a StructuredModel subclass
+        from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+        assert issubclass(home_type, StructuredModel)
+
+    def test_resolve_ref_from_defs(self):
+        """Test resolving $ref from $defs (JSON Schema draft 2019-09+)."""
+        schema = {
+            "type": "object",
+            "$defs": {
+                "Contact": {
+                    "type": "object",
+                    "properties": {
+                        "email": {"type": "string"},
+                        "phone": {"type": "string"},
+                    },
+                }
+            },
+            "properties": {
+                "contact": {"$ref": "#/$defs/Contact"},
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        field_definitions = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+
+        # Should successfully resolve and create nested model
+        assert "contact" in field_definitions
+        contact_type = field_definitions["contact"][0]
+        
+        # Verify it's a StructuredModel subclass
+        from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+        assert issubclass(contact_type, StructuredModel)
+
+    def test_resolve_ref_not_found_in_definitions(self):
+        """Test error when $ref references non-existent definition."""
+        schema = {
+            "type": "object",
+            "definitions": {
+                "Address": {
+                    "type": "object",
+                    "properties": {"street": {"type": "string"}},
+                }
+            },
+            "properties": {
+                "home": {"$ref": "#/definitions/NonExistent"},
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        
+        with pytest.raises(ValueError) as exc_info:
+            converter.convert_properties_to_fields(
+                schema["properties"], schema["required"]
+            )
+        
+        assert "Reference '#/definitions/NonExistent' not found" in str(exc_info.value)
+        assert "Available: ['Address']" in str(exc_info.value)
+
+    def test_resolve_ref_unsupported_format(self):
+        """Test error when $ref uses unsupported format."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "external": {"$ref": "http://example.com/schema.json#/Address"},
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        
+        with pytest.raises(ValueError) as exc_info:
+            converter.convert_properties_to_fields(
+                schema["properties"], schema["required"]
+            )
+        
+        assert "Unsupported $ref format" in str(exc_info.value)
+        assert "Only '#/definitions/' and '#/$defs/' references are supported" in str(exc_info.value)
+
+    def test_resolve_ref_in_array_items(self):
+        """Test resolving $ref in array items."""
+        schema = {
+            "type": "object",
+            "definitions": {
+                "Item": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "quantity": {"type": "integer"},
+                    },
+                }
+            },
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {"$ref": "#/definitions/Item"},
+                },
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        field_definitions = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+
+        # Should successfully resolve and create List[StructuredModel]
+        assert "items" in field_definitions
+        items_type = field_definitions["items"][0]
+        
+        # Verify it's a List type
+        assert hasattr(items_type, "__origin__")
+        assert items_type.__origin__ == list
+        
+        # Verify element is a StructuredModel subclass
+        from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+        assert issubclass(items_type.__args__[0], StructuredModel)
+
+
+class TestNestedObjectHandling:
+    """Tests for nested object handling."""
+
+    def test_convert_nested_object(self):
+        """Test converting nested object creates StructuredModel."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "person": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "age": {"type": "integer"},
+                    },
+                    "required": ["name"],
+                },
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        field_definitions = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+
+        # Check nested model was created
+        assert "person" in field_definitions
+        person_type = field_definitions["person"][0]
+        
+        # Verify it's a StructuredModel subclass
+        from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+        assert issubclass(person_type, StructuredModel)
+        
+        # Verify nested model has correct fields
+        assert "name" in person_type.model_fields
+        assert "age" in person_type.model_fields
+
+    def test_nested_object_with_extensions(self):
+        """Test nested object with x-aws-stickler-* extensions."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "object",
+                    "x-aws-stickler-weight": 2.0,
+                    "x-aws-stickler-aggregate": True,
+                    "properties": {
+                        "street": {"type": "string"},
+                        "city": {"type": "string"},
+                    },
+                },
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        field_definitions = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+
+        # Check extensions are applied to the field
+        address_field = field_definitions["address"][1]
+        assert address_field.json_schema_extra._weight == 2.0
+        assert address_field.json_schema_extra._aggregate is True
+
+    def test_deeply_nested_objects(self):
+        """Test deeply nested object structures."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "company": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "address": {
+                            "type": "object",
+                            "properties": {
+                                "street": {"type": "string"},
+                                "location": {
+                                    "type": "object",
+                                    "properties": {
+                                        "lat": {"type": "number"},
+                                        "lon": {"type": "number"},
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        field_definitions = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+
+        # Should successfully create deeply nested structure
+        assert "company" in field_definitions
+        company_type = field_definitions["company"][0]
+        
+        from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+        assert issubclass(company_type, StructuredModel)
+        
+        # Verify nested fields exist
+        assert "name" in company_type.model_fields
+        assert "address" in company_type.model_fields
+
+
+class TestArrayHandling:
+    """Tests for array handling with both primitives and objects."""
+
+    def test_array_of_objects(self):
+        """Test converting array of objects creates List[StructuredModel]."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "employees": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "role": {"type": "string"},
+                        },
+                    },
+                },
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        field_definitions = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+
+        # Check array type
+        assert "employees" in field_definitions
+        employees_type = field_definitions["employees"][0]
+        
+        # Verify it's a List type
+        assert hasattr(employees_type, "__origin__")
+        assert employees_type.__origin__ == list
+        
+        # Verify element is a StructuredModel subclass
+        from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+        element_type = employees_type.__args__[0]
+        assert issubclass(element_type, StructuredModel)
+        
+        # Verify element model has correct fields
+        assert "name" in element_type.model_fields
+        assert "role" in element_type.model_fields
+
+    def test_array_of_objects_with_extensions(self):
+        """Test array of objects with custom extensions."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "products": {
+                    "type": "array",
+                    "x-aws-stickler-weight": 1.5,
+                    "x-aws-stickler-threshold": 0.8,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "price": {"type": "number"},
+                        },
+                    },
+                },
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        field_definitions = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+
+        # Check extensions are applied
+        products_field = field_definitions["products"][1]
+        assert products_field.json_schema_extra._weight == 1.5
+        assert products_field.json_schema_extra._threshold == 0.8
+
+    def test_array_of_primitives_all_types(self):
+        """Test arrays of all primitive types."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "strings": {"type": "array", "items": {"type": "string"}},
+                "integers": {"type": "array", "items": {"type": "integer"}},
+                "numbers": {"type": "array", "items": {"type": "number"}},
+                "booleans": {"type": "array", "items": {"type": "boolean"}},
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        field_definitions = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+
+        # Check all array types
+        assert field_definitions["strings"][0].__args__[0] == str
+        assert field_definitions["integers"][0].__args__[0] == int
+        assert field_definitions["numbers"][0].__args__[0] == float
+        assert field_definitions["booleans"][0].__args__[0] == bool
+
+
+class TestErrorHandling:
+    """Tests for error handling and validation."""
+
+    def test_invalid_json_type(self):
+        """Test error when JSON Schema type is unsupported."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "data": {"type": "null"},  # null type not supported for fields
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        
+        with pytest.raises(ValueError) as exc_info:
+            converter.convert_properties_to_fields(
+                schema["properties"], schema["required"]
+            )
+        
+        assert "Unsupported JSON Schema type: null" in str(exc_info.value)
+        assert "Supported types:" in str(exc_info.value)
+
+    def test_invalid_threshold_value(self):
+        """Test error when threshold is out of range."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "x-aws-stickler-threshold": 1.5,  # Invalid: > 1.0
+                },
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        
+        with pytest.raises(ValueError) as exc_info:
+            converter.convert_properties_to_fields(
+                schema["properties"], schema["required"]
+            )
+        
+        assert "x-aws-stickler-threshold must be a number between 0.0 and 1.0" in str(exc_info.value)
+        assert "1.5" in str(exc_info.value)
+
+    def test_invalid_threshold_negative(self):
+        """Test error when threshold is negative."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "integer",
+                    "x-aws-stickler-threshold": -0.5,  # Invalid: < 0.0
+                },
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        
+        with pytest.raises(ValueError) as exc_info:
+            converter.convert_properties_to_fields(
+                schema["properties"], schema["required"]
+            )
+        
+        assert "x-aws-stickler-threshold must be a number between 0.0 and 1.0" in str(exc_info.value)
+
+    def test_invalid_weight_value(self):
+        """Test error when weight is not positive."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "score": {
+                    "type": "number",
+                    "x-aws-stickler-weight": -1.0,  # Invalid: not positive
+                },
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        
+        with pytest.raises(ValueError) as exc_info:
+            converter.convert_properties_to_fields(
+                schema["properties"], schema["required"]
+            )
+        
+        assert "x-aws-stickler-weight must be a positive number" in str(exc_info.value)
+        assert "-1.0" in str(exc_info.value)
+
+    def test_invalid_weight_zero(self):
+        """Test error when weight is zero."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "value": {
+                    "type": "number",
+                    "x-aws-stickler-weight": 0,  # Invalid: not positive
+                },
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        
+        with pytest.raises(ValueError) as exc_info:
+            converter.convert_properties_to_fields(
+                schema["properties"], schema["required"]
+            )
+        
+        assert "x-aws-stickler-weight must be a positive number" in str(exc_info.value)
+
+    def test_invalid_comparator_name(self):
+        """Test error when comparator name is not registered."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "x-aws-stickler-comparator": "NonExistentComparator",
+                },
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        
+        with pytest.raises(ValueError) as exc_info:
+            converter.convert_properties_to_fields(
+                schema["properties"], schema["required"]
+            )
+        
+        assert "Invalid x-aws-stickler-comparator 'NonExistentComparator'" in str(exc_info.value)
+
+    def test_invalid_clip_under_threshold_type(self):
+        """Test error when clip-under-threshold is not boolean."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "x-aws-stickler-clip-under-threshold": "yes",  # Invalid: not boolean
+                },
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        
+        with pytest.raises(ValueError) as exc_info:
+            converter.convert_properties_to_fields(
+                schema["properties"], schema["required"]
+            )
+        
+        assert "x-aws-stickler-clip-under-threshold must be a boolean" in str(exc_info.value)
+        assert "str" in str(exc_info.value)
+
+    def test_invalid_aggregate_type(self):
+        """Test error when aggregate is not boolean."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer",
+                    "x-aws-stickler-aggregate": 1,  # Invalid: not boolean
+                },
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        
+        with pytest.raises(ValueError) as exc_info:
+            converter.convert_properties_to_fields(
+                schema["properties"], schema["required"]
+            )
+        
+        assert "x-aws-stickler-aggregate must be a boolean" in str(exc_info.value)
+        assert "int" in str(exc_info.value)
+
+    def test_error_includes_field_path(self):
+        """Test that errors include field path for context."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "user": {
+                    "type": "object",
+                    "properties": {
+                        "email": {
+                            "type": "string",
+                            "x-aws-stickler-threshold": 2.0,  # Invalid
+                        },
+                    },
+                },
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        
+        with pytest.raises(ValueError) as exc_info:
+            converter.convert_properties_to_fields(
+                schema["properties"], schema["required"]
+            )
+        
+        # Error should include the nested field path
+        error_msg = str(exc_info.value)
+        assert "user.email" in error_msg or "field 'user.email'" in error_msg
+
+    def test_missing_items_in_array(self):
+        """Test handling of array without items specification."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    # Missing "items" - should default to empty dict
+                },
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        
+        # Should handle gracefully - items defaults to {} which has no type
+        # This will raise an error when trying to map the type
+        with pytest.raises(ValueError):
+            converter.convert_properties_to_fields(
+                schema["properties"], schema["required"]
+            )

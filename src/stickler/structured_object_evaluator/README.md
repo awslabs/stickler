@@ -123,6 +123,120 @@ print(f"Overall score: {result['overall_score']}")
 print(f"Field scores: {result['field_scores']}")
 ```
 
+### Creating Models from JSON Schema
+
+You can create StructuredModel classes directly from JSON Schema documents (Draft 7 compatible):
+
+```python
+from stickler.structured_object_evaluator import StructuredModel
+
+# Define a JSON Schema
+invoice_schema = {
+    "type": "object",
+    "title": "Invoice",
+    "properties": {
+        "invoice_number": {"type": "string"},
+        "total": {"type": "number"},
+        "customer": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "email": {"type": "string"}
+            },
+            "required": ["name"]
+        },
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "description": {"type": "string"},
+                    "quantity": {"type": "integer"},
+                    "unit_price": {"type": "number"}
+                },
+                "required": ["description", "quantity", "unit_price"]
+            }
+        }
+    },
+    "required": ["invoice_number", "total", "customer", "items"]
+}
+
+# Create the model class from the schema
+Invoice = StructuredModel.from_json_schema(invoice_schema)
+
+# Use it like any other StructuredModel
+ground_truth = Invoice(
+    invoice_number="INV-001",
+    total=150.00,
+    customer={"name": "John Doe", "email": "john@example.com"},
+    items=[
+        {"description": "Widget A", "quantity": 2, "unit_price": 50.00},
+        {"description": "Widget B", "quantity": 1, "unit_price": 50.00}
+    ]
+)
+
+prediction = Invoice(
+    invoice_number="INV-001",
+    total=150.00,
+    customer={"name": "John Doe", "email": "john@example.com"},
+    items=[
+        {"description": "Widget A", "quantity": 2, "unit_price": 50.00},
+        {"description": "Widget C", "quantity": 1, "unit_price": 50.00}
+    ]
+)
+
+# Compare with full metrics
+result = ground_truth.compare_with(
+    prediction,
+    include_confusion_matrix=True
+)
+```
+
+#### Custom Comparison Behavior with x-stickler Extensions
+
+Use `x-stickler-*` extensions in your JSON Schema to customize comparison behavior:
+
+```python
+document_schema = {
+    "type": "object",
+    "title": "Document",
+    "properties": {
+        "title": {
+            "type": "string",
+            "x-stickler-comparator": "fuzzy",  # Use fuzzy string matching
+            "x-stickler-threshold": 0.8  # Require 80% similarity
+        },
+        "priority": {
+            "type": "integer",
+            "x-stickler-weight": 2.0  # Double weight for priority field
+        },
+        "tags": {
+            "type": "array",
+            "items": {"type": "string"}
+        }
+    },
+    "required": ["title", "priority"]
+}
+
+Document = StructuredModel.from_json_schema(document_schema)
+```
+
+**Available x-stickler Extensions:**
+- `x-stickler-comparator`: Comparison algorithm (`"exact"`, `"fuzzy"`, `"levenshtein"`, `"semantic"`)
+- `x-stickler-threshold`: Matching threshold (0.0 to 1.0, default: 0.5)
+- `x-stickler-weight`: Field importance weight (default: 1.0)
+- `x-stickler-clip-under-threshold`: Clip scores below threshold to 0.0 (boolean, default: false)
+
+**Supported JSON Schema Features:**
+- All primitive types: `string`, `number`, `integer`, `boolean`, `null`
+- Complex types: `object`, `array`
+- Nested objects and arrays of objects
+- Required fields via `required` array
+- Optional fields (not in `required` array)
+- JSON Schema Draft 7 compatibility
+
+See `examples/scripts/json_schema_demo.py` for complete examples.
+
 ## Field Comparison Configuration
 
 The `ComparableField` descriptor allows you to configure how fields are compared:
@@ -171,6 +285,31 @@ class StructuredModel(BaseModel):
             
         Returns:
             StructuredModel instance
+        """
+    
+    @classmethod
+    def from_json_schema(cls, schema: Dict[str, Any]) -> Type['StructuredModel']:
+        """
+        Create a StructuredModel subclass from a JSON Schema document.
+        
+        Args:
+            schema: JSON Schema document (Draft 7 compatible)
+            
+        Returns:
+            New StructuredModel subclass
+            
+        Example:
+            >>> schema = {
+            ...     "type": "object",
+            ...     "title": "Product",
+            ...     "properties": {
+            ...         "name": {"type": "string"},
+            ...         "price": {"type": "number"}
+            ...     },
+            ...     "required": ["name", "price"]
+            ... }
+            >>> Product = StructuredModel.from_json_schema(schema)
+            >>> product = Product(name="Widget", price=9.99)
         """
 ```
 

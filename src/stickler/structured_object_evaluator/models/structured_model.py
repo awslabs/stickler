@@ -371,11 +371,50 @@ class StructuredModel(BaseModel):
         draft-07 and later specifications.
         
         Comparison behavior can be customized using x-aws-stickler-* extension fields:
-        - x-aws-stickler-comparator: Comparator class name (e.g., "LevenshteinComparator")
-        - x-aws-stickler-threshold: Similarity threshold (0.0 to 1.0)
-        - x-aws-stickler-weight: Field weight for overall scoring (positive float)
-        - x-aws-stickler-clip-under-threshold: Whether to clip scores below threshold (boolean)
-        - x-aws-stickler-aggregate: Whether to aggregate child metrics (boolean)
+        
+        Field-Level Extensions:
+        -----------------------
+        - x-aws-stickler-comparator: Specifies the comparator algorithm to use for field comparison.
+          Valid comparator names:
+            * "LevenshteinComparator" - String similarity using edit distance (default for strings)
+            * "ExactComparator" - Exact match comparison (default for booleans)
+            * "NumericComparator" - Numeric comparison with tolerance (default for numbers/integers)
+            * "FuzzyComparator" - Fuzzy string matching
+            * "SemanticComparator" - Semantic similarity comparison
+            * "BertComparator" - BERT-based semantic comparison
+            * "LLMComparator" - LLM-based comparison
+            * "StructuredModelComparator" - Nested structured model comparison
+          Example: "x-aws-stickler-comparator": "LevenshteinComparator"
+        
+        - x-aws-stickler-threshold: Minimum similarity score for binary classification (match/no-match).
+          Valid range: 0.0 to 1.0 (inclusive)
+          Default: 0.5 for most types, 1.0 for booleans
+          Scores at or above threshold are classified as matches (TP/TN).
+          Scores below threshold are classified as non-matches (FP/FN).
+          Example: "x-aws-stickler-threshold": 0.85
+        
+        - x-aws-stickler-weight: Relative importance of this field in overall similarity scoring.
+          Valid range: Any positive float value (> 0.0)
+          Default: 1.0
+          Higher weights increase the field's contribution to aggregate metrics.
+          Used in weighted average calculations for parent-level similarity.
+          Example: "x-aws-stickler-weight": 2.5
+        
+        - x-aws-stickler-clip-under-threshold: Controls score clipping behavior.
+          Valid values: true or false (boolean)
+          Default: false
+          When true, similarity scores below threshold are clipped to 0.0.
+          When false, actual similarity scores are preserved regardless of threshold.
+          Affects continuous metrics (similarity) but not binary classification (TP/FP/TN/FN).
+          Example: "x-aws-stickler-clip-under-threshold": true
+        
+        - x-aws-stickler-aggregate: Controls confusion matrix metric aggregation.
+          Valid values: true or false (boolean)
+          Default: false
+          When true, this field's confusion matrix metrics (TP/FP/TN/FN) are included in
+          parent-level aggregate counts. When false, metrics are calculated but not aggregated.
+          Useful for excluding certain fields from overall accuracy/precision/recall calculations.
+          Example: "x-aws-stickler-aggregate": true
         
         Model-level configuration at root:
         - x-aws-stickler-model-name: Generated class name (default: "DynamicModel")
@@ -390,13 +429,58 @@ class StructuredModel(BaseModel):
         - Documentation via "title" and "description" keywords
         - Schema references via "$ref" keyword (#/definitions/ and #/$defs/)
         
-        Type Mapping:
-        - JSON Schema "string" → Python str (default: LevenshteinComparator)
-        - JSON Schema "number" → Python float (default: NumericComparator)
-        - JSON Schema "integer" → Python int (default: NumericComparator)
-        - JSON Schema "boolean" → Python bool (default: ExactComparator)
-        - JSON Schema "array" → Python List[T]
+        Type Mapping and Default Comparators:
+        --------------------------------------
+        Each JSON Schema type is automatically mapped to a Python type and assigned a default
+        comparator with appropriate threshold settings. These defaults can be overridden using
+        x-aws-stickler-* extensions.
+        
+        Primitive Types:
+        - JSON Schema "string" → Python str
+          Default Comparator: LevenshteinComparator (edit distance-based string similarity)
+          Default Threshold: 0.5 (50% similarity required for match)
+          Use Case: Text fields where minor variations should still match (names, descriptions)
+        
+        - JSON Schema "number" → Python float
+          Default Comparator: NumericComparator (numeric comparison with tolerance)
+          Default Threshold: 0.5 (50% similarity required for match)
+          Use Case: Floating-point values where small differences are acceptable (prices, measurements)
+        
+        - JSON Schema "integer" → Python int
+          Default Comparator: NumericComparator (numeric comparison with tolerance)
+          Default Threshold: 0.5 (50% similarity required for match)
+          Use Case: Integer values where small differences are acceptable (counts, quantities)
+        
+        - JSON Schema "boolean" → Python bool
+          Default Comparator: ExactComparator (exact match only)
+          Default Threshold: 1.0 (100% match required - must be identical)
+          Use Case: Boolean flags where only exact matches are meaningful (true/false, yes/no)
+        
+        Complex Types:
+        - JSON Schema "array" with primitive items → Python List[T]
+          Default Comparator: Based on item type (e.g., LevenshteinComparator for string items)
+          Default Threshold: 0.5 (or 1.0 for boolean items)
+          Matching Strategy: Hungarian algorithm for optimal element pairing (order-independent)
+          Use Case: Lists of values where order doesn't matter (tags, categories, IDs)
+        
+        - JSON Schema "array" with object items → Python List[StructuredModel]
+          Default Comparator: N/A (uses Hungarian matching with recursive comparison)
+          Default Threshold: 0.7 (model-level threshold for object matching)
+          Matching Strategy: Hungarian algorithm with threshold-gated recursive analysis
+          Use Case: Lists of structured objects (line items, transactions, nested records)
+        
         - JSON Schema "object" → Nested StructuredModel
+          Default Comparator: N/A (recursive field-by-field comparison)
+          Default Threshold: 0.7 (model-level threshold inherited or specified)
+          Matching Strategy: Recursive comparison of all nested fields
+          Use Case: Nested structured data (addresses, contact info, metadata objects)
+        
+        Notes on Default Behavior:
+        - String and numeric types use fuzzy matching (0.5 threshold) to handle minor variations
+        - Boolean types require exact matches (1.0 threshold) since partial matches are meaningless
+        - Arrays use Hungarian matching to find optimal element pairings regardless of order
+        - Nested objects are compared recursively with field-level granularity
+        - All defaults can be overridden using x-aws-stickler-* extensions for custom behavior
         
         Args:
             schema: JSON Schema document as a dictionary
@@ -420,9 +504,14 @@ class StructuredModel(BaseModel):
             ...     "required": ["name", "email"]
             ... }
             >>> PersonModel = StructuredModel.from_json_schema(schema)
-            >>> person = PersonModel(name="Alice", email="alice@example.com")
+            >>> person1 = PersonModel(name="Alice", age=30, email="alice@example.com")
+            >>> person2 = PersonModel(name="Alicia", age=30, email="alice@example.com")
+            >>> result = person1.compare_with(person2)
+            >>> # Result contains similarity scores and confusion matrix metrics
+            >>> # name field uses LevenshteinComparator by default for strings
+            >>> # age field uses NumericComparator by default for integers
             
-            Advanced usage with comparison extensions:
+            Advanced usage with x-aws-stickler-* extensions:
             >>> schema = {
             ...     "type": "object",
             ...     "x-aws-stickler-model-name": "Product",
@@ -432,18 +521,25 @@ class StructuredModel(BaseModel):
             ...             "type": "string",
             ...             "x-aws-stickler-comparator": "LevenshteinComparator",
             ...             "x-aws-stickler-threshold": 0.9,
-            ...             "x-aws-stickler-weight": 2.0
+            ...             "x-aws-stickler-weight": 2.0,
+            ...             "x-aws-stickler-aggregate": true
             ...         },
             ...         "price": {
             ...             "type": "number",
             ...             "x-aws-stickler-comparator": "NumericComparator",
-            ...             "x-aws-stickler-threshold": 0.95
+            ...             "x-aws-stickler-threshold": 0.95,
+            ...             "x-aws-stickler-clip-under-threshold": true
             ...         }
             ...     },
             ...     "required": ["name"]
             ... }
             >>> ProductModel = StructuredModel.from_json_schema(schema)
+            >>> product1 = ProductModel(name="Widget", price=19.99)
+            >>> product2 = ProductModel(name="Widgit", price=20.00)
             >>> result = product1.compare_with(product2)
+            >>> # name field has weight=2.0, so it contributes more to overall similarity
+            >>> # price field clips scores below 0.95 threshold to 0.0
+            >>> # name field metrics are aggregated to parent level
             
             Nested objects:
             >>> schema = {
@@ -454,17 +550,32 @@ class StructuredModel(BaseModel):
             ...             "type": "object",
             ...             "properties": {
             ...                 "street": {"type": "string"},
-            ...                 "city": {"type": "string"}
-            ...             }
+            ...                 "city": {"type": "string"},
+            ...                 "zipcode": {"type": "string"}
+            ...             },
+            ...             "required": ["city"]
             ...         }
-            ...     }
+            ...     },
+            ...     "required": ["name"]
             ... }
             >>> PersonModel = StructuredModel.from_json_schema(schema)
+            >>> person1 = PersonModel(
+            ...     name="Alice",
+            ...     address={"street": "123 Main St", "city": "Boston", "zipcode": "02101"}
+            ... )
+            >>> person2 = PersonModel(
+            ...     name="Alice",
+            ...     address={"street": "123 Main Street", "city": "Boston", "zipcode": "02101"}
+            ... )
+            >>> result = person1.compare_with(person2)
+            >>> # Nested address object is automatically compared field-by-field
+            >>> # Result includes hierarchical metrics for address.street, address.city, etc.
             
             Arrays of primitives:
             >>> schema = {
             ...     "type": "object",
             ...     "properties": {
+            ...         "name": {"type": "string"},
             ...         "tags": {
             ...             "type": "array",
             ...             "items": {"type": "string"}
@@ -472,24 +583,50 @@ class StructuredModel(BaseModel):
             ...     }
             ... }
             >>> TaggedModel = StructuredModel.from_json_schema(schema)
+            >>> item1 = TaggedModel(name="Product", tags=["electronics", "gadget", "new"])
+            >>> item2 = TaggedModel(name="Product", tags=["electronics", "gadgets", "sale"])
+            >>> result = item1.compare_with(item2)
+            >>> # Arrays use Hungarian matching for optimal element pairing
+            >>> # Each element is compared using the appropriate comparator (LevenshteinComparator for strings)
             
             Arrays of objects:
             >>> schema = {
             ...     "type": "object",
             ...     "properties": {
+            ...         "order_id": {"type": "string"},
             ...         "items": {
             ...             "type": "array",
             ...             "items": {
             ...                 "type": "object",
             ...                 "properties": {
             ...                     "name": {"type": "string"},
-            ...                     "quantity": {"type": "integer"}
-            ...                 }
+            ...                     "quantity": {"type": "integer"},
+            ...                     "price": {"type": "number"}
+            ...                 },
+            ...                 "required": ["name", "quantity"]
             ...             }
             ...         }
             ...     }
             ... }
             >>> OrderModel = StructuredModel.from_json_schema(schema)
+            >>> order1 = OrderModel(
+            ...     order_id="ORD-001",
+            ...     items=[
+            ...         {"name": "Widget", "quantity": 2, "price": 10.00},
+            ...         {"name": "Gadget", "quantity": 1, "price": 25.00}
+            ...     ]
+            ... )
+            >>> order2 = OrderModel(
+            ...     order_id="ORD-001",
+            ...     items=[
+            ...         {"name": "Widget", "quantity": 2, "price": 10.00},
+            ...         {"name": "Gadget", "quantity": 1, "price": 24.99}
+            ...     ]
+            ... )
+            >>> result = order1.compare_with(order2)
+            >>> # Array of objects uses Hungarian matching with threshold-gated recursion
+            >>> # Each matched pair is compared field-by-field
+            >>> # Result includes nested metrics for items[0].name, items[0].quantity, etc.
         """
         return cls._from_json_schema_internal(schema, field_path="")
     

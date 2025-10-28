@@ -679,6 +679,157 @@ class TestFromJsonSchemaNestedObjects:
         assert isinstance(instance.departments[0].employees[0], StructuredModel)
 
 
+class TestFromJsonSchemaArrays:
+    """Test JSON Schema with array types."""
+
+    def test_array_of_primitives_strings(self):
+        """Test schema with array of string primitives."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                }
+            }
+        }
+        
+        Model = StructuredModel.from_json_schema(schema)
+        
+        instance = Model(name="Product", tags=["electronics", "gadget", "new"])
+        assert instance.name == "Product"
+        assert isinstance(instance.tags, list)
+        assert len(instance.tags) == 3
+        assert instance.tags[0] == "electronics"
+
+    def test_array_of_primitives_numbers(self):
+        """Test schema with array of number primitives."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "scores": {
+                    "type": "array",
+                    "items": {"type": "number"}
+                }
+            }
+        }
+        
+        Model = StructuredModel.from_json_schema(schema)
+        
+        instance = Model(name="Test", scores=[95.5, 87.3, 92.1])
+        assert instance.name == "Test"
+        assert isinstance(instance.scores, list)
+        assert len(instance.scores) == 3
+        assert instance.scores[0] == 95.5
+
+    def test_array_of_primitives_integers(self):
+        """Test schema with array of integer primitives."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "quantities": {
+                    "type": "array",
+                    "items": {"type": "integer"}
+                }
+            }
+        }
+        
+        Model = StructuredModel.from_json_schema(schema)
+        
+        instance = Model(name="Inventory", quantities=[10, 25, 5])
+        assert instance.name == "Inventory"
+        assert isinstance(instance.quantities, list)
+        assert all(isinstance(q, int) for q in instance.quantities)
+
+    def test_array_of_objects(self):
+        """Test schema with array of objects."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "order_id": {"type": "string"},
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "quantity": {"type": "integer"},
+                            "price": {"type": "number"}
+                        },
+                        "required": ["name"]
+                    }
+                }
+            }
+        }
+        
+        Model = StructuredModel.from_json_schema(schema)
+        
+        instance = Model(
+            order_id="ORD-001",
+            items=[
+                {"name": "Widget", "quantity": 2, "price": 10.00},
+                {"name": "Gadget", "quantity": 1, "price": 25.00}
+            ]
+        )
+        
+        assert instance.order_id == "ORD-001"
+        assert len(instance.items) == 2
+        assert all(isinstance(item, StructuredModel) for item in instance.items)
+        assert instance.items[0].name == "Widget"
+        assert instance.items[0].quantity == 2
+        assert instance.items[1].name == "Gadget"
+
+    def test_array_comparison_primitives(self):
+        """Test comparison with arrays of primitives."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                }
+            }
+        }
+        
+        Model = StructuredModel.from_json_schema(schema)
+        
+        obj1 = Model(name="Product", tags=["electronics", "gadget"])
+        obj2 = Model(name="Product", tags=["electronics", "gadget"])
+        
+        score = obj1.compare(obj2)
+        assert score == 1.0
+
+    def test_array_comparison_objects(self):
+        """Test comparison with arrays of objects."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "value": {"type": "integer"}
+                        }
+                    }
+                }
+            }
+        }
+        
+        Model = StructuredModel.from_json_schema(schema)
+        
+        obj1 = Model(items=[{"name": "A", "value": 1}, {"name": "B", "value": 2}])
+        obj2 = Model(items=[{"name": "A", "value": 1}, {"name": "B", "value": 2}])
+        
+        score = obj1.compare(obj2)
+        assert score == 1.0
+
+
 class TestFromJsonSchemaWithReferences:
     """Test JSON Schema with $ref and definitions."""
 
@@ -890,3 +1041,290 @@ class TestFromJsonSchemaWithReferences:
         instance2 = Model(name="Acme", address={"city": "Seattle"})
         score = instance.compare(instance2)
         assert score == 1.0
+
+
+class TestFromJsonSchemaExtensions:
+    """Test all x-aws-stickler-* extensions comprehensively."""
+
+    def test_all_field_extensions(self):
+        """Test all x-aws-stickler-* field extensions together."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "x-aws-stickler-comparator": "LevenshteinComparator",
+                    "x-aws-stickler-threshold": 0.85,
+                    "x-aws-stickler-weight": 2.5,
+                    "x-aws-stickler-clip-under-threshold": True,
+                    "x-aws-stickler-aggregate": True
+                }
+            }
+        }
+        
+        Model = StructuredModel.from_json_schema(schema)
+        instance = Model(name="Test")
+        assert instance.name == "Test"
+
+    def test_extension_comparator_numeric(self):
+        """Test x-aws-stickler-comparator with NumericComparator."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "price": {
+                    "type": "number",
+                    "x-aws-stickler-comparator": "NumericComparator",
+                    "x-aws-stickler-threshold": 0.95
+                }
+            }
+        }
+        
+        Model = StructuredModel.from_json_schema(schema)
+        obj1 = Model(price=100.0)
+        obj2 = Model(price=100.0)
+        
+        score = obj1.compare(obj2)
+        assert score == 1.0
+
+    def test_extension_comparator_exact(self):
+        """Test x-aws-stickler-comparator with ExactComparator."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "active": {
+                    "type": "boolean",
+                    "x-aws-stickler-comparator": "ExactComparator"
+                }
+            }
+        }
+        
+        Model = StructuredModel.from_json_schema(schema)
+        obj1 = Model(active=True)
+        obj2 = Model(active=True)
+        
+        score = obj1.compare(obj2)
+        assert score == 1.0
+
+    def test_extension_weight(self):
+        """Test x-aws-stickler-weight affects comparison."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "important": {
+                    "type": "string",
+                    "x-aws-stickler-weight": 5.0
+                },
+                "minor": {
+                    "type": "string",
+                    "x-aws-stickler-weight": 0.5
+                }
+            }
+        }
+        
+        Model = StructuredModel.from_json_schema(schema)
+        obj1 = Model(important="Critical", minor="Detail")
+        obj2 = Model(important="Critical", minor="Detail")
+        
+        result = obj1.compare_with(obj2)
+        assert result["overall_score"] == 1.0
+
+    def test_extension_clip_under_threshold(self):
+        """Test x-aws-stickler-clip-under-threshold behavior."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "x-aws-stickler-threshold": 0.9,
+                    "x-aws-stickler-clip-under-threshold": True
+                }
+            }
+        }
+        
+        Model = StructuredModel.from_json_schema(schema)
+        obj1 = Model(name="Test")
+        obj2 = Model(name="Test")
+        
+        score = obj1.compare(obj2)
+        assert score == 1.0
+
+    def test_extension_aggregate(self):
+        """Test x-aws-stickler-aggregate for confusion matrix aggregation."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "field1": {
+                    "type": "string",
+                    "x-aws-stickler-aggregate": True
+                },
+                "field2": {
+                    "type": "string",
+                    "x-aws-stickler-aggregate": False
+                }
+            }
+        }
+        
+        Model = StructuredModel.from_json_schema(schema)
+        obj1 = Model(field1="A", field2="B")
+        obj2 = Model(field1="A", field2="B")
+        
+        result = obj1.compare_with(obj2)
+        assert "overall_score" in result
+
+    def test_multiple_comparator_types(self):
+        """Test schema with multiple different comparator types."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "x-aws-stickler-comparator": "LevenshteinComparator"
+                },
+                "number": {
+                    "type": "number",
+                    "x-aws-stickler-comparator": "NumericComparator"
+                },
+                "flag": {
+                    "type": "boolean",
+                    "x-aws-stickler-comparator": "ExactComparator"
+                }
+            }
+        }
+        
+        Model = StructuredModel.from_json_schema(schema)
+        obj1 = Model(text="Hello", number=42.0, flag=True)
+        obj2 = Model(text="Hello", number=42.0, flag=True)
+        
+        score = obj1.compare(obj2)
+        assert score == 1.0
+
+
+class TestFromJsonSchemaEdgeCases:
+    """Test edge cases and boundary conditions."""
+
+    def test_empty_properties(self):
+        """Test schema with empty properties object raises error."""
+        schema = {
+            "type": "object",
+            "properties": {}
+        }
+        
+        # Empty properties should raise an error since models need at least one field
+        with pytest.raises(ValueError, match="at least one field"):
+            StructuredModel.from_json_schema(schema)
+
+    def test_optional_fields_only(self):
+        """Test schema with all optional fields (no required)."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "age": {"type": "integer"}
+            }
+        }
+        
+        Model = StructuredModel.from_json_schema(schema)
+        instance = Model()
+        assert instance.name is None
+        assert instance.age is None
+
+    def test_all_required_fields(self):
+        """Test schema with all fields required."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "age": {"type": "integer"}
+            },
+            "required": ["name", "age"]
+        }
+        
+        Model = StructuredModel.from_json_schema(schema)
+        
+        # Should raise validation error if required fields missing
+        with pytest.raises(Exception):
+            Model()
+
+    def test_deeply_nested_structure(self):
+        """Test deeply nested object structure (4+ levels)."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "level1": {
+                    "type": "object",
+                    "properties": {
+                        "level2": {
+                            "type": "object",
+                            "properties": {
+                                "level3": {
+                                    "type": "object",
+                                    "properties": {
+                                        "level4": {
+                                            "type": "object",
+                                            "properties": {
+                                                "value": {"type": "string"}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        Model = StructuredModel.from_json_schema(schema)
+        
+        instance = Model(
+            level1={
+                "level2": {
+                    "level3": {
+                        "level4": {
+                            "value": "deep"
+                        }
+                    }
+                }
+            }
+        )
+        
+        assert instance.level1.level2.level3.level4.value == "deep"
+
+    def test_empty_array(self):
+        """Test schema with empty array."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                }
+            }
+        }
+        
+        Model = StructuredModel.from_json_schema(schema)
+        instance = Model(items=[])
+        assert instance.items == []
+
+    def test_mixed_required_optional_nested(self):
+        """Test nested objects with mixed required/optional fields."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "person": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "age": {"type": "integer"},
+                        "email": {"type": "string"}
+                    },
+                    "required": ["name"]
+                }
+            },
+            "required": ["person"]
+        }
+        
+        Model = StructuredModel.from_json_schema(schema)
+        instance = Model(person={"name": "Alice"})
+        assert instance.person.name == "Alice"
+        assert instance.person.age is None
