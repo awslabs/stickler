@@ -97,51 +97,11 @@ class PrimitiveListComparator:
         if pred_list is None:
             pred_list = []
 
-        # Handle empty/null list cases first - FIXED: Empty lists should be TN=1
-        if len(gt_list) == 0 and len(pred_list) == 0:
-            # Both empty lists should be TN=1
-            return {
-                "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
-                "fields": {},  # Empty for primitive lists
-                "raw_similarity_score": 1.0,  # Perfect match
-                "similarity_score": 1.0,
-                "threshold_applied_score": 1.0,
-                "weight": weight,
-            }
-        elif len(gt_list) == 0:
-            # GT empty, pred has items → False Alarms
-            return {
-                "overall": {
-                    "tp": 0,
-                    "fa": len(pred_list),
-                    "fd": 0,
-                    "fp": len(pred_list),
-                    "tn": 0,
-                    "fn": 0,
-                },
-                "fields": {},
-                "raw_similarity_score": 0.0,
-                "similarity_score": 0.0,
-                "threshold_applied_score": 0.0,
-                "weight": weight,
-            }
-        elif len(pred_list) == 0:
-            # GT has items, pred empty → False Negatives
-            return {
-                "overall": {
-                    "tp": 0,
-                    "fa": 0,
-                    "fd": 0,
-                    "fp": 0,
-                    "tn": 0,
-                    "fn": len(gt_list),
-                },
-                "fields": {},
-                "raw_similarity_score": 0.0,
-                "similarity_score": 0.0,
-                "threshold_applied_score": 0.0,
-                "weight": weight,
-            }
+        # Handle empty/null list cases first using ResultHelper
+        from .result_helper import ResultHelper
+        empty_result = ResultHelper.create_empty_list_result(len(gt_list), len(pred_list), weight)
+        if empty_result is not None:
+            return empty_result
 
         # For primitive lists, use the comparison logic from _compare_unordered_lists
         # which properly handles the threshold-based matching

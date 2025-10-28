@@ -144,6 +144,26 @@ class FieldComparator:
             )
 
         # Still generate nested field details for debugging, but don't roll them up
+        # 
+        # TODO: PERFORMANCE ISSUE - Redundant traversal of nested object tree
+        #       This call to compare_recursive() creates a new ComparisonEngine and
+        #       re-traverses all nested fields, even though we're already in the middle
+        #       of a recursive traversal from the parent ComparisonEngine. This causes
+        #       O(n²) behavior for deeply nested structures.
+        #
+        #       Example: Invoice -> Contact -> Address
+        #       - Parent engine traverses Invoice fields
+        #       - Hits Contact field, calls this method
+        #       - This creates NEW engine to traverse Contact fields
+        #       - Hits Address field, creates ANOTHER new engine
+        #       - Each level re-traverses its subtree unnecessarily
+        #
+        #       Better approach: Pass dispatcher context down through recursion to avoid
+        #       creating new engines. This would require refactoring the recursion model
+        #       to be more explicit about context passing.
+        #
+        #       Impact: Moderate - primarily affects deeply nested structures (3+ levels)
+        #       Estimated overhead: 2-3x for structures with 3 levels of nesting
         nested_details = gt_val.compare_recursive(pred_val)["fields"]
 
         # Return structure with object-level metrics and nested field details kept separate
