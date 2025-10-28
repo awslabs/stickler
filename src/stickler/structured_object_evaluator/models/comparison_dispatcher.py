@@ -172,6 +172,15 @@ class ComparisonDispatcher:
         # ============================================================================
         # Route the comparison to the appropriate handler based on the runtime types
         # of the ground truth and prediction values. This is the core dispatch logic.
+        #
+        # TODO: Refactor to use a cleaner match-based dispatch pattern that separates
+        #       list handling from singleton handling more explicitly. Current flow works
+        #       correctly but mixes concerns (list null handling in STEP 3, type dispatch
+        #       here). A cleaner structure would:
+        #       1. Split into _dispatch_list_field() and _dispatch_singleton_field()
+        #       2. Use match statements for exhaustive case handling
+        #       3. Make the list vs singleton distinction the primary branch
+        #       See pseudocode in refactoring discussions for proposed structure.
         
         # CASE 1: Primitive types (str, int, float)
         # Delegate to FieldComparator for primitive field comparison
@@ -180,8 +189,8 @@ class ComparisonDispatcher:
         ):
             return self.field_comparator.compare_primitive_with_scores(gt_val, pred_val, field_name)
         
-        # CASE 2: Both are lists (non-empty)
-        # Determine if this is a structured list or primitive list
+        # CASE 2: Both are lists (non-empty, null/empty cases already handled in STEP 3)
+        # Determine if this is a structured list or primitive list by inspecting elements
         elif isinstance(gt_val, list) and isinstance(pred_val, list):
             # Check if this is a List[StructuredModel] by inspecting first element
             if gt_val and isinstance(gt_val[0], StructuredModel):
@@ -195,44 +204,14 @@ class ComparisonDispatcher:
                     gt_val, pred_val, field_name
                 )
         
-        # CASE 3: GT is empty list
-        # Need to check field type annotation to determine if it's structured or primitive
-        elif isinstance(gt_val, list) and len(gt_val) == 0:
-            field_info = self.model.__class__.model_fields.get(field_name)
-            if field_info and self.model._is_structured_field_type(field_info):
-                # Empty List[StructuredModel] - maintain hierarchical structure
-                return self.structured_list_comparator.compare_struct_list_with_scores(
-                    gt_val, pred_val, field_name
-                )
-            else:
-                # Empty List[primitive]
-                return self.primitive_list_comparator.compare_primitive_list_with_scores(
-                    gt_val, pred_val, field_name
-                )
-        
-        # CASE 4: Pred is empty list
-        # Need to check field type annotation to determine if it's structured or primitive
-        elif isinstance(pred_val, list) and len(pred_val) == 0:
-            field_info = self.model.__class__.model_fields.get(field_name)
-            if field_info and self.model._is_structured_field_type(field_info):
-                # Empty List[StructuredModel] - maintain hierarchical structure
-                return self.structured_list_comparator.compare_struct_list_with_scores(
-                    gt_val, pred_val, field_name
-                )
-            else:
-                # Empty List[primitive]
-                return self.primitive_list_comparator.compare_primitive_list_with_scores(
-                    gt_val, pred_val, field_name
-                )
-        
-        # CASE 5: Nested StructuredModel fields
+        # CASE 3: Nested StructuredModel fields
         # Delegate to FieldComparator for nested object comparison
         elif isinstance(gt_val, StructuredModel) and isinstance(
             pred_val, StructuredModel
         ):
             return self.field_comparator.compare_structured_field(gt_val, pred_val, field_name, threshold)
         
-        # CASE 6: Mismatched types (e.g., str vs int, list vs str)
+        # CASE 4: Mismatched types (e.g., str vs int, list vs str, struct vs primitive)
         # This is a False Discovery - types don't match
         else:
             return {
