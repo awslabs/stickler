@@ -35,15 +35,17 @@ class JsonSchemaFieldConverter:
     It extracts x-aws-stickler-* extensions and calls ComparableField() to create Pydantic Fields.
     """
 
-    def __init__(self, schema: Dict[str, Any]):
+    def __init__(self, schema: Dict[str, Any], field_path: str = ""):
         """Initialize with a JSON Schema document.
         
         Args:
             schema: JSON Schema document (already validated)
+            field_path: Current field path for error messages (e.g., "address.street")
         """
         self.schema = schema
         self.definitions = schema.get("definitions", {})
         self.defs = schema.get("$defs", {})  # JSON Schema draft 2019-09+
+        self.field_path = field_path
 
     def convert_properties_to_fields(
         self, properties: Dict[str, Any], required: List[str]
@@ -62,14 +64,22 @@ class JsonSchemaFieldConverter:
         field_definitions = {}
         for field_name, property_schema in properties.items():
             is_required = field_name in required
-            field_type, field = self.convert_property_to_field(
-                field_name, property_schema, is_required
-            )
-            field_definitions[field_name] = (field_type, field)
+            # Build field path for nested error messages
+            current_path = f"{self.field_path}.{field_name}" if self.field_path else field_name
+            try:
+                field_type, field = self.convert_property_to_field(
+                    field_name, property_schema, is_required, current_path
+                )
+                field_definitions[field_name] = (field_type, field)
+            except ValueError as e:
+                # Re-raise with field path context if not already included
+                if "field '" not in str(e).lower():
+                    raise ValueError(f"Error in field '{current_path}': {e}")
+                raise
         return field_definitions
 
     def convert_property_to_field(
-        self, field_name: str, property_schema: Dict[str, Any], is_required: bool
+        self, field_name: str, property_schema: Dict[str, Any], is_required: bool, field_path: str = None
     ) -> Tuple[Type, Any]:
         """Convert a single JSON Schema property to a Pydantic field.
         
@@ -79,10 +89,13 @@ class JsonSchemaFieldConverter:
             field_name: Name of the field
             property_schema: JSON Schema for this property
             is_required: Whether this field is required
+            field_path: Full path to this field for error messages
             
         Returns:
             Tuple of (field_type, pydantic_field) where pydantic_field is from ComparableField()
         """
+        if field_path is None:
+            field_path = field_name
         # Handle $ref
         if "$ref" in property_schema:
             property_schema = self._resolve_ref(property_schema["$ref"])
@@ -92,17 +105,17 @@ class JsonSchemaFieldConverter:
         
         # Handle nested objects
         if json_type == "object":
-            return self._handle_nested_object(field_name, property_schema, is_required)
+            return self._handle_nested_object(field_name, property_schema, is_required, field_path)
         
         # Handle arrays
         if json_type == "array":
-            return self._handle_array_type(field_name, property_schema, is_required)
+            return self._handle_array_type(field_name, property_schema, is_required, field_path)
         
         # Handle primitive types
         field_type = self._map_json_type_to_python_type(json_type)
         
         # Extract x-aws-stickler-* extensions
-        extensions = self._extract_stickler_extensions(property_schema)
+        extensions = self._extract_stickler_extensions(property_schema, field_path)
         
         # Get comparator (from extension or default)
         comparator = extensions.get("comparator") or self._get_default_comparator_for_type(json_type)
@@ -166,12 +179,13 @@ class JsonSchemaFieldConverter:
         return create_comparator(comparator_name, {})
 
     def _extract_stickler_extensions(
-        self, property_schema: Dict[str, Any]
+        self, property_schema: Dict[str, Any], field_path: str = ""
     ) -> Dict[str, Any]:
         """Extract x-aws-stickler-* extensions from property schema.
         
         Args:
             property_schema: JSON Schema property object
+            field_path: Full path to this field for error messages
             
         Returns:
             Dictionary with extracted comparison configuration
@@ -187,16 +201,18 @@ class JsonSchemaFieldConverter:
             try:
                 extensions["comparator"] = self._create_comparator_from_name(comparator_name)
             except Exception as e:
+                field_info = f" in field '{field_path}'" if field_path else ""
                 raise ValueError(
-                    f"Invalid x-aws-stickler-comparator '{comparator_name}': {e}"
+                    f"Invalid x-aws-stickler-comparator '{comparator_name}'{field_info}: {e}"
                 )
         
         # Extract and validate threshold
         if "x-aws-stickler-threshold" in property_schema:
             threshold = property_schema["x-aws-stickler-threshold"]
             if not isinstance(threshold, (int, float)) or not (0.0 <= threshold <= 1.0):
+                field_info = f" for field '{field_path}'" if field_path else ""
                 raise ValueError(
-                    f"x-aws-stickler-threshold must be a number between 0.0 and 1.0, got: {threshold}"
+                    f"x-aws-stickler-threshold must be a number between 0.0 and 1.0{field_info}, got: {threshold}"
                 )
             extensions["threshold"] = threshold
         
@@ -204,8 +220,9 @@ class JsonSchemaFieldConverter:
         if "x-aws-stickler-weight" in property_schema:
             weight = property_schema["x-aws-stickler-weight"]
             if not isinstance(weight, (int, float)) or weight <= 0:
+                field_info = f" for field '{field_path}'" if field_path else ""
                 raise ValueError(
-                    f"x-aws-stickler-weight must be a positive number, got: {weight}"
+                    f"x-aws-stickler-weight must be a positive number{field_info}, got: {weight}"
                 )
             extensions["weight"] = weight
         
@@ -213,16 +230,18 @@ class JsonSchemaFieldConverter:
         if "x-aws-stickler-clip-under-threshold" in property_schema:
             clip_value = property_schema["x-aws-stickler-clip-under-threshold"]
             if not isinstance(clip_value, bool):
+                field_info = f" for field '{field_path}'" if field_path else ""
                 raise ValueError(
-                    f"x-aws-stickler-clip-under-threshold must be a boolean, got: {type(clip_value)}"
+                    f"x-aws-stickler-clip-under-threshold must be a boolean{field_info}, got: {type(clip_value).__name__}"
                 )
             extensions["clip_under_threshold"] = clip_value
         
         if "x-aws-stickler-aggregate" in property_schema:
             aggregate_value = property_schema["x-aws-stickler-aggregate"]
             if not isinstance(aggregate_value, bool):
+                field_info = f" for field '{field_path}'" if field_path else ""
                 raise ValueError(
-                    f"x-aws-stickler-aggregate must be a boolean, got: {type(aggregate_value)}"
+                    f"x-aws-stickler-aggregate must be a boolean{field_info}, got: {type(aggregate_value).__name__}"
                 )
             extensions["aggregate"] = aggregate_value
         
@@ -238,10 +257,15 @@ class JsonSchemaFieldConverter:
             Comparator instance
             
         Raises:
-            KeyError: If comparator name is not registered
+            ValueError: If comparator name is not registered
         """
         # Use existing comparator_registry
-        return create_comparator(comparator_name, {})
+        try:
+            return create_comparator(comparator_name, {})
+        except KeyError as e:
+            # The KeyError message from the registry already contains the list of valid comparators
+            # Re-raise as ValueError with the same information
+            raise ValueError(str(e)) from e
 
     def _resolve_ref(self, ref: str) -> Dict[str, Any]:
         """Resolve a $ref reference within the schema.
@@ -279,7 +303,7 @@ class JsonSchemaFieldConverter:
             )
 
     def _handle_nested_object(
-        self, field_name: str, property_schema: Dict[str, Any], is_required: bool
+        self, field_name: str, property_schema: Dict[str, Any], is_required: bool, field_path: str = None
     ) -> Tuple[Type, Any]:
         """Handle nested object type (creates nested StructuredModel).
         
@@ -287,10 +311,13 @@ class JsonSchemaFieldConverter:
             field_name: Name of the field
             property_schema: JSON Schema for the nested object
             is_required: Whether this field is required
+            field_path: Full path to this field for error messages
             
         Returns:
             Tuple of (NestedModel, ComparableField)
         """
+        if field_path is None:
+            field_path = field_name
         from typing import List
         
         # Recursively create nested model from the nested schema
@@ -305,10 +332,14 @@ class JsonSchemaFieldConverter:
         if self.defs and "$defs" not in enriched_schema:
             enriched_schema["$defs"] = self.defs
         
-        NestedModel = StructuredModel.from_json_schema(enriched_schema)
+        try:
+            NestedModel = StructuredModel._from_json_schema_internal(enriched_schema, field_path=field_path)
+        except ValueError as e:
+            # Nested errors already have field path context
+            raise
         
         # Extract extensions for the field itself
-        extensions = self._extract_stickler_extensions(property_schema)
+        extensions = self._extract_stickler_extensions(property_schema, field_path)
         weight = extensions.get("weight", 1.0)
         clip_under_threshold = extensions.get("clip_under_threshold", True)
         aggregate = extensions.get("aggregate", False)
@@ -332,7 +363,7 @@ class JsonSchemaFieldConverter:
         return NestedModel, field
 
     def _handle_array_type(
-        self, field_name: str, property_schema: Dict[str, Any], is_required: bool
+        self, field_name: str, property_schema: Dict[str, Any], is_required: bool, field_path: str = None
     ) -> Tuple[Type, Any]:
         """Handle array type (creates List field).
         
@@ -340,10 +371,13 @@ class JsonSchemaFieldConverter:
             field_name: Name of the field
             property_schema: JSON Schema for the array
             is_required: Whether this field is required
+            field_path: Full path to this field for error messages
             
         Returns:
             Tuple of (List[ElementType], ComparableField)
         """
+        if field_path is None:
+            field_path = field_name
         from typing import List
         
         items_schema = property_schema.get("items", {})
@@ -357,7 +391,11 @@ class JsonSchemaFieldConverter:
         # Array of objects -> List[StructuredModel]
         if items_type == "object":
             from .structured_model import StructuredModel
-            ElementModel = StructuredModel.from_json_schema(items_schema)
+            try:
+                ElementModel = StructuredModel._from_json_schema_internal(items_schema, field_path=f"{field_path}[]")
+            except ValueError as e:
+                # Nested errors already have field path context
+                raise
             field_type = List[ElementModel]
             # Use default comparator for the element type
             comparator = self._get_default_comparator_for_type("string")
@@ -369,7 +407,7 @@ class JsonSchemaFieldConverter:
             comparator = self._get_default_comparator_for_type(items_type)
         
         # Extract extensions from the array property itself
-        extensions = self._extract_stickler_extensions(property_schema)
+        extensions = self._extract_stickler_extensions(property_schema, field_path)
         # Override comparator if specified in extensions
         if "comparator" in extensions:
             comparator = extensions["comparator"]

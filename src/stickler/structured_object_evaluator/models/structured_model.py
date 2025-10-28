@@ -491,6 +491,24 @@ class StructuredModel(BaseModel):
             ... }
             >>> OrderModel = StructuredModel.from_json_schema(schema)
         """
+        return cls._from_json_schema_internal(schema, field_path="")
+    
+    @classmethod
+    def _from_json_schema_internal(
+        cls, schema: Dict[str, Any], field_path: str
+    ) -> Type["StructuredModel"]:
+        """Internal method for creating StructuredModel from JSON Schema with field path tracking.
+        
+        This is used internally for recursive calls to track field paths for error messages.
+        External callers should use from_json_schema() instead.
+        
+        Args:
+            schema: JSON Schema document as a dictionary
+            field_path: Current field path for error messages (e.g., "address.street")
+            
+        Returns:
+            StructuredModel subclass created from the schema
+        """
         # Import dependencies
         from ..utils.json_schema_validator import validate_json_schema
         from .json_schema_field_converter import JsonSchemaFieldConverter
@@ -540,7 +558,7 @@ class StructuredModel(BaseModel):
         required = schema.get("required", [])
         
         # Create converter and convert properties to field definitions
-        converter = JsonSchemaFieldConverter(schema)
+        converter = JsonSchemaFieldConverter(schema, field_path=field_path)
         field_definitions = converter.convert_properties_to_fields(properties, required)
         
         # Create the model using ModelFactory
