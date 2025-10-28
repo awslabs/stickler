@@ -296,7 +296,16 @@ class JsonSchemaFieldConverter:
         # Recursively create nested model from the nested schema
         # Import here to avoid circular dependency
         from .structured_model import StructuredModel
-        NestedModel = StructuredModel.from_json_schema(property_schema)
+        
+        # CRITICAL: Pass parent schema's definitions/defs to nested schema
+        # so that nested $refs can be resolved
+        enriched_schema = dict(property_schema)
+        if self.definitions and "definitions" not in enriched_schema:
+            enriched_schema["definitions"] = self.definitions
+        if self.defs and "$defs" not in enriched_schema:
+            enriched_schema["$defs"] = self.defs
+        
+        NestedModel = StructuredModel.from_json_schema(enriched_schema)
         
         # Extract extensions for the field itself
         extensions = self._extract_stickler_extensions(property_schema)

@@ -363,6 +363,195 @@ class StructuredModel(BaseModel):
         return ModelFactory.create_model_from_json(config, base_class=cls)
 
     @classmethod
+    def from_json_schema(cls, schema: Dict[str, Any]) -> Type["StructuredModel"]:
+        """Create a StructuredModel subclass from a JSON Schema document.
+        
+        This method accepts standard JSON Schema documents and creates fully functional
+        StructuredModel classes with comparison capabilities. It supports JSON Schema
+        draft-07 and later specifications.
+        
+        Comparison behavior can be customized using x-aws-stickler-* extension fields:
+        - x-aws-stickler-comparator: Comparator class name (e.g., "LevenshteinComparator")
+        - x-aws-stickler-threshold: Similarity threshold (0.0 to 1.0)
+        - x-aws-stickler-weight: Field weight for overall scoring (positive float)
+        - x-aws-stickler-clip-under-threshold: Whether to clip scores below threshold (boolean)
+        - x-aws-stickler-aggregate: Whether to aggregate child metrics (boolean)
+        
+        Model-level configuration at root:
+        - x-aws-stickler-model-name: Generated class name (default: "DynamicModel")
+        - x-aws-stickler-match-threshold: Overall match threshold (default: 0.7)
+        
+        Supported JSON Schema Features:
+        - Primitive types: string, number, integer, boolean
+        - Object types with nested properties
+        - Array types (both primitive and object arrays)
+        - Required fields via "required" keyword
+        - Default values via "default" keyword
+        - Documentation via "title" and "description" keywords
+        - Schema references via "$ref" keyword (#/definitions/ and #/$defs/)
+        
+        Type Mapping:
+        - JSON Schema "string" → Python str (default: LevenshteinComparator)
+        - JSON Schema "number" → Python float (default: NumericComparator)
+        - JSON Schema "integer" → Python int (default: NumericComparator)
+        - JSON Schema "boolean" → Python bool (default: ExactComparator)
+        - JSON Schema "array" → Python List[T]
+        - JSON Schema "object" → Nested StructuredModel
+        
+        Args:
+            schema: JSON Schema document as a dictionary
+            
+        Returns:
+            StructuredModel subclass created from the schema
+            
+        Raises:
+            ValueError: If schema is invalid or contains unsupported features
+            jsonschema.exceptions.SchemaError: If schema doesn't conform to JSON Schema spec
+            
+        Examples:
+            Basic usage with standard JSON Schema:
+            >>> schema = {
+            ...     "type": "object",
+            ...     "properties": {
+            ...         "name": {"type": "string"},
+            ...         "age": {"type": "integer"},
+            ...         "email": {"type": "string"}
+            ...     },
+            ...     "required": ["name", "email"]
+            ... }
+            >>> PersonModel = StructuredModel.from_json_schema(schema)
+            >>> person = PersonModel(name="Alice", email="alice@example.com")
+            
+            Advanced usage with comparison extensions:
+            >>> schema = {
+            ...     "type": "object",
+            ...     "x-aws-stickler-model-name": "Product",
+            ...     "x-aws-stickler-match-threshold": 0.8,
+            ...     "properties": {
+            ...         "name": {
+            ...             "type": "string",
+            ...             "x-aws-stickler-comparator": "LevenshteinComparator",
+            ...             "x-aws-stickler-threshold": 0.9,
+            ...             "x-aws-stickler-weight": 2.0
+            ...         },
+            ...         "price": {
+            ...             "type": "number",
+            ...             "x-aws-stickler-comparator": "NumericComparator",
+            ...             "x-aws-stickler-threshold": 0.95
+            ...         }
+            ...     },
+            ...     "required": ["name"]
+            ... }
+            >>> ProductModel = StructuredModel.from_json_schema(schema)
+            >>> result = product1.compare_with(product2)
+            
+            Nested objects:
+            >>> schema = {
+            ...     "type": "object",
+            ...     "properties": {
+            ...         "name": {"type": "string"},
+            ...         "address": {
+            ...             "type": "object",
+            ...             "properties": {
+            ...                 "street": {"type": "string"},
+            ...                 "city": {"type": "string"}
+            ...             }
+            ...         }
+            ...     }
+            ... }
+            >>> PersonModel = StructuredModel.from_json_schema(schema)
+            
+            Arrays of primitives:
+            >>> schema = {
+            ...     "type": "object",
+            ...     "properties": {
+            ...         "tags": {
+            ...             "type": "array",
+            ...             "items": {"type": "string"}
+            ...         }
+            ...     }
+            ... }
+            >>> TaggedModel = StructuredModel.from_json_schema(schema)
+            
+            Arrays of objects:
+            >>> schema = {
+            ...     "type": "object",
+            ...     "properties": {
+            ...         "items": {
+            ...             "type": "array",
+            ...             "items": {
+            ...                 "type": "object",
+            ...                 "properties": {
+            ...                     "name": {"type": "string"},
+            ...                     "quantity": {"type": "integer"}
+            ...                 }
+            ...             }
+            ...         }
+            ...     }
+            ... }
+            >>> OrderModel = StructuredModel.from_json_schema(schema)
+        """
+        # Import dependencies
+        from ..utils.json_schema_validator import validate_json_schema
+        from .json_schema_field_converter import JsonSchemaFieldConverter
+        from .model_factory import ModelFactory
+        
+        # Subtask 4.2: Validate JSON Schema
+        try:
+            validate_json_schema(schema)
+        except Exception as e:
+            raise ValueError(
+                f"Invalid JSON Schema: {e}. "
+                f"Please ensure the schema conforms to JSON Schema draft-07 specification."
+            )
+        
+        # Subtask 4.3: Extract model-level configuration
+        model_name = schema.get("x-aws-stickler-model-name", "DynamicModel")
+        match_threshold = schema.get("x-aws-stickler-match-threshold", 0.7)
+        
+        # Validate model name
+        if not isinstance(model_name, str) or not model_name.isidentifier():
+            raise ValueError(
+                f"x-aws-stickler-model-name must be a valid Python identifier, "
+                f"got: {model_name}"
+            )
+        
+        # Validate match threshold
+        if not isinstance(match_threshold, (int, float)):
+            raise ValueError(
+                f"x-aws-stickler-match-threshold must be a number, "
+                f"got: {type(match_threshold).__name__}"
+            )
+        
+        if not (0.0 <= match_threshold <= 1.0):
+            raise ValueError(
+                f"x-aws-stickler-match-threshold must be between 0.0 and 1.0, "
+                f"got: {match_threshold}"
+            )
+        
+        # Subtask 4.4: Convert fields and create model
+        # Ensure schema has properties
+        if "properties" not in schema:
+            raise ValueError(
+                "JSON Schema must contain 'properties' key for object type"
+            )
+        
+        properties = schema.get("properties", {})
+        required = schema.get("required", [])
+        
+        # Create converter and convert properties to field definitions
+        converter = JsonSchemaFieldConverter(schema)
+        field_definitions = converter.convert_properties_to_fields(properties, required)
+        
+        # Create the model using ModelFactory
+        return ModelFactory.create_model_from_fields(
+            model_name=model_name,
+            field_definitions=field_definitions,
+            match_threshold=match_threshold,
+            base_class=cls
+        )
+
+    @classmethod
     def _is_structured_field_type(cls, field_info) -> bool:
         """Check if a field represents a structured type that needs special handling.
 
