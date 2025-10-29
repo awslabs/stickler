@@ -1,4 +1,8 @@
-# Threshold-Gated Recursive Evaluation for List[StructuredModel] Comparison
+---
+title: Recursive Evaluation
+---
+
+# Threshold-Gated Recursive Evaluation for `List[StructuredModel]` Comparison
 
 ## Overview
 
