@@ -57,6 +57,54 @@ mkdocs gh-deploy --force
 
 This builds the site and pushes it to the `gh-pages` branch using MkDocs' built-in deployment command.
 
+### Future TODO: GitHub Actions Automation
+
+To set up automatic deployment on push to main, create `.github/workflows/docs.yml`:
+
+```yaml
+name: Deploy Documentation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          cd docs
+          pip install -r requirements.txt
+      
+      - name: Deploy to GitHub Pages
+        run: |
+          cd docs
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          mkdocs gh-deploy --force
+```
+
+This workflow:
+- Triggers on pushes to main that modify docs files
+- Requires `contents: write` permission for gh-pages deployment
+- Installs Python 3.12 and documentation dependencies
+- Deploys using `mkdocs gh-deploy`
+
 ---
 
 > **Note**: A `Makefile` is provided for convenience with targets: `install`, `docs`, `build`, `deploy`, and `clean`.
