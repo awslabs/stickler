@@ -5,6 +5,7 @@ to appropriate handlers based on field type and null states.
 """
 
 from typing import Any, Dict, Optional, TYPE_CHECKING
+from .result_helper import ResultHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -253,64 +254,28 @@ class ComparisonDispatcher:
         pred_effectively_null = self.model._is_effectively_null_for_lists(pred_val)
 
         # Use match statement for clear, traceable dispatch logic
+        # Leverage helper methods to avoid code duplication
         match (gt_effectively_null, pred_effectively_null):
             case (True, True):
                 # CASE 1: Both None or empty lists → True Negative
                 # This is a perfect match - both sides agree there's no data
-                return {
-                    "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
-                    "fields": {},
-                    "raw_similarity_score": 1.0,  # Perfect match
-                    "similarity_score": 1.0,
-                    "threshold_applied_score": 1.0,
-                    "weight": weight,
-                }
+                return self.model._create_true_negative_result(weight)
             case (True, False):
                 # CASE 2: GT=None/empty, Pred=populated list → False Alarm
                 # The prediction has data that shouldn't be there
-                # Count each list item as a separate False Alarm
+                # Use ResultHelper for list-specific handling with counts
                 pred_list = pred_val if isinstance(pred_val, list) else []
-                fa_count = (
-                    len(pred_list) if pred_list else 1
-                )  # At least 1 FA for the field itself
-                return {
-                    "overall": {
-                        "tp": 0,
-                        "fa": fa_count,  # Each extra item is a False Alarm
-                        "fd": 0,
-                        "fp": fa_count,  # FP = FA + FD
-                        "tn": 0,
-                        "fn": 0,
-                    },
-                    "fields": {},
-                    "raw_similarity_score": 0.0,  # Complete mismatch
-                    "similarity_score": 0.0,
-                    "threshold_applied_score": 0.0,
-                    "weight": weight,
-                }
+                gt_len = 0
+                pred_len = len(pred_list) if pred_list else 1
+                return ResultHelper.create_empty_list_result(gt_len, pred_len, weight)
             case (False, True):
                 # CASE 3: GT=populated list, Pred=None/empty → False Negative
                 # The prediction is missing data that should be there
-                # Count each missing list item as a separate False Negative
+                # Use ResultHelper for list-specific handling with counts
                 gt_list = gt_val if isinstance(gt_val, list) else []
-                fn_count = (
-                    len(gt_list) if gt_list else 1
-                )  # At least 1 FN for the field itself
-                return {
-                    "overall": {
-                        "tp": 0,
-                        "fa": 0,
-                        "fd": 0,
-                        "fp": 0,
-                        "tn": 0,
-                        "fn": fn_count,  # Each missing item is a False Negative
-                    },
-                    "fields": {},
-                    "raw_similarity_score": 0.0,  # Complete mismatch
-                    "similarity_score": 0.0,
-                    "threshold_applied_score": 0.0,
-                    "weight": weight,
-                }
+                gt_len = len(gt_list) if gt_list else 1
+                pred_len = 0
+                return ResultHelper.create_empty_list_result(gt_len, pred_len, weight)
             case _:
                 # CASE 4: Both non-null and non-empty
                 # Return None to signal that we should continue to type-based dispatch
