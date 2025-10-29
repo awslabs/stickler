@@ -10,22 +10,18 @@ class SectionGenerator:
         self.results: Union[Dict, ProcessEvaluation] = results
         self.viz_engine: VisualizationEngine = viz_engine
 
-    def generate_executive_summary(self, analysis: Dict[str, Any]) -> str:
+    def generate_executive_summary(self) -> str:
         """Generate executive summary section."""
         metrics = DataExtractor.extract_overall_metrics(self.results)
         doc_count =  getattr(self.results, 'document_count', 1)
 
-        # Get analysis data
-        exec_summary = analysis.get('executive_summary', {})
-        overall_performance = exec_summary.get('overall_performance', 0)
-        
         html = f"""
         <div class="section">
             <h2>Executive Summary</h2>
         """
         
         # Add performance gauge for overall F1 score
-        f1_score = metrics.get('cm_f1', overall_performance)
+        f1_score = metrics.get('cm_f1')
         if isinstance(f1_score, (int, float)) and f1_score > 0:
             html += f'<div class="performance-section">{self.viz_engine.generate_performance_gauge(f1_score)}</div>'
         

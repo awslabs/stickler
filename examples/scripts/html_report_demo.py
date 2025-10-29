@@ -114,7 +114,6 @@ def demo_html_report():
     
     print("\n📄 HTML Report Generated!")
     print(f"Path: {report_result.output_path}")
-    print(f"Size: {report_result.file_size_mb:.2f} MB")
     print(f"Generation Time: {report_result.generation_time_seconds:.2f}s")
     print(f"Sections: {', '.join(report_result.sections_included)}")
     print(f"Document Count: {report_result.metadata.get('document_count', 'N/A')}")

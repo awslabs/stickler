@@ -2,8 +2,8 @@
 Simple visualization engine for HTML reports - v0.
 """
 
-from typing import Dict, Any, Optional
-from stickler.reporting.html.utils import ColorUtils, DataExtractor
+from typing import Dict, Any
+from stickler.reporting.html.utils import ColorUtils
 
 
 class VisualizationEngine:
@@ -11,18 +11,12 @@ class VisualizationEngine:
     Simple visualization engine for generating charts and graphs.
     """
     
-    def __init__(self, theme: str = "professional", include_plotly: bool = False, branding: Optional[Dict] = None):
+    def __init__(self):
         """
         Initialize the visualization engine.
         
-        Args:
-            theme: Visual theme
-            include_plotly: Whether to include Plotly for interactive charts
-            branding: Branding configuration (unused in v0)
+        Creates a new instance of VisualizationEngine with default settings
         """
-        self.theme = theme
-        self.include_plotly = include_plotly
-        self.branding = branding or {}
     
     def generate_performance_gauge(self, score: float) -> str:
         """
@@ -87,6 +81,15 @@ class VisualizationEngine:
         return html
     
     def generate_field_performance_table(self, field_metrics: Dict[str, Any]) -> str:
+        """
+        Generate a simple field performance table visualization.
+        
+        Args:
+            field_metrics: Field level data
+            
+        Returns:
+            HTML for field performance scale.
+        """
         html = ''
 
         # Generate detailed field performance table

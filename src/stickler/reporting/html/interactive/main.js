@@ -1,11 +1,20 @@
 /**
- * Interactive functionality for HTML evaluation reports
- * Handles document drill-down, search, filtering, and navigation
+ * @fileoverview Interactive functionality for HTML evaluation reports
+ * Handles document drill-down, search, filtering, and navigation between aggregate and individual document views
+ * 
+ * Global State Variables:
+ * @var {Array<Object>} documentData - Array of individual document results from JSONL file
+ * @var {Object} fieldThresholds - Field name -> threshold value mapping extracted from model schema  
+ * @var {Object} aggregateData - Original aggregate metrics captured from DOM on page load
+ * @var {string|null} currentFilterDoc - Current filtered document ID (null = showing aggregate view)
+ * 
+ * Data Structure Notes:
+ * - Individual document structure: doc.comparison_result.confusion_matrix.fields.fieldName.overall.derived.cm_*
+ * - Aggregate data structure: captured directly from DOM elements on page load
  */
 
 let documentData = [];
 let fieldThresholds = {};
-let currentDocIndex = -1;
 let aggregateData = null;
 let currentFilterDoc = null; // null means showing aggregate data
 
@@ -19,7 +28,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Initialize data from HTML (called by inline script)
+/**
+ * Initialize document data from HTML (called by inline script in HTML template)
+ * @param {Array<Object>} docs - Array of individual document evaluation results
+ * @param {Object} thresholds - Field name to threshold value mapping
+ */
 function initializeDocumentData(docs, thresholds) {
     documentData = docs;
     fieldThresholds = thresholds;
@@ -31,7 +44,14 @@ function initializeDocumentData(docs, thresholds) {
     }
 }
 
-// Capture the original aggregate data from the DOM
+// ============================================================================
+// DATA INITIALIZATION & CAPTURE
+// ============================================================================
+
+/**
+ * Capture the original aggregate data from the DOM elements
+ * This preserves the aggregate view so we can switch back from individual document views
+ */
 function captureAggregateData() {
     aggregateData = {
         executiveSummary: captureExecutiveSummaryData(),
@@ -149,17 +169,15 @@ function addReportFilterControls() {
     // Add a filter control above the first section
     const firstSection = document.querySelector('.section');
     if (firstSection) {
-        const filterControl = DOMUtils.createElement('div', 
-            { className: 'report-filter-control' },
-            '',
-            `<div style="background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #007bff;">
+        const filterControl = document.createElement('div');
+        filterControl.className = 'report-filter-control';
+        filterControl.innerHTML = `<div style="background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #007bff;">
                 <strong>Report View:</strong>
                 <select id="report-doc-filter" style="margin-left: 10px; padding: 5px 10px; border: 1px solid #dee2e6; border-radius: 4px;">
                     <option value="">All Documents (Aggregate)</option>
                 </select>
                 <button id="reset-report-filter" style="margin-left: 10px; padding: 5px 10px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Reset to Aggregate</button>
-            </div>`
-        );
+            </div>`;
         
         firstSection.parentNode.insertBefore(filterControl, firstSection);
         
@@ -167,228 +185,54 @@ function addReportFilterControls() {
         const select = document.getElementById('report-doc-filter');
         if (select) {
             documentData.forEach(doc => {
-                const option = DOMUtils.createElement('option', 
-                    { value: doc.doc_id },
-                    doc.doc_id
-                );
+                const option = document.createElement('option');
+                option.value = doc.doc_id;
+                option.textContent = doc.doc_id;
                 select.appendChild(option);
             });
         }
         
         // Add event listeners with error handling
-        DOMUtils.addEventListenerSafe('#report-doc-filter', 'change', function() {
-            filterReportToDocument(this.value || null);
-        });
-        
-        DOMUtils.addEventListenerSafe('#reset-report-filter', 'click', function() {
-            const select = document.getElementById('report-doc-filter');
-            if (select) {
-                select.value = '';
-                filterReportToDocument(null);
-            }
-        });
-    }
-}
-
-
-function setupSearch() {
-    const searchInput = document.getElementById('doc-search');
-    if (searchInput) {
-        searchInput.addEventListener('input', function() {
-            filterDocuments();
-        });
-    }
-}
-
-function setupFilter() {
-    const filterSelect = document.getElementById('threshold-filter');
-    if (filterSelect) {
-        filterSelect.addEventListener('change', function() {
-            filterDocuments();
-        });
-    }
-}
-
-function filterDocuments() {
-    const searchInput = document.getElementById('doc-search');
-    const filterSelect = document.getElementById('threshold-filter');
-    
-    if (!searchInput || !filterSelect) return;
-    
-    const searchTerm = searchInput.value.toLowerCase();
-    const filterValue = filterSelect.value;
-    const rows = document.querySelectorAll('.doc-row');
-    
-    rows.forEach(row => {
-        const docId = row.getAttribute('data-doc-id').toLowerCase();
-        const matchesSearch = docId.includes(searchTerm);
-        
-        let matchesFilter = true;
-        if (filterValue === 'pass') {
-            matchesFilter = row.classList.contains('threshold-pass');
-        } else if (filterValue === 'fail') {
-            matchesFilter = row.classList.contains('threshold-fail');
+        const selectElement = document.getElementById('report-doc-filter');
+        if (selectElement) {
+            selectElement.addEventListener('change', function() {
+                filterReportToDocument(this.value || null);
+            });
         }
         
-        row.style.display = (matchesSearch && matchesFilter) ? '' : 'none';
-    });
-}
-
-function showDocumentDetails(docId) {
-    // Find document index
-    currentDocIndex = documentData.findIndex(doc => doc.doc_id === docId);
-    if (currentDocIndex === -1) return;
-    
-    const doc = documentData[currentDocIndex];
-    const comparisonResult = doc.comparison_result;
-    
-    // Hide document list and show details
-    const tableParent = document.querySelector('.document-table').parentElement;
-    const controls = document.querySelector('.document-controls');
-    const detailView = document.getElementById('document-detail');
-    
-    if (tableParent) tableParent.style.display = 'none';
-    if (controls) controls.style.display = 'none';
-    if (detailView) detailView.style.display = 'block';
-    
-    // Update title and navigation
-    const titleElement = document.getElementById('detail-title');
-    if (titleElement) {
-        titleElement.textContent = `Document: ${docId}`;
-    }
-    
-    updateNavigationButtons();
-    
-    // Generate detailed content
-    const detailContent = generateDocumentDetailContent(comparisonResult, docId);
-    const contentElement = document.getElementById('detail-content');
-    if (contentElement) {
-        contentElement.innerHTML = detailContent;
-    }
-}
-
-function hideDocumentDetails() {
-    const detailView = document.getElementById('document-detail');
-    const tableParent = document.querySelector('.document-table')?.parentElement;
-    const controls = document.querySelector('.document-controls');
-    
-    if (detailView) detailView.style.display = 'none';
-    if (tableParent) tableParent.style.display = 'block';
-    if (controls) controls.style.display = 'flex';
-    
-    currentDocIndex = -1;
-}
-
-function navigateDocument(direction) {
-    const newIndex = currentDocIndex + direction;
-    if (newIndex >= 0 && newIndex < documentData.length) {
-        const newDoc = documentData[newIndex];
-        showDocumentDetails(newDoc.doc_id);
-    }
-}
-
-function updateNavigationButtons() {
-    const prevButton = document.getElementById('prev-doc');
-    const nextButton = document.getElementById('next-doc');
-    
-    if (prevButton) {
-        prevButton.disabled = currentDocIndex <= 0;
-    }
-    
-    if (nextButton) {
-        nextButton.disabled = currentDocIndex >= documentData.length - 1;
-    }
-}
-
-function generateDocumentDetailContent(comparisonResult, docId) {
-    let html = `
-        <div class="document-metrics">
-            <h4>Overall Metrics</h4>
-            <div class="metric-grid">
-    `;
-    
-    // Overall similarity score
-    const overallSimilarity = comparisonResult.similarity_score || 
-                             comparisonResult.overall?.similarity_score || 0;
-    html += `
-        <div class="metric-item">
-            <label>Overall Similarity:</label>
-            <span class="metric-value">${overallSimilarity.toFixed(3)}</span>
-        </div>
-    `;
-    
-    html += `</div></div>`;
-    
-    // Field-level analysis - access fields from the correct nested structure
-    const confusionMatrix = comparisonResult.confusion_matrix || {};
-    const fieldsData = confusionMatrix.fields || {};
-    if (Object.keys(fieldsData).length > 0) {
-        html += `
-            <div class="field-details">
-                <h4>Field-by-Field Analysis</h4>
-                <table class="field-detail-table">
-                    <thead>
-                        <tr>
-                            <th>Field</th>
-                            <th>Similarity Score</th>
-                            <th>Threshold</th>
-                            <th>Status</th>
-                            <th>Ground Truth</th>
-                            <th>Prediction</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-        `;
-        
-        for (const [fieldName, fieldData] of Object.entries(fieldsData)) {
-            const similarity = fieldData.raw_similarity_score || fieldData.similarity_score || 0;
-            const threshold = fieldThresholds[fieldName] || 0.5;
-            const status = similarity >= threshold ? '✓ Pass' : '✗ Fail';
-            const statusClass = similarity >= threshold ? 'status-pass' : 'status-fail';
-            
-            // Extract ground truth and prediction values
-            let gtValue = 'N/A';
-            let predValue = 'N/A';
-            
-            // Try to get values from different possible locations
-            if (fieldData.ground_truth_value !== undefined) {
-                gtValue = String(fieldData.ground_truth_value).substring(0, 50);
-            }
-            if (fieldData.prediction_value !== undefined) {
-                predValue = String(fieldData.prediction_value).substring(0, 50);
-            }
-            
-            html += `
-                <tr>
-                    <td>${fieldName}</td>
-                    <td>${similarity.toFixed(3)}</td>
-                    <td>${threshold.toFixed(3)}</td>
-                    <td class="${statusClass}">${status}</td>
-                    <td class="value-cell" title="${gtValue}">${gtValue}</td>
-                    <td class="value-cell" title="${predValue}">${predValue}</td>
-                </tr>
-            `;
+        const resetButton = document.getElementById('reset-report-filter');
+        if (resetButton) {
+            resetButton.addEventListener('click', function() {
+                const select = document.getElementById('report-doc-filter');
+                if (select) {
+                    select.value = '';
+                    filterReportToDocument(null);
+                }
+            });
         }
-        
-        html += `</tbody></table></div>`;
     }
-    
-    return html;
 }
 
-// Main function to filter the entire report to show metrics for a specific document
+// ============================================================================
+// DOCUMENT FILTERING & MAIN REPORT UPDATES
+// ============================================================================
+
+/**
+ * Main function to filter the entire report to show metrics for a specific document
+ * @param {string|null} docId - Document ID to filter to, or null for aggregate view
+ */
 function filterReportToDocument(docId) {
     currentFilterDoc = docId;
     
     if (!docId) {
-        // Show aggregate data
+        // Show aggregate data - restore original captured metrics
         updateExecutiveSummary(aggregateData.executiveSummary);
         updateFieldAnalysis(aggregateData.fieldAnalysis);
         updateConfusionMatrix(aggregateData.confusionMatrix);
         updateNonMatchesTable(aggregateData.nonMatches);
         updateReportTitle("All Documents");
     } else {
-        // Find the document and show its data
+        // Find the document and show its individual metrics
         const doc = documentData.find(d => d.doc_id === docId);
         if (doc) {
             const docMetrics = extractDocumentMetrics(doc);
@@ -401,20 +245,21 @@ function filterReportToDocument(docId) {
     }
 }
 
+/**
+ * Extract metrics from individual document data for display in the main report sections
+ * @param {Object} doc - Individual document data containing comparison results
+ * @returns {Object} Structured metrics data matching the aggregate data format
+ * 
+ * Data Structure:
+ * - Individual docs store field metrics at: doc.comparison_result.confusion_matrix.fields.fieldName.overall.derived.cm_*
+ * - Overall metrics are at: doc.comparison_result.confusion_matrix.overall.derived.cm_*
+ */
 function extractDocumentMetrics(doc) {
     const comparison = doc.comparison_result;
     const confusionMatrix = comparison.confusion_matrix || {};
     const overallMetrics = confusionMatrix.overall || {};
     const fieldsData = confusionMatrix.fields || {};
     const nonMatches = comparison.non_matches || []
-    
-    // Debug logging
-    console.log('=== DEBUG: Document Metrics Extraction ===');
-    console.log('Document ID:', doc.doc_id);
-    console.log('doc.non_matches:', doc.non_matches);
-    console.log('nonMatches array:', nonMatches);
-    console.log('Full document structure:', doc);
-    console.log('===========================================');
     
     return {
         executiveSummary: {
@@ -427,17 +272,19 @@ function extractDocumentMetrics(doc) {
             }
         },
         fieldAnalysis: {
+            // Fix: Chart data needs to use the same path as table data for consistency
             chart: Object.entries(fieldsData).map(([field, data]) => ({
                 field: field,
-                value: data.derived?.cm_f1 || 0,
-                width: `${Math.round((data.derived?.cm_f1 || 0) * 100)}%`,
-                color: getPerformanceColor(data.derived?.cm_f1 || 0)
+                value: data.overall?.derived?.cm_f1 || 0,
+                width: `${Math.round((data.overall?.derived?.cm_f1 || 0) * 100)}%`,
+                color: getPerformanceColor(data.overall?.derived?.cm_f1 || 0)
             })),
+            // Table data: Extract field-level precision, recall, F1 from correct nested structure
             table: Object.entries(fieldsData).map(([field, data]) => ({
                 field: field,
-                precision: data.derived?.cm_precision || 0,
-                recall: data.derived?.cm_recall || 0,
-                f1: data.derived?.cm_f1 || 0,
+                precision: data.overall?.derived?.cm_precision || 0,
+                recall: data.overall?.derived?.cm_recall || 0,
+                f1: data.overall?.derived?.cm_f1 || 0,
                 tp: data.overall?.tp || 0,
                 fd: data.overall?.fd || 0,
                 fa: data.overall?.fa || 0,
@@ -506,37 +353,55 @@ function updateExecutiveSummary(data) {
     }
 }
 
+// ============================================================================
+// UI UPDATE FUNCTIONS
+// ============================================================================
+
+/**
+ * Update field analysis section (chart and table) with new data
+ * @param {Object} data - Field analysis data
+ * @param {Array} data.chart - Chart data: [{field, value, width, color}, ...]
+ * @param {Array} data.table - Table data: [{field, precision, recall, f1, tp, fd, fa, fn}, ...]
+ */
 function updateFieldAnalysis(data) {
-    // Update field chart
+    // Update field chart - match by field name and update visual bars
     if (data.chart) {
         const fieldBars = document.querySelectorAll('.field-bar');
-        data.chart.forEach((fieldData, index) => {
-            if (fieldBars[index]) {
-                const barFill = fieldBars[index].querySelector('.bar-fill');
-                const barValue = fieldBars[index].querySelector('.bar-value');
-                
-                if (barFill) {
-                    barFill.style.width = fieldData.width;
-                    barFill.style.backgroundColor = fieldData.color;
-                }
-                if (barValue) {
-                    barValue.textContent = fieldData.value.toFixed(3);
+        fieldBars.forEach(bar => {
+            const fieldLabel = bar.querySelector('.field-label')?.textContent;
+            if (fieldLabel) {
+                const fieldData = data.chart.find(item => item.field === fieldLabel);
+                if (fieldData) {
+                    const barFill = bar.querySelector('.bar-fill');
+                    const barValue = bar.querySelector('.bar-value');
+                    
+                    if (barFill) {
+                        barFill.style.width = fieldData.width;
+                        barFill.style.backgroundColor = fieldData.color;
+                    }
+                    if (barValue) {
+                        barValue.textContent = fieldData.value.toFixed(3);
+                    }
                 }
             }
         });
     }
     
-    // Update performance table
+    // Update performance table - match by field name and update all metric columns
     if (data.table) {
         const tableRows = document.querySelectorAll('.performance-table tbody tr');
-        data.table.forEach((rowData, index) => {
-            if (tableRows[index]) {
-                const cells = tableRows[index].querySelectorAll('td');
-                if (cells.length >= 8) {
+        tableRows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length >= 8) {
+                const fieldName = cells[0].textContent;
+                const rowData = data.table.find(item => item.field === fieldName);
+                if (rowData) {
+                    // Update precision, recall, F1 (the main metrics that were broken)
                     cells[1].textContent = rowData.precision.toFixed(3);
-                    cells[2].textContent = rowData.recall.toFixed(3);
+                    cells[2].textContent = rowData.recall.toFixed(3); 
                     cells[3].textContent = rowData.f1.toFixed(3);
                     cells[3].style.backgroundColor = getPerformanceColor(rowData.f1);
+                    // Update confusion matrix values
                     cells[4].textContent = rowData.tp;
                     cells[5].textContent = rowData.fd;
                     cells[6].textContent = rowData.fa;
@@ -574,62 +439,6 @@ function updateNonMatchesTable(data) {
                 <td>${row.prediction_value}</td>
             `;
             tableBody.appendChild(tr);
-        });
-    }
-}
-
-// Enhanced document interaction to also filter the main report
-function setupDocumentInteraction() {
-    // Handle document link clicks - now also filters the main report
-    document.querySelectorAll('.doc-link').forEach(link => {
-        link.addEventListener('click', function(e) {
-            e.preventDefault();
-            const docId = this.getAttribute('data-doc-id');
-            
-            // Filter the main report to show this document's metrics
-            filterReportToDocument(docId);
-            
-            // Update the report filter dropdown
-            const reportFilter = document.getElementById('report-doc-filter');
-            if (reportFilter) {
-                reportFilter.value = docId;
-            }
-            
-            // Also show the detailed view (existing functionality)
-            showDocumentDetails(docId);
-        });
-    });
-    
-    // Handle "View Details" button clicks - show details without filtering main report
-    document.querySelectorAll('.view-details-btn').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            const docId = this.getAttribute('data-doc-id');
-            showDocumentDetails(docId);
-        });
-    });
-    
-    // Handle back button
-    const backButton = document.getElementById('back-to-list');
-    if (backButton) {
-        backButton.addEventListener('click', function() {
-            hideDocumentDetails();
-        });
-    }
-    
-    // Handle navigation buttons
-    const prevButton = document.getElementById('prev-doc');
-    const nextButton = document.getElementById('next-doc');
-    
-    if (prevButton) {
-        prevButton.addEventListener('click', function() {
-            navigateDocument(-1);
-        });
-    }
-    
-    if (nextButton) {
-        nextButton.addEventListener('click', function() {
-            navigateDocument(1);
         });
     }
 }

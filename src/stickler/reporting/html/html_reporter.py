@@ -8,12 +8,12 @@ import json
 from typing import Dict, Any, Optional, Union, List
 from pathlib import Path
 
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.reporting.html.report_config import ReportConfig, ReportResult
-from stickler.reporting.html.content_analyzer import ContentAnalyzer
 from stickler.reporting.html.visualization_engine import VisualizationEngine
-from stickler.reporting.html.utils import ColorUtils, DataExtractor
 from stickler.utils.process_evaluation import ProcessEvaluation
 from stickler.reporting.html.section_generator import SectionGenerator
+from stickler.reporting.html.utils.data_extractors import DataExtractor
 
 class EvaluationHTMLReporter:
     """
@@ -21,14 +21,12 @@ class EvaluationHTMLReporter:
     Supports both individual and bulk evaluation formats.
     """
     
-    def __init__(self, theme: str = "professional"):
+    def __init__(self):
         """
         Initialize the HTML reporter.
         
-        Args:
-            theme: Visual theme (professional, dark, light)
+        Creates a new instance of EvaluationHTMLReporter with default settings
         """
-        self.theme = theme
         
     def generate_report(
         self,
@@ -37,7 +35,7 @@ class EvaluationHTMLReporter:
         config: Optional[ReportConfig] = None,
         document_images: Optional[Dict[str, str]] = None,
         title: Optional[str] = None,
-        model_schema: Optional[type] = None,
+        model_schema: Optional[StructuredModel] = None,
         individual_results_jsonl_path: Optional[str] = None
     ) -> ReportResult:
         """
@@ -72,17 +70,14 @@ class EvaluationHTMLReporter:
                 f.write(html_content)
             
             # Calculate file size and timing
-            file_size = os.path.getsize(output_path)
             generation_time = time.time() - start_time
             
             return ReportResult(
                 output_path=output_path,
                 success=True,
-                file_size_bytes=file_size,
                 generation_time_seconds=generation_time,
                 sections_included=self._get_sections_included(config),
                 metadata={
-                    "theme": self.theme,
                     "is_bulk": is_bulk,
                     "document_count": self._get_document_count(evaluation_results),
                 }
@@ -93,11 +88,9 @@ class EvaluationHTMLReporter:
             return ReportResult(
                 output_path=output_path,
                 success=False,
-                file_size_bytes=0,
                 generation_time_seconds=generation_time,
                 sections_included=[],
                 errors=[str(e)],
-                metadata={"theme": self.theme}
             )
     
     def _generate_html_content(
@@ -113,16 +106,14 @@ class EvaluationHTMLReporter:
         """Generate the complete HTML content."""
         
         # Initialize content analyzer and visualization engine
-        content_analyzer = ContentAnalyzer()
-        analysis = content_analyzer.analyze_results(results, is_bulk, model_schema)
-        viz_engine = VisualizationEngine(theme=self.theme)
+        viz_engine = VisualizationEngine()
         
         # Generate sections
         sections = []
         section_generator = SectionGenerator(results, viz_engine)
         
         if config.include_executive_summary:
-            sections.append(section_generator.generate_executive_summary(analysis))
+            sections.append(section_generator.generate_executive_summary())
         
         if config.include_field_analysis:
             sections.append(section_generator.generate_field_analysis())
@@ -137,15 +128,16 @@ class EvaluationHTMLReporter:
             sections.append(section_generator.generate_document_gallery(document_images, config))
         
         # Add individual document details section if JSONL path provided
+        individual_docs = None
         if individual_results_jsonl_path and os.path.exists(individual_results_jsonl_path):
             individual_docs = self._load_individual_results(individual_results_jsonl_path)
-       
+
         # Build complete HTML
         html_content = self._build_html_document(
             sections=sections,
             title=title or self._generate_title(results, is_bulk),
-            individual_docs=individual_docs if individual_results_jsonl_path and os.path.exists(individual_results_jsonl_path) else None,
-            analysis=analysis
+            individual_docs=individual_docs,
+            model_schema=model_schema
         )
         
         return html_content
@@ -163,152 +155,51 @@ class EvaluationHTMLReporter:
         except Exception as e:
             print(f"Warning: Failed to load individual results from {jsonl_path}: {e}")
         return individual_docs
-    
-    def _generate_individual_documents_section(self, individual_docs: List[Dict[str, Any]], analysis: Dict[str, Any]) -> str:
-        """Generate interactive individual documents section."""
-        field_thresholds = analysis.get('field_thresholds', {})
-        
-        html = '''
-        <div class="section" id="individual-documents">
-            <h2>Individual Document Analysis</h2>
-            <p>Click on any document ID to view detailed field-by-field analysis with similarity scores and threshold compliance.</p>
-            
-            <div class="document-controls">
-                <input type="text" id="doc-search" placeholder="Search documents..." class="doc-search-input">
-                <select id="threshold-filter" class="doc-filter-select">
-                    <option value="all">All Documents</option>
-                    <option value="pass">Threshold Pass</option>
-                    <option value="fail">Threshold Fail</option>
-                </select>
-            </div>
-            
-            <table class="document-table">
-                <thead>
-                    <tr>
-                        <th>Document ID</th>
-                        <th>Overall Similarity</th>
-                        <th>Threshold Status</th>
-                        <th>Field Issues</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-        '''
-        
-        for doc_data in individual_docs:
-            doc_id = doc_data.get('doc_id', 'Unknown')
-            comparison_result = doc_data.get('comparison_result', {})
-            
-            # Extract overall similarity score
-            overall_similarity = comparison_result.get('similarity_score', 0.0)
-            if not isinstance(overall_similarity, (int, float)):
-                overall_similarity = comparison_result.get('overall', {}).get('similarity_score', 0.0)
-            
-            # Calculate threshold compliance
-            field_issues = self._analyze_document_field_compliance(comparison_result, field_thresholds)
-            threshold_status = "Pass" if field_issues['failing_count'] == 0 else "Fail"
-            status_class = "threshold-pass" if threshold_status == "Pass" else "threshold-fail"
-            
-            html += f'''
-                <tr class="doc-row {status_class}" data-doc-id="{doc_id}">
-                    <td><a href="#" class="doc-link" data-doc-id="{doc_id}">{doc_id}</a></td>
-                    <td>{overall_similarity:.3f}</td>
-                    <td><span class="status-badge {status_class}">{threshold_status}</span></td>
-                    <td>{field_issues['failing_count']}/{field_issues['total_count']} fields</td>
-                    <td><button class="view-details-btn" data-doc-id="{doc_id}">View Details</button></td>
-                </tr>
-            '''
-        
-        html += '''
-                </tbody>
-            </table>
-            
-            <!-- Individual document detail view (initially hidden) -->
-            <div id="document-detail" class="document-detail" style="display: none;">
-                <div class="detail-header">
-                    <button id="back-to-list" class="back-btn">← Back to Document List</button>
-                    <h3 id="detail-title">Document Details</h3>
-                    <div class="detail-navigation">
-                        <button id="prev-doc" class="nav-btn">← Previous</button>
-                        <button id="next-doc" class="nav-btn">Next →</button>
-                    </div>
-                </div>
-                <div id="detail-content">
-                    <!-- Detail content will be populated by JavaScript -->
-                </div>
-            </div>
-        </div>
-        '''
-        
-        return html
-    
-    def _analyze_document_field_compliance(self, comparison_result: Dict[str, Any], field_thresholds: Dict[str, float]) -> Dict[str, int]:
-        """Analyze field compliance for a single document."""
-        failing_count = 0
-        total_count = 0
-        
-        # Access fields from the correct nested structure
-        confusion_matrix = comparison_result.get('confusion_matrix', {})
-        fields_data = confusion_matrix.get('fields', {})
-        
-        for field_name, field_result in fields_data.items():
-            if field_name in field_thresholds:
-                total_count += 1
-                # Use raw_similarity_score as that's where the actual similarity is stored
-                similarity_score = field_result.get('raw_similarity_score', 0.0)
-                if similarity_score < field_thresholds[field_name]:
-                    failing_count += 1
-        
-        return {
-            'failing_count': failing_count,
-            'total_count': total_count
-        }
-    
-    def _build_html_document(self, sections: List[str], title: str, individual_docs: Optional[List[Dict]] = None, analysis: Optional[Dict] = None) -> str:
+
+
+    def _build_html_document(self, sections: List[str], title: str, individual_docs: Optional[List[Dict]] = None, model_schema: StructuredModel = None) -> str:
         """Build the complete HTML document."""
         css = self._get_basic_css()
-        javascript = self._get_javascript(individual_docs, analysis) if individual_docs else ""
+        javascript = self._get_javascript(individual_docs, model_schema) if individual_docs else ""
         
         html = f'''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title}</title>
-    <style>{css}</style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>{title}</h1>
-            <p>Generated on {time.strftime('%Y-%m-%d %H:%M:%S')}</p>
-        </header>
-        
-        <main>
-            {"".join(sections)}
-        </main>
-        
-        <footer>
-            <p>Evaluation Report - Generated by Stickler</p>
-        </footer>
-    </div>
-    {javascript}
-</body>
-</html>'''
-        
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>{title}</title>
+                <style>{css}</style>
+            </head>
+            <body>
+                <div class="container">
+                    <header>
+                        <h1>{title}</h1>
+                        <p>Generated on {time.strftime('%Y-%m-%d %H:%M:%S')}</p>
+                    </header>
+                    
+                    <main>
+                        {"".join(sections)}
+                    </main>
+                    
+                    <footer>
+                        <p>Evaluation Report - Generated by Stickler</p>
+                    </footer>
+                </div>
+                {javascript}
+            </body>
+            </html>'''
+                    
         return html
     
     def _get_basic_css(self) -> str:
         """Load CSS from external file."""
         
-        # Get the directory where this module is located
         module_dir = Path(__file__).parent
         css_dir = module_dir / "styling"
         
         css_path = css_dir / 'style.css'
         
         try:
-            # Read CSS file
             with open(css_path, 'r', encoding='utf-8') as f:
                 css_content = f.read()
             return css_content
@@ -343,9 +234,9 @@ class EvaluationHTMLReporter:
             return f"Evaluation Report - {doc_count} Documents"
         return "Evaluation Report"
     
-    def _get_javascript(self, individual_docs: List[Dict], analysis: Dict) -> str:
+    def _get_javascript(self, individual_docs: List[Dict], model_schema: StructuredModel) -> str:
         """Generate JavaScript section with external file reference and data initialization."""
-        field_thresholds = analysis.get('field_thresholds', {})
+        field_thresholds = DataExtractor.extract_all_field_thresholds(model_schema) if model_schema else None
         
         # Convert documents and analysis to JSON for JavaScript
         docs_json = json.dumps(individual_docs)
@@ -367,8 +258,8 @@ class EvaluationHTMLReporter:
     def _load_javascript_file(self) -> str:
         """Load JavaScript from external file."""
         module_dir = Path(__file__).parent
-        js_dir = module_dir / "styling"
-        js_path = js_dir / 'interactive.js'
+        js_dir = module_dir / "interactive"
+        js_path = js_dir / 'main.js'
         
         try:
             with open(js_path, 'r', encoding='utf-8') as f:
