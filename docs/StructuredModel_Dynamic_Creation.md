@@ -1,20 +1,338 @@
-# StructuredModel Dynamic Creation from JSON
+# StructuredModel Dynamic Creation Guide
 
-This document describes how to create StructuredModel classes dynamically from JSON configuration using the `model_from_json()` classmethod. This enables configuration-driven model creation with full comparison capabilities.
+This document describes how to create StructuredModel classes dynamically from JSON Schema or custom JSON configuration. This enables configuration-driven model creation with full comparison capabilities, perfect for runtime model generation, A/B testing, and integration with external systems.
 
 ## Overview
 
-The `StructuredModel.model_from_json()` method allows you to:
+Stickler provides two methods for dynamic model creation:
 
-- Create StructuredModel classes from JSON configuration
-- Define nested StructuredModel hierarchies
-- Configure custom comparators and thresholds
-- Support lists of StructuredModels with Hungarian matching
-- Enable configuration-driven model creation for flexible applications
+1. **`from_json_schema()`** - Create models from standard JSON Schema documents (recommended)
+2. **`model_from_json()`** - Create models from custom Stickler JSON configuration
 
-## Basic Usage
+Both methods produce fully functional StructuredModel classes with:
+- Full comparison capabilities via `compare_with()`
+- Nested StructuredModel hierarchies
+- Custom comparators and thresholds
+- Lists of StructuredModels with Hungarian matching
+- Pydantic validation and serialization
 
-### Simple Model Creation
+## Method 1: JSON Schema (Recommended)
+
+### Why JSON Schema?
+
+- **Industry standard**: Works with existing JSON Schema tooling and validators
+- **Interoperability**: Integrate with OpenAPI, AsyncAPI, and other schema-based systems
+- **Documentation**: Built-in support for descriptions, examples, and validation
+- **Extensibility**: Use `x-aws-stickler-*` extensions for comparison configuration
+
+### Basic JSON Schema Example
+
+```python
+from stickler import StructuredModel
+import json
+
+# Define a standard JSON Schema with Stickler extensions
+product_schema = {
+    "type": "object",
+    "title": "Product",
+    "x-aws-stickler-model-name": "Product",
+    "properties": {
+        "name": {
+            "type": "string",
+            "description": "Product name",
+            "x-aws-stickler-comparator": "LevenshteinComparator",
+            "x-aws-stickler-threshold": 0.8,
+            "x-aws-stickler-weight": 2.0
+        },
+        "price": {
+            "type": "number",
+            "description": "Product price in USD",
+            "x-aws-stickler-comparator": "NumericComparator",
+            "x-aws-stickler-threshold": 0.95,
+            "x-aws-stickler-weight": 1.5
+        },
+        "in_stock": {
+            "type": "boolean",
+            "description": "Availability status"
+        }
+    },
+    "required": ["name", "price"]
+}
+
+# Create the model class from JSON Schema
+Product = StructuredModel.from_json_schema(product_schema)
+
+# Use it with JSON data (typical usage)
+ground_truth_json = {"name": "Laptop", "price": 999.99, "in_stock": True}
+prediction_json = {"name": "Laptop Pro", "price": 999.99, "in_stock": True}
+
+ground_truth = Product(**ground_truth_json)
+prediction = Product(**prediction_json)
+
+# Compare
+result = ground_truth.compare_with(prediction)
+print(f"Overall Score: {result['overall_score']:.3f}")
+print(f"Name Score: {result['field_scores']['name']:.3f}")
+print(f"Price Score: {result['field_scores']['price']:.3f}")
+```
+
+### Nested Objects in JSON Schema
+
+JSON Schema naturally supports nested objects, which become nested StructuredModels:
+
+```python
+invoice_schema = {
+    "type": "object",
+    "x-aws-stickler-model-name": "Invoice",
+    "properties": {
+        "invoice_number": {
+            "type": "string",
+            "x-aws-stickler-comparator": "ExactComparator",
+            "x-aws-stickler-threshold": 1.0,
+            "x-aws-stickler-weight": 3.0
+        },
+        "customer": {
+            "type": "object",
+            "description": "Customer information",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "x-aws-stickler-comparator": "LevenshteinComparator",
+                    "x-aws-stickler-threshold": 0.8
+                },
+                "email": {
+                    "type": "string",
+                    "x-aws-stickler-comparator": "ExactComparator",
+                    "x-aws-stickler-threshold": 1.0
+                }
+            },
+            "required": ["name"]
+        }
+    },
+    "required": ["invoice_number", "customer"]
+}
+
+Invoice = StructuredModel.from_json_schema(invoice_schema)
+
+# Use with JSON data
+invoice_json = {
+    "invoice_number": "INV-001",
+    "customer": {"name": "John Doe", "email": "john@example.com"}
+}
+invoice = Invoice(**invoice_json)
+```
+
+### Arrays in JSON Schema
+
+Arrays of primitives and arrays of objects are both supported:
+
+```python
+order_schema = {
+    "type": "object",
+    "x-aws-stickler-model-name": "Order",
+    "properties": {
+        "order_id": {
+            "type": "string",
+            "x-aws-stickler-comparator": "ExactComparator"
+        },
+        "tags": {
+            "type": "array",
+            "description": "Simple array of strings",
+            "items": {"type": "string"}
+        },
+        "line_items": {
+            "type": "array",
+            "description": "Array of objects - uses Hungarian matching",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "product": {
+                        "type": "string",
+                        "x-aws-stickler-comparator": "LevenshteinComparator",
+                        "x-aws-stickler-threshold": 0.8
+                    },
+                    "quantity": {
+                        "type": "integer",
+                        "x-aws-stickler-comparator": "NumericComparator"
+                    },
+                    "price": {
+                        "type": "number",
+                        "x-aws-stickler-comparator": "NumericComparator",
+                        "x-aws-stickler-threshold": 0.95
+                    }
+                },
+                "required": ["product", "quantity", "price"]
+            }
+        }
+    },
+    "required": ["order_id", "line_items"]
+}
+
+Order = StructuredModel.from_json_schema(order_schema)
+
+# Use with JSON data - arrays are compared with Hungarian matching (order-independent)
+order1_json = {
+    "order_id": "ORD-001",
+    "tags": ["electronics", "urgent"],
+    "line_items": [
+        {"product": "Widget A", "quantity": 2, "price": 50.00},
+        {"product": "Widget B", "quantity": 1, "price": 100.00}
+    ]
+}
+
+order2_json = {
+    "order_id": "ORD-001",
+    "tags": ["electronics", "urgent"],
+    "line_items": [
+        {"product": "Widget B", "quantity": 1, "price": 100.00},  # Reordered
+        {"product": "Widget A", "quantity": 2, "price": 50.00}   # Reordered
+    ]
+}
+
+order1 = Order(**order1_json)
+order2 = Order(**order2_json)
+
+result = order1.compare_with(order2)
+# Line items will match perfectly despite reordering
+```
+
+### Complete JSON Schema Example
+
+Here's a production-ready schema with all features:
+
+```python
+# Save this as invoice_schema.json
+invoice_schema = {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "title": "Invoice",
+    "description": "Invoice extraction schema with business-aligned comparison",
+    "x-aws-stickler-model-name": "Invoice",
+    "x-aws-stickler-match-threshold": 0.75,
+    "properties": {
+        "invoice_id": {
+            "type": "string",
+            "description": "Unique invoice identifier - must be exact",
+            "examples": ["INV-2024-001", "INV-2024-002"],
+            "x-aws-stickler-comparator": "ExactComparator",
+            "x-aws-stickler-threshold": 1.0,
+            "x-aws-stickler-weight": 3.0,
+            "x-aws-stickler-clip-under-threshold": true
+        },
+        "customer_name": {
+            "type": "string",
+            "description": "Customer's full name - allow minor typos",
+            "examples": ["John Smith", "Acme Corporation"],
+            "x-aws-stickler-comparator": "LevenshteinComparator",
+            "x-aws-stickler-threshold": 0.8,
+            "x-aws-stickler-weight": 1.5
+        },
+        "total_amount": {
+            "type": "number",
+            "description": "Total invoice amount in USD",
+            "examples": [1234.56, 99.99],
+            "x-aws-stickler-comparator": "NumericComparator",
+            "x-aws-stickler-threshold": 0.95,
+            "x-aws-stickler-weight": 2.5
+        },
+        "line_items": {
+            "type": "array",
+            "description": "Individual line items",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "description": {
+                        "type": "string",
+                        "x-aws-stickler-comparator": "FuzzyComparator",
+                        "x-aws-stickler-threshold": 0.7
+                    },
+                    "quantity": {
+                        "type": "integer",
+                        "x-aws-stickler-comparator": "NumericComparator",
+                        "x-aws-stickler-threshold": 1.0
+                    },
+                    "unit_price": {
+                        "type": "number",
+                        "x-aws-stickler-comparator": "NumericComparator",
+                        "x-aws-stickler-threshold": 0.95
+                    }
+                },
+                "required": ["description", "quantity", "unit_price"]
+            }
+        },
+        "metadata": {
+            "type": "object",
+            "description": "Additional metadata",
+            "properties": {
+                "processed_date": {"type": "string"},
+                "processor_id": {"type": "string"}
+            }
+        }
+    },
+    "required": ["invoice_id", "customer_name", "total_amount", "line_items"]
+}
+
+# Load from file and create model
+import json
+with open('invoice_schema.json') as f:
+    schema = json.load(f)
+
+Invoice = StructuredModel.from_json_schema(schema)
+
+# Use with JSON data (typical workflow)
+ground_truth_json = {
+    "invoice_id": "INV-2024-001",
+    "customer_name": "Acme Corporation",
+    "total_amount": 1250.00,
+    "line_items": [
+        {"description": "Widget A", "quantity": 10, "unit_price": 50.00},
+        {"description": "Widget B", "quantity": 5, "unit_price": 100.00}
+    ],
+    "metadata": {"processed_date": "2024-01-15", "processor_id": "SYS-A"}
+}
+
+prediction_json = {
+    "invoice_id": "INV-2024-001",
+    "customer_name": "ACME Corp",  # Variation
+    "total_amount": 1250.00,
+    "line_items": [
+        {"description": "Widget B", "quantity": 5, "unit_price": 100.00},  # Reordered
+        {"description": "Widget A", "quantity": 10, "unit_price": 50.00}   # Reordered
+    ],
+    "metadata": {"processed_date": "2024-01-15", "processor_id": "SYS-B"}
+}
+
+ground_truth = Invoice(**ground_truth_json)
+prediction = Invoice(**prediction_json)
+
+result = ground_truth.compare_with(prediction)
+print(f"Overall Score: {result['overall_score']:.3f}")
+print(f"Field Scores: {result['field_scores']}")
+```
+
+### JSON Schema Extension Reference
+
+For complete documentation of all `x-aws-stickler-*` extensions, see the [README](../README.md#json-schema-extensions-x-aws-stickler--complete-reference).
+
+**Quick Reference:**
+
+| Extension | Purpose | Example Value |
+|-----------|---------|---------------|
+| `x-aws-stickler-comparator` | Comparison algorithm | `"LevenshteinComparator"` |
+| `x-aws-stickler-threshold` | Match threshold (0.0-1.0) | `0.8` |
+| `x-aws-stickler-weight` | Field importance | `2.0` |
+| `x-aws-stickler-clip-under-threshold` | Zero low scores | `true` |
+| `x-aws-stickler-aggregate` | Include in metrics | `true` |
+| `x-aws-stickler-model-name` | Class name | `"Invoice"` |
+| `x-aws-stickler-match-threshold` | Model threshold | `0.75` |
+
+---
+
+## Method 2: Custom JSON Configuration
+
+For cases where you need more control or don't want to use JSON Schema, Stickler provides a custom configuration format via `model_from_json()`.
+
+### Basic Custom Configuration
 
 ```python
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
@@ -59,9 +377,9 @@ result = person1.compare_with(person2)
 print(f"Similarity: {result['overall_score']:.3f}")
 ```
 
-## Configuration Schema
+### Custom Configuration Schema
 
-### Top-Level Configuration
+#### Top-Level Configuration
 
 ```json
 {
@@ -73,9 +391,7 @@ print(f"Similarity: {result['overall_score']:.3f}")
 }
 ```
 
-### Field Configuration
-
-#### Primitive Fields
+#### Primitive Field Configuration
 
 ```json
 {
@@ -192,12 +508,12 @@ print(f"Similarity: {result['overall_score']:.3f}")
 }
 ```
 
-## Nested Model Examples
+### Nested Models with Custom Configuration
 
-### Single Nested Model
+#### Single Nested Model
 
-```json
-{
+```python
+company_config = {
     "model_name": "Company",
     "fields": {
         "name": {
@@ -227,12 +543,21 @@ print(f"Similarity: {result['overall_score']:.3f}")
         }
     }
 }
+
+Company = StructuredModel.model_from_json(company_config)
+
+# Use with JSON data
+company_json = {
+    "name": "TechCorp",
+    "ceo": {"name": "Alice Johnson", "salary": 250000.0}
+}
+company = Company(**company_json)
 ```
 
-### List of Nested Models
+#### List of Nested Models
 
-```json
-{
+```python
+company_config = {
     "model_name": "Company",
     "fields": {
         "name": {
@@ -268,6 +593,18 @@ print(f"Similarity: {result['overall_score']:.3f}")
         }
     }
 }
+
+Company = StructuredModel.model_from_json(company_config)
+
+# Use with JSON data
+company_json = {
+    "name": "TechCorp",
+    "employees": [
+        {"name": "Bob Smith", "department": "Engineering", "salary": 85000.0},
+        {"name": "Carol Davis", "department": "Marketing", "salary": 70000.0}
+    ]
+}
+company = Company(**company_json)
 ```
 
 ## Loading from JSON Files
@@ -503,8 +840,60 @@ except ValueError as e:
     print(f"Configuration error: {e}")
 ```
 
+## Example Scripts
+
+Stickler includes complete working examples for both methods:
+
+### JSON Schema Examples
+
+**[`examples/scripts/json_schema_demo.py`](../examples/scripts/json_schema_demo.py)**
+
+Comprehensive examples showing:
+- Basic JSON Schema model creation
+- Nested objects and arrays
+- Custom `x-aws-stickler-*` extensions
+- Real-world API response schemas
+- Complete evaluation workflows
+
+Run it:
+```bash
+python examples/scripts/json_schema_demo.py
+```
+
+### Custom Configuration Examples
+
+**[`examples/scripts/model_from_json_demo.py`](../examples/scripts/model_from_json_demo.py)**
+
+Comprehensive examples showing:
+- Basic model creation from custom JSON
+- Nested StructuredModels
+- Lists of StructuredModels with Hungarian matching
+- Custom comparator configuration
+- Loading from JSON files
+
+Run it:
+```bash
+python examples/scripts/model_from_json_demo.py
+```
+
+### Complete JSON-to-Evaluation Workflow
+
+**[`examples/scripts/json_to_evaluation_demo.py`](../examples/scripts/json_to_evaluation_demo.py)**
+
+End-to-end example showing:
+- Loading model configuration from JSON
+- Loading test data from JSON
+- Creating models dynamically
+- Running evaluations
+- No Python object construction required
+
+Run it:
+```bash
+python examples/scripts/json_to_evaluation_demo.py
+```
+
 ## See Also
 
+- [README: JSON Schema Extensions Reference](../README.md#json-schema-extensions-x-aws-stickler--complete-reference)
 - [StructuredModel Advanced Functionality](StructuredModel_Advanced_Functionality.md)
 - [Comparators Documentation](../src/stickler/comparators/Comparators.md)
-- [Examples](../examples/scripts/model_from_json_demo.py)
