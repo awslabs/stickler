@@ -12,6 +12,7 @@ It also supports documenting non-matches (false positives, false negatives) for 
 import os
 import psutil
 from typing import List, Dict, Any, Optional, Union, Type
+import warnings
 
 from stickler.structured_object_evaluator.models.non_match_field import (
     NonMatchField,
@@ -49,6 +50,7 @@ class StructuredModelEvaluator:
         threshold: float = 0.5,
         verbose: bool = False,
         document_non_matches: bool = True,
+        recall_with_fd: bool = False
     ):
         """
         Initialize the evaluator.
@@ -63,11 +65,20 @@ class StructuredModelEvaluator:
         self.threshold = threshold
         self.verbose = verbose
         self.peak_memory_usage = 0
+        self.recall_with_fd = recall_with_fd
         self.start_memory = get_memory_usage()
 
         # New attributes for documenting non-matches
         self.document_non_matches = document_non_matches
         self.non_match_documents: List[NonMatchField] = []
+
+        warnings.warn(
+            "This module is going to be removed in future versions. Use the StructuredModel.compare_with() method.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+
 
         if self.verbose:
             print(
@@ -586,7 +597,7 @@ class StructuredModelEvaluator:
             binary["fn"],
             binary["tn"],
             fd=overall_fd,
-            recall_with_fd=recall_with_fd,
+            recall_with_fd=self.recall_with_fd,
         )
         overall_metrics["anls_score"] = overall_score
 
