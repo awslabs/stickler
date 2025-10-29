@@ -93,6 +93,12 @@ def demo_html_report():
     
     # Generate HTML report using ProcessEvaluation object
     reporter = EvaluationHTMLReporter()
+
+    # Example with document images
+    document_images = {
+        "product_001": "examples/scripts/images/product_001.png",
+        "product_002": "examples/scripts/images/product_002.png"
+    }
     
     # Create report configuration
     config = ReportConfig(
@@ -100,7 +106,7 @@ def demo_html_report():
         include_field_analysis=True,
         include_confusion_matrix=True,
         include_non_matches=True,
-        max_non_matches_displayed=50
+        max_non_matches_displayed=50,
     )
     
     # Generate the report - HTML reporter automatically detects bulk evaluation
@@ -109,7 +115,8 @@ def demo_html_report():
         output_path="reports/bulk_product_evaluation_report.html",
         config=config,
         model_schema=Product,
-        individual_results_jsonl_path=individual_results_path
+        individual_results_jsonl_path=individual_results_path,
+        document_images=document_images
     )
     
     print("\n📄 HTML Report Generated!")

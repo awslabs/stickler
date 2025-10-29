@@ -5,6 +5,7 @@ Simple HTML reporter for evaluation results - v0.
 import os
 import time
 import json
+import shutil
 from typing import Dict, Any, Optional, Union, List
 from pathlib import Path
 
@@ -59,9 +60,18 @@ class EvaluationHTMLReporter:
             # Determine if this is bulk or individual results
             is_bulk = isinstance(evaluation_results, ProcessEvaluation)
             
+            
+            if document_images:
+                copied_document_images = self._copy_images_to_report_dir(document_images, output_path)
+            
             # Generate HTML content
             html_content = self._generate_html_content(
-                evaluation_results, config, document_images, title, is_bulk, model_schema, individual_results_jsonl_path
+                results=evaluation_results, 
+                config=config, 
+                title=title, 
+                model_schema=model_schema, 
+                individual_results_jsonl_path=individual_results_jsonl_path, 
+                document_images=copied_document_images if document_images else None
             )
             
             # Write to file
@@ -97,11 +107,10 @@ class EvaluationHTMLReporter:
         self,
         results: Union[Dict[str, Any], ProcessEvaluation],
         config: ReportConfig,
-        document_images: Optional[Dict[str, str]],
         title: Optional[str],
-        is_bulk: bool,
         model_schema: Optional[type] = None,
-        individual_results_jsonl_path: Optional[str] = None
+        individual_results_jsonl_path: Optional[str] = None,
+        document_images: Optional[Dict[str, str]] = None
     ) -> str:
         """Generate the complete HTML content."""
         
@@ -111,15 +120,11 @@ class EvaluationHTMLReporter:
         # Generate sections
         sections = []
         section_generator = SectionGenerator(results, viz_engine)
+
+        is_bulk = isinstance(results, ProcessEvaluation)
         
         if config.include_executive_summary:
             sections.append(section_generator.generate_executive_summary())
-        
-        if config.include_field_analysis:
-            sections.append(section_generator.generate_field_analysis())
-        
-        if config.include_confusion_matrix:
-            sections.append(section_generator.generate_confusion_matrix())
         
         if config.include_non_matches:
             sections.append(section_generator.generate_non_matches(config))
@@ -127,6 +132,13 @@ class EvaluationHTMLReporter:
         if document_images:
             sections.append(section_generator.generate_document_gallery(document_images, config))
         
+        if config.include_field_analysis:
+            sections.append(section_generator.generate_field_analysis())
+        
+        if config.include_confusion_matrix:
+            sections.append(section_generator.generate_confusion_matrix())
+        
+
         # Add individual document details section if JSONL path provided
         individual_docs = None
         if individual_results_jsonl_path and os.path.exists(individual_results_jsonl_path):
@@ -155,6 +167,47 @@ class EvaluationHTMLReporter:
         except Exception as e:
             print(f"Warning: Failed to load individual results from {jsonl_path}: {e}")
         return individual_docs
+    
+    def _copy_images_to_report_dir(self, document_images: Dict[str, str], output_path: str) -> Dict[str, str]:
+        """
+        Copy image files to the report directory and return updated paths.
+        
+        Args:
+            document_images: Dictionary mapping document IDs to image paths
+            output_path: Path where HTML report will be saved
+            
+        Returns:
+            Dictionary with updated image paths relative to the report
+        """
+        copied_images = {}
+        
+        # Get the directory where the report will be saved
+        report_dir = os.path.dirname(os.path.abspath(output_path))
+        images_dir = os.path.join(report_dir, "images")
+        
+        # Create images directory if it doesn't exist
+        os.makedirs(images_dir, exist_ok=True)
+        
+        for doc_id, image_path in document_images.items():
+            try:
+                if os.path.exists(image_path):
+                    filename = os.path.basename(image_path)
+                    dest_path = os.path.join(images_dir, filename)
+                    shutil.copy2(image_path, dest_path)
+                    
+                    copied_images[doc_id] = f"images/{filename}"
+                    
+                    print(f"Copied image: {image_path} -> {dest_path}")
+                else:
+                    print(f"Warning: Image file not found: {image_path}")
+                    copied_images[doc_id] = image_path
+                    
+            except Exception as e:
+                print(f"Warning: Failed to copy image {image_path}: {e}")
+                # Keep the original path as fallback
+                copied_images[doc_id] = image_path
+        
+        return copied_images
 
 
     def _build_html_document(self, sections: List[str], title: str, individual_docs: Optional[List[Dict]] = None, model_schema: StructuredModel = None) -> str:

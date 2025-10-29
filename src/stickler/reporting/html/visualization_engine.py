@@ -54,7 +54,7 @@ class VisualizationEngine:
         Returns:
             HTML for field performance chart
         """
-        # For v0, create a simple horizontal bar chart using CSS
+        # create a simple horizontal chart
         html = '<div class="field-chart">'
         
         for field_name, metrics in field_metrics.items():
@@ -156,7 +156,6 @@ class VisualizationEngine:
         Returns:
             HTML for confusion matrix heatmap
         """
-        # Simple grid visualization for v0
         metrics = ['tp', 'tn', 'fd', 'fa', 'fn',]
         total = sum(cm_data.get(m, 0) for m in metrics)
         

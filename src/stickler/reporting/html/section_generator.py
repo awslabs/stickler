@@ -154,8 +154,7 @@ class SectionGenerator:
         html += '<div class="image-gallery">'
         
         for doc_id, image_path in document_images.items():
-            if os.path.exists(image_path):
-                html += f'''
+            html += f'''
                 <div class="image-item">
                     <img src="{image_path}" alt="{doc_id}" style="max-width: {config.image_thumbnail_size}px;">
                     <p><strong>{doc_id}</strong></p>

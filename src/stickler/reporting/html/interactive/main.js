@@ -57,8 +57,13 @@ function captureAggregateData() {
         executiveSummary: captureExecutiveSummaryData(),
         fieldAnalysis: captureFieldAnalysisData(),
         confusionMatrix: captureConfusionMatrixData(),
-        nonMatches: captureNonMatchesData()
+        nonMatches: captureNonMatchesData(),
     };
+
+    const imageGallery = document.querySelector('.image-gallery');
+    if (imageGallery) {
+        aggregateData.documentImages = captureDocumentImageData();
+    }
 }
 
 function captureExecutiveSummaryData() {
@@ -80,6 +85,20 @@ function captureExecutiveSummaryData() {
         }
     });
     
+    return data;
+}
+
+function captureDocumentImageData() {
+    const data = {};
+
+    // Capture image data
+    document.querySelectorAll('.image-item').forEach(image => {
+        const imgElement = image.querySelector('img')?.src;
+        const docId = image.querySelector('p strong')?.textContent;
+        if (imgElement && docId) {
+            data[docId] = imgElement;
+        }
+    });
     return data;
 }
 
@@ -230,6 +249,7 @@ function filterReportToDocument(docId) {
         updateFieldAnalysis(aggregateData.fieldAnalysis);
         updateConfusionMatrix(aggregateData.confusionMatrix);
         updateNonMatchesTable(aggregateData.nonMatches);
+        updateDocumentImages(aggregateData.documentImages);
         updateReportTitle("All Documents");
     } else {
         // Find the document and show its individual metrics
@@ -240,6 +260,7 @@ function filterReportToDocument(docId) {
             updateFieldAnalysis(docMetrics.fieldAnalysis);
             updateConfusionMatrix(docMetrics.confusionMatrix);
             updateNonMatchesTable(docMetrics.nonMatches);
+            updateDocumentImages(docMetrics.documentImages);
             updateReportTitle(`Document: ${docId}`);
         }
     }
@@ -260,6 +281,11 @@ function extractDocumentMetrics(doc) {
     const overallMetrics = confusionMatrix.overall || {};
     const fieldsData = confusionMatrix.fields || {};
     const nonMatches = comparison.non_matches || []
+    const documentImages = {};
+    if (aggregateData.documentImages && aggregateData.documentImages[doc.doc_id]) {
+        documentImages[doc.doc_id] = aggregateData.documentImages[doc.doc_id];
+    }
+
     
     return {
         executiveSummary: {
@@ -304,7 +330,8 @@ function extractDocumentMetrics(doc) {
             non_match_type: nonMatch.non_match_type,
             ground_truth_value: nonMatch.ground_truth_value,
             prediction_value: nonMatch.prediction_value
-        }))
+        })),
+        documentImages: documentImages
     };
 }
 
@@ -442,3 +469,19 @@ function updateNonMatchesTable(data) {
         });
     }
 }
+
+function updateDocumentImages(data) {
+    const imageGallery = document.querySelector('.image-gallery');
+    if (!imageGallery || !data) return;
+
+    imageGallery.innerHTML = '';
+    Object.entries(data).forEach(([docId, imagePath]) => {
+        const imageItem = document.createElement('div');
+        imageItem.className = 'image-item';
+        imageItem.innerHTML = `
+            <img src="${imagePath}" alt="${docId}" style="max-width: 200px;">
+            <p><strong>${docId}</strong></p>
+        `;
+        imageGallery.appendChild(imageItem);
+    });
+    }

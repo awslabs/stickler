@@ -9,4 +9,5 @@ from .section_generator import SectionGenerator
 
 __all__ = [
     "EvaluationHTMLReporter",
+    "ReportConfig"
 ]
