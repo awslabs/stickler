@@ -226,18 +226,34 @@ class DateTimeComparator(BaseComparator):
         return similarity
 ```
 
-#### Step 2: Register in Model
+#### Step 2: Use in Model
 
 ```python
+from stickler.structured_object_evaluator.models import StructuredModel, ComparableField
+
 class Event(StructuredModel):
     name: str
-    timestamp: datetime
-    
-    class Config:
-        comparators = {
-            "name": "exact",
-            "timestamp": DateTimeComparator(max_diff_seconds=3600)
-        }
+    timestamp: datetime = ComparableField(
+        comparator=DateTimeComparator(max_diff_seconds=3600),
+        threshold=0.8,
+        weight=1.0
+    )
+```
+
+**Note**: Comparators are configured directly on fields using `ComparableField()`. Each field can have its own comparator instance with custom parameters.
+
+**Usage Example**:
+```python
+from datetime import datetime
+
+# Create instances
+event1 = Event(name="Meeting", timestamp=datetime(2024, 1, 1, 10, 0, 0))
+event2 = Event(name="Meeting", timestamp=datetime(2024, 1, 1, 10, 30, 0))  # 30 min later
+
+# Compare
+result = event1.compare_with(event2)
+print(f"Timestamp similarity: {result['field_scores']['timestamp']}")
+# Output: Timestamp similarity: 0.965 (within 1 hour tolerance)
 ```
 
 #### Step 3: Update Dispatcher (if needed)

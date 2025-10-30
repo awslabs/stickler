@@ -3,3 +3,6 @@ tests/.DS_Store
 **/__pycache__/
 **/*.egg-info/
 .coverage
+
+.kiro/*
+.kiro/**/*
