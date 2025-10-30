@@ -34,7 +34,7 @@ class EvaluationHTMLReporter:
         evaluation_results: Union[Dict[str, Any], ProcessEvaluation],
         output_path: str,
         config: Optional[ReportConfig] = None,
-        document_images: Optional[Dict[str, str]] = None,
+        document_files: Optional[Dict[str, str]] = None,
         title: Optional[str] = None,
         model_schema: Optional[StructuredModel] = None,
         individual_results_jsonl_path: Optional[str] = None
@@ -46,7 +46,7 @@ class EvaluationHTMLReporter:
             evaluation_results: Results from evaluator (individual or bulk)
             output_path: Path where HTML report will be saved
             config: Report configuration options
-            document_images: Dictionary mapping document IDs to image paths
+            document_files: Dictionary mapping document IDs to file paths
             title: Custom report title
             model_schema: StructuredModel class to extract field thresholds from
             
@@ -61,8 +61,8 @@ class EvaluationHTMLReporter:
             is_bulk = isinstance(evaluation_results, ProcessEvaluation)
             
             
-            if document_images:
-                copied_document_images = self._copy_images_to_report_dir(document_images, output_path)
+            if document_files:
+                copied_document_files = self._copy_files_to_report_dir(document_files, output_path)
             
             # Generate HTML content
             html_content = self._generate_html_content(
@@ -71,7 +71,7 @@ class EvaluationHTMLReporter:
                 title=title, 
                 model_schema=model_schema, 
                 individual_results_jsonl_path=individual_results_jsonl_path, 
-                document_images=copied_document_images if document_images else None
+                document_files=copied_document_files if document_files else None
             )
             
             # Write to file
@@ -110,7 +110,7 @@ class EvaluationHTMLReporter:
         title: Optional[str],
         model_schema: Optional[type] = None,
         individual_results_jsonl_path: Optional[str] = None,
-        document_images: Optional[Dict[str, str]] = None
+        document_files: Optional[Dict[str, str]] = None
     ) -> str:
         """Generate the complete HTML content."""
         
@@ -129,8 +129,8 @@ class EvaluationHTMLReporter:
         if config.include_non_matches:
             sections.append(section_generator.generate_non_matches(config))
         
-        if document_images:
-            sections.append(section_generator.generate_document_gallery(document_images, config))
+        if document_files:
+            sections.append(section_generator.generate_document_gallery(document_files, config))
         
         if config.include_field_analysis:
             sections.append(section_generator.generate_field_analysis())
@@ -168,12 +168,12 @@ class EvaluationHTMLReporter:
             print(f"Warning: Failed to load individual results from {jsonl_path}: {e}")
         return individual_docs
     
-    def _copy_images_to_report_dir(self, document_images: Dict[str, str], output_path: str) -> Dict[str, str]:
+    def _copy_files_to_report_dir(self, document_files: Dict[str, str], output_path: str) -> Dict[str, str]:
         """
         Copy image files to the report directory and return updated paths.
         
         Args:
-            document_images: Dictionary mapping document IDs to image paths
+            document_files: Dictionary mapping document IDs to image paths
             output_path: Path where HTML report will be saved
             
         Returns:
@@ -188,7 +188,7 @@ class EvaluationHTMLReporter:
         # Create images directory if it doesn't exist
         os.makedirs(images_dir, exist_ok=True)
         
-        for doc_id, image_path in document_images.items():
+        for doc_id, image_path in document_files.items():
             try:
                 if os.path.exists(image_path):
                     filename = os.path.basename(image_path)
@@ -222,12 +222,17 @@ class EvaluationHTMLReporter:
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>{title}</title>
                 <style>{css}</style>
+                <!-- PDF.js CDN -->
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+                <script>
+                    // Configure PDF.js worker
+                    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                </script>
             </head>
             <body>
                 <div class="container">
                     <header>
                         <h1>{title}</h1>
-                        <p>Generated on {time.strftime('%Y-%m-%d %H:%M:%S')}</p>
                     </header>
                     
                     <main>
@@ -236,6 +241,7 @@ class EvaluationHTMLReporter:
                     
                     <footer>
                         <p>Evaluation Report - Generated by Stickler</p>
+                        <p>Generated on {time.strftime('%Y-%m-%d %H:%M:%S')}</p>
                     </footer>
                 </div>
                 {javascript}
@@ -279,7 +285,7 @@ class EvaluationHTMLReporter:
         if isinstance(results, ProcessEvaluation):
            return getattr(results, 'document_count', 1)
         return 1
-    
+        
     def _generate_title(self, results: Union[Dict, ProcessEvaluation], is_bulk: bool) -> str:
         """Generate report title."""
         if is_bulk:

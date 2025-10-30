@@ -55,6 +55,7 @@ The `ReportConfig` class allows you to customize report generation:
 | `include_confusion_matrix` | bool | True | Include confusion matrix visualization |
 | `include_non_matches` | bool | True | Include detailed non-matches analysis |
 | `max_non_matches_displayed` | int | 1000 | Maximum number of non-matches to show |
+| `document_file_type` | str | "image" | Document display format: "image" or "pdf" |
 | `image_thumbnail_size` | int | 200 | Size of document image thumbnails (pixels) |
 
 ## Report Result
@@ -87,22 +88,50 @@ The reporter accepts two types of evaluation results:
 
 ## Advanced Usage
 
+### Document File Configuration
+
+Configure how document files are displayed using the `document_file_type` parameter:
+
 ```python
-# Include document images in the report
-document_images = {
-    "doc_1": "/path/to/image1.jpg",
-    "doc_2": "/path/to/image2.jpg"
+# For image files (default)
+config = ReportConfig(document_file_type="image")
+
+# For PDF files with interactive viewer
+config = ReportConfig(document_file_type="pdf")
+
+# Include document files in the report
+document_files = {
+    "doc_1": "/path/to/document1.pdf",  # or .jpg, .png, etc.
+    "doc_2": "/path/to/document2.pdf"
 }
 
-# Include individual document details from JSONL file
 result = reporter.generate_report(
     evaluation_results=bulk_results,
     output_path="detailed_report.html",
     config=config,
-    document_images=document_images,
+    document_files=document_files,
     individual_results_jsonl_path="individual_results.jsonl",
     model_schema=MyStructuredModel
 )
 ```
 
-The generated HTML report is self-contained and can be opened directly in any web browser for interactive viewing.
+**Image mode** displays documents as static thumbnails, while **PDF mode** provides an interactive viewer with page navigation controls using PDF.js.
+
+### Viewing Reports with PDF Support
+
+For reports with PDF documents, it's recommended to serve the HTML file through a local web server to ensure proper PDF rendering:
+
+```bash
+# Navigate to the directory containing your HTML report
+cd /path/to/your/report/directory
+
+# Start a local web server
+python -m http.server 8080
+
+# Open your browser and navigate to:
+# http://localhost:8080/your_report.html
+```
+
+This is especially important for PDF mode, as browsers may block PDF.js functionality when opening HTML files directly from the file system due to CORS restrictions.
+
+The generated HTML report is self-contained and can be opened directly in any web browser for interactive viewing (though PDF features work only when served via HTTP).

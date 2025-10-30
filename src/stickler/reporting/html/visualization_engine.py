@@ -56,6 +56,7 @@ class VisualizationEngine:
         """
         # create a simple horizontal chart
         html = '<div class="field-chart">'
+        html += '<h4 style="margin-bottom: 15px; color: #495057; font-size: 1.1em;">F1 Score</h4>'
         
         for field_name, metrics in field_metrics.items():
             if isinstance(metrics, dict):
@@ -93,7 +94,7 @@ class VisualizationEngine:
         html = ''
 
         # Generate detailed field performance table
-        html += '<table class="performance-table">'
+        html += '<table class="data-table data-table-numeric" id="performance-table">'
         html += '''
         <thead>
             <tr>

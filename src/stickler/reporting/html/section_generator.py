@@ -108,7 +108,7 @@ class SectionGenerator:
         displayed = non_matches[:config.max_non_matches_displayed]
         
         # Non-matches table
-        html += '<table class="non-matches-table">'
+        html += '<table class="data-table" id="non-matches-table">'
         html += '''
         <thead>
             <tr>
@@ -125,7 +125,7 @@ class SectionGenerator:
         for nm in displayed:
             doc_id = nm.get('doc_id', 'N/A')
             field_path = nm.get('field_path', 'N/A')
-            non_match_type = str(nm.get('non_match_type', 'N/A'))
+            non_match_type = str(nm.get('non_match_type', 'N/A')).replace('NonMatchType.','')
             ground_truth_value = str(nm.get('ground_truth_value', 'None'))[:100]  # Truncate long values
             prediction_value = str(nm.get('prediction_value', 'None'))[:100]
             
@@ -150,16 +150,36 @@ class SectionGenerator:
     @staticmethod
     def generate_document_gallery(document_images: Dict[str, str], config: ReportConfig) -> str:
         """Generate document gallery section."""
-        html = '<div class="section"><h2>Document Gallery</h2>'
-        html += '<div class="image-gallery">'
-        
-        for doc_id, image_path in document_images.items():
-            html += f'''
-                <div class="image-item">
-                    <img src="{image_path}" alt="{doc_id}" style="max-width: {config.image_thumbnail_size}px;">
-                    <p><strong>{doc_id}</strong></p>
-                </div>
-                '''
-        
-        html += '</div></div>'
+        document_file_type = config.document_file_type
+
+        if document_file_type == 'image':
+            html = '<div class="section"><h2>Document Gallery</h2>'
+            html += '<div class="document-gallery">'
+            
+            for doc_id, image_path in document_images.items():
+                html += f'''
+                    <div class="image-item">
+                        <img src="{image_path}" alt="{doc_id}">
+                        <p><strong>{doc_id}</strong></p>
+                    </div>
+                    '''
+            
+            html += '</div></div>'
+        elif document_file_type == 'pdf':
+            html = '<div class="section"><h2>PDF Gallery</h2>'
+            html += '<div class="document-gallery">'
+
+            for doc_id, pdf_path in document_images.items():
+                html += f'''
+                    <div class="pdf-item" data-doc-id="{doc_id}" data-pdf-path="{pdf_path}">
+                        <div class="pdf-container">
+                            <canvas id="pdf-canvas-{doc_id}" class="pdf-canvas"></canvas>
+                            <div class="pdf-loading" id="pdf-loading-{doc_id}">Loading PDF...</div>
+                            <div class="pdf-error" id="pdf-error-{doc_id}" style="display: none;">Error loading PDF</div>
+                        </div>
+                        <p><strong>{doc_id}</strong></p>
+                    </div>
+                    '''
+
+            html += '</div></div>'
         return html
