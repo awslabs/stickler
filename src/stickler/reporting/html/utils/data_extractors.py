@@ -161,9 +161,9 @@ class DataExtractor:
                     if isinstance(threshold, (int, float)):
                         return float(threshold)
         
-        except Exception:
-            # If anything goes wrong during schema inspection, return None
-            pass
+        except Exception as e:
+            print(f"Error extracting threshold for field {field_name}: {e}")
+            return None
         
         return None
     
@@ -207,9 +207,9 @@ class DataExtractor:
                         for nested_field, nested_threshold in nested_thresholds.items():
                             field_thresholds[f"{field_name}.{nested_field}"] = nested_threshold
         
-        except Exception:
-            # If anything goes wrong, return what we have
-            pass
+        except Exception as e:
+            print(f"Error extracting thresholds from model schema: {e}")
+            return field_thresholds
         
         return field_thresholds
     
