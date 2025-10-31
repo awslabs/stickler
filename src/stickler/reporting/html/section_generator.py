@@ -21,7 +21,7 @@ class SectionGenerator:
         """
         
         # Add performance gauge for overall F1 score
-        f1_score = metrics.get('cm_f1')
+        f1_score = metrics.get('cm_f1', metrics.get('f1', 0))
         if isinstance(f1_score, (int, float)) and f1_score > 0:
             html += f'<div class="performance-section">{self.viz_engine.generate_performance_gauge(f1_score)}</div>'
         
@@ -34,7 +34,7 @@ class SectionGenerator:
         """
         
         # Add key metrics with color coding
-        key_metrics = ['cm_precision', 'cm_recall', 'cm_f1', 'cm_accuracy']
+        key_metrics = ['cm_precision', 'cm_recall', 'cm_f1', 'cm_accuracy', 'f1', 'precision', 'recall', 'accuracy']
         for metric in key_metrics:
             if metric in metrics:
                 value = metrics[metric]
@@ -151,9 +151,10 @@ class SectionGenerator:
     def generate_document_gallery(document_images: Dict[str, str], config: ReportConfig) -> str:
         """Generate document gallery section."""
         document_file_type = config.document_file_type
+        html = ''
 
         if document_file_type == 'image':
-            html = '<div class="section"><h2>Document Gallery</h2>'
+            html += '<div class="section"><h2>Document Gallery</h2>'
             html += '<div class="document-gallery">'
             
             for doc_id, image_path in document_images.items():
