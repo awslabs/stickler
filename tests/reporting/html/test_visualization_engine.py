@@ -5,6 +5,7 @@ Tests for VisualizationEngine class.
 import pytest
 from unittest.mock import Mock, patch
 from stickler.reporting.html.visualization_engine import VisualizationEngine
+from stickler.reporting.html.report_config import ReportConfig
 
 
 class TestVisualizationEngine:
@@ -24,36 +25,39 @@ class TestVisualizationEngine:
         """Test performance gauge generation."""
         mock_color_utils.return_value = "#28a745"
         
-        result = self.viz_engine.generate_performance_gauge(0.85)
+        config = ReportConfig()
+        result = self.viz_engine.generate_performance_gauge(0.85, config)
         
         assert '<div class="performance-gauge">' in result
         assert '<div class="gauge-circle"' in result
         assert '85%' in result
         assert 'Overall' in result
         assert '#28a745' in result
-        mock_color_utils.assert_called_once_with(0.85)
+        mock_color_utils.assert_called_once_with(0.85, config.color_thresholds)
     
     @patch('stickler.reporting.html.utils.ColorUtils.get_performance_color')
     def test_generate_performance_gauge_zero_score(self, mock_color_utils):
         """Test performance gauge with zero score."""
         mock_color_utils.return_value = "#dc3545"
         
-        result = self.viz_engine.generate_performance_gauge(0.0)
+        config = ReportConfig()
+        result = self.viz_engine.generate_performance_gauge(0.0, config)
         
         assert '0%' in result
         assert '#dc3545' in result
-        mock_color_utils.assert_called_once_with(0.0)
+        mock_color_utils.assert_called_once_with(0.0, config.color_thresholds)
     
     @patch('stickler.reporting.html.utils.ColorUtils.get_performance_color')
     def test_generate_performance_gauge_perfect_score(self, mock_color_utils):
         """Test performance gauge with perfect score."""
         mock_color_utils.return_value = "#28a745"
         
-        result = self.viz_engine.generate_performance_gauge(1.0)
+        config = ReportConfig()
+        result = self.viz_engine.generate_performance_gauge(1.0, config)
         
         assert '100%' in result
         assert '#28a745' in result
-        mock_color_utils.assert_called_once_with(1.0)
+        mock_color_utils.assert_called_once_with(1.0, config.color_thresholds)
     
     @patch('stickler.reporting.html.utils.ColorUtils.get_performance_color')
     def test_generate_field_performance_chart(self, mock_color_utils):
@@ -65,7 +69,8 @@ class TestVisualizationEngine:
             "price": {"cm_f1": 0.95, "cm_precision": 0.98, "cm_recall": 0.92}
         }
         
-        result = self.viz_engine.generate_field_performance_chart(field_metrics)
+        config = ReportConfig()
+        result = self.viz_engine.generate_field_performance_chart(field_metrics, config)
         
         assert '<div class="field-chart">' in result
         assert '<h4 style="margin-bottom: 15px; color: #495057; font-size: 1.1em;">F1 Score</h4>' in result
@@ -86,18 +91,20 @@ class TestVisualizationEngine:
             "category": {"f1": 0.75, "precision": 0.80, "recall": 0.70}  # Uses 'f1' instead of 'cm_f1'
         }
         
-        result = self.viz_engine.generate_field_performance_chart(field_metrics)
+        config = ReportConfig()
+        result = self.viz_engine.generate_field_performance_chart(field_metrics, config)
         
         assert 'category' in result
         assert '0.750' in result
         assert 'width: 75%' in result
-        mock_color_utils.assert_called_once_with(0.75)
+        mock_color_utils.assert_called_once_with(0.75, config.color_thresholds)
     
     def test_generate_field_performance_chart_empty_metrics(self):
         """Test field performance chart with empty metrics."""
         field_metrics = {}
         
-        result = self.viz_engine.generate_field_performance_chart(field_metrics)
+        config = ReportConfig()
+        result = self.viz_engine.generate_field_performance_chart(field_metrics, config)
         
         assert '<div class="field-chart">' in result
         assert '<h4 style="margin-bottom: 15px; color: #495057; font-size: 1.1em;">F1 Score</h4>' in result
@@ -129,7 +136,8 @@ class TestVisualizationEngine:
             }
         }
         
-        result = self.viz_engine.generate_field_performance_table(field_metrics)
+        config = ReportConfig()
+        result = self.viz_engine.generate_field_performance_table(field_metrics, config)
         
         assert '<table class="data-table data-table-numeric" id="performance-table">' in result
         assert '<th>Field</th>' in result
@@ -168,7 +176,8 @@ class TestVisualizationEngine:
             }
         }
         
-        result = self.viz_engine.generate_field_performance_table(field_metrics)
+        config = ReportConfig()
+        result = self.viz_engine.generate_field_performance_table(field_metrics, config)
         
         assert 'category' in result
         assert '0.850' in result

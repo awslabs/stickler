@@ -37,7 +37,8 @@ class TestSectionGenerator:
         self.mock_results.document_count = 5
         self.mock_viz_engine.generate_performance_gauge.return_value = '<div class="gauge">85%</div>'
         
-        result = self.section_generator.generate_executive_summary()
+        config = ReportConfig()
+        result = self.section_generator.generate_executive_summary(config)
         
         assert '<div class="section">' in result
         assert '<h2>Executive Summary</h2>' in result
@@ -51,7 +52,7 @@ class TestSectionGenerator:
         assert '<div class="gauge">85%</div>' in result
         
         mock_extract_metrics.assert_called_once_with(self.mock_results)
-        self.mock_viz_engine.generate_performance_gauge.assert_called_once_with(0.85)
+        self.mock_viz_engine.generate_performance_gauge.assert_called_once_with(0.85, config)
     
     
     @patch('stickler.reporting.html.utils.data_extractors.DataExtractor.extract_overall_metrics')
@@ -60,7 +61,8 @@ class TestSectionGenerator:
         mock_extract_metrics.return_value = {'cm_f1': 0.75}
         # Don't set document_count attribute
         
-        result = self.section_generator.generate_executive_summary()
+        config = ReportConfig()
+        result = self.section_generator.generate_executive_summary(config)
         
         assert '<div class="metric-value">1</div>' in result  # Default value
     
@@ -76,22 +78,24 @@ class TestSectionGenerator:
         self.mock_viz_engine.generate_field_performance_chart.return_value = '<div class="chart">Chart</div>'
         self.mock_viz_engine.generate_field_performance_table.return_value = '<table>Table</table>'
         
-        result = self.section_generator.generate_field_analysis()
+        config = ReportConfig()
+        result = self.section_generator.generate_field_analysis(config)
         
         assert '<div class="section"><h2>Field Performance Analysis</h2>' in result
         assert '<div class="chart">Chart</div>' in result
         assert '<table>Table</table>' in result
         
         mock_extract_field_metrics.assert_called_once_with(self.mock_results)
-        self.mock_viz_engine.generate_field_performance_chart.assert_called_once_with(mock_field_metrics)
-        self.mock_viz_engine.generate_field_performance_table.assert_called_once_with(mock_field_metrics)
+        self.mock_viz_engine.generate_field_performance_chart.assert_called_once_with(mock_field_metrics, config)
+        self.mock_viz_engine.generate_field_performance_table.assert_called_once_with(mock_field_metrics, config)
     
     @patch('stickler.reporting.html.utils.data_extractors.DataExtractor.extract_field_metrics')
     def test_generate_field_analysis_no_data(self, mock_extract_field_metrics):
         """Test field analysis generation with no field data."""
         mock_extract_field_metrics.return_value = {}
         
-        result = self.section_generator.generate_field_analysis()
+        config = ReportConfig()
+        result = self.section_generator.generate_field_analysis(config)
         
         assert '<div class="section"><h2>Field Performance Analysis</h2>' in result
         assert '<p>No field data available.</p></div>' in result
@@ -326,10 +330,11 @@ class TestSectionGeneratorIntegration:
         section_generator = SectionGenerator(individual_results, viz_engine)
         
         # Test that sections can be generated without errors
-        executive_summary = section_generator.generate_executive_summary()
-        field_analysis = section_generator.generate_field_analysis()
+        config = ReportConfig()
+        executive_summary = section_generator.generate_executive_summary(config)
+        field_analysis = section_generator.generate_field_analysis(config)
         confusion_matrix = section_generator.generate_confusion_matrix()
-        non_matches = section_generator.generate_non_matches(ReportConfig())
+        non_matches = section_generator.generate_non_matches(config)
         
         assert '<div class="section">' in executive_summary
         assert '<div class="section">' in field_analysis
