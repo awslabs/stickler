@@ -1,0 +1,1666 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+        <link rel="prev" href="../">
+      
+      
+        <link rel="next" href="../hungarian_matching_list_of_model/">
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.23">
+    
+    
+      
+        <title>Classification Logic - Stickler</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.84d31ad4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#classification-logic-for-evaluation-metrics" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Stickler" class="md-header__button md-logo" aria-label="Stickler" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Stickler
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Classification Logic
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/awslabs/stickler" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    awslabs/stickler
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../Getting-Started/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+  Core Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../Guides/StructuredModel_compare_with_README/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../SDK-Docs/" class="md-tabs__link">
+          
+  
+  
+  SDK Docs
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Stickler" class="md-nav__button md-logo" aria-label="Stickler" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Stickler
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/awslabs/stickler" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    awslabs/stickler
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            Getting Started
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Quick Start
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Core Concepts
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Core Concepts
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Classification Logic
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Classification Logic
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+  
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core-definitions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Core Definitions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#classification-logic-by-data-type" class="md-nav__link">
+    <span class="md-ellipsis">
+      Classification Logic by Data Type
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Classification Logic by Data Type">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#simple-values-strings-numbers-etc" class="md-nav__link">
+    <span class="md-ellipsis">
+      Simple Values (Strings, Numbers, etc.)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lists" class="md-nav__link">
+    <span class="md-ellipsis">
+      Lists
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Lists">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-1-mixed-matching" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example 1: Mixed Matching
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-2-similar-but-not-exact" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example 2: Similar But Not Exact
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-3-below-threshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example 3: Below Threshold
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nested-objectsdictionaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      Nested Objects/Dictionaries
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Nested Objects/Dictionaries">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example:
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#derived-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      Derived Metrics
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#edge-cases-and-clarifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      Edge Cases and Clarifications
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Edge Cases and Clarifications">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-null-vs-empty-equivalence" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Null vs. Empty Equivalence
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-threshold-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Threshold Boundary
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-list-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. List Order
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-partial-matches-in-lists" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Partial Matches in Lists
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-nested-lists" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Nested Lists
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-missing-fields-vs-null-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Missing Fields vs. Null Fields
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary-of-key-points" class="md-nav__link">
+    <span class="md-ellipsis">
+      Summary of Key Points
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hungarian_matching_list_of_model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Hungarian Matching
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Threshold_Gated_Recursive_Evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Recursive Evaluation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Guides
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Guides
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/StructuredModel_compare_with_README/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    StructuredModel Compare
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/StructuredModel_Dynamic_Creation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    StructuredModel from JSON
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/StructuredModel_Advanced_Functionality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    StructuredModel Advanced Functionality
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Universal_Aggregate_Field_Feature/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Universal Aggregate Field
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    SDK Docs
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            SDK Docs
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../SDK-Docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    SDK Documentation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../SDK-Docs/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    API Reference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../SDK-Docs/comparators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Comparators
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../SDK-Docs/evaluator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Evaluator
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../SDK-Docs/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Models
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../SDK-Docs/utils/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Utils
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+  
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core-definitions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Core Definitions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#classification-logic-by-data-type" class="md-nav__link">
+    <span class="md-ellipsis">
+      Classification Logic by Data Type
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Classification Logic by Data Type">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#simple-values-strings-numbers-etc" class="md-nav__link">
+    <span class="md-ellipsis">
+      Simple Values (Strings, Numbers, etc.)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lists" class="md-nav__link">
+    <span class="md-ellipsis">
+      Lists
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Lists">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-1-mixed-matching" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example 1: Mixed Matching
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-2-similar-but-not-exact" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example 2: Similar But Not Exact
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-3-below-threshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example 3: Below Threshold
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nested-objectsdictionaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      Nested Objects/Dictionaries
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Nested Objects/Dictionaries">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example:
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#derived-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      Derived Metrics
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#edge-cases-and-clarifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      Edge Cases and Clarifications
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Edge Cases and Clarifications">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-null-vs-empty-equivalence" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Null vs. Empty Equivalence
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-threshold-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Threshold Boundary
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-list-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. List Order
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-partial-matches-in-lists" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Partial Matches in Lists
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-nested-lists" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Nested Lists
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-missing-fields-vs-null-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Missing Fields vs. Null Fields
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary-of-key-points" class="md-nav__link">
+    <span class="md-ellipsis">
+      Summary of Key Points
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="classification-logic-for-evaluation-metrics">Classification Logic for Evaluation Metrics</h1>
+<p>This document defines the classification logic used in the stickler library for evaluating predictions against ground truth.</p>
+<h2 id="core-definitions">Core Definitions</h2>
+<p>The confusion matrix metrics classify comparisons into five categories:</p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Abbreviation</th>
+<th>Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>True Positive (TP)</td>
+<td>TP</td>
+<td>GT != null, EST != null, GT == EST (match above threshold)</td>
+</tr>
+<tr>
+<td>False Alarm (FA)</td>
+<td>FA</td>
+<td>GT == null, EST != null</td>
+</tr>
+<tr>
+<td>True Negative (TN)</td>
+<td>TN</td>
+<td>GT == null, EST == null</td>
+</tr>
+<tr>
+<td>False Negative (FN)</td>
+<td>FN</td>
+<td>GT != null, EST == null</td>
+</tr>
+<tr>
+<td>False Discovery (FD)</td>
+<td>FD</td>
+<td>GT != null, EST != null, GT != EST (match below threshold)</td>
+</tr>
+</tbody>
+</table>
+<p>False alarm (FA) and false discovery (FD) are a subset of false positives (FP). </p>
+<p>FP = FA + FD</p>
+<p>Where:
+- GT = Ground Truth
+- EST = Estimate (Prediction)</p>
+<h2 id="classification-logic-by-data-type">Classification Logic by Data Type</h2>
+<h3 id="simple-values-strings-numbers-etc">Simple Values (Strings, Numbers, etc.)</h3>
+<table>
+<thead>
+<tr>
+<th>Ground Truth</th>
+<th>Prediction</th>
+<th>Classification</th>
+<th>Explanation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>"value"</td>
+<td>"value"</td>
+<td>TP</td>
+<td>Exact match</td>
+</tr>
+<tr>
+<td>"value"</td>
+<td>"similar"</td>
+<td>FD</td>
+<td>Both non-null but don't match above threshold</td>
+</tr>
+<tr>
+<td>"value"</td>
+<td>null</td>
+<td>FN</td>
+<td>Missing prediction for existing ground truth</td>
+</tr>
+<tr>
+<td>null</td>
+<td>"value"</td>
+<td>FP</td>
+<td>Prediction exists but no ground truth (False Alarm)</td>
+</tr>
+<tr>
+<td>null</td>
+<td>null</td>
+<td>TN</td>
+<td>Correctly predicted absence</td>
+</tr>
+<tr>
+<td>"" (empty)</td>
+<td>null</td>
+<td>Treated as TN</td>
+<td>Empty strings are treated as null</td>
+</tr>
+<tr>
+<td>null</td>
+<td>"" (empty)</td>
+<td>Treated as TN</td>
+<td>Empty strings are treated as null</td>
+</tr>
+</tbody>
+</table>
+<h3 id="lists">Lists</h3>
+<p>For lists, we use the Hungarian algorithm to find optimal matching between elements:</p>
+<ol>
+<li><strong>Empty Lists</strong>:</li>
+<li>GT = [], EST = [] → TN (both empty)</li>
+<li>GT = [], EST = ["item"] → FA (False Alarm for each prediction item)</li>
+<li>
+<p>GT = ["item"], EST = [] → FN (False Negative for each ground truth item)</p>
+</li>
+<li>
+<p><strong>Element Matching</strong>:</p>
+</li>
+<li>Each element in GT is matched with at most one element in EST</li>
+<li>Each element in EST is matched with at most one element in GT</li>
+<li>
+<p>Matching maximizes overall similarity</p>
+</li>
+<li>
+<p><strong>Classification of Matched Elements</strong>:</p>
+</li>
+<li>If similarity ≥ threshold → TP</li>
+<li>
+<p>If similarity &lt; threshold → FD (False Discovery)</p>
+</li>
+<li>
+<p><strong>Classification of Unmatched Elements</strong>:</p>
+</li>
+<li>Unmatched GT elements → FN</li>
+<li>Unmatched EST elements → FA (False Alarm)</li>
+</ol>
+<h4 id="example-1-mixed-matching">Example 1: Mixed Matching</h4>
+<p>GT = ["red", "blue", "green"]<br />
+EST = ["red", "yellow", "orange", "blue"]</p>
+<p>Matching:
+- "red" matches "red" → TP
+- "blue" matches "blue" → TP
+- "green" has no match → FN
+- "yellow" has no match in GT → FA (False Alarm)
+- "orange" has no match in GT → FA (False Alarm)</p>
+<p>Result: TP=2, FP=A, TN=0, FN=1, FD=0</p>
+<h4 id="example-2-similar-but-not-exact">Example 2: Similar But Not Exact</h4>
+<p>GT = ["apple", "banana", "cherry"]<br />
+EST = ["aple", "bananna", "cheery"]</p>
+<p>Matching (assuming threshold = 0.7):
+- "apple" matches "aple" with similarity 0.8 → TP
+- "banana" matches "bananna" with similarity 0.85 → TP
+- "cherry" matches "cheery" with similarity 0.83 → TP</p>
+<p>Result: TP=3, FA=0, TN=0, FN=0, FD=0</p>
+<h4 id="example-3-below-threshold">Example 3: Below Threshold</h4>
+<p>GT = ["apple", "banana", "cherry"]<br />
+EST = ["appx", "bnn", "chry"]</p>
+<p>Matching (assuming threshold = 0.7):
+- "apple" matches "appx" with similarity 0.5 → FD
+- "banana" matches "bnn" with similarity 0.6 → FD
+- "cherry" matches "chry" with similarity 0.65 → FD</p>
+<p>Result: TP=0, FA=0, TN=0, FN=0, FD=3</p>
+<h3 id="nested-objectsdictionaries">Nested Objects/Dictionaries</h3>
+<p>For nested objects, we apply the classification logic recursively:</p>
+<ol>
+<li><strong>Empty Objects</strong>:</li>
+<li>GT = {}, EST = {} → TN</li>
+<li>GT = {}, EST = {key: value} → FA (False Alarm)</li>
+<li>
+<p>GT = {key: value}, EST = {} → FN</p>
+</li>
+<li>
+<p><strong>Field Matching</strong>:</p>
+</li>
+<li>Each field is evaluated independently</li>
+<li>Fields present in both GT and EST are compared for similarity</li>
+<li>
+<p>Fields present in only one are classified as FA or FN</p>
+</li>
+<li>
+<p><strong>Classification of Fields</strong>:</p>
+</li>
+<li>If both have field and similarity ≥ threshold → TP</li>
+<li>If both have field and similarity &lt; threshold → FD (False Discovery)</li>
+<li>If only GT has field → FN</li>
+<li>If only EST has field → FA (False Alarm)</li>
+</ol>
+<h4 id="example">Example:</h4>
+<p>GT = {name: "John", age: 30, address: "123 Main St"}<br />
+EST = {name: "John", age: 31, phone: "555-1234"}</p>
+<p>Field-by-field:
+- name: Both have it, exact match → TP
+- age: Both have it, but different → FD
+- address: Only in GT → FN
+- phone: Only in EST → FA (False Alarm)</p>
+<p>Result: TP=1, FA=1, TN=0, FN=1, FD=1</p>
+<h2 id="derived-metrics">Derived Metrics</h2>
+<p>From the base confusion matrix counts, we derive the following metrics:</p>
+<ol>
+<li><strong>Precision</strong>: TP / (TP + FP)</li>
+<li>
+<p>Measures how many of the predicted values are correct</p>
+</li>
+<li>
+<p><strong>Recall</strong>: TP / (TP + FN)</p>
+</li>
+<li>
+<p>Measures how many of the ground truth values are correctly predicted</p>
+</li>
+<li>
+<p><strong>F1 Score</strong>: 2 * (Precision * Recall) / (Precision + Recall)</p>
+</li>
+<li>
+<p>Harmonic mean of precision and recall</p>
+</li>
+<li>
+<p><strong>Accuracy</strong>: (TP + TN) / (TP + TN + FP + FN)</p>
+</li>
+<li>Overall correctness of predictions</li>
+</ol>
+<h2 id="edge-cases-and-clarifications">Edge Cases and Clarifications</h2>
+<h3 id="1-null-vs-empty-equivalence">1. Null vs. Empty Equivalence</h3>
+<p><strong>Design Decision</strong>: Empty collections and null values are treated as equivalent in all comparisons.</p>
+<ul>
+<li>Empty strings (""), empty lists ([]), and empty objects ({}) are treated as null values</li>
+<li>This means comparing null with an empty collection results in TN (True Negative)</li>
+<li><strong>Examples</strong>:</li>
+<li>GT = <code>null</code>, EST = <code>[]</code> → TN (equivalent states representing "no data")</li>
+<li>GT = <code>[]</code>, EST = <code>null</code> → TN (equivalent states representing "no data")</li>
+<li>GT = <code>""</code>, EST = <code>null</code> → TN (equivalent states representing "no data")</li>
+<li>GT = <code>{}</code>, EST = <code>null</code> → TN (equivalent states representing "no data")</li>
+</ul>
+<p><strong>Rationale</strong>: Semantically, both null values and empty collections represent the absence of meaningful data. Distinguishing between these states would introduce unnecessary complexity and inconsistency in evaluation metrics. For practical evaluation purposes, "no data" should be treated uniformly regardless of its representation.</p>
+<h3 id="2-threshold-boundary">2. Threshold Boundary</h3>
+<ul>
+<li>Values exactly at the threshold are considered matches (TP)</li>
+<li>For example, if threshold = 0.7 and similarity = 0.7, this is a TP</li>
+</ul>
+<h3 id="3-list-order">3. List Order</h3>
+<ul>
+<li>List order doesn't matter for matching</li>
+<li>The Hungarian algorithm finds the optimal matching regardless of order</li>
+</ul>
+<h3 id="4-partial-matches-in-lists">4. Partial Matches in Lists</h3>
+<ul>
+<li>For lists, we don't have "partial credit" for individual elements</li>
+<li>Each element is classified as TP, FA, FN, or FD independently</li>
+</ul>
+<h3 id="5-nested-lists">5. Nested Lists</h3>
+<ul>
+<li>For lists of objects, we apply the Hungarian algorithm at the list level</li>
+<li>Each matched pair of objects is then evaluated recursively</li>
+</ul>
+<h3 id="6-missing-fields-vs-null-fields">6. Missing Fields vs. Null Fields</h3>
+<ul>
+<li>A missing field and a field with null value are treated differently:</li>
+<li>Missing field in EST when GT has it → FN</li>
+<li>Null field in EST when GT has non-null → FN</li>
+<li>Missing field in GT when EST has it → FA (False Alarm)</li>
+<li>Null field in GT when EST has non-null → FA (False Alarm)</li>
+</ul>
+<h2 id="summary-of-key-points">Summary of Key Points</h2>
+<ol>
+<li>
+<p><strong>False Alarm (FA)</strong> occurs when the prediction includes something that doesn't exist in the ground truth (GT is null, EST is not null)</p>
+</li>
+<li>
+<p><strong>False Discovery (FD)</strong> occurs when the prediction recognizes something that exists but gets it wrong (both GT and EST are not null, but they don't match)</p>
+</li>
+<li>
+<p><strong>List matching</strong> uses the Hungarian algorithm to find optimal pairings, with unmatched items classified as FP or FN</p>
+</li>
+<li>
+<p><strong>Nested structures</strong> are evaluated recursively, with each field or element classified independently</p>
+</li>
+<li>
+<p><strong>Empty collections</strong> are generally treated as null values for classification purposes</p>
+</li>
+</ol>
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": ["content.code.copy", "content.code.select", "navigation.instant", "navigation.instant.prefetch", "navigation.instant.progress", "navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+        <script src="https://unpkg.com/mermaid@11/dist/mermaid.min.js"></script>
+      
+        <script src="../../assets/auto-redirect.js"></script>
+      
+    
+  </body>
+</html>
