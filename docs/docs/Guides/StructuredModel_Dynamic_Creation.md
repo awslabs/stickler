@@ -1,3 +1,8 @@
+---
+title: StructuredModel from JSON
+---
+
+
 # StructuredModel Dynamic Creation from JSON
 
 This document describes how to create StructuredModel classes dynamically from JSON configuration using the `model_from_json()` classmethod. This enables configuration-driven model creation with full comparison capabilities.
