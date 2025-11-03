@@ -1,4 +1,8 @@
-# Hungarian Matching for List[StructuredModel]: A Complete Guide
+---
+title: Hungarian Matching
+---
+
+# Hungarian Matching for `List[StructuredModel]` A Complete Guide
 
 ## Overview
 
