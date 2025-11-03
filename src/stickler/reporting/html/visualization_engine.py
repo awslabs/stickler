@@ -1,9 +1,10 @@
 """
 Simple visualization engine for HTML reports - v0.
 """
-
+import html
 from typing import Dict, Any
 from stickler.reporting.html.utils import ColorUtils
+from stickler.reporting.html.report_config import ReportConfig
 
 
 class VisualizationEngine:
@@ -11,14 +12,7 @@ class VisualizationEngine:
     Simple visualization engine for generating charts and graphs.
     """
     
-    def __init__(self):
-        """
-        Initialize the visualization engine.
-        
-        Creates a new instance of VisualizationEngine with default settings
-        """
-    
-    def generate_performance_gauge(self, score: float) -> str:
+    def generate_performance_gauge(self, score: float, config: ReportConfig) -> str:
         """
         Generate a simple performance gauge.
         
@@ -29,7 +23,7 @@ class VisualizationEngine:
             HTML for performance gauge
         """
         percentage = int(score * 100)
-        color = ColorUtils.get_performance_color(score)
+        color = ColorUtils.get_performance_color(score, config.color_thresholds)
         
         return f'''
         <div class="performance-gauge">
@@ -42,7 +36,7 @@ class VisualizationEngine:
         </div>
         '''
     
-    def generate_field_performance_chart(self, field_metrics: Dict[str, Any]) -> str:
+    def generate_field_performance_chart(self, field_metrics: Dict[str, Any], config: ReportConfig) -> str:
         """
         Generate a simple field performance chart.
         
@@ -55,8 +49,8 @@ class VisualizationEngine:
             HTML for field performance chart
         """
         # create a simple horizontal chart
-        html = '<div class="field-chart">'
-        html += '<h4 style="margin-bottom: 15px; color: #495057; font-size: 1.1em;">F1 Score</h4>'
+        html_string = '<div class="field-chart">'
+        html_string += '<h4 style="margin-bottom: 15px; color: #495057; font-size: 1.1em;">F1 Score</h4>'
         
         for field_name, metrics in field_metrics.items():
             if isinstance(metrics, dict):
@@ -64,24 +58,22 @@ class VisualizationEngine:
                 if isinstance(f1_score, (int, float)):
                     percentage = int(f1_score * 100)
                     
-                    color = ColorUtils.get_performance_color(f1_score)
-                    threshold_line = ''
+                    color = ColorUtils.get_performance_color(f1_score, config.color_thresholds)
                     
-                    html += f'''
+                    html_string += f'''
                     <div class="field-bar">
-                        <div class="field-label">{field_name}</div>
+                        <div class="field-label">{html.escape(field_name)}</div>
                         <div class="bar-container">
                             <div class="bar-fill" style="width: {percentage}%; background-color: {color};"></div>
-                            {threshold_line}
                             <span class="bar-value">{f1_score:.3f}</span>
                         </div>
                     </div>
                     '''
         
-        html += '</div>'
-        return html
+        html_string += '</div>'
+        return html_string
     
-    def generate_field_performance_table(self, field_metrics: Dict[str, Any]) -> str:
+    def generate_field_performance_table(self, field_metrics: Dict[str, Any], config: ReportConfig) -> str:
         """
         Generate a simple field performance table visualization.
         
@@ -125,7 +117,7 @@ class VisualizationEngine:
                 fn = metrics.get('fn', 0)
                 
             
-                f1_color = ColorUtils.get_performance_color(f1)
+                f1_color = ColorUtils.get_performance_color(f1, config.color_thresholds)
                 
                 html += f'''
                 <tr>

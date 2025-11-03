@@ -16,6 +16,11 @@ class ReportConfig(BaseModel):
     max_non_matches_displayed: int = 1000
     document_file_type: str = "image"
     image_thumbnail_size: int = 200
+    color_thresholds: Dict[str, float] = Field(default_factory=lambda: {
+        "EXCELLENT": 0.8,
+        "GOOD": 0.6,
+        "FAIR": 0.4
+    })
 
     
     @field_validator('max_non_matches_displayed')

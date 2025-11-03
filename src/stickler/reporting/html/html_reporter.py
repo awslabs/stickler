@@ -6,6 +6,7 @@ import os
 import time
 import json
 import shutil
+import html
 from typing import Dict, Any, Optional, Union, List
 from pathlib import Path
 
@@ -21,14 +22,7 @@ class EvaluationHTMLReporter:
     Simple HTML report generator for evaluation results.
     Supports both individual and bulk evaluation formats.
     """
-    
-    def __init__(self):
-        """
-        Initialize the HTML reporter.
-        
-        Creates a new instance of EvaluationHTMLReporter with default settings
-        """
-        
+
     def generate_report(
         self,
         evaluation_results: Union[Dict[str, Any], ProcessEvaluation],
@@ -124,7 +118,7 @@ class EvaluationHTMLReporter:
         is_bulk = isinstance(results, ProcessEvaluation)
         
         if config.include_executive_summary:
-            sections.append(section_generator.generate_executive_summary())
+            sections.append(section_generator.generate_executive_summary(config))
         
         if config.include_non_matches:
             sections.append(section_generator.generate_non_matches(config))
@@ -133,7 +127,7 @@ class EvaluationHTMLReporter:
             sections.append(section_generator.generate_document_gallery(document_files, config))
         
         if config.include_field_analysis:
-            sections.append(section_generator.generate_field_analysis())
+            sections.append(section_generator.generate_field_analysis(config))
         
         if config.include_confusion_matrix:
             sections.append(section_generator.generate_confusion_matrix())
@@ -215,12 +209,12 @@ class EvaluationHTMLReporter:
         css = self._get_basic_css()
         javascript = self._get_javascript(individual_docs, model_schema) if individual_docs else ""
         
-        html = f'''<!DOCTYPE html>
+        html_string = f'''<!DOCTYPE html>
             <html lang="en">
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>{title}</title>
+                <title>{html.escape(title)}</title>
                 <style>{css}</style>
                 <!-- PDF.js CDN -->
                 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -232,7 +226,7 @@ class EvaluationHTMLReporter:
             <body>
                 <div class="container">
                     <header>
-                        <h1>{title}</h1>
+                        <h1>{html.escape(title)}</h1>
                     </header>
                     
                     <main>
@@ -248,7 +242,7 @@ class EvaluationHTMLReporter:
             </body>
             </html>'''
                     
-        return html
+        return html_string
     
     def _get_basic_css(self) -> str:
         """Load CSS from external file."""

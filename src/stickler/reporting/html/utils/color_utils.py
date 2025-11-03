@@ -28,7 +28,7 @@ class ColorUtils:
 
     
     @staticmethod
-    def get_performance_color(score: float) -> str:
+    def get_performance_color(score: float, thresholds: Dict = None) -> str:
         """
         Get color based on performance score.
         
@@ -38,17 +38,20 @@ class ColorUtils:
         Returns:
             Hex color code string
         """
-        if score >= ColorUtils.PERFORMANCE_THRESHOLDS['EXCELLENT']:
+        if thresholds is None:
+            thresholds = ColorUtils.PERFORMANCE_THRESHOLDS
+        
+        if score >= thresholds.get('EXCELLENT', 0.8):
             return ColorUtils.DEFAULT_COLORS['GREEN']
-        elif score >= ColorUtils.PERFORMANCE_THRESHOLDS['GOOD']:
+        elif score >= thresholds.get('GOOD', 0.6):
             return ColorUtils.DEFAULT_COLORS['YELLOW']
-        elif score >= ColorUtils.PERFORMANCE_THRESHOLDS['FAIR']:
+        elif score >= thresholds.get('FAIR', 0.4):
             return ColorUtils.DEFAULT_COLORS['ORANGE']
         else:
             return ColorUtils.DEFAULT_COLORS['RED']
     
     @staticmethod
-    def get_status_color(status: str, theme: str = 'professional') -> str:
+    def get_status_color(status: str) -> str:
         """
         Get color for status indicators.
         
