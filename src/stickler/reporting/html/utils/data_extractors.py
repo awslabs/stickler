@@ -2,10 +2,11 @@
 Data extraction utilities for HTML reporting.
 Centralizes data access patterns that were previously duplicated across multiple modules.
 """
-
+import logging
 from typing import Dict, Any, Union, List, Optional
 from stickler.utils.process_evaluation import ProcessEvaluation
 
+logger = logging.getLogger(__name__)
 
 class DataExtractor:
     """Centralized data extraction utilities for consistent data access patterns."""
@@ -162,7 +163,7 @@ class DataExtractor:
                         return float(threshold)
         
         except Exception as e:
-            print(f"Error extracting threshold for field {field_name}: {e}")
+            logging.warning(f"Error extracting threshold for field {field_name}: {e}")
             return None
         
         return None
@@ -208,7 +209,7 @@ class DataExtractor:
                             field_thresholds[f"{field_name}.{nested_field}"] = nested_threshold
         
         except Exception as e:
-            print(f"Error extracting thresholds from model schema: {e}")
+            logging.warning(f"Error extracting thresholds from model schema: {e}")
             return field_thresholds
         
         return field_thresholds

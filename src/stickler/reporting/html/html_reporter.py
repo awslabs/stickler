@@ -7,6 +7,7 @@ import time
 import json
 import shutil
 import html
+import logging
 from typing import Dict, Any, Optional, Union, List
 from pathlib import Path
 
@@ -16,6 +17,8 @@ from stickler.reporting.html.visualization_engine import VisualizationEngine
 from stickler.utils.process_evaluation import ProcessEvaluation
 from stickler.reporting.html.section_generator import SectionGenerator
 from stickler.reporting.html.utils.data_extractors import DataExtractor
+
+logger = logging.getLogger(__name__)
 
 class EvaluationHTMLReporter:
     """
@@ -159,7 +162,7 @@ class EvaluationHTMLReporter:
                         doc_data = json.loads(line)
                         individual_docs.append(doc_data)
         except Exception as e:
-            print(f"Warning: Failed to load individual results from {jsonl_path}: {e}")
+            logger.warning(f"Failed to load individual results from {jsonl_path}: {e}")
         return individual_docs
     
     def _copy_files_to_report_dir(self, document_files: Dict[str, str], output_path: str) -> Dict[str, str]:
@@ -191,13 +194,13 @@ class EvaluationHTMLReporter:
                     
                     copied_images[doc_id] = f"images/{filename}"
                     
-                    print(f"Copied image: {image_path} -> {dest_path}")
+                    logger.info(f"Copied image: {image_path} -> {dest_path}")
                 else:
-                    print(f"Warning: Image file not found: {image_path}")
+                    logger.warning(f"Image file not found: {image_path}")
                     copied_images[doc_id] = image_path
                     
             except Exception as e:
-                print(f"Warning: Failed to copy image {image_path}: {e}")
+                logger.warning(f"Failed to copy image {image_path}: {e}")
                 # Keep the original path as fallback
                 copied_images[doc_id] = image_path
         
@@ -258,7 +261,7 @@ class EvaluationHTMLReporter:
             return css_content
             
         except FileNotFoundError:
-            print(f"Warning: CSS file {css_path} not found.")
+            logger.warning(f"CSS file {css_path} not found.")
         
     
     def _get_sections_included(self, config: ReportConfig) -> List[str]:
@@ -318,5 +321,5 @@ class EvaluationHTMLReporter:
             with open(js_path, 'r', encoding='utf-8') as f:
                 return f.read()
         except FileNotFoundError:
-            print(f"Warning: JavaScript file {js_path} not found.")
+            logger.warning(f"JavaScript file {js_path} not found.")
             return "// JavaScript file not found"
