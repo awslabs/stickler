@@ -57,6 +57,7 @@ The `ReportConfig` class allows you to customize report generation:
 | `max_non_matches_displayed` | int | 1000 | Maximum number of non-matches to show |
 | `document_file_type` | str | "image" | Document display format: "image" or "pdf" |
 | `image_thumbnail_size` | int | 200 | Size of document image thumbnails (pixels) |
+| `color_thresholds` | Dict[str, float] | {"EXCELLENT": 0.8, "GOOD": 0.6, "FAIR": 0.4} | Performance score thresholds for color coding |
 
 ## Report Result
 
