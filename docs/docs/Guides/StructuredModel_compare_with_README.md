@@ -1,3 +1,7 @@
+---
+title: StructuredModel Compare
+---
+
 # StructuredModel `compare_with` Method: A Layman's Guide
 
 VALIDATED AGAINST ACTUAL OUTPUT - This documentation has been validated against runtime output to ensure accuracy. All output structures shown are exact representations of what the method returns.
