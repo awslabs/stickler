@@ -11,7 +11,7 @@ Key Features:
 - Full evaluation with confusion matrices and metrics
 """
 
-from stickler.structured_object_evaluator.models import StructuredModel
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
 def basic_json_schema_example():
@@ -62,7 +62,7 @@ def basic_json_schema_example():
     result = ground_truth.compare_with(prediction)
     
     print(f"\nOverall Score: {result['overall_score']:.3f}")
-    print(f"\nField Scores:")
+    print("\nField Scores:")
     for field, score in result['field_scores'].items():
         print(f"  {field}: {score:.3f}")
     
@@ -146,8 +146,8 @@ def nested_json_schema_example():
     
     # Show confusion matrix summary
     if 'confusion_matrix' in result:
-        cm = result['confusion_matrix']
-        print(f"\nOverall Confusion Matrix:")
+        cm = result['confusion_matrix']['overall']
+        print("\nOverall Confusion Matrix:")
         print(f"  True Positives: {cm.get('true_positives', cm.get('tp', 0))}")
         print(f"  False Positives: {cm.get('false_positives', cm.get('fp', 0))}")
         print(f"  False Negatives: {cm.get('false_negatives', cm.get('fn', 0))}")
@@ -213,7 +213,7 @@ def custom_extensions_example():
     result = ground_truth.compare_with(prediction)
     
     print(f"\nOverall Score: {result['overall_score']:.3f}")
-    print(f"\nField Scores:")
+    print("\nField Scores:")
     for field, score in result['field_scores'].items():
         print(f"  {field}: {score:.3f}")
     
@@ -319,15 +319,180 @@ def real_world_api_schema_example():
     )
     
     print(f"\nOverall Score: {result['overall_score']:.3f}")
-    print(f"\nTop-level Field Scores:")
+    print("\nTop-level Field Scores:")
     for field in ['status', 'data', 'metadata']:
         if field in result['field_scores']:
             print(f"  {field}: {result['field_scores'][field]:.3f}")
     
-    print(f"\nNote: The 'data' field score reflects differences in nested")
-    print(f"profile.age and missing permissions array item.")
+    print("\nNote: The 'data' field score reflects differences in nested")
+    print("profile.age and missing permissions array item.")
     
     print("\n")
+
+
+def advanced_extensions_and_refs_example():
+    """Example showcasing comprehensive x-stickler extensions with $ref usage."""
+    print("=" * 80)
+    print("ADVANCED EXTENSIONS AND $REF EXAMPLE")
+    print("=" * 80)
+    
+    # Define a comprehensive schema with $ref and all x-aws-stickler extensions
+    ecommerce_schema = {
+        "type": "object",
+        "x-aws-stickler-model-name": "ECommerceOrder",
+        "x-aws-stickler-match-threshold": 0.8,
+        "definitions": {
+            "Address": {
+                "type": "object",
+                "properties": {
+                    "street": {
+                        "type": "string",
+                        "x-aws-stickler-comparator": "LevenshteinComparator",
+                        "x-aws-stickler-threshold": 0.85,
+                        "x-aws-stickler-weight": 1.2
+                    },
+                    "city": {
+                        "type": "string",
+                        "x-aws-stickler-comparator": "LevenshteinComparator",
+                        "x-aws-stickler-threshold": 0.9,
+                        "x-aws-stickler-weight": 1.5
+                    }
+                },
+                "required": ["street", "city"]
+            },
+            "Customer": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "x-aws-stickler-comparator": "LevenshteinComparator",
+                        "x-aws-stickler-threshold": 0.9,
+                        "x-aws-stickler-weight": 2.0,
+                        "x-aws-stickler-aggregate": True
+                    },
+                    "address": {"$ref": "#/definitions/Address"}
+                },
+                "required": ["name", "address"]
+            }
+        },
+        "properties": {
+            "order_id": {
+                "type": "string",
+                "x-aws-stickler-comparator": "ExactComparator",
+                "x-aws-stickler-weight": 3.0,
+                "x-aws-stickler-aggregate": True,
+                "x-aws-stickler-clip-under-threshold": True
+            },
+            "customer": {"$ref": "#/definitions/Customer"},
+            "shipping_address": {"$ref": "#/definitions/Address"},
+            "total_amount": {
+                "type": "number",
+                "x-aws-stickler-comparator": "NumericComparator",
+                "x-aws-stickler-threshold": 0.95,
+                "x-aws-stickler-weight": 2.5,
+                "x-aws-stickler-aggregate": True
+            },
+            "items": {
+                "type": "array",
+                "x-aws-stickler-weight": 2.0,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "product_name": {
+                            "type": "string",
+                            "x-aws-stickler-comparator": "LevenshteinComparator",
+                            "x-aws-stickler-threshold": 0.7,
+                            "x-aws-stickler-weight": 1.3
+                        },
+                        "price": {
+                            "type": "number",
+                            "x-aws-stickler-comparator": "NumericComparator",
+                            "x-aws-stickler-threshold": 0.98,
+                            "x-aws-stickler-weight": 1.5
+                        }
+                    },
+                    "required": ["product_name", "price"]
+                }
+            }
+        },
+        "required": ["order_id", "customer", "shipping_address", "total_amount", "items"]
+    }
+    
+    # Create the model class from the schema
+    ECommerceOrder = StructuredModel.from_json_schema(ecommerce_schema)
+    
+    print(f"Created model class: {ECommerceOrder.__name__}")
+    print(f"Model match threshold: {ECommerceOrder.match_threshold}")
+    
+    # Create test data demonstrating the impact of different x-stickler configurations
+    ground_truth_json = {
+        "order_id": "ORD-2024-001",
+        "customer": {
+            "name": "John Smith",
+            "address": {
+                "street": "123 Main Street",
+                "city": "Springfield"
+            }
+        },
+        "shipping_address": {
+            "street": "456 Oak Avenue",
+            "city": "Springfield"
+        },
+        "total_amount": 299.99,
+        "items": [
+            {"product_name": "Wireless Headphones", "price": 149.99},
+            {"product_name": "Phone Case", "price": 24.99},
+            {"product_name": "USB Cable", "price": 19.99}
+        ]
+    }
+    
+    # Prediction with various differences to showcase x-stickler behavior
+    prediction_json = {
+        "order_id": "ORD-2024-001",  # Exact match (ExactComparator)
+        "customer": {
+            "name": "Jon Smith",  # Typo (LevenshteinComparator with 0.9 threshold)
+            "address": {
+                "street": "123 Main St",  # Abbreviated (LevenshteinComparator 0.85 threshold)
+                "city": "Springfield"  # Exact match
+            }
+        },
+        "shipping_address": {
+            "street": "456 Oak Ave",  # Abbreviated
+            "city": "Springfield"
+        },
+        "total_amount": 299.95,  # Slight difference (NumericComparator 0.95 threshold)
+        "items": [
+            {"product_name": "Wireless Headphones", "price": 149.99},  # Perfect match
+            {"product_name": "Phone Cover", "price": 24.99},  # Different name
+            {"product_name": "USB Cable", "price": 19.95}  # Slight price difference
+        ]
+    }
+    
+    # Create model instances
+    ground_truth = ECommerceOrder(**ground_truth_json)
+    prediction = ECommerceOrder(**prediction_json)
+    
+    # Compare with detailed metrics
+    result = ground_truth.compare_with(
+        prediction,
+        include_confusion_matrix=True
+    )
+    
+    print(f"\nOverall Score: {result['overall_score']:.3f}")
+    print(f"All Fields Matched: {result['all_fields_matched']}")
+    
+    print(f"\nTop-level Field Scores:")
+    for field in ['order_id', 'customer', 'shipping_address', 'total_amount', 'items']:
+        if field in result['field_scores']:
+            print(f"  {field}: {result['field_scores'][field]:.3f}")
+    
+    # Show confusion matrix summary
+    if 'confusion_matrix' in result:
+        cm = result['confusion_matrix']['overall']
+        print("\nOverall Confusion Matrix:")
+        print(f"  True Positives: {cm.get('true_positives', cm.get('tp', 0))}")
+        print(f"  False Positives: {cm.get('false_positives', cm.get('fp', 0))}")
+        print(f"  False Negatives: {cm.get('false_negatives', cm.get('fn', 0))}")
 
 
 def main():
@@ -342,6 +507,7 @@ def main():
     nested_json_schema_example()
     custom_extensions_example()
     real_world_api_schema_example()
+    advanced_extensions_and_refs_example()
     
     print("=" * 80)
     print("SUMMARY")
