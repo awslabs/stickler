@@ -2,12 +2,6 @@
 title: StructuredModel from JSON
 ---
 
-
----
-title: StructuredModel from JSON
----
-
-
 # StructuredModel Dynamic Creation from JSON
 
 This document describes how to create StructuredModel classes dynamically from JSON Schema or custom JSON configuration. This enables configuration-driven model creation with full comparison capabilities, perfect for runtime model generation, A/B testing, and integration with external systems.
@@ -343,6 +337,25 @@ For complete documentation of all `x-aws-stickler-*` extensions, see the [README
 For cases where you need more control or don't want to use JSON Schema, Stickler provides a custom configuration format via `model_from_json()`.
 
 ### Basic Custom Configuration
+=======
+# StructuredModel Dynamic Creation from JSON
+
+This document describes how to create StructuredModel classes dynamically from JSON configuration using the `model_from_json()` classmethod. This enables configuration-driven model creation with full comparison capabilities.
+
+## Overview
+
+The `StructuredModel.model_from_json()` method allows you to:
+
+- Create StructuredModel classes from JSON configuration
+- Define nested StructuredModel hierarchies
+- Configure custom comparators and thresholds
+- Support lists of StructuredModels with Hungarian matching
+- Enable configuration-driven model creation for flexible applications
+
+## Basic Usage
+
+### Simple Model Creation
+>>>>>>> main
 
 ```python
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
@@ -387,9 +400,15 @@ result = person1.compare_with(person2)
 print(f"Similarity: {result['overall_score']:.3f}")
 ```
 
+<<<<<<< HEAD
 ### Custom Configuration Schema
 
 #### Top-Level Configuration
+=======
+## Configuration Schema
+
+### Top-Level Configuration
+>>>>>>> main
 
 ```json
 {
@@ -401,7 +420,13 @@ print(f"Similarity: {result['overall_score']:.3f}")
 }
 ```
 
+<<<<<<< HEAD
 #### Primitive Field Configuration
+=======
+### Field Configuration
+
+#### Primitive Fields
+>>>>>>> main
 
 ```json
 {
@@ -518,12 +543,21 @@ print(f"Similarity: {result['overall_score']:.3f}")
 }
 ```
 
+<<<<<<< HEAD
 ### Nested Models with Custom Configuration
 
 #### Single Nested Model
 
 ```python
 company_config = {
+=======
+## Nested Model Examples
+
+### Single Nested Model
+
+```json
+{
+>>>>>>> main
     "model_name": "Company",
     "fields": {
         "name": {
@@ -553,6 +587,7 @@ company_config = {
         }
     }
 }
+<<<<<<< HEAD
 
 Company = StructuredModel.model_from_json(company_config)
 
@@ -568,6 +603,14 @@ company = Company(**company_json)
 
 ```python
 company_config = {
+=======
+```
+
+### List of Nested Models
+
+```json
+{
+>>>>>>> main
     "model_name": "Company",
     "fields": {
         "name": {
@@ -603,6 +646,7 @@ company_config = {
         }
     }
 }
+<<<<<<< HEAD
 
 Company = StructuredModel.model_from_json(company_config)
 
@@ -615,6 +659,8 @@ company_json = {
     ]
 }
 company = Company(**company_json)
+=======
+>>>>>>> main
 ```
 
 ## Loading from JSON Files
@@ -850,6 +896,7 @@ except ValueError as e:
     print(f"Configuration error: {e}")
 ```
 
+<<<<<<< HEAD
 ## Example Scripts
 
 Stickler includes complete working examples for both methods:
@@ -907,3 +954,10 @@ python examples/scripts/json_to_evaluation_demo.py
 - [README: JSON Schema Extensions Reference](../README.md#json-schema-extensions-x-aws-stickler--complete-reference)
 - [StructuredModel Advanced Functionality](StructuredModel_Advanced_Functionality.md)
 - [Comparators Documentation](../src/stickler/comparators/Comparators.md)
+=======
+## See Also
+
+- [StructuredModel Advanced Functionality](StructuredModel_Advanced_Functionality.md)
+- [Comparators Documentation](../src/stickler/comparators/Comparators.md)
+- [Examples](../examples/scripts/model_from_json_demo.py)
+>>>>>>> main
