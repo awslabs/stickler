@@ -64,7 +64,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#structuredmodel-dynamic-creation-from-json" class="md-skip">
+        <a href="#title-structuredmodel-from-json" class="md-skip">
           Skip to content
         </a>
       
@@ -605,8 +605,6 @@
       <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
       
       
-        
-      
       
         <label class="md-nav__link md-nav__link--active" for="__toc">
           
@@ -641,8 +639,6 @@
   
   
   
-    
-  
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
@@ -651,6 +647,25 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#title-structuredmodel-from-json" class="md-nav__link">
+    <span class="md-ellipsis">
+      title: StructuredModel from JSON
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#structuredmodel-dynamic-creation-from-json" class="md-nav__link">
+    <span class="md-ellipsis">
+      StructuredModel Dynamic Creation from JSON
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="StructuredModel Dynamic Creation from JSON">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
       Overview
@@ -658,21 +673,66 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#basic-usage" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#method-1-json-schema-recommended" class="md-nav__link">
     <span class="md-ellipsis">
-      Basic Usage
+      Method 1: JSON Schema (Recommended)
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Basic Usage">
+    <nav class="md-nav" aria-label="Method 1: JSON Schema (Recommended)">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#simple-model-creation" class="md-nav__link">
+  <a href="#why-json-schema" class="md-nav__link">
     <span class="md-ellipsis">
-      Simple Model Creation
+      Why JSON Schema?
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#basic-json-schema-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      Basic JSON Schema Example
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nested-objects-in-json-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      Nested Objects in JSON Schema
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#arrays-in-json-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      Arrays in JSON Schema
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#complete-json-schema-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      Complete JSON Schema Example
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#json-schema-extension-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      JSON Schema Extension Reference
     </span>
   </a>
   
@@ -682,15 +742,34 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#configuration-schema" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#method-2-custom-json-configuration" class="md-nav__link">
     <span class="md-ellipsis">
-      Configuration Schema
+      Method 2: Custom JSON Configuration
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Configuration Schema">
+    <nav class="md-nav" aria-label="Method 2: Custom JSON Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-custom-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Basic Custom Configuration
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#custom-configuration-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      Custom Configuration Schema
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Custom Configuration Schema">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -703,19 +782,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#field-configuration" class="md-nav__link">
+  <a href="#primitive-field-configuration" class="md-nav__link">
     <span class="md-ellipsis">
-      Field Configuration
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Field Configuration">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#primitive-fields" class="md-nav__link">
-    <span class="md-ellipsis">
-      Primitive Fields
+      Primitive Field Configuration
     </span>
   </a>
   
@@ -757,8 +826,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#supported-types" class="md-nav__link">
     <span class="md-ellipsis">
       Supported Types
@@ -799,8 +868,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#available-comparators" class="md-nav__link">
     <span class="md-ellipsis">
       Available Comparators
@@ -846,19 +915,14 @@
   
 </li>
         
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#nested-model-examples" class="md-nav__link">
+          <li class="md-nav__item">
+  <a href="#nested-models-with-custom-configuration" class="md-nav__link">
     <span class="md-ellipsis">
-      Nested Model Examples
+      Nested Models with Custom Configuration
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Nested Model Examples">
+    <nav class="md-nav" aria-label="Nested Models with Custom Configuration">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -883,8 +947,13 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#loading-from-json-files" class="md-nav__link">
     <span class="md-ellipsis">
       Loading from JSON Files
@@ -892,8 +961,8 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#advanced-features" class="md-nav__link">
     <span class="md-ellipsis">
       Advanced Features
@@ -934,8 +1003,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#hungarian-matching-for-lists" class="md-nav__link">
     <span class="md-ellipsis">
       Hungarian Matching for Lists
@@ -943,8 +1012,8 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#error-handling" class="md-nav__link">
     <span class="md-ellipsis">
       Error Handling
@@ -952,8 +1021,8 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#best-practices" class="md-nav__link">
     <span class="md-ellipsis">
       Best Practices
@@ -1012,8 +1081,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#performance-considerations" class="md-nav__link">
     <span class="md-ellipsis">
       Performance Considerations
@@ -1054,8 +1123,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#integration-examples" class="md-nav__link">
     <span class="md-ellipsis">
       Integration Examples
@@ -1087,8 +1156,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#troubleshooting" class="md-nav__link">
     <span class="md-ellipsis">
       Troubleshooting
@@ -1129,13 +1198,60 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
+  <a href="#example-scripts" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example Scripts
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example Scripts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#json-schema-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      JSON Schema Examples
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#custom-configuration-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      Custom Configuration Examples
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#complete-json-to-evaluation-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      Complete JSON-to-Evaluation Workflow
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       See Also
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1408,8 +1524,6 @@
   
   
   
-    
-  
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
@@ -1418,6 +1532,25 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#title-structuredmodel-from-json" class="md-nav__link">
+    <span class="md-ellipsis">
+      title: StructuredModel from JSON
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#structuredmodel-dynamic-creation-from-json" class="md-nav__link">
+    <span class="md-ellipsis">
+      StructuredModel Dynamic Creation from JSON
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="StructuredModel Dynamic Creation from JSON">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
       Overview
@@ -1425,21 +1558,66 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#basic-usage" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#method-1-json-schema-recommended" class="md-nav__link">
     <span class="md-ellipsis">
-      Basic Usage
+      Method 1: JSON Schema (Recommended)
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Basic Usage">
+    <nav class="md-nav" aria-label="Method 1: JSON Schema (Recommended)">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#simple-model-creation" class="md-nav__link">
+  <a href="#why-json-schema" class="md-nav__link">
     <span class="md-ellipsis">
-      Simple Model Creation
+      Why JSON Schema?
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#basic-json-schema-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      Basic JSON Schema Example
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nested-objects-in-json-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      Nested Objects in JSON Schema
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#arrays-in-json-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      Arrays in JSON Schema
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#complete-json-schema-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      Complete JSON Schema Example
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#json-schema-extension-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      JSON Schema Extension Reference
     </span>
   </a>
   
@@ -1449,15 +1627,34 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#configuration-schema" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#method-2-custom-json-configuration" class="md-nav__link">
     <span class="md-ellipsis">
-      Configuration Schema
+      Method 2: Custom JSON Configuration
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Configuration Schema">
+    <nav class="md-nav" aria-label="Method 2: Custom JSON Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-custom-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Basic Custom Configuration
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#custom-configuration-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      Custom Configuration Schema
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Custom Configuration Schema">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1470,19 +1667,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#field-configuration" class="md-nav__link">
+  <a href="#primitive-field-configuration" class="md-nav__link">
     <span class="md-ellipsis">
-      Field Configuration
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Field Configuration">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#primitive-fields" class="md-nav__link">
-    <span class="md-ellipsis">
-      Primitive Fields
+      Primitive Field Configuration
     </span>
   </a>
   
@@ -1524,8 +1711,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#supported-types" class="md-nav__link">
     <span class="md-ellipsis">
       Supported Types
@@ -1566,8 +1753,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#available-comparators" class="md-nav__link">
     <span class="md-ellipsis">
       Available Comparators
@@ -1613,19 +1800,14 @@
   
 </li>
         
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#nested-model-examples" class="md-nav__link">
+          <li class="md-nav__item">
+  <a href="#nested-models-with-custom-configuration" class="md-nav__link">
     <span class="md-ellipsis">
-      Nested Model Examples
+      Nested Models with Custom Configuration
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Nested Model Examples">
+    <nav class="md-nav" aria-label="Nested Models with Custom Configuration">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1650,8 +1832,13 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#loading-from-json-files" class="md-nav__link">
     <span class="md-ellipsis">
       Loading from JSON Files
@@ -1659,8 +1846,8 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#advanced-features" class="md-nav__link">
     <span class="md-ellipsis">
       Advanced Features
@@ -1701,8 +1888,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#hungarian-matching-for-lists" class="md-nav__link">
     <span class="md-ellipsis">
       Hungarian Matching for Lists
@@ -1710,8 +1897,8 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#error-handling" class="md-nav__link">
     <span class="md-ellipsis">
       Error Handling
@@ -1719,8 +1906,8 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#best-practices" class="md-nav__link">
     <span class="md-ellipsis">
       Best Practices
@@ -1779,8 +1966,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#performance-considerations" class="md-nav__link">
     <span class="md-ellipsis">
       Performance Considerations
@@ -1821,8 +2008,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#integration-examples" class="md-nav__link">
     <span class="md-ellipsis">
       Integration Examples
@@ -1854,8 +2041,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#troubleshooting" class="md-nav__link">
     <span class="md-ellipsis">
       Troubleshooting
@@ -1896,13 +2083,60 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
+  <a href="#example-scripts" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example Scripts
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example Scripts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#json-schema-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      JSON Schema Examples
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#custom-configuration-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      Custom Configuration Examples
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#complete-json-to-evaluation-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      Complete JSON-to-Evaluation Workflow
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
       See Also
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1925,19 +2159,353 @@
   
 
 
+<hr />
+<h2 id="title-structuredmodel-from-json">title: StructuredModel from JSON</h2>
 <h1 id="structuredmodel-dynamic-creation-from-json">StructuredModel Dynamic Creation from JSON</h1>
-<p>This document describes how to create StructuredModel classes dynamically from JSON configuration using the <code>model_from_json()</code> classmethod. This enables configuration-driven model creation with full comparison capabilities.</p>
+<p>This document describes how to create StructuredModel classes dynamically from JSON Schema or custom JSON configuration. This enables configuration-driven model creation with full comparison capabilities, perfect for runtime model generation, A/B testing, and integration with external systems.</p>
 <h2 id="overview">Overview</h2>
-<p>The <code>StructuredModel.model_from_json()</code> method allows you to:</p>
+<p>Stickler provides two methods for dynamic model creation:</p>
+<ol>
+<li><strong><code>from_json_schema()</code></strong> - Create models from standard JSON Schema documents (recommended)</li>
+<li><strong><code>model_from_json()</code></strong> - Create models from custom Stickler JSON configuration</li>
+</ol>
+<p>Both methods produce fully functional StructuredModel classes with:
+- Full comparison capabilities via <code>compare_with()</code>
+- Nested StructuredModel hierarchies
+- Custom comparators and thresholds
+- Lists of StructuredModels with Hungarian matching
+- Pydantic validation and serialization</p>
+<h2 id="method-1-json-schema-recommended">Method 1: JSON Schema (Recommended)</h2>
+<h3 id="why-json-schema">Why JSON Schema?</h3>
 <ul>
-<li>Create StructuredModel classes from JSON configuration</li>
-<li>Define nested StructuredModel hierarchies</li>
-<li>Configure custom comparators and thresholds</li>
-<li>Support lists of StructuredModels with Hungarian matching</li>
-<li>Enable configuration-driven model creation for flexible applications</li>
+<li><strong>Industry standard</strong>: Works with existing JSON Schema tooling and validators</li>
+<li><strong>Interoperability</strong>: Integrate with OpenAPI, AsyncAPI, and other schema-based systems</li>
+<li><strong>Documentation</strong>: Built-in support for descriptions, examples, and validation</li>
+<li><strong>Extensibility</strong>: Use <code>x-aws-stickler-*</code> extensions for comparison configuration</li>
 </ul>
-<h2 id="basic-usage">Basic Usage</h2>
-<h3 id="simple-model-creation">Simple Model Creation</h3>
+<h3 id="basic-json-schema-example">Basic JSON Schema Example</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">stickler</span><span class="w"> </span><span class="kn">import</span> <span class="n">StructuredModel</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+
+<span class="c1"># Define a standard JSON Schema with Stickler extensions</span>
+<span class="n">product_schema</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="s2">&quot;Product&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;x-aws-stickler-model-name&quot;</span><span class="p">:</span> <span class="s2">&quot;Product&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Product name&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;LevenshteinComparator&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-threshold&quot;</span><span class="p">:</span> <span class="mf">0.8</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-weight&quot;</span><span class="p">:</span> <span class="mf">2.0</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;number&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Product price in USD&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;NumericComparator&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-threshold&quot;</span><span class="p">:</span> <span class="mf">0.95</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-weight&quot;</span><span class="p">:</span> <span class="mf">1.5</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;in_stock&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;boolean&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Availability status&quot;</span>
+        <span class="p">}</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">]</span>
+<span class="p">}</span>
+
+<span class="c1"># Create the model class from JSON Schema</span>
+<span class="n">Product</span> <span class="o">=</span> <span class="n">StructuredModel</span><span class="o">.</span><span class="n">from_json_schema</span><span class="p">(</span><span class="n">product_schema</span><span class="p">)</span>
+
+<span class="c1"># Use it with JSON data (typical usage)</span>
+<span class="n">ground_truth_json</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Laptop&quot;</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="mf">999.99</span><span class="p">,</span> <span class="s2">&quot;in_stock&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+<span class="n">prediction_json</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Laptop Pro&quot;</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="mf">999.99</span><span class="p">,</span> <span class="s2">&quot;in_stock&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+
+<span class="n">ground_truth</span> <span class="o">=</span> <span class="n">Product</span><span class="p">(</span><span class="o">**</span><span class="n">ground_truth_json</span><span class="p">)</span>
+<span class="n">prediction</span> <span class="o">=</span> <span class="n">Product</span><span class="p">(</span><span class="o">**</span><span class="n">prediction_json</span><span class="p">)</span>
+
+<span class="c1"># Compare</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">ground_truth</span><span class="o">.</span><span class="n">compare_with</span><span class="p">(</span><span class="n">prediction</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Overall Score: </span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;overall_score&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Name Score: </span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;field_scores&#39;</span><span class="p">][</span><span class="s1">&#39;name&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Price Score: </span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;field_scores&#39;</span><span class="p">][</span><span class="s1">&#39;price&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="nested-objects-in-json-schema">Nested Objects in JSON Schema</h3>
+<p>JSON Schema naturally supports nested objects, which become nested StructuredModels:</p>
+<div class="highlight"><pre><span></span><code><span class="n">invoice_schema</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;x-aws-stickler-model-name&quot;</span><span class="p">:</span> <span class="s2">&quot;Invoice&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;invoice_number&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;ExactComparator&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-threshold&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-weight&quot;</span><span class="p">:</span> <span class="mf">3.0</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;customer&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Customer information&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;LevenshteinComparator&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;x-aws-stickler-threshold&quot;</span><span class="p">:</span> <span class="mf">0.8</span>
+                <span class="p">},</span>
+                <span class="s2">&quot;email&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;ExactComparator&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;x-aws-stickler-threshold&quot;</span><span class="p">:</span> <span class="mf">1.0</span>
+                <span class="p">}</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">]</span>
+        <span class="p">}</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;invoice_number&quot;</span><span class="p">,</span> <span class="s2">&quot;customer&quot;</span><span class="p">]</span>
+<span class="p">}</span>
+
+<span class="n">Invoice</span> <span class="o">=</span> <span class="n">StructuredModel</span><span class="o">.</span><span class="n">from_json_schema</span><span class="p">(</span><span class="n">invoice_schema</span><span class="p">)</span>
+
+<span class="c1"># Use with JSON data</span>
+<span class="n">invoice_json</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;invoice_number&quot;</span><span class="p">:</span> <span class="s2">&quot;INV-001&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;customer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;John Doe&quot;</span><span class="p">,</span> <span class="s2">&quot;email&quot;</span><span class="p">:</span> <span class="s2">&quot;john@example.com&quot;</span><span class="p">}</span>
+<span class="p">}</span>
+<span class="n">invoice</span> <span class="o">=</span> <span class="n">Invoice</span><span class="p">(</span><span class="o">**</span><span class="n">invoice_json</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="arrays-in-json-schema">Arrays in JSON Schema</h3>
+<p>Arrays of primitives and arrays of objects are both supported:</p>
+<div class="highlight"><pre><span></span><code><span class="n">order_schema</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;x-aws-stickler-model-name&quot;</span><span class="p">:</span> <span class="s2">&quot;Order&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;order_id&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;ExactComparator&quot;</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;tags&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;array&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Simple array of strings&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;items&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">}</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;line_items&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;array&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Array of objects - uses Hungarian matching&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;items&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;product&quot;</span><span class="p">:</span> <span class="p">{</span>
+                        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;LevenshteinComparator&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;x-aws-stickler-threshold&quot;</span><span class="p">:</span> <span class="mf">0.8</span>
+                    <span class="p">},</span>
+                    <span class="s2">&quot;quantity&quot;</span><span class="p">:</span> <span class="p">{</span>
+                        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;NumericComparator&quot;</span>
+                    <span class="p">},</span>
+                    <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="p">{</span>
+                        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;number&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;NumericComparator&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;x-aws-stickler-threshold&quot;</span><span class="p">:</span> <span class="mf">0.95</span>
+                    <span class="p">}</span>
+                <span class="p">},</span>
+                <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;product&quot;</span><span class="p">,</span> <span class="s2">&quot;quantity&quot;</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">]</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;order_id&quot;</span><span class="p">,</span> <span class="s2">&quot;line_items&quot;</span><span class="p">]</span>
+<span class="p">}</span>
+
+<span class="n">Order</span> <span class="o">=</span> <span class="n">StructuredModel</span><span class="o">.</span><span class="n">from_json_schema</span><span class="p">(</span><span class="n">order_schema</span><span class="p">)</span>
+
+<span class="c1"># Use with JSON data - arrays are compared with Hungarian matching (order-independent)</span>
+<span class="n">order1_json</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;order_id&quot;</span><span class="p">:</span> <span class="s2">&quot;ORD-001&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;tags&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;electronics&quot;</span><span class="p">,</span> <span class="s2">&quot;urgent&quot;</span><span class="p">],</span>
+    <span class="s2">&quot;line_items&quot;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="p">{</span><span class="s2">&quot;product&quot;</span><span class="p">:</span> <span class="s2">&quot;Widget A&quot;</span><span class="p">,</span> <span class="s2">&quot;quantity&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="mf">50.00</span><span class="p">},</span>
+        <span class="p">{</span><span class="s2">&quot;product&quot;</span><span class="p">:</span> <span class="s2">&quot;Widget B&quot;</span><span class="p">,</span> <span class="s2">&quot;quantity&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="mf">100.00</span><span class="p">}</span>
+    <span class="p">]</span>
+<span class="p">}</span>
+
+<span class="n">order2_json</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;order_id&quot;</span><span class="p">:</span> <span class="s2">&quot;ORD-001&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;tags&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;electronics&quot;</span><span class="p">,</span> <span class="s2">&quot;urgent&quot;</span><span class="p">],</span>
+    <span class="s2">&quot;line_items&quot;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="p">{</span><span class="s2">&quot;product&quot;</span><span class="p">:</span> <span class="s2">&quot;Widget B&quot;</span><span class="p">,</span> <span class="s2">&quot;quantity&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="mf">100.00</span><span class="p">},</span>  <span class="c1"># Reordered</span>
+        <span class="p">{</span><span class="s2">&quot;product&quot;</span><span class="p">:</span> <span class="s2">&quot;Widget A&quot;</span><span class="p">,</span> <span class="s2">&quot;quantity&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="mf">50.00</span><span class="p">}</span>   <span class="c1"># Reordered</span>
+    <span class="p">]</span>
+<span class="p">}</span>
+
+<span class="n">order1</span> <span class="o">=</span> <span class="n">Order</span><span class="p">(</span><span class="o">**</span><span class="n">order1_json</span><span class="p">)</span>
+<span class="n">order2</span> <span class="o">=</span> <span class="n">Order</span><span class="p">(</span><span class="o">**</span><span class="n">order2_json</span><span class="p">)</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">order1</span><span class="o">.</span><span class="n">compare_with</span><span class="p">(</span><span class="n">order2</span><span class="p">)</span>
+<span class="c1"># Line items will match perfectly despite reordering</span>
+</code></pre></div>
+<h3 id="complete-json-schema-example">Complete JSON Schema Example</h3>
+<p>Here's a production-ready schema with all features:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Save this as invoice_schema.json</span>
+<span class="n">invoice_schema</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;$schema&quot;</span><span class="p">:</span> <span class="s2">&quot;http://json-schema.org/draft-07/schema#&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="s2">&quot;Invoice&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Invoice extraction schema with business-aligned comparison&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;x-aws-stickler-model-name&quot;</span><span class="p">:</span> <span class="s2">&quot;Invoice&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;x-aws-stickler-match-threshold&quot;</span><span class="p">:</span> <span class="mf">0.75</span><span class="p">,</span>
+    <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;invoice_id&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Unique invoice identifier - must be exact&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;examples&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;INV-2024-001&quot;</span><span class="p">,</span> <span class="s2">&quot;INV-2024-002&quot;</span><span class="p">],</span>
+            <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;ExactComparator&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-threshold&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-weight&quot;</span><span class="p">:</span> <span class="mf">3.0</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-clip-under-threshold&quot;</span><span class="p">:</span> <span class="n">true</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;customer_name&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Customer&#39;s full name - allow minor typos&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;examples&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;John Smith&quot;</span><span class="p">,</span> <span class="s2">&quot;Acme Corporation&quot;</span><span class="p">],</span>
+            <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;LevenshteinComparator&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-threshold&quot;</span><span class="p">:</span> <span class="mf">0.8</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-weight&quot;</span><span class="p">:</span> <span class="mf">1.5</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;total_amount&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;number&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Total invoice amount in USD&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;examples&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">1234.56</span><span class="p">,</span> <span class="mf">99.99</span><span class="p">],</span>
+            <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;NumericComparator&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-threshold&quot;</span><span class="p">:</span> <span class="mf">0.95</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-weight&quot;</span><span class="p">:</span> <span class="mf">2.5</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;line_items&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;array&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Individual line items&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;items&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="p">{</span>
+                        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;FuzzyComparator&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;x-aws-stickler-threshold&quot;</span><span class="p">:</span> <span class="mf">0.7</span>
+                    <span class="p">},</span>
+                    <span class="s2">&quot;quantity&quot;</span><span class="p">:</span> <span class="p">{</span>
+                        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;NumericComparator&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;x-aws-stickler-threshold&quot;</span><span class="p">:</span> <span class="mf">1.0</span>
+                    <span class="p">},</span>
+                    <span class="s2">&quot;unit_price&quot;</span><span class="p">:</span> <span class="p">{</span>
+                        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;number&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;NumericComparator&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;x-aws-stickler-threshold&quot;</span><span class="p">:</span> <span class="mf">0.95</span>
+                    <span class="p">}</span>
+                <span class="p">},</span>
+                <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;description&quot;</span><span class="p">,</span> <span class="s2">&quot;quantity&quot;</span><span class="p">,</span> <span class="s2">&quot;unit_price&quot;</span><span class="p">]</span>
+            <span class="p">}</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;metadata&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Additional metadata&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;processed_date&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">},</span>
+                <span class="s2">&quot;processor_id&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;invoice_id&quot;</span><span class="p">,</span> <span class="s2">&quot;customer_name&quot;</span><span class="p">,</span> <span class="s2">&quot;total_amount&quot;</span><span class="p">,</span> <span class="s2">&quot;line_items&quot;</span><span class="p">]</span>
+<span class="p">}</span>
+
+<span class="c1"># Load from file and create model</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s1">&#39;invoice_schema.json&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="n">schema</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+
+<span class="n">Invoice</span> <span class="o">=</span> <span class="n">StructuredModel</span><span class="o">.</span><span class="n">from_json_schema</span><span class="p">(</span><span class="n">schema</span><span class="p">)</span>
+
+<span class="c1"># Use with JSON data (typical workflow)</span>
+<span class="n">ground_truth_json</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;invoice_id&quot;</span><span class="p">:</span> <span class="s2">&quot;INV-2024-001&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;customer_name&quot;</span><span class="p">:</span> <span class="s2">&quot;Acme Corporation&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;total_amount&quot;</span><span class="p">:</span> <span class="mf">1250.00</span><span class="p">,</span>
+    <span class="s2">&quot;line_items&quot;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="p">{</span><span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Widget A&quot;</span><span class="p">,</span> <span class="s2">&quot;quantity&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span> <span class="s2">&quot;unit_price&quot;</span><span class="p">:</span> <span class="mf">50.00</span><span class="p">},</span>
+        <span class="p">{</span><span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Widget B&quot;</span><span class="p">,</span> <span class="s2">&quot;quantity&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span> <span class="s2">&quot;unit_price&quot;</span><span class="p">:</span> <span class="mf">100.00</span><span class="p">}</span>
+    <span class="p">],</span>
+    <span class="s2">&quot;metadata&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;processed_date&quot;</span><span class="p">:</span> <span class="s2">&quot;2024-01-15&quot;</span><span class="p">,</span> <span class="s2">&quot;processor_id&quot;</span><span class="p">:</span> <span class="s2">&quot;SYS-A&quot;</span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">prediction_json</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;invoice_id&quot;</span><span class="p">:</span> <span class="s2">&quot;INV-2024-001&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;customer_name&quot;</span><span class="p">:</span> <span class="s2">&quot;ACME Corp&quot;</span><span class="p">,</span>  <span class="c1"># Variation</span>
+    <span class="s2">&quot;total_amount&quot;</span><span class="p">:</span> <span class="mf">1250.00</span><span class="p">,</span>
+    <span class="s2">&quot;line_items&quot;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="p">{</span><span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Widget B&quot;</span><span class="p">,</span> <span class="s2">&quot;quantity&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span> <span class="s2">&quot;unit_price&quot;</span><span class="p">:</span> <span class="mf">100.00</span><span class="p">},</span>  <span class="c1"># Reordered</span>
+        <span class="p">{</span><span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Widget A&quot;</span><span class="p">,</span> <span class="s2">&quot;quantity&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span> <span class="s2">&quot;unit_price&quot;</span><span class="p">:</span> <span class="mf">50.00</span><span class="p">}</span>   <span class="c1"># Reordered</span>
+    <span class="p">],</span>
+    <span class="s2">&quot;metadata&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;processed_date&quot;</span><span class="p">:</span> <span class="s2">&quot;2024-01-15&quot;</span><span class="p">,</span> <span class="s2">&quot;processor_id&quot;</span><span class="p">:</span> <span class="s2">&quot;SYS-B&quot;</span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">ground_truth</span> <span class="o">=</span> <span class="n">Invoice</span><span class="p">(</span><span class="o">**</span><span class="n">ground_truth_json</span><span class="p">)</span>
+<span class="n">prediction</span> <span class="o">=</span> <span class="n">Invoice</span><span class="p">(</span><span class="o">**</span><span class="n">prediction_json</span><span class="p">)</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">ground_truth</span><span class="o">.</span><span class="n">compare_with</span><span class="p">(</span><span class="n">prediction</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Overall Score: </span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;overall_score&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Field Scores: </span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;field_scores&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="json-schema-extension-reference">JSON Schema Extension Reference</h3>
+<p>For complete documentation of all <code>x-aws-stickler-*</code> extensions, see the <a href="../README.md#json-schema-extensions-x-aws-stickler--complete-reference">README</a>.</p>
+<p><strong>Quick Reference:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Extension</th>
+<th>Purpose</th>
+<th>Example Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>x-aws-stickler-comparator</code></td>
+<td>Comparison algorithm</td>
+<td><code>"LevenshteinComparator"</code></td>
+</tr>
+<tr>
+<td><code>x-aws-stickler-threshold</code></td>
+<td>Match threshold (0.0-1.0)</td>
+<td><code>0.8</code></td>
+</tr>
+<tr>
+<td><code>x-aws-stickler-weight</code></td>
+<td>Field importance</td>
+<td><code>2.0</code></td>
+</tr>
+<tr>
+<td><code>x-aws-stickler-clip-under-threshold</code></td>
+<td>Zero low scores</td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td><code>x-aws-stickler-aggregate</code></td>
+<td>Include in metrics</td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td><code>x-aws-stickler-model-name</code></td>
+<td>Class name</td>
+<td><code>"Invoice"</code></td>
+</tr>
+<tr>
+<td><code>x-aws-stickler-match-threshold</code></td>
+<td>Model threshold</td>
+<td><code>0.75</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="method-2-custom-json-configuration">Method 2: Custom JSON Configuration</h2>
+<p>For cases where you need more control or don't want to use JSON Schema, Stickler provides a custom configuration format via <code>model_from_json()</code>.</p>
+<h3 id="basic-custom-configuration">Basic Custom Configuration</h3>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">stickler.structured_object_evaluator.models.structured_model</span><span class="w"> </span><span class="kn">import</span> <span class="n">StructuredModel</span>
 
 <span class="c1"># Define model configuration</span>
@@ -1979,8 +2547,8 @@
 <span class="n">result</span> <span class="o">=</span> <span class="n">person1</span><span class="o">.</span><span class="n">compare_with</span><span class="p">(</span><span class="n">person2</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Similarity: </span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;overall_score&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </code></pre></div>
-<h2 id="configuration-schema">Configuration Schema</h2>
-<h3 id="top-level-configuration">Top-Level Configuration</h3>
+<h3 id="custom-configuration-schema">Custom Configuration Schema</h3>
+<h4 id="top-level-configuration">Top-Level Configuration</h4>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;model_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span><span class="p">,</span><span class="w">           </span><span class="c1">// Required: Name of the generated class</span>
 <span class="w">    </span><span class="nt">&quot;match_threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.7</span><span class="p">,</span><span class="w">           </span><span class="c1">// Optional: Default threshold for list matching</span>
@@ -1989,8 +2557,7 @@
 <span class="w">    </span><span class="p">}</span>
 <span class="p">}</span>
 </code></pre></div>
-<h3 id="field-configuration">Field Configuration</h3>
-<h4 id="primitive-fields">Primitive Fields</h4>
+<h4 id="primitive-field-configuration">Primitive Field Configuration</h4>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;str|int|float|bool|list|dict&quot;</span><span class="p">,</span><span class="w">  </span><span class="c1">// Required: Field type</span>
 <span class="w">    </span><span class="nt">&quot;comparator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ComparatorName&quot;</span><span class="p">,</span><span class="w">          </span><span class="c1">// Required: Comparator class name</span>
@@ -2094,76 +2661,97 @@
 <span class="w">    </span><span class="p">}</span>
 <span class="p">}</span>
 </code></pre></div>
-<h2 id="nested-model-examples">Nested Model Examples</h2>
-<h3 id="single-nested-model">Single Nested Model</h3>
-<div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;model_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Company&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;str&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;comparator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;LevenshteinComparator&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.8</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;weight&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">2.0</span>
-<span class="w">        </span><span class="p">},</span>
-<span class="w">        </span><span class="nt">&quot;ceo&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;structured_model&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.7</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;weight&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.5</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">                </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">                    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;str&quot;</span><span class="p">,</span>
-<span class="w">                    </span><span class="nt">&quot;comparator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;LevenshteinComparator&quot;</span><span class="p">,</span>
-<span class="w">                    </span><span class="nt">&quot;threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.8</span><span class="p">,</span>
-<span class="w">                    </span><span class="nt">&quot;weight&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span>
-<span class="w">                </span><span class="p">},</span>
-<span class="w">                </span><span class="nt">&quot;salary&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">                    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;float&quot;</span><span class="p">,</span>
-<span class="w">                    </span><span class="nt">&quot;comparator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;NumericComparator&quot;</span><span class="p">,</span>
-<span class="w">                    </span><span class="nt">&quot;threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.9</span><span class="p">,</span>
-<span class="w">                    </span><span class="nt">&quot;weight&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.8</span>
-<span class="w">                </span><span class="p">}</span>
-<span class="w">            </span><span class="p">}</span>
-<span class="w">        </span><span class="p">}</span>
-<span class="w">    </span><span class="p">}</span>
+<h3 id="nested-models-with-custom-configuration">Nested Models with Custom Configuration</h3>
+<h4 id="single-nested-model">Single Nested Model</h4>
+<div class="highlight"><pre><span></span><code><span class="n">company_config</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;model_name&quot;</span><span class="p">:</span> <span class="s2">&quot;Company&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;fields&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;LevenshteinComparator&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">0.8</span><span class="p">,</span>
+            <span class="s2">&quot;weight&quot;</span><span class="p">:</span> <span class="mf">2.0</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;ceo&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;structured_model&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">0.7</span><span class="p">,</span>
+            <span class="s2">&quot;weight&quot;</span><span class="p">:</span> <span class="mf">1.5</span><span class="p">,</span>
+            <span class="s2">&quot;fields&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;LevenshteinComparator&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">0.8</span><span class="p">,</span>
+                    <span class="s2">&quot;weight&quot;</span><span class="p">:</span> <span class="mf">1.0</span>
+                <span class="p">},</span>
+                <span class="s2">&quot;salary&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;float&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;NumericComparator&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">0.9</span><span class="p">,</span>
+                    <span class="s2">&quot;weight&quot;</span><span class="p">:</span> <span class="mf">0.8</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
 <span class="p">}</span>
+
+<span class="n">Company</span> <span class="o">=</span> <span class="n">StructuredModel</span><span class="o">.</span><span class="n">model_from_json</span><span class="p">(</span><span class="n">company_config</span><span class="p">)</span>
+
+<span class="c1"># Use with JSON data</span>
+<span class="n">company_json</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;TechCorp&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;ceo&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Alice Johnson&quot;</span><span class="p">,</span> <span class="s2">&quot;salary&quot;</span><span class="p">:</span> <span class="mf">250000.0</span><span class="p">}</span>
+<span class="p">}</span>
+<span class="n">company</span> <span class="o">=</span> <span class="n">Company</span><span class="p">(</span><span class="o">**</span><span class="n">company_json</span><span class="p">)</span>
 </code></pre></div>
-<h3 id="list-of-nested-models">List of Nested Models</h3>
-<div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;model_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Company&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;str&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;comparator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;LevenshteinComparator&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.8</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;weight&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">2.0</span>
-<span class="w">        </span><span class="p">},</span>
-<span class="w">        </span><span class="nt">&quot;employees&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;list_structured_model&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;weight&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;match_threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.7</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">                </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">                    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;str&quot;</span><span class="p">,</span>
-<span class="w">                    </span><span class="nt">&quot;comparator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;LevenshteinComparator&quot;</span><span class="p">,</span>
-<span class="w">                    </span><span class="nt">&quot;threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.8</span><span class="p">,</span>
-<span class="w">                    </span><span class="nt">&quot;weight&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span>
-<span class="w">                </span><span class="p">},</span>
-<span class="w">                </span><span class="nt">&quot;department&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">                    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;str&quot;</span><span class="p">,</span>
-<span class="w">                    </span><span class="nt">&quot;comparator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ExactComparator&quot;</span><span class="p">,</span>
-<span class="w">                    </span><span class="nt">&quot;threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
-<span class="w">                    </span><span class="nt">&quot;weight&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span>
-<span class="w">                </span><span class="p">},</span>
-<span class="w">                </span><span class="nt">&quot;salary&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">                    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;float&quot;</span><span class="p">,</span>
-<span class="w">                    </span><span class="nt">&quot;comparator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;NumericComparator&quot;</span><span class="p">,</span>
-<span class="w">                    </span><span class="nt">&quot;threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.95</span><span class="p">,</span>
-<span class="w">                    </span><span class="nt">&quot;weight&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.7</span>
-<span class="w">                </span><span class="p">}</span>
-<span class="w">            </span><span class="p">}</span>
-<span class="w">        </span><span class="p">}</span>
-<span class="w">    </span><span class="p">}</span>
+<h4 id="list-of-nested-models">List of Nested Models</h4>
+<div class="highlight"><pre><span></span><code><span class="n">company_config</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;model_name&quot;</span><span class="p">:</span> <span class="s2">&quot;Company&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;fields&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;LevenshteinComparator&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">0.8</span><span class="p">,</span>
+            <span class="s2">&quot;weight&quot;</span><span class="p">:</span> <span class="mf">2.0</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;employees&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;list_structured_model&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;weight&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
+            <span class="s2">&quot;match_threshold&quot;</span><span class="p">:</span> <span class="mf">0.7</span><span class="p">,</span>
+            <span class="s2">&quot;fields&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;LevenshteinComparator&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">0.8</span><span class="p">,</span>
+                    <span class="s2">&quot;weight&quot;</span><span class="p">:</span> <span class="mf">1.0</span>
+                <span class="p">},</span>
+                <span class="s2">&quot;department&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;ExactComparator&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
+                    <span class="s2">&quot;weight&quot;</span><span class="p">:</span> <span class="mf">0.5</span>
+                <span class="p">},</span>
+                <span class="s2">&quot;salary&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;float&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;NumericComparator&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">0.95</span><span class="p">,</span>
+                    <span class="s2">&quot;weight&quot;</span><span class="p">:</span> <span class="mf">0.7</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
 <span class="p">}</span>
+
+<span class="n">Company</span> <span class="o">=</span> <span class="n">StructuredModel</span><span class="o">.</span><span class="n">model_from_json</span><span class="p">(</span><span class="n">company_config</span><span class="p">)</span>
+
+<span class="c1"># Use with JSON data</span>
+<span class="n">company_json</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;TechCorp&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;employees&quot;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Bob Smith&quot;</span><span class="p">,</span> <span class="s2">&quot;department&quot;</span><span class="p">:</span> <span class="s2">&quot;Engineering&quot;</span><span class="p">,</span> <span class="s2">&quot;salary&quot;</span><span class="p">:</span> <span class="mf">85000.0</span><span class="p">},</span>
+        <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Carol Davis&quot;</span><span class="p">,</span> <span class="s2">&quot;department&quot;</span><span class="p">:</span> <span class="s2">&quot;Marketing&quot;</span><span class="p">,</span> <span class="s2">&quot;salary&quot;</span><span class="p">:</span> <span class="mf">70000.0</span><span class="p">}</span>
+    <span class="p">]</span>
+<span class="p">}</span>
+<span class="n">company</span> <span class="o">=</span> <span class="n">Company</span><span class="p">(</span><span class="o">**</span><span class="n">company_json</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="loading-from-json-files">Loading from JSON Files</h2>
 <div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
@@ -2372,11 +2960,46 @@
 <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
     <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Configuration error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </code></pre></div>
+<h2 id="example-scripts">Example Scripts</h2>
+<p>Stickler includes complete working examples for both methods:</p>
+<h3 id="json-schema-examples">JSON Schema Examples</h3>
+<p><strong><a href="../examples/scripts/json_schema_demo.py"><code>examples/scripts/json_schema_demo.py</code></a></strong></p>
+<p>Comprehensive examples showing:
+- Basic JSON Schema model creation
+- Nested objects and arrays
+- Custom <code>x-aws-stickler-*</code> extensions
+- Real-world API response schemas
+- Complete evaluation workflows</p>
+<p>Run it:
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>examples/scripts/json_schema_demo.py
+</code></pre></div></p>
+<h3 id="custom-configuration-examples">Custom Configuration Examples</h3>
+<p><strong><a href="../examples/scripts/model_from_json_demo.py"><code>examples/scripts/model_from_json_demo.py</code></a></strong></p>
+<p>Comprehensive examples showing:
+- Basic model creation from custom JSON
+- Nested StructuredModels
+- Lists of StructuredModels with Hungarian matching
+- Custom comparator configuration
+- Loading from JSON files</p>
+<p>Run it:
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>examples/scripts/model_from_json_demo.py
+</code></pre></div></p>
+<h3 id="complete-json-to-evaluation-workflow">Complete JSON-to-Evaluation Workflow</h3>
+<p><strong><a href="../examples/scripts/json_to_evaluation_demo.py"><code>examples/scripts/json_to_evaluation_demo.py</code></a></strong></p>
+<p>End-to-end example showing:
+- Loading model configuration from JSON
+- Loading test data from JSON
+- Creating models dynamically
+- Running evaluations
+- No Python object construction required</p>
+<p>Run it:
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>examples/scripts/json_to_evaluation_demo.py
+</code></pre></div></p>
 <h2 id="see-also">See Also</h2>
 <ul>
+<li><a href="../README.md#json-schema-extensions-x-aws-stickler--complete-reference">README: JSON Schema Extensions Reference</a></li>
 <li><a href="../StructuredModel_Advanced_Functionality/">StructuredModel Advanced Functionality</a></li>
 <li><a href="../src/stickler/comparators/Comparators.md">Comparators Documentation</a></li>
-<li><a href="../examples/scripts/model_from_json_demo.py">Examples</a></li>
 </ul>
 
 
