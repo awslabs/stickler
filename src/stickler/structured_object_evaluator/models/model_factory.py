@@ -172,6 +172,118 @@ class ModelFactory:
         return DynamicClass
 
     @staticmethod
+    def create_model_from_fields(
+        model_name: str,
+        field_definitions: Dict[str, tuple],
+        match_threshold: float = 0.7,
+        base_class: Type = None,
+    ) -> Type:
+        """Create a StructuredModel subclass from pre-converted Pydantic fields.
+        
+        This method accepts field definitions that are already in Pydantic's format
+        (type, Field) tuples, bypassing the need for intermediate configuration format.
+        This is used by the JSON Schema converter and other advanced use cases where
+        fields have already been converted to Pydantic format.
+        
+        Args:
+            model_name: Name for the generated class. Must be a valid Python identifier.
+            field_definitions: Dictionary mapping field names to (type, Field) tuples.
+                             Each tuple contains:
+                             - type: Python type annotation (str, int, List[str], etc.)
+                             - Field: Pydantic Field instance (typically from ComparableField())
+            match_threshold: Overall matching threshold for the model (default: 0.7).
+                           Must be between 0.0 and 1.0.
+            base_class: The base class to extend (typically StructuredModel).
+                       If None, will be imported to avoid circular dependency.
+            
+        Returns:
+            A fully functional StructuredModel subclass created with create_model()
+            
+        Raises:
+            ValueError: If model_name is invalid, match_threshold is out of range,
+                       or field_definitions are malformed
+            
+        Examples:
+            >>> from pydantic import Field
+            >>> from stickler.structured_object_evaluator.models import StructuredModel
+            >>> from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+            >>> from stickler.comparators.levenshtein import LevenshteinComparator
+            >>> 
+            >>> # Create field definitions directly
+            >>> field_defs = {
+            ...     "name": (str, ComparableField(
+            ...         comparator=LevenshteinComparator(),
+            ...         threshold=0.8,
+            ...         weight=2.0
+            ...     )),
+            ...     "age": (int, ComparableField(
+            ...         comparator=NumericComparator(),
+            ...         threshold=0.9,
+            ...         default=0
+            ...     ))
+            ... }
+            >>> 
+            >>> PersonClass = ModelFactory.create_model_from_fields(
+            ...     model_name="Person",
+            ...     field_definitions=field_defs,
+            ...     match_threshold=0.8,
+            ...     base_class=StructuredModel
+            ... )
+            >>> 
+            >>> person = PersonClass(name="Alice", age=30)
+            >>> person.name
+            'Alice'
+        """
+        # Import here to avoid circular dependency
+        if base_class is None:
+            from .structured_model import StructuredModel
+            base_class = StructuredModel
+
+        # Validate model name
+        if not isinstance(model_name, str) or not model_name.isidentifier():
+            raise ValueError(
+                f"model_name must be a valid Python identifier, got: {model_name}"
+            )
+
+        # Validate match threshold
+        if not isinstance(match_threshold, (int, float)) or not (
+            0.0 <= match_threshold <= 1.0
+        ):
+            raise ValueError(
+                f"match_threshold must be a number between 0.0 and 1.0, got: {match_threshold}"
+            )
+
+        # Validate field_definitions structure
+        if not isinstance(field_definitions, dict):
+            raise ValueError("field_definitions must be a dictionary")
+
+        if len(field_definitions) == 0:
+            raise ValueError("field_definitions must contain at least one field")
+
+        # Validate each field definition is a tuple with 2 elements
+        for field_name, field_def in field_definitions.items():
+            if not isinstance(field_def, tuple) or len(field_def) != 2:
+                raise ValueError(
+                    f"Field definition for '{field_name}' must be a tuple of (type, Field), "
+                    f"got: {type(field_def)}"
+                )
+
+        # Create the dynamic model extending StructuredModel
+        try:
+            DynamicClass = create_model(
+                model_name,
+                __base__=base_class,
+                **field_definitions,
+            )
+        except Exception as e:
+            raise ValueError(f"Error creating dynamic model: {e}")
+
+        # Set class-level attributes
+        DynamicClass.match_threshold = match_threshold
+
+        return DynamicClass
+
+    @staticmethod
     def validate_config(config: Dict[str, Any]) -> None:
         """Validate model configuration before creation.
         
