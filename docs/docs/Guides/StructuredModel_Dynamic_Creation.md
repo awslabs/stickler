@@ -3,6 +3,11 @@ title: StructuredModel from JSON
 ---
 
 
+---
+title: StructuredModel from JSON
+---
+
+
 # StructuredModel Dynamic Creation from JSON
 
 This document describes how to create StructuredModel classes dynamically from JSON Schema or custom JSON configuration. This enables configuration-driven model creation with full comparison capabilities, perfect for runtime model generation, A/B testing, and integration with external systems.
