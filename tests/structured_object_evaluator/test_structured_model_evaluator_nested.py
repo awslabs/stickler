@@ -546,15 +546,88 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
         self.assertAlmostEqual(derived_metrics["cm_recall"], 0.833, places=3)
         self.assertAlmostEqual(derived_metrics["cm_f1"], 0.769, places=3)
 
-        # Test with alternative recall formula - both modes return same values in this case
+        # ============================================================================
+        # Test with alternative recall formula (recall_with_fd=True)
+        # ============================================================================
+        # IMPORTANT: This test verifies that recall_with_fd=True correctly includes
+        # False Discoveries (FD) in the recall denominator.
+        #
+        # BACKGROUND:
+        # -----------
+        # The original test incorrectly expected both recall modes to return 0.833.
+        # This was mathematically impossible because this test case has FD=1.
+        #
+        # The two recall formulas are fundamentally different:
+        #   1. Traditional recall (recall_with_fd=False): TP / (TP + FN)
+        #   2. Alternative recall (recall_with_fd=True):  TP / (TP + FN + FD)
+        #
+        # When FD > 0, these formulas CANNOT return the same value.
+        #
+        # MATHEMATICAL PROOF:
+        # -------------------
+        # Given aggregate metrics: TP=5, FD=1, FA=1, FN=1, TN=3
+        #
+        # Traditional recall:
+        #   TP / (TP + FN) = 5 / (5 + 1) = 5/6 = 0.8333...
+        #
+        # Alternative recall (with FD):
+        #   TP / (TP + FN + FD) = 5 / (5 + 1 + 1) = 5/7 = 0.7142857...
+        #
+        # These are clearly different: 0.833 ≠ 0.714
+        #
+        # WHY THE CHANGE:
+        # ---------------
+        # The original test expected 0.833 for recall_with_fd=True, which would mean
+        # FD was NOT being included in the denominator. This was incorrect.
+        #
+        # The correct expectation is 0.714, which proves that FD IS being included
+        # in the denominator as intended by the recall_with_fd parameter.
+        #
+        # F1 SCORE IMPACT:
+        # ----------------
+        # Since F1 = 2 * (Precision * Recall) / (Precision + Recall), changing
+        # recall from 0.833 to 0.714 also changes F1:
+        #
+        # With traditional recall (0.833):
+        #   F1 = 2 * (0.714 * 0.833) / (0.714 + 0.833) = 0.769
+        #
+        # With alternative recall (0.714):
+        #   F1 = 2 * (0.714 * 0.714) / (0.714 + 0.714) = 0.714
+        #
+        # VERIFICATION:
+        # -------------
+        # You can verify this is correct by checking that:
+        #   cm["aggregate"]["tp"] = 5
+        #   cm["aggregate"]["fn"] = 1
+        #   cm["aggregate"]["fd"] = 1
+        #   5 / (5 + 1 + 1) = 0.7142857... ✓
+        # ============================================================================
+        
         results_alt = gold_record.compare_with(
             pred_record, include_confusion_matrix=True, recall_with_fd=True
         )
         derived_metrics_alt = results_alt["confusion_matrix"]["aggregate"]["derived"]
-        # Both recall modes return the same values for this test case
+        
+        # Verify the aggregate metrics are what we expect
+        cm_alt = results_alt["confusion_matrix"]
+        self.assertEqual(cm_alt["aggregate"]["tp"], 5, "Sanity check: TP should be 5")
+        self.assertEqual(cm_alt["aggregate"]["fn"], 1, "Sanity check: FN should be 1")
+        self.assertEqual(cm_alt["aggregate"]["fd"], 1, "Sanity check: FD should be 1")
+        
+        # Now verify the derived metrics with FD included in recall denominator
         self.assertAlmostEqual(derived_metrics_alt["cm_precision"], 0.714, places=3)
-        self.assertAlmostEqual(derived_metrics_alt["cm_recall"], 0.833, places=3)
-        self.assertAlmostEqual(derived_metrics_alt["cm_f1"], 0.769, places=3)
+        self.assertAlmostEqual(
+            derived_metrics_alt["cm_recall"], 
+            0.714,  # Changed from incorrect 0.833
+            places=3,
+            msg="Recall with FD should be TP/(TP+FN+FD) = 5/(5+1+1) = 0.714, not 0.833"
+        )
+        self.assertAlmostEqual(
+            derived_metrics_alt["cm_f1"], 
+            0.714,  # Changed from incorrect 0.769 (F1 depends on recall)
+            places=3,
+            msg="F1 changes because recall changed from 0.833 to 0.714"
+        )
 
 
 if __name__ == "__main__":
