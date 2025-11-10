@@ -5,7 +5,7 @@ from unittest import skip
 from stickler.comparators.llm import LLMComparator
 
 
-class TestLLMComparator:
+class TestLLMComparator(unittest.TestCase):
     """
     Test cases for the LLMComparator class used for comparing values using LLM models.
     """
