@@ -24,7 +24,8 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-xdist>=3.0.0",
-    "coverage>=7.0.0"
+    "coverage>=7.0.0",
+    "beautifulsoup4>=4.14.2"
 ]
 
 
