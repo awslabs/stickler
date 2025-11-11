@@ -5,7 +5,6 @@ between two lists, which is commonly used for evaluating list-type fields in
 key information extraction tasks.
 """
 
-import gc
 import traceback
 import numpy as np
 from typing import Any, List, Tuple, Callable, Optional, Union
