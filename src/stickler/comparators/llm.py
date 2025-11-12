@@ -201,7 +201,7 @@ class LLMComparator(BaseComparator):
             else:
                 return 0.0
             
-        except NoCredentialsError as e:
+        except NoCredentialsError:
             print(f"Error: AWS credentials not found.")
             raise 
 
