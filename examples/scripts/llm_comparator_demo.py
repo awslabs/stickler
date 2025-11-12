@@ -11,20 +11,11 @@ Requirements:
 - AWS credentials configured for Bedrock access
 - Environment variables for model configuration (optional)
 """
-
-import os
-import time
-from typing import List, Dict, Any, Optional
-# from dotenv import load_dotenv
-
 from stickler.comparators.llm import LLMComparator
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-
-# # Load environment variables
-# load_dotenv()
 
 
 def print_section_header(title: str):
