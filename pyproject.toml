@@ -1,6 +1,6 @@
 [project]
 name = "stickler-eval"
-version = "0.1.1"
+version = "0.1.3"
 description = "Structured object comparison and evaluation library"
 authors = [
     {name = "Spencer Romo", email = "sromo@amazon.com"},
@@ -17,6 +17,7 @@ dependencies = [
     "scipy>=1.10.0",
     "psutil>=5.8.0",
     "pandas>=1.5.0",
+    "jsonschema>=4.0.0",
     "boto3>=1.40.56"
 ]
 
@@ -24,7 +25,8 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-xdist>=3.0.0",
-    "coverage>=7.0.0"
+    "coverage>=7.0.0",
+    "beautifulsoup4>=4.14.2"
 ]
 
 

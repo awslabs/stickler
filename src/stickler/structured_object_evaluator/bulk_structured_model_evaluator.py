@@ -424,6 +424,7 @@ class BulkStructuredModelEvaluator:
         total_time = time.time() - self._start_time
 
         return ProcessEvaluation(
+            document_count=self._processed_count,
             metrics=overall_metrics,
             field_metrics=field_metrics,
             errors=list(self._errors),  # Copy to avoid external modification

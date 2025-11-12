@@ -8,6 +8,7 @@ class ProcessEvaluation(BaseModel):
     A Pydantic model for evaluation results that doesn't require all fields to be initialized.
     """
 
+    document_count: Optional[int] = None
     metrics: Optional[Dict[str, Any]] = None
     field_metrics: Optional[Dict[str, Any]] = None
     errors: Optional[List[Dict[str, Any]]] = None
