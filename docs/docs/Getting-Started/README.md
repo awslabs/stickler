@@ -19,8 +19,6 @@ Whether you're extracting data from documents, performing ETL transformations, e
 pip install stickler-eval
 ```
 
-> **Note:** See [Known Issues](known-issues.md) for platform-specific installation considerations.
-
 ## Get Started in 30 Seconds
 
 ```python
