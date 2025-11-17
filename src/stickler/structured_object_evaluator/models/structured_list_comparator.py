@@ -316,14 +316,17 @@ class StructuredListComparator:
                     if sub_field_name == "extra_fields":
                         continue
 
-                    # Check if this field is a List[StructuredModel] that needs hierarchical treatment
+                    # Check field type and route to appropriate handler
                     field_info = model_class.model_fields.get(sub_field_name)
                     is_hierarchical_field = (
                         field_info and model_class._is_structured_field_type(field_info)
                     )
+                    is_simple_list_field = self._is_simple_list_field(
+                        field_info, gt_list, sub_field_name
+                    )
 
                     if is_hierarchical_field:
-                        # Handle hierarchical fields with recursive aggregation - ONLY for good matches
+                        # Handle hierarchical fields (List[StructuredModel])
                         field_details[sub_field_name] = self._handle_hierarchical_field(
                             sub_field_name,
                             gt_list,
@@ -333,8 +336,18 @@ class StructuredListComparator:
                             matched_pred_indices,
                             match_threshold,
                         )
+                    elif is_simple_list_field:
+                        # Handle simple list fields (List[primitive]) with element-wise comparison
+                        field_details[sub_field_name] = self._handle_simple_list_field(
+                            sub_field_name,
+                            gt_list,
+                            pred_list,
+                            good_matched_pairs,
+                            matched_gt_indices,
+                            matched_pred_indices,
+                        )
                     else:
-                        # Handle primitive fields with simple aggregation - ONLY for good matches
+                        # Handle primitive fields (str, int, bool, etc.)
                         field_details[sub_field_name] = self._handle_primitive_field(
                             sub_field_name,
                             gt_list,
@@ -345,6 +358,37 @@ class StructuredListComparator:
                         )
 
         return field_details
+
+    def _is_simple_list_field(
+        self,
+        field_info,
+        gt_list: List["StructuredModel"],
+        field_name: str
+    ) -> bool:
+        """Check if a field is a simple list (List[primitive], not List[StructuredModel]).
+        
+        Simple lists contain primitive types (str, int, float, bool) and are
+        compared element-by-element. This distinguishes
+        them from hierarchical lists (List[StructuredModel]) and primitive fields.
+        
+        Args:
+            field_info: Pydantic field info
+            gt_list: Ground truth list to check runtime values
+            field_name: Name of the field
+            
+        Returns:
+            True if field is a simple list (List[str], List[int], etc.)
+        """
+        if gt_list:
+            for item in gt_list:
+                value = getattr(item, field_name, None)
+                if value is not None:
+                    if isinstance(value, list):
+                        if not value or not isinstance(value[0], StructuredModel):
+                            return True
+                    break
+        
+        return False
 
     def _handle_hierarchical_field(
         self,
@@ -511,6 +555,81 @@ class StructuredListComparator:
                         field_data
                     )
                 # If neither "overall" nor "tp" is present, it might be an empty structure - skip
+
+    def _handle_simple_list_field(
+        self,
+        sub_field_name: str,
+        gt_list: List["StructuredModel"],
+        pred_list: List["StructuredModel"],
+        matched_pairs: List,
+        matched_gt_indices: set,
+        matched_pred_indices: set,
+    ) -> Dict[str, Any]:
+        """Handle simple list fields (List[primitive]) with element-wise comparison.
+        
+        This method treats simple lists as collections where each element contributes
+        to the confusion matrix independently. This differs from primitive
+        field handling which treats the entire value as a single unit.
+        
+        Args:
+            sub_field_name: Name of the simple list field
+            gt_list: Ground truth list of StructuredModel objects
+            pred_list: Predicted list of StructuredModel objects
+            matched_pairs: List of (gt_idx, pred_idx, similarity) tuples for good matches
+            matched_gt_indices: Set of matched GT indices
+            matched_pred_indices: Set of matched pred indices
+            
+        Returns:
+            Dictionary with aggregated metrics wrapped in 'overall' for consistency
+        """
+        # Initialize collection for simple list fields across all objects
+        sub_field_metrics = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
+
+        # Process matched pairs - use list comparison for each pair
+        for gt_idx, pred_idx, similarity in matched_pairs:
+            if gt_idx < len(gt_list) and pred_idx < len(pred_list):
+                gt_item = gt_list[gt_idx]
+                pred_item = pred_list[pred_idx]
+                gt_sub_value = getattr(gt_item, sub_field_name)
+                pred_sub_value = getattr(pred_item, sub_field_name)
+
+                # Use list comparison logic for element-wise comparison
+                field_classification = gt_item._calculate_list_confusion_matrix(
+                    sub_field_name, pred_sub_value
+                )
+
+                # Aggregate field metrics across all objects
+                for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
+                    sub_field_metrics[metric] += field_classification.get(metric, 0)
+
+        # Handle unmatched GT objects - count each element in the list
+        for gt_idx, gt_item in enumerate(gt_list):
+            if gt_idx not in matched_gt_indices:
+                gt_sub_value = getattr(gt_item, sub_field_name)
+                if gt_sub_value is not None:
+                    # For simple lists, count each element as FN
+                    if isinstance(gt_sub_value, list):
+                        sub_field_metrics["fn"] += len(gt_sub_value)
+                    else:
+                        # Fallback: treat as single value if not actually a list
+                        sub_field_metrics["fn"] += 1
+
+        # Handle unmatched pred objects - count each element in the list
+        for pred_idx, pred_item in enumerate(pred_list):
+            if pred_idx not in matched_pred_indices:
+                pred_sub_value = getattr(pred_item, sub_field_name)
+                if pred_sub_value is not None:
+                    # For simple lists, count each element as FA
+                    if isinstance(pred_sub_value, list):
+                        sub_field_metrics["fa"] += len(pred_sub_value)
+                        sub_field_metrics["fp"] += len(pred_sub_value)
+                    else:
+                        # Fallback: treat as single value if not actually a list
+                        sub_field_metrics["fa"] += 1
+                        sub_field_metrics["fp"] += 1
+
+        # UNIFIED STRUCTURE: Wrap metrics in 'overall' for consistency
+        return {"overall": sub_field_metrics}
 
     def _handle_primitive_field(
         self,
