@@ -45,4 +45,4 @@ jobs:
           name: security-reports
           path: |
             bandit-report.json
-            .ash/ash_output/
+            .ash/ash_output/reports/ash.summary.md
