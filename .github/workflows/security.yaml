@@ -12,6 +12,7 @@ jobs:
     permissions:
       contents: read
       actions: write
+      pull-requests: write
     strategy:
       matrix:
         python-version: ["3.12"]
@@ -37,7 +38,6 @@ jobs:
       - name: Run ASH Security Scan
         run: |
           ash --mode local --fail-on-findings
-        continue-on-error: true
       - name: Upload Security Reports
         uses: actions/upload-artifact@v4
         if: always()
@@ -46,3 +46,24 @@ jobs:
           path: |
             bandit-report.json
             .ash/ash_output/
+      - name: Add Security Report to PR
+        uses: actions/github-script@v7
+        if: always() && github.event_name == 'pull_request'
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const reportPath = '.ash/ash_output/reports/ash.summary.md';
+            
+            if (fs.existsSync(reportPath)) {
+              const reportContent = fs.readFileSync(reportPath, 'utf8');
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: '## 🔒 Security Scan Results\n\n' + reportContent
+              });
+            } else {
+              console.log('ASH summary report not found');
+            }
