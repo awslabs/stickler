@@ -270,11 +270,17 @@ class TestUniversalAggregateField:
         # owner.address.street: FD=1, FP=1 (mismatch)
         # owner.address.city: TP=1 (matches)
         # owner.address.zip_code: FD=1, FP=1 (mismatch)
-        # pets: FD=2, FP=2 (list comparison fails at object level)
-
-        # Total actual: TP=5, FD=5, FP=5
-        expected_top_aggregate = {"tp": 5, "fd": 5, "fp": 5, "fn": 0, "fa": 0, "tn": 0}
-
+        # pets.pet_id: TP=2 (both match)
+        # pets.name: TP=2 (both match)
+        # pets.species: TP=2 (both match)
+        # pets.breed: TP=1, FN=1 (one matches, one missing)
+        # pets.age: FA=1, FD=1, FP=2 (one wrong, one extra)
+        
+        # Total actual: TP=12, FA=1, FD=4, FP=5, FN=1
+        expected_top_aggregate = {
+            'tp': 12, 'fa': 1, 'fd': 4, 'fp': 5, 'tn': 0, 'fn': 1
+        }
+        
         top_aggregate = cm["aggregate"]
         for metric, expected in expected_top_aggregate.items():
             assert (
@@ -321,16 +327,19 @@ class TestUniversalAggregateField:
 
         result = gt.compare_with(pred, include_confusion_matrix=True)
         cm = result["confusion_matrix"]
-
-        # Test pets aggregate - based on actual behavior, the list comparison
-        # fails at the object level due to match_threshold=1.0, so we get:
-        # pets: FD=2, FP=2 (2 objects fail comparison)
-        pets_aggregate = cm["fields"]["pets"]["aggregate"]
-        assert pets_aggregate["tp"] == 0, "Pets aggregate TP incorrect"
-        assert pets_aggregate["fd"] == 2, "Pets aggregate FD incorrect"
-        assert pets_aggregate["fp"] == 2, "Pets aggregate FP incorrect"
-        assert pets_aggregate["fn"] == 0, "Pets aggregate FN incorrect"
-        assert pets_aggregate["fa"] == 0, "Pets aggregate FA incorrect"
+        
+        # Test pets aggregate - based on actual behavior, the Hungarian matching
+        # successfully matches the pets and aggregates all their field metrics:
+        # pets.pet_id: TP=2, pets.name: TP=2, pets.species: TP=2
+        # pets.breed: TP=1, FN=1, pets.age: FA=1, FD=1, FP=2
+        # Total: TP=7, FA=1, FD=1, FP=2, FN=1
+        pets_aggregate = cm['fields']['pets']['aggregate']
+        assert pets_aggregate['tp'] == 7, "Pets aggregate TP incorrect"
+        assert pets_aggregate['fa'] == 1, "Pets aggregate FA incorrect"
+        assert pets_aggregate['fd'] == 1, "Pets aggregate FD incorrect"
+        assert pets_aggregate['fp'] == 2, "Pets aggregate FP incorrect"
+        assert pets_aggregate['tn'] == 0, "Pets aggregate TN incorrect"
+        assert pets_aggregate['fn'] == 1, "Pets aggregate FN incorrect"
 
     def test_primitive_field_aggregate_equals_overall(self):
         """Test that for primitive fields, aggregate equals overall metrics."""

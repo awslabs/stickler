@@ -116,17 +116,30 @@ def test_threshold_gated_poor_match():
     cm = result["confusion_matrix"]
     products_cm = cm["fields"]["products"]
 
-    # Check that we DON'T have nested field metrics (no recursive analysis)
+    # UPDATED: With universal aggregate feature, nested field metrics are always generated
+    # but "overall" should be empty for poor matches, "aggregate" should have the metrics
     if "fields" in products_cm:
         nested_fields = products_cm["fields"]
         print(f"DEBUG: Found nested fields: {list(nested_fields.keys())}")
 
-        # Should NOT have nested field metrics for poor matches
+        # Should have nested field metrics for aggregate, but overall should be empty for poor matches
         product_fields = ["product_id", "name", "price"]
         for field in product_fields:
-            assert field not in nested_fields, (
-                f"Poor matches should not have nested field metrics for {field}"
-            )
+            if field in nested_fields:
+                field_data = nested_fields[field]
+                # Overall should be empty (no matches above threshold)
+                overall_metrics = field_data["overall"]
+                overall_total = sum(overall_metrics[metric] for metric in ["tp", "fa", "fd", "fp", "tn", "fn"])
+                assert overall_total == 0, (
+                    f"Field {field} overall should be empty for poor matches, got {overall_metrics}"
+                )
+                
+                # Aggregate should have some metrics from poor matches
+                aggregate_metrics = field_data["aggregate"]
+                aggregate_total = sum(aggregate_metrics[metric] for metric in ["tp", "fa", "fd", "fp", "tn", "fn"])
+                assert aggregate_total > 0, (
+                    f"Field {field} aggregate should have metrics from poor matches, got {aggregate_metrics}"
+                )
 
     # Should have non_matches key with the poor match
     if "non_matches" in products_cm:

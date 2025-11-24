@@ -1,26 +1,5 @@
-"""Tests for StructuredModel.compare_with() metrics calculation for veterinary records models.
-
-This test verifies that we can calculate precision, recall, F1, and accuracy metrics
-at the field level and object level for nested structures in the toy veterinary records models
-using the direct compare_with() method.
-
-IMPORTANT: This test uses the CORRECT expected values based on the actual behavior of the
-structured comparison system. The original test had incorrect expectations based on naive
-field-by-field counting, but the system actually performs sophisticated comparison logic:
-
-1. **Threshold-based matching**: Fields must meet similarity thresholds to be considered matches
-2. **Object-level similarity scoring**: Nested objects are evaluated as units, not just field sums
-3. **Weighted aggregation**: Different field types contribute differently to overall metrics
-4. **Complex nested structure handling**: Lists and nested objects have specialized comparison logic
-
-The expected values in this test (TP=5, FD=1, FA=1, FN=1, TN=3) represent the ACTUAL correct
-behavior of the system after proper threshold-based comparison and object-level aggregation.
-These values were verified through minimal test cases that confirmed the field-level metrics
-are captured correctly and the aggregation logic is working as designed.
-
-DO NOT change these expected values without understanding that the system is working correctly
-and any changes would need to be justified by actual bugs in the comparison logic, not by
-manual field counting that ignores thresholds and object-level similarity.
+"""
+Tests for StructuredModel.compare_with() metrics calculation for veterinary records models.
 """
 
 from typing import List, Optional
@@ -446,75 +425,26 @@ class TestVetRecordsMetricsCalculation:
         ), "Expected 2 false positive"  # false discovery only
         assert cm["overall"]["fn"] == 0, "Expected 0 false negative"
 
-        # Check aggregate metrics from confusion_matrix.aggregate.derived
-        # CORRECT VALUES based on actual system behavior: TP=5, FD=1, FA=1, FN=1, TN=3
-        # These values reflect the sophisticated comparison logic including:
-        # - Threshold-based matching (not just exact field equality)
-        # - Object-level similarity scoring for nested structures
-        # - Proper aggregation across complex nested hierarchies
-        # Precision = TP/(TP+FD+FA) = 5/(5+1+1) = 5/7 = 0.714
-        # Recall = TP/(TP+FN) = 5/(5+1) = 5/6 = 0.833
-        # F1 = 2*precision*recall/(precision+recall) = 2*0.714*0.833/(0.714+0.833) = 0.769
+        # Expected metrics
+        # 9 true positive: recordId, owner.id, owner.name, pets[0].petId, pets[0].name, pets[0].species, pets[0].breed, pets[1].petId, pets[1].name
+        # 3 true negative: pets[1].breed, pets[1].birthdate, pets[1].weight
+        # 2 false discovery: owner.contact.phone, pets[0].birthdate
+        # 2 false alarm: owner.contact.email, pets[0].weight
+        # 1 false negative: pets[1].species
+        # Precision = TP/(TP+FP) = 9/(9+4) = 9/13 = 0.692
+        # Recall = TP/(TP+FN) = 9/(9+1) = 9/10 = 0.9
+        # F1 = 2*precision*recall/(precision+recall) = 2*0.692*0.9/(0.692+0.9) = 0.783
         derived_metrics = cm["aggregate"]["derived"]
-        assert derived_metrics["cm_precision"] == pytest.approx(0.714, abs=0.001)
-        assert derived_metrics["cm_recall"] == pytest.approx(0.833, abs=0.001)
-        assert derived_metrics["cm_f1"] == pytest.approx(0.769, abs=0.001)
+        assert derived_metrics["cm_precision"] == pytest.approx(0.692, abs=0.001)
+        assert derived_metrics["cm_recall"] == pytest.approx(0.9, abs=0.001)
+        assert derived_metrics["cm_f1"] == pytest.approx(0.783, abs=0.001)
 
         # ============================================================================
         # Test with alternative recall formula (recall_with_fd=True)
         # ============================================================================
-        # IMPORTANT: This test verifies that recall_with_fd=True correctly includes
-        # False Discoveries (FD) in the recall denominator.
-        #
-        # BACKGROUND:
-        # -----------
-        # The original test incorrectly expected both recall modes to return 0.833.
-        # This was mathematically impossible because this test case has FD=1.
-        #
-        # The two recall formulas are fundamentally different:
-        #   1. Traditional recall (recall_with_fd=False): TP / (TP + FN)
-        #   2. Alternative recall (recall_with_fd=True):  TP / (TP + FN + FD)
-        #
-        # When FD > 0, these formulas CANNOT return the same value.
-        #
-        # MATHEMATICAL PROOF:
-        # -------------------
-        # Given aggregate metrics: TP=5, FD=1, FA=1, FN=1, TN=3
-        #
-        # Traditional recall:
-        #   TP / (TP + FN) = 5 / (5 + 1) = 5/6 = 0.8333...
-        #
-        # Alternative recall (with FD):
-        #   TP / (TP + FN + FD) = 5 / (5 + 1 + 1) = 5/7 = 0.7142857...
-        #
-        # These are clearly different: 0.833 ≠ 0.714
-        #
-        # WHY THE CHANGE:
-        # ---------------
-        # The original test expected 0.833 for recall_with_fd=True, which would mean
-        # FD was NOT being included in the denominator. This was incorrect.
-        #
-        # The correct expectation is 0.714, which proves that FD IS being included
-        # in the denominator as intended by the recall_with_fd parameter.
-        #
-        # F1 SCORE IMPACT:
-        # ----------------
-        # Since F1 = 2 * (Precision * Recall) / (Precision + Recall), changing
-        # recall from 0.833 to 0.714 also changes F1:
-        #
-        # With traditional recall (0.833):
-        #   F1 = 2 * (0.714 * 0.833) / (0.714 + 0.833) = 0.769
-        #
-        # With alternative recall (0.714):
-        #   F1 = 2 * (0.714 * 0.714) / (0.714 + 0.714) = 0.714
-        #
-        # VERIFICATION:
-        # -------------
-        # You can verify this is correct by checking that:
-        #   cm["aggregate"]["tp"] = 5
-        #   cm["aggregate"]["fn"] = 1
-        #   cm["aggregate"]["fd"] = 1
-        #   5 / (5 + 1 + 1) = 0.7142857... ✓
+        # Precision = TP/(TP+FP) = 9/(9+4) = 9/13 = 0.692
+        # Recall = TP/(TP+FN+FD) = 9/(9+1+2) = 9/12 = 0.75
+        # F1 = 2*precision*recall/(precision+recall) = 2*0.692*0.75/(0.692+0.75) = 0.720
         # ============================================================================
 
         results_alt = gold_record.compare_with(
@@ -524,15 +454,15 @@ class TestVetRecordsMetricsCalculation:
 
         # Verify the aggregate metrics are what we expect
         cm_alt = results_alt["confusion_matrix"]
-        assert cm_alt["aggregate"]["tp"] == 5, "Sanity check: TP should be 5"
+        assert cm_alt["aggregate"]["tp"] == 9, "Sanity check: TP should be 9"
         assert cm_alt["aggregate"]["fn"] == 1, "Sanity check: FN should be 1"
-        assert cm_alt["aggregate"]["fd"] == 1, "Sanity check: FD should be 1"
-
+        assert cm_alt["aggregate"]["fd"] == 2, "Sanity check: FD should be 2"
+        
         # Now verify the derived metrics with FD included in recall denominator
-        assert derived_metrics_alt["cm_precision"] == pytest.approx(0.714, abs=0.001)
+        assert derived_metrics_alt["cm_precision"] == pytest.approx(0.692, abs=0.001)
         assert (
-            derived_metrics_alt["cm_recall"] == pytest.approx(0.714, abs=0.001)
-        ), "Recall with FD should be TP/(TP+FN+FD) = 5/(5+1+1) = 0.714, not 0.833"
+            derived_metrics_alt["cm_recall"] == pytest.approx(0.75, abs=0.001)
+        ), "Recall with FD should be TP/(TP+FN+FD) = 9/(9+1+2) = 9/12 = 0.75"
         assert (
-            derived_metrics_alt["cm_f1"] == pytest.approx(0.714, abs=0.001)
-        ), "F1 changes because recall changed from 0.833 to 0.714"
+            derived_metrics_alt["cm_f1"] == pytest.approx(0.720, abs=0.001)
+        ), "F1 should be 2*precision*recall/(precision+recall) = 2*0.692*0.75/(0.692+0.75) = 0.720"
