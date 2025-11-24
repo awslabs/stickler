@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.utils.process_evaluation import ProcessEvaluation
+from stickler.structured_object_evaluator.models.metrics_helper import MetricsHelper
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,8 @@ class BulkStructuredModelEvaluator:
         document_non_matches: bool = True,
         elide_errors: bool = False,
         individual_results_jsonl: Optional[str] = None,
+        include_aggregates: bool = False,
+        recall_with_fd: bool = False,
     ):
         """
         Initialize the stateful bulk evaluator.
@@ -56,13 +59,16 @@ class BulkStructuredModelEvaluator:
             document_non_matches: Whether to document detailed non-match information
             elide_errors: If True, skip documents with errors; if False, accumulate error metrics
             individual_results_jsonl: Optional path to JSONL file for appending individual comparison results
+            include_aggregates: Whether to enable aggregate metrics accumulation for performance control
         """
         self.target_schema = target_schema
         self.verbose = verbose
         self.document_non_matches = document_non_matches
         self.elide_errors = elide_errors
         self.individual_results_jsonl = individual_results_jsonl
-
+        self.include_aggregates = include_aggregates
+        self.recall_with_fd = recall_with_fd
+        
         # Initialize state
         self.reset()
 
@@ -86,7 +92,13 @@ class BulkStructuredModelEvaluator:
         # Accumulated confusion matrix state using nested defaultdicts
         self._confusion_matrix = {
             "overall": defaultdict(int),
-            "fields": defaultdict(lambda: defaultdict(int)),
+            "fields": defaultdict(lambda: defaultdict(int))
+        }
+        
+        # Accumulated aggregate metrics state (when include_aggregates=True)
+        self._aggregate_metrics = {
+            "overall": defaultdict(int),
+            "fields": defaultdict(lambda: defaultdict(int))
         }
 
         # Non-match tracking (when document_non_matches=True)
@@ -126,6 +138,7 @@ class BulkStructuredModelEvaluator:
         try:
             # Use compare_with method directly on the StructuredModel
             # Pass document_non_matches to achieve parity with compare_with method
+            # Pass include_aggregates to enable aggregate metrics when requested
             comparison_result = gt_model.compare_with(
                 pred_model,
                 include_confusion_matrix=True,
@@ -148,7 +161,11 @@ class BulkStructuredModelEvaluator:
 
             # Accumulate the results into our state (this flattens for aggregation)
             self._accumulate_confusion_matrix(comparison_result["confusion_matrix"])
-
+            
+            # Accumulate aggregate metrics if enabled and available
+            if self.include_aggregates and "confusion_matrix" in comparison_result:
+                self._accumulate_aggregate_metrics(comparison_result["confusion_matrix"])
+            
             self._processed_count += 1
 
             if self.verbose and self._processed_count % 1000 == 0:
@@ -365,41 +382,52 @@ class BulkStructuredModelEvaluator:
             ):
                 self._confusion_matrix["fields"][field_path][metric_name] += value
 
-    def _calculate_derived_metrics(
-        self, cm_dict: Dict[str, Union[int, float]]
-    ) -> Dict[str, float]:
+    def _accumulate_aggregate_metrics(self, cm_result: Dict[str, Any]) -> None:
         """
         Calculate derived confusion matrix metrics (precision, recall, f1, accuracy).
 
         This method replicates the derivation logic for confusion matrix metrics.
 
         Args:
-            cm_dict: Dictionary with basic confusion matrix counts
-
-        Returns:
-            Dictionary with derived metrics
+            cm_result: Confusion matrix result containing aggregate metrics
         """
-        tp = cm_dict.get("tp", 0)
-        fp = cm_dict.get("fp", 0)
-        tn = cm_dict.get("tn", 0)
-        fn = cm_dict.get("fn", 0)
+        # Accumulate root-level aggregate metrics
+        if "aggregate" in cm_result and isinstance(cm_result["aggregate"], dict):
+            for metric_name, value in cm_result["aggregate"].items():
+                if isinstance(value, (int, float)) and metric_name in ["tp", "fp", "tn", "fn", "fd", "fa"]:
+                    self._aggregate_metrics["overall"][metric_name] += value
 
-        # Calculate derived metrics with safe division
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        f1 = (
-            2 * (precision * recall) / (precision + recall)
-            if (precision + recall) > 0
-            else 0.0
-        )
-        accuracy = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0.0
+        # Accumulate field-level aggregate metrics with proper path handling
+        if "fields" in cm_result:
+            self._accumulate_field_aggregate_metrics(cm_result["fields"], "")
 
-        return {
-            "cm_precision": precision,
-            "cm_recall": recall,
-            "cm_f1": f1,
-            "cm_accuracy": accuracy,
-        }
+    def _accumulate_field_aggregate_metrics(
+        self, 
+        fields_dict: Dict[str, Any], 
+        path_prefix: str
+    ) -> None:
+        """
+        Recursively accumulate field-level aggregate metrics with proper nested path construction.
+        
+        Args:
+            fields_dict: Dictionary containing field aggregate metrics to accumulate
+            path_prefix: Current path prefix for building nested field paths
+        """
+        for field_name, field_data in fields_dict.items():
+            current_path = f"{path_prefix}.{field_name}" if path_prefix else field_name
+            
+            if not isinstance(field_data, dict):
+                continue
+            
+            # Handle field-level aggregate metrics
+            if "aggregate" in field_data and isinstance(field_data["aggregate"], dict):
+                for metric_name, value in field_data["aggregate"].items():
+                    if isinstance(value, (int, float)) and metric_name in ["tp", "fp", "tn", "fn", "fd", "fa"]:
+                        self._aggregate_metrics["fields"][current_path][metric_name] += value
+            
+            # Continue recursion if there are nested fields
+            if "fields" in field_data and isinstance(field_data["fields"], dict):
+                self._accumulate_field_aggregate_metrics(field_data["fields"], current_path)
 
     def _build_process_evaluation(self) -> ProcessEvaluation:
         """
@@ -408,18 +436,36 @@ class BulkStructuredModelEvaluator:
         Returns:
             ProcessEvaluation with computed metrics from accumulated state
         """
+        metrics_helper = MetricsHelper()
         # Calculate derived metrics for overall results
         overall_cm = dict(self._confusion_matrix["overall"])
-        overall_derived = self._calculate_derived_metrics(overall_cm)
+        overall_derived = metrics_helper.calculate_derived_metrics(overall_cm, recall_with_fd=self.recall_with_fd)
         overall_metrics = {**overall_cm, **overall_derived}
-
+        
+        # Add aggregate metrics to overall if enabled
+        if self.include_aggregates:
+            overall_aggregate = dict(self._aggregate_metrics["overall"])
+            if any(overall_aggregate.values()):  # Only add if there are aggregate metrics
+                overall_aggregate_derived = metrics_helper.calculate_derived_metrics(overall_aggregate, recall_with_fd=self.recall_with_fd)
+                overall_metrics["aggregate"] = {**overall_aggregate, **overall_aggregate_derived}
+        
         # Calculate derived metrics for each field
         field_metrics = {}
         for field_path, field_cm in self._confusion_matrix["fields"].items():
             field_cm_dict = dict(field_cm)
-            field_derived = self._calculate_derived_metrics(field_cm_dict)
+            field_derived = metrics_helper.calculate_derived_metrics(field_cm_dict, recall_with_fd=self.recall_with_fd)
             field_metrics[field_path] = {**field_cm_dict, **field_derived}
-
+        
+        # Add aggregate metrics to fields if enabled
+        if self.include_aggregates:
+            for field_path, field_aggregate in self._aggregate_metrics["fields"].items():
+                field_aggregate_dict = dict(field_aggregate)
+                if any(field_aggregate_dict.values()):  # Only add if there are aggregate metrics
+                    field_aggregate_derived = metrics_helper.calculate_derived_metrics(field_aggregate_dict, recall_with_fd=self.recall_with_fd)
+                    if field_path not in field_metrics:
+                        field_metrics[field_path] = {}
+                    field_metrics[field_path]["aggregate"] = {**field_aggregate_dict, **field_aggregate_derived}
+        
         total_time = time.time() - self._start_time
 
         return ProcessEvaluation(
@@ -464,8 +510,9 @@ class BulkStructuredModelEvaluator:
                     "document_non_matches": self.document_non_matches,
                     "elide_errors": self.elide_errors,
                     "individual_results_jsonl": self.individual_results_jsonl,
-                },
-            },
+                    "include_aggregates": self.include_aggregates
+                }
+            }
         }
 
         # Ensure directory exists
@@ -521,7 +568,23 @@ class BulkStructuredModelEvaluator:
         print(f"  Recall:        {overall_metrics.get('cm_recall', 0.0):.4f}")
         print(f"  F1 Score:      {overall_metrics.get('cm_f1', 0.0):.4f}")
         print(f"  Accuracy:      {overall_metrics.get('cm_accuracy', 0.0):.4f}")
-
+        
+        # Aggregate metrics (if enabled)
+        if self.include_aggregates and "aggregate" in overall_metrics:
+            aggregate = overall_metrics["aggregate"]
+            print(f"\nAGGREGATE METRICS:")
+            print("-" * 40)
+            print(f"  True Positives (TP):    {aggregate.get('tp', 0):,}")
+            print(f"  False Positives (FP):   {aggregate.get('fp', 0):,}")  
+            print(f"  True Negatives (TN):    {aggregate.get('tn', 0):,}")
+            print(f"  False Negatives (FN):   {aggregate.get('fn', 0):,}")
+            print(f"  False Discovery (FD):   {aggregate.get('fd', 0):,}")
+            print(f"  False Alarm (FA):       {aggregate.get('fa', 0):,}")
+            print(f"  Precision:              {aggregate.get('cm_precision', 0.0):.4f}")
+            print(f"  Recall:                 {aggregate.get('cm_recall', 0.0):.4f}")
+            print(f"  F1 Score:               {aggregate.get('cm_f1', 0.0):.4f}")
+            print(f"  Accuracy:               {aggregate.get('cm_accuracy', 0.0):.4f}")
+        
         # Field-level metrics
         if process_eval.field_metrics:
             print("\nFIELD-LEVEL METRICS:")
@@ -547,7 +610,19 @@ class BulkStructuredModelEvaluator:
                     print(
                         f"  {field_path:30} P: {precision:.3f} | R: {recall:.3f} | F1: {f1:.3f} | TP: {tp:,} | FP: {fp:,} | FN: {fn:,}"
                     )
-
+                    # Show aggregate metrics for this field if available
+                    if self.include_aggregates and "aggregate" in field_metrics:
+                        agg = field_metrics["aggregate"]
+                        agg_tp = agg.get('tp', 0)
+                        agg_fp = agg.get('fp', 0)
+                        agg_fn = agg.get('fn', 0)
+                        agg_precision = agg.get('cm_precision', 0.0)
+                        agg_recall = agg.get('cm_recall', 0.0)
+                        agg_f1 = agg.get('cm_f1', 0.0)
+                        
+                        if agg_tp + agg_fp + agg_fn > 0:
+                            print(f"    └─ Aggregate:          P: {agg_precision:.3f} | R: {agg_recall:.3f} | F1: {agg_f1:.3f} | TP: {agg_tp:,} | FP: {agg_fp:,} | FN: {agg_fn:,}")
+        
         # Error summary
         if process_eval.errors:
             print("\nERROR SUMMARY:")
@@ -578,6 +653,7 @@ class BulkStructuredModelEvaluator:
         print(f"Target Schema: {self.target_schema.__name__}")
         print(f"Document Non-matches: {'Yes' if self.document_non_matches else 'No'}")
         print(f"Elide Errors: {'Yes' if self.elide_errors else 'No'}")
+        print(f"Include Aggregates: {'Yes' if self.include_aggregates else 'No'}")
         if self.individual_results_jsonl:
             print(f"Individual Results JSONL: {self.individual_results_jsonl}")
 
@@ -594,7 +670,7 @@ class BulkStructuredModelEvaluator:
         Returns:
             Dictionary containing serializable evaluator state
         """
-        return {
+        state = {
             "confusion_matrix": {
                 "overall": dict(self._confusion_matrix["overall"]),
                 "fields": {
@@ -608,7 +684,17 @@ class BulkStructuredModelEvaluator:
             # Configuration
             "target_schema": self.target_schema.__name__,
             "elide_errors": self.elide_errors,
+            "include_aggregates": self.include_aggregates
         }
+        
+        # Include aggregate metrics if enabled
+        if self.include_aggregates:
+            state["aggregate_metrics"] = {
+                "overall": dict(self._aggregate_metrics["overall"]),
+                "fields": {path: dict(metrics) for path, metrics in self._aggregate_metrics["fields"].items()}
+            }
+        
+        return state
 
     def load_state(self, state: Dict[str, Any]) -> None:
         """
@@ -637,7 +723,18 @@ class BulkStructuredModelEvaluator:
             self._confusion_matrix["fields"][field_path] = defaultdict(
                 int, field_metrics
             )
-
+        
+        # Restore aggregate metrics state if available and enabled
+        if self.include_aggregates and "aggregate_metrics" in state:
+            agg_state = state["aggregate_metrics"]
+            self._aggregate_metrics = {
+                "overall": defaultdict(int, agg_state["overall"]),
+                "fields": defaultdict(lambda: defaultdict(int))
+            }
+            
+            for field_path, field_metrics in agg_state["fields"].items():
+                self._aggregate_metrics["fields"][field_path] = defaultdict(int, field_metrics)
+        
         # Restore other state
         self._errors = list(state["errors"])
         self._processed_count = state["processed_count"]
@@ -672,7 +769,20 @@ class BulkStructuredModelEvaluator:
         for field_path, field_metrics in other_cm["fields"].items():
             for metric, value in field_metrics.items():
                 self._confusion_matrix["fields"][field_path][metric] += value
-
+        
+        # Merge aggregate metrics if both evaluators have them enabled
+        if self.include_aggregates and "aggregate_metrics" in other_state:
+            other_agg = other_state["aggregate_metrics"]
+            
+            # Merge overall aggregate metrics
+            for metric, value in other_agg["overall"].items():
+                self._aggregate_metrics["overall"][metric] += value
+            
+            # Merge field-level aggregate metrics
+            for field_path, field_metrics in other_agg["fields"].items():
+                for metric, value in field_metrics.items():
+                    self._aggregate_metrics["fields"][field_path][metric] += value
+        
         # Merge errors and counts
         self._errors.extend(other_state["errors"])
         self._processed_count += other_state["processed_count"]
