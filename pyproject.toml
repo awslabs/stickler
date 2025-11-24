@@ -18,6 +18,8 @@ dependencies = [
     "psutil>=5.8.0",
     "pandas>=1.5.0",
     "jsonschema>=4.0.0"
+    "tqdm>=4.67.1",
+    "s3fs>=2025.9.0"
 ]
 
 [project.optional-dependencies]

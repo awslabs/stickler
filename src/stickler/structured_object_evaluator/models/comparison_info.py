@@ -93,7 +93,6 @@ class ComparableFieldConfig:
         comparator: Optional[BaseComparator] = None,
         threshold: float = 0.5,
         weight: float = 1.0,
-        aggregate: bool = False,
         clip_under_threshold: bool = True,
     ):
         """Initialize comparison configuration.
@@ -102,13 +101,11 @@ class ComparableFieldConfig:
             comparator: Comparator to use (default: LevenshteinComparator)
             threshold: Minimum similarity score to consider a match (default: 0.5)
             weight: Weight of this field in the overall score (default: 1.0)
-            aggregate: Whether to aggregate metrics from child fields (default: False)
             clip_under_threshold: Whether to zero out scores below threshold (default: True)
         """
         self.comparator = comparator or LevenshteinComparator()
         self.threshold = threshold
         self.weight = weight
-        self.aggregate = aggregate
         self.clip_under_threshold = clip_under_threshold
 
     def compare(self, value1: Any, value2: Any) -> float:
@@ -136,7 +133,7 @@ class ComparableFieldConfig:
 
     def __repr__(self) -> str:
         """Return string representation."""
-        return f"ComparableFieldConfig(comparator={self.comparator}, threshold={self.threshold}, weight={self.weight}, aggregate={self.aggregate}, clip_under_threshold={self.clip_under_threshold})"
+        return f"ComparableFieldConfig(comparator={self.comparator}, threshold={self.threshold}, weight={self.weight}, clip_under_threshold={self.clip_under_threshold})"
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to a serializable dictionary for JSON schema."""
@@ -146,7 +143,6 @@ class ComparableFieldConfig:
             "comparator_config": getattr(self.comparator, "config", {}),
             "threshold": self.threshold,
             "weight": self.weight,
-            "aggregate": self.aggregate,
             "clip_under_threshold": self.clip_under_threshold,
         }
 

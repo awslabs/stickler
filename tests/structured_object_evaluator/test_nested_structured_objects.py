@@ -355,19 +355,27 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
 
-        # CORRECTED: With Pet.match_threshold = 1.0, no pets meet the threshold (both have differences)
-        # Therefore, NO nested field metrics should be generated (threshold-gated recursion working correctly)
+        # UPDATED: With universal aggregate feature, nested field metrics are always generated
+        # but "overall" should be empty for poor matches, "aggregate" should have the metrics
         if "fields" in cm["fields"]["pets"]:
             nested_fields = cm["fields"]["pets"]["fields"]
-            # Should be empty - no pets meet 1.0 threshold, so no recursive field analysis
-            self.assertEqual(
-                len(nested_fields),
-                0,
-                "Expected no nested field metrics for poor pet matches",
-            )
-        else:
-            # This is also acceptable - no nested fields at all when all matches are below threshold
-            pass
+            # Should have nested fields for aggregate metrics
+            self.assertGreater(len(nested_fields), 0, "Should have nested fields for aggregate metrics")
+            
+            # Check that overall sections are empty (no matches above threshold)
+            for field_name, field_metrics in nested_fields.items():
+                overall_metrics = field_metrics["overall"]
+                aggregate_metrics = field_metrics["aggregate"]
+                
+                # Overall should be empty (no matches above threshold)
+                overall_total = sum(overall_metrics[metric] for metric in ["tp", "fa", "fd", "fp", "tn", "fn"])
+                self.assertEqual(overall_total, 0, 
+                    f"Field {field_name} overall should be empty for poor matches")
+                
+                # Aggregate should have some metrics from poor matches
+                aggregate_total = sum(aggregate_metrics[metric] for metric in ["tp", "fa", "fd", "fp", "tn", "fn"])
+                self.assertGreater(aggregate_total, 0, 
+                    f"Field {field_name} aggregate should have metrics from poor matches")
 
         # CORRECTED: All remaining nested field assertions removed
         # Since Pet.match_threshold = 1.0 and no pets meet this threshold,

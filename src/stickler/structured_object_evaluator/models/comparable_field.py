@@ -17,7 +17,6 @@ def ComparableField(
     threshold: float = 0.5,
     weight: float = 1.0,
     default: Any = None,
-    aggregate: bool = False,
     clip_under_threshold: bool = True,
     # Pydantic Field parameters (all optional, just like Field)
     alias: Optional[str] = None,
@@ -35,8 +34,6 @@ def ComparableField(
         threshold: Minimum similarity score to consider a match (default: 0.5)
         weight: Weight of this field in overall score calculation (default: 1.0)
         default: Default value for the field (default: None)
-        aggregate: DEPRECATED - This parameter is deprecated and will be removed in a future version.
-                  Use the new universal 'aggregate' field in compare_with() output instead.
         clip_under_threshold: Whether to zero out scores below threshold (default: True)
         alias: Pydantic field alias for serialization (default: None)
         description: Field description for documentation (default: None)
@@ -59,15 +56,6 @@ def ComparableField(
                 examples=["user@example.com"]
             )
     """
-    # Issue deprecation warning if aggregate=True is used
-    if aggregate:
-        warnings.warn(
-            "The 'aggregate' parameter in ComparableField is deprecated and will be removed "
-            "in a future version. All nodes now automatically include an 'aggregate' field "
-            "in the compare_with() output that sums primitive field metrics below that node.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
 
     # Create the actual comparator instance
     actual_comparator = comparator or LevenshteinComparator()
@@ -79,8 +67,7 @@ def ComparableField(
         "comparator_config": getattr(actual_comparator, "config", {}),
         "threshold": threshold,
         "weight": weight,
-        "clip_under_threshold": clip_under_threshold,
-        "aggregate": aggregate,
+        "clip_under_threshold": clip_under_threshold
     }
 
     # Create json_schema_extra function that stores runtime data
@@ -93,7 +80,6 @@ def ComparableField(
     json_schema_extra_func._threshold = threshold
     json_schema_extra_func._weight = weight
     json_schema_extra_func._clip_under_threshold = clip_under_threshold
-    json_schema_extra_func._aggregate = aggregate
     json_schema_extra_func._comparison_metadata = serializable_metadata
 
     # Merge with existing json_schema_extra if provided
@@ -109,7 +95,6 @@ def ComparableField(
         enhanced_json_schema_extra._threshold = threshold
         enhanced_json_schema_extra._weight = weight
         enhanced_json_schema_extra._clip_under_threshold = clip_under_threshold
-        enhanced_json_schema_extra._aggregate = aggregate
         enhanced_json_schema_extra._comparison_metadata = serializable_metadata
         final_json_schema_extra = enhanced_json_schema_extra
     elif isinstance(existing_json_schema_extra, dict):
@@ -123,7 +108,6 @@ def ComparableField(
         enhanced_json_schema_extra._threshold = threshold
         enhanced_json_schema_extra._weight = weight
         enhanced_json_schema_extra._clip_under_threshold = clip_under_threshold
-        enhanced_json_schema_extra._aggregate = aggregate
         enhanced_json_schema_extra._comparison_metadata = serializable_metadata
         final_json_schema_extra = enhanced_json_schema_extra
     else:
