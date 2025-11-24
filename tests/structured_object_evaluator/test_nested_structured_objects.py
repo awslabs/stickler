@@ -313,7 +313,7 @@ class TestVetRecordsMetricsCalculation:
         if "fields" in cm["fields"]["pets"]:
             nested_fields = cm["fields"]["pets"]["fields"]
             # Should have nested fields for aggregate metrics
-            assert len(nested_fields) > 0, "Should have nested fields for aggregate metrics")
+            assert len(nested_fields) > 0, "Should have nested fields for aggregate metrics"
             
             # Check that overall sections are empty (no matches above threshold)
             for field_name, field_metrics in nested_fields.items():

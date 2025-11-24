@@ -457,7 +457,7 @@ class TestVetRecordsMetricsCalculation:
         assert cm_alt["aggregate"]["tp"] == 9, "Sanity check: TP should be 9"
         assert cm_alt["aggregate"]["fn"] == 1, "Sanity check: FN should be 1"
         assert cm_alt["aggregate"]["fd"] == 2, "Sanity check: FD should be 2"
-
+        
         # Now verify the derived metrics with FD included in recall denominator
         assert derived_metrics_alt["cm_precision"] == pytest.approx(0.692, abs=0.001)
         assert (

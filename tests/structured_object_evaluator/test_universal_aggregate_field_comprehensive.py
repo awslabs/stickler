@@ -327,20 +327,19 @@ class TestUniversalAggregateField:
         
         result = gt.compare_with(pred, include_confusion_matrix=True)
         cm = result["confusion_matrix"]
-
+        
         # Test pets aggregate - based on actual behavior, the Hungarian matching
         # successfully matches the pets and aggregates all their field metrics:
         # pets.pet_id: TP=2, pets.name: TP=2, pets.species: TP=2
         # pets.breed: TP=1, FN=1, pets.age: FA=1, FD=1, FP=2
         # Total: TP=7, FA=1, FD=1, FP=2, FN=1
-        pets_aggregate = cm["fields"]["pets"]["aggregate"]
-        assert pets_aggregate["tp"] == 7, "Pets aggregate TP incorrect"
-        assert pets_aggregate["fa"] == 1, "Pets aggregate FA incorrect"
-        assert pets_aggregate["fd"] == 1, "Pets aggregate FD incorrect"
-        assert pets_aggregate["fp"] == 2, "Pets aggregate FP incorrect"
-        assert pets_aggregate["tn"] == 0, "Pets aggregate TN incorrect"
-        assert pets_aggregate["fn"] == 1, "Pets aggregate FN incorrect"
-
+        pets_aggregate = cm['fields']['pets']['aggregate']
+        assert pets_aggregate['tp'] == 7, "Pets aggregate TP incorrect"
+        assert pets_aggregate['fa'] == 1, "Pets aggregate FA incorrect"
+        assert pets_aggregate['fd'] == 1, "Pets aggregate FD incorrect"
+        assert pets_aggregate['fp'] == 2, "Pets aggregate FP incorrect"
+        assert pets_aggregate['tn'] == 0, "Pets aggregate TN incorrect"
+        assert pets_aggregate['fn'] == 1, "Pets aggregate FN incorrect"
 
     def test_primitive_field_aggregate_equals_overall(self):
         """Test that for primitive fields, aggregate equals overall metrics."""

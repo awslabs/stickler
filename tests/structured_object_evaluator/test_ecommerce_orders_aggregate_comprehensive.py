@@ -308,11 +308,11 @@ class TestEcommerceOrdersAggregateComprehensive:
 
         # gt_json["Customers"][1]["Is_Premium_Member"], pred_json["Customers"][0]["Is_Premium_Member"]:  1 true positive
         # gt_json["Customers"][3]["Is_Premium_Member"], pred_json["Customers"][1]["Is_Premium_Member"]:  1 true positive
-        # gt_json["Customers"][0]["Is_Premium_Member"], gt_json["Customers"][2]["Is_Premium_Member"]: Non matches do not contribute to true negatives
+        # gt_json["Customers"][0]["Is_Premium_Member"], gt_json["Customers"][2]["Is_Premium_Member"]: 2 true negative
         assert cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["tp"] == 2, f'Expected Is_Premium_Member aggregate TP=2, got {cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["tp"]}'
         assert cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fa"] == 0, f'Expected Is_Premium_Member aggregate FA=0, got {cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fa"]}'
         assert cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fd"] == 0, f'Expected Is_Premium_Member aggregate FD=0, got {cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fd"]}'
-        assert cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["tn"] == 0, f'Expected Is_Premium_Member aggregate TN=0, got {cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["tn"]}'
+        assert cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["tn"] == 2, f'Expected Is_Premium_Member aggregate TN=2, got {cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["tn"]}'
         assert cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fn"] == 0, f'Expected Is_Premium_Member aggregate FN=0, got {cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fn"]}'
 
         # gt_json["Customers"][1]["Customer_Name"], pred_json["Customers"][0]["Customer_Name"]:  1 true positive

@@ -134,7 +134,7 @@ def test_threshold_gated_poor_match():
                 overall_metrics = field_data["overall"]
                 overall_total = sum(overall_metrics[metric] for metric in ["tp", "fa", "fd", "fp", "tn", "fn"])
                 assert overall_total > 0, (
-                    f"Field {field} overall should be empty for poor matches, got {overall_metrics}"
+                    f"Field {field} overall should not be empty for poor matches, got {overall_metrics}"
                 )
                 
                 # Aggregate should have some metrics from poor matches
