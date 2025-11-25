@@ -10,7 +10,6 @@ from stickler.comparators.base import BaseComparator
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 from stickler.comparators.fuzzy import FuzzyComparator
 
 
@@ -71,6 +70,8 @@ class StrictCaseComparator(BaseComparator):
 class SpecializedComparatorModel(StructuredModel):
     """Model with specialized comparators for specific needs."""
 
+    match_threshold = 0.5
+
     # Standard field with default comparator (which normalizes case)
     standard_field: str = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.7, weight=1.0
@@ -84,6 +85,8 @@ class SpecializedComparatorModel(StructuredModel):
 
 class StrictCaseModel(StructuredModel):
     """Model with strict case sensitivity."""
+
+    match_threshold = 0.5
 
     # Field with strict case sensitivity
     strict_field: str = ComparableField(
@@ -119,8 +122,7 @@ def test_case_sensitivity():
     )
 
     # Get scores for each field
-    evaluator = StructuredModelEvaluator(threshold=0.5)
-    results = evaluator.evaluate(gt, pred)
+    results = gt.compare_with(pred, evaluator_format=True)
 
     strict_score = results["fields"]["strict_field"]["anls_score"]
     standard_score = results["fields"]["standard_field"]["anls_score"]
@@ -148,8 +150,7 @@ def test_word_reordering():
     )
 
     # Get scores for each field
-    evaluator = StructuredModelEvaluator(threshold=0.5)
-    results = evaluator.evaluate(standard, reordered)
+    results = standard.compare_with(reordered, evaluator_format=True)
 
     # Standard Levenshtein is sensitive to word order
     assert results["fields"]["standard_field"]["anls_score"] < 0.8
@@ -161,6 +162,8 @@ def test_word_reordering():
 
     # Create a model with fuzzy matching
     class FuzzyModel(StructuredModel):
+        match_threshold = 0.5
+
         standard: str = ComparableField(
             comparator=LevenshteinComparator(), threshold=0.5
         )
@@ -181,8 +184,7 @@ def test_word_reordering():
     )
 
     # Get scores
-    evaluator = StructuredModelEvaluator(threshold=0.5)
-    fuzzy_results = evaluator.evaluate(gt_fuzzy, pred_fuzzy)
+    fuzzy_results = gt_fuzzy.compare_with(pred_fuzzy, evaluator_format=True)
 
     # Standard field should have lower score due to word reordering
     assert fuzzy_results["fields"]["standard"]["anls_score"] < 0.8
@@ -201,6 +203,8 @@ def test_fuzzy_comparator_variants():
 
     # Create models with different fuzzy comparator methods
     class FuzzyVariantsModel(StructuredModel):
+        match_threshold = 0.0
+
         ratio: str = ComparableField(
             comparator=FuzzyComparator(method="ratio"), threshold=0.5
         )
@@ -235,10 +239,7 @@ def test_fuzzy_comparator_variants():
     )
 
     # Get scores
-    evaluator = StructuredModelEvaluator(
-        threshold=0.0
-    )  # No threshold to see raw scores
-    results = evaluator.evaluate(gt, pred)
+    results = gt.compare_with(pred, evaluator_format=True)
 
     # We only care about the relative performance for this test
     # Test directly against FuzzyComparator methods to validate differences
@@ -263,6 +264,8 @@ def test_threshold_effects():
 
     # Create models with different thresholds
     class ThresholdModel(StructuredModel):
+        match_threshold = 0.5
+
         strict: str = ComparableField(
             comparator=LevenshteinComparator(),
             threshold=0.95,  # Very high threshold
@@ -295,8 +298,7 @@ def test_threshold_effects():
 
     # Instead of creating a custom evaluator, let's just look at the raw scores directly
     # Get scores with standard evaluator
-    evaluator = StructuredModelEvaluator(threshold=0.5)
-    results = evaluator.evaluate(gt, pred)
+    results = gt.compare_with(pred, evaluator_format=True)
 
     # Calculate raw similarity score for reference
     raw_similarity = LevenshteinComparator().compare("Hello World", "Hello Wrld")

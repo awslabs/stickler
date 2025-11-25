@@ -477,11 +477,7 @@ class TestCompatibility:
     """Test compatibility with existing systems and data formats."""
 
     def test_matches_single_evaluator_results(self):
-        """Test that bulk evaluator produces same results as single evaluator for single document."""
-        from stickler.structured_object_evaluator.evaluator import (
-            StructuredModelEvaluator,
-        )
-
+        """Test that bulk evaluator produces same results as compare_with for single document."""
         sample_data = {
             "accountNumber": "1234567890",
             "contact": {"phone": "555-123-4567"},
@@ -494,8 +490,7 @@ class TestCompatibility:
         pred_model = BankStatement(**sample_data)
 
         # Single evaluator result
-        single_evaluator = StructuredModelEvaluator(BankStatement)
-        single_result = single_evaluator.evaluate(gt_model, pred_model)
+        single_result = gt_model.compare_with(pred_model, include_confusion_matrix=True)
 
         # Bulk evaluator result
         bulk_evaluator = BulkStructuredModelEvaluator(BankStatement)

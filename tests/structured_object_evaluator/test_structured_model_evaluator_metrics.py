@@ -1,4 +1,4 @@
-"""Tests for StructuredModelEvaluator metrics calculation for nested structures with Invoice and LineItem models.
+"""Tests for compare_with() metrics calculation for nested structures with Invoice and LineItem models.
 
 This test verifies that we can calculate precision, recall, F1, and accuracy metrics
 at the field level and object level for both parent objects and nested child objects.
@@ -11,7 +11,6 @@ from stickler.structured_object_evaluator.models.structured_model import Structu
 from stickler.structured_object_evaluator.models.comparison_info import ComparisonInfo
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator.utils import anls_score
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 
 
 # Define the models for the test
@@ -58,7 +57,7 @@ class Invoice(StructuredModel):
 
 
 class TestStructuredModelEvaluatorMetrics(unittest.TestCase):
-    """Test cases for StructuredModelEvaluator metrics calculation."""
+    """Test cases for compare_with() metrics calculation."""
 
     def setUp(self):
         """Set up test data."""
@@ -140,12 +139,9 @@ class TestStructuredModelEvaluatorMetrics(unittest.TestCase):
             line_items=self.poor_line_items,
         )
 
-        # Initialize the evaluator
-        self.evaluator = StructuredModelEvaluator()
-
     def test_perfect_match(self):
         """Test metrics for perfect match case."""
-        results = self.evaluator.evaluate(self.gt_invoice, self.perfect_invoice)
+        results = self.gt_invoice.compare_with(self.perfect_invoice, evaluator_format=True)
 
         # Check overall metrics
         self.assertEqual(results["overall"]["precision"], 1.0)
@@ -189,7 +185,7 @@ class TestStructuredModelEvaluatorMetrics(unittest.TestCase):
 
     def test_poor_match(self):
         """Test metrics for poor match case with multiple errors."""
-        results = self.evaluator.evaluate(self.gt_invoice, self.poor_invoice)
+        results = self.gt_invoice.compare_with(self.poor_invoice, evaluator_format=True)
 
         # Check that overall metrics reflect the poor match
         overall_score = results["overall"]["anls_score"]
@@ -281,8 +277,7 @@ class TestStructuredModelEvaluatorMetrics(unittest.TestCase):
         )
 
         # Evaluate
-        evaluator = StructuredModelEvaluator()
-        result = evaluator.evaluate(gt_invoice, pred_invoice)
+        result = gt_invoice.compare_with(pred_invoice, include_confusion_matrix=True)
 
         # Get confusion matrix
         cm = result["confusion_matrix"]

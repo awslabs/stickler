@@ -10,7 +10,7 @@ from stickler.structured_object_evaluator.evaluator import (
 
 
 def test_import_from_new_location():
-    """Test that we can import from the new module structure."""
+    """Test that we can import from the evaluator module."""
     from stickler.structured_object_evaluator.evaluator import (
         StructuredModelEvaluator,
         get_memory_usage,
@@ -28,7 +28,7 @@ def test_backward_compatibility():
         StructuredModelEvaluator as OldEvaluator,
     )
 
-    # Import from the new location
+    # Import from the same location (testing consistency)
     from stickler.structured_object_evaluator.evaluator import (
         StructuredModelEvaluator as NewEvaluator,
     )

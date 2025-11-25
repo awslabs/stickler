@@ -14,7 +14,6 @@ from typing import List
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 
 
 # Step 1: Define your data structures
@@ -198,8 +197,7 @@ def demo_evaluator_detailed_analysis():
 
     print("Evaluating similar but not identical orders...")
 
-    evaluator = StructuredModelEvaluator()
-    result = evaluator.evaluate(gt_order, pred_order)
+    result = gt_order.compare_with(pred_order, include_confusion_matrix=True, evaluator_format=True)
 
     print("\n📊 Overall Metrics:")
     print(f"  Precision: {result['overall']['precision']:.3f}")

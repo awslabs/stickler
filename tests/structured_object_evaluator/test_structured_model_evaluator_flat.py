@@ -1,4 +1,4 @@
-"""Tests for StructuredModelEvaluator metrics calculation for veterinary records models.
+"""Tests for compare_with() metrics calculation for veterinary records models.
 
 This test verifies that we can calculate precision, recall, F1, and accuracy metrics
 at the field level and object level for simple objects in the toy veterinary records models.
@@ -10,12 +10,13 @@ from typing import Optional
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.exact import ExactComparator
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 
 
 # Define the models for the test
 # Simple structure data
 class PetOwner(StructuredModel):
+    match_threshold = 0.7
+
     ownerId: int = ComparableField(
         comparator=ExactComparator(), threshold=1.0, weight=1.0
     )  # Unique identifier for the pet owner
@@ -54,9 +55,6 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
             "memberSince": "2019-03-15",  # false alarm
         }
 
-        # Initialize the evaluator
-        self.evaluator = StructuredModelEvaluator(verbose=True)
-
     def test_simple_pet_owner_metrics(self):
         """Test metrics for simple PetOwner structure."""
         # Create PetOwner objects
@@ -64,7 +62,7 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
         pred_owner = PetOwner(**self.pred_owner)
 
         # Test with traditional recall (default)
-        results = self.evaluator.evaluate(gold_owner, pred_owner)
+        results = gold_owner.compare_with(pred_owner, include_confusion_matrix=True, evaluator_format=True)
 
         # Expected metrics
         # 3 true positive: ownerId, firstName, lastName
@@ -158,8 +156,8 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
         self.assertAlmostEqual(results["overall"]["f1"], 0.75)
 
         # Test with alternative recall formula
-        results_alt = self.evaluator.evaluate(
-            gold_owner, pred_owner, recall_with_fd=True
+        results_alt = gold_owner.compare_with(
+            pred_owner, include_confusion_matrix=True, evaluator_format=True, recall_with_fd=True
         )
 
         # Expected metrics with alternative recall

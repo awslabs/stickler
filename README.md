@@ -100,7 +100,7 @@ pytest tests/
 ### Static Model Definition
 
 ```python
-from stickler import StructuredModel, ComparableField, StructuredModelEvaluator
+from stickler import StructuredModel, ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
 
 # Define your data structure
@@ -112,8 +112,7 @@ class Invoice(StructuredModel):
     total: float = ComparableField(threshold=0.95)
 
 # Compare objects
-evaluator = StructuredModelEvaluator()
-result = evaluator.evaluate(ground_truth, prediction)
+result = ground_truth.compare_with(prediction, evaluator_format=True)
 
 print(f"Overall Score: {result['overall']['anls_score']:.3f}")
 ```

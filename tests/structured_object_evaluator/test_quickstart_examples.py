@@ -9,11 +9,12 @@ from typing import List
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 
 
 class Invoice(StructuredModel):
     """Invoice model matching the Quick Start notebook example."""
+
+    match_threshold = 0.7
 
     invoice_number: str = ComparableField(
         comparator=LevenshteinComparator(),
@@ -35,6 +36,8 @@ class Invoice(StructuredModel):
 
 class InvoiceBatch(StructuredModel):
     """Batch model matching the Quick Start notebook example."""
+
+    match_threshold = 0.7
 
     batch_id: str = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.9, weight=1.0
@@ -131,7 +134,7 @@ class TestQuickStartExamples:
         print(f"Field scores: {result['field_scores']}")
 
     def test_evaluator_results_consistent_with_compare_with(self):
-        """Test that StructuredModelEvaluator produces consistent results with compare_with."""
+        """Test that compare_with() produces consistent results."""
 
         gt_batch = InvoiceBatch(
             batch_id="BATCH-2024-001",
@@ -156,17 +159,16 @@ class TestQuickStartExamples:
         # Compare using both methods
         compare_result = gt_batch.compare_with(pred_batch)
 
-        evaluator = StructuredModelEvaluator()
-        eval_result = evaluator.evaluate(gt_batch, pred_batch)
+        eval_result = gt_batch.compare_with(pred_batch, evaluator_format=True)
 
         # ANLS scores should be reasonably close
         anls_diff = abs(
             compare_result["overall_score"] - eval_result["overall"]["anls_score"]
         )
         assert anls_diff <= 0.1, (
-            f"compare_with and evaluator ANLS should be close. "
+            f"compare_with and evaluator_format ANLS should be close. "
             f"compare_with: {compare_result['overall_score']:.3f}, "
-            f"evaluator: {eval_result['overall']['anls_score']:.3f}, "
+            f"evaluator_format: {eval_result['overall']['anls_score']:.3f}, "
             f"diff: {anls_diff:.3f}"
         )
 

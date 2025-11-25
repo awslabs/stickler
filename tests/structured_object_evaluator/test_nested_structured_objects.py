@@ -1,4 +1,4 @@
-"""Tests for StructuredModelEvaluator metrics calculation for veterinary records models.
+"""Tests for compare_with() metrics calculation for veterinary records models.
 
 This test verifies that we can calculate precision, recall, F1, and accuracy metrics
 at the field level and object level for nested structures in the toy veterinary records models.
@@ -12,12 +12,13 @@ from stickler.structured_object_evaluator.models.comparable_field import Compara
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.numeric import NumericComparator
 from stickler.comparators.exact import ExactComparator
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 
 
 # Define the models for the test
 # Nested structure data including a list of StructuredModel
 class Contact(StructuredModel):
+    match_threshold = 0.7
+
     phone: str = ComparableField(
         comparator=ExactComparator(), threshold=1.0, weight=1.0
     )
@@ -27,6 +28,8 @@ class Contact(StructuredModel):
 
 
 class Owner(StructuredModel):
+    match_threshold = 0.7
+
     id: int = ComparableField(comparator=ExactComparator(), threshold=1.0, weight=1.0)
     name: str = ComparableField(comparator=ExactComparator(), threshold=1.0, weight=1.0)
 
@@ -59,6 +62,8 @@ class Pet(StructuredModel):
 
 
 class VeterinaryRecord(StructuredModel):
+    match_threshold = 0.7
+
     recordId: int = ComparableField(
         comparator=ExactComparator(), threshold=1.0, weight=1.0
     )
@@ -122,9 +127,6 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
             ],
         }
 
-        # Initialize the evaluator
-        self.evaluator = StructuredModelEvaluator(verbose=True)
-
     def test_owner_nested_structured_model(self):
         """Test that structured model fields like 'owners' are correctly matched based on nested objects."""
         # Create VeterinaryRecord objects
@@ -132,7 +134,7 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
         pred_record = VeterinaryRecord(**self.pred_record)
 
         # Evaluate
-        results = self.evaluator.evaluate(gold_record, pred_record)
+        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
 
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
@@ -343,7 +345,7 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
         pred_record = VeterinaryRecord(**self.pred_record)
 
         # Evaluate
-        results = self.evaluator.evaluate(gold_record, pred_record)
+        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
 
         # Expected metrics for pets
         # 0 true positive
@@ -394,7 +396,7 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
         pred_record = VeterinaryRecord(**self.pred_record)
 
         # Evaluate
-        results = self.evaluator.evaluate(gold_record, pred_record)
+        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
 
         # Expected metrics WITH OBJECT-LEVEL COUNTING
         # 1 true positive: recordId
@@ -429,8 +431,8 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
         # Test with alternative recall formula
         # Expected recall = TP/(TP+FN+FD) = 1/(1+0+3) = 0.25 with recall_with_fd=True
         # Expected F1 = 2*precision*recall/(precision+recall) = 2*0.25*0.25/(0.25+0.25) = 0.25
-        results_alt = self.evaluator.evaluate(
-            gold_record, pred_record, recall_with_fd=True
+        results_alt = gold_record.compare_with(
+            pred_record, include_confusion_matrix=True, evaluator_format=True, recall_with_fd=True
         )
         self.assertAlmostEqual(results_alt["overall"]["precision"], 0.25, places=2)
         self.assertAlmostEqual(results_alt["overall"]["recall"], 0.25, places=2)
