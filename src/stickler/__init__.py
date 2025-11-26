@@ -10,7 +10,7 @@ from .structured_object_evaluator import (
     ComparableField,
     NonMatchField,
     NonMatchType,
-    StructuredModelEvaluator,
+
     compare_structured_models,
     anls_score,
     compare_json,
@@ -23,7 +23,7 @@ __all__ = [
     "ComparableField",
     "NonMatchField",
     "NonMatchType",
-    "StructuredModelEvaluator",
+
     "compare_structured_models",
     "anls_score",
     "compare_json",

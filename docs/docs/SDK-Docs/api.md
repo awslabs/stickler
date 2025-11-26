@@ -21,9 +21,7 @@
     options:
       heading_level: 2
 
-::: stickler.structured_object_evaluator.evaluator.StructuredModelEvaluator
-    options:
-      heading_level: 2
+
 
 ::: stickler.structured_object_evaluator.utils.anls_score.compare_structured_models
     options:
