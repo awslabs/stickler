@@ -112,7 +112,6 @@ class StructuredListComparator:
             "threshold_applied_score": threshold_applied_score,
             "weight": weight,
         }
-
         return final_result
 
     def _handle_struct_list_empty_cases(
@@ -295,7 +294,6 @@ class StructuredListComparator:
         field_details = {}
 
         if gt_list and isinstance(gt_list[0], StructuredModel):
-            model_class = gt_list[0].__class__
 
             # PHASE 3 FIX: Only process pairs that meet the match_threshold
             # Filter to good matches only - poor matches get no recursive analysis
@@ -305,45 +303,43 @@ class StructuredListComparator:
                 if similarity >= match_threshold
             ]
 
+            bad_matched_pairs = [
+                (gt_idx, pred_idx, similarity)
+                for gt_idx, pred_idx, similarity in matched_pairs
+                if similarity < match_threshold
+            ]
+
             # Only generate field details if we have good matched pairs OR unmatched objects
             has_good_matches = len(good_matched_pairs) > 0
+            has_bad_matches = len(bad_matched_pairs) > 0
             has_unmatched = (len(matched_gt_indices) < len(gt_list)) or (
                 len(matched_pred_indices) < len(pred_list)
             )
 
-            if has_good_matches or has_unmatched:
-                for sub_field_name in model_class.model_fields:
-                    if sub_field_name == "extra_fields":
-                        continue
+            results =[]
+            if has_good_matches: #:
+                 for gt_idx, pred_idx, similarity in good_matched_pairs:
+                     if gt_idx < len(gt_list) and pred_idx < len(pred_list):
+                        gt_item = gt_list[gt_idx]
+                        pred_item = pred_list[pred_idx]
+                        field_details_tmp = gt_item.compare_recursive(pred_item)
+                        results.append(field_details_tmp)
 
-                    # Check if this field is a List[StructuredModel] that needs hierarchical treatment
-                    field_info = model_class.model_fields.get(sub_field_name)
-                    is_hierarchical_field = (
-                        field_info and model_class._is_structured_field_type(field_info)
-                    )
+            if has_bad_matches: #:
+                #Step1: Do the same as has_good_matches but only keep field level metrics
+                for gt_idx, pred_idx, similarity in bad_matched_pairs:
+                    if gt_idx < len(gt_list) and pred_idx < len(pred_list):
+                        gt_item = gt_list[gt_idx]
+                        pred_item = pred_list[pred_idx]
+                        field_details_tmp = gt_item.compare_recursive(pred_item)
 
-                    if is_hierarchical_field:
-                        # Handle hierarchical fields with recursive aggregation - ONLY for good matches
-                        field_details[sub_field_name] = self._handle_hierarchical_field(
-                            sub_field_name,
-                            gt_list,
-                            pred_list,
-                            good_matched_pairs,
-                            matched_gt_indices,
-                            matched_pred_indices,
-                            match_threshold,
-                        )
-                    else:
-                        # Handle primitive fields with simple aggregation - ONLY for good matches
-                        field_details[sub_field_name] = self._handle_primitive_field(
-                            sub_field_name,
-                            gt_list,
-                            pred_list,
-                            good_matched_pairs,
-                            matched_gt_indices,
-                            matched_pred_indices,
-                        )
-
+                        #TODO
+                        #Step2: Merge only the field level metrics with field_details
+                        field_details_tmp['overall'] = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
+                        results.append(field_details_tmp)                        
+            #print(results)
+            field_details = self._recursive_aggregate_metrics(results)
+            #print(field_details)
         return field_details
 
     def _handle_hierarchical_field(
