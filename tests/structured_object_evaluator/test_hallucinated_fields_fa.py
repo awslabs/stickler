@@ -2,7 +2,7 @@
 
 """Test handling of hallucinated fields (extra_fields) as False Alarms."""
 
-import unittest
+import pytest
 from typing import ClassVar
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
@@ -26,7 +26,7 @@ class SimpleContract(StructuredModel):
     )
 
 
-class TestHallucinatedFieldsFA(unittest.TestCase):
+class TestHallucinatedFieldsFA:
     """Test that hallucinated fields are properly counted as False Alarms."""
 
     def test_single_model_with_hallucinated_fields(self):
@@ -53,13 +53,13 @@ class TestHallucinatedFieldsFA(unittest.TestCase):
         )
 
         # The hallucinated fields should be stored in __pydantic_extra__
-        self.assertEqual(len(getattr(gt_model, "__pydantic_extra__", {})), 0)
-        self.assertEqual(len(getattr(pred_model, "__pydantic_extra__", {})), 3)
-        self.assertEqual(pred_model.__pydantic_extra__["tenant_phone"], "555-1234")
-        self.assertEqual(
-            pred_model.__pydantic_extra__["property_address"], "123 Main St"
+        assert len(getattr(gt_model, "__pydantic_extra__", {})) == 0
+        assert len(getattr(pred_model, "__pydantic_extra__", {})) == 3
+        assert pred_model.__pydantic_extra__["tenant_phone"] == "555-1234"
+        assert (
+            pred_model.__pydantic_extra__["property_address"] == "123 Main St"
         )
-        self.assertEqual(pred_model.__pydantic_extra__["rent_amount"], 2500.0)
+        assert pred_model.__pydantic_extra__["rent_amount"] == 2500.0
 
         # Compare with confusion matrix
         result = gt_model.compare_with(pred_model, include_confusion_matrix=True)
@@ -72,11 +72,9 @@ class TestHallucinatedFieldsFA(unittest.TestCase):
         actual_fa = result["confusion_matrix"]["overall"]["fa"]
 
         print(f"Expected FA: {expected_fa}, Actual FA: {actual_fa}")
-        self.assertEqual(
-            actual_fa,
-            expected_fa,
-            "Hallucinated fields should be counted as False Alarms",
-        )
+        assert (
+            actual_fa == expected_fa
+        ), "Hallucinated fields should be counted as False Alarms"
 
     def test_bulk_evaluator_with_hallucinated_fields(self):
         """Test BulkStructuredModelEvaluator with hallucinated fields."""
@@ -134,11 +132,9 @@ class TestHallucinatedFieldsFA(unittest.TestCase):
         actual_fa = results.metrics.get("fa", 0)
 
         print(f"Expected total FA: {expected_fa}, Actual FA: {actual_fa}")
-        self.assertEqual(
-            actual_fa,
-            expected_fa,
-            "Bulk evaluator should correctly count hallucinated fields as False Alarms",
-        )
+        assert (
+            actual_fa == expected_fa
+        ), "Bulk evaluator should correctly count hallucinated fields as False Alarms"
 
     def test_nested_model_with_hallucinated_fields(self):
         """Test nested models with hallucinated fields."""
@@ -185,11 +181,11 @@ class TestHallucinatedFieldsFA(unittest.TestCase):
             f"Nested __pydantic_extra__: {getattr(pred_model.address, '__pydantic_extra__', {})}"
         )
 
-        self.assertEqual(
-            len(getattr(pred_model, "__pydantic_extra__", {})), 2
+        assert (
+            len(getattr(pred_model, "__pydantic_extra__", {})) == 2
         )  # phone, website
-        self.assertEqual(
-            len(getattr(pred_model.address, "__pydantic_extra__", {})), 1
+        assert (
+            len(getattr(pred_model.address, "__pydantic_extra__", {})) == 1
         )  # zipcode
 
         # Compare and check FA counting
@@ -202,12 +198,6 @@ class TestHallucinatedFieldsFA(unittest.TestCase):
         actual_fa = result["confusion_matrix"]["overall"]["fa"]
 
         print(f"Expected FA: {expected_fa}, Actual FA: {actual_fa}")
-        self.assertEqual(
-            actual_fa,
-            expected_fa,
-            "Hallucinated fields at all nesting levels should count as False Alarms",
-        )
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert (
+            actual_fa == expected_fa
+        ), "Hallucinated fields at all nesting levels should count as False Alarms"

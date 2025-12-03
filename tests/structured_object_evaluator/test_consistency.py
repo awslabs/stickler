@@ -1,6 +1,6 @@
 """Tests for consistency between different evaluation methods."""
 
-import unittest
+import pytest
 
 from stickler.structured_object_evaluator import (
     StructuredModel,
@@ -22,7 +22,7 @@ class Person(StructuredModel):
     age: int = Field()
 
 
-class TestConsistency(unittest.TestCase):
+class TestConsistency:
     """Test cases for consistency between different evaluation methods."""
 
     def test_anls_score_vs_compare_structured_models(self):
@@ -38,7 +38,7 @@ class TestConsistency(unittest.TestCase):
         compare_result = compare_structured_models(person1, person2)
 
         # Check that the results are consistent
-        self.assertEqual(anls_result, compare_result["overall_score"])
+        assert anls_result == compare_result["overall_score"]
 
     def test_anls_score_vs_compare_json(self):
         """Test consistency between anls_score and compare_json."""
@@ -53,7 +53,7 @@ class TestConsistency(unittest.TestCase):
         compare_result = compare_json(json1, json2, Person)
 
         # Check that the results are consistent
-        self.assertAlmostEqual(anls_result, compare_result["overall_score"], places=4)
+        assert anls_result == pytest.approx(compare_result["overall_score"], abs=1e-4)
 
     def test_compare_structured_models_vs_compare_json(self):
         """Test consistency between compare_structured_models and compare_json."""
@@ -68,11 +68,11 @@ class TestConsistency(unittest.TestCase):
         json_result = compare_json(json_obj, json_obj, Person)
 
         # Check that the results are consistent
-        self.assertEqual(model_result["overall_score"], json_result["overall_score"])
-        self.assertEqual(
-            model_result["all_fields_matched"], json_result["all_fields_matched"]
+        assert model_result["overall_score"] == json_result["overall_score"]
+        assert (
+            model_result["all_fields_matched"] == json_result["all_fields_matched"]
         )
-        self.assertEqual(model_result["field_scores"], json_result["field_scores"])
+        assert model_result["field_scores"] == json_result["field_scores"]
 
     def test_anls_score_with_different_return_options(self):
         """Test consistency of anls_score with different return options."""
@@ -90,8 +90,8 @@ class TestConsistency(unittest.TestCase):
         score3 = result["overall_score"]
 
         # Check that the scores are consistent
-        self.assertEqual(score1, score2)
-        self.assertEqual(score1, score3)
+        assert score1 == score2
+        assert score1 == score3
 
     def test_compare_structured_models_field_scores(self):
         """Test consistency of field scores in compare_structured_models."""
@@ -103,20 +103,12 @@ class TestConsistency(unittest.TestCase):
         result = compare_structured_models(person1, person2)
 
         # Check that the field scores are consistent with the overall score
-        self.assertEqual(result["field_scores"]["name"], 1.0)  # Exact match
+        assert result["field_scores"]["name"] == 1.0  # Exact match
 
         # Note: The age field is not a ComparableField, so it's compared using default logic
         # which may not give exactly 0.0 for different values
-        self.assertLess(result["field_scores"]["age"], 1.0)  # Should be less than 1.0
+        assert result["field_scores"]["age"] < 1.0  # Should be less than 1.0
 
         # Check that the overall score is between the field scores
-        self.assertGreaterEqual(
-            result["overall_score"], min(result["field_scores"].values())
-        )
-        self.assertLessEqual(
-            result["overall_score"], max(result["field_scores"].values())
-        )
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert result["overall_score"] >= min(result["field_scores"].values())
+        assert result["overall_score"] <= max(result["field_scores"].values())
