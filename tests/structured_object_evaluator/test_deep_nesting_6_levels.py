@@ -161,7 +161,7 @@ class Company(StructuredModel):
 class TestDeepNesting6Levels:
     """Test suite for 6-level deep nesting scenarios."""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test evaluator."""
         self.evaluator = StructuredModelEvaluator(
             threshold=0.7, document_non_matches=True
@@ -370,7 +370,6 @@ class TestDeepNesting6Levels:
 
     def test_perfect_match_6_levels(self):
         """Test perfect match across all 6 levels of nesting."""
-        self.setUp()
 
         # Create identical companies
         gt_company = self.create_test_company("base")
@@ -393,7 +392,6 @@ class TestDeepNesting6Levels:
 
     def test_differences_at_each_level(self):
         """Test differences at each individual level (1-6) - OPTIMIZED VERSION."""
-        self.setUp()
 
         # Create base company once
         base_company = self.create_test_company("base")
@@ -429,7 +427,6 @@ class TestDeepNesting6Levels:
 
     def test_deep_field_path_generation(self):
         """Test that field paths are correctly generated for 6-level deep nesting."""
-        self.setUp()
 
         base_company = self.create_test_company("base")
         level6_diff_company = self.create_test_company("level6_diff")
@@ -466,7 +463,6 @@ class TestDeepNesting6Levels:
 
     def test_confusion_matrix_aggregation_6_levels(self):
         """Test confusion matrix aggregation across 6 levels."""
-        self.setUp()
 
         base_company = self.create_test_company("base")
         mixed_diff_company = self.create_test_company("level3_diff")
@@ -530,8 +526,6 @@ class TestDeepNesting6Levels:
         import psutil
         import os
 
-        self.setUp()
-
         # Measure initial memory
         process = psutil.Process(os.getpid())
         initial_memory = process.memory_info().rss / (1024 * 1024)  # MB
@@ -579,7 +573,6 @@ class TestDeepNesting6Levels:
 
     def test_lists_of_nested_objects_6_levels(self):
         """Test lists containing deeply nested objects."""
-        self.setUp()
 
         # Create companies with different numbers of nested objects
         base_company = self.create_test_company("base")
@@ -633,7 +626,6 @@ class TestDeepNesting6Levels:
 
     def test_null_handling_at_deep_levels(self):
         """Test handling of null values at various deep nesting levels."""
-        self.setUp()
 
         base_company = self.create_test_company("base")
 
@@ -671,7 +663,6 @@ class TestDeepNesting6Levels:
 
     def test_edge_case_empty_structures(self):
         """Test edge cases with empty structures at deep levels."""
-        self.setUp()
 
         base_company = self.create_test_company("base")
 
@@ -706,6 +697,7 @@ def test_integration_with_evaluator():
     """Test integration between deep nesting and StructuredModelEvaluator."""
     # Quick integration test to ensure everything works together
     test_instance = TestDeepNesting6Levels()
+    test_instance.setup_method()  # Initialize the evaluator
 
     # Run a few key tests
     test_instance.test_perfect_match_6_levels()

@@ -1,6 +1,6 @@
 """Tests for comparators in real-world scenarios."""
 
-import unittest
+import pytest
 
 # Import from common comparators instead of anls_star_lib
 from stickler.comparators.levenshtein import LevenshteinComparator
@@ -13,10 +13,10 @@ except ImportError:
     RAPIDFUZZ_AVAILABLE = False
 
 
-class TestComparatorsScenarios(unittest.TestCase):
+class TestComparatorsScenarios:
     """Test comparators with real-world examples."""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up the test cases."""
         self.levenshtein = LevenshteinComparator()
 
@@ -30,57 +30,51 @@ class TestComparatorsScenarios(unittest.TestCase):
     def test_names_and_people(self):
         """Test comparators with names and people data."""
         # Exact match
-        self.assertEqual(self.levenshtein.compare("John Smith", "John Smith"), 1.0)
+        assert self.levenshtein.compare("John Smith", "John Smith") == 1.0
 
         # Typos in names
-        self.assertLess(self.levenshtein.compare("John Smith", "Jon Smith"), 1.0)
+        assert self.levenshtein.compare("John Smith", "Jon Smith") < 1.0
 
         # First name/last name order
-        self.assertLess(self.levenshtein.compare("John Smith", "Smith John"), 1.0)
+        assert self.levenshtein.compare("John Smith", "Smith John") < 1.0
 
         if RAPIDFUZZ_AVAILABLE:
             # Fuzzy matching should handle these cases better
-            self.assertLess(
-                self.levenshtein.compare("John Smith", "Smith John"),
-                self.fuzzy_token_sort.compare("John Smith", "Smith John"),
+            assert (
+                self.levenshtein.compare("John Smith", "Smith John")
+                < self.fuzzy_token_sort.compare("John Smith", "Smith John")
             )
 
             # Partial names
-            self.assertGreaterEqual(
-                self.fuzzy_partial.compare("John Smith", "John"), 0.8
-            )
+            assert self.fuzzy_partial.compare("John Smith", "John") >= 0.8
             # Adjust expectation based on the actual result
-            self.assertGreaterEqual(
-                self.fuzzy_token_set.compare("Dr. John Smith, MD", "John Smith"), 0.7
+            assert (
+                self.fuzzy_token_set.compare("Dr. John Smith, MD", "John Smith") >= 0.7
             )
 
     def test_addresses(self):
         """Test comparators with address data."""
         # Exact match
-        self.assertEqual(
+        assert (
             self.levenshtein.compare(
                 "123 Main St, Apt 4, New York, NY 10001",
                 "123 Main St, Apt 4, New York, NY 10001",
-            ),
-            1.0,
+            )
+            == 1.0
         )
 
         # Abbreviations and slight differences
         address1 = "123 Main St, Apartment 4, New York, NY 10001"
         address2 = "123 Main St, Apt 4, New York, NY 10001"
-        self.assertLess(self.levenshtein.compare(address1, address2), 1.0)
+        assert self.levenshtein.compare(address1, address2) < 1.0
 
         if RAPIDFUZZ_AVAILABLE:
             # Token-based approaches should handle these better
-            self.assertGreaterEqual(
-                self.fuzzy_token_set.compare(address1, address2), 0.9
-            )
+            assert self.fuzzy_token_set.compare(address1, address2) >= 0.9
 
             # Different order
             address3 = "New York, NY 10001, 123 Main St, Apt 4"
-            self.assertGreaterEqual(
-                self.fuzzy_token_sort.compare(address2, address3), 0.9
-            )
+            assert self.fuzzy_token_sort.compare(address2, address3) >= 0.9
 
     def test_dates(self):
         """Test comparators with date formats."""
@@ -89,15 +83,15 @@ class TestComparatorsScenarios(unittest.TestCase):
         date2 = "01/01/2023"
         date3 = "2023-01-01"
 
-        self.assertLess(self.levenshtein.compare(date1, date2), 0.7)
-        self.assertLess(self.levenshtein.compare(date2, date3), 0.7)
-        self.assertLess(self.levenshtein.compare(date1, date3), 0.7)
+        assert self.levenshtein.compare(date1, date2) < 0.7
+        assert self.levenshtein.compare(date2, date3) < 0.7
+        assert self.levenshtein.compare(date1, date3) < 0.7
 
         if RAPIDFUZZ_AVAILABLE:
             # Levenshtein is generally not good for differently formatted dates
-            self.assertLess(
-                self.levenshtein.compare(date1, date2),
-                self.fuzzy_partial.compare(date1, date2),
+            assert (
+                self.levenshtein.compare(date1, date2)
+                < self.fuzzy_partial.compare(date1, date2)
             )
 
     def test_numbers_and_amounts(self):
@@ -107,13 +101,13 @@ class TestComparatorsScenarios(unittest.TestCase):
         amount2 = "1234.56"
         amount3 = "USD 1,234.56"
 
-        self.assertLess(self.levenshtein.compare(amount1, amount2), 1.0)
-        self.assertLess(self.levenshtein.compare(amount1, amount3), 0.8)
+        assert self.levenshtein.compare(amount1, amount2) < 1.0
+        assert self.levenshtein.compare(amount1, amount3) < 0.8
 
         if RAPIDFUZZ_AVAILABLE:
             # Partial ratio should be better for currency with different prefixes/formats
-            self.assertGreaterEqual(self.fuzzy_partial.compare(amount1, amount2), 0.8)
-            self.assertGreaterEqual(self.fuzzy_partial.compare(amount1, amount3), 0.7)
+            assert self.fuzzy_partial.compare(amount1, amount2) >= 0.8
+            assert self.fuzzy_partial.compare(amount1, amount3) >= 0.7
 
     def test_product_descriptions(self):
         """Test comparators with product descriptions."""
@@ -121,21 +115,21 @@ class TestComparatorsScenarios(unittest.TestCase):
         prod1 = "Red cotton t-shirt, size large"
         prod2 = "Large red t-shirt made of cotton"
 
-        self.assertLess(self.levenshtein.compare(prod1, prod2), 0.8)
+        assert self.levenshtein.compare(prod1, prod2) < 0.8
 
         if RAPIDFUZZ_AVAILABLE:
             # Token sort/set ratios should handle word order differences better
-            self.assertGreaterEqual(self.fuzzy_token_sort.compare(prod1, prod2), 0.75)
-            self.assertGreaterEqual(self.fuzzy_token_set.compare(prod1, prod2), 0.75)
+            assert self.fuzzy_token_sort.compare(prod1, prod2) >= 0.75
+            assert self.fuzzy_token_set.compare(prod1, prod2) >= 0.75
 
             # Slightly different descriptions
             prod3 = "Red cotton t-shirt, L size"
-            self.assertGreaterEqual(self.fuzzy_weighted.compare(prod1, prod3), 0.85)
+            assert self.fuzzy_weighted.compare(prod1, prod3) >= 0.85
 
     def test_mix_and_match(self):
         """Test using multiple comparators for the best results."""
         if not RAPIDFUZZ_AVAILABLE:
-            self.skipTest("rapidfuzz not installed")
+            pytest.skip("rapidfuzz not installed")
 
         examples = [
             # Names with different order
@@ -159,19 +153,16 @@ class TestComparatorsScenarios(unittest.TestCase):
 
             # For these specific examples, at least one fuzzy score should be
             # significantly better than the Levenshtein score
-            self.assertTrue(
-                any(
-                    fuzzy_score > lev_score + 0.15
-                    for fuzzy_score in [
-                        ratio_score,
-                        token_sort_score,
-                        token_set_score,
-                        partial_score,
-                        weighted_score,
-                    ]
-                ),
-                f"No significant improvement with fuzzy matching for '{str1}' and '{str2}'",
-            )
+            assert any(
+                fuzzy_score > lev_score + 0.15
+                for fuzzy_score in [
+                    ratio_score,
+                    token_sort_score,
+                    token_set_score,
+                    partial_score,
+                    weighted_score,
+                ]
+            ), f"No significant improvement with fuzzy matching for '{str1}' and '{str2}'"
 
     def test_multilingual_handling(self):
         """Test comparators with multilingual input."""
@@ -182,13 +173,11 @@ class TestComparatorsScenarios(unittest.TestCase):
         spanish2 = "Jose Martinez Gonzalez"  # Without accents
 
         # Levenshtein should still work with accented characters
-        self.assertGreaterEqual(self.levenshtein.compare(spanish1, spanish2), 0.7)
+        assert self.levenshtein.compare(spanish1, spanish2) >= 0.7
 
         if RAPIDFUZZ_AVAILABLE:
             # Fuzzy matcher should perform better with accent differences
-            self.assertGreaterEqual(
-                self.fuzzy_weighted.compare(spanish1, spanish2), 0.8
-            )
+            assert self.fuzzy_weighted.compare(spanish1, spanish2) >= 0.8
 
         # Non-Latin scripts (if supported by the implementation)
         try:
@@ -196,12 +185,8 @@ class TestComparatorsScenarios(unittest.TestCase):
             chinese2 = "北京"
 
             # Some similarity but not exact match
-            self.assertLess(self.levenshtein.compare(chinese1, chinese2), 1.0)
-            self.assertGreater(self.levenshtein.compare(chinese1, chinese2), 0.0)
+            assert self.levenshtein.compare(chinese1, chinese2) < 1.0
+            assert self.levenshtein.compare(chinese1, chinese2) > 0.0
         except Exception:
             # Skip if non-Latin script support is limited
             pass
-
-
-if __name__ == "__main__":
-    unittest.main()

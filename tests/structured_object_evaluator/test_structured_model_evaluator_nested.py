@@ -2,7 +2,7 @@
 Tests for StructuredModel.compare_with() metrics calculation for veterinary records models.
 """
 
-import unittest
+import pytest
 from typing import Optional, List
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
@@ -72,10 +72,10 @@ class VeterinaryRecord(StructuredModel):
     )
 
 
-class TestVetRecordsMetricsCalculation(unittest.TestCase):
+class TestVetRecordsMetricsCalculation:
     """Test cases for veterinary records metrics calculation."""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test data for nested VeterinaryRecord structures."""
         # Nested structure data
         self.gold_record = {
@@ -146,197 +146,151 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
         # field-level confusion metrix values - use "overall" key for primitive fields
-        self.assertEqual(
-            cm["fields"]["recordId"]["overall"]["tp"], 1, "Expected 1 true positives"
-        )
-        self.assertEqual(
-            cm["fields"]["recordId"]["overall"]["fd"], 0, "Expected 0 false discovery"
-        )
-        self.assertEqual(
-            cm["fields"]["recordId"]["overall"]["fa"], 0, "Expected 0 false alarm"
-        )
-        self.assertEqual(
-            cm["fields"]["recordId"]["overall"]["fn"], 0, "Expected 0 false negatives"
-        )
-        self.assertEqual(
-            cm["fields"]["recordId"]["overall"]["tn"], 0, "Expected 0 true negatives"
-        )
+        assert (
+            cm["fields"]["recordId"]["overall"]["tp"] == 1
+        ), "Expected 1 true positives"
+        assert (
+            cm["fields"]["recordId"]["overall"]["fd"] == 0
+        ), "Expected 0 false discovery"
+        assert (
+            cm["fields"]["recordId"]["overall"]["fa"] == 0
+        ), "Expected 0 false alarm"
+        assert (
+            cm["fields"]["recordId"]["overall"]["fn"] == 0
+        ), "Expected 0 false negatives"
+        assert (
+            cm["fields"]["recordId"]["overall"]["tn"] == 0
+        ), "Expected 0 true negatives"
 
         # The id field metrics are inside the "overall" key
-        self.assertEqual(
-            cm["fields"]["owner"]["fields"]["id"]["overall"]["tp"],
-            1,
-            "Expected 1 true positives",
-        )
-        self.assertEqual(
-            cm["fields"]["owner"]["fields"]["id"]["overall"]["fd"],
-            0,
-            "Expected 0 false discovery",
-        )
-        self.assertEqual(
-            cm["fields"]["owner"]["fields"]["id"]["overall"]["fa"],
-            0,
-            "Expected 0 false alarm",
-        )
-        self.assertEqual(
-            cm["fields"]["owner"]["fields"]["id"]["overall"]["fn"],
-            0,
-            "Expected 0 false negatives",
-        )
-        self.assertEqual(
-            cm["fields"]["owner"]["fields"]["id"]["overall"]["tn"],
-            0,
-            "Expected 0 true negatives",
-        )
+        assert (
+            cm["fields"]["owner"]["fields"]["id"]["overall"]["tp"] == 1
+        ), "Expected 1 true positives"
+        assert (
+            cm["fields"]["owner"]["fields"]["id"]["overall"]["fd"] == 0
+        ), "Expected 0 false discovery"
+        assert (
+            cm["fields"]["owner"]["fields"]["id"]["overall"]["fa"] == 0
+        ), "Expected 0 false alarm"
+        assert (
+            cm["fields"]["owner"]["fields"]["id"]["overall"]["fn"] == 0
+        ), "Expected 0 false negatives"
+        assert (
+            cm["fields"]["owner"]["fields"]["id"]["overall"]["tn"] == 0
+        ), "Expected 0 true negatives"
 
-        self.assertEqual(
-            cm["fields"]["owner"]["fields"]["name"]["overall"]["tp"],
-            1,
-            "Expected 1 true positives",
-        )
-        self.assertEqual(
-            cm["fields"]["owner"]["fields"]["name"]["overall"]["fd"],
-            0,
-            "Expected 0 false discovery",
-        )
-        self.assertEqual(
-            cm["fields"]["owner"]["fields"]["name"]["overall"]["fa"],
-            0,
-            "Expected 0 false alarm",
-        )
-        self.assertEqual(
-            cm["fields"]["owner"]["fields"]["name"]["overall"]["fn"],
-            0,
-            "Expected 0 false negatives",
-        )
-        self.assertEqual(
-            cm["fields"]["owner"]["fields"]["name"]["overall"]["tn"],
-            0,
-            "Expected 0 true negatives",
-        )
+        assert (
+            cm["fields"]["owner"]["fields"]["name"]["overall"]["tp"] == 1
+        ), "Expected 1 true positives"
+        assert (
+            cm["fields"]["owner"]["fields"]["name"]["overall"]["fd"] == 0
+        ), "Expected 0 false discovery"
+        assert (
+            cm["fields"]["owner"]["fields"]["name"]["overall"]["fa"] == 0
+        ), "Expected 0 false alarm"
+        assert (
+            cm["fields"]["owner"]["fields"]["name"]["overall"]["fn"] == 0
+        ), "Expected 0 false negatives"
+        assert (
+            cm["fields"]["owner"]["fields"]["name"]["overall"]["tn"] == 0
+        ), "Expected 0 true negatives"
 
         # Contact field metrics are in the nested fields
-        self.assertEqual(
+        assert (
             cm["fields"]["owner"]["fields"]["contact"]["fields"]["phone"]["overall"][
                 "tp"
-            ],
-            0,
-            "Expected 0 true positives",
-        )
-        self.assertEqual(
+            ]
+            == 0
+        ), "Expected 0 true positives"
+        assert (
             cm["fields"]["owner"]["fields"]["contact"]["fields"]["phone"]["overall"][
                 "fd"
-            ],
-            1,
-            "Expected 1 false discovery",
-        )
-        self.assertEqual(
+            ]
+            == 1
+        ), "Expected 1 false discovery"
+        assert (
             cm["fields"]["owner"]["fields"]["contact"]["fields"]["phone"]["overall"][
                 "fa"
-            ],
-            0,
-            "Expected 0 false alarm",
-        )
-        self.assertEqual(
+            ]
+            == 0
+        ), "Expected 0 false alarm"
+        assert (
             cm["fields"]["owner"]["fields"]["contact"]["fields"]["phone"]["overall"][
                 "fn"
-            ],
-            0,
-            "Expected 0 false negatives",
-        )
-        self.assertEqual(
+            ]
+            == 0
+        ), "Expected 0 false negatives"
+        assert (
             cm["fields"]["owner"]["fields"]["contact"]["fields"]["phone"]["overall"][
                 "tn"
-            ],
-            0,
-            "Expected 0 true negatives",
-        )
+            ]
+            == 0
+        ), "Expected 0 true negatives"
 
-        self.assertEqual(
+        assert (
             cm["fields"]["owner"]["fields"]["contact"]["fields"]["email"]["overall"][
                 "tp"
-            ],
-            0,
-            "Expected 0 true positives",
-        )
-        self.assertEqual(
+            ]
+            == 0
+        ), "Expected 0 true positives"
+        assert (
             cm["fields"]["owner"]["fields"]["contact"]["fields"]["email"]["overall"][
                 "fd"
-            ],
-            0,
-            "Expected 0 false discovery",
-        )
-        self.assertEqual(
+            ]
+            == 0
+        ), "Expected 0 false discovery"
+        assert (
             cm["fields"]["owner"]["fields"]["contact"]["fields"]["email"]["overall"][
                 "fa"
-            ],
-            1,
-            "Expected 1 false alarm",
-        )
-        self.assertEqual(
+            ]
+            == 1
+        ), "Expected 1 false alarm"
+        assert (
             cm["fields"]["owner"]["fields"]["contact"]["fields"]["email"]["overall"][
                 "fn"
-            ],
-            0,
-            "Expected 0 false negatives",
-        )
-        self.assertEqual(
+            ]
+            == 0
+        ), "Expected 0 false negatives"
+        assert (
             cm["fields"]["owner"]["fields"]["contact"]["fields"]["email"]["overall"][
                 "tn"
-            ],
-            0,
-            "Expected 0 true negatives",
-        )
+            ]
+            == 0
+        ), "Expected 0 true negatives"
 
         # Contact overall metrics are also in an "overall" key
-        self.assertEqual(
-            cm["fields"]["owner"]["fields"]["contact"]["overall"]["tp"],
-            0,
-            "Expected 0 true positives",
-        )
-        self.assertEqual(
-            cm["fields"]["owner"]["fields"]["contact"]["overall"]["fd"],
-            1,
-            "Expected 1 false discovery",
-        )
-        self.assertEqual(
-            cm["fields"]["owner"]["fields"]["contact"]["overall"]["fa"],
-            0,
-            "Expected 0 false alarm (object-level counting - both GT and Pred have contact objects)",
-        )
-        self.assertEqual(
-            cm["fields"]["owner"]["fields"]["contact"]["overall"]["fn"],
-            0,
-            "Expected 0 false negatives",
-        )
-        self.assertEqual(
-            cm["fields"]["owner"]["fields"]["contact"]["overall"]["tn"],
-            0,
-            "Expected 0 true negatives",
-        )
+        assert (
+            cm["fields"]["owner"]["fields"]["contact"]["overall"]["tp"] == 0
+        ), "Expected 0 true positives"
+        assert (
+            cm["fields"]["owner"]["fields"]["contact"]["overall"]["fd"] == 1
+        ), "Expected 1 false discovery"
+        assert (
+            cm["fields"]["owner"]["fields"]["contact"]["overall"]["fa"] == 0
+        ), "Expected 0 false alarm (object-level counting - both GT and Pred have contact objects)"
+        assert (
+            cm["fields"]["owner"]["fields"]["contact"]["overall"]["fn"] == 0
+        ), "Expected 0 false negatives"
+        assert (
+            cm["fields"]["owner"]["fields"]["contact"]["overall"]["tn"] == 0
+        ), "Expected 0 true negatives"
 
         # Owner overall metrics
-        self.assertEqual(
-            cm["fields"]["owner"]["overall"]["tp"],
-            0,
-            "Expected 0 true positives (object-level counting - owner object similarity below threshold due to contact differences)",
-        )
-        self.assertEqual(
-            cm["fields"]["owner"]["overall"]["fd"],
-            1,
-            "Expected 1 false discovery (object-level counting - owner objects present but don't match)",
-        )
-        self.assertEqual(
-            cm["fields"]["owner"]["overall"]["fa"],
-            0,
-            "Expected 0 false alarm (object-level counting - both GT and Pred have owner objects)",
-        )
-        self.assertEqual(
-            cm["fields"]["owner"]["overall"]["fn"], 0, "Expected 0 false negatives"
-        )
-        self.assertEqual(
-            cm["fields"]["owner"]["overall"]["tn"], 0, "Expected 0 true negatives"
-        )
+        assert (
+            cm["fields"]["owner"]["overall"]["tp"] == 0
+        ), "Expected 0 true positives (object-level counting - owner object similarity below threshold due to contact differences)"
+        assert (
+            cm["fields"]["owner"]["overall"]["fd"] == 1
+        ), "Expected 1 false discovery (object-level counting - owner objects present but don't match)"
+        assert (
+            cm["fields"]["owner"]["overall"]["fa"] == 0
+        ), "Expected 0 false alarm (object-level counting - both GT and Pred have owner objects)"
+        assert (
+            cm["fields"]["owner"]["overall"]["fn"] == 0
+        ), "Expected 0 false negatives"
+        assert (
+            cm["fields"]["owner"]["overall"]["tn"] == 0
+        ), "Expected 0 true negatives"
 
     def test_pets_list_of_structured_model(self):
         """Test that list fields like 'pets' are correctly matched based on nested objects."""
@@ -367,111 +321,70 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
 
-        # petId metrics
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"]["fields"]["petId"], "tp"),
-            2,
-            "Expected 2 true positives",
-        )
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"]["fields"]["petId"], "fd"),
-            0,
-            "Expected 0 false discovery",
-        )
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"]["fields"]["petId"], "fa"),
-            0,
-            "Expected 0 false alarm",
-        )
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"]["fields"]["petId"], "fn"),
-            0,
-            "Expected 0 false negatives",
-        )
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"]["fields"]["petId"], "tn"),
-            0,
-            "Expected 0 true negatives",
-        )
+        # Direct access to metrics for pet fields (not in "overall")
+        assert (
+            get_metric(cm["fields"]["pets"]["fields"]["petId"], "tp") == 2
+        ), "Expected 2 true positives"
+        assert (
+            get_metric(cm["fields"]["pets"]["fields"]["petId"], "fd") == 0
+        ), "Expected 0 false discovery"
+        assert (
+            get_metric(cm["fields"]["pets"]["fields"]["petId"], "fa") == 0
+        ), "Expected 0 false alarm"
+        assert (
+            get_metric(cm["fields"]["pets"]["fields"]["petId"], "fn") == 0
+        ), "Expected 0 false negatives"
+        assert (
+            get_metric(cm["fields"]["pets"]["fields"]["petId"], "tn") == 0
+        ), "Expected 0 true negatives"
 
-        # name metrics
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"]["fields"]["name"], "tp"),
-            2,
-            "Expected 2 true positives",
-        )
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"]["fields"]["name"], "fd"),
-            0,
-            "Expected 0 false discovery",
-        )
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"]["fields"]["name"], "fa"),
-            0,
-            "Expected 0 false alarm",
-        )
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"]["fields"]["name"], "fn"),
-            0,
-            "Expected 0 false negatives",
-        )
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"]["fields"]["name"], "tn"),
-            0,
-            "Expected 0 true negatives",
-        )
+        assert (
+            get_metric(cm["fields"]["pets"]["fields"]["name"], "tp") == 2
+        ), "Expected 2 true positives"
+        assert (
+            get_metric(cm["fields"]["pets"]["fields"]["name"], "fd") == 0
+        ), "Expected 0 false discovery"
+        assert (
+            get_metric(cm["fields"]["pets"]["fields"]["name"], "fa") == 0
+        ), "Expected 0 false alarm"
+        assert (
+            get_metric(cm["fields"]["pets"]["fields"]["name"], "fn") == 0
+        ), "Expected 0 false negatives"
+        assert (
+            get_metric(cm["fields"]["pets"]["fields"]["name"], "tn") == 0
+        ), "Expected 0 true negatives"
 
-        # species metrics
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"]["fields"]["species"], "tp"),
-            1,
-            "Expected 1 true positives",
-        )
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"]["fields"]["species"], "fd"),
-            0,
-            "Expected 0 false discovery",
-        )
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"]["fields"]["species"], "fa"),
-            0,
-            "Expected 0 false alarm",
-        )
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"]["fields"]["species"], "fn"),
-            1,
-            "Expected 1 false negatives",
-        )
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"]["fields"]["species"], "tn"),
-            0,
-            "Expected 0 true negatives",
-        )
+        # Species metrics - Debug showed TP=0, not 1 as expected
+        assert (
+            get_metric(cm["fields"]["pets"]["fields"]["species"], "tp") == 1
+        ), "Expected 1 true positives"
+        assert (
+            get_metric(cm["fields"]["pets"]["fields"]["species"], "fd") == 0
+        ), "Expected 0 false discovery"
+        assert (
+            get_metric(cm["fields"]["pets"]["fields"]["species"], "fa") == 0
+        ), "Expected 0 false alarm"
+        assert (
+            get_metric(cm["fields"]["pets"]["fields"]["species"], "fn") == 1
+        ), "Expected 1 false negatives"
+        assert (
+            get_metric(cm["fields"]["pets"]["fields"]["species"], "tn") == 0
+        ), "Expected 0 true negatives"
 
-        # Overall pets metrics
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"], "tp"),
-            1,
-            "Expected 1 true positive for pets field overall performance",
-        )
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"], "fd"),
-            1,
-            "Expected 1 false discovery for pets field overall performance",
-        )
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"], "fa"), 0, "Expected 0 false alarm"
-        )
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"], "fn"),
-            0,
-            "Expected 0 false negative for pets field overall performance",
-        )
-        self.assertEqual(
-            get_metric(cm["fields"]["pets"], "tn"),
-            0,
-            "Expected 0 true negatives for pets field overall performance",
-        )
+        # Overall pets metrics - Using "overall" key for individual pets field performance
+        assert (
+            get_metric(cm["fields"]["pets"], "tp") == 1
+        ), "Expected 1 true positive for pets field overall performance"
+        assert (
+            get_metric(cm["fields"]["pets"], "fd") == 1
+        ), "Expected 1 false discovery for pets field overall performance"
+        assert get_metric(cm["fields"]["pets"], "fa") == 0, "Expected 0 false alarm"
+        assert (
+            get_metric(cm["fields"]["pets"], "fn") == 0
+        ), "Expected 0 false negative for pets field overall performance"
+        assert (
+            get_metric(cm["fields"]["pets"], "tn") == 0
+        ), "Expected 0 true negatives for pets field overall performance"
 
     def test_overall_metrics(self):
         """Test correct aggregation and calculation of overall metrics."""
@@ -497,20 +410,18 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
 
-        self.assertEqual(
-            cm["overall"]["tp"], 2, "Expected 2 true positives (object-level counting)"
-        )
-        self.assertEqual(cm["overall"]["tn"], 0, "Expected 0 true negatives")
-        self.assertEqual(cm["overall"]["fd"], 2, "Expected 2 false discovery")
-        self.assertEqual(
-            cm["overall"]["fa"],
-            0,
-            "Expected 0 false alarm (nested field FAs don't aggregate to overall)",
-        )
-        self.assertEqual(
-            cm["overall"]["fp"], 2, "Expected 2 false positive"
-        )  # false discovery only
-        self.assertEqual(cm["overall"]["fn"], 0, "Expected 0 false negative")
+        assert (
+            cm["overall"]["tp"] == 2
+        ), "Expected 2 true positives (object-level counting)"
+        assert cm["overall"]["tn"] == 0, "Expected 0 true negatives"
+        assert cm["overall"]["fd"] == 2, "Expected 2 false discovery"
+        assert (
+            cm["overall"]["fa"] == 0
+        ), "Expected 0 false alarm (nested field FAs don't aggregate to overall)"
+        assert (
+            cm["overall"]["fp"] == 2
+        ), "Expected 2 false positive"  # false discovery only
+        assert cm["overall"]["fn"] == 0, "Expected 0 false negative"
 
         # Expected metrics
         # 9 true positive: recordId, owner.id, owner.name, pets[0].petId, pets[0].name, pets[0].species, pets[0].breed, pets[1].petId, pets[1].name
@@ -522,9 +433,9 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
         # Recall = TP/(TP+FN) = 9/(9+1) = 9/10 = 0.9
         # F1 = 2*precision*recall/(precision+recall) = 2*0.692*0.9/(0.692+0.9) = 0.783
         derived_metrics = cm["aggregate"]["derived"]
-        self.assertAlmostEqual(derived_metrics["cm_precision"], 0.692, places=3)
-        self.assertAlmostEqual(derived_metrics["cm_recall"], 0.9, places=3)
-        self.assertAlmostEqual(derived_metrics["cm_f1"], 0.783, places=3)
+        assert derived_metrics["cm_precision"] == pytest.approx(0.692, abs=0.001)
+        assert derived_metrics["cm_recall"] == pytest.approx(0.9, abs=0.001)
+        assert derived_metrics["cm_f1"] == pytest.approx(0.783, abs=0.001)
 
         # ============================================================================
         # Test with alternative recall formula (recall_with_fd=True)
@@ -533,32 +444,23 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
         # Recall = TP/(TP+FN+FD) = 9/(9+1+2) = 9/12 = 0.75
         # F1 = 2*precision*recall/(precision+recall) = 2*0.692*0.75/(0.692+0.75) = 0.720
         # ============================================================================
-        
+
         results_alt = gold_record.compare_with(
             pred_record, include_confusion_matrix=True, recall_with_fd=True
         )
         derived_metrics_alt = results_alt["confusion_matrix"]["aggregate"]["derived"]
-        
+
         # Verify the aggregate metrics are what we expect
         cm_alt = results_alt["confusion_matrix"]
-        self.assertEqual(cm_alt["aggregate"]["tp"], 9, "Sanity check: TP should be 9")
-        self.assertEqual(cm_alt["aggregate"]["fn"], 1, "Sanity check: FN should be 1")
-        self.assertEqual(cm_alt["aggregate"]["fd"], 2, "Sanity check: FD should be 2")
-        
-        # Now verify the derived metrics with FD included in recall denominator
-        self.assertAlmostEqual(derived_metrics_alt["cm_precision"], 0.692, places=3)
-        self.assertAlmostEqual(
-            derived_metrics_alt["cm_recall"], 
-            0.750, 
-            places=3,
-            msg="Recall with FD should be TP/(TP+FN+FD) = 9/(9+1+2) = 9/12 = 0.75"
-        )
-        self.assertAlmostEqual(
-            derived_metrics_alt["cm_f1"], 
-            0.720, 
-            places=3,
-            msg="F1 should be 2*precision*recall/(precision+recall) = 2*0.692*0.75/(0.692+0.75) = 0.720"
-        )
+        assert cm_alt["aggregate"]["tp"] == 9, "Sanity check: TP should be 9"
+        assert cm_alt["aggregate"]["fn"] == 1, "Sanity check: FN should be 1"
+        assert cm_alt["aggregate"]["fd"] == 2, "Sanity check: FD should be 2"
 
-if __name__ == "__main__":
-    unittest.main()
+        # Now verify the derived metrics with FD included in recall denominator
+        assert derived_metrics_alt["cm_precision"] == pytest.approx(0.692, abs=0.001)
+        assert (
+            derived_metrics_alt["cm_recall"] == pytest.approx(0.750, abs=0.001)
+        ), "Recall with FD should be TP/(TP+FN+FD) = 9/(9+1+2) = 9/12 = 0.75"
+        assert (
+            derived_metrics_alt["cm_f1"] == pytest.approx(0.720, abs=0.001)
+        ), "F1 should be 2*precision*recall/(precision+recall) = 2*0.692*0.75/(0.692+0.75) = 0.720"
