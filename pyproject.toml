@@ -4,7 +4,8 @@ version = "0.1.4"
 description = "Structured object comparison and evaluation library"
 authors = [
     {name = "Spencer Romo", email = "sromo@amazon.com"},
-    {name = "Ayushi Haria", email = "ayuharia@amazon.com"}
+    {name = "Ayushi Haria", email = "ayuharia@amazon.com"},
+    {name = "Aditya Addepalli", email = "adiadd@amazon.com"}
 ]
 readme = "README.md"
 requires-python = ">=3.12"
@@ -41,3 +42,10 @@ exclude_dirs = ["tests"]
 [build-system]
 requires = ["setuptools >= 61.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = ["-v", "--tb=short"]

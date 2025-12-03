@@ -4,7 +4,7 @@ This test verifies that we can calculate precision, recall, F1, and accuracy met
 at the field level and object level for simple objects in the toy veterinary records models.
 """
 
-import unittest
+import pytest
 from typing import Optional
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
@@ -33,10 +33,10 @@ class PetOwner(StructuredModel):
     )  # Date when owner first registered at clinic
 
 
-class TestVetRecordsMetricsCalculation(unittest.TestCase):
+class TestVetRecordsMetricsCalculation:
     """Test cases for veterinary records metrics calculation."""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test data for simple PetOwner"""
         # Simple structure data
         self.gold_owner = {
@@ -79,83 +79,55 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
         # field-level confusion metrix values
-        self.assertEqual(cm["fields"]["ownerId"]["tp"], 1, "Expected 1 true positives")
-        self.assertEqual(cm["fields"]["ownerId"]["fd"], 0, "Expected 0 false discovery")
-        self.assertEqual(cm["fields"]["ownerId"]["fa"], 0, "Expected 0 false alarm")
-        self.assertEqual(cm["fields"]["ownerId"]["fn"], 0, "Expected 0 false negatives")
-        self.assertEqual(cm["fields"]["ownerId"]["tn"], 0, "Expected 0 true negatives")
+        assert cm["fields"]["ownerId"]["tp"] == 1, "Expected 1 true positives"
+        assert cm["fields"]["ownerId"]["fd"] == 0, "Expected 0 false discovery"
+        assert cm["fields"]["ownerId"]["fa"] == 0, "Expected 0 false alarm"
+        assert cm["fields"]["ownerId"]["fn"] == 0, "Expected 0 false negatives"
+        assert cm["fields"]["ownerId"]["tn"] == 0, "Expected 0 true negatives"
 
-        self.assertEqual(
-            cm["fields"]["firstName"]["tp"], 1, "Expected 1 true positives"
-        )
-        self.assertEqual(
-            cm["fields"]["firstName"]["fd"], 0, "Expected 0 false discovery"
-        )
-        self.assertEqual(cm["fields"]["firstName"]["fa"], 0, "Expected 0 false alarm")
-        self.assertEqual(
-            cm["fields"]["firstName"]["fn"], 0, "Expected 0 false negatives"
-        )
-        self.assertEqual(
-            cm["fields"]["firstName"]["tn"], 0, "Expected 0 true negatives"
-        )
+        assert cm["fields"]["firstName"]["tp"] == 1, "Expected 1 true positives"
+        assert cm["fields"]["firstName"]["fd"] == 0, "Expected 0 false discovery"
+        assert cm["fields"]["firstName"]["fa"] == 0, "Expected 0 false alarm"
+        assert cm["fields"]["firstName"]["fn"] == 0, "Expected 0 false negatives"
+        assert cm["fields"]["firstName"]["tn"] == 0, "Expected 0 true negatives"
 
-        self.assertEqual(cm["fields"]["lastName"]["tp"], 1, "Expected 1 true positives")
-        self.assertEqual(
-            cm["fields"]["lastName"]["fd"], 0, "Expected 0 false discovery"
-        )
-        self.assertEqual(cm["fields"]["lastName"]["fa"], 0, "Expected 0 false alarm")
-        self.assertEqual(
-            cm["fields"]["lastName"]["fn"], 0, "Expected 0 false negatives"
-        )
-        self.assertEqual(cm["fields"]["lastName"]["tn"], 0, "Expected 0 true negatives")
+        assert cm["fields"]["lastName"]["tp"] == 1, "Expected 1 true positives"
+        assert cm["fields"]["lastName"]["fd"] == 0, "Expected 0 false discovery"
+        assert cm["fields"]["lastName"]["fa"] == 0, "Expected 0 false alarm"
+        assert cm["fields"]["lastName"]["fn"] == 0, "Expected 0 false negatives"
+        assert cm["fields"]["lastName"]["tn"] == 0, "Expected 0 true negatives"
 
-        self.assertEqual(
-            cm["fields"]["phoneNumber"]["tp"], 0, "Expected 0 true positives"
-        )
-        self.assertEqual(
-            cm["fields"]["phoneNumber"]["fd"], 1, "Expected 1 false discovery"
-        )
-        self.assertEqual(cm["fields"]["phoneNumber"]["fa"], 0, "Expected 0 false alarm")
-        self.assertEqual(
-            cm["fields"]["phoneNumber"]["fn"], 0, "Expected 0 false negatives"
-        )
-        self.assertEqual(
-            cm["fields"]["phoneNumber"]["tn"], 0, "Expected 0 true negatives"
-        )
+        assert cm["fields"]["phoneNumber"]["tp"] == 0, "Expected 0 true positives"
+        assert cm["fields"]["phoneNumber"]["fd"] == 1, "Expected 1 false discovery"
+        assert cm["fields"]["phoneNumber"]["fa"] == 0, "Expected 0 false alarm"
+        assert cm["fields"]["phoneNumber"]["fn"] == 0, "Expected 0 false negatives"
+        assert cm["fields"]["phoneNumber"]["tn"] == 0, "Expected 0 true negatives"
 
-        self.assertEqual(
-            cm["fields"]["memberSince"]["tp"], 0, "Expected 0 true positives"
-        )
-        self.assertEqual(
-            cm["fields"]["memberSince"]["fd"], 0, "Expected 0 false discovery"
-        )
-        self.assertEqual(cm["fields"]["memberSince"]["fa"], 1, "Expected 1 false alarm")
-        self.assertEqual(
-            cm["fields"]["memberSince"]["fn"], 0, "Expected 0 false negatives"
-        )
-        self.assertEqual(
-            cm["fields"]["memberSince"]["tn"], 0, "Expected 0 true negatives"
-        )
+        assert cm["fields"]["memberSince"]["tp"] == 0, "Expected 0 true positives"
+        assert cm["fields"]["memberSince"]["fd"] == 0, "Expected 0 false discovery"
+        assert cm["fields"]["memberSince"]["fa"] == 1, "Expected 1 false alarm"
+        assert cm["fields"]["memberSince"]["fn"] == 0, "Expected 0 false negatives"
+        assert cm["fields"]["memberSince"]["tn"] == 0, "Expected 0 true negatives"
 
-        self.assertEqual(cm["overall"]["tp"], 3, "Expected 3 true positives")
-        self.assertEqual(cm["overall"]["fd"], 1, "Expected 1 false discovery")
-        self.assertEqual(cm["overall"]["fa"], 1, "Expected 1 false alarm")
-        self.assertEqual(cm["overall"]["fn"], 0, "Expected 0 false negatives")
-        self.assertEqual(cm["overall"]["tn"], 0, "Expected 0 true negatives")
+        assert cm["overall"]["tp"] == 3, "Expected 3 true positives"
+        assert cm["overall"]["fd"] == 1, "Expected 1 false discovery"
+        assert cm["overall"]["fa"] == 1, "Expected 1 false alarm"
+        assert cm["overall"]["fn"] == 0, "Expected 0 false negatives"
+        assert cm["overall"]["tn"] == 0, "Expected 0 true negatives"
 
         # Check field-level metrics
-        self.assertEqual(results["fields"]["ownerId"]["precision"], 1.0)
-        self.assertEqual(results["fields"]["firstName"]["precision"], 1.0)
-        self.assertEqual(results["fields"]["lastName"]["precision"], 1.0)
-        self.assertEqual(results["fields"]["phoneNumber"]["precision"], 0.0)
-        self.assertEqual(results["fields"]["memberSince"]["precision"], 0.0)
+        assert results["fields"]["ownerId"]["precision"] == 1.0
+        assert results["fields"]["firstName"]["precision"] == 1.0
+        assert results["fields"]["lastName"]["precision"] == 1.0
+        assert results["fields"]["phoneNumber"]["precision"] == 0.0
+        assert results["fields"]["memberSince"]["precision"] == 0.0
 
         # Expected metrics with traditional recall
         # Expected recall = TP/(TP+FN) = 3/(3+0) = 1
         # Expected F1 = 2*0.6*1/(0.6+1) = 0.75
-        self.assertAlmostEqual(results["overall"]["precision"], 0.6)
-        self.assertAlmostEqual(results["overall"]["recall"], 1.0)
-        self.assertAlmostEqual(results["overall"]["f1"], 0.75)
+        assert results["overall"]["precision"] == pytest.approx(0.6)
+        assert results["overall"]["recall"] == pytest.approx(1.0)
+        assert results["overall"]["f1"] == pytest.approx(0.75)
 
         # Test with alternative recall formula
         results_alt = self.evaluator.evaluate(
@@ -165,10 +137,6 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
         # Expected metrics with alternative recall
         # Expected recall = TP/(TP+FN+FD) = 3/(3+0+1) = 0.75
         # Expected F1 = 2*0.6*0.75/(0.6+0.75) = 0.67
-        self.assertAlmostEqual(results_alt["overall"]["precision"], 0.6)
-        self.assertAlmostEqual(results_alt["overall"]["recall"], 0.75)
-        self.assertAlmostEqual(results_alt["overall"]["f1"], 0.67, places=2)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert results_alt["overall"]["precision"] == pytest.approx(0.6)
+        assert results_alt["overall"]["recall"] == pytest.approx(0.75)
+        assert results_alt["overall"]["f1"] == pytest.approx(0.67, abs=0.01)

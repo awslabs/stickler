@@ -1,6 +1,6 @@
 """Tests for structured model comparison using the new StructuredModel implementation."""
 
-import unittest
+import pytest
 from typing import Optional
 
 from pydantic import Field
@@ -78,7 +78,7 @@ class Organization(StructuredModel):
     revenue: Optional[float] = Field(None)
 
 
-class TestStructuredModels(unittest.TestCase):
+class TestStructuredModels:
     """Test cases for structured model comparison."""
 
     def test_basic_person_comparison(self):
@@ -100,10 +100,10 @@ class TestStructuredModels(unittest.TestCase):
         )
 
         result = gt.compare_with(exact_match)
-        self.assertEqual(result["overall_score"], 1.0)
-        self.assertTrue(result["all_fields_matched"])
+        assert result["overall_score"] == 1.0
+        assert result["all_fields_matched"]
         # Check that score is above the threshold
-        self.assertGreaterEqual(result["overall_score"], Person.match_threshold)
+        assert result["overall_score"] >= Person.match_threshold
 
         # Test close match with variations
         close_match = Person(
@@ -114,9 +114,9 @@ class TestStructuredModels(unittest.TestCase):
         )
 
         result = gt.compare_with(close_match)
-        self.assertGreater(result["overall_score"], 0.35)  # Should be moderate
+        assert result["overall_score"] > 0.35  # Should be moderate
         # We're now checking based on thresholds, not exact matches, so this is actually matched
-        self.assertFalse(result["all_fields_matched"])  # Age isn't an exact match
+        assert not result["all_fields_matched"]  # Age isn't an exact match
 
         # Test poor match
         poor_match = Person(
@@ -127,11 +127,11 @@ class TestStructuredModels(unittest.TestCase):
         )
 
         result = gt.compare_with(poor_match)
-        self.assertLess(result["overall_score"], 0.5)  # Should be low
-        self.assertFalse(result["all_fields_matched"])
+        assert result["overall_score"] < 0.5  # Should be low
+        assert not result["all_fields_matched"]
 
         # Check that score is below the threshold
-        self.assertLess(result["overall_score"], Person.match_threshold)
+        assert result["overall_score"] < Person.match_threshold
 
         # Test partial match that satisfies necessary fields
         necessary_match = Person(
@@ -142,10 +142,10 @@ class TestStructuredModels(unittest.TestCase):
         )
 
         result = gt.compare_with(necessary_match)
-        self.assertLess(result["overall_score"], 0.7)  # Should be moderate
-        self.assertFalse(result["all_fields_matched"])
+        assert result["overall_score"] < 0.7  # Should be moderate
+        assert not result["all_fields_matched"]
         # Check that score is appropriate
-        self.assertGreaterEqual(result["overall_score"], 0.35)
+        assert result["overall_score"] >= 0.35
 
     def test_nested_organization_comparison(self):
         """Test comparison of Organization models with nested Address."""
@@ -180,10 +180,10 @@ class TestStructuredModels(unittest.TestCase):
         )
 
         result = gt.compare_with(exact_match)
-        self.assertEqual(result["overall_score"], 1.0)
-        self.assertTrue(result["all_fields_matched"])
+        assert result["overall_score"] == 1.0
+        assert result["all_fields_matched"]
         # Check that score is perfect (1.0)
-        self.assertEqual(result["overall_score"], 1.0)
+        assert result["overall_score"] == 1.0
 
         # Test with variations in nested object
         nested_variation = Organization(
@@ -202,19 +202,17 @@ class TestStructuredModels(unittest.TestCase):
 
         result = gt.compare_with(nested_variation)
         # Lower the expected threshold due to Levenshtein distance limitations
-        self.assertGreater(result["overall_score"], 0.34)  # Should be moderate
-        self.assertFalse(result["all_fields_matched"])
+        assert result["overall_score"] > 0.34  # Should be moderate
+        assert not result["all_fields_matched"]
         # Check that score is above threshold but not perfect
         # Updated threshold to reflect the new recursive comparison behavior
-        self.assertGreaterEqual(result["overall_score"], 0.65)
-        self.assertLess(result["overall_score"], 1.0)
+        assert result["overall_score"] >= 0.65
+        assert result["overall_score"] < 1.0
 
         # Check that nested address was evaluated correctly
-        self.assertIn("address", result["field_scores"])
+        assert "address" in result["field_scores"]
         # With recursive thresholding, address score may be 0 if it falls below its threshold
-        self.assertGreaterEqual(
-            result["field_scores"]["address"], 0.0
-        )  # Address score should be 0 or higher
+        assert result["field_scores"]["address"] >= 0.0  # Address score should be 0 or higher
 
         # Test with poor match in nested object but good parent match
         nested_poor_match = Organization(
@@ -232,18 +230,12 @@ class TestStructuredModels(unittest.TestCase):
         )
 
         result = gt.compare_with(nested_poor_match)
-        self.assertLess(result["overall_score"], 0.7)  # Should be moderate or low
-        self.assertFalse(result["all_fields_matched"])
+        assert result["overall_score"] < 0.7  # Should be moderate or low
+        assert not result["all_fields_matched"]
         # Check that score is appropriate but not too high
-        self.assertGreaterEqual(result["overall_score"], 0.4)
-        self.assertLess(result["overall_score"], 0.9)
+        assert result["overall_score"] >= 0.4
+        assert result["overall_score"] < 0.9
 
         # Check that nested address was evaluated correctly
-        self.assertIn("address", result["field_scores"])
-        self.assertLess(
-            result["field_scores"]["address"], 0.7
-        )  # Address score should be low
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert "address" in result["field_scores"]
+        assert result["field_scores"]["address"] < 0.7  # Address score should be low

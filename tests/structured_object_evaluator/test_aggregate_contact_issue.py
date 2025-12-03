@@ -286,7 +286,3 @@ def test_correct_behavior_demonstration():
     print("phone: fd=1 (phone values don't match)")
     print("email: fa=1 (email in pred but not in true)")
     print("But these should NOT roll up to contact overall when aggregate=False")
-
-
-if __name__ == "__main__":
-    test_aggregate_contact_debug()

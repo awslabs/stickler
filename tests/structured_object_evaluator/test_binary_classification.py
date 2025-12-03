@@ -489,7 +489,3 @@ def test_null_value_handling():
 
     # Should be TN (true negative) - missing in both GT and prediction
     assert cm3["high_threshold_field"]["tn"] == 1
-
-
-if __name__ == "__main__":
-    pytest.main()
