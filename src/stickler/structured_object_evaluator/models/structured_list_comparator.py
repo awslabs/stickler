@@ -304,45 +304,65 @@ class StructuredListComparator:
                 for gt_idx, pred_idx, similarity in matched_pairs
                 if similarity >= match_threshold
             ]
+            bad_matched_pairs = [
+            (gt_idx, pred_idx, similarity)
+            for gt_idx, pred_idx, similarity in matched_pairs
+            if similarity < match_threshold
+            ]
 
             # Only generate field details if we have good matched pairs OR unmatched objects
             has_good_matches = len(good_matched_pairs) > 0
+            has_bad_matches = len(bad_matched_pairs) > 0
             has_unmatched = (len(matched_gt_indices) < len(gt_list)) or (
                 len(matched_pred_indices) < len(pred_list)
             )
 
-            if has_good_matches or has_unmatched:
-                for sub_field_name in model_class.model_fields:
-                    if sub_field_name == "extra_fields":
-                        continue
+            # Section 1: Process good matches
+            if has_good_matches:
+                for gt_idx, pred_idx, similarity in good_matched_pairs:
+                    if gt_idx < len(gt_list) and pred_idx < len(pred_list):
+                        gt_item = gt_list[gt_idx]
+                        pred_item = pred_list[pred_idx]
+                        # Use compare_recursive which properly routes all field types
+                        field_details_tmp = gt_item.compare_recursive(pred_item)
+                        
+                        # Merge field metrics into field_details
+                        self._merge_field_metrics(field_details, field_details_tmp)
 
-                    # Check if this field is a List[StructuredModel] that needs hierarchical treatment
-                    field_info = model_class.model_fields.get(sub_field_name)
-                    is_hierarchical_field = (
-                        field_info and model_class._is_structured_field_type(field_info)
-                    )
+            # Section 2: Bad matches are NOT processed for field-level metrics
+            # They are treated as atomic units (FD at object level only)
 
-                    if is_hierarchical_field:
-                        # Handle hierarchical fields with recursive aggregation - ONLY for good matches
-                        field_details[sub_field_name] = self._handle_hierarchical_field(
-                            sub_field_name,
-                            gt_list,
-                            pred_list,
-                            good_matched_pairs,
-                            matched_gt_indices,
-                            matched_pred_indices,
-                            match_threshold,
-                        )
-                    else:
-                        # Handle primitive fields with simple aggregation - ONLY for good matches
-                        field_details[sub_field_name] = self._handle_primitive_field(
-                            sub_field_name,
-                            gt_list,
-                            pred_list,
-                            good_matched_pairs,
-                            matched_gt_indices,
-                            matched_pred_indices,
-                        )
+            # Section 3: Process unmatched items
+            if has_unmatched:
+                # Handle unmatched GT objects - count each element in the list
+                for gt_idx, gt_item in enumerate(gt_list):
+                    if gt_idx not in matched_gt_indices:
+                        # Compare against itself to count all non-null values
+                        field_details_tmp = gt_item.compare_recursive(gt_item)
+                        
+                        # Convert TP to FN (ground truth present, prediction missing)
+                        converted = self._convert_tp_to_fn(field_details_tmp)
+                        
+                        # Wrap converted in 'fields' structure for _merge_field_metrics
+                        wrapped = {'fields': converted}
+                        
+                        # Merge converted metrics into field_details
+                        self._merge_field_metrics(field_details, wrapped)
+
+                # Handle unmatched pred objects - count each element in the list
+                for pred_idx, pred_item in enumerate(pred_list):
+                    if pred_idx not in matched_pred_indices:
+                        # Compare against itself to count all non-null values
+                        field_details_tmp = pred_item.compare_recursive(pred_item)
+                        
+                        # Convert TP to FA/FP (prediction present, ground truth missing)
+                        converted = self._convert_tp_to_fa_fp(field_details_tmp)
+                        
+                        # Wrap converted in 'fields' structure for _merge_field_metrics
+                        wrapped = {'fields': converted}
+                        
+                        # Merge converted metrics into field_details
+                        self._merge_field_metrics(field_details, wrapped)
 
         return field_details
 
@@ -565,6 +585,140 @@ class StructuredListComparator:
         # UNIFIED STRUCTURE: Wrap primitive field metrics in 'overall' for consistency
         # This ensures all fields use the same access pattern: field_data['overall']
         return {"overall": sub_field_metrics}
+
+    def _merge_field_metrics(
+        self,
+        target: Dict[str, Any],
+        source: Dict[str, Any]
+    ) -> None:
+        """Merge field-level metrics from source into target.
+        
+        This method aggregates confusion matrix metrics from source fields into
+        target fields, handling the nested 'overall' structure returned by
+        compare_recursive. Also recursively merges nested 'fields' structures.
+        
+        Args:
+            target: Target dictionary to merge into (modified in place)
+            source: Source dictionary containing result from compare_recursive
+                   Expected structure: {"overall": {...}, "fields": {"field_name": {...}}}
+        """
+        # Extract the 'fields' portion from compare_recursive result
+        source_fields = source.get('fields', {})
+        
+        for field_name, metrics in source_fields.items():
+            if field_name not in target:
+                # Initialize field in target with same structure
+                target[field_name] = {
+                    'overall': {'tp': 0, 'fa': 0, 'fd': 0, 'fp': 0, 'tn': 0, 'fn': 0}
+                }
+            
+            # Aggregate metrics from source into target
+            if 'overall' in metrics:
+                for metric in ['tp', 'fa', 'fd', 'fp', 'tn', 'fn']:
+                    target[field_name]['overall'][metric] += metrics['overall'].get(metric, 0)
+            
+            # Recursively merge nested fields if they exist
+            if 'fields' in metrics:
+                if 'fields' not in target[field_name]:
+                    target[field_name]['fields'] = {}
+                # Recursively merge nested fields using the same logic
+                self._merge_nested_fields(target[field_name]['fields'], metrics['fields'])
+    
+    def _merge_nested_fields(
+        self,
+        target: Dict[str, Any],
+        source: Dict[str, Any]
+    ) -> None:
+        """Recursively merge nested field structures.
+        
+        Args:
+            target: Target nested fields dictionary (modified in place)
+            source: Source nested fields dictionary
+        """
+        for field_name, metrics in source.items():
+            if field_name not in target:
+                # Initialize field in target with same structure
+                target[field_name] = {
+                    'overall': {'tp': 0, 'fa': 0, 'fd': 0, 'fp': 0, 'tn': 0, 'fn': 0}
+                }
+            
+            # Aggregate metrics from source into target
+            if 'overall' in metrics:
+                for metric in ['tp', 'fa', 'fd', 'fp', 'tn', 'fn']:
+                    target[field_name]['overall'][metric] += metrics['overall'].get(metric, 0)
+            
+            # Recursively merge nested fields if they exist
+            if 'fields' in metrics:
+                if 'fields' not in target[field_name]:
+                    target[field_name]['fields'] = {}
+                # Recursive call for deeper nesting
+                self._merge_nested_fields(target[field_name]['fields'], metrics['fields'])
+
+    def _convert_tp_to_fn(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert TP counts to FN for unmatched GT items.
+        
+        When a ground truth item is unmatched, all its non-null fields should be
+        counted as False Negatives (ground truth present, prediction missing).
+        
+        Args:
+            metrics: Result from compare_recursive
+                    Expected structure: {"overall": {...}, "fields": {"field_name": {...}}}
+            
+        Returns:
+            New dictionary with structure {"field_name": {"overall": {...}}} with TP converted to FN
+        """
+        converted = {}
+        
+        # Extract the 'fields' portion from compare_recursive result
+        source_fields = metrics.get('fields', {})
+        
+        for field_name, field_metrics in source_fields.items():
+            if 'overall' in field_metrics:
+                tp_count = field_metrics['overall'].get('tp', 0)
+                converted[field_name] = {
+                    'overall': {
+                        'tp': 0,
+                        'fa': 0,
+                        'fd': 0,
+                        'fp': 0,
+                        'tn': 0,
+                        'fn': tp_count  # TP → FN
+                    }
+                }
+        return converted
+
+    def _convert_tp_to_fa_fp(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert TP counts to FA/FP for unmatched pred items.
+        
+        When a prediction item is unmatched, all its non-null fields should be
+        counted as False Alarms (prediction present, ground truth missing).
+        
+        Args:
+            metrics: Result from compare_recursive
+                    Expected structure: {"overall": {...}, "fields": {"field_name": {...}}}
+            
+        Returns:
+            New dictionary with structure {"field_name": {"overall": {...}}} with TP converted to FA/FP
+        """
+        converted = {}
+        
+        # Extract the 'fields' portion from compare_recursive result
+        source_fields = metrics.get('fields', {})
+        
+        for field_name, field_metrics in source_fields.items():
+            if 'overall' in field_metrics:
+                tp_count = field_metrics['overall'].get('tp', 0)
+                converted[field_name] = {
+                    'overall': {
+                        'tp': 0,
+                        'fa': tp_count,  # TP → FA
+                        'fd': 0,
+                        'fp': tp_count,  # TP → FP
+                        'tn': 0,
+                        'fn': 0
+                    }
+                }
+        return converted
 
 
 # Import needed at bottom to avoid circular imports
