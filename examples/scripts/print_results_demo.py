@@ -14,7 +14,6 @@ from typing import List
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
 )
@@ -90,8 +89,8 @@ def demo_individual_model_printing():
 
 
 def demo_evaluator_printing():
-    """Demo 2: Print results from StructuredModelEvaluator."""
-    print("\n🎨 DEMO 2: StructuredModelEvaluator Results")
+    """Demo 2: Print results from compare_with() with evaluator format."""
+    print("\n🎨 DEMO 2: Comparison Results with Evaluator Format")
     print("=" * 60)
 
     # Create sample order with products
@@ -115,11 +114,9 @@ def demo_evaluator_printing():
 
     print("Comparing orders with product lists...")
 
-    # Use evaluator
-    evaluator = StructuredModelEvaluator()
-    result = evaluator.evaluate(gt_order, pred_order)
+    result = gt_order.compare_with(pred_order, include_confusion_matrix=True, evaluator_format=True)
 
-    print("\n🎯 Using print_confusion_matrix() with evaluator results:")
+    print("\n🎯 Using print_confusion_matrix() with evaluator format results:")
     print_confusion_matrix(result, show_details=True)
 
 
@@ -198,9 +195,7 @@ def demo_advanced_print_options():
         ],
     )
 
-    # Use evaluator for detailed analysis
-    evaluator = StructuredModelEvaluator()
-    result = evaluator.evaluate(gt_order, pred_order)
+    result = gt_order.compare_with(pred_order, include_confusion_matrix=True, evaluator_format=True)
 
     print("\n🎯 Standard output:")
     print_confusion_matrix(result, show_details=True)
@@ -225,7 +220,7 @@ def main():
     # Demo 1: Individual model comparison
     demo_individual_model_printing()
 
-    # Demo 2: Evaluator results
+    # Demo 2: Evaluator format results
     demo_evaluator_printing()
 
     # Demo 3: Bulk evaluator results
@@ -238,7 +233,7 @@ def main():
     print("\n🎯 SUMMARY OF PRINT METHODS")
     print("=" * 50)
     print("✅ print_confusion_matrix() - Universal pretty printer")
-    print("   • Works with: compare_with(), evaluator.evaluate(), bulk results")
+    print("   • Works with: compare_with(), bulk results")
     print("   • Features: Colors, bars, filtering, sorting")
     print(
         "   • Import: from stickler.structured_object_evaluator.utils.pretty_print import print_confusion_matrix"

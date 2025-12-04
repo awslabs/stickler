@@ -17,11 +17,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 
 
 class LineItem(StructuredModel):
     """LineItem model for representing invoice line items."""
+
+    match_threshold = 0.7
 
     description: str = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.7, weight=1.0
@@ -43,6 +44,8 @@ class LineItem(StructuredModel):
 class Invoice(StructuredModel):
     """Invoice model with nested LineItem objects."""
 
+    match_threshold = 0.7
+
     invoice_number: str = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.9, weight=2.0
     )
@@ -60,10 +63,6 @@ class Invoice(StructuredModel):
 
 class TestNestedConfusionMatrixAggregation:
     """Test cases for verifying confusion matrix aggregation for nested objects."""
-
-    def setup_method(self):
-        """Set up test data."""
-        self.evaluator = StructuredModelEvaluator(threshold=0.7)
 
     def get_base_metrics(
         self, cm_result: Dict[str, Any], field_name: str
@@ -126,7 +125,7 @@ class TestNestedConfusionMatrixAggregation:
         )
 
         # Evaluate
-        result = self.evaluator.evaluate(gt_invoice, pred_invoice)
+        result = gt_invoice.compare_with(pred_invoice, include_confusion_matrix=True)
 
         # Get confusion matrix
         cm = result["confusion_matrix"]
@@ -171,8 +170,8 @@ class TestNestedConfusionMatrixAggregation:
         assert line_items_cm["fn"] == 0, "Expected 0 false negatives for line_items"
 
         # 5. Calculate the expected counts for each field type across all line items
-        # We can use the line_items["items"] metrics to verify aggregation is working correctly
-        line_item_metrics = result["fields"]["line_items"]["items"]
+        # We can use the line_items aggregate metrics to verify aggregation is working correctly
+        line_item_metrics = cm["fields"]["line_items"]["aggregate"]
 
         # 6. Verify each field has correct counts based on our test data
         # Actual aggregated counts based on implementation behavior:
@@ -248,7 +247,7 @@ class TestNestedConfusionMatrixAggregation:
         )
 
         # Evaluate
-        result = self.evaluator.evaluate(gt_invoice, pred_invoice)
+        result = gt_invoice.compare_with(pred_invoice, include_confusion_matrix=True)
 
         # Get confusion matrix
         cm = result["confusion_matrix"]

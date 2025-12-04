@@ -1,6 +1,6 @@
 
 
-"""Tests for StructuredModelEvaluator metrics calculation for publication records models.
+"""Tests for compare_with() metrics calculation for publication records models.
 
 This test verifies that we can calculate precision, recall, F1, and accuracy metrics
 at the field level and object level for nested structures in publication record models.
@@ -12,7 +12,6 @@ from typing import Optional, List
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.exact import ExactComparator
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 
 
 # Define the models for the test
@@ -163,9 +162,6 @@ class TestPublicationRecordsMetricsCalculation:
             "Price": "$20.90",  # false discovery
         }
 
-        # Initialize the evaluator
-        self.evaluator = StructuredModelEvaluator(verbose=True)
-
     def test_people_list_structured_model(self):
         """Test that people list is correctly matched based on nested Person objects."""
         # Create PublicationRecord objects
@@ -173,7 +169,7 @@ class TestPublicationRecordsMetricsCalculation:
         pred_record = PublicationRecord(**self.pred_record)
 
         # Evaluate
-        results = self.evaluator.evaluate(gold_record, pred_record)
+        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
 
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
@@ -213,7 +209,7 @@ class TestPublicationRecordsMetricsCalculation:
         pred_record = PublicationRecord(**self.pred_record)
 
         # Evaluate
-        results = self.evaluator.evaluate(gold_record, pred_record)
+        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
 
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
@@ -261,7 +257,7 @@ class TestPublicationRecordsMetricsCalculation:
         pred_record = PublicationRecord(**self.pred_record)
 
         # Evaluate
-        results = self.evaluator.evaluate(gold_record, pred_record)
+        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
 
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
@@ -309,7 +305,7 @@ class TestPublicationRecordsMetricsCalculation:
         pred_record = PublicationRecord(**self.pred_record)
 
         # Evaluate
-        results = self.evaluator.evaluate(gold_record, pred_record)
+        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
 
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
@@ -367,7 +363,7 @@ class TestPublicationRecordsMetricsCalculation:
         pred_record = PublicationRecord(**self.pred_record)
 
         # Evaluate
-        results = self.evaluator.evaluate(gold_record, pred_record)
+        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
 
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
@@ -394,8 +390,8 @@ class TestPublicationRecordsMetricsCalculation:
         assert results["overall"]["f1"] == pytest.approx(0.75, abs=0.01)
 
         # Test with alternative recall formula (including FD in denominator)
-        results_alt = self.evaluator.evaluate(
-            gold_record, pred_record, recall_with_fd=True
+        results_alt = gold_record.compare_with(
+            pred_record, include_confusion_matrix=True, evaluator_format=True, recall_with_fd=True
         )
         # Test with alternative recall formula
         # Expected recall option 2 = TP/(TP+FN+FD) = 9/(9+1+4) = 0.64 with recall_with_fd=True

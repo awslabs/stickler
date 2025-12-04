@@ -1,5 +1,5 @@
 """
-Test module for evaluating double-nested objects in StructuredModelEvaluator.
+Test module for evaluating double-nested objects with compare_with().
 
 This test verifies that metrics are correctly calculated for objects with multiple
 levels of nesting (e.g., A contains B contains C).
@@ -11,7 +11,6 @@ from stickler.structured_object_evaluator import (
     StructuredModel,
     ComparableField,
     NonMatchType,
-    StructuredModelEvaluator,
 )
 from stickler.comparators.levenshtein import LevenshteinComparator
 
@@ -19,6 +18,8 @@ from stickler.comparators.levenshtein import LevenshteinComparator
 # Define test models with double nesting
 class ContactInfo(StructuredModel):
     """Test model for contact information."""
+
+    match_threshold = 0.8
 
     email: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.9)
     phone: Optional[str] = ComparableField(
@@ -28,6 +29,8 @@ class ContactInfo(StructuredModel):
 
 class Address(StructuredModel):
     """Test model for an address with contact info (double nesting)."""
+
+    match_threshold = 0.8
 
     street: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.8)
     city: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.9)
@@ -40,6 +43,8 @@ class Address(StructuredModel):
 
 class Person(StructuredModel):
     """Test model for a person."""
+
+    match_threshold = 0.8
 
     name: str = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.8, weight=2.0
@@ -96,14 +101,8 @@ def test_double_nested_metrics():
         ],  # Extra phone number - false alarm
     )
 
-    # Create evaluator with non-match documentation enabled
-    evaluator = StructuredModelEvaluator(threshold=0.8, document_non_matches=True)
-
-    # Clear any existing non-match documents
-    evaluator.clear_non_match_documents()
-
     # Evaluate prediction against ground truth
-    result = evaluator.evaluate(gt_person, pred_person)
+    result = gt_person.compare_with(pred_person, include_confusion_matrix=True, document_non_matches=True)
 
     # Verify non-matches were documented for double-nested fields
     assert len(result["non_matches"]) > 0, "Expected non-matches to be documented"
@@ -211,12 +210,8 @@ def test_double_nested_null_contact_info():
         name="John Smith", age=30, address=pred_address, phone_numbers=["555-123-4567"]
     )
 
-    # Create evaluator
-    evaluator = StructuredModelEvaluator(threshold=0.8, document_non_matches=True)
-    evaluator.clear_non_match_documents()
-
     # Evaluate
-    result = evaluator.evaluate(gt_person, pred_person)
+    result = gt_person.compare_with(pred_person, include_confusion_matrix=True, document_non_matches=True)
 
     # There should be a false alarm for contact_info
     contact_info_non_matches = [

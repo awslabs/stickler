@@ -15,7 +15,6 @@ from typing import List, Optional
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 
 
 # Test Models
@@ -56,7 +55,9 @@ class ListModel(StructuredModel):
 
 def test_false_positive_combination():
     """Test that FA and FD are both counted as FP in precision calculation."""
-    evaluator = StructuredModelEvaluator(threshold=0.7)
+    
+    # Ensure default threshold
+    SimpleModel.match_threshold = 0.7
 
     # GT: [10, 20]
     # EST: [10, 25, 30]
@@ -66,20 +67,18 @@ def test_false_positive_combination():
 
     gt = ListModel(id="test1", tags=["10", "20"], items=[])
     pred = ListModel(id="test1", tags=["10", "25", "30"], items=[])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     tags_cm = cm["fields"]["tags"]
 
-    # NOTE: Using direct access instead of nested "overall" key structure
-    tags_overall = tags_cm
+    # Access the overall metrics
+    tags_overall = tags_cm["overall"]
 
     # Verify raw counts
     assert tags_overall["tp"] == 1, f"Expected TP=1, got {tags_overall['tp']}"
     # FA should be 1 (unmatched prediction item 30)
-    fa_count = tags_overall.get("fa", 0) or (
-        tags_overall["fp"] - tags_overall.get("fd", 0)
-    )
+    fa_count = tags_overall.get("fa", 0)
     # FD should be 1 (25 doesn't match 20 well enough)
     fd_count = tags_overall["fd"]
     fp_total = tags_overall["fp"]
@@ -99,7 +98,9 @@ def test_false_positive_combination():
 
 def test_simple_field_correct_classification():
     """Test correct classification for simple fields with mixed scenarios."""
-    evaluator = StructuredModelEvaluator(threshold=0.7)
+    
+    # Ensure default threshold
+    SimpleModel.match_threshold = 0.7
 
     # Mixed scenario:
     # - name: TP (exact match)
@@ -107,12 +108,12 @@ def test_simple_field_correct_classification():
     # - description: FD (both non-null but don't match)
     gt = SimpleModel(name="John Doe", count=None, description="Test description")
     pred = SimpleModel(name="John Doe", count=42, description="Different description")
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
 
-    # Check individual field classifications
-    name_cm = cm["fields"]["name"]
+    # Check individual field classifications - access overall metrics
+    name_cm = cm["fields"]["name"]["overall"]
     assert (
         name_cm["tp"] == 1
         and name_cm["fp"] == 0
@@ -120,12 +121,12 @@ def test_simple_field_correct_classification():
         and name_cm["fd"] == 0
     )
 
-    count_cm = cm["fields"]["count"]
+    count_cm = cm["fields"]["count"]["overall"]
     # Count should be classified as False Alarm (FA): GT=null, EST=42
     assert count_cm["tp"] == 0 and count_cm["fn"] == 0 and count_cm["fd"] == 0
     assert count_cm["fp"] == 1  # This should be the FA case
 
-    desc_cm = cm["fields"]["description"]
+    desc_cm = cm["fields"]["description"]["overall"]
     # Description should be classified as False Discovery (FD): both non-null but don't match
     assert desc_cm["tp"] == 0 and desc_cm["fp"] == 1 and desc_cm["fn"] == 0
     assert desc_cm["fd"] == 1
@@ -145,10 +146,10 @@ def test_simple_field_correct_classification():
 
 def test_hungarian_matching_correct_fp_handling():
     """Test that Hungarian matching correctly handles FP = FA + FD."""
-    evaluator = StructuredModelEvaluator(
-        threshold=0.8
-    )  # Higher threshold to force some FD cases
-
+    
+    # Override match_threshold to force some FD cases
+    SimpleModel.match_threshold = 0.8  # Higher threshold to force some FD cases
+    
     # Create structured model items
     item1 = SimpleModel(name="Item A", count=1, description="First item")
     item2 = SimpleModel(name="Item B", count=2, description="Second item")
@@ -173,17 +174,16 @@ def test_hungarian_matching_correct_fp_handling():
     pred = ListModel(
         id="hungarian1", tags=[], items=[item1, item2_different, item4_extra]
     )
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     items_cm = cm["fields"]["items"]
-    # NOTE: Using direct access instead of nested "overall" key structure
-    items_overall = items_cm
+    
+    # Access the overall metrics for the items field
+    items_overall = items_cm["overall"]
 
     # Verify FP components
-    fa_count = items_overall.get("fa", 0) or (
-        items_overall["fp"] - items_overall.get("fd", 0)
-    )  # Unmatched predictions
+    fa_count = items_overall.get("fa", 0)  # Unmatched predictions
     fd_count = items_overall["fd"]  # Matched but below threshold
     fp_total = items_overall["fp"]
 
@@ -213,7 +213,9 @@ def test_hungarian_matching_correct_fp_handling():
 
 def test_nested_field_aggregation():
     """Test that nested field metrics are correctly aggregated with FP = FA + FD."""
-    evaluator = StructuredModelEvaluator(threshold=0.7)
+    
+    # Ensure default threshold
+    SimpleModel.match_threshold = 0.7
 
     # Create items with different field scenarios
     item1 = SimpleModel(name="Item 1", count=1, description="First")
@@ -228,7 +230,7 @@ def test_nested_field_aggregation():
 
     gt = ListModel(id="nested1", tags=[], items=[item1, item2])
     pred = ListModel(id="nested1", tags=[], items=[item1_pred, item2_pred])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
 
@@ -305,23 +307,25 @@ def test_nested_field_aggregation():
 
 def test_edge_cases_with_correct_classification():
     """Test edge cases (empty lists, null values) with correct FP handling."""
-    evaluator = StructuredModelEvaluator(threshold=0.7)
+    
+    # Ensure default threshold
+    SimpleModel.match_threshold = 0.7
 
     # Test 1: Empty GT, non-empty prediction (all FA)
     gt = ListModel(id="edge1", tags=[], items=[])
     pred = ListModel(id="edge1", tags=["red", "blue"], items=[])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     tags_cm = cm["fields"]["tags"]
-    # NOTE: Using direct access instead of nested "overall" key structure
-    tags_overall = tags_cm
+    # Access the overall metrics
+    tags_overall = tags_cm["overall"]
 
     # All predictions should be False Alarms (FA)
     assert tags_overall["tp"] == 0
     assert tags_overall["fn"] == 0
     assert tags_overall["fd"] == 0
-    fa_count = tags_overall.get("fa", 0) or tags_overall["fp"]
+    fa_count = tags_overall.get("fa", 0)
     assert fa_count == 2  # Both "red" and "blue" are FA
     assert tags_overall["fp"] == 2  # FP = FA + FD = 2 + 0 = 2
 
@@ -331,12 +335,12 @@ def test_edge_cases_with_correct_classification():
     # Test 2: Non-empty GT, empty prediction (all FN)
     gt = ListModel(id="edge2", tags=["red", "blue"], items=[])
     pred = ListModel(id="edge2", tags=[], items=[])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     tags_cm = cm["fields"]["tags"]
-    # NOTE: Using direct access instead of nested "overall" key structure
-    tags_overall = tags_cm
+    # Access the overall metrics
+    tags_overall = tags_cm["overall"]
 
     # All GT items should be False Negatives (FN)
     assert tags_overall["tp"] == 0
@@ -350,16 +354,16 @@ def test_edge_cases_with_correct_classification():
     # Test 3: Mixed scenario with null handling
     gt = SimpleModel(name="Test", count=None, description=None)
     pred = SimpleModel(name="Test", count=42, description=None)
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
 
     # name: TP (exact match)
     # count: FA (null -> 42)
     # description: TN (both null)
-    name_cm = cm["fields"]["name"]
-    count_cm = cm["fields"]["count"]
-    desc_cm = cm["fields"]["description"]
+    name_cm = cm["fields"]["name"]["overall"]
+    count_cm = cm["fields"]["count"]["overall"]
+    desc_cm = cm["fields"]["description"]["overall"]
 
     assert name_cm["tp"] == 1 and name_cm["fp"] == 0
     assert (
@@ -382,7 +386,9 @@ def test_edge_cases_with_correct_classification():
 
 def test_precision_formula_validation():
     """Explicit test to validate that precision uses the correct formula: TP / (TP + FP)."""
-    evaluator = StructuredModelEvaluator(threshold=0.7)
+    
+    # Ensure default threshold
+    SimpleModel.match_threshold = 0.7
 
     # Create a scenario with known TP, FA, and FD counts
     # GT: name="A", count=1, description="X"
@@ -390,7 +396,7 @@ def test_precision_formula_validation():
     # Expected: name=TP, count=FN, description=FD
     gt = SimpleModel(name="A", count=1, description="X")
     pred = SimpleModel(name="A", count=None, description="Y")
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     overall_cm = cm["overall"]

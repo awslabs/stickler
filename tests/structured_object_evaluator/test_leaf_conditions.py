@@ -10,7 +10,6 @@ from typing import List
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 
 
 # 1. Test for a simple value (ComparableField)
@@ -28,8 +27,8 @@ def test_comparable_field_value():
     gt = SimpleValueModel(name="John Doe")
     pred = SimpleValueModel(name="John Doe")
 
-    evaluator = StructuredModelEvaluator(threshold=0.5)
-    results = evaluator.evaluate(gt, pred)
+    SimpleValueModel.match_threshold = 0.5
+    results = gt.compare_with(pred, evaluator_format=True)
 
     # Check that exact matches get perfect score
     assert results["fields"]["name"]["anls_score"] == 1.0
@@ -37,7 +36,7 @@ def test_comparable_field_value():
 
     # Test with slightly different value (similar but not exact)
     pred_similar = SimpleValueModel(name="Jon Doe")
-    results_similar = evaluator.evaluate(gt, pred_similar)
+    results_similar = gt.compare_with(pred_similar, evaluator_format=True)
 
     # Should be high but not perfect score
     assert 0.7 <= results_similar["fields"]["name"]["anls_score"] < 1.0
@@ -45,7 +44,7 @@ def test_comparable_field_value():
 
     # Test with completely different value
     pred_different = SimpleValueModel(name="Jane Smith")
-    results_different = evaluator.evaluate(gt, pred_different)
+    results_different = gt.compare_with(pred_different, evaluator_format=True)
 
     # Should be below threshold
     assert results_different["fields"]["name"]["anls_score"] < 0.7
@@ -66,9 +65,8 @@ def test_list_of_comparable_fields():
     gt = ListFieldModel(tags=["red", "blue", "green"])
     pred = ListFieldModel(tags=["red", "blue", "green"])
 
-    # Use evaluator instead of direct comparison for consistency with other tests
-    evaluator = StructuredModelEvaluator(threshold=0.5)
-    results = evaluator.evaluate(gt, pred)
+    ListFieldModel.match_threshold = 0.5
+    results = gt.compare_with(pred, evaluator_format=True)
 
     # Check that exact matches get perfect score
     assert results["overall"]["anls_score"] == 1.0
@@ -76,14 +74,14 @@ def test_list_of_comparable_fields():
     # Test with same items but different order
     # The implementation now uses Hungarian matching for all list types, making order irrelevant
     pred_reordered = ListFieldModel(tags=["green", "red", "blue"])
-    results_reordered = evaluator.evaluate(gt, pred_reordered)
+    results_reordered = gt.compare_with(pred_reordered, evaluator_format=True)
 
     # Should get perfect score as order doesn't matter (using Hungarian matching)
     assert results_reordered["overall"]["anls_score"] == 1.0
 
     # Test with different length lists
     pred_missing = ListFieldModel(tags=["red", "blue"])  # Missing "green"
-    results_missing = evaluator.evaluate(gt, pred_missing)
+    results_missing = gt.compare_with(pred_missing, evaluator_format=True)
 
     # Score should be lower due to missing item
     assert results_missing["overall"]["anls_score"] < 1.0
@@ -122,8 +120,8 @@ def test_nested_structured_model():
     pred_address = AddressModel(street="123 Main St", city="Springfield")
     pred = PersonModel(name="John Doe", address=pred_address)
 
-    evaluator = StructuredModelEvaluator(threshold=0.5)
-    results = evaluator.evaluate(gt, pred)
+    PersonModel.match_threshold = 0.5
+    results = gt.compare_with(pred, evaluator_format=True)
 
     # Check that exact matches get perfect score
     assert results["fields"]["name"]["anls_score"] == 1.0
@@ -136,7 +134,7 @@ def test_nested_structured_model():
     )  # Different city
     pred_diff = PersonModel(name="John Doe", address=pred_address_diff)
 
-    results_diff = evaluator.evaluate(gt, pred_diff)
+    results_diff = gt.compare_with(pred_diff, evaluator_format=True)
 
     # The name should still match perfectly
     assert results_diff["fields"]["name"]["anls_score"] == 1.0
@@ -180,8 +178,7 @@ def test_list_of_structured_models():
     ]
     gt = ShoppingListModel(items=gt_items)
 
-    # Use evaluator instead of direct comparison for consistency with other tests
-    evaluator = StructuredModelEvaluator(threshold=0.5)
+    ShoppingListModel.match_threshold = 0.5
 
     # Test with exact match
     pred_items_exact = [
@@ -190,7 +187,7 @@ def test_list_of_structured_models():
         ItemModel(name="orange", quantity=2),
     ]
     pred_exact = ShoppingListModel(items=pred_items_exact)
-    results_exact = evaluator.evaluate(gt, pred_exact)
+    results_exact = gt.compare_with(pred_exact, evaluator_format=True)
 
     # Check that exact matches get perfect score
     assert results_exact["overall"]["anls_score"] == 1.0
@@ -202,7 +199,7 @@ def test_list_of_structured_models():
         ItemModel(name="banana", quantity=3),
     ]
     pred_reordered = ShoppingListModel(items=pred_items_reordered)
-    results_reordered = evaluator.evaluate(gt, pred_reordered)
+    results_reordered = gt.compare_with(pred_reordered, evaluator_format=True)
 
     # Should still get perfect score as order doesn't matter
     assert results_reordered["overall"]["anls_score"] == 1.0
@@ -214,7 +211,7 @@ def test_list_of_structured_models():
         ItemModel(name="orange", quantity=2),
     ]
     pred_diff = ShoppingListModel(items=pred_items_diff)
-    results_diff = evaluator.evaluate(gt, pred_diff)
+    results_diff = gt.compare_with(pred_diff, evaluator_format=True)
 
     # Score should be lower due to differences
     assert results_diff["overall"]["anls_score"] < 1.0
@@ -225,7 +222,7 @@ def test_list_of_structured_models():
         ItemModel(name="orange", quantity=2),
     ]  # Missing banana
     pred_missing = ShoppingListModel(items=pred_items_missing)
-    results_missing = evaluator.evaluate(gt, pred_missing)
+    results_missing = gt.compare_with(pred_missing, evaluator_format=True)
 
     # Score should be lower due to missing item
     assert results_missing["overall"]["anls_score"] < 1.0

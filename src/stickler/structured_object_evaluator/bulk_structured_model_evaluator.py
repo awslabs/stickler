@@ -397,12 +397,10 @@ class BulkStructuredModelEvaluator:
 
     def _accumulate_aggregate_metrics(self, cm_result: Dict[str, Any]) -> None:
         """
-        Accumulate aggregate metrics from comparison results.
-        
-        This method handles accumulation of aggregate metrics that are calculated
-        automatically by the universal aggregation feature. Aggregate metrics
-        provide hierarchical confusion matrix counts at each level.
-        
+        Calculate derived confusion matrix metrics (precision, recall, f1, accuracy).
+
+        This method replicates the derivation logic for confusion matrix metrics.
+
         Args:
             cm_result: Confusion matrix result containing aggregate metrics
         """

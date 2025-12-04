@@ -13,7 +13,6 @@ from typing import List, Optional
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 
 
 # Test Models
@@ -78,12 +77,12 @@ def test_simple_field_classification_logic():
     - False Alarm (FP): GT == null, EST != null
     - False Discovery (FD): GT != null, EST != null, GT != EST
     """
-    evaluator = StructuredModelEvaluator(threshold=0.7)
+    SimpleModel.match_threshold =0.7
 
     # 1. True Positive: GT != null, EST != null, GT == EST
     gt = SimpleModel(name="John Doe", count=42, description="Test description")
     pred = SimpleModel(name="John Doe", count=42, description="Test description")
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     name_cm = get_base_metrics(cm, "name")
@@ -94,7 +93,7 @@ def test_simple_field_classification_logic():
     # 2. False Alarm (FP): GT == null, EST != null
     gt = SimpleModel(name="John Doe", count=None, description=None)
     pred = SimpleModel(name="John Doe", count=42, description="Test description")
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     count_cm = get_base_metrics(cm, "count")
@@ -107,7 +106,7 @@ def test_simple_field_classification_logic():
     # 3. False Discovery (FD): GT != null, EST != null, GT != EST
     gt = SimpleModel(name="John Doe", count=42, description="Test description")
     pred = SimpleModel(name="John Doe", count=43, description="Different description")
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     count_cm = get_base_metrics(cm, "count")
@@ -123,7 +122,7 @@ def test_simple_field_classification_logic():
     # 4. False Negative (FN): GT != null, EST == null
     gt = SimpleModel(name="John Doe", count=42, description="Test description")
     pred = SimpleModel(name="John Doe", count=None, description=None)
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     count_cm = get_base_metrics(cm, "count")
@@ -137,7 +136,7 @@ def test_simple_field_classification_logic():
     # 5. True Negative (TN): GT == null, EST == null
     gt = SimpleModel(name="John Doe", count=None, description=None)
     pred = SimpleModel(name="John Doe", count=None, description=None)
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     count_cm = get_base_metrics(cm, "count")
@@ -154,12 +153,13 @@ def test_list_classification_logic():
     - False Alarm (FP): Elements in EST that don't exist in GT
     - False Discovery (FD): Elements in both GT and EST that don't match above threshold
     """
-    evaluator = StructuredModelEvaluator(threshold=0.7)
-
+    # Ensure default threshold
+    SimpleModel.match_threshold = 0.7
+    
     # 1. Empty lists (TN)
     gt = ListModel(id="empty", tags=[], items=[])
     pred = ListModel(id="empty", tags=[], items=[])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     tags_cm = get_base_metrics(cm, "tags")
@@ -170,7 +170,7 @@ def test_list_classification_logic():
     # 2. False Alarm (FP): GT empty, EST has items
     gt = ListModel(id="fp", tags=[], items=[])
     pred = ListModel(id="fp", tags=["red", "blue"], items=[])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     tags_cm = get_base_metrics(cm, "tags")
@@ -180,7 +180,7 @@ def test_list_classification_logic():
     # 3. False Discovery (FD): Items in both GT and EST that don't match
     gt = ListModel(id="fd", tags=["apple", "banana", "cherry"], items=[])
     pred = ListModel(id="fd", tags=["apl", "bnn", "chry"], items=[])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     tags_cm = get_base_metrics(cm, "tags")
@@ -191,7 +191,7 @@ def test_list_classification_logic():
     # 4. Mixed case: Some matches, some False Alarms, some False Discoveries
     gt = ListModel(id="mixed", tags=["red", "blue", "green"], items=[])
     pred = ListModel(id="mixed", tags=["red", "blu", "yellow", "orange"], items=[])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     tags_cm = get_base_metrics(cm, "tags")
@@ -217,7 +217,7 @@ def test_list_classification_logic():
     # 5. Null vs Empty list
     gt = ListModel(id="null", tags=None, items=None)
     pred = ListModel(id="null", tags=["red", "blue"], items=[])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     tags_cm = get_base_metrics(cm, "tags")
@@ -235,8 +235,9 @@ def test_nested_model_classification_logic():
     - False Alarm (FP): GT == null, EST != null
     - False Discovery (FD): GT != null, EST != null, GT != EST
     """
-    evaluator = StructuredModelEvaluator(threshold=0.7)
-
+    # Ensure default threshold
+    SimpleModel.match_threshold = 0.7
+    
     # Create test nested models
     details1 = SimpleModel(name="Details 1", count=1, description="First details")
     details_different = SimpleModel(name="Different", count=99, description="Other")
@@ -244,7 +245,7 @@ def test_nested_model_classification_logic():
     # 1. True Positive: GT != null, EST != null, GT == EST
     gt = NestedModel(id="nested1", details=details1)
     pred = NestedModel(id="nested1", details=details1)
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     details_cm = get_base_metrics(cm, "details")
@@ -257,7 +258,7 @@ def test_nested_model_classification_logic():
     # 2. False Alarm (FP): GT == null, EST != null
     gt = NestedModel(id="nested2", details=None)
     pred = NestedModel(id="nested2", details=details1)
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     details_cm = get_base_metrics(cm, "details")
@@ -268,7 +269,7 @@ def test_nested_model_classification_logic():
     # 3. False Discovery (FD): GT != null, EST != null, GT != EST
     gt = NestedModel(id="nested3", details=details1)
     pred = NestedModel(id="nested3", details=details_different)
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     details_cm = get_base_metrics(cm, "details")
@@ -281,7 +282,7 @@ def test_nested_model_classification_logic():
     # 4. False Negative (FN): GT != null, EST == null
     gt = NestedModel(id="nested4", details=details1)
     pred = NestedModel(id="nested4", details=None)
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     details_cm = get_base_metrics(cm, "details")
@@ -292,7 +293,7 @@ def test_nested_model_classification_logic():
     # 5. True Negative (TN): GT == null, EST == null
     gt = NestedModel(id="nested5", details=None)
     pred = NestedModel(id="nested5", details=None)
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     details_cm = get_base_metrics(cm, "details")
@@ -308,12 +309,13 @@ def test_edge_cases_classification_logic():
     - Empty lists vs null
     - Threshold boundary cases
     """
-    evaluator = StructuredModelEvaluator(threshold=0.7)
-
+    # Ensure default threshold
+    SimpleModel.match_threshold = 0.7
+    
     # 1. Empty string vs null
     gt = SimpleModel(name="", count=None, description=None)
     pred = SimpleModel(name=None, count=None, description=None)
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     name_cm = get_base_metrics(cm, "name")
@@ -325,7 +327,7 @@ def test_edge_cases_classification_logic():
     # 2. Empty list vs null list
     gt = ListModel(id="empty_vs_null", tags=[], items=[])
     pred = ListModel(id="empty_vs_null", tags=None, items=None)
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     tags_cm = get_base_metrics(cm, "tags")
@@ -335,13 +337,13 @@ def test_edge_cases_classification_logic():
     assert items_cm["tn"] == 1, "Empty list vs null should be TN"
 
     # 3. Threshold boundary - exactly at threshold
-    # Create a custom evaluator with a specific threshold
-    threshold_evaluator = StructuredModelEvaluator(threshold=0.75)
-
+    # Create a specific threshold
+    SimpleModel.match_threshold = 0.75
+    
     # For Levenshtein, "abcd" vs "abcx" has similarity 0.75
     gt = SimpleModel(name="abcd", count=1, description="test")
     pred = SimpleModel(name="abcx", count=1, description="test")
-    result = threshold_evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     name_cm = get_base_metrics(cm, "name")
@@ -352,7 +354,7 @@ def test_edge_cases_classification_logic():
     # For Levenshtein, "abcd" vs "abxy" has similarity 0.5
     gt = SimpleModel(name="abcd", count=1, description="test")
     pred = SimpleModel(name="abxy", count=1, description="test")
-    result = threshold_evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     name_cm = get_base_metrics(cm, "name")
