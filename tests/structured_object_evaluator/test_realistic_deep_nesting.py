@@ -463,7 +463,6 @@ class TestRealisticDeepNesting:
 def test_integration():
     """Quick integration test."""
     test_instance = TestRealisticDeepNesting()
-    test_instance.setup_method()  # Initialize the evaluator
 
     # Run key tests
     test_instance.test_perfect_match_6_levels_with_timeout()
