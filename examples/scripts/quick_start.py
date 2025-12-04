@@ -222,10 +222,10 @@ def main():
     print("=" * 50)
 
     # Demo 1: Individual object comparison
-    individual_score = demo_individual_comparison()
+    demo_individual_comparison()
 
     # Demo 2: List comparison (the main strength)
-    list_score = demo_list_comparison()
+    demo_list_comparison()
 
     # Demo 3: Detailed evaluator analysis
     demo_evaluator_detailed_analysis()
