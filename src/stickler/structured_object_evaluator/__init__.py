@@ -9,7 +9,6 @@ from .models.comparable_field import ComparableField
 from .models.non_match_field import NonMatchField, NonMatchType
 from .utils.anls_score import compare_structured_models, anls_score, compare_json
 from .utils.key_scores import ScoreNode, construct_nested_dict, merge_and_calculate_mean
-
 from .utils.pretty_print import print_confusion_matrix, print_confusion_matrix_html
 
 __all__ = [
@@ -23,7 +22,6 @@ __all__ = [
     "ScoreNode",
     "construct_nested_dict",
     "merge_and_calculate_mean",
-
     "print_confusion_matrix",
     "print_confusion_matrix_html",
 ]
