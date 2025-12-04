@@ -29,7 +29,7 @@ const setStyle = (selector, styles) => { const el = getElement(selector); if (el
 const createElement = (tag, className, innerHTML) => {
     const el = document.createElement(tag);
     if (className) el.className = className;
-    if (innerHTML) el.innerHTML = innerHTML;
+    if (innerHTML) el.textContent = innerHTML;
     return el;
 };
 
@@ -87,7 +87,7 @@ const captureExecutiveSummaryData = () => {
     });
     
     return {
-        gaugeValue: gaugeValue ? parseFloat(gaugeValue.replace('%', '')) / 100 : null,
+        gaugeValue: gaugeValue ? parseFloat(gaugeValue.replace('/%/g', '')) / 100 : null,
         metrics
     };
 };
@@ -391,6 +391,12 @@ const updateDocumentFiles = (data) => {
     const documentGallery = getElement('.document-gallery');
     if (!documentGallery || !data) return;
 
+    const escapeHtml = (text) => {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    };
+
     documentGallery.innerHTML = '';
     Object.entries(data).forEach(([docId, filePath]) => {
         const fileType = detectFileType(filePath);
@@ -400,11 +406,11 @@ const updateDocumentFiles = (data) => {
             pdfItem.setAttribute('data-pdf-path', filePath);
             pdfItem.innerHTML = `
                 <div class="pdf-container">
-                    <canvas id="pdf-canvas-${docId}" class="pdf-canvas"></canvas>
-                    <div class="pdf-loading" id="pdf-loading-${docId}">Loading PDF...</div>
-                    <div class="pdf-error" id="pdf-error-${docId}" style="display: none;">Error loading PDF</div>
+                    <canvas id="pdf-canvas-${escapeHtml(docId)}" class="pdf-canvas"></canvas>
+                    <div class="pdf-loading" id="pdf-loading-${escpeHtml(docId)}">Loading PDF...</div>
+                    <div class="pdf-error" id="pdf-error-${escapeHtml(docId)}" style="display: none;">Error loading PDF</div>
                 </div>
-                <p><strong>${docId}</strong></p>
+                <p><strong>${escapeHtml(docId)}</strong></p>
             `;
             documentGallery.appendChild(pdfItem);
             setTimeout(() => loadPDF(filePath, `pdf-canvas-${docId}`, `pdf-loading-${docId}`, `pdf-error-${docId}`), 0);

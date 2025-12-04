@@ -1,7 +1,6 @@
 import json
-import unittest
+import pytest
 from unittest.mock import patch, MagicMock
-from unittest import skip
 
 from stickler.comparators.llm import LLMComparator
 
@@ -11,7 +10,7 @@ class TestLLMComparator(unittest.TestCase):
     Test cases for the LLMComparator class used for comparing values using LLM models.
     """
 
-    @skip("Not implemented yet")
+    @pytest.mark.skip(reason="Not implemented yet")
     def test_init(self):
         """Test the initialization of the LLMComparator."""
         comparator = LLMComparator(model_name="test-model", temperature=0.5)
@@ -19,7 +18,7 @@ class TestLLMComparator(unittest.TestCase):
         assert comparator.temperature == 0.5
         assert comparator.client is None
 
-    @skip("Not implemented yet")
+    @pytest.mark.skip(reason="Not implemented yet")
     @patch("stickler.comparators.llm.BedrockRuntime")
     def test_init_with_client(self, mock_bedrock):
         """Test initialization with a client."""
@@ -28,7 +27,7 @@ class TestLLMComparator(unittest.TestCase):
         assert comparator.client == mock_client
         mock_bedrock.assert_not_called()
 
-    @skip("Not implemented yet")
+    @pytest.mark.skip(reason="Not implemented yet")
     @patch("stickler.comparators.llm.BedrockRuntime")
     def test_client_initialization(self, mock_bedrock):
         """Test client initialization when no client is provided."""
@@ -42,7 +41,7 @@ class TestLLMComparator(unittest.TestCase):
         mock_bedrock.assert_called_once()
         assert client == mock_client
 
-    @skip("Not implemented yet")
+    @pytest.mark.skip(reason="Not implemented yet")
     @patch("stickler.comparators.llm.BedrockRuntime")
     def test_compare_values_equal(self, mock_bedrock):
         """Test comparison of values that are considered equal by the LLM."""
@@ -64,7 +63,7 @@ class TestLLMComparator(unittest.TestCase):
         assert result is True
         mock_client.invoke_model.assert_called_once()
 
-    @skip("Not implemented yet")
+    @pytest.mark.skip(reason="Not implemented yet")
     @patch("stickler.comparators.llm.BedrockRuntime")
     def test_compare_values_not_equal(self, mock_bedrock):
         """Test comparison of values that are not considered equal by the LLM."""
@@ -86,7 +85,7 @@ class TestLLMComparator(unittest.TestCase):
         assert result is False
         mock_client.invoke_model.assert_called_once()
 
-    @skip("Not implemented yet")
+    @pytest.mark.skip(reason="Not implemented yet")
     @patch("stickler.comparators.llm.BedrockRuntime")
     def test_compare_with_special_values(self, mock_bedrock):
         """Test comparison with special values like None and empty strings."""
@@ -123,7 +122,7 @@ class TestLLMComparator(unittest.TestCase):
         assert comparator.compare("", "") is True
         mock_client.invoke_model.assert_called_once()
 
-    @skip("Not implemented yet")
+    @pytest.mark.skip(reason="Not implemented yet")
     @patch("stickler.comparators.llm.BedrockRuntime")
     def test_compare_with_custom_prompt(self, mock_bedrock):
         """Test comparison with a custom prompt."""
@@ -154,7 +153,7 @@ class TestLLMComparator(unittest.TestCase):
         # Verify the prompt in the request body
         assert "Custom prompt value1 vs value2" in body["prompt"]
 
-    @skip("Not implemented yet")
+    @pytest.mark.skip(reason="Not implemented yet")
     @patch("stickler.comparators.llm.BedrockRuntime")
     def test_compare_exception_handling(self, mock_bedrock):
         """Test exception handling during comparison."""

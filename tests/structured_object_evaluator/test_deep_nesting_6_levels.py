@@ -689,6 +689,7 @@ def test_integration_with_evaluator():
     """Test integration between deep nesting and compare_with() method."""
     # Quick integration test to ensure everything works together
     test_instance = TestDeepNesting6Levels()
+    test_instance.setup_method()  # Initialize the evaluator
 
     # Run a few key tests
     test_instance.test_perfect_match_6_levels()

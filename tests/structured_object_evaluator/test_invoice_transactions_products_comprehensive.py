@@ -7,7 +7,7 @@ This test validates both confusion matrix entities and non-match entities for co
 nested structures with multiple list fields and various error types.
 """
 
-import unittest
+import pytest
 from typing import List, Optional
 
 from stickler.structured_object_evaluator import (
@@ -71,7 +71,7 @@ class Invoice(StructuredModel):
     )
 
 
-class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
+class TestInvoiceTransactionsProductsComprehensive:
     """Comprehensive test suite for 3-level nested structure evaluation using compare_with."""
 
     def test_perfect_match_compare_with(self):
@@ -137,21 +137,12 @@ class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
         print(f"Field score count: {len(comparison_result['field_scores'])}")
 
         # Validate perfect match
-        self.assertEqual(
-            comparison_result["overall_score"],
-            1.0,
-            "Perfect match should have similarity=1.0",
-        )
-        self.assertTrue(
-            comparison_result["all_fields_matched"],
-            "Perfect match should have all fields matched",
-        )
+        assert comparison_result["overall_score"] == 1.0, "Perfect match should have similarity=1.0"
+        assert comparison_result["all_fields_matched"], "Perfect match should have all fields matched"
 
         # Check that all field scores are perfect
         for field_name, field_score in comparison_result["field_scores"].items():
-            self.assertEqual(
-                field_score, 1.0, f"Field {field_name} should have perfect score"
-            )
+            assert field_score == 1.0, f"Field {field_name} should have perfect score"
 
         # === CONFUSION MATRIX ANALYSIS ===
         cm = comparison_result["confusion_matrix"]
@@ -206,30 +197,14 @@ class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
         # Total = 6 TP at overall level
 
         # Basic assertions that should hold for perfect match
-        self.assertEqual(
-            cm["overall"]["fp"], 0, "Perfect match should have no false positives"
-        )
-        self.assertEqual(
-            cm["overall"]["fn"], 0, "Perfect match should have no false negatives"
-        )
-        self.assertEqual(
-            cm["overall"]["fa"], 0, "Perfect match should have no false alarms"
-        )
-        self.assertEqual(
-            cm["overall"]["fd"], 0, "Perfect match should have no false discoveries"
-        )
-        self.assertEqual(
-            cm["overall"]["tn"],
-            0,
-            "Perfect match overall level has no TN (TN exists at field level)",
-        )
+        assert cm["overall"]["fp"] == 0, "Perfect match should have no false positives"
+        assert cm["overall"]["fn"] == 0, "Perfect match should have no false negatives"
+        assert cm["overall"]["fa"] == 0, "Perfect match should have no false alarms"
+        assert cm["overall"]["fd"] == 0, "Perfect match should have no false discoveries"
+        assert cm["overall"]["tn"] == 0, "Perfect match overall level has no TN (TN exists at field level)"
 
         # Precise overall TP count: 4 invoice fields + 2 transaction objects = 6
-        self.assertEqual(
-            cm["overall"]["tp"],
-            6,
-            "Overall TP should be 6: 4 invoice fields + 2 transactions",
-        )
+        assert cm["overall"]["tp"] == 6, "Overall TP should be 6: 4 invoice fields + 2 transactions"
 
         # === DETAILED FIELD-LEVEL ASSERTIONS ===
 
@@ -241,88 +216,40 @@ class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
                 return field_data.get(metric_name, 0)
 
         # Transaction field assertions (aggregated across 2 transactions)
-        self.assertEqual(
-            get_metric(cm["fields"]["transactions"]["fields"]["transaction_id"], "tp"),
-            2,
-            "Should have 2 TP for transaction_id across 2 transactions",
-        )
-        self.assertEqual(
-            get_metric(cm["fields"]["transactions"]["fields"]["date"], "tp"),
-            2,
-            "Should have 2 TP for transaction dates",
-        )
-        self.assertEqual(
-            get_metric(cm["fields"]["transactions"]["fields"]["amount"], "tp"),
-            2,
-            "Should have 2 TP for transaction amounts",
-        )
+        assert get_metric(cm["fields"]["transactions"]["fields"]["transaction_id"], "tp") == 2, "Should have 2 TP for transaction_id across 2 transactions"
+        assert get_metric(cm["fields"]["transactions"]["fields"]["date"], "tp") == 2, "Should have 2 TP for transaction dates"
+        assert get_metric(cm["fields"]["transactions"]["fields"]["amount"], "tp") == 2, "Should have 2 TP for transaction amounts"
 
         # Product-level object count (3 products total: 2 in first transaction, 1 in second)
-        self.assertEqual(
-            get_metric(cm["fields"]["transactions"]["fields"]["products"], "tp"),
-            3,
-            "Should have 3 TP for product objects (2 in TXN-001, 1 in TXN-002)",
-        )
+        assert get_metric(cm["fields"]["transactions"]["fields"]["products"], "tp") == 3, "Should have 3 TP for product objects (2 in TXN-001, 1 in TXN-002)"
 
         # Product field assertions (aggregated across all 3 products)
-        self.assertEqual(
-            get_metric(
-                cm["fields"]["transactions"]["fields"]["products"]["fields"][
-                    "product_id"
-                ],
-                "tp",
-            ),
-            3,
-            "Should have 3 TP for product_id across all products",
-        )
-        self.assertEqual(
-            get_metric(
-                cm["fields"]["transactions"]["fields"]["products"]["fields"]["name"],
-                "tp",
-            ),
-            3,
-            "Should have 3 TP for product names",
-        )
-        self.assertEqual(
-            get_metric(
-                cm["fields"]["transactions"]["fields"]["products"]["fields"]["price"],
-                "tp",
-            ),
-            3,
-            "Should have 3 TP for product prices",
-        )
-        self.assertEqual(
-            get_metric(
-                cm["fields"]["transactions"]["fields"]["products"]["fields"][
-                    "quantity"
-                ],
-                "tp",
-            ),
-            3,
-            "Should have 3 TP for product quantities",
-        )
+        assert get_metric(
+            cm["fields"]["transactions"]["fields"]["products"]["fields"]["product_id"],
+            "tp",
+        ) == 3, "Should have 3 TP for product_id across all products"
+        assert get_metric(
+            cm["fields"]["transactions"]["fields"]["products"]["fields"]["name"],
+            "tp",
+        ) == 3, "Should have 3 TP for product names"
+        assert get_metric(
+            cm["fields"]["transactions"]["fields"]["products"]["fields"]["price"],
+            "tp",
+        ) == 3, "Should have 3 TP for product prices"
+        assert get_metric(
+            cm["fields"]["transactions"]["fields"]["products"]["fields"]["quantity"],
+            "tp",
+        ) == 3, "Should have 3 TP for product quantities"
 
         # Category field special case: 2 TP (PROD-A=Electronics, PROD-C=Tools) + 1 TN (PROD-B=None vs None)
-        self.assertEqual(
-            get_metric(
-                cm["fields"]["transactions"]["fields"]["products"]["fields"][
-                    "category"
-                ],
-                "tp",
-            ),
-            2,
-            "Should have 2 TP for product categories (PROD-A and PROD-C)",
-        )
-        self.assertEqual(
-            get_metric(
-                cm["fields"]["transactions"]["fields"]["products"]["fields"][
-                    "category"
-                ],
-                "tn",
-            ),
-            1,
-            "Should have 1 TN for product category (PROD-B None vs None)",
-        )
+        assert get_metric(
+            cm["fields"]["transactions"]["fields"]["products"]["fields"]["category"],
+            "tp",
+        ) == 2, "Should have 2 TP for product categories (PROD-A and PROD-C)"
+        assert get_metric(
+            cm["fields"]["transactions"]["fields"]["products"]["fields"]["category"],
+            "tn",
+        ) == 1, "Should have 1 TN for product category (PROD-B None vs None)"
 
     def test_complex_mixed_compare_with(self):
         """Test 2: Complex mixed scenario with various error types using compare_with."""
@@ -453,17 +380,9 @@ class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
         print(f"Successful fields: {successful_fields}, Failed fields: {failed_fields}")
 
         # Validate that we have both successful and failed comparisons
-        self.assertGreater(
-            successful_fields, 0, "Should have some successful field comparisons"
-        )
-        self.assertGreater(
-            failed_fields, 0, "Should have some failed field comparisons"
-        )
-        self.assertLess(
-            comparison_result["overall_score"],
-            1.0,
-            "Mixed scenario should not have perfect similarity",
-        )
+        assert successful_fields > 0, "Should have some successful field comparisons"
+        assert failed_fields > 0, "Should have some failed field comparisons"
+        assert comparison_result["overall_score"] < 1.0, "Mixed scenario should not have perfect similarity"
 
     def test_threshold_edge_cases_compare_with(self):
         """Test 3: Threshold edge cases using compare_with method."""
@@ -558,11 +477,7 @@ class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
         )
 
         # Above thresholds should generally perform better
-        self.assertGreaterEqual(
-            result_above["overall_score"],
-            result_below["overall_score"],
-            "Above threshold case should have higher or equal similarity",
-        )
+        assert result_above["overall_score"] >= result_below["overall_score"], "Above threshold case should have higher or equal similarity"
 
     def test_list_length_mismatch_compare_with(self):
         """Test 4: List length mismatches using compare_with method."""
@@ -694,11 +609,7 @@ class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
         print(f"Transactions field score: {transactions_score:.3f}")
 
         # Different list lengths should typically reduce similarity
-        self.assertLess(
-            comparison_result["overall_score"],
-            1.0,
-            "List length mismatch should reduce overall similarity",
-        )
+        assert comparison_result["overall_score"] < 1.0, "List length mismatch should reduce overall similarity"
 
     def test_deep_nesting_field_paths_compare_with(self):
         """Test 5: Deep nesting field path analysis using compare_with method."""
@@ -771,9 +682,7 @@ class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
         print(f"Total fields: {field_count}")
 
         # Should have field scores
-        self.assertGreater(
-            len(comparison_result["field_scores"]), 0, "Should have field scores"
-        )
+        assert len(comparison_result["field_scores"]) > 0, "Should have field scores"
 
     def test_performance_stress_compare_with(self):
         """Test 6: Performance stress test with large nested structure."""
@@ -841,17 +750,9 @@ class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
         print("Total products compared: 100")
 
         # Performance validation - adjusted for complex 3-level nesting
-        self.assertLess(execution_time, 35.0, "Should complete within 35 seconds")
-        self.assertGreater(
-            comparison_result["overall_score"],
-            0.5,
-            "Should have reasonable similarity despite small changes",
-        )
-        self.assertLess(
-            comparison_result["overall_score"],
-            1.0,
-            "Should not be perfect due to modifications",
-        )
+        assert execution_time < 35.0, "Should complete within 35 seconds"
+        assert comparison_result["overall_score"] > 0.5, "Should have reasonable similarity despite small changes"
+        assert comparison_result["overall_score"] < 1.0, "Should not be perfect due to modifications"
 
     def test_weighted_field_object_vs_field_level_confusion_matrix(self):
         """Test 7: Weighted fields - object match but field-level mismatches."""
@@ -977,48 +878,20 @@ class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
         # === KEY TEST: Object vs Field Level Independence ===
 
         # Object level should show TP because high-weight fields dominate
-        self.assertEqual(
-            cm["fields"]["transactions"]["fields"]["products"]["overall"]["tp"],
-            1,
-            "Product object should be TP due to high-weight field matches",
-        )
+        assert cm["fields"]["transactions"]["fields"]["products"]["overall"]["tp"] == 1, "Product object should be TP due to high-weight field matches"
 
         # Field level should show independent counts regardless of object matching
         product_fields = cm["fields"]["transactions"]["fields"]["products"]["fields"]
 
         # High-weight fields that match should be TP
-        self.assertEqual(
-            product_fields["product_id"]["overall"]["tp"],
-            1,
-            "product_id should be TP (exact match)",
-        )
-        self.assertEqual(
-            product_fields["name"]["overall"]["tp"],
-            1,
-            "name should be TP (exact match)",
-        )
+        assert product_fields["product_id"]["overall"]["tp"] == 1, "product_id should be TP (exact match)"
+        assert product_fields["name"]["overall"]["tp"] == 1, "name should be TP (exact match)"
 
         # Low-weight fields that don't match show FP and FD
-        self.assertEqual(
-            product_fields["price"]["overall"]["fp"],
-            1,
-            "price should be FP (predicted value doesn't match gold)",
-        )
-        self.assertEqual(
-            product_fields["price"]["overall"]["fd"],
-            1,
-            "price should be FD (false discovery of difference)",
-        )
-        self.assertEqual(
-            product_fields["category"]["overall"]["fp"],
-            1,
-            "category should be FP (predicted value doesn't match gold)",
-        )
-        self.assertEqual(
-            product_fields["category"]["overall"]["fd"],
-            1,
-            "category should be FD (false discovery of difference)",
-        )
+        assert product_fields["price"]["overall"]["fp"] == 1, "price should be FP (predicted value doesn't match gold)"
+        assert product_fields["price"]["overall"]["fd"] == 1, "price should be FD (false discovery of difference)"
+        assert product_fields["category"]["overall"]["fp"] == 1, "category should be FP (predicted value doesn't match gold)"
+        assert product_fields["category"]["overall"]["fd"] == 1, "category should be FD (false discovery of difference)"
 
         # Validate that field-level counts don't aggregate to object-level counts
         field_tp_count = (
@@ -1035,22 +908,10 @@ class TestInvoiceTransactionsProductsComprehensive(unittest.TestCase):
         print(f"Object-level TP: {object_tp_count}")
 
         # This is the crucial test: field and object level counts should be independent
-        self.assertNotEqual(
-            field_tp_count,
-            object_tp_count,
-            "Field-level TP sum should NOT equal object-level TP (they're independent)",
-        )
+        assert field_tp_count != object_tp_count, "Field-level TP sum should NOT equal object-level TP (they're independent)"
 
         # Overall similarity should be high due to weighted fields
-        self.assertGreater(
-            comparison_result["overall_score"],
-            0.9,
-            "Overall score should be high due to high-weight matches",
-        )
+        assert comparison_result["overall_score"] > 0.9, "Overall score should be high due to high-weight matches"
 
         # Note: all_fields_matched flag is vestigial and misleading with weighted fields
         # The meaningful data is in the confusion matrix above
-
-
-if __name__ == "__main__":
-    unittest.main()

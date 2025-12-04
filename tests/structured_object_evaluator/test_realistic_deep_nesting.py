@@ -286,7 +286,6 @@ class TestRealisticDeepNesting:
     @with_timeout(15)  # 15 second timeout
     def test_differences_at_each_level_with_timeout(self):
         """Test differences at each level with performance safeguards."""
-
         base_org = self.create_test_organization("base")
 
         test_variations = [
@@ -330,7 +329,6 @@ class TestRealisticDeepNesting:
     @with_timeout(10)  # 10 second timeout
     def test_deep_field_paths_with_timeout(self):
         """Test 6-level deep field path generation with performance safeguard."""
-
         start_time = time.time()
 
         base_org = self.create_test_organization("base")
@@ -377,7 +375,6 @@ class TestRealisticDeepNesting:
     @with_timeout(10)  # 10 second timeout
     def test_confusion_matrix_6_levels_with_timeout(self):
         """Test confusion matrix aggregation across 6 levels with performance safeguard."""
-
         start_time = time.time()
 
         base_org = self.create_test_organization("base")
@@ -425,7 +422,6 @@ class TestRealisticDeepNesting:
     @with_timeout(20)  # 20 second timeout for performance test
     def test_performance_stress_test_with_timeout(self):
         """Stress test with multiple evaluations to ensure no performance degradation."""
-
         start_time = time.time()
 
         # Create multiple organizations for stress testing
@@ -467,6 +463,7 @@ class TestRealisticDeepNesting:
 def test_integration():
     """Quick integration test."""
     test_instance = TestRealisticDeepNesting()
+    test_instance.setup_method()  # Initialize the evaluator
 
     # Run key tests
     test_instance.test_perfect_match_6_levels_with_timeout()

@@ -682,6 +682,3 @@ class TestPerformance:
         time_ratio = large_scale_time / small_scale_time
         assert time_ratio < 15, f"Scaling poorly: {time_ratio}x time for 10x documents"
 
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
