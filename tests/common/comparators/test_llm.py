@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 from stickler.comparators.llm import LLMComparator
 
 
-class TestLLMComparator(unittest.TestCase):
+class TestLLMComparator:
     """
     Test cases for the LLMComparator class used for comparing values using LLM models.
     """
