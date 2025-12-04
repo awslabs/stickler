@@ -8,7 +8,7 @@ This guide covers the branch strategy, commit conventions, and pull request proc
 
 | Branch | Purpose | Direct Commits |
 |--------|---------|----------------|
-| `main` | Stable releases only | No - protected |
+| `main` | Stable releases only | No - protected via PRs from `dev` only |
 | `dev` | Integration branch | No - via PRs only |
 
 ### Feature Branches
