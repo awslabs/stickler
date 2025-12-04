@@ -22,7 +22,6 @@ from typing import List
 from stickler.structured_object_evaluator import (
     StructuredModel,
     ComparableField,
-    StructuredModelEvaluator,
 )
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.exact import ExactComparator
@@ -53,6 +52,7 @@ def with_timeout(seconds):
 
 # Level 6: Task (deepest level)
 class Task(StructuredModel):
+    match_threshold = 0.7
     """Level 6: Deepest nested model - Task."""
 
     id: str = ComparableField(
@@ -74,6 +74,7 @@ class Task(StructuredModel):
 
 # Level 5: Project
 class Project(StructuredModel):
+    match_threshold = 0.7
     """Level 5: Project containing Tasks."""
 
     id: str = ComparableField(
@@ -98,6 +99,7 @@ class Project(StructuredModel):
 
 # Level 4: Team
 class Team(StructuredModel):
+    match_threshold = 0.7
     """Level 4: Team containing Projects."""
 
     id: str = ComparableField(
@@ -117,6 +119,7 @@ class Team(StructuredModel):
 
 # Level 3: Department
 class Department(StructuredModel):
+    match_threshold = 0.7
     """Level 3: Department containing Teams."""
 
     id: str = ComparableField(
@@ -138,6 +141,7 @@ class Department(StructuredModel):
 
 # Level 2: Division
 class Division(StructuredModel):
+    match_threshold = 0.7
     """Level 2: Division containing Departments."""
 
     id: str = ComparableField(
@@ -156,6 +160,7 @@ class Division(StructuredModel):
 
 # Level 1: Organization (top level)
 class Organization(StructuredModel):
+    match_threshold = 0.7
     """Level 1: Top-level Organization containing Divisions."""
 
     id: str = ComparableField(
@@ -177,12 +182,6 @@ class Organization(StructuredModel):
 
 class TestRealisticDeepNesting:
     """Test suite for realistic 6-level deep nesting with performance safeguards."""
-
-    def setup_method(self):
-        """Set up test evaluator."""
-        self.evaluator = StructuredModelEvaluator(
-            threshold=0.7, document_non_matches=True
-        )
 
     def create_test_organization(self, variation: str = "base") -> Organization:
         """Create test organization with realistic 6-level hierarchy.
@@ -260,6 +259,7 @@ class TestRealisticDeepNesting:
     @with_timeout(10)  # 10 second timeout
     def test_perfect_match_6_levels_with_timeout(self):
         """Test perfect match across 6 levels with performance safeguard."""
+
         start_time = time.time()
 
         # Create identical organizations
@@ -267,7 +267,7 @@ class TestRealisticDeepNesting:
         pred_org = self.create_test_organization("base")
 
         # Evaluate
-        result = self.evaluator.evaluate(gt_org, pred_org)
+        result = gt_org.compare_with(pred_org, evaluator_format=True)
 
         duration = time.time() - start_time
 
@@ -302,10 +302,12 @@ class TestRealisticDeepNesting:
 
             modified_org = self.create_test_organization(variation)
 
-            # Clear non-matches from previous test
-            self.evaluator.clear_non_match_documents()
-
-            result = self.evaluator.evaluate(base_org, modified_org)
+            result = base_org.compare_with(
+                modified_org, 
+                evaluator_format=True,
+                document_non_matches=True,
+                include_confusion_matrix=True
+            )
 
             duration = time.time() - start_time
 
@@ -332,7 +334,12 @@ class TestRealisticDeepNesting:
         base_org = self.create_test_organization("base")
         level6_diff_org = self.create_test_organization("level6_diff")
 
-        result = self.evaluator.evaluate(base_org, level6_diff_org)
+        result = base_org.compare_with(
+            level6_diff_org, 
+            evaluator_format=True,
+            document_non_matches=True,
+            include_confusion_matrix=True
+        )
 
         duration = time.time() - start_time
 
@@ -373,7 +380,12 @@ class TestRealisticDeepNesting:
         base_org = self.create_test_organization("base")
         diff_org = self.create_test_organization("level3_diff")
 
-        result = self.evaluator.evaluate(base_org, diff_org)
+        result = base_org.compare_with(
+            diff_org, 
+            evaluator_format=True,
+            document_non_matches=True,
+            include_confusion_matrix=True
+        )
 
         duration = time.time() - start_time
 
@@ -424,7 +436,12 @@ class TestRealisticDeepNesting:
             modified = self.create_test_organization(
                 "level6_diff" if i % 2 == 0 else "level3_diff"
             )
-            result = self.evaluator.evaluate(org, modified)
+            result = org.compare_with(
+                modified, 
+                evaluator_format=True,
+                document_non_matches=True,
+                include_confusion_matrix=True
+            )
             results.append(result)
 
         duration = time.time() - start_time
@@ -446,7 +463,6 @@ class TestRealisticDeepNesting:
 def test_integration():
     """Quick integration test."""
     test_instance = TestRealisticDeepNesting()
-    test_instance.setup_method()  # Initialize the evaluator
 
     # Run key tests
     test_instance.test_perfect_match_6_levels_with_timeout()

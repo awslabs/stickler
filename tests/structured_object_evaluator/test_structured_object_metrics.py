@@ -11,12 +11,13 @@ from typing import List
 from stickler.structured_object_evaluator import StructuredModel, ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator import anls_score
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 
 
 # Define the models for the test
 class LineItem(StructuredModel):
     """LineItem model for representing invoice line items."""
+
+    match_threshold = 0.5
 
     description: str = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.7, weight=1.0
@@ -37,6 +38,8 @@ class LineItem(StructuredModel):
 
 class Invoice(StructuredModel):
     """Invoice model with nested LineItem objects."""
+
+    match_threshold = 0.5
 
     invoice_number: str = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.9, weight=2.0
@@ -141,13 +144,10 @@ class TestStructuredObjectMetrics:
             line_items=self.poor_line_items,
         )
 
-        # Initialize the evaluator - using StructuredModelEvaluator instead of ANLSStarMetricsEvaluator
-        self.evaluator = StructuredModelEvaluator(threshold=0.5)
-
     def test_perfect_match(self):
         """Test metrics for perfect match case."""
-        # Use the evaluate method from StructuredModelEvaluator
-        results = self.evaluator.evaluate(self.gt_invoice, self.perfect_invoice)
+        # Use the compare_with method
+        results = self.gt_invoice.compare_with(self.perfect_invoice, evaluator_format=True)
 
         # Check overall metrics
         assert results["overall"]["precision"] == 1.0
@@ -191,7 +191,7 @@ class TestStructuredObjectMetrics:
 
     def test_poor_match(self):
         """Test metrics for poor match case with multiple errors."""
-        results = self.evaluator.evaluate(self.gt_invoice, self.poor_invoice)
+        results = self.gt_invoice.compare_with(self.poor_invoice, evaluator_format=True)
 
         # Check that overall metrics reflect the poor match
         overall_score = results["overall"]["anls_score"]
@@ -275,7 +275,7 @@ class TestStructuredObjectMetrics:
         )
 
         # Evaluate
-        result = self.evaluator.evaluate(gt_invoice, pred_invoice)
+        result = gt_invoice.compare_with(pred_invoice, include_confusion_matrix=True)
 
         # Get confusion matrix
         cm = result["confusion_matrix"]

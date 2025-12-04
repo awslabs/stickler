@@ -10,7 +10,6 @@ from typing import List, Optional
 from stickler.structured_object_evaluator import (
     StructuredModel,
     ComparableField,
-    StructuredModelEvaluator,
 )
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.exact import ExactComparator
@@ -18,6 +17,7 @@ from stickler.comparators.exact import ExactComparator
 
 # Level 1: Simple model
 class SimpleItem(StructuredModel):
+    match_threshold = 0.7
     """Level 1: Simple model with basic fields."""
 
     id: str = ComparableField(
@@ -33,6 +33,7 @@ class SimpleItem(StructuredModel):
 
 # Level 2: Contains Level 1
 class Container(StructuredModel):
+    match_threshold = 0.7
     """Level 2: Contains SimpleItem."""
 
     id: str = ComparableField(
@@ -47,6 +48,7 @@ class Container(StructuredModel):
 
 # Level 3: Contains Level 2
 class Group(StructuredModel):
+    match_threshold = 0.7
     """Level 3: Contains Container."""
 
     id: str = ComparableField(
@@ -61,6 +63,7 @@ class Group(StructuredModel):
 
 # Level 4: Contains Level 3
 class Department(StructuredModel):
+    match_threshold = 0.7
     """Level 4: Contains Group."""
 
     id: str = ComparableField(
@@ -152,7 +155,6 @@ def create_department(base_id: int, variation: str = "base") -> Department:
 
 def test_performance_by_level():
     """Test performance at each nesting level."""
-    evaluator = StructuredModelEvaluator(threshold=0.7, document_non_matches=False)
 
     print("🔍 Performance Diagnostic Test")
     print("=" * 50)
@@ -162,7 +164,7 @@ def test_performance_by_level():
     start_time = time.time()
     item1 = create_simple_item(1, "base")
     item2 = create_simple_item(1, "diff")
-    result = evaluator.evaluate(item1, item2)
+    result = item1.compare_with(item2, include_confusion_matrix=True, evaluator_format=True)
     duration = time.time() - start_time
     print(f"   Time: {duration:.3f}s | Score: {result['overall']['anls_score']:.3f}")
 
@@ -175,7 +177,7 @@ def test_performance_by_level():
     start_time = time.time()
     container1 = create_container(1, "base")
     container2 = create_container(1, "diff")
-    result = evaluator.evaluate(container1, container2)
+    result = container1.compare_with(container2, include_confusion_matrix=True, evaluator_format=True)
     duration = time.time() - start_time
     print(f"   Time: {duration:.3f}s | Score: {result['overall']['anls_score']:.3f}")
 
@@ -188,7 +190,7 @@ def test_performance_by_level():
     start_time = time.time()
     group1 = create_group(1, "base")
     group2 = create_group(1, "diff")
-    result = evaluator.evaluate(group1, group2)
+    result = group1.compare_with(group2, include_confusion_matrix=True, evaluator_format=True)
     duration = time.time() - start_time
     print(f"   Time: {duration:.3f}s | Score: {result['overall']['anls_score']:.3f}")
 
@@ -201,7 +203,7 @@ def test_performance_by_level():
     start_time = time.time()
     dept1 = create_department(1, "base")
     dept2 = create_department(1, "diff")
-    result = evaluator.evaluate(dept1, dept2)
+    result = dept1.compare_with(dept2, include_confusion_matrix=True, evaluator_format=True)
     duration = time.time() - start_time
     print(f"   Time: {duration:.3f}s | Score: {result['overall']['anls_score']:.3f}")
 
@@ -222,14 +224,12 @@ def test_with_non_match_documentation():
     print("\n🔍 Testing with Non-Match Documentation")
     print("=" * 50)
 
-    evaluator = StructuredModelEvaluator(threshold=0.7, document_non_matches=True)
-
     # Test Level 2 with non-match docs
     print("\n📊 Level 2 with Non-Match Docs")
     start_time = time.time()
     container1 = create_container(1, "base")
     container2 = create_container(1, "diff")
-    result = evaluator.evaluate(container1, container2)
+    result = container1.compare_with(container2, include_confusion_matrix=True, evaluator_format=True)
     duration = time.time() - start_time
     print(f"   Time: {duration:.3f}s | Score: {result['overall']['anls_score']:.3f}")
     print(f"   Non-matches: {len(result.get('non_matches', []))}")

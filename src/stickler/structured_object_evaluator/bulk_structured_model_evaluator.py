@@ -371,8 +371,7 @@ class BulkStructuredModelEvaluator:
         """
         Calculate derived confusion matrix metrics (precision, recall, f1, accuracy).
 
-        This method replicates the derivation logic that was previously handled
-        by StructuredModelEvaluator.
+        This method replicates the derivation logic for confusion matrix metrics.
 
         Args:
             cm_dict: Dictionary with basic confusion matrix counts

@@ -1,5 +1,5 @@
 """
-Pretty print utilities for StructuredModelEvaluator results.
+Pretty print utilities for structured model comparison results.
 
 This module provides functions for displaying confusion matrix metrics
 in a more readable and visually appealing format.
@@ -312,7 +312,7 @@ def print_confusion_matrix(
     Pretty print confusion matrix metrics in a readable, visually appealing format.
 
     Args:
-        results: Results from StructuredModelEvaluator.evaluate() or ProcessEvaluation from bulk evaluator
+        results: Results from StructuredModel.compare_with() or ProcessEvaluation from bulk evaluator
         field_filter: Optional regex to filter fields to display
         sort_by: How to sort fields ('name', 'precision', 'recall', 'f1', etc.)
         show_details: Whether to show detailed metrics for each field
@@ -381,7 +381,7 @@ def _print_overall_summary(results: Dict[str, Any], use_color: bool = True) -> N
     Print overall summary of confusion matrix metrics.
 
     Args:
-        results: Results dictionary from StructuredModelEvaluator.evaluate()
+        results: Results dictionary from StructuredModel.compare_with()
         use_color: Whether to use color in the output
     """
     cm = results["confusion_matrix"]["overall"]
@@ -482,7 +482,7 @@ def _print_field_details(
     Print detailed field-level confusion matrix metrics.
 
     Args:
-        results: Results dictionary from StructuredModelEvaluator.evaluate()
+        results: Results dictionary from StructuredModel.compare_with()
         field_filter: Optional regex to filter fields to display
         sort_by: How to sort fields
         use_color: Whether to use color in the output
@@ -674,7 +674,7 @@ def _print_matrix_visualization(
     Print a visual representation of the confusion matrix.
 
     Args:
-        results: Results dictionary from StructuredModelEvaluator.evaluate()
+        results: Results dictionary from StructuredModel.compare_with()
         use_color: Whether to use color in the output
     """
     cm = results["confusion_matrix"]["overall"]
@@ -915,7 +915,7 @@ def print_non_matches(
     Pretty print non-match information in a readable, visually appealing format.
 
     Args:
-        results: Results from StructuredModelEvaluator.evaluate() or ProcessEvaluation from bulk evaluator
+        results: Results from StructuredModel.compare_with() or ProcessEvaluation from bulk evaluator
         group_by: How to group non-matches ('type', 'field', 'document')
         field_filter: Optional regex to filter fields to display
         show_summary: Whether to show summary statistics
@@ -1251,7 +1251,7 @@ def print_evaluation_results(
     Print comprehensive evaluation results including confusion matrix and non-matches.
 
     Args:
-        results: Results from StructuredModelEvaluator.evaluate() or ProcessEvaluation from bulk evaluator
+        results: Results from StructuredModel.compare_with() or ProcessEvaluation from bulk evaluator
         show_confusion_matrix: Whether to show confusion matrix metrics
         show_non_matches: Whether to show non-match analysis
         show_aggregates: Whether to highlight aggregate fields in confusion matrix
@@ -1329,7 +1329,7 @@ def print_confusion_matrix_html(
     Generate HTML representation of confusion matrix metrics for Jupyter notebooks.
 
     Args:
-        results: Results dictionary from StructuredModelEvaluator.evaluate()
+        results: Results dictionary from StructuredModel.compare_with()
         field_filter: Optional regex to filter fields to display
 
     Returns:
