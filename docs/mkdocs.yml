@@ -3,7 +3,7 @@ repo_url: https://github.com/awslabs/stickler
 repo_name: awslabs/stickler
 
 theme:
-  name: material
+  name: shadcn
   features:
     - content.code.copy
     - content.code.select
@@ -16,23 +16,37 @@ theme:
     - navigation.top
     - search.highlight
     - content.code.copy
+  show_title: true
+  show_stargazers: true 
+  pygments_style:
+        light: shadcn-light
+        dark: github-dark
+  icon: img/stickler-logo-white-background.svg
+  topbar_sections: true
+  katex_options:
+    macros:
+      "\\dx": "\\mathrm{d}x"
+  show_datetime: true
 
 markdown_extensions:
-  - admonition
-  - codehilite
-  - pymdownx.highlight
-  - pymdownx.tabbed
-  - pymdownx.details
-  - pymdownx.emoji
-  - tables
-  - toc:
-      title: On this page
-      permalink: false
-  - pymdownx.superfences:
-      custom_fences:
-          - name: mermaid
-            class: mermaid
-            format: !!python/name:pymdownx.superfences.fence_code_format
+  admonition:
+  codehilite:
+  fenced_code:
+  footnotes:
+  extra:
+  pymdownx.blocks.details:
+  pymdownx.tabbed:
+  pymdownx.blocks.tab:
+    combine_header_slug: true
+    separator: ___
+  pymdownx.progressbar:
+  pymdownx.snippets:
+  pymdownx.arithmatex:
+    generic: true
+  shadcn.extensions.echarts.alpha:
+  shadcn.extensions.codexec:
+  shadcn.extensions.iconify:
+  pymdownx.blocks.caption:
 
 plugins:
    - search
@@ -47,8 +61,10 @@ plugins:
               show_root_heading: true
               show_source: true
 
+extra_css:
+  - css/custom.css
+
 extra_javascript:
   # Workaround for site_url breaking mermaid rendering; see the following for more info:
   # https://github.com/squidfunk/mkdocs-material/issues/3742#issuecomment-1076068038
   - https://unpkg.com/mermaid@11/dist/mermaid.min.js
-  - assets/auto-redirect.js

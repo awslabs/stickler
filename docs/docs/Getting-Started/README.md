@@ -1,5 +1,5 @@
 ---
-title: Quick Start
+title: "Stickler: Structured Object Evaluation for GenAI"
 ---
 
 # Stickler: Structured Object Evaluation for GenAI

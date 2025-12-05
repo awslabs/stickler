@@ -1,0 +1,490 @@
+/* =====================
+   AMAZON EMBER FONTS
+   ===================== */
+
+/* Amazon Ember Display - Light */
+@font-face {
+  font-family: 'Amazon Ember Display';
+  src: url('../fonts/AmazonEmberDisplay_Lt.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Amazon Ember Display';
+  src: url('../fonts/AmazonEmberDisplay_LtIt.ttf') format('truetype');
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Amazon Ember Display - Regular */
+@font-face {
+  font-family: 'Amazon Ember Display';
+  src: url('../fonts/AmazonEmberDisplay_Rg.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Amazon Ember Display';
+  src: url('../fonts/AmazonEmberDisplay_RgIt.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Amazon Ember Display - Medium */
+@font-face {
+  font-family: 'Amazon Ember Display';
+  src: url('../fonts/AmazonEmberDisplay_Md.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Amazon Ember Display';
+  src: url('../fonts/AmazonEmberDisplay_MdIt.ttf') format('truetype');
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Amazon Ember Display - Bold */
+@font-face {
+  font-family: 'Amazon Ember Display';
+  src: url('../fonts/AmazonEmberDisplay_Bd.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Amazon Ember Display';
+  src: url('../fonts/AmazonEmberDisplay_BdIt.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Amazon Ember Display - Heavy */
+@font-face {
+  font-family: 'Amazon Ember Display';
+  src: url('../fonts/AmazonEmberDisplay_He.ttf') format('truetype');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Amazon Ember Display';
+  src: url('../fonts/AmazonEmberDisplay_HeIt.ttf') format('truetype');
+  font-weight: 800;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Amazon Ember Mono */
+@font-face {
+  font-family: 'Amazon Ember Mono';
+  src: url('../fonts/AmazonEmberMono_Rg.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Amazon Ember Mono';
+  src: url('../fonts/AmazonEmberMono_Bd.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* =====================
+   FONT VARIABLES
+   ===================== */
+:root {
+  --font-sans: 'Amazon Ember Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Amazon Ember Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+}
+
+/* =====================
+   GLOBAL TYPOGRAPHY
+   ===================== */
+html, body {
+  font-family: var(--font-sans);
+}
+
+/* Override shadcn theme typography */
+h1, h2, h3, h4, h5, h6,
+p, li, td, th, label, button,
+.md-content, .md-nav, .md-sidebar,
+article, nav, header, footer {
+  font-family: var(--font-sans);
+}
+
+/* Apply Amazon Ember Mono to code */
+code, pre, .highlight, .codehilite,
+kbd, samp, var {
+  font-family: var(--font-mono);
+}
+
+/* Fix overflow for long class/module names in mkdocstrings */
+.doc-heading,
+.doc-object-name,
+.doc h1,
+.doc h2,
+.doc h3,
+.doc h4 {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+/* Ensure code blocks scroll horizontally instead of overflow */
+.doc pre,
+.doc code {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* Fix main content area overflow */
+.md-content,
+.md-main__inner,
+article {
+  overflow-x: hidden;
+}
+
+/* Specifically target mkdocstrings generated content */
+.doc-contents {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* Handle long signatures */
+.doc-signature {
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Fix sidebar menu button box to expand for wrapped text and have consistent width */
+[data-sidebar="menu-button"] {
+  height: auto !important;
+  min-height: 30px;
+  width: 100% !important;
+  box-sizing: border-box;
+}
+
+/* Fix page header - stack title and buttons vertically */
+#page-header {
+  flex-direction: column;
+}
+
+/* Buttons row: move to top, align right */
+#page-header > .flex.items-center.gap-2 {
+  align-self: flex-end;
+  order: -1;
+}
+
+/* Title gets full width */
+#page-header > h1 {
+  width: 100%;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+/* Wider content area - reduce padding and expand max-width */
+article.w-full {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  max-width: 100% !important;
+}
+
+/* Expand the main content container */
+main {
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+}
+
+main > div {
+  max-width: 100% !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* ==============================================
+   AWS Brand Colors for Stickler Documentation
+   ==============================================
+
+   AWS Anchor Colors:
+   - Gray 850:              #161D26 (light mode text)
+   - White:                 #FFFFFF (light mode bg)
+
+   Dark Mode (AWS Blue-tinted):
+   - Background:            #131F2E (dark mode bg)
+   - Elevated:              #1a2a3a (cards, sidebar)
+   - Accent:                #232F3E (hover states, highlights)
+
+   Supporting Colors:
+   - AWS Orange:            #FF9900 (accent only - low contrast for text)
+   - AWS Blue:              #2563eb (links, interactive elements)
+   - AWS Light Blue:        #60A5FA (dark mode links)
+   - Gray 600:              #4B5563 (muted text)
+   - Gray 400:              #9CA3AF (dark mode muted text)
+   - Gray 200:              #E5E7EB (borders, accents)
+   - Gray 100:              #F3F4F6 (secondary backgrounds)
+   - Gray 50:               #F9FAFB (sidebar, surfaces)
+*/
+
+/* =====================
+   LIGHT MODE THEME
+   ===================== */
+:root {
+  /* Core backgrounds */
+  --background: #FFFFFF;
+  --foreground: #161D26;
+
+  /* Cards and popovers */
+  --card: #FFFFFF;
+  --card-foreground: #161D26;
+  --popover: #FFFFFF;
+  --popover-foreground: #161D26;
+
+  /* Primary action color - AWS Squid Ink */
+  --primary: #161D26;
+  --primary-foreground: #FFFFFF;
+
+  /* Secondary elements */
+  --secondary: #F3F4F6;
+  --secondary-foreground: #161D26;
+
+  /* Muted/subtle elements */
+  --muted: #F3F4F6;
+  --muted-foreground: #4B5563;
+
+  /* Accent for hover states */
+  --accent: #E5E7EB;
+  --accent-foreground: #161D26;
+
+  /* Error states */
+  --destructive: #DC2626;
+  --destructive-foreground: #FFFFFF;
+
+  /* Borders and inputs */
+  --border: #E5E7EB;
+  --input: #E5E7EB;
+  --ring: #2563eb;
+
+  /* Sidebar navigation */
+  --sidebar: #F9FAFB;
+  --sidebar-foreground: #161D26;
+  --sidebar-primary: #161D26;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E5E7EB;
+  --sidebar-accent-foreground: #161D26;
+  --sidebar-border: #E5E7EB;
+  --sidebar-ring: #2563eb;
+
+  /* Surface areas */
+  --surface: #F9FAFB;
+  --surface-foreground: #161D26;
+
+  /* Code styling */
+  --code: #F3F4F6;
+  --code-foreground: #374151;
+  --code-highlight: #E5E7EB;
+  --code-number: #4B5563;
+
+  /* Text selection */
+  --selection: #161D26;
+  --selection-foreground: #FFFFFF;
+
+  /* Warnings use AWS Orange influence */
+  --warning: #F59E0B;
+  --warning-foreground: #161D26;
+}
+
+/* =====================
+   DARK MODE THEME
+   ===================== */
+.dark {
+  /* Core backgrounds - AWS dark blue */
+  --background: #131F2E;
+  --foreground: #F9FAFB;
+
+  /* Cards and popovers - elevated surfaces */
+  --card: #1a2a3a;
+  --card-foreground: #F9FAFB;
+  --popover: #1a2a3a;
+  --popover-foreground: #F9FAFB;
+
+  /* Primary - inverted for dark mode */
+  --primary: #E5E7EB;
+  --primary-foreground: #131F2E;
+
+  /* Secondary elements */
+  --secondary: #1a2a3a;
+  --secondary-foreground: #F9FAFB;
+
+  /* Muted/subtle elements */
+  --muted: #1a2a3a;
+  --muted-foreground: #9CA3AF;
+
+  /* Accent for hover states */
+  --accent: #232F3E;
+  --accent-foreground: #F9FAFB;
+
+  /* Error states */
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+
+  /* Borders and inputs - semi-transparent */
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.15);
+  --ring: #60A5FA;
+
+  /* Sidebar navigation */
+  --sidebar: #1a2a3a;
+  --sidebar-foreground: #F9FAFB;
+  --sidebar-primary: #60A5FA;
+  --sidebar-primary-foreground: #F9FAFB;
+  --sidebar-accent: #232F3E;
+  --sidebar-accent-foreground: #F9FAFB;
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-ring: #232F3E;
+
+  /* Surface areas */
+  --surface: #1a2a3a;
+  --surface-foreground: #9CA3AF;
+
+  /* Code styling */
+  --code: #1a2a3a;
+  --code-foreground: #9CA3AF;
+  --code-highlight: #232F3E;
+  --code-number: #9CA3AF;
+
+  /* Text selection */
+  --selection: #E5E7EB;
+  --selection-foreground: #131F2E;
+
+  /* Warnings */
+  --warning: #F59E0B;
+  --warning-foreground: #131F2E;
+}
+
+/* =====================
+   LINK COLORS
+   ===================== */
+/* AWS Blue links for light mode */
+article a {
+  color: #2563eb;
+}
+
+article a:hover {
+  color: #1d4ed8;
+}
+
+/* Lighter blue links for dark mode */
+.dark article a {
+  color: #60A5FA;
+}
+
+.dark article a:hover {
+  color: #93C5FD;
+}
+
+/* =====================
+   INLINE CODE
+   ===================== */
+article code:not(pre code) {
+  background-color: #F3F4F6;
+  border: 1px solid #E5E7EB;
+}
+
+.dark article code:not(pre code) {
+  background-color: #1a2a3a;
+  border: 1px solid #232F3E;
+}
+
+/* =====================
+   ADMONITIONS
+   ===================== */
+/* Info - AWS Blue tinted */
+article .admonition.info {
+  border-color: #2563eb;
+  background-color: rgba(37, 99, 235, 0.05);
+}
+
+.dark article .admonition.info {
+  border-color: #60A5FA;
+  background-color: rgba(96, 165, 250, 0.1);
+}
+
+/* Warning - AWS Orange accent (decorative only) */
+article .admonition.warning {
+  border-color: #F59E0B;
+  background-color: rgba(245, 158, 11, 0.08);
+}
+
+.dark article .admonition.warning {
+  border-color: #FBBF24;
+  background-color: rgba(251, 191, 36, 0.15);
+}
+
+/* =====================
+   AWS ORANGE ACCENT
+   ===================== */
+/* Add subtle AWS Orange accent to active sidebar items */
+[data-sidebar="menu-button"][data-active="true"] {
+  position: relative;
+}
+
+[data-sidebar="menu-button"][data-active="true"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  background-color: #FF9900;
+  border-radius: 0 2px 2px 0;
+}
+
+/* =====================
+   FOCUS STATES
+   ===================== */
+*:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.dark *:focus-visible {
+  outline-color: #60A5FA;
+}
+
+/* =====================
+   PAGE NAVIGATION BUTTONS
+   ===================== */
+/* Style the prev/next arrow icons with AWS Orange */
+#previous-button svg,
+#next-button svg {
+  stroke: #FF9900 !important;
+}
+
+/* =====================
+   HIDE THEME ATTRIBUTION
+   ===================== */
+/* Hide the "shadcn theme provided by @asiffer" footer text */
+footer a[href*="asiffer"],
+footer:has(a[href*="asiffer"]) {
+  display: none !important;
+}

@@ -1,3 +1,7 @@
+---
+title: Overview
+---
+
 # Contributing to Stickler
 
 Welcome to the Stickler contributor documentation. This section provides everything you need to contribute code, tests, and documentation to the project.
