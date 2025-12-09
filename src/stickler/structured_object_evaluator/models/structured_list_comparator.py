@@ -261,7 +261,7 @@ class StructuredListComparator:
 
             results =[]
             if has_good_matches: #:
-                 #Step1: Only keep field level metrics
+                 # Use exissitng recursive comparison logic
                  for gt_idx, pred_idx, similarity in good_matched_pairs:
                      if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                         gt_item = gt_list[gt_idx]
@@ -270,21 +270,68 @@ class StructuredListComparator:
                         results.append(field_details_tmp)
 
             if has_bad_matches: #:
-                #Step1: Do the same as has_good_matches and only keep field level metrics
+                # Use exissitng recursive comparison logic
                 for gt_idx, pred_idx, similarity in bad_matched_pairs:
                     if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                         gt_item = gt_list[gt_idx]
                         pred_item = pred_list[pred_idx]
                         field_details_tmp = gt_item.compare_recursive(pred_item)
+                        results.append(field_details_tmp)    
 
-                        #TODO
-                        #Step2: Merge only the field level metrics with field_details
-                        #field_details_tmp['overall'] = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
-                        results.append(field_details_tmp)                        
-            #print(results)
+            if has_unmatched:
+                # Handle unmatched GT objects - count each element in the list
+                for gt_idx, gt_item in enumerate(gt_list):
+                    if gt_idx not in matched_gt_indices:
+                        #compare against itself to count all non-null values
+                        field_details_tmp = gt_item.compare_recursive(gt_item)
+
+                        #take all the tp values and convert to fn
+                        field_details_tmp["fields"] = self._switch_metrics(field_details_tmp["fields"] , source_metric='tp', target_metric='fn')
+                        results.append(field_details_tmp)
+
+                # Handle unmatched pred objects - count each element in the list
+                for pred_idx, pred_item in enumerate(pred_list):
+                    if pred_idx not in matched_pred_indices:
+                        #compare against itself to count all non-null values
+                        field_details_tmp = pred_item.compare_recursive(pred_item)
+
+                        #take all the tp values and convert to fa and fp
+                        target_result = field_details_tmp.copy()
+                        target_result["fields"]  = self._switch_metrics(field_details_tmp["fields"], source_metric='tp', target_metric='fa')
+                        field_details_tmp["fields"] = self._switch_metrics(field_details_tmp["fields"], target_result["fields"], source_metric='tp', target_metric='fp')
+                        results.append(field_details_tmp)
+                    
             field_details = self._recursive_aggregate_metrics(results)
-            #print(field_details)
+            
         return field_details['fields']
+
+    def _switch_metrics(self, source_result:dict, target_result: dict =None, source_metric: str ='tp', target_metric: str ='fp'):
+        if not target_result:
+            target_result={}
+
+        # RECURSIVE CALL: Handle nested fields at arbitrary depth
+        for field_name, field_metrics in source_result.items():
+            if field_name not in target_result:
+                target_result[field_name] = {}
+
+            if "overall" in field_metrics:
+                if "overall" not in target_result[field_name]:
+                    target_result[field_name]["overall"] = {}
+
+                for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
+                    if metric not in target_result[field_name]["overall"]:
+                        target_result[field_name]["overall"][metric] = 0
+
+                target_result[field_name]["overall"][target_metric] += field_metrics["overall"].get(source_metric, 0)
+
+            if "fields" in field_metrics:
+                if "fields" not in target_result[field_name]: 
+                    target_result[field_name]["fields"] = {}
+                
+                target_result[field_name]["fields"] = self._switch_metrics(field_metrics["fields"],
+                                                                           target_result[field_name]["fields"],
+                                                                           source_metric, target_metric)
+        return target_result
 
     def _handle_hierarchical_field(
         self,
