@@ -318,6 +318,7 @@ class StructuredListComparator:
 
             results =[]
             if has_good_matches: #:
+                 #Step1: Only keep field level metrics
                  for gt_idx, pred_idx, similarity in good_matched_pairs:
                      if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                         gt_item = gt_list[gt_idx]
@@ -326,7 +327,7 @@ class StructuredListComparator:
                         results.append(field_details_tmp)
 
             if has_bad_matches: #:
-                #Step1: Do the same as has_good_matches but only keep field level metrics
+                #Step1: Do the same as has_good_matches and only keep field level metrics
                 for gt_idx, pred_idx, similarity in bad_matched_pairs:
                     if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                         gt_item = gt_list[gt_idx]
@@ -335,12 +336,12 @@ class StructuredListComparator:
 
                         #TODO
                         #Step2: Merge only the field level metrics with field_details
-                        field_details_tmp['overall'] = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
+                        #field_details_tmp['overall'] = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
                         results.append(field_details_tmp)                        
             #print(results)
             field_details = self._recursive_aggregate_metrics(results)
             #print(field_details)
-        return field_details
+        return field_details['fields']
 
     def _handle_hierarchical_field(
         self,
