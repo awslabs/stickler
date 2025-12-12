@@ -235,74 +235,43 @@ class StructuredListComparator:
             Dictionary mapping field names to their metrics
         """
         field_details = {}
+        field_details['fields'] = {}
 
-        if gt_list and isinstance(gt_list[0], StructuredModel):
+        # FIX: Generate field details for all matched pairs AND unmatched objects
+        results =[]
 
-            # PHASE 3 FIX: Only process pairs that meet the match_threshold
-            # Filter to good matches only - poor matches get no recursive analysis
-            good_matched_pairs = [
-                (gt_idx, pred_idx, similarity)
-                for gt_idx, pred_idx, similarity in matched_pairs
-                if similarity >= match_threshold
-            ]
+        # Handle matched pairs
+        for gt_idx, pred_idx, similarity in matched_pairs:
+            if gt_idx < len(gt_list) and pred_idx < len(pred_list):
+                gt_item = gt_list[gt_idx]
+                pred_item = pred_list[pred_idx]
+                field_details_tmp = gt_item.compare_recursive(pred_item)
+                results.append(field_details_tmp)
 
-            bad_matched_pairs = [
-                (gt_idx, pred_idx, similarity)
-                for gt_idx, pred_idx, similarity in matched_pairs
-                if similarity < match_threshold
-            ]
+        # Handle unmatched GT objects - count each element in the list
+        for gt_idx, gt_item in enumerate(gt_list):
+            if gt_idx not in matched_gt_indices:
+                #compare against itself to count all non-null values
+                field_details_tmp = gt_item.compare_recursive(gt_item)
 
-            # Only generate field details if we have good matched pairs OR unmatched objects
-            has_good_matches = len(good_matched_pairs) > 0
-            has_bad_matches = len(bad_matched_pairs) > 0
-            has_unmatched = (len(matched_gt_indices) < len(gt_list)) or (
-                len(matched_pred_indices) < len(pred_list)
-            )
+                #take all the tp values and convert to fn
+                field_details_tmp["fields"] = self._switch_metrics(field_details_tmp["fields"] , source_metric='tp', target_metric='fn')
+                results.append(field_details_tmp)
 
-            results =[]
-            if has_good_matches: #:
-                 # Use exissitng recursive comparison logic
-                 for gt_idx, pred_idx, similarity in good_matched_pairs:
-                     if gt_idx < len(gt_list) and pred_idx < len(pred_list):
-                        gt_item = gt_list[gt_idx]
-                        pred_item = pred_list[pred_idx]
-                        field_details_tmp = gt_item.compare_recursive(pred_item)
-                        results.append(field_details_tmp)
+        # Handle unmatched pred objects - count each element in the list
+        for pred_idx, pred_item in enumerate(pred_list):
+            if pred_idx not in matched_pred_indices:
+                #compare against itself to count all non-null values
+                field_details_tmp = pred_item.compare_recursive(pred_item)
 
-            if has_bad_matches: #:
-                # Use exissitng recursive comparison logic
-                for gt_idx, pred_idx, similarity in bad_matched_pairs:
-                    if gt_idx < len(gt_list) and pred_idx < len(pred_list):
-                        gt_item = gt_list[gt_idx]
-                        pred_item = pred_list[pred_idx]
-                        field_details_tmp = gt_item.compare_recursive(pred_item)
-                        results.append(field_details_tmp)    
+                #take all the tp values and convert to fa and fp
+                target_result = field_details_tmp.copy()
+                target_result["fields"]  = self._switch_metrics(field_details_tmp["fields"], source_metric='tp', target_metric='fa')
+                field_details_tmp["fields"] = self._switch_metrics(field_details_tmp["fields"], target_result["fields"], source_metric='tp', target_metric='fp')
+                results.append(field_details_tmp)
+                
+        field_details = self._recursive_aggregate_metrics(results)
 
-            if has_unmatched:
-                # Handle unmatched GT objects - count each element in the list
-                for gt_idx, gt_item in enumerate(gt_list):
-                    if gt_idx not in matched_gt_indices:
-                        #compare against itself to count all non-null values
-                        field_details_tmp = gt_item.compare_recursive(gt_item)
-
-                        #take all the tp values and convert to fn
-                        field_details_tmp["fields"] = self._switch_metrics(field_details_tmp["fields"] , source_metric='tp', target_metric='fn')
-                        results.append(field_details_tmp)
-
-                # Handle unmatched pred objects - count each element in the list
-                for pred_idx, pred_item in enumerate(pred_list):
-                    if pred_idx not in matched_pred_indices:
-                        #compare against itself to count all non-null values
-                        field_details_tmp = pred_item.compare_recursive(pred_item)
-
-                        #take all the tp values and convert to fa and fp
-                        target_result = field_details_tmp.copy()
-                        target_result["fields"]  = self._switch_metrics(field_details_tmp["fields"], source_metric='tp', target_metric='fa')
-                        field_details_tmp["fields"] = self._switch_metrics(field_details_tmp["fields"], target_result["fields"], source_metric='tp', target_metric='fp')
-                        results.append(field_details_tmp)
-                    
-            field_details = self._recursive_aggregate_metrics(results)
-            
         return field_details['fields']
 
     def _switch_metrics(self, source_result:dict, target_result: dict =None, source_metric: str ='tp', target_metric: str ='fp'):

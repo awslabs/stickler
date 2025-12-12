@@ -134,7 +134,7 @@ class ComparisonDispatcher:
         # - GT None/empty, Pred populated → FA (False Alarm)
         # - GT populated, Pred None/empty → FN (False Negative)
         # - Both populated → Continue to type-based dispatch (returns None)
-        if is_list_field:
+        if is_list_field and not (gt_needs_hierarchy or pred_needs_hierarchy):
             list_result = self.handle_list_field_dispatch(gt_val, pred_val, weight)
             if list_result is not None:
                 # Early exit: null case handled, return result
@@ -194,7 +194,8 @@ class ComparisonDispatcher:
         # Determine if this is a structured list or primitive list by inspecting elements
         elif isinstance(gt_val, list) and isinstance(pred_val, list):
             # Check if this is a List[StructuredModel] by inspecting first element
-            if gt_val and isinstance(gt_val[0], StructuredModel):
+            #if gt_val and isinstance(gt_val[0], StructuredModel):
+            if gt_needs_hierarchy or pred_needs_hierarchy:
                 # Delegate to StructuredListComparator for List[StructuredModel]
                 return self.structured_list_comparator.compare_struct_list_with_scores(
                     gt_val, pred_val, field_name
