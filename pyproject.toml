@@ -1,9 +1,10 @@
 [project]
 name = "stickler-eval"
-version = "0.1.1"
+version = "0.1.3"
 description = "Structured object comparison and evaluation library"
 authors = [
-    {name = "Spencer Romo", email = "sromo@amazon.com"}
+    {name = "Spencer Romo", email = "sromo@amazon.com"},
+    {name = "Ayushi Haria", email = "ayuharia@amazon.com"}
 ]
 readme = "README.md"
 requires-python = ">=3.12"
@@ -23,7 +24,8 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-xdist>=3.0.0",
-    "coverage>=7.0.0"
+    "coverage>=7.0.0",
+    "beautifulsoup4>=4.14.2"
 ]
 
 

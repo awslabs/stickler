@@ -2,9 +2,16 @@ name: Security Scan
 
 on: [push, pull_request]
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   security:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
     strategy:
       matrix:
         python-version: ["3.12"]
@@ -24,6 +31,12 @@ jobs:
           pip install bandit[toml]
           bandit -r src/ -f json -o bandit-report.json || true
           bandit -r src/ -f txt
+      - name: Install ASH
+        run: |
+          pip install git+https://github.com/awslabs/automated-security-helper.git@v3.1.2
+      - name: Run ASH Security Scan
+        run: |
+          ash --mode local --fail-on-findings
         continue-on-error: true
       - name: Upload Security Reports
         uses: actions/upload-artifact@v4
@@ -32,3 +45,4 @@ jobs:
           name: security-reports
           path: |
             bandit-report.json
+            .ash/ash_output/

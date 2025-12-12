@@ -1,0 +1,497 @@
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+    background: #f8f9fa;
+}
+
+.container {
+    background: white;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+header {
+    border-bottom: 2px solid #007bff;
+    padding-bottom: 20px;
+    margin-bottom: 30px;
+}
+
+h1 {
+    color: #007bff;
+    margin: 0;
+}
+
+h2 {
+    color: #495057;
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 10px;
+}
+
+.section {
+    margin-bottom: 40px;
+}
+
+/* Compact metrics styling when documents are visible */
+.main-content.documents-visible .section {
+    margin-bottom: 25px; /* Reduced from 40px */
+}
+
+.main-content.documents-visible h2 {
+    font-size: 1.3em; /* Smaller headings */
+    margin-bottom: 15px;
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.main-content.documents-visible .summary-grid {
+    gap: 15px; /* Reduced gap */
+    margin: 15px 0;
+}
+
+.metric-card {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 6px;
+    text-align: center;
+    border-left: 4px solid #007bff;
+}
+
+.main-content.documents-visible .metric-card {
+    padding: 15px; /* Reduced padding */
+}
+
+.metric-value {
+    font-size: 2em;
+    font-weight: bold;
+    color: #007bff;
+}
+
+.main-content.documents-visible .metric-value {
+    font-size: 1.5em; /* Smaller metric values */
+}
+
+.metric-label {
+    color: #6c757d;
+    font-size: 0.9em;
+    margin-top: 5px;
+}
+
+/* Base table styles */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+}
+
+.main-content.documents-visible .data-table {
+    font-size: 12px;
+    margin: 15px 0;
+}
+
+.data-table th,
+.data-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.main-content.documents-visible .data-table th,
+.main-content.documents-visible .data-table td {
+    padding: 8px;
+}
+
+.data-table th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    color: #495057;
+}
+
+.data-table tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* Table variations */
+.data-table-numeric th:nth-child(2),
+.data-table-numeric th:nth-child(3),
+.data-table-numeric th:nth-child(4),
+.data-table-numeric td:nth-child(2),
+.data-table-numeric td:nth-child(3),
+.data-table-numeric td:nth-child(4) {
+    text-align: right;
+}
+
+.data-table-compact th,
+.data-table-compact td {
+    padding: 10px;
+}
+
+.data-table-compact th {
+    font-size: 14px;
+}
+
+.data-table-compact td {
+    font-size: 13px;
+}
+
+/* Main content layout - single column by default, two column when documents are visible */
+.main-content {
+    display: block; /* Single column by default */
+}
+
+.main-content.documents-visible {
+    display: flex;
+    gap: 20px; /* Reduced gap */
+    align-items: flex-start;
+}
+
+.metrics-column {
+    width: 100%; /* Full width by default */
+    font-size: 14px; /* Smaller font for metrics */
+}
+
+.main-content.documents-visible .metrics-column {
+    flex: 0 0 35%; /* Fixed 35% width instead of flex: 1 */
+    min-width: 300px; /* Minimum width to prevent too small */
+    width: auto;
+    font-size: 13px; /* Even smaller font when documents visible */
+}
+
+.documents-column {
+    display: none; /* Completely hidden by default */
+}
+
+.main-content.documents-visible .documents-column {
+    display: block;
+    flex: 1; /* Take remaining space (65%) */
+    position: sticky;
+    top: 20px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+}
+
+/* Hide images by default */
+.document-gallery {
+    display: none;
+    flex-direction: column;
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.document-gallery.visible {
+    display: flex;
+}
+
+.image-item {
+    text-align: center;
+    padding: 15px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    background: white;
+}
+
+.image-item img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* PDF item styles with navigation */
+.pdf-item {
+    text-align: center;
+    padding: 15px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    background: white;
+    margin-bottom: 20px;
+    width: 100%;
+}
+
+.pdf-container {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    width: 100%;
+}
+
+.pdf-canvas {
+    max-width: 100%;
+    width: auto;
+    height: auto;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    display: none;
+    margin-bottom: 15px;
+}
+
+/* PDF Navigation Controls */
+.pdf-navigation {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 10px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    border: 1px solid #dee2e6;
+}
+
+/* Base button styles */
+.btn {
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 8px 16px;
+    transition: background-color 0.2s;
+}
+
+.btn-primary {
+    background: #007bff;
+    color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: #0056b3;
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background: #545b62;
+}
+
+.btn-success {
+    background: #28a745;
+    color: white;
+}
+
+.btn-success:hover:not(:disabled) {
+    background: #218838;
+}
+
+.btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-success:disabled {
+    background: #6c757d;
+}
+
+.btn-primary:disabled:hover,
+.btn-secondary:disabled:hover,
+.btn-success:disabled:hover {
+    background: #6c757d;
+}
+
+/* Button size variations */
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+.pdf-page-info {
+    font-weight: 500;
+    color: #495057;
+    min-width: 100px;
+    text-align: center;
+}
+
+footer {
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid #dee2e6;
+    text-align: center;
+    color: #6c757d;
+}
+
+/* Visualization Engine Styles */
+.performance-section {
+    text-align: center;
+    margin: 30px 0;
+}
+
+.performance-gauge {
+    display: inline-block;
+    margin: 20px;
+}
+
+.gauge-circle {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    margin: 0 auto;
+}
+
+.gauge-inner {
+    width: 80px;
+    height: 80px;
+    background: white;
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.gauge-value {
+    font-size: 1.5em;
+    font-weight: bold;
+    color: #333;
+}
+
+.gauge-label {
+    font-size: 0.8em;
+    color: #6c757d;
+    margin-top: 2px;
+}
+
+.field-chart {
+    margin: 20px 0;
+}
+
+.field-bar {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 6px;
+}
+
+.main-content.documents-visible .field-bar {
+    margin-bottom: 10px;
+    padding: 8px;
+}
+
+.field-label {
+    width: 150px;
+    font-weight: 500;
+    color: #495057;
+    flex-shrink: 0;
+}
+
+.main-content.documents-visible .field-label {
+    width: 120px; /* Narrower labels */
+    font-size: 13px;
+}
+
+.bar-container {
+    flex: 1;
+    height: 30px;
+    background: #e9ecef;
+    border-radius: 15px;
+    position: relative;
+    margin: 0 15px;
+}
+
+.bar-fill {
+    height: 100%;
+    border-radius: 15px;
+    transition: width 0.3s ease;
+}
+
+.bar-value {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.9em;
+    font-weight: 500;
+    color: #333;
+}
+
+.cm-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    margin: 20px 0;
+}
+
+.cm-cell {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 6px;
+    text-align: center;
+    border-left: 4px solid #007bff;
+}
+
+.cm-label {
+    font-size: 0.9em;
+    color: #6c757d;
+    margin-bottom: 5px;
+}
+
+.cm-value {
+    font-size: 1.8em;
+    font-weight: bold;
+    color: #333;
+}
+
+.cm-percentage {
+    font-size: 0.8em;
+    color: #6c757d;
+    margin-top: 5px;
+}
+
+.metric-indicator {
+    display: inline-block;
+    height: 20px;
+    border-radius: 3px;
+    min-width: 10px;
+}
+
+/* Individual Document Analysis Styles */
+
+.doc-filter-select {
+    padding: 8px 12px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    font-size: 14px;
+    background: white;
+}
+
+/* Document Detail Content */
+
+.metric-value {
+    font-weight: bold;
+    color: #007bff;
+}
+
+.field-details {
+    background: white;
+    padding: 20px;
+    border-radius: 6px;
+}
+
+.value-cell {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

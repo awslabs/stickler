@@ -5,7 +5,6 @@ between two lists, which is commonly used for evaluating list-type fields in
 key information extraction tasks.
 """
 
-import gc
 import traceback
 import numpy as np
 from typing import Any, List, Tuple, Callable, Optional, Union
@@ -171,7 +170,8 @@ class HungarianMatcher:
 
             # Clean up to help with memory usage
             del cost_matrix
-            gc.collect()
+            # Let Python's automatic garbage collection handle cleanup
+            # Explicit gc.collect() was causing 97% performance overhead
 
             return matched_indices, similarity_matrix
 
