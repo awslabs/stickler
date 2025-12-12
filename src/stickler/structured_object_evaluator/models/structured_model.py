@@ -799,8 +799,8 @@ class StructuredModel(BaseModel):
 
     def _compare_unordered_lists(
         self,
-        list1: List[Any],
-        list2: List[Any],
+        gt_list: List[Any],
+        pred_list: List[Any],
         comparator: BaseComparator,
         threshold: float,
     ) -> Dict[str, Any]:
@@ -822,7 +822,7 @@ class StructuredModel(BaseModel):
             - overall_score: Similarity score for backward compatibility
         """
         return ComparisonHelper.compare_unordered_lists(
-            list1, list2, comparator, threshold
+            gt_list, pred_list, comparator, threshold
         )
 
     def compare_field(self, field_name: str, other_value: Any) -> float:
