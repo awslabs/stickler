@@ -773,30 +773,6 @@ class StructuredModel(BaseModel):
             matched_pred_indices,
         )
 
-    def _calculate_struct_list_similarity(
-        self,
-        gt_list: List["StructuredModel"],
-        pred_list: List["StructuredModel"],
-        info: "ComparableField",
-    ) -> float:
-        """Calculate raw similarity score for structured list.
-
-        Args:
-            gt_list: Ground truth list
-            pred_list: Predicted list
-            info: Field comparison info
-
-        Returns:
-            Raw similarity score between 0.0 and 1.0
-        """
-        if len(pred_list) > 0:
-            match_result = self._compare_unordered_lists(
-                gt_list, pred_list, info.comparator, info.threshold
-            )
-            return match_result.get("overall_score", 0.0)
-        else:
-            return 0.0
-
     def _compare_unordered_lists(
         self,
         gt_list: List[Any],
@@ -823,58 +799,6 @@ class StructuredModel(BaseModel):
         """
         return ComparisonHelper.compare_unordered_lists(
             gt_list, pred_list, comparator, threshold
-        )
-
-    def compare_field(self, field_name: str, other_value: Any) -> float:
-        """Compare a single field with a value using the configured comparator.
-
-        Args:
-            field_name: Name of the field to compare
-            other_value: Value to compare with
-
-        Returns:
-            Similarity score between 0.0 and 1.0
-        """
-        # Get our field value
-        my_value = getattr(self, field_name)
-
-        # If both values are StructuredModel instances, use recursive compare_with
-        if isinstance(my_value, StructuredModel) and isinstance(
-            other_value, StructuredModel
-        ):
-            # Use compare_with for rich comparison
-            comparison_result = my_value.compare_with(
-                other_value,
-                include_confusion_matrix=False,
-                document_non_matches=False,
-                evaluator_format=False,
-                recall_with_fd=False,
-            )
-            # Apply field-level threshold if configured
-            info = self._get_comparison_info(field_name)
-            raw_score = comparison_result["overall_score"]
-            return (
-                raw_score
-                if raw_score >= info.threshold or not info.clip_under_threshold
-                else 0.0
-            )
-
-        # CRITICAL FIX: For lists, don't clip under threshold for partial matches
-        if isinstance(my_value, list) and isinstance(other_value, list):
-            # Get field info
-            info = self._get_comparison_info(field_name)
-
-            # Use the raw comparison result without threshold clipping for lists
-            result = ComparisonHelper.compare_unordered_lists(
-                my_value, other_value, info.comparator, info.threshold
-            )
-
-            # Return the overall score directly (don't clip based on threshold for lists)
-            return result["overall_score"]
-
-        # For other fields, use existing logic
-        return ComparisonHelper.compare_field_with_threshold(
-            self, field_name, other_value
         )
 
     def compare_field_raw(self, field_name: str, other_value: Any) -> float:

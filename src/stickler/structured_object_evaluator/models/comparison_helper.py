@@ -40,10 +40,10 @@ class ComparisonHelper:
    
         # Use HungarianHelper for Hungarian matching operations
         hungarian_helper = HungarianHelper()
+        from .structured_model import StructuredModel
 
         # Use the appropriate comparator based on item types
         # Import here to avoid circular import
-        from .structured_model import StructuredModel
 
         if all(isinstance(item, StructuredModel) for item in gt_list[:1]) and all(
             isinstance(item, StructuredModel) for item in pred_list[:1]
@@ -91,60 +91,10 @@ class ComparisonHelper:
             metrics = hungarian.calculate_metrics(gt_list, pred_list)
             matched_pairs = metrics["matched_pairs"]
 
-        # Apply threshold logic to classify matches
-        tp = 0  # True positives (score >= threshold)
-        fd = 0  # False discoveries (score < threshold, including 0)
-
-        for i, j, score in matched_pairs:
-            # Use ThresholdHelper for consistent threshold checking
-            if ThresholdHelper.is_above_threshold(score, classification_threshold):
-                tp += 1
-            else:
-                # All matches below threshold are False Discoveries, including 0.0 scores
-                fd += 1
-
-        # False alarms are unmatched prediction items
-        fa = len(pred_list) - len(matched_pairs)
-
-        # False negatives are unmatched ground truth items
-        fn = len(gt_list) - len(matched_pairs)
-
-        # Total false positives include both false discoveries and false alarms
-        fp = fd + fa
-
-        # CRITICAL FIX: Use threshold-applied scores for consistency with individual comparison
-        # This ensures list comparison matches the same scoring logic as individual comparison
-        if not matched_pairs:
-            overall_score = 0.0
-        else:
-            # Apply threshold to each similarity score (same logic as individual comparison)
-            threshold_applied_similarities = []
-            for _, _, score in matched_pairs:
-                # Use ThresholdHelper for consistent threshold checking
-                if ThresholdHelper.is_above_threshold(score, classification_threshold):
-                    threshold_applied_similarities.append(score)
-                else:
-                    # Below threshold gets 0.0 (same as individual comparison clipping)
-                    threshold_applied_similarities.append(0.0)
-
-            # Average the threshold-applied similarities
-            avg_threshold_similarity = sum(threshold_applied_similarities) / len(
-                threshold_applied_similarities
-            )
-
-            # Scale by coverage ratio (matched pairs / max list size)
-            max_items = max(len(gt_list), len(pred_list))
-            coverage_ratio = len(matched_pairs) / max_items if max_items > 0 else 1.0
-            overall_score = avg_threshold_similarity * coverage_ratio
-
-        return {
-            "tp": tp,
-            "fd": fd,
-            "fa": fa,
-            "fn": fn,
-            "fp": fp,
-            "overall_score": overall_score,
-        }
+        return ComparisonHelper.unordered_list_metrics(matched_pairs=matched_pairs,
+                                                       gt_list=gt_list,
+                                                       pred_list=pred_list,
+                                                       classification_threshold=classification_threshold)
     
     @staticmethod
     def unordered_list_metrics(matched_pairs:List[Any],
@@ -218,77 +168,6 @@ class ComparisonHelper:
             "fp": fp,
             "overall_score": overall_score,
         }
-
-    @staticmethod
-    def compare_field_with_threshold(
-        structured_model_instance, field_name: str, other_value: Any
-    ) -> float:
-        """Compare a single field with a value using the configured comparator.
-
-        Args:
-            structured_model_instance: StructuredModel instance
-            field_name: Name of the field to compare
-            other_value: Value to compare with
-
-        Returns:
-            Similarity score between 0.0 and 1.0
-        """
-        # Import here to avoid circular import
-        from .configuration_helper import ConfigurationHelper
-
-        info = ConfigurationHelper.get_comparison_info(
-            structured_model_instance.__class__, field_name
-        )
-
-        # We should always get a ComparableField object now
-        comparator = info.comparator
-        threshold = info.threshold
-
-        # Get field value from self
-        self_value = getattr(structured_model_instance, field_name)
-
-        # Handle None values
-        if self_value is None or other_value is None:
-            return 1.0 if self_value == other_value else 0.0
-
-        # Handle lists with special processing
-        if isinstance(self_value, list) and isinstance(other_value, list):
-            # Use Hungarian matching for any type of list items, including primitive types
-            # Pass the field comparator
-            result = ComparisonHelper.compare_unordered_lists(
-                self_value, other_value, comparator, threshold
-            )
-            # Return the overall score for backward compatibility
-            return result["overall_score"]
-
-        # Handle nested StructuredModel objects - use recursive comparison
-        from .structured_model import StructuredModel
-
-        if isinstance(self_value, StructuredModel) and isinstance(
-            other_value, StructuredModel
-        ):
-            return self_value.compare(other_value)
-
-        # Handle dictionary objects using the field's configured comparator
-        if isinstance(self_value, dict) and isinstance(other_value, dict):
-            # TODO: Fix Dictionary Comparison Architecture Issue
-            # Prevent Dict[str, Any] + LevenshteinComparator anti-pattern
-            # This defeats the purpose of structured comparison by converting dictionaries to strings
-            if isinstance(comparator, LevenshteinComparator):
-                raise TypeError(
-                    f"Dictionary comparison with LevenshteinComparator is not supported. "
-                    f"Dictionary fields should either: "
-                    f"1) Use ANLS_star comparison method, or "
-                    f"2) Be decomposed into proper StructuredModel subclasses. "
-                    f"Field '{field_name}' contains dict data that would be incorrectly compared as strings."
-                )
-            return comparator.compare(self_value, other_value)
-
-        # Use the comparator to calculate similarity
-        similarity = comparator.compare(self_value, other_value)
-
-        # Apply threshold
-        return 0.0 if similarity < threshold else similarity
 
     @staticmethod
     def compare_field_raw(
