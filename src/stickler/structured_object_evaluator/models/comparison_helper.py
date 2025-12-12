@@ -129,6 +129,79 @@ class ComparisonHelper:
                 # All matches below threshold are False Discoveries, including 0.0 scores
                 fd += 1
 
+        # False alarms are unmatched prediction items
+        fa = len(pred_list) - len(matched_pairs)
+
+        # False negatives are unmatched ground truth items
+        fn = len(gt_list) - len(matched_pairs)
+
+        # Total false positives include both false discoveries and false alarms
+        fp = fd + fa
+
+        # CRITICAL FIX: Use threshold-applied scores for consistency with individual comparison
+        # This ensures list comparison matches the same scoring logic as individual comparison
+        if not matched_pairs:
+            overall_score = 0.0
+        else:
+            # Apply threshold to each similarity score (same logic as individual comparison)
+            threshold_applied_similarities = []
+            for _, _, score in matched_pairs:
+                # Use ThresholdHelper for consistent threshold checking
+                if ThresholdHelper.is_above_threshold(score, classification_threshold):
+                    threshold_applied_similarities.append(score)
+                else:
+                    # Below threshold gets 0.0 (same as individual comparison clipping)
+                    threshold_applied_similarities.append(0.0)
+
+            # Average the threshold-applied similarities
+            avg_threshold_similarity = sum(threshold_applied_similarities) / len(
+                threshold_applied_similarities
+            )
+
+            # Scale by coverage ratio (matched pairs / max list size)
+            max_items = max(len(gt_list), len(pred_list))
+            coverage_ratio = len(matched_pairs) / max_items if max_items > 0 else 1.0
+            overall_score = avg_threshold_similarity * coverage_ratio
+
+        return {
+            "tp": tp,
+            "fd": fd,
+            "fa": fa,
+            "fn": fn,
+            "fp": fp,
+            "overall_score": overall_score,
+        }
+    
+    @staticmethod
+    def unordered_list_metrics(matched_pairs:List[Any],
+                        gt_list: List[Any],
+                        pred_list: List[Any],
+                        classification_threshold: float):
+        """
+        Compare two lists as unordered collections using Hungarian matching.
+
+        Args:
+            list1: First list
+        Returns:
+                Dictionary with confusion matrix metrics including:
+                - tp: True positives (matches >= threshold)
+                - fd: False discoveries (matches < threshold)
+                - fa: False alarms (unmatched prediction items)
+                - fn: False negatives (unmatched ground truth items)
+                - fp: Total false positives (fd + fa)
+                - overall_score: Similarity score for backward compatibility
+        """
+        tp = 0  # True positives (score >= threshold)
+        fd = 0  # False discoveries (score < threshold, including 0)
+
+        for i, j, score in matched_pairs:
+            # Use ThresholdHelper for consistent threshold checking
+            if ThresholdHelper.is_above_threshold(score, classification_threshold):
+                tp += 1
+            else:
+                # All matches below threshold are False Discoveries, including 0.0 scores
+                fd += 1
+
         # False negatives are unmatched ground truth items
         fn = len(gt_list) - len(matched_pairs)
 
