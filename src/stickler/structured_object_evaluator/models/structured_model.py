@@ -664,33 +664,6 @@ class StructuredModel(BaseModel):
         dispatcher = ComparisonDispatcher(self)
         return dispatcher.handle_list_field_dispatch(gt_val, pred_val, weight)
 
-    def _create_true_negative_result(self, weight: float) -> dict:
-        """Create a true negative result.
-        
-        DEPRECATED: Delegates to ResultHelper for consistency.
-        Kept for backward compatibility with any external callers.
-        """
-        from .result_helper import ResultHelper
-        return ResultHelper.create_true_negative_result(weight)
-
-    def _create_false_alarm_result(self, weight: float) -> dict:
-        """Create a false alarm result.
-        
-        DEPRECATED: Delegates to ResultHelper for consistency.
-        Kept for backward compatibility with any external callers.
-        """
-        from .result_helper import ResultHelper
-        return ResultHelper.create_false_alarm_result(weight)
-
-    def _create_false_negative_result(self, weight: float) -> dict:
-        """Create a false negative result.
-        
-        DEPRECATED: Delegates to ResultHelper for consistency.
-        Kept for backward compatibility with any external callers.
-        """
-        from .result_helper import ResultHelper
-        return ResultHelper.create_false_negative_result(weight)
-
     def _handle_struct_list_empty_cases(
         self,
         gt_list: List["StructuredModel"],

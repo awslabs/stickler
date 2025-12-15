@@ -145,17 +145,18 @@ if is_list_field:
 
 #### Primitive Null Handling
 ```python
+from .result_helper import ResultHelper 
 if not (gt_needs_hierarchy or pred_needs_hierarchy):
     gt_effectively_null_prim = self._is_effectively_null_for_primitives(gt_val)
     pred_effectively_null_prim = self._is_effectively_null_for_primitives(pred_val)
     
     match (gt_effectively_null_prim, pred_effectively_null_prim):
         case (True, True):
-            return self._create_true_negative_result(weight)
+            return ResultHelper.create_true_negative_result(weight)
         case (True, False):
-            return self._create_false_alarm_result(weight)
+            return ResultHelper.create_false_alarm_result(weight)
         case (False, True):
-            return self._create_false_negative_result(weight)
+            return ResultHelper.create_false_negative_result(weight)
         case _:
             # Both non-null, continue to type-based dispatch
             pass
