@@ -664,33 +664,6 @@ class StructuredModel(BaseModel):
         dispatcher = ComparisonDispatcher(self)
         return dispatcher.handle_list_field_dispatch(gt_val, pred_val, weight)
 
-    def _handle_struct_list_empty_cases(
-        self,
-        gt_list: List["StructuredModel"],
-        pred_list: List["StructuredModel"],
-        weight: float,
-    ) -> dict:
-        """Handle empty list cases with beautiful match statements.
-        
-        DEPRECATED: Delegates to ResultHelper for consistency.
-        Kept for backward compatibility with any external callers.
-
-        Args:
-            gt_list: Ground truth list (may be None)
-            pred_list: Predicted list (may be None)
-            weight: Field weight for scoring
-
-        Returns:
-            Result dictionary if early exit needed, None if should continue processing
-        """
-        from .result_helper import ResultHelper
-        
-        # Normalize None to empty lists for consistent handling
-        gt_len = len(gt_list or [])
-        pred_len = len(pred_list or [])
-        
-        return ResultHelper.create_empty_list_result(gt_len, pred_len, weight)
-
     def _calculate_object_level_metrics(
         self,
         gt_list: List["StructuredModel"],
