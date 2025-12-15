@@ -812,31 +812,6 @@ class StructuredModel(BaseModel):
         dispatcher = ComparisonDispatcher(self)
         return dispatcher.dispatch_field_comparison(field_name, gt_val, pred_val)
 
-
-
-
-
-
-
-    def _calculate_aggregate_metrics(self, result: dict) -> dict:
-        """Calculate aggregate metrics for all nodes in the result tree.
-
-        This method delegates to AggregateMetricsCalculator for the actual implementation.
-
-        CRITICAL FIX: Enhanced deep nesting traversal to handle arbitrary nesting depth.
-        The aggregate field contains the sum of all primitive field confusion matrices
-        below that node in the tree. This provides universal field-level granularity.
-
-        Args:
-            result: Result from compare_recursive with hierarchical structure
-
-        Returns:
-            Modified result with 'aggregate' fields added at each level
-        """
-        from .aggregate_metrics_calculator import AggregateMetricsCalculator
-        calculator = AggregateMetricsCalculator()
-        return calculator.calculate_aggregate_metrics(result)
-
     def _add_derived_metrics_to_result(self, result: dict, recall_with_fd: bool = False) -> dict:
         """Walk through result and add 'derived' fields with F1, precision, recall, accuracy.
         
