@@ -6,6 +6,7 @@ to appropriate handlers based on field type and null states.
 
 from typing import Any, Dict, Optional, TYPE_CHECKING
 from .result_helper import ResultHelper
+from .null_helper import NullHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -149,10 +150,8 @@ class ComparisonDispatcher:
         # - GT non-null, Pred null → FN (False Negative)
         # - Both non-null → Continue to type-based dispatch
         if not (gt_needs_hierarchy or pred_needs_hierarchy):
-            gt_effectively_null_prim = self.model._is_effectively_null_for_primitives(gt_val)
-            pred_effectively_null_prim = self.model._is_effectively_null_for_primitives(
-                pred_val
-            )
+            gt_effectively_null_prim = NullHelper.is_effectively_null_for_primitives(gt_val)
+            pred_effectively_null_prim = NullHelper.is_effectively_null_for_primitives(pred_val)
 
             match (gt_effectively_null_prim, pred_effectively_null_prim):
                 case (True, True):
@@ -250,8 +249,8 @@ class ComparisonDispatcher:
         # Check if lists are effectively null (None or empty)
         # This is different from primitive null checking because empty lists
         # are semantically meaningful for list fields
-        gt_effectively_null = self.model._is_effectively_null_for_lists(gt_val)
-        pred_effectively_null = self.model._is_effectively_null_for_lists(pred_val)
+        gt_effectively_null = NullHelper.is_effectively_null_for_lists(gt_val)
+        pred_effectively_null = NullHelper.is_effectively_null_for_lists(pred_val)
 
         # Use match statement for clear, traceable dispatch logic
         # Leverage helper methods to avoid code duplication

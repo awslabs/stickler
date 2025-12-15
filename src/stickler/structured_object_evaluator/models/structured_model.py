@@ -555,8 +555,6 @@ class StructuredModel(BaseModel):
         """
         return ConfigurationHelper.get_comparison_info(cls, field_name)
 
-
-
     @classmethod
     def _is_aggregate_field(cls, field_name: str) -> bool:
         """Check if field is marked for confusion matrix aggregation.
@@ -568,15 +566,6 @@ class StructuredModel(BaseModel):
             True if the field is marked for aggregation, False otherwise
         """
         return ConfigurationHelper.is_aggregate_field(cls, field_name)
-
-    def _is_truly_null(self, val: Any) -> bool:
-        """Check if a value is truly null (None).
-        
-        DEPRECATED: Delegates to NullHelper for consistency.
-        Kept for backward compatibility with any external callers.
-        """
-        from .null_helper import NullHelper
-        return NullHelper.is_truly_null(val)
 
     def _should_use_hierarchical_structure(self, val: Any, field_name: str) -> bool:
         """Check if a list value should maintain hierarchical structure.
@@ -597,24 +586,6 @@ class StructuredModel(BaseModel):
             if field_info and self._is_structured_field_type(field_info):
                 return True
         return False
-
-    def _is_effectively_null_for_lists(self, val: Any) -> bool:
-        """Check if a list value is effectively null (None or empty list).
-        
-        DEPRECATED: Delegates to NullHelper for consistency.
-        Kept for backward compatibility with any external callers.
-        """
-        from .null_helper import NullHelper
-        return NullHelper.is_effectively_null_for_lists(val)
-
-    def _is_effectively_null_for_primitives(self, val: Any) -> bool:
-        """Check if a primitive value is effectively null.
-        
-        DEPRECATED: Delegates to NullHelper for consistency.
-        Kept for backward compatibility with any external callers.
-        """
-        from .null_helper import NullHelper
-        return NullHelper.is_effectively_null_for_primitives(val)
 
     def _is_list_field(self, field_name: str) -> bool:
         """Check if a field is ANY list type.
