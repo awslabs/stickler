@@ -672,8 +672,8 @@ if include_confusion_matrix:
 # Add optional non-match documentation
 if document_non_matches:
     non_matches = recursive_result.get("non_matches", [])
-    if not non_matches:  # Fallback to legacy method if needed
-        non_matches = self._collect_non_matches(other)
+    if not non_matches: 
+        non_matches = self._collect_enhanced_non_matches(other)
         non_matches = [nm.model_dump() for nm in non_matches]
     result["non_matches"] = non_matches
 ```

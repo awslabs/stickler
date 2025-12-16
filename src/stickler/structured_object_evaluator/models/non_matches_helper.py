@@ -130,41 +130,65 @@ class NonMatchesHelper:
             if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                 gt_item = gt_list[gt_idx]
                 pred_item = pred_list[pred_idx]
-
                 # Check if this is a False Discovery (below threshold)
                 is_below_threshold = (
                     similarity_score < match_threshold
                     and abs(similarity_score - match_threshold) >= 1e-10
                 )
                 if is_below_threshold:
-                    non_matches.append(
-                        self.create_non_match_entry(
-                            field_name,
-                            gt_item,
-                            pred_item,
-                            "FD",
-                            gt_idx,
-                            similarity_score,
-                        )
+                    field_level_non_matches = self._extract_field_level_non_matches(
+                        field_name,
+                        gt_item,
+                        pred_item,
+                        gt_idx,
+                        "FD",
+                        similarity_score,
                     )
+                    non_matches.extend(field_level_non_matches)
+                    # non_matches.append(
+                    #     self.create_non_match_entry(
+                    #         field_name,
+                    #         gt_item,
+                    #         pred_item,
+                    #         "FD",
+                    #         gt_idx,
+                    #         similarity_score,
+                    #     )
+                    # )
 
         # Process unmatched ground truth items (FN)
         matched_gt_indices = set(idx for idx, _ in assignments)
         for gt_idx, gt_item in enumerate(gt_list):
             if gt_idx not in matched_gt_indices:
-                non_matches.append(
-                    self.create_non_match_entry(field_name, gt_item, None, "FN", gt_idx)
-                )
+                field_level_non_matches = self._extract_field_level_non_matches(
+                        field_name,
+                        gt_item,
+                        None,
+                        gt_idx,
+                        "FN",
+                    )
+                non_matches.extend(field_level_non_matches)
+                # non_matches.append(
+                #     self.create_non_match_entry(field_name, gt_item, None, "FN", gt_idx)
+                # )
 
         # Process unmatched prediction items (FA)
         matched_pred_indices = set(idx for _, idx in assignments)
         for pred_idx, pred_item in enumerate(pred_list):
             if pred_idx not in matched_pred_indices:
-                non_matches.append(
-                    self.create_non_match_entry(
-                        field_name, None, pred_item, "FA", pred_idx
+                field_level_non_matches = self._extract_field_level_non_matches(
+                        field_name,
+                        None,
+                        pred_item,
+                        gt_idx,
+                        "FA",
                     )
-                )
+                non_matches.extend(field_level_non_matches)
+                # non_matches.append(
+                #     self.create_non_match_entry(
+                #         field_name, None, pred_item, "FA", pred_idx
+                #     )
+                # )
 
         return non_matches
 
@@ -200,3 +224,62 @@ class NonMatchesHelper:
                 )
 
         return non_matches
+    
+    def _extract_field_level_non_matches(
+        self, 
+        field_name: str, 
+        gt_object: Any, 
+        pred_object: Any, 
+        object_index: int,
+        non_match_type: str,
+        similarity_score: float = None
+    ) -> List[Dict[str, Any]]:
+        """Extract field-level non-matches from structured model objects.
+        
+        Args:
+            field_name: Name of the parent list field
+            gt_object: Ground truth structured model
+            pred_object: Prediction structured model  
+            object_index: Index in the list
+            non_match_type: Type of non-match ("FD", "FN", "FA")
+            similarity_score: Overall similarity score
+            
+        Returns:
+            List of field-level non-match entries
+        """
+        from .structured_model import StructuredModel
+        # Check if both objects are structured models
+        if (isinstance(gt_object, StructuredModel) and isinstance(pred_object, StructuredModel)):
+            # Perform field-by-field comparison
+            comparison_result = gt_object.compare_with(
+                pred_object, 
+                document_non_matches=True,
+                include_confusion_matrix=False
+            )
+            
+            field_non_matches = []
+            
+            for non_match in comparison_result.get("non_matches", []):
+                indexed_field_path = f"{field_name}[{object_index}].{non_match['field_path']}"
+                
+                field_entry = {
+                    "field_path": indexed_field_path,
+                    "non_match_type": non_match["non_match_type"],
+                    "ground_truth_value": non_match["ground_truth_value"],
+                    "prediction_value": non_match["prediction_value"],
+                    "reason": non_match.get("reason", "field mismatch"),
+                }
+                
+                if "similarity_score" in non_match:
+                    field_entry["similarity_score"] = non_match["similarity_score"]
+                    
+                field_non_matches.append(field_entry)
+                
+            return field_non_matches
+        
+        else:
+            return [self.create_non_match_entry(
+                field_name, gt_object, pred_object, non_match_type, object_index, similarity_score
+            )]
+
+    

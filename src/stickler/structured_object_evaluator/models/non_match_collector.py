@@ -55,24 +55,11 @@ class NonMatchCollector:
         for field_name, field_result in recursive_result.get("fields", {}).items():
             gt_val = getattr(self.model, field_name)
             pred_val = getattr(other, field_name, None)
-
-            # Check if this is a list field that should use object-level collection
+            
             # Import here to avoid circular dependency
             from .structured_model import StructuredModel
-            if (
-                isinstance(gt_val, list)
-                and isinstance(pred_val, list)
-                and gt_val
-                and isinstance(gt_val[0], StructuredModel)
-            ):
-                # Use NonMatchesHelper for object-level collection
-                object_non_matches = self.helper.collect_list_non_matches(
-                    field_name, gt_val, pred_val
-                )
-                all_non_matches.extend(object_non_matches)
-
             # Handle null list cases
-            elif (
+            if (
                 (gt_val is None or (isinstance(gt_val, list) and len(gt_val) == 0))
                 and isinstance(pred_val, list)
                 and len(pred_val) > 0
@@ -97,6 +84,29 @@ class NonMatchCollector:
                 )
                 all_non_matches.extend(null_non_matches)
 
+            # Check if this is a list field that should use object-level collection
+            elif (
+                isinstance(gt_val, list)
+                and isinstance(pred_val, list)
+                and gt_val
+                and isinstance(gt_val[0], StructuredModel)
+            ):
+                # Use NonMatchesHelper for object-level collection
+                object_non_matches = self.helper.collect_list_non_matches(
+                    field_name, gt_val, pred_val
+                )
+                all_non_matches.extend(object_non_matches)
+
+            elif (
+                isinstance(gt_val, list)
+                and isinstance(pred_val, list)
+            ):
+                # Use NonMatchesHelper for object-level collection
+                object_non_matches = self.helper.collect_list_non_matches(
+                    field_name, gt_val, pred_val
+                )
+                all_non_matches.extend(object_non_matches)
+
             else:
                 # Use existing field-level logic for non-list fields
                 # Extract metrics from field result to determine non-match type
@@ -107,8 +117,27 @@ class NonMatchCollector:
                 else:
                     continue  # Skip if we can't extract metrics
 
+                # Handle nested StructuredModel objects for detailed non-match collection
+                from .structured_model import StructuredModel
+                if (
+                    isinstance(gt_val, StructuredModel)
+                    and isinstance(pred_val, StructuredModel)
+                    and "fields" in field_result
+                ):
+                    # Recursively collect non-matches from nested objects
+                    nested_collector = NonMatchCollector(gt_val)
+                    nested_non_matches = nested_collector.collect_enhanced_non_matches(
+                        field_result, pred_val
+                    )
+                    # Prefix nested field paths with the parent field name
+                    for nested_nm in nested_non_matches:
+                        nested_nm["field_path"] = (
+                            f"{field_name}.{nested_nm['field_path']}"
+                        )
+                        all_non_matches.append(nested_nm)
+
                 # Create field-level non-match entries based on metrics (legacy format for backward compatibility)
-                if metrics.get("fa", 0) > 0:  # False Alarm
+                elif metrics.get("fa", 0) > 0:  # False Alarm
                     entry = {
                         "field_path": field_name,
                         "non_match_type": NonMatchType.FALSE_ALARM,  # Use enum value
@@ -143,120 +172,4 @@ class NonMatchCollector:
                         )
                     all_non_matches.append(entry)
 
-                # ADDITIONAL: Handle nested StructuredModel objects for detailed non-match collection
-                # Import here to avoid circular dependency
-                from .structured_model import StructuredModel
-                if (
-                    isinstance(gt_val, StructuredModel)
-                    and isinstance(pred_val, StructuredModel)
-                    and "fields" in field_result
-                ):
-                    # Recursively collect non-matches from nested objects
-                    nested_collector = NonMatchCollector(gt_val)
-                    nested_non_matches = nested_collector.collect_enhanced_non_matches(
-                        field_result, pred_val
-                    )
-                    # Prefix nested field paths with the parent field name
-                    for nested_nm in nested_non_matches:
-                        nested_nm["field_path"] = (
-                            f"{field_name}.{nested_nm['field_path']}"
-                        )
-                        all_non_matches.append(nested_nm)
-
         return all_non_matches
-
-    def collect_non_matches(
-        self, 
-        other: "StructuredModel", 
-        base_path: str = ""
-    ) -> List[NonMatchField]:
-        """Collect non-matches for detailed analysis (legacy format).
-        
-        This method performs a field-by-field comparison and collects non-matches
-        in the legacy NonMatchField format. It recursively processes nested
-        StructuredModel fields.
-        
-        Args:
-            other: Other model to compare with
-            base_path: Base path for field naming (e.g., "address")
-            
-        Returns:
-            List of NonMatchField objects documenting non-matches
-        """
-        non_matches = []
-
-        # Handle null cases
-        if other is None:
-            non_matches.append(
-                NonMatchField(
-                    field_path=base_path or "root",
-                    non_match_type=NonMatchType.FALSE_NEGATIVE,
-                    ground_truth_value=self.model,
-                    prediction_value=None,
-                )
-            )
-            return non_matches
-
-        # Compare each field
-        for field_name in self.model.__class__.model_fields:
-            if field_name == "extra_fields":
-                continue
-
-            field_path = f"{base_path}.{field_name}" if base_path else field_name
-            gt_value = getattr(self.model, field_name)
-            pred_value = getattr(other, field_name, None)
-
-            # Use existing field classification logic
-            if isinstance(pred_value, list):
-                classification = self.model._calculate_list_confusion_matrix(
-                    field_name, pred_value
-                )
-            else:
-                classification = self.model._classify_field_for_confusion_matrix(
-                    field_name, pred_value
-                )
-
-            # Document non-matches based on classification
-            if classification["fa"] > 0:  # False Alarm
-                non_matches.append(
-                    NonMatchField(
-                        field_path=field_path,
-                        non_match_type=NonMatchType.FALSE_ALARM,
-                        ground_truth_value=gt_value,
-                        prediction_value=pred_value,
-                        similarity_score=classification.get("similarity_score"),
-                    )
-                )
-            elif classification["fn"] > 0:  # False Negative
-                non_matches.append(
-                    NonMatchField(
-                        field_path=field_path,
-                        non_match_type=NonMatchType.FALSE_NEGATIVE,
-                        ground_truth_value=gt_value,
-                        prediction_value=pred_value,
-                    )
-                )
-            elif classification["fd"] > 0:  # False Discovery
-                non_matches.append(
-                    NonMatchField(
-                        field_path=field_path,
-                        non_match_type=NonMatchType.FALSE_DISCOVERY,
-                        ground_truth_value=gt_value,
-                        prediction_value=pred_value,
-                        similarity_score=classification.get("similarity_score"),
-                    )
-                )
-
-            # Handle nested models recursively
-            # Import here to avoid circular dependency
-            from .structured_model import StructuredModel
-            if isinstance(gt_value, StructuredModel) and isinstance(
-                pred_value, StructuredModel
-            ):
-                nested_collector = NonMatchCollector(gt_value)
-                nested_non_matches = nested_collector.collect_non_matches(
-                    pred_value, field_path
-                )
-                non_matches.extend(nested_non_matches)
-
-        return non_matches

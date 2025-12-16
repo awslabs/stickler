@@ -926,24 +926,6 @@ class StructuredModel(BaseModel):
         collector = NonMatchCollector(self)
         return collector.collect_enhanced_non_matches(recursive_result, other)
 
-    def _collect_non_matches(
-        self, other: "StructuredModel", base_path: str = ""
-    ) -> List[NonMatchField]:
-        """Collect non-matches for detailed analysis.
-        
-        This method delegates to NonMatchCollector for the actual implementation.
-
-        Args:
-            other: Other model to compare with
-            base_path: Base path for field naming (e.g., "address")
-
-        Returns:
-            List of NonMatchField objects documenting non-matches
-        """
-        from .non_match_collector import NonMatchCollector
-        collector = NonMatchCollector(self)
-        return collector.collect_non_matches(other, base_path)
-
     def compare(self, other: "StructuredModel") -> float:
         """Compare this model with another and return a scalar similarity score.
 
