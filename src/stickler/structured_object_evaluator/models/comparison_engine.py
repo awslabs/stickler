@@ -42,6 +42,7 @@ class ComparisonEngine:
         # Initialize components lazily to avoid circular imports
         self._dispatcher = None
         self._non_match_collector = None
+        self._field_comparison_collector = None
         self._confusion_matrix_builder = None
 
     @property
@@ -59,6 +60,14 @@ class ComparisonEngine:
             from .non_match_collector import NonMatchCollector
             self._non_match_collector = NonMatchCollector(self.model)
         return self._non_match_collector
+
+    @property
+    def field_comparison_collector(self):
+        """Lazy initialization of FieldComparisonCollector."""
+        if self._field_comparison_collector is None:
+            from .field_comparison_collector import FieldComparisonCollector
+            self._field_comparison_collector = FieldComparisonCollector(self.model)
+        return self._field_comparison_collector
 
     @property
     def confusion_matrix_builder(self):
@@ -190,6 +199,7 @@ class ComparisonEngine:
         evaluator_format: bool = False,
         recall_with_fd: bool = False,
         add_derived_metrics: bool = True,
+        document_field_comparisons: bool = False
     ) -> Dict[str, Any]:
         """Compare with another instance using single traversal.
         
@@ -276,6 +286,12 @@ class ComparisonEngine:
             # Use NonMatchCollector for enhanced object-level non-matches
             non_matches = self.non_match_collector.collect_enhanced_non_matches(recursive_result, other)
             result["non_matches"] = non_matches
+        
+        # Add optional field comparison documentation
+        if document_field_comparisons:
+            # Use FieldComparisonCollector for comprehensive field-level comparisons
+            field_comparisons = self.field_comparison_collector.collect_field_comparisons(recursive_result, other)
+            result["field_comparisons"] = field_comparisons
 
         # If evaluator_format is requested, transform the result
         if evaluator_format:
