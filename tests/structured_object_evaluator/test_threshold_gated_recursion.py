@@ -127,10 +127,13 @@ def test_threshold_gated_poor_match():
         for field in product_fields:
             if field in nested_fields:
                 field_data = nested_fields[field]
-                # Overall should be empty (no matches above threshold)
+
+                # Overall should have some metrics from poor matches at the leaf node level.
+                # When the node is primitive or simple list, overall metrics will be same as aggregate metrics. 
+                # When node is structured list, then overall can be different from aggregate due to threshold. 
                 overall_metrics = field_data["overall"]
                 overall_total = sum(overall_metrics[metric] for metric in ["tp", "fa", "fd", "fp", "tn", "fn"])
-                assert overall_total == 0, (
+                assert overall_total > 0, (
                     f"Field {field} overall should be empty for poor matches, got {overall_metrics}"
                 )
                 
@@ -227,16 +230,18 @@ def test_threshold_gated_mixed_scenario():
                 # Check based on field-specific behavior:
                 if field == "product_id":
                     # Exact match: PROD-001 vs PROD-001 should be TP
-                    assert field_metrics["overall"]["tp"] == 1, (
-                        f"Nested field {field} should have 1 TP"
+                    # Even though poor match, at the field level this is an exact match: PROD-002
+                    assert field_metrics["overall"]["tp"] == 2, (
+                        f"Nested field {field} should have 2 TP"
                     )
                 elif field == "name":
                     # Levenshtein match: "Laptop" vs "Laptop Computer" may be below 0.7 threshold
-                    # Since threshold-gated recursion only processes the good match, it should have some comparison
+                    # Need to count for field level for poor matches. 
+                    # Overall should have some metrics from poor matches at the leaf node level.
                     assert (
                         field_metrics["overall"]["tp"] + field_metrics["overall"]["fd"]
-                        == 1
-                    ), f"Nested field {field} should have 1 comparison"
+                        == 3
+                    ), f"Nested field {field} should have 3 comparisons"
                 elif field == "price":
                     # Exact price match: 999.99 vs 999.99 should be TP
                     assert field_metrics["overall"]["tp"] == 1, (

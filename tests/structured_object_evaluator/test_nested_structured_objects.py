@@ -320,9 +320,11 @@ class TestVetRecordsMetricsCalculation:
                 overall_metrics = field_metrics["overall"]
                 aggregate_metrics = field_metrics["aggregate"]
                 
-                # Overall should be empty (no matches above threshold)
+                # Overall should have some metrics from poor matches at the leaf node level.
+                # When the node is primitive or simple list, overall metrics will be same as aggregate metrics. 
+                # When node is structured list, then overall can be different from aggregate due to threshold. 
                 overall_total = sum(overall_metrics[metric] for metric in ["tp", "fa", "fd", "fp", "tn", "fn"])
-                assert (overall_total > 0), f"Field {field_name} overall should be empty for poor matches"
+                assert (overall_total > 0), f"Field {field_name} overall should not be empty for poor matches"
                 
                 # Aggregate should have some metrics from poor matches
                 aggregate_total = sum(aggregate_metrics[metric] for metric in ["tp", "fa", "fd", "fp", "tn", "fn"])

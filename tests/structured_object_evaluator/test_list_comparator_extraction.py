@@ -345,11 +345,10 @@ class TestHungarianMatchingBaseline:
                 overall_metrics = field_metrics["overall"]
                 aggregate_metrics = field_metrics["aggregate"]
                 
-                # With threshold-gated recursion, poor matches should NOT populate overall metrics
-                # Overall metrics should be empty (all zeros) for poor matches
-                for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-                    assert overall_metrics[metric] == 0, \
-                        f"Field {field_name} overall {metric} should be 0 for poor matches, got {overall_metrics[metric]}"
+                # When the node is primitive or simple list, overall metrics will be same as aggregate metrics. 
+                # When the node is structured list, then overall can be different from aggregate due to threshold. 
+                assert overall_metrics["fd"] > 0, \
+                    f"Field {field_name} overall {metric} should have FD metrics from poor matches"
                 
                 # Aggregate metrics should contain the field-level analysis for poor matches
                 assert aggregate_metrics["fd"] > 0, \
