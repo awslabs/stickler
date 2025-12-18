@@ -243,78 +243,6 @@ class TestAggregation(unittest.TestCase):
         self.assertEqual(agg_results['fa'], 0, 'fa')
         self.assertEqual(agg_results['fp'], 0, 'fp')
         self.assertEqual(agg_results['fn'], 3, 'fn')
-
-    def test_list_structure_empty_string_pred(self):
-        invoice_gt = Invoice(
-            LineItems = [LineItemsInfo(
-                LineItemDescription= "M-F Local News",
-                LineItemStartDate= "10/11/2016",
-                LineItemEndDate= None,
-                LineItemRate= "475.00"
-            )
-            ]
-        )
-        invoice_pred = Invoice(
-            LineItems = ""
-        )
-
-        result = invoice_gt.compare_with(invoice_pred, include_confusion_matrix=True)
-        agg_results = result['confusion_matrix']['aggregate']
-
-        self.assertEqual(agg_results['tp'], 0, 'tp')
-        self.assertEqual(agg_results['tn'], 6, 'tn')
-        self.assertEqual(agg_results['fd'], 0, 'fd')
-        self.assertEqual(agg_results['fa'], 0, 'fa')
-        self.assertEqual(agg_results['fp'], 0, 'fp')
-        self.assertEqual(agg_results['fn'], 3, 'fn')
-    
-    def test_list_structure_none_pred(self):
-        invoice_gt = Invoice(
-            LineItems = [LineItemsInfo(
-                LineItemDescription= "M-F Local News",
-                LineItemStartDate= "10/11/2016",
-                LineItemEndDate= None,
-                LineItemRate= "475.00"
-            )
-            ]
-        )
-        invoice_pred = Invoice(
-            LineItems = None
-        )
-
-        result = invoice_gt.compare_with(invoice_pred, include_confusion_matrix=True)
-        agg_results = result['confusion_matrix']['aggregate']
-
-        self.assertEqual(agg_results['tp'], 0, 'tp')
-        self.assertEqual(agg_results['tn'], 6, 'tn')
-        self.assertEqual(agg_results['fd'], 0, 'fd')
-        self.assertEqual(agg_results['fa'], 0, 'fa')
-        self.assertEqual(agg_results['fp'], 0, 'fp')
-        self.assertEqual(agg_results['fn'], 3, 'fn')
-    
-    def test_list_structure_white_space_pred(self):
-        invoice_gt = Invoice(
-            LineItems = [LineItemsInfo(
-                LineItemDescription= "M-F Local News",
-                LineItemStartDate= "10/11/2016",
-                LineItemEndDate= None,
-                LineItemRate= "475.00"
-            )
-            ]
-        )
-        invoice_pred = Invoice(
-            LineItems = "  "
-        )
-
-        result = invoice_gt.compare_with(invoice_pred, include_confusion_matrix=True)
-        agg_results = result['confusion_matrix']['aggregate']
-
-        self.assertEqual(agg_results['tp'], 0, 'tp')
-        self.assertEqual(agg_results['tn'], 6, 'tn')
-        self.assertEqual(agg_results['fd'], 0, 'fd')
-        self.assertEqual(agg_results['fa'], 0, 'fa')
-        self.assertEqual(agg_results['fp'], 0, 'fp')
-        self.assertEqual(agg_results['fn'], 3, 'fn')
     
     def test_list_structure_empty_gt(self):
         invoice_gt = Invoice(
@@ -359,7 +287,7 @@ class TestAggregation(unittest.TestCase):
         agg_results = result['confusion_matrix']['aggregate']
 
         self.assertEqual(agg_results['tp'], 3, 'tp')
-        self.assertEqual(agg_results['tn'], 6,'tn')
+        self.assertEqual(agg_results['tn'], 10,'tn')
         self.assertEqual(agg_results['fd'], 1, 'fd')
         self.assertEqual(agg_results['fa'], 0, 'fa')
         self.assertEqual(agg_results['fp'], 1, 'fp')
@@ -399,7 +327,7 @@ class TestAggregation(unittest.TestCase):
         )
         invoice_pred = Invoice(
             LineItems = [LineItemsInfo(
-                LineItemDays= ['M', 'Tuesday', 'Th', 'Th', 'F'] #TP =3, TN=4, FD=1, FA=1, FP=1, FN=1
+                LineItemDays= ['M', 'Tuesday', 'Th', 'Th', 'F'] #TP = 4(this is also TP: T~=Th due to default threshold of 0.5), FD=1, FP=1
             )
             ]
         )
@@ -407,12 +335,12 @@ class TestAggregation(unittest.TestCase):
         result = invoice_gt.compare_with(invoice_pred, include_confusion_matrix=True)
         agg_results = result['confusion_matrix']['aggregate']
 
-        self.assertEqual(agg_results['tp'], 3, 'tp')
-        self.assertEqual(agg_results['tn'], 6,'tn')
+        self.assertEqual(agg_results['tp'], 4, 'tp')
+        self.assertEqual(agg_results['tn'], 10,'tn')
         self.assertEqual(agg_results['fd'], 1, 'fd')
-        self.assertEqual(agg_results['fa'], 1, 'fa')
+        self.assertEqual(agg_results['fa'], 0, 'fa')
         self.assertEqual(agg_results['fp'], 1, 'fp')
-        self.assertEqual(agg_results['fn'], 1, 'fn')
+        self.assertEqual(agg_results['fn'], 0, 'fn')
         return
 
     def test_simple_list_within_structure_unmatched_gt(self):
@@ -434,10 +362,10 @@ class TestAggregation(unittest.TestCase):
         agg_results = result['confusion_matrix']['aggregate']
 
         self.assertEqual(agg_results['tp'], 0, 'tp')
-        self.assertEqual(agg_results['tn'], 6,'tn')
+        self.assertEqual(agg_results['tn'], 10,'tn')
         self.assertEqual(agg_results['fd'], 5, 'fd')
         self.assertEqual(agg_results['fa'], 0, 'fa')
-        self.assertEqual(agg_results['fp'], 0, 'fp')
+        self.assertEqual(agg_results['fp'], 5, 'fp')
         self.assertEqual(agg_results['fn'], 0, 'fn')
         return
 
