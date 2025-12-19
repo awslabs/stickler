@@ -676,6 +676,25 @@ if document_non_matches:
         non_matches = self._collect_enhanced_non_matches(other)
         non_matches = [nm.model_dump() for nm in non_matches]
     result["non_matches"] = non_matches
+
+# Add optional field comparison documentation
+if document_field_comparisons:
+    field_comparisons = self.field_comparison_collector.collect_field_comparisons(recursive_result, other)
+    result["field_comparisons"] = field_comparisons
+```
+
+### Field Comparison Documentation
+
+The `document_field_comparisons` parameter enables comprehensive field-level analysis through the **FieldComparisonCollector**. This provides detailed documentation of ALL field comparisons (matches and non-matches) with Hungarian matching awareness for list fields.
+
+```python
+# Enable detailed field comparison logging
+result = model1.compare_with(model2, document_field_comparisons=True)
+
+# Access all field comparisons
+for fc in result['field_comparisons']:
+    status = "✓" if fc['match'] else "✗"
+    print(f"{status} {fc['expected_key']}: {fc['score']:.3f} ({fc['reason']})")
 ```
 
 ### Memory Efficiency

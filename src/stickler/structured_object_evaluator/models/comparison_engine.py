@@ -213,7 +213,8 @@ class ComparisonEngine:
         2. Extracts field scores and overall metrics
         3. Optionally adds confusion matrix with aggregate and derived metrics
         4. Optionally adds non-match documentation
-        5. Optionally formats results for evaluator
+        5. Optionally add details on each primitive field comparison
+        6. Optionally formats results for evaluator
         
         Args:
             other: Another instance of the same model to compare with
@@ -223,6 +224,7 @@ class ComparisonEngine:
             recall_with_fd: If True, include FD in recall denominator (TP/(TP+FN+FD))
                             If False, use traditional recall (TP/(TP+FN))
             add_derived_metrics: Whether to add derived metrics to confusion matrix
+            document_field_comparisons: Whether to document all matches and non matches made in the comparison
             
         Returns:
             Dictionary with comparison results:
@@ -231,7 +233,8 @@ class ComparisonEngine:
                 "overall_score": float,
                 "all_fields_matched": bool,
                 "confusion_matrix": {...},  # If include_confusion_matrix=True
-                "non_matches": [...]  # If document_non_matches=True
+                "non_matches": [...],  # If document_non_matches=True
+                "field_comparisons": [...] # If field_comparisons=True
             }
             
         Example:

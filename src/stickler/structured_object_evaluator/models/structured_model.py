@@ -992,6 +992,8 @@ class StructuredModel(BaseModel):
             recall_with_fd: If True, include FD in recall denominator (TP/(TP+FN+FD))
                             If False, use traditional recall (TP/(TP+FN))
             add_derived_metrics: Whether to add derived metrics to confusion matrix
+            document_field_comparisons: Whether to document all matches and non matches made in the comparison
+
 
         Returns:
             Dictionary with comparison results including:
@@ -1000,6 +1002,7 @@ class StructuredModel(BaseModel):
             - all_fields_matched: Whether all fields matched
             - confusion_matrix: (optional) Confusion matrix data if requested
             - non_matches: (optional) Non-match documentation if requested
+            - field_comparisons: (optional) Field level comparision information if requested
         """
         from .comparison_engine import ComparisonEngine
         engine = ComparisonEngine(self)
