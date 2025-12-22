@@ -48,9 +48,9 @@ class FieldComparisonCollector:
             List of field comparison dictionaries with detailed information:
             [
                 {
-                    'expected_key': 'inference_result.Agency',
+                    'expected_key': 'Agency',
                     'expected_value': 'BUYING TIME, LLC',
-                    'actual_key': 'inference_result.Agency',
+                    'actual_key': 'Agency',
                     'actual_value': 'BUYING TIME, LLC',
                     'match': True,
                     'score': 1.0,
@@ -58,9 +58,9 @@ class FieldComparisonCollector:
                     'reason': 'exact match'
                 },
                 {
-                    'expected_key': 'inference_result.LineItems[0].StartDate',
+                    'expected_key': 'LineItems[0].StartDate',
                     'expected_value': '10/22',
-                    'actual_key': 'inference_result.LineItems[2].StartDate',
+                    'actual_key': 'LineItems[2].StartDate',
                     'actual_value': '10/22/2016',
                     'match': False,
                     'score': 0.5,
