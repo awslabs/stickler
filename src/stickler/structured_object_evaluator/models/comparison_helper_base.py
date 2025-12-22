@@ -5,6 +5,8 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from .hungarian_helper import HungarianHelper
 
+DEFAULT_MATCH_THRESHOLD = 0.7
+
 class ComparisonHelperBase(ABC):
     """Base class for collecting and formatting comparison data in StructuredModel comparisons."""
 
@@ -31,7 +33,7 @@ class ComparisonHelperBase(ABC):
             and hasattr(obj_list[0].__class__, "match_threshold")
         ):
             return obj_list[0].__class__.match_threshold
-        return 0.7  # Default threshold
+        return DEFAULT_MATCH_THRESHOLD
 
     def get_optimal_assignments(self, gt_list: List[Any], pred_list: List[Any]) -> tuple:
         """Get optimal assignments and matched pairs with scores.
