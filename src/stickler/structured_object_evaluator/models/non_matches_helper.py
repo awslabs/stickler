@@ -123,21 +123,6 @@ class NonMatchesHelper(ComparisonHelperBase):
                 
         return non_matches
 
-    # def add_non_matches_for_null_cases(
-    #     self, field_name: str, gt_list: List[Any], pred_list: List[Any]
-    # ) -> List[Dict[str, Any]]:
-    #     """Add non-matches for null cases (empty lists).
-
-    #     Args:
-    #         field_name: Name of the field
-    #         gt_list: Ground truth list (may be empty/None)
-    #         pred_list: Prediction list (may be empty/None)
-
-    #     Returns:
-    #         List of non-match entries for null cases
-    #     """
-    #     return self.process_null_cases(field_name, gt_list, pred_list)
-
     def _extract_entries_from_objects(
         self, 
         field_name: str, 

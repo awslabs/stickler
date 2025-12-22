@@ -80,36 +80,6 @@ class FieldComparisonHelper(ComparisonHelperBase):
 
         return entry
 
-    # def collect_list_field_comparisons(
-    #     self, field_name: str, gt_list: List[Any], pred_list: List[Any]
-    # ) -> List[Dict[str, Any]]:
-    #     """Collect individual field-level comparisons from a list field.
-
-    #     Args:
-    #         field_name: Name of the list field
-    #         gt_list: Ground truth list
-    #         pred_list: Prediction list
-
-    #     Returns:
-    #         List of field comparison dictionaries with individual field information
-    #     """
-    #     return self.collect_list_entries(field_name, gt_list, pred_list)
-
-    # def add_field_comparisons_for_null_cases(
-    #     self, field_name: str, gt_list: List[Any], pred_list: List[Any]
-    # ) -> List[Dict[str, Any]]:
-    #     """Add field comparisons for null cases (empty lists).
-
-    #     Args:
-    #         field_name: Name of the field
-    #         gt_list: Ground truth list (may be empty/None)
-    #         pred_list: Prediction list (may be empty/None)
-
-    #     Returns:
-    #         List of field comparison entries for null cases
-    #     """
-    #     return self.process_null_cases(field_name, gt_list, pred_list)
-    
     def _extract_entries_from_objects(
         self, 
         field_name: str, 

@@ -76,12 +76,11 @@ class FieldComparisonCollector:
             gt_val = getattr(self.model, field_name)
             pred_val = getattr(other, field_name, None)
 
-            
+            gt_is_empty = bool(isinstance(gt_val, list) and len(gt_val) == 0)
+            pred_is_empty = bool(isinstance(pred_val, list) and len(pred_val) == 0)
+
             # Handle null list cases
-            if (
-                (gt_val is None or (isinstance(gt_val, list) and len(gt_val) == 0))
-                or (pred_val is None or (isinstance(pred_val, list) and len(pred_val) == 0))
-            ):
+            if gt_is_empty or pred_is_empty:
                 # GT empty, pred has items → use helper for FA entries
                 null_comparisons = self.helper.process_null_cases(
                     field_name, gt_val, pred_val

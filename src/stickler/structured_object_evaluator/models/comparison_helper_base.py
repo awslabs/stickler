@@ -162,8 +162,8 @@ class ComparisonHelperBase(ABC):
                     pred_object=None,
                     gt_index=gt_idx,
                     pred_index=None,
-                    is_match=False,  # is_match
-                    similarity_score=0.0,    # score
+                    is_match=False,
+                    similarity_score=0.0, 
                     reason="false negative (unmatched ground truth)",
                 )
                 entries.extend(extracted_entries)
@@ -197,8 +197,8 @@ class ComparisonHelperBase(ABC):
                     pred_object=pred_item,
                     gt_index=None,
                     pred_index=pred_idx,
-                    is_match=False,  # is_match
-                    similarity_score=0.0,    # score
+                    is_match=False,  
+                    similarity_score=0.0,   
                     reason="false alarm (unmatched prediction)",
                 )
                 entries.extend(extracted_entries)
