@@ -277,9 +277,9 @@ Adds a `field_comparisons` list to the top level containing detailed information
 
 #### Field Comparison Entry Fields
 
-- **expected_key**: Field path in ground truth (dot notation for nested fields, bracket notation for lists)
+- **expected_key**: Field path in ground truth (dot notation for nested fields, bracket notation for lists). This will always have a value.
 - **expected_value**: The ground truth value for this field
-- **actual_key**: Field path in prediction (may differ for list items due to Hungarian matching)
+- **actual_key**: Field path in prediction (may differ for list items due to Hungarian matching). This will be None if the prediction does not exist.
 - **actual_value**: The predicted value for this field
 - **match**: Boolean indicating if this field comparison was considered a match (score >= threshold)
 - **score**: Raw similarity score between the values (0.0 to 1.0)
