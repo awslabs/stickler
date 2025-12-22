@@ -555,8 +555,6 @@ class StructuredModel(BaseModel):
         """
         return ConfigurationHelper.get_comparison_info(cls, field_name)
 
-
-
     @classmethod
     def _is_aggregate_field(cls, field_name: str) -> bool:
         """Check if field is marked for confusion matrix aggregation.
@@ -568,15 +566,6 @@ class StructuredModel(BaseModel):
             True if the field is marked for aggregation, False otherwise
         """
         return ConfigurationHelper.is_aggregate_field(cls, field_name)
-
-    def _is_truly_null(self, val: Any) -> bool:
-        """Check if a value is truly null (None).
-        
-        DEPRECATED: Delegates to NullHelper for consistency.
-        Kept for backward compatibility with any external callers.
-        """
-        from .null_helper import NullHelper
-        return NullHelper.is_truly_null(val)
 
     def _should_use_hierarchical_structure(self, val: Any, field_name: str) -> bool:
         """Check if a list value should maintain hierarchical structure.
@@ -597,24 +586,6 @@ class StructuredModel(BaseModel):
             if field_info and self._is_structured_field_type(field_info):
                 return True
         return False
-
-    def _is_effectively_null_for_lists(self, val: Any) -> bool:
-        """Check if a list value is effectively null (None or empty list).
-        
-        DEPRECATED: Delegates to NullHelper for consistency.
-        Kept for backward compatibility with any external callers.
-        """
-        from .null_helper import NullHelper
-        return NullHelper.is_effectively_null_for_lists(val)
-
-    def _is_effectively_null_for_primitives(self, val: Any) -> bool:
-        """Check if a primitive value is effectively null.
-        
-        DEPRECATED: Delegates to NullHelper for consistency.
-        Kept for backward compatibility with any external callers.
-        """
-        from .null_helper import NullHelper
-        return NullHelper.is_effectively_null_for_primitives(val)
 
     def _is_list_field(self, field_name: str) -> bool:
         """Check if a field is ANY list type.
@@ -663,60 +634,6 @@ class StructuredModel(BaseModel):
         from .comparison_dispatcher import ComparisonDispatcher
         dispatcher = ComparisonDispatcher(self)
         return dispatcher.handle_list_field_dispatch(gt_val, pred_val, weight)
-
-    def _create_true_negative_result(self, weight: float) -> dict:
-        """Create a true negative result.
-        
-        DEPRECATED: Delegates to ResultHelper for consistency.
-        Kept for backward compatibility with any external callers.
-        """
-        from .result_helper import ResultHelper
-        return ResultHelper.create_true_negative_result(weight)
-
-    def _create_false_alarm_result(self, weight: float) -> dict:
-        """Create a false alarm result.
-        
-        DEPRECATED: Delegates to ResultHelper for consistency.
-        Kept for backward compatibility with any external callers.
-        """
-        from .result_helper import ResultHelper
-        return ResultHelper.create_false_alarm_result(weight)
-
-    def _create_false_negative_result(self, weight: float) -> dict:
-        """Create a false negative result.
-        
-        DEPRECATED: Delegates to ResultHelper for consistency.
-        Kept for backward compatibility with any external callers.
-        """
-        from .result_helper import ResultHelper
-        return ResultHelper.create_false_negative_result(weight)
-
-    def _handle_struct_list_empty_cases(
-        self,
-        gt_list: List["StructuredModel"],
-        pred_list: List["StructuredModel"],
-        weight: float,
-    ) -> dict:
-        """Handle empty list cases with beautiful match statements.
-        
-        DEPRECATED: Delegates to ResultHelper for consistency.
-        Kept for backward compatibility with any external callers.
-
-        Args:
-            gt_list: Ground truth list (may be None)
-            pred_list: Predicted list (may be None)
-            weight: Field weight for scoring
-
-        Returns:
-            Result dictionary if early exit needed, None if should continue processing
-        """
-        from .result_helper import ResultHelper
-        
-        # Normalize None to empty lists for consistent handling
-        gt_len = len(gt_list or [])
-        pred_len = len(pred_list or [])
-        
-        return ResultHelper.create_empty_list_result(gt_len, pred_len, weight)
 
     def _calculate_object_level_metrics(
         self,
@@ -773,34 +690,10 @@ class StructuredModel(BaseModel):
             matched_pred_indices,
         )
 
-    def _calculate_struct_list_similarity(
-        self,
-        gt_list: List["StructuredModel"],
-        pred_list: List["StructuredModel"],
-        info: "ComparableField",
-    ) -> float:
-        """Calculate raw similarity score for structured list.
-
-        Args:
-            gt_list: Ground truth list
-            pred_list: Predicted list
-            info: Field comparison info
-
-        Returns:
-            Raw similarity score between 0.0 and 1.0
-        """
-        if len(pred_list) > 0:
-            match_result = self._compare_unordered_lists(
-                gt_list, pred_list, info.comparator, info.threshold
-            )
-            return match_result.get("overall_score", 0.0)
-        else:
-            return 0.0
-
     def _compare_unordered_lists(
         self,
-        list1: List[Any],
-        list2: List[Any],
+        gt_list: List[Any],
+        pred_list: List[Any],
         comparator: BaseComparator,
         threshold: float,
     ) -> Dict[str, Any]:
@@ -822,59 +715,7 @@ class StructuredModel(BaseModel):
             - overall_score: Similarity score for backward compatibility
         """
         return ComparisonHelper.compare_unordered_lists(
-            list1, list2, comparator, threshold
-        )
-
-    def compare_field(self, field_name: str, other_value: Any) -> float:
-        """Compare a single field with a value using the configured comparator.
-
-        Args:
-            field_name: Name of the field to compare
-            other_value: Value to compare with
-
-        Returns:
-            Similarity score between 0.0 and 1.0
-        """
-        # Get our field value
-        my_value = getattr(self, field_name)
-
-        # If both values are StructuredModel instances, use recursive compare_with
-        if isinstance(my_value, StructuredModel) and isinstance(
-            other_value, StructuredModel
-        ):
-            # Use compare_with for rich comparison
-            comparison_result = my_value.compare_with(
-                other_value,
-                include_confusion_matrix=False,
-                document_non_matches=False,
-                evaluator_format=False,
-                recall_with_fd=False,
-            )
-            # Apply field-level threshold if configured
-            info = self._get_comparison_info(field_name)
-            raw_score = comparison_result["overall_score"]
-            return (
-                raw_score
-                if raw_score >= info.threshold or not info.clip_under_threshold
-                else 0.0
-            )
-
-        # CRITICAL FIX: For lists, don't clip under threshold for partial matches
-        if isinstance(my_value, list) and isinstance(other_value, list):
-            # Get field info
-            info = self._get_comparison_info(field_name)
-
-            # Use the raw comparison result without threshold clipping for lists
-            result = ComparisonHelper.compare_unordered_lists(
-                my_value, other_value, info.comparator, info.threshold
-            )
-
-            # Return the overall score directly (don't clip based on threshold for lists)
-            return result["overall_score"]
-
-        # For other fields, use existing logic
-        return ComparisonHelper.compare_field_with_threshold(
-            self, field_name, other_value
+            gt_list, pred_list, comparator, threshold
         )
 
     def compare_field_raw(self, field_name: str, other_value: Any) -> float:
@@ -941,31 +782,6 @@ class StructuredModel(BaseModel):
         from .comparison_dispatcher import ComparisonDispatcher
         dispatcher = ComparisonDispatcher(self)
         return dispatcher.dispatch_field_comparison(field_name, gt_val, pred_val)
-
-
-
-
-
-
-
-    def _calculate_aggregate_metrics(self, result: dict) -> dict:
-        """Calculate aggregate metrics for all nodes in the result tree.
-
-        This method delegates to AggregateMetricsCalculator for the actual implementation.
-
-        CRITICAL FIX: Enhanced deep nesting traversal to handle arbitrary nesting depth.
-        The aggregate field contains the sum of all primitive field confusion matrices
-        below that node in the tree. This provides universal field-level granularity.
-
-        Args:
-            result: Result from compare_recursive with hierarchical structure
-
-        Returns:
-            Modified result with 'aggregate' fields added at each level
-        """
-        from .aggregate_metrics_calculator import AggregateMetricsCalculator
-        calculator = AggregateMetricsCalculator()
-        return calculator.calculate_aggregate_metrics(result)
 
     def _add_derived_metrics_to_result(self, result: dict, recall_with_fd: bool = False) -> dict:
         """Walk through result and add 'derived' fields with F1, precision, recall, accuracy.

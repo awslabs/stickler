@@ -90,18 +90,7 @@ class PrimitiveListComparator:
         weight = info.weight
         threshold = info.threshold
 
-        # CRITICAL FIX: Handle None values before checking length
-        # Convert None to empty list for consistent handling
-        if gt_list is None:
-            gt_list = []
-        if pred_list is None:
-            pred_list = []
-
-        # Handle empty/null list cases first using ResultHelper
-        from .result_helper import ResultHelper
-        empty_result = ResultHelper.create_empty_list_result(len(gt_list), len(pred_list), weight)
-        if empty_result is not None:
-            return empty_result
+        # All code paths already check if the lists are empty
 
         # For primitive lists, use the comparison logic from _compare_unordered_lists
         # which properly handles the threshold-based matching
