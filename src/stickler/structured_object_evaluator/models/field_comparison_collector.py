@@ -98,15 +98,6 @@ class FieldComparisonCollector:
                 all_field_comparisons.extend(list_comparisons)
 
             else:
-                # Handle non-list fields (primitives and nested objects)
-                # Extract metrics from field result to determine comparison details
-                # if isinstance(field_result, dict) and "overall" in field_result:
-                #     metrics = field_result["overall"]
-                # elif isinstance(field_result, dict):
-                #     metrics = field_result
-                # else:
-                #     continue  # Skip if we can't extract metrics
-
                 # Handle nested StructuredModel objects for detailed field comparison collection
                 if (
                     isinstance(gt_val, StructuredModel)
