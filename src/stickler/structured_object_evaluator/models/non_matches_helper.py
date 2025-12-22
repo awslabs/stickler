@@ -1,15 +1,37 @@
 """Non-matches helper for StructuredModel comparisons."""
 
-from typing import List, Dict, Any
-from .hungarian_helper import HungarianHelper
+from typing import List, Dict, Any, Optional
+from .comparison_helper_base import ComparisonHelperBase
 from .non_match_field import NonMatchType
 
-
-class NonMatchesHelper:
+class NonMatchesHelper(ComparisonHelperBase):
     """Helper class for collecting and formatting non-matches in StructuredModel comparisons."""
 
-    def __init__(self):
-        self.hungarian_helper = HungarianHelper()
+    def create_entry(
+        self,
+        field_name: str,
+        gt_object: Any,
+        pred_object: Any,
+        non_match_type: str,
+        object_index: int = None,
+        similarity_score: float = None,
+    ) -> Dict[str, Any]:
+        """Create a non-match entry for detailed analysis.
+
+        Args:
+            field_name: Name of the field
+            gt_object: Ground truth object (can be None for FA)
+            pred_object: Prediction object (can be None for FN)
+            non_match_type: Type of non-match ("FD", "FN", "FA")
+            object_index: Optional index of the object in the list for indexed field paths
+            similarity_score: Similarity score for FD entries
+
+        Returns:
+            Dictionary with non-match information
+        """
+        return self.create_non_match_entry(
+            field_name, gt_object, pred_object, non_match_type, object_index, similarity_score
+        )
 
     def create_non_match_entry(
         self,
@@ -48,12 +70,8 @@ class NonMatchesHelper:
         entry = {
             "field_path": indexed_field_path,
             "non_match_type": type_mapping.get(non_match_type, non_match_type),
-            "ground_truth_value": gt_object.model_dump()
-            if gt_object and hasattr(gt_object, "model_dump")
-            else gt_object,
-            "prediction_value": pred_object.model_dump()
-            if pred_object and hasattr(pred_object, "model_dump")
-            else pred_object,
+            "ground_truth_value": self.serialize_object(gt_object),
+            "prediction_value": self.serialize_object(pred_object),
         }
 
         # Add descriptive reason based on non-match type
@@ -61,14 +79,7 @@ class NonMatchesHelper:
             # False Discovery: matched but below threshold
             if similarity_score is not None:
                 # Get the match threshold from the object
-                if (
-                    gt_object
-                    and hasattr(gt_object, "__class__")
-                    and hasattr(gt_object.__class__, "match_threshold")
-                ):
-                    threshold = gt_object.__class__.match_threshold
-                else:
-                    threshold = 0.7  # Default threshold
+                threshold = self.get_match_threshold([gt_object] if gt_object else [pred_object])
                 entry["reason"] = (
                     f"below threshold ({similarity_score:.3f} < {threshold})"
                 )
@@ -100,114 +111,78 @@ class NonMatchesHelper:
         Returns:
             List of non-match dictionaries with individual object information
         """
-        non_matches = []
-
-        if not gt_list and not pred_list:
-            return non_matches
-
-        # Get optimal assignments with scores
-        assignments = []
-        matched_pairs_with_scores = []
-        if gt_list and pred_list:
-            hungarian_info = self.hungarian_helper.get_complete_matching_info(
-                gt_list, pred_list
-            )
-            matched_pairs_with_scores = hungarian_info["matched_pairs"]
-            assignments = [(i, j) for i, j, score in matched_pairs_with_scores]
-
-        # Get the match threshold from the model class
-        if (
-            gt_list
-            and hasattr(gt_list[0], "__class__")
-            and hasattr(gt_list[0].__class__, "match_threshold")
-        ):
-            match_threshold = gt_list[0].__class__.match_threshold
-        else:
-            match_threshold = 0.7
-
-        # Process matched pairs for FD entries
-        for gt_idx, pred_idx, similarity_score in matched_pairs_with_scores:
-            if gt_idx < len(gt_list) and pred_idx < len(pred_list):
-                gt_item = gt_list[gt_idx]
-                pred_item = pred_list[pred_idx]
-                # Check if this is a False Discovery (below threshold)
-                is_below_threshold = (
-                    similarity_score < match_threshold
-                    and abs(similarity_score - match_threshold) >= 1e-10
-                )
-                if is_below_threshold:
-                    field_level_non_matches = self._extract_field_level_non_matches(
-                        field_name,
-                        gt_item,
-                        pred_item,
-                        gt_idx,
-                        "FD",
-                        similarity_score,
-                    )
-                    non_matches.extend(field_level_non_matches)
-
-
-        # Process unmatched ground truth items (FN)
-        matched_gt_indices = set(idx for idx, _ in assignments)
-        for gt_idx, gt_item in enumerate(gt_list):
-            if gt_idx not in matched_gt_indices:
-                field_level_non_matches = self._extract_field_level_non_matches(
-                        field_name,
-                        gt_item,
-                        None,
-                        gt_idx,
-                        "FN",
-                    )
-                non_matches.extend(field_level_non_matches)
-
-        # Process unmatched prediction items (FA)
-        matched_pred_indices = set(idx for _, idx in assignments)
-        for pred_idx, pred_item in enumerate(pred_list):
-            if pred_idx not in matched_pred_indices:
-                field_level_non_matches = self._extract_field_level_non_matches(
-                        field_name,
-                        None,
-                        pred_item,
-                        pred_idx,
-                        "FA",
-                    )
-                non_matches.extend(field_level_non_matches)
+        # Use base class method but filter for non-matches only
+        all_entries = self.collect_list_entries(field_name, gt_list, pred_list)
         
-
-        return non_matches
-
-    def add_non_matches_for_null_cases(
-        self, field_name: str, gt_list: List[Any], pred_list: List[Any]
-    ) -> List[Dict[str, Any]]:
-        """Add non-matches for null cases (empty lists).
-
-        Args:
-            field_name: Name of the field
-            gt_list: Ground truth list (may be empty/None)
-            pred_list: Prediction list (may be empty/None)
-
-        Returns:
-            List of non-match entries for null cases
-        """
+        # Filter for non-matches only (entries where match is False or non_match_type exists)
         non_matches = []
-
-        # Handle null cases
-        if not gt_list and pred_list:
-            # Add non-matches for each FA item when GT is empty
-            for pred_idx, pred_item in enumerate(pred_list):
-                non_matches.append(
-                    self.create_non_match_entry(
-                        field_name, None, pred_item, "FA", pred_idx
-                    )
-                )
-        elif gt_list and not pred_list:
-            # Add non-matches for each FN item when prediction is empty
-            for gt_idx, gt_item in enumerate(gt_list):
-                non_matches.append(
-                    self.create_non_match_entry(field_name, gt_item, None, "FN", gt_idx)
-                )
-
+        for entry in all_entries:
+            # Check if this is a non-match entry
+            if "non_match_type" in entry or (entry.get("match") is False):
+                non_matches.append(entry)
+                
         return non_matches
+
+    # def add_non_matches_for_null_cases(
+    #     self, field_name: str, gt_list: List[Any], pred_list: List[Any]
+    # ) -> List[Dict[str, Any]]:
+    #     """Add non-matches for null cases (empty lists).
+
+    #     Args:
+    #         field_name: Name of the field
+    #         gt_list: Ground truth list (may be empty/None)
+    #         pred_list: Prediction list (may be empty/None)
+
+    #     Returns:
+    #         List of non-match entries for null cases
+    #     """
+    #     return self.process_null_cases(field_name, gt_list, pred_list)
+
+    def _extract_entries_from_objects(
+        self, 
+        field_name: str, 
+        gt_object: Any, 
+        pred_object: Any, 
+        gt_index: Optional[int],
+        pred_index: Optional[int],
+        is_match: bool,
+        similarity_score: float,
+        reason: str
+    ) -> List[Dict[str, Any]]:
+        """Extract non-match entries from structured model objects.
+        
+        Args:
+            field_name: Name of the parent list field
+            gt_object: Ground truth structured model
+            pred_object: Prediction structured model  
+            gt_index: Index in the GT list (None for FA cases)
+            pred_index: Index in the pred list (None for FN cases)
+            is_match: Whether the overall objects match
+            similarity_score: Overall similarity score
+            reason: Overall comparison reason
+            
+        Returns:
+            List of non-match entries
+        """
+        # Only return entries for non-matches
+        if is_match:
+            return []
+            
+        # Determine non-match type based on available objects
+        if gt_object is None:
+            non_match_type = "FA"
+            object_index = pred_index
+        elif pred_object is None:
+            non_match_type = "FN"
+            object_index = gt_index
+        else:
+            # Both objects exist but similarity is below threshold
+            non_match_type = "FD"
+            object_index = gt_index
+            
+        return self._extract_field_level_non_matches(
+            field_name, gt_object, pred_object, object_index, non_match_type, similarity_score
+        )
     
     def _extract_field_level_non_matches(
         self, 
@@ -265,5 +240,3 @@ class NonMatchesHelper:
             return [self.create_non_match_entry(
                 field_name, gt_object, pred_object, non_match_type, object_index, similarity_score
             )]
-
-    

@@ -65,7 +65,7 @@ class NonMatchCollector:
                 and len(pred_val) > 0
             ):
                 # GT empty, pred has items → use helper for FA entries
-                null_non_matches = self.helper.add_non_matches_for_null_cases(
+                null_non_matches = self.helper.process_null_cases(
                     field_name, gt_val, pred_val
                 )
                 all_non_matches.extend(null_non_matches)
@@ -79,7 +79,7 @@ class NonMatchCollector:
                 )
             ):
                 # GT has items, pred empty → use helper for FN entries
-                null_non_matches = self.helper.add_non_matches_for_null_cases(
+                null_non_matches = self.helper.process_null_cases(
                     field_name, gt_val, pred_val
                 )
                 all_non_matches.extend(null_non_matches)

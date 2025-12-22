@@ -75,6 +75,7 @@ class FieldComparisonCollector:
         for field_name, field_result in recursive_result.get("fields", {}).items():
             gt_val = getattr(self.model, field_name)
             pred_val = getattr(other, field_name, None)
+
             
             # Handle null list cases
             if (
@@ -82,7 +83,7 @@ class FieldComparisonCollector:
                 or (pred_val is None or (isinstance(pred_val, list) and len(pred_val) == 0))
             ):
                 # GT empty, pred has items → use helper for FA entries
-                null_comparisons = self.helper.add_field_comparisons_for_null_cases(
+                null_comparisons = self.helper.process_null_cases(
                     field_name, gt_val, pred_val
                 )
                 all_field_comparisons.extend(null_comparisons)
@@ -92,12 +93,13 @@ class FieldComparisonCollector:
                 and isinstance(pred_val, list)
             ):
                 # Use FieldComparisonHelper for primitive list collection
-                list_comparisons = self.helper.collect_list_field_comparisons(
+                list_comparisons = self.helper.collect_list_entries(
                     field_name, gt_val, pred_val
                 )
                 all_field_comparisons.extend(list_comparisons)
 
             else:
+                from .structured_model import StructuredModel
                 # Handle nested StructuredModel objects for detailed field comparison collection
                 if (
                     isinstance(gt_val, StructuredModel)
