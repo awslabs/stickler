@@ -356,7 +356,7 @@ class ComparisonEngine:
                 and pred_val
             ):
                 # Check if list contains StructuredModel instances
-                if gt_val and hasattr(gt_val[0], '__class__') and hasattr(gt_val[0].__class__, 'model_fields'):
+                if gt_val and isinstance(gt_val[0], StructuredModel) and isinstance(gt_val[0].__class__, StructuredModel):
                     # Import HungarianHelper for matching
                     from .hungarian_helper import HungarianHelper
                     

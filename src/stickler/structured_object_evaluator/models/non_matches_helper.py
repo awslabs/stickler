@@ -168,7 +168,7 @@ class NonMatchesHelper:
                         field_name,
                         None,
                         pred_item,
-                        gt_idx,
+                        pred_idx,
                         "FA",
                     )
                 non_matches.extend(field_level_non_matches)
