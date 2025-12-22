@@ -4,7 +4,7 @@ This module provides the FieldComparisonCollector class that handles the collect
 and documentation of ALL field comparisons (both matches and non-matches) during 
 structured object comparison.
 """
-
+import math
 from typing import List, Dict, Any, TYPE_CHECKING
 from .field_comparison_helper import FieldComparisonHelper
 
@@ -100,12 +100,12 @@ class FieldComparisonCollector:
             else:
                 # Handle non-list fields (primitives and nested objects)
                 # Extract metrics from field result to determine comparison details
-                if isinstance(field_result, dict) and "overall" in field_result:
-                    metrics = field_result["overall"]
-                elif isinstance(field_result, dict):
-                    metrics = field_result
-                else:
-                    continue  # Skip if we can't extract metrics
+                # if isinstance(field_result, dict) and "overall" in field_result:
+                #     metrics = field_result["overall"]
+                # elif isinstance(field_result, dict):
+                #     metrics = field_result
+                # else:
+                #     continue  # Skip if we can't extract metrics
 
                 # Handle nested StructuredModel objects for detailed field comparison collection
                 if (
@@ -142,7 +142,7 @@ class FieldComparisonCollector:
                     
                     # Determine reason
                     if is_match:
-                        if raw_score == 1.0:
+                        if math.isclose(raw_score, 1.0):
                             reason = "exact match"
                         else:
                             reason = f"above threshold ({raw_score:.3f} >= {info.threshold})"
