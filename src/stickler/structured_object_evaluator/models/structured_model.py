@@ -1002,7 +1002,7 @@ class StructuredModel(BaseModel):
             - all_fields_matched: Whether all fields matched
             - confusion_matrix: (optional) Confusion matrix data if requested
             - non_matches: (optional) Non-match documentation if requested
-            - field_comparisons: (optional) Field level comparision information if requested
+            - field_comparisons: (optional) Field level comparison information if requested
         """
         from .comparison_engine import ComparisonEngine
         engine = ComparisonEngine(self)

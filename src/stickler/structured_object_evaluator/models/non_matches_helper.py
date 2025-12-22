@@ -145,16 +145,7 @@ class NonMatchesHelper:
                         similarity_score,
                     )
                     non_matches.extend(field_level_non_matches)
-                    # non_matches.append(
-                    #     self.create_non_match_entry(
-                    #         field_name,
-                    #         gt_item,
-                    #         pred_item,
-                    #         "FD",
-                    #         gt_idx,
-                    #         similarity_score,
-                    #     )
-                    # )
+
 
         # Process unmatched ground truth items (FN)
         matched_gt_indices = set(idx for idx, _ in assignments)
@@ -168,9 +159,6 @@ class NonMatchesHelper:
                         "FN",
                     )
                 non_matches.extend(field_level_non_matches)
-                # non_matches.append(
-                #     self.create_non_match_entry(field_name, gt_item, None, "FN", gt_idx)
-                # )
 
         # Process unmatched prediction items (FA)
         matched_pred_indices = set(idx for _, idx in assignments)
@@ -184,11 +172,7 @@ class NonMatchesHelper:
                         "FA",
                     )
                 non_matches.extend(field_level_non_matches)
-                # non_matches.append(
-                #     self.create_non_match_entry(
-                #         field_name, None, pred_item, "FA", pred_idx
-                #     )
-                # )
+        
 
         return non_matches
 
