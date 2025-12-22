@@ -118,7 +118,6 @@ class NonMatchCollector:
                     continue  # Skip if we can't extract metrics
 
                 # Handle nested StructuredModel objects for detailed non-match collection
-                from .structured_model import StructuredModel
                 if (
                     isinstance(gt_val, StructuredModel)
                     and isinstance(pred_val, StructuredModel)

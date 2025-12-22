@@ -76,9 +76,6 @@ class FieldComparisonCollector:
             gt_val = getattr(self.model, field_name)
             pred_val = getattr(other, field_name, None)
             
-            # Import here to avoid circular dependency
-            from .structured_model import StructuredModel
-            
             # Handle null list cases
             if (
                 (gt_val is None or (isinstance(gt_val, list) and len(gt_val) == 0))
@@ -89,19 +86,6 @@ class FieldComparisonCollector:
                     field_name, gt_val, pred_val
                 )
                 all_field_comparisons.extend(null_comparisons)
-
-            # Check if this is a list field that should use object-level collection
-            elif (
-                isinstance(gt_val, list)
-                and isinstance(pred_val, list)
-                and gt_val
-                and isinstance(gt_val[0], StructuredModel)
-            ):
-                # Use FieldComparisonHelper for object-level collection
-                list_comparisons = self.helper.collect_list_field_comparisons(
-                    field_name, gt_val, pred_val
-                )
-                all_field_comparisons.extend(list_comparisons)
 
             elif (
                 isinstance(gt_val, list)
