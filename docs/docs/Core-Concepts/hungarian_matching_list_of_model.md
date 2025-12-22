@@ -213,7 +213,6 @@ The implementation is **already correct** and matches the expected behavior desc
   - `_calculate_nested_field_metrics()`  
   - `_calculate_object_level_metrics()`
   - `_calculate_struct_list_similarity()`
-  - `_handle_struct_list_empty_cases()`
 - Update `StructuredModel._dispatch_field_comparison()` to delegate
 
 ### Phase 3: Fix Threshold Logic

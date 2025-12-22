@@ -307,49 +307,6 @@ This is the most complex handler, dealing with lists of structured objects. It i
 - **Field-level details are kept separate for hierarchical analysis**
 - Tests expect `TP=3` for 3 matched objects, not `TP=9` for 3 objects × 3 fields each
 
-#### Empty Case Handling with Match Statements
-```python
-def _handle_struct_list_empty_cases(self, gt_list: List['StructuredModel'], pred_list: List['StructuredModel'], weight: float) -> dict:
-    # Normalize None to empty lists for consistent handling
-    gt_len = len(gt_list or [])
-    pred_len = len(pred_list or [])
-    
-    match (gt_len, pred_len):
-        case (0, 0):
-            # Both empty lists → True Negative
-            return {
-                "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
-                "fields": {},
-                "raw_similarity_score": 1.0,
-                "similarity_score": 1.0,
-                "threshold_applied_score": 1.0,
-                "weight": weight
-            }
-        case (0, pred_len):
-            # GT empty, pred has items → False Alarms
-            return {
-                "overall": {"tp": 0, "fa": pred_len, "fd": 0, "fp": pred_len, "tn": 0, "fn": 0},
-                "fields": {},
-                "raw_similarity_score": 0.0,
-                "similarity_score": 0.0,
-                "threshold_applied_score": 0.0,
-                "weight": weight
-            }
-        case (gt_len, 0):
-            # GT has items, pred empty → False Negatives
-            return {
-                "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": gt_len},
-                "fields": {},
-                "raw_similarity_score": 0.0,
-                "similarity_score": 0.0,
-                "threshold_applied_score": 0.0,
-                "weight": weight
-            }
-        case _:
-            # Both non-empty, continue processing
-            return None
-```
-
 #### Object-Level Metrics Calculation
 ```python
 def _calculate_object_level_metrics(self, gt_list: List['StructuredModel'], pred_list: List['StructuredModel'], match_threshold: float) -> tuple:

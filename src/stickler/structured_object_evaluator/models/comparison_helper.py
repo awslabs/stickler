@@ -105,7 +105,10 @@ class ComparisonHelper:
         Compare two lists as unordered collections using Hungarian matching.
 
         Args:
-            list1: First list
+            matched_pairs: Hungarian matches between both lists
+            gt_list: Ground truth list
+            pred_list: Prediction list
+            classification_threshold: Threshold to classify the confusion matrix metrics
         Returns:
                 Dictionary with confusion matrix metrics including:
                 - tp: True positives (matches >= threshold)
