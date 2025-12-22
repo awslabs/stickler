@@ -17,229 +17,238 @@ title: StructuredModel Advanced Functionality
 
 ## Overview
 
-This document provides a technical deep-dive into the core recursive logic of StructuredModel's comparison system. It's intended for developers who need to understand, modify, debug, or extend the complex internal functions that power the comparison engine.
+This document provides a technical deep-dive into the core recursive logic of StructuredModel. It's intended for developers who need to understand, modify, debug, or extend the comparison engine that powers structured data evaluation.
 
-The system is built around several "monster functions" that handle the complexity of comparing nested, heterogeneous data structures while maintaining both performance and accuracy.
+The system uses a **delegation pattern** where comparison logic is distributed across specialized helper classes.
 
-## Core Recursive Engine
+## Core Architecture: Delegation Pattern
 
-### `compare_recursive(self, other: 'StructuredModel') -> dict`
+### Design Philosophy
 
-This is the heart of the comparison system - a single-traversal engine that gathers both similarity scores and confusion matrix data in one pass.
+The StructuredModel comparison system follows a clean delegation pattern where:
 
-#### Function Signature and Purpose
+1. **StructuredModel** maintains the public API (`compare`, `compare_with`, `compare_recursive`)
+2. **Specialized helper classes** handle all implementation details
+3. **Single responsibility principle** - each helper has one well-defined purpose
+4. **Composition over inheritance** - helpers receive the StructuredModel instance as a parameter
+5. **No circular dependencies** - clean, testable architecture
+
+### Key Components
+
+#### **ComparisonEngine** - Main Orchestrator
 ```python
-def compare_recursive(self, other: 'StructuredModel') -> dict:
-    """The ONE clean recursive function that handles everything.
-    
-    Enhanced to capture BOTH confusion matrix metrics AND similarity scores
-    in a single traversal to eliminate double traversal inefficiency.
-    """
+from .comparison_engine import ComparisonEngine
+
+def compare_recursive(self, other: "StructuredModel") -> dict:
+    """Delegates to ComparisonEngine for orchestration."""
+    engine = ComparisonEngine(self)
+    return engine.compare_recursive(other)
 ```
 
-#### Internal Structure
+The ComparisonEngine coordinates the entire comparison process:
+- Manages the single-traversal optimization
+- Handles score percolation and aggregation
+- Coordinates between dispatcher, collectors, and calculators
+
+#### **ComparisonDispatcher** - Field Routing
 ```python
-result = {
-    "overall": {
-        "tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0,
-        "similarity_score": 0.0,
-        "all_fields_matched": False
-    },
-    "fields": {},
-    "non_matches": []
-}
+from .comparison_dispatcher import ComparisonDispatcher
+
+class ComparisonEngine:
+    @property
+    def dispatcher(self):
+        if self._dispatcher is None:
+            self._dispatcher = ComparisonDispatcher(self.model)
+        return self._dispatcher
 ```
 
-#### Key Innovations
+The ComparisonDispatcher routes field comparisons using match-statement based dispatch:
+- Determines field types (primitive, list, structured)
+- Handles null cases and type mismatches
+- Routes to appropriate specialized comparators
 
-1. **Single Traversal Optimization**: Instead of multiple passes through the object structure, all data gathering happens in one recursive descent.
+#### **Specialized Comparators**
+- **FieldComparator**: Handles primitive and nested StructuredModel fields
+- **PrimitiveListComparator**: Handles lists of primitive values using Hungarian matching
+- **StructuredListComparator**: Handles lists of StructuredModels with threshold-gated recursion
 
-2. **Dual-Purpose Processing**: Each field comparison returns both:
-   - Confusion matrix metrics (TP, FP, FN, etc.)
-   - Similarity scores for aggregation
+### Single Traversal Implementation
 
-3. **Score Percolation Variables**:
-   ```python
-   total_score = 0.0
-   total_weight = 0.0  
-   threshold_matched_fields = set()
-   ```
+The core `compare_recursive` method in ComparisonEngine implements the single-traversal optimization:
 
-#### Processing Loop
 ```python
-for field_name in self.__class__.model_fields:
-    if field_name == 'extra_fields':
-        continue
+def compare_recursive(self, other: "StructuredModel") -> Dict[str, Any]:
+    """Single-traversal comparison collecting metrics and scores in one pass."""
+    result = {
+        "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0,
+                   "similarity_score": 0.0, "all_fields_matched": False},
+        "fields": {},
+        "non_matches": []
+    }
+
+    # Score percolation variables
+    total_score = 0.0
+    total_weight = 0.0
+    threshold_matched_fields = set()
+
+    for field_name in self.model.__class__.model_fields:
+        if field_name == "extra_fields":
+            continue
+
+        gt_val = getattr(self.model, field_name)
+        pred_val = getattr(other, field_name, None)
+
+        # Dispatch to appropriate handler
+        field_result = self.dispatcher.dispatch_field_comparison(field_name, gt_val, pred_val)
         
-    gt_val = getattr(self, field_name)
-    pred_val = getattr(other, field_name, None)
-    
-    # Enhanced dispatch returns both metrics AND scores
-    field_result = self._dispatch_field_comparison(field_name, gt_val, pred_val)
-    
-    result["fields"][field_name] = field_result
-    
-    # Simple aggregation to overall metrics
-    self._aggregate_to_overall(field_result, result["overall"])
-    
-    # Score percolation - aggregate scores upward
-    if "similarity_score" in field_result and "weight" in field_result:
-        weight = field_result["weight"]
-        threshold_applied_score = field_result["threshold_applied_score"]
-        total_score += threshold_applied_score * weight
-        total_weight += weight
+        result["fields"][field_name] = field_result
+        self._aggregate_to_overall(field_result, result["overall"])
         
-        # Track threshold-matched fields
-        info = self._get_comparison_info(field_name)
-        if field_result["raw_similarity_score"] >= info.threshold:
-            threshold_matched_fields.add(field_name)
-```
+        # Score percolation
+        if "similarity_score" in field_result and "weight" in field_result:
+            weight = field_result["weight"]
+            threshold_applied_score = field_result["threshold_applied_score"]
+            total_score += threshold_applied_score * weight
+            total_weight += weight
+            
+            info = self.model._get_comparison_info(field_name)
+            if field_result["raw_similarity_score"] >= info.threshold:
+                threshold_matched_fields.add(field_name)
 
-#### Final Score Calculation
-```python
-# Calculate overall similarity score from percolated scores
-if total_weight > 0:
-    result["overall"]["similarity_score"] = total_score / total_weight
+    # Calculate final scores
+    if total_weight > 0:
+        result["overall"]["similarity_score"] = total_score / total_weight
+    
+    model_fields_for_comparison = set(self.model.__class__.model_fields.keys()) - {"extra_fields"}
+    result["overall"]["all_fields_matched"] = len(threshold_matched_fields) == len(model_fields_for_comparison)
 
-# Determine all_fields_matched
-model_fields_for_comparison = set(self.__class__.model_fields.keys()) - {'extra_fields'}
-result["overall"]["all_fields_matched"] = len(threshold_matched_fields) == len(model_fields_for_comparison)
+    return result
 ```
 
 ## Field Dispatch System
 
-### `_dispatch_field_comparison(self, field_name: str, gt_val: Any, pred_val: Any) -> dict`
+### ComparisonDispatcher Architecture
 
-This function routes each field to the appropriate comparison handler based on its type and content. It uses Python's `match` statements for clean, efficient dispatch.
+The field dispatch system is implemented through the **ComparisonDispatcher** class, which routes field comparisons to appropriate handlers based on field type and null states.
 
-#### Key Responsibilities
-1. **Type Detection**: Determines field type (primitive, list, nested object)
-2. **Null Handling**: Manages various null/empty states
-3. **Configuration Retrieval**: Gets field-specific comparison settings
-4. **Handler Routing**: Dispatches to appropriate specialized handler
+#### Core Dispatch Method: `dispatch_field_comparison()`
 
-#### Match-Based Type Detection
 ```python
-# Get field configuration for scoring
-info = self._get_comparison_info(field_name)
-weight = info.weight
-threshold = info.threshold
-
-# Check if this field is ANY list type
-is_list_field = self._is_list_field(field_name)
-
-# Get null states and hierarchical needs
-gt_is_null = self._is_truly_null(gt_val)
-pred_is_null = self._is_truly_null(pred_val)
-gt_needs_hierarchy = self._should_use_hierarchical_structure(gt_val, field_name)
-pred_needs_hierarchy = self._should_use_hierarchical_structure(pred_val, field_name)
-```
-
-#### List Field Dispatch with Match Statements
-```python
-if is_list_field:
-    list_result = self._handle_list_field_dispatch(gt_val, pred_val, weight)
-    if list_result is not None:
-        return list_result
-```
-
-#### Primitive Null Handling
-```python
-if not (gt_needs_hierarchy or pred_needs_hierarchy):
-    gt_effectively_null_prim = self._is_effectively_null_for_primitives(gt_val)
-    pred_effectively_null_prim = self._is_effectively_null_for_primitives(pred_val)
+def dispatch_field_comparison(self, field_name: str, gt_val: Any, pred_val: Any) -> Dict[str, Any]:
+    """Dispatch field comparison using match-based routing."""
+    from .structured_model import StructuredModel
     
-    match (gt_effectively_null_prim, pred_effectively_null_prim):
-        case (True, True):
-            return self._create_true_negative_result(weight)
-        case (True, False):
-            return self._create_false_alarm_result(weight)
-        case (False, True):
-            return self._create_false_negative_result(weight)
-        case _:
-            # Both non-null, continue to type-based dispatch
-            pass
-```
-
-#### Type-Based Handler Selection
-```python
-# Type-based dispatch
-if isinstance(gt_val, (str, int, float)) and isinstance(pred_val, (str, int, float)):
-    return self._compare_primitive_with_scores(gt_val, pred_val, field_name)
-elif isinstance(gt_val, list) and isinstance(pred_val, list):
-    # Check if this should be structured list
-    if gt_val and isinstance(gt_val[0], StructuredModel):
-        return self._compare_struct_list_with_scores(gt_val, pred_val, field_name)
-    else:
-        return self._compare_primitive_list_with_scores(gt_val, pred_val, field_name)
-elif isinstance(gt_val, StructuredModel) and isinstance(pred_val, StructuredModel):
-    # For recursive StructuredModel comparison
-    recursive_result = gt_val.compare_recursive(pred_val)  # PURE RECURSION
-    
-    # Add scoring information to the recursive result
-    raw_score = recursive_result["overall"].get("similarity_score", 0.0)
-    threshold_applied_score = raw_score if raw_score >= threshold or not info.clip_under_threshold else 0.0
-    
-    recursive_result["raw_similarity_score"] = raw_score
-    recursive_result["similarity_score"] = raw_score
-    recursive_result["threshold_applied_score"] = threshold_applied_score
-    recursive_result["weight"] = weight
-    
-    return recursive_result
-else:
-    # Mismatched types
-    return {
-        "overall": {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0},
-        "fields": {},
-        "raw_similarity_score": 0.0,
-        "similarity_score": 0.0,
-        "threshold_applied_score": 0.0,
-        "weight": weight
-    }
-```
-
-## Specialized Comparison Handlers
-
-### `_compare_primitive_with_scores(self, gt_val: Any, pred_val: Any, field_name: str) -> dict`
-
-Handles simple field comparisons (strings, numbers, dates) with integrated scoring and metrics.
-
-#### Key Features
-1. **Comparator Application**: Uses configured comparator (Levenshtein, exact, etc.)
-2. **Threshold-Based Classification**: Converts similarity to binary metrics
-3. **Configurable Clipping**: Respects `clip_under_threshold` settings
-
-#### Implementation
-```python
-def _compare_primitive_with_scores(self, gt_val: Any, pred_val: Any, field_name: str) -> dict:
-    info = self.__class__._get_comparison_info(field_name)
-    raw_similarity = info.comparator.compare(gt_val, pred_val)
+    # Get field configuration
+    info = self.model._get_comparison_info(field_name)
     weight = info.weight
     threshold = info.threshold
-    
-    # For binary classification metrics, always use threshold
-    if raw_similarity >= threshold:
-        metrics = {"tp": 1, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
-        threshold_applied_score = raw_similarity
-    else:
-        metrics = {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0}
-        # For score calculation, respect clip_under_threshold setting
-        threshold_applied_score = 0.0 if info.clip_under_threshold else raw_similarity
-    
-    # Return hierarchical structure for consistency
-    return {
-        "overall": metrics,
-        "fields": {},
-        "raw_similarity_score": raw_similarity,
-        "similarity_score": raw_similarity,
-        "threshold_applied_score": threshold_applied_score,
-        "weight": weight
-    }
+
+    # Determine field type and null states
+    is_list_field = self.model._is_list_field(field_name)
+    gt_needs_hierarchy = self.model._should_use_hierarchical_structure(gt_val, field_name)
+    pred_needs_hierarchy = self.model._should_use_hierarchical_structure(pred_val, field_name)
+
+    # Handle list field null cases (early exit)
+    if is_list_field:
+        list_result = self.handle_list_field_dispatch(gt_val, pred_val, weight)
+        if list_result is not None:
+            return list_result
+
+    # Handle primitive field null cases (early exit)
+    if not (gt_needs_hierarchy or pred_needs_hierarchy):
+        gt_effectively_null_prim = NullHelper.is_effectively_null_for_primitives(gt_val)
+        pred_effectively_null_prim = NullHelper.is_effectively_null_for_primitives(pred_val)
+
+        match (gt_effectively_null_prim, pred_effectively_null_prim):
+            case (True, True):
+                return ResultHelper.create_true_negative_result(weight)
+            case (True, False):
+                return ResultHelper.create_false_alarm_result(weight)
+            case (False, True):
+                return ResultHelper.create_false_negative_result(weight)
+            case _:
+                pass  # Both non-null, continue to type-based dispatch
+
+    # Type-based dispatch to specialized comparators
+    return self._dispatch_by_type(gt_val, pred_val, field_name, weight)
 ```
 
-### `_compare_primitive_list_with_scores(self, gt_list: List[Any], pred_list: List[Any], field_name: str) -> dict`
+#### Specialized Comparator Routing
 
-Handles lists of primitive values (strings, numbers) using Hungarian matching.
+The dispatcher delegates to specialized comparators based on value types:
+
+```python
+def _dispatch_by_type(self, gt_val: Any, pred_val: Any, field_name: str, weight: float):
+    """Route to appropriate comparator based on value types."""
+    
+    # CASE 1: Primitive types (str, int, float)
+    if isinstance(gt_val, (str, int, float)) and isinstance(pred_val, (str, int, float)):
+        return self.field_comparator.compare_primitive_with_scores(gt_val, pred_val, field_name)
+    
+    # CASE 2: Both are lists
+    elif isinstance(gt_val, list) and isinstance(pred_val, list):
+        if gt_val and isinstance(gt_val[0], StructuredModel):
+            # List[StructuredModel] → StructuredListComparator
+            return self.structured_list_comparator.compare_struct_list_with_scores(
+                gt_val, pred_val, field_name
+            )
+        else:
+            # List[primitive] → PrimitiveListComparator
+            return self.primitive_list_comparator.compare_primitive_list_with_scores(
+                gt_val, pred_val, field_name
+            )
+    
+    # CASE 3: Nested StructuredModel fields
+    elif isinstance(gt_val, StructuredModel) and isinstance(pred_val, StructuredModel):
+        return self.field_comparator.compare_structured_field(gt_val, pred_val, field_name, threshold)
+    
+    # CASE 4: Mismatched types → False Discovery
+    else:
+        return {
+            "overall": {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0},
+            "fields": {},
+            "raw_similarity_score": 0.0,
+            "similarity_score": 0.0,
+            "threshold_applied_score": 0.0,
+            "weight": weight,
+        }
+```
+
+#### List Field Null Handling
+
+The dispatcher uses match statements for clear list null case handling:
+
+```python
+def handle_list_field_dispatch(self, gt_val: Any, pred_val: Any, weight: float) -> Optional[Dict[str, Any]]:
+    """Handle list field comparison with early exit for null cases."""
+    
+    gt_effectively_null = NullHelper.is_effectively_null_for_lists(gt_val)
+    pred_effectively_null = NullHelper.is_effectively_null_for_lists(pred_val)
+
+    match (gt_effectively_null, pred_effectively_null):
+        case (True, True):
+            # Both None or empty lists → True Negative
+            return ResultHelper.create_true_negative_result(weight)
+        case (True, False):
+            # GT=None/empty, Pred=populated → False Alarm
+            pred_list = pred_val if isinstance(pred_val, list) else []
+            return ResultHelper.create_empty_list_result(0, len(pred_list), weight)
+        case (False, True):
+            # GT=populated, Pred=None/empty → False Negative
+            gt_list = gt_val if isinstance(gt_val, list) else []
+            return ResultHelper.create_empty_list_result(len(gt_list), 0, weight)
+        case _:
+            # Both non-null and non-empty → Continue to type-based dispatch
+            return None
+```
+
+#### Key Design Principles
+
+1. **Early Exit Pattern**: Handle null cases first to avoid unnecessary processing
+2. **Match Statement Clarity**: Use pattern matching for traceable logic flow
+3. **Lazy Initialization**: Comparators are created only when needed
+4. **Separation of Concerns**: Each comparator handles one specific type combination
+5. **Consistent Result Structure**: All handlers return the same hierarchical format
 
 #### Critical Design Decision: Universal Hierarchical Structure
 This method returns a hierarchical structure `{"overall": {...}, "fields": {...}}` even for primitive lists to maintain API consistency across all field types.
@@ -297,49 +306,6 @@ This is the most complex handler, dealing with lists of structured objects. It i
 - **List-level metrics count OBJECTS, not individual fields**
 - **Field-level details are kept separate for hierarchical analysis**
 - Tests expect `TP=3` for 3 matched objects, not `TP=9` for 3 objects × 3 fields each
-
-#### Empty Case Handling with Match Statements
-```python
-def _handle_struct_list_empty_cases(self, gt_list: List['StructuredModel'], pred_list: List['StructuredModel'], weight: float) -> dict:
-    # Normalize None to empty lists for consistent handling
-    gt_len = len(gt_list or [])
-    pred_len = len(pred_list or [])
-    
-    match (gt_len, pred_len):
-        case (0, 0):
-            # Both empty lists → True Negative
-            return {
-                "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
-                "fields": {},
-                "raw_similarity_score": 1.0,
-                "similarity_score": 1.0,
-                "threshold_applied_score": 1.0,
-                "weight": weight
-            }
-        case (0, pred_len):
-            # GT empty, pred has items → False Alarms
-            return {
-                "overall": {"tp": 0, "fa": pred_len, "fd": 0, "fp": pred_len, "tn": 0, "fn": 0},
-                "fields": {},
-                "raw_similarity_score": 0.0,
-                "similarity_score": 0.0,
-                "threshold_applied_score": 0.0,
-                "weight": weight
-            }
-        case (gt_len, 0):
-            # GT has items, pred empty → False Negatives
-            return {
-                "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": gt_len},
-                "fields": {},
-                "raw_similarity_score": 0.0,
-                "similarity_score": 0.0,
-                "threshold_applied_score": 0.0,
-                "weight": weight
-            }
-        case _:
-            # Both non-empty, continue processing
-            return None
-```
 
 #### Object-Level Metrics Calculation
 ```python
@@ -425,9 +391,9 @@ if gt_list and isinstance(gt_list[0], StructuredModel):
 
 ## Hungarian Matching Integration
 
-### The `_compare_unordered_lists()` Method
+### ComparisonHelper Implementation
 
-This method implements the core Hungarian matching algorithm through the `HungarianHelper` and `ComparisonHelper` classes.
+The Hungarian matching algorithm is implemented through the **ComparisonHelper** class, which provides the core `compare_unordered_lists()` method used by both primitive and structured list comparators.
 
 #### Key Algorithm Features
 1. **Optimal Bipartite Matching**: Finds the best possible pairing between lists
@@ -435,71 +401,144 @@ This method implements the core Hungarian matching algorithm through the `Hungar
 3. **Handles Unequal Lengths**: Gracefully manages lists of different sizes
 4. **Threshold-Based Classification**: Separates matches from false discoveries
 
-#### Implementation Strategy
+#### Core Implementation: `compare_unordered_lists()`
+
 ```python
-# Use HungarianHelper for Hungarian matching operations
-hungarian_helper = HungarianHelper()
-
-# Use the appropriate comparator based on item types
-if all(isinstance(item, StructuredModel) for item in list1[:1]) and all(isinstance(item, StructuredModel) for item in list2[:1]):
-    # For StructuredModel lists, use match_threshold for object-level classification
-    model_class = list1[0].__class__
-    match_threshold = getattr(model_class, 'match_threshold', 0.7)
-    classification_threshold = match_threshold
+@staticmethod
+def compare_unordered_lists(
+    gt_list: List[Any], pred_list: List[Any], comparator: BaseComparator, threshold: float
+) -> Dict[str, Any]:
+    """Compare two lists as unordered collections using Hungarian matching."""
     
-    # Use HungarianHelper for StructuredModel matching
-    matched_pairs = hungarian_helper.get_matched_pairs_with_scores(list1, list2)
-else:
-    # Use the provided comparator for other types
-    from stickler.algorithms.hungarian import HungarianMatcher
-    # Use match_threshold=0.0 to capture ALL matches, not just those above threshold
-    hungarian = HungarianMatcher(comparator, match_threshold=0.0)
-    classification_threshold = threshold
-    
-    # Get detailed metrics from HungarianMatcher
-    metrics = hungarian.calculate_metrics(list1, list2)
-    matched_pairs = metrics["matched_pairs"]
-```
+    hungarian_helper = HungarianHelper()
+    from .structured_model import StructuredModel
 
-#### Threshold-Based Classification
-```python
-# Apply threshold logic to classify matches
-tp = 0  # True positives (score >= threshold)
-fd = 0  # False discoveries (score < threshold, including 0)
+    # Route to appropriate matching strategy based on item types
+    if all(isinstance(item, StructuredModel) for item in gt_list[:1]) and all(
+        isinstance(item, StructuredModel) for item in pred_list[:1]
+    ):
+        # For StructuredModel lists: Use threshold-corrected individual comparison scores
+        hungarian_info = hungarian_helper.get_complete_matching_info(gt_list, pred_list)
+        matched_pairs = hungarian_info["matched_pairs"]
 
-for i, j, score in matched_pairs:
-    # Use ThresholdHelper for consistent threshold checking
-    if ThresholdHelper.is_above_threshold(score, classification_threshold):
-        tp += 1
+        # Apply threshold correction for consistency with individual comparisons
+        threshold_corrected_pairs = []
+        for gt_idx, pred_idx, raw_score in matched_pairs:
+            if gt_idx < len(gt_list) and pred_idx < len(pred_list):
+                gt_item = gt_list[gt_idx]
+                pred_item = pred_list[pred_idx]
+                
+                # Use individual comparison with threshold application
+                individual_result = gt_item.compare_with(pred_item)
+                threshold_applied_score = individual_result["overall_score"]
+                
+                threshold_corrected_pairs.append((gt_idx, pred_idx, threshold_applied_score))
+            else:
+                threshold_corrected_pairs.append((gt_idx, pred_idx, raw_score))
+
+        matched_pairs = threshold_corrected_pairs
+        classification_threshold = 0.01  # Almost everything non-zero should be TP
     else:
-        # All matches below threshold are False Discoveries, including 0.0 scores
-        fd += 1
+        # For primitive lists: Use HungarianMatcher with comparator
+        from stickler.algorithms.hungarian import HungarianMatcher
+        
+        # Use match_threshold=0.0 to capture ALL matches for scoring
+        hungarian = HungarianMatcher(comparator, match_threshold=0.0)
+        classification_threshold = threshold
+        
+        metrics = hungarian.calculate_metrics(gt_list, pred_list)
+        matched_pairs = metrics["matched_pairs"]
 
-# False alarms are unmatched prediction items
-fa = len(list2) - len(matched_pairs)
-
-# False negatives are unmatched ground truth items  
-fn = len(list1) - len(matched_pairs)
-
-# Total false positives include both false discoveries and false alarms
-fp = fd + fa
+    # Delegate to metrics calculation
+    return ComparisonHelper.unordered_list_metrics(
+        matched_pairs=matched_pairs,
+        gt_list=gt_list,
+        pred_list=pred_list,
+        classification_threshold=classification_threshold
+    )
 ```
 
-#### Overall Score Calculation
+#### Metrics Calculation: `unordered_list_metrics()`
+
 ```python
-# Calculate overall score considering ALL similarities, not just those above threshold
-if not matched_pairs:
-    overall_score = 0.0
-else:
-    # Average similarity across all matched pairs (regardless of threshold)
-    total_similarity = sum(score for _, _, score in matched_pairs)
-    avg_similarity = total_similarity / len(matched_pairs)
+@staticmethod
+def unordered_list_metrics(
+    matched_pairs: List[Any],
+    gt_list: List[Any], 
+    pred_list: List[Any],
+    classification_threshold: float
+):
+    """Calculate confusion matrix metrics from Hungarian matching results."""
     
-    # Scale by coverage ratio (matched pairs / max list size)
-    max_items = max(len(list1), len(list2))
-    coverage_ratio = len(matched_pairs) / max_items if max_items > 0 else 1.0
-    overall_score = avg_similarity * coverage_ratio
+    tp = 0  # True positives (score >= threshold)
+    fd = 0  # False discoveries (score < threshold, including 0)
+
+    for i, j, score in matched_pairs:
+        if ThresholdHelper.is_above_threshold(score, classification_threshold):
+            tp += 1
+        else:
+            fd += 1  # All matches below threshold are False Discoveries
+
+    # Count unmatched items
+    fn = len(gt_list) - len(matched_pairs)      # Unmatched ground truth items
+    fa = len(pred_list) - len(matched_pairs)    # Unmatched prediction items
+    fp = fd + fa                                # Total false positives
+
+    # Calculate overall score with threshold application
+    if not matched_pairs:
+        overall_score = 0.0
+    else:
+        # Apply threshold to each similarity score for consistency
+        threshold_applied_similarities = []
+        for _, _, score in matched_pairs:
+            if ThresholdHelper.is_above_threshold(score, classification_threshold):
+                threshold_applied_similarities.append(score)
+            else:
+                threshold_applied_similarities.append(0.0)  # Clip below threshold
+
+        # Average threshold-applied similarities and scale by coverage
+        avg_threshold_similarity = sum(threshold_applied_similarities) / len(threshold_applied_similarities)
+        max_items = max(len(gt_list), len(pred_list))
+        coverage_ratio = len(matched_pairs) / max_items if max_items > 0 else 1.0
+        overall_score = avg_threshold_similarity * coverage_ratio
+
+    return {
+        "tp": tp,
+        "fd": fd,
+        "fa": fa,
+        "fn": fn,
+        "fp": fp,
+        "overall_score": overall_score,
+    }
 ```
+
+#### HungarianHelper Integration
+
+The **HungarianHelper** class provides optimized matching operations for StructuredModel objects:
+
+```python
+class HungarianHelper:
+    """Helper class for Hungarian matching operations with StructuredModel objects."""
+    
+    def get_complete_matching_info(self, gt_list: List[Any], pred_list: List[Any]) -> Dict[str, Any]:
+        """Get complete Hungarian matching information in a single call."""
+        # Returns matched_pairs with similarity scores
+        # Optimized to avoid multiple traversals
+        
+    def get_matched_pairs_with_scores(self, gt_list: List[Any], pred_list: List[Any]) -> List[tuple]:
+        """Get matched pairs with similarity scores using Hungarian algorithm."""
+        # Returns list of (gt_idx, pred_idx, similarity_score) tuples
+```
+
+#### Key Design Decisions
+
+1. **Threshold Correction for StructuredModels**: Individual comparison scores are used instead of raw Hungarian scores to ensure consistency between list and individual comparisons.
+
+2. **Dual Strategy**: Different approaches for StructuredModel vs primitive lists to optimize for each use case.
+
+3. **Score Clipping**: Threshold-applied scores are used for overall score calculation to maintain consistency with field-level scoring.
+
+4. **Coverage Scaling**: Overall scores are scaled by coverage ratio to account for unmatched items.
 
 ## Score Aggregation and Percolation
 
@@ -659,92 +698,193 @@ The Hungarian algorithm runs in O(n³) time, which is optimal for the assignment
 
 #### 1. **Incorrect Similarity Scores**
 - **Symptom**: Scores don't match expectations
-- **Check**: Field-level comparator configuration
-- **Debug**: Add logging to `_compare_primitive_with_scores()`
+- **Check**: Field-level comparator configuration in ComparableField definitions
+- **Debug**: Add logging to FieldComparator.compare_primitive_with_scores()
+- **Tools**: Use ComparisonHelper.compare_field_raw() for isolated field testing
 
 #### 2. **Confusion Matrix Inconsistencies**  
 - **Symptom**: TP + FP ≠ expected totals
-- **Check**: Object vs field-level counting in list handlers
-- **Debug**: Verify `_calculate_object_level_metrics()` logic
+- **Check**: Object vs field-level counting in StructuredListComparator
+- **Debug**: Verify HungarianHelper.get_matched_pairs_with_scores() results
+- **Tools**: Enable detailed logging in ConfusionMatrixCalculator
 
 #### 3. **Performance Issues**
 - **Symptom**: Slow comparison on large objects
-- **Check**: Threshold-gated recursion settings
-- **Debug**: Profile `compare_recursive()` with timing
+- **Check**: Threshold-gated recursion settings in StructuredListComparator
+- **Debug**: Profile ComparisonEngine.compare_recursive() with timing
+- **Tools**: Monitor threshold gate effectiveness ratios
 
 #### 4. **Memory Usage**
 - **Symptom**: High memory consumption
-- **Check**: Result structure depth and breadth
-- **Debug**: Monitor object creation in recursive calls
+- **Check**: Result structure depth and breadth in helper classes
+- **Debug**: Monitor object creation in ComparisonDispatcher and comparators
+- **Tools**: Use memory profilers to track helper class instantiation
+
+#### 5. **Dispatch Routing Issues**
+- **Symptom**: Wrong comparator being used for field types
+- **Check**: ComparisonDispatcher.dispatch_field_comparison() logic
+- **Debug**: Verify _is_list_field() and _should_use_hierarchical_structure() results
+- **Tools**: Add logging to match statement branches
 
 ### Debugging Helper Methods
 
+#### Field-Level Debugging
 ```python
-def _debug_field_comparison(self, field_name: str, gt_val: Any, pred_val: Any):
-    """Add this method for debugging field comparisons."""
-    info = self._get_comparison_info(field_name)
+def debug_field_comparison(model: StructuredModel, field_name: str, gt_val: Any, pred_val: Any):
+    """Debug a single field comparison with detailed logging."""
+    from .comparison_dispatcher import ComparisonDispatcher
+    
+    info = model._get_comparison_info(field_name)
     print(f"Field: {field_name}")
-    print(f"  GT Value: {gt_val}")
-    print(f"  Pred Value: {pred_val}")
+    print(f"  GT Value: {gt_val} (type: {type(gt_val).__name__})")
+    print(f"  Pred Value: {pred_val} (type: {type(pred_val).__name__})")
     print(f"  Comparator: {info.comparator.__class__.__name__}")
     print(f"  Threshold: {info.threshold}")
     print(f"  Weight: {info.weight}")
+    print(f"  Is List Field: {model._is_list_field(field_name)}")
     
-    # Add to dispatch method for detailed logging
-    result = self._dispatch_field_comparison(field_name, gt_val, pred_val)
-    print(f"  Result: {result}")
+    # Test dispatch routing
+    dispatcher = ComparisonDispatcher(model)
+    result = dispatcher.dispatch_field_comparison(field_name, gt_val, pred_val)
+    print(f"  Dispatch Result: {result}")
     return result
+```
+
+#### Engine-Level Debugging
+```python
+def debug_comparison_engine(gt_model: StructuredModel, pred_model: StructuredModel):
+    """Debug the full comparison engine with step-by-step logging."""
+    from .comparison_engine import ComparisonEngine
+    
+    engine = ComparisonEngine(gt_model)
+    
+    print("=== Comparison Engine Debug ===")
+    print(f"GT Model: {gt_model.__class__.__name__}")
+    print(f"Pred Model: {pred_model.__class__.__name__}")
+    
+    # Enable detailed logging (if available)
+    result = engine.compare_recursive(pred_model)
+    
+    print(f"Overall Result: {result['overall']}")
+    print(f"Field Count: {len(result['fields'])}")
+    
+    for field_name, field_result in result['fields'].items():
+        print(f"  {field_name}: {field_result.get('raw_similarity_score', 'N/A')}")
+    
+    return result
+```
+
+#### Hungarian Matching Debugging
+```python
+def debug_hungarian_matching(gt_list: List[Any], pred_list: List[Any]):
+    """Debug Hungarian matching with detailed pair information."""
+    from .hungarian_helper import HungarianHelper
+    from .comparison_helper import ComparisonHelper
+    
+    hungarian_helper = HungarianHelper()
+    
+    print("=== Hungarian Matching Debug ===")
+    print(f"GT List Length: {len(gt_list)}")
+    print(f"Pred List Length: {len(pred_list)}")
+    
+    # Get complete matching info
+    if gt_list and hasattr(gt_list[0], '__class__'):
+        hungarian_info = hungarian_helper.get_complete_matching_info(gt_list, pred_list)
+        matched_pairs = hungarian_info["matched_pairs"]
+        
+        print("Matched Pairs:")
+        for gt_idx, pred_idx, similarity in matched_pairs:
+            print(f"  GT[{gt_idx}] ↔ Pred[{pred_idx}]: {similarity:.4f}")
+    
+    return matched_pairs
 ```
 
 ### Testing Complex Scenarios
 
-For testing the monster functions, focus on:
+#### Systematic Testing Approach
+For testing the delegation pattern architecture, focus on:
 
-1. **Edge Cases**: Empty lists, None values, type mismatches
-2. **Scale Testing**: Large nested structures, deep recursion
-3. **Performance Testing**: Time and memory usage under load
-4. **Correctness Testing**: Known ground truth comparisons
+1. **Component Isolation**: Test each helper class independently
+   - FieldComparator with various primitive types
+   - PrimitiveListComparator with different list sizes
+   - StructuredListComparator with nested objects
+   - ComparisonDispatcher routing logic
+
+2. **Integration Testing**: Test component interactions
+   - ComparisonEngine orchestration
+   - Score percolation across components
+   - Result structure consistency
+
+3. **Edge Cases**: Boundary conditions
+   - Empty lists, None values, type mismatches
+   - Deeply nested structures
+   - Large lists (performance testing)
+   - Threshold boundary conditions
+
+4. **Performance Testing**: Scalability validation
+   - Time complexity verification
+   - Memory usage profiling
+   - Threshold gate effectiveness
 
 ### Profiling Guidelines
 
-```python
-import cProfile
-import pstats
 
-def profile_comparison(model1, model2):
-    """Profile a comparison operation."""
-    profiler = cProfile.Profile()
-    profiler.enable()
+#### Memory Profiling
+```python
+import tracemalloc
+from .comparison_engine import ComparisonEngine
+
+def profile_memory_usage(gt_model, pred_model):
+    """Profile memory usage during comparison."""
+    tracemalloc.start()
     
-    # Perform the comparison
-    result = model1.compare_with(model2, include_confusion_matrix=True)
+    engine = ComparisonEngine(gt_model)
+    result = engine.compare_recursive(pred_model)
     
-    profiler.disable()
+    current, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
     
-    # Generate stats
-    stats = pstats.Stats(profiler)
-    stats.sort_stats('cumulative')
-    stats.print_stats(20)  # Top 20 functions
+    print(f"Current memory usage: {current / 1024 / 1024:.2f} MB")
+    print(f"Peak memory usage: {peak / 1024 / 1024:.2f} MB")
     
     return result
 ```
 
 ### Key Performance Metrics to Monitor
 
-1. **Function Call Counts**: Track calls to recursive methods
-2. **Memory Allocation**: Monitor object creation in loops
-3. **Hungarian Algorithm Performance**: O(n³) scaling behavior
-4. **Threshold Gate Effectiveness**: Ratio of processed vs skipped recursions
+#### Delegation Pattern Metrics
+1. **Component Call Counts**: Track calls to each helper class
+2. **Dispatch Efficiency**: Monitor routing decisions in ComparisonDispatcher
+3. **Helper Instantiation**: Track lazy initialization effectiveness
+4. **Result Structure Size**: Monitor hierarchical result memory usage
+
+#### Algorithm-Specific Metrics
+1. **Hungarian Algorithm Performance**: O(n³) scaling verification
+2. **Threshold Gate Effectiveness**: Ratio of processed vs skipped recursions
+3. **Score Percolation Efficiency**: Time spent in aggregation operations
+4. **Memory Allocation Patterns**: Helper class object creation rates
 
 ### Code Maintenance Guidelines
 
-When modifying the monster functions, follow these principles:
+#### Delegation Pattern Maintenance
+When modifying the helper class architecture:
 
-1. **Preserve Single Traversal**: Ensure all optimizations maintain one-pass processing
-2. **Maintain API Consistency**: Keep hierarchical result structures intact
-3. **Document Design Decisions**: Explain any performance vs accuracy trade-offs
-4. **Test Edge Cases**: Verify behavior with empty/null/mismatched data
-5. **Profile Changes**: Measure performance impact of modifications
+1. **Preserve Component Boundaries**: Keep helper classes focused on single responsibilities
+2. **Maintain Lazy Initialization**: Ensure helpers are created only when needed
+3. **Consistent Result Structures**: All helpers must return compatible result formats
+4. **Test Component Isolation**: Verify helpers can be tested independently
+
+#### Performance Preservation
+1. **Single Traversal Integrity**: Ensure all optimizations maintain one-pass processing
+2. **Helper Class Efficiency**: Monitor performance impact of delegation overhead
+3. **Memory Management**: Track object creation in helper classes
+4. **Threshold Gate Preservation**: Maintain performance optimizations in StructuredListComparator
+
+#### API Compatibility
+1. **Public Interface Stability**: StructuredModel public methods must remain unchanged
+2. **Result Format Consistency**: Maintain backward compatibility in result structures
+3. **Error Handling**: Ensure helper classes provide clear error messages
+4. **Documentation Synchronization**: Keep helper class documentation current
 
 ### Conclusion
 

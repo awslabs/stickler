@@ -17,7 +17,7 @@ class ComparisonHelper:
 
     @staticmethod
     def compare_unordered_lists(
-        list1: List[Any], list2: List[Any], comparator: BaseComparator, threshold: float
+        gt_list: List[Any], pred_list: List[Any], comparator: BaseComparator, threshold: float
     ) -> Dict[str, Any]:
         """Compare two lists as unordered collections using Hungarian matching.
 
@@ -36,52 +36,30 @@ class ComparisonHelper:
             - fp: Total false positives (fd + fa)
             - overall_score: Similarity score for backward compatibility
         """
-        # Handle empty lists
-        if not list1 and not list2:
-            return {"tp": 0, "fd": 0, "fa": 0, "fn": 0, "fp": 0, "overall_score": 1.0}
-
-        if not list1:
-            return {
-                "tp": 0,
-                "fd": 0,
-                "fa": len(list2),
-                "fn": 0,
-                "fp": len(list2),
-                "overall_score": 0.0,
-            }
-
-        if not list2:
-            return {
-                "tp": 0,
-                "fd": 0,
-                "fa": 0,
-                "fn": len(list1),
-                "fp": 0,
-                "overall_score": 0.0,
-            }
-
+        # Empty lists are handled early on immediately.
+   
         # Use HungarianHelper for Hungarian matching operations
         hungarian_helper = HungarianHelper()
+        from .structured_model import StructuredModel
 
         # Use the appropriate comparator based on item types
         # Import here to avoid circular import
-        from .structured_model import StructuredModel
 
-        if all(isinstance(item, StructuredModel) for item in list1[:1]) and all(
-            isinstance(item, StructuredModel) for item in list2[:1]
+        if all(isinstance(item, StructuredModel) for item in gt_list[:1]) and all(
+            isinstance(item, StructuredModel) for item in pred_list[:1]
         ):
             # For StructuredModel lists, we need to use individual comparison scoring for consistency
             # Use HungarianHelper to get optimal pairings - OPTIMIZED: Single call gets all info
-            hungarian_info = hungarian_helper.get_complete_matching_info(list1, list2)
+            hungarian_info = hungarian_helper.get_complete_matching_info(gt_list, pred_list)
             matched_pairs = hungarian_info["matched_pairs"]
 
             # CRITICAL FIX: Replace raw scores with threshold-applied scores from individual comparison
             # This ensures consistency between individual and list comparison results
             threshold_corrected_pairs = []
             for gt_idx, pred_idx, raw_score in matched_pairs:
-                if gt_idx < len(list1) and pred_idx < len(list2):
-                    gt_item = list1[gt_idx]
-                    pred_item = list2[pred_idx]
+                if gt_idx < len(gt_list) and pred_idx < len(pred_list):
+                    gt_item = gt_list[gt_idx]
+                    pred_item = pred_list[pred_idx]
 
                     # Use individual comparison with threshold application (same as .compare_with())
                     individual_result = gt_item.compare_with(pred_item)
@@ -110,10 +88,36 @@ class ComparisonHelper:
             classification_threshold = threshold
 
             # Get detailed metrics from HungarianMatcher
-            metrics = hungarian.calculate_metrics(list1, list2)
+            metrics = hungarian.calculate_metrics(gt_list, pred_list)
             matched_pairs = metrics["matched_pairs"]
 
-        # Apply threshold logic to classify matches
+        return ComparisonHelper.unordered_list_metrics(matched_pairs=matched_pairs,
+                                                       gt_list=gt_list,
+                                                       pred_list=pred_list,
+                                                       classification_threshold=classification_threshold)
+    
+    @staticmethod
+    def unordered_list_metrics(matched_pairs:List[Any],
+                        gt_list: List[Any],
+                        pred_list: List[Any],
+                        classification_threshold: float):
+        """
+        Compare two lists as unordered collections using Hungarian matching.
+
+        Args:
+            matched_pairs: Hungarian matches between both lists
+            gt_list: Ground truth list
+            pred_list: Prediction list
+            classification_threshold: Threshold to classify the confusion matrix metrics
+        Returns:
+                Dictionary with confusion matrix metrics including:
+                - tp: True positives (matches >= threshold)
+                - fd: False discoveries (matches < threshold)
+                - fa: False alarms (unmatched prediction items)
+                - fn: False negatives (unmatched ground truth items)
+                - fp: Total false positives (fd + fa)
+                - overall_score: Similarity score for backward compatibility
+        """
         tp = 0  # True positives (score >= threshold)
         fd = 0  # False discoveries (score < threshold, including 0)
 
@@ -125,11 +129,11 @@ class ComparisonHelper:
                 # All matches below threshold are False Discoveries, including 0.0 scores
                 fd += 1
 
-        # False alarms are unmatched prediction items
-        fa = len(list2) - len(matched_pairs)
-
         # False negatives are unmatched ground truth items
-        fn = len(list1) - len(matched_pairs)
+        fn = len(gt_list) - len(matched_pairs)
+
+        # False alarms are unmatched prediction items
+        fa = len(pred_list) - len(matched_pairs)
 
         # Total false positives include both false discoveries and false alarms
         fp = fd + fa
@@ -155,7 +159,7 @@ class ComparisonHelper:
             )
 
             # Scale by coverage ratio (matched pairs / max list size)
-            max_items = max(len(list1), len(list2))
+            max_items = max(len(gt_list), len(pred_list))
             coverage_ratio = len(matched_pairs) / max_items if max_items > 0 else 1.0
             overall_score = avg_threshold_similarity * coverage_ratio
 
@@ -167,77 +171,6 @@ class ComparisonHelper:
             "fp": fp,
             "overall_score": overall_score,
         }
-
-    @staticmethod
-    def compare_field_with_threshold(
-        structured_model_instance, field_name: str, other_value: Any
-    ) -> float:
-        """Compare a single field with a value using the configured comparator.
-
-        Args:
-            structured_model_instance: StructuredModel instance
-            field_name: Name of the field to compare
-            other_value: Value to compare with
-
-        Returns:
-            Similarity score between 0.0 and 1.0
-        """
-        # Import here to avoid circular import
-        from .configuration_helper import ConfigurationHelper
-
-        info = ConfigurationHelper.get_comparison_info(
-            structured_model_instance.__class__, field_name
-        )
-
-        # We should always get a ComparableField object now
-        comparator = info.comparator
-        threshold = info.threshold
-
-        # Get field value from self
-        self_value = getattr(structured_model_instance, field_name)
-
-        # Handle None values
-        if self_value is None or other_value is None:
-            return 1.0 if self_value == other_value else 0.0
-
-        # Handle lists with special processing
-        if isinstance(self_value, list) and isinstance(other_value, list):
-            # Use Hungarian matching for any type of list items, including primitive types
-            # Pass the field comparator
-            result = ComparisonHelper.compare_unordered_lists(
-                self_value, other_value, comparator, threshold
-            )
-            # Return the overall score for backward compatibility
-            return result["overall_score"]
-
-        # Handle nested StructuredModel objects - use recursive comparison
-        from .structured_model import StructuredModel
-
-        if isinstance(self_value, StructuredModel) and isinstance(
-            other_value, StructuredModel
-        ):
-            return self_value.compare(other_value)
-
-        # Handle dictionary objects using the field's configured comparator
-        if isinstance(self_value, dict) and isinstance(other_value, dict):
-            # TODO: Fix Dictionary Comparison Architecture Issue
-            # Prevent Dict[str, Any] + LevenshteinComparator anti-pattern
-            # This defeats the purpose of structured comparison by converting dictionaries to strings
-            if isinstance(comparator, LevenshteinComparator):
-                raise TypeError(
-                    f"Dictionary comparison with LevenshteinComparator is not supported. "
-                    f"Dictionary fields should either: "
-                    f"1) Use ANLS_star comparison method, or "
-                    f"2) Be decomposed into proper StructuredModel subclasses. "
-                    f"Field '{field_name}' contains dict data that would be incorrectly compared as strings."
-                )
-            return comparator.compare(self_value, other_value)
-
-        # Use the comparator to calculate similarity
-        similarity = comparator.compare(self_value, other_value)
-
-        # Apply threshold
-        return 0.0 if similarity < threshold else similarity
 
     @staticmethod
     def compare_field_raw(

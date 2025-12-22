@@ -6,6 +6,7 @@ to appropriate handlers based on field type and null states.
 
 from typing import Any, Dict, Optional, TYPE_CHECKING
 from .result_helper import ResultHelper
+from .null_helper import NullHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -148,21 +149,19 @@ class ComparisonDispatcher:
         # - GT non-null, Pred null → FN (False Negative)
         # - Both non-null → Continue to type-based dispatch
         if not is_structured_list_field:
-            gt_effectively_null_prim = self.model._is_effectively_null_for_primitives(gt_val)
-            pred_effectively_null_prim = self.model._is_effectively_null_for_primitives(
-                pred_val
-            )
+            gt_effectively_null_prim = NullHelper.is_effectively_null_for_primitives(gt_val)
+            pred_effectively_null_prim = NullHelper.is_effectively_null_for_primitives(pred_val)
 
             match (gt_effectively_null_prim, pred_effectively_null_prim):
                 case (True, True):
                     # Both null → True Negative
-                    return self.model._create_true_negative_result(weight)
+                    return ResultHelper.create_true_negative_result(weight)
                 case (True, False):
                     # GT null, Pred non-null → False Alarm
-                    return self.model._create_false_alarm_result(weight)
+                    return ResultHelper.create_false_alarm_result(weight)
                 case (False, True):
                     # GT non-null, Pred null → False Negative
-                    return self.model._create_false_negative_result(weight)
+                    return ResultHelper.create_false_negative_result(weight)
                 case _:
                     # Both non-null, continue to type-based dispatch
                     pass
@@ -181,7 +180,7 @@ class ComparisonDispatcher:
         #       2. Use match statements for exhaustive case handling
         #       3. Make the list vs singleton distinction the primary branch
         #       See pseudocode in refactoring discussions for proposed structure.
-        
+
         # CASE 1: Primitive types (str, int, float)
         # Delegate to FieldComparator for primitive field comparison
         if isinstance(gt_val, (str, int, float)) and isinstance(
@@ -248,8 +247,8 @@ class ComparisonDispatcher:
         # Check if lists are effectively null (None or empty)
         # This is different from primitive null checking because empty lists
         # are semantically meaningful for list fields
-        gt_effectively_null = self.model._is_effectively_null_for_lists(gt_val)
-        pred_effectively_null = self.model._is_effectively_null_for_lists(pred_val)
+        gt_effectively_null = NullHelper.is_effectively_null_for_lists(gt_val)
+        pred_effectively_null = NullHelper.is_effectively_null_for_lists(pred_val)
 
         # Use match statement for clear, traceable dispatch logic
         # Leverage helper methods to avoid code duplication
@@ -257,7 +256,7 @@ class ComparisonDispatcher:
             case (True, True):
                 # CASE 1: Both None or empty lists → True Negative
                 # This is a perfect match - both sides agree there's no data
-                return self.model._create_true_negative_result(weight)
+                return ResultHelper.create_true_negative_result(weight)
             case (True, False):
                 # CASE 2: GT=None/empty, Pred=populated list → False Alarm
                 # The prediction has data that shouldn't be there
