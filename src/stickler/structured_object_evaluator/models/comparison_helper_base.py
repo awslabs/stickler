@@ -117,7 +117,7 @@ class ComparisonHelperBase(ABC):
                 pred_item = pred_list[pred_idx]
                 
                 # Determine if this is a match
-                is_match = similarity_score >= match_threshold
+                is_match = bool(similarity_score >= match_threshold)
                 
                 # Create reason
                 reason = self.generate_comparison_reason(is_match, similarity_score, match_threshold)

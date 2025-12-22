@@ -130,7 +130,7 @@ class FieldComparisonCollector:
                     
                     # Determine if this is a match based on threshold
                     info = self.model._get_comparison_info(field_name)
-                    is_match = raw_score >= info.threshold
+                    is_match = bool(raw_score >= info.threshold)
                     
                     # Determine reason
                     if is_match:
