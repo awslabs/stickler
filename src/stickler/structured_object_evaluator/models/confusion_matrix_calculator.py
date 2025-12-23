@@ -93,7 +93,7 @@ class ConfusionMatrixCalculator:
             )
             # Add non-matches for each FA item using NonMatchesHelper
             non_matches_helper = NonMatchesHelper()
-            result["non_matches"] = non_matches_helper.add_non_matches_for_null_cases(
+            result["non_matches"] = non_matches_helper.process_null_cases(
                 field_name, gt_list, pred_list
             )
         elif FieldHelper.is_null_value(pred_list):
@@ -102,7 +102,7 @@ class ConfusionMatrixCalculator:
             )
             # Add non-matches for each FN item using NonMatchesHelper
             non_matches_helper = NonMatchesHelper()
-            result["non_matches"] = non_matches_helper.add_non_matches_for_null_cases(
+            result["non_matches"] = non_matches_helper.process_null_cases(
                 field_name, gt_list, pred_list
             )
         else:

@@ -2,7 +2,7 @@
 
 When in the course of human events, it becomes necessary to evaluate structured outputs from generative AI systems, we must acknowledge that traditional evaluation treats all fields equally. But **not all fields are created equal**.
 
-**Stickler is a Python library for structured object comparison and evaluation** that lets you focus on the fields your customer actually cares about, to answer the question: "Is it doing a good job?" 
+**Stickler is a Python library that enables complex structured JSON comparison and evaluation** that lets you focus on the fields your customer actually cares about, to answer the question: "Is it doing a good job?" 
 
 Stickler uses specialized comparators for different data types: exact matching for critical identifiers, numeric tolerance for currency amounts, semantic similarity for text fields, and fuzzy matching for names and addresses. You can build custom comparators for domain-specific logic. The Hungarian algorithm ensures optimal list matching regardless of order, while the recursive evaluation engine handles unlimited nesting depth. Business-weighted scoring reflects actual operational impact, not just technical accuracy.
 
@@ -100,7 +100,7 @@ pytest tests/
 ### Static Model Definition
 
 ```python
-from stickler import StructuredModel, ComparableField, StructuredModelEvaluator
+from stickler import StructuredModel, ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
 
 # Define your data structure
@@ -112,8 +112,7 @@ class Invoice(StructuredModel):
     total: float = ComparableField(threshold=0.95)
 
 # Compare objects
-evaluator = StructuredModelEvaluator()
-result = evaluator.evaluate(ground_truth, prediction)
+result = ground_truth.compare_with(prediction, evaluator_format=True)
 
 print(f"Overall Score: {result['overall']['anls_score']:.3f}")
 ```

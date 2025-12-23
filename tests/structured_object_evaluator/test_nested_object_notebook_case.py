@@ -11,7 +11,7 @@ from typing import List, Optional
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
+
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.exact import ExactComparator
 
@@ -50,6 +50,7 @@ class Product(StructuredModel):
 
 
 class Order(StructuredModel):
+    match_threshold = 0.7
     """Order containing customer information and a list of products."""
 
     order_id: str = ComparableField(
@@ -239,12 +240,7 @@ class TestNestedObjectNotebookCase:
         """Ground truth order for testing."""
         return create_ground_truth_order()
 
-    @pytest.fixture
-    def evaluator(self):
-        """Structured model evaluator instance."""
-        return StructuredModelEvaluator()
-
-    def test_missing_item_case_detailed(self, ground_truth, evaluator):
+    def test_missing_item_case_detailed(self, ground_truth):
         """Test the missing item case with detailed output for debugging."""
         print("=" * 60)
         print("TESTING MISSING ITEM CASE")
@@ -271,9 +267,9 @@ class TestNestedObjectNotebookCase:
 
         # Evaluate using both methods
         print("-" * 40)
-        print("METHOD 1: StructuredModelEvaluator.evaluate()")
+        print("METHOD 1: compare_with(evaluator_format=True)")
         print("-" * 40)
-        result1 = evaluator.evaluate(ground_truth, prediction)
+        result1 = ground_truth.compare_with(prediction, evaluator_format=True)
         print_detailed_results(result1, "Missing Item - Method 1")
 
         print("-" * 40)
@@ -303,13 +299,13 @@ class TestNestedObjectNotebookCase:
         # Check if there's a discrepancy
         if method1_score != method2_score:
             print("\n⚠️  POTENTIAL ISSUE: Different overall scores!")
-            print(f"   Method 1 (StructuredModelEvaluator): {method1_score}")
-            print(f"   Method 2 (compare_with): {method2_score}")
+            print(f"   Method 1 (compare_with evaluator_format=True): {method1_score}")
+            print(f"   Method 2 (compare_with standard): {method2_score}")
 
         # This assertion might fail - that's what we want to investigate
         # assert method1_score == method2_score
 
-    def test_all_cases_comparison(self, ground_truth, evaluator):
+    def test_all_cases_comparison(self, ground_truth):
         """Test all cases and compare results for debugging."""
         cases = ["good_match", "missing_item", "extra_item", "poor_match"]
 
@@ -319,7 +315,7 @@ class TestNestedObjectNotebookCase:
 
         for case in cases:
             prediction = create_prediction_order(case)
-            result = evaluator.evaluate(ground_truth, prediction)
+            result = ground_truth.compare_with(prediction, include_confusion_matrix=True, evaluator_format=True)
 
             # Extract overall score correctly
             overall_score = result.get("overall_score", "N/A")
@@ -375,7 +371,6 @@ if __name__ == "__main__":
     # Run the tests directly for interactive debugging
     test_case = TestNestedObjectNotebookCase()
     gt = create_ground_truth_order()
-    evaluator = StructuredModelEvaluator()
 
     test_case.test_missing_item_case_detailed(gt, evaluator)
     test_case.test_all_cases_comparison(gt, evaluator)

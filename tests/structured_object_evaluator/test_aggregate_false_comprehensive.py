@@ -485,15 +485,3 @@ def test_null_handling_aggregate_false():
     )
     assert contact_cm["fp"] == 1, f"Expected 1 FP, got {contact_cm['fp']}"
 
-
-if __name__ == "__main__":
-    # Run all tests
-    test_simple_contact_non_matching_aggregate_false()
-    test_simple_contact_matching_aggregate_false()
-    test_simple_contact_partial_match_aggregate_false()
-    test_double_nested_aggregate_false()
-    test_list_aggregate_false()
-    test_mixed_aggregate_settings()
-    test_null_handling_aggregate_false()
-
-    print("\n✅ All aggregate=False tests passed!")

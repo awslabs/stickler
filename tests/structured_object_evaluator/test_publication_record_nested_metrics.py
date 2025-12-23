@@ -1,18 +1,17 @@
 
 
-"""Tests for StructuredModelEvaluator metrics calculation for publication records models.
+"""Tests for compare_with() metrics calculation for publication records models.
 
 This test verifies that we can calculate precision, recall, F1, and accuracy metrics
 at the field level and object level for nested structures in publication record models.
 """
 
-import unittest
+import pytest
 from typing import Optional, List
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.exact import ExactComparator
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 
 
 # Define the models for the test
@@ -91,10 +90,10 @@ class PublicationRecord(StructuredModel):
     )
 
 
-class TestPublicationRecordsMetricsCalculation(unittest.TestCase):
+class TestPublicationRecordsMetricsCalculation:
     """Test cases for publication records metrics calculation."""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test data for nested PublicationRecord structures."""
         # Gold record based on the provided dataset
         self.gold_record = {
@@ -163,9 +162,6 @@ class TestPublicationRecordsMetricsCalculation(unittest.TestCase):
             "Price": "$20.90",  # false discovery
         }
 
-        # Initialize the evaluator
-        self.evaluator = StructuredModelEvaluator(verbose=True)
-
     def test_people_list_structured_model(self):
         """Test that people list is correctly matched based on nested Person objects."""
         # Create PublicationRecord objects
@@ -173,7 +169,7 @@ class TestPublicationRecordsMetricsCalculation(unittest.TestCase):
         pred_record = PublicationRecord(**self.pred_record)
 
         # Evaluate
-        results = self.evaluator.evaluate(gold_record, pred_record)
+        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
 
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
@@ -185,36 +181,26 @@ class TestPublicationRecordsMetricsCalculation(unittest.TestCase):
         # 0 FN
         # 0 TN
 
-        self.assertEqual(
-            cm["fields"]["people"]["tp"], 2, "Expected 2 TP (object-level)"
-        )
-        self.assertEqual(
-            cm["fields"]["people"]["fd"], 1, "Expected 1 FD (object-level)"
-        )
-        self.assertEqual(
-            cm["fields"]["people"]["fa"], 1, "Expected 1 FA (object-level)"
-        )
-        self.assertEqual(
-            cm["fields"]["people"]["fn"], 0, "Expected 0 FN (object-level)"
-        )
-        self.assertEqual(
-            cm["fields"]["people"]["tn"], 0, "Expected 0 TN (object-level)"
-        )
+        assert cm["fields"]["people"]["tp"] == 2, "Expected 2 TP (object-level)"
+        assert cm["fields"]["people"]["fd"] == 1, "Expected 1 FD (object-level)"
+        assert cm["fields"]["people"]["fa"] == 1, "Expected 1 FA (object-level)"
+        assert cm["fields"]["people"]["fn"] == 0, "Expected 0 FN (object-level)"
+        assert cm["fields"]["people"]["tn"] == 0, "Expected 0 TN (object-level)"
 
         # # Check nested field metrics within people
         # # Type field: TP=3, FA=1
-        # self.assertEqual(cm["fields"]['people']["fields"]["Type"]["tp"], 3, "Expected 3 TP for Type field")
-        # self.assertEqual(cm["fields"]['people']["fields"]["Type"]["fd"], 0, "Expected 0 FD for Type field")
-        # self.assertEqual(cm["fields"]['people']["fields"]["Type"]["fa"], 1, "Expected 1 FA for Type field")
-        # self.assertEqual(cm["fields"]['people']["fields"]["Type"]["fn"], 0, "Expected 0 FN for Type field")
-        # self.assertEqual(cm["fields"]['people']["fields"]["Type"]["tn"], 0, "Expected 0 TN for Type field")
+        # assert cm["fields"]['people']["fields"]["Type"]["tp"] == 3, "Expected 3 TP for Type field"
+        # assert cm["fields"]['people']["fields"]["Type"]["fd"] == 0, "Expected 0 FD for Type field"
+        # assert cm["fields"]['people']["fields"]["Type"]["fa"] == 1, "Expected 1 FA for Type field"
+        # assert cm["fields"]['people']["fields"]["Type"]["fn"] == 0, "Expected 0 FN for Type field"
+        # assert cm["fields"]['people']["fields"]["Type"]["tn"] == 0, "Expected 0 TN for Type field"
 
         # # Name field: TP=2, FD=1, FA=1
-        # self.assertEqual(cm["fields"]['people']["fields"]["Name"]["tp"], 2, "Expected 2 TP for Name field")
-        # self.assertEqual(cm["fields"]['people']["fields"]["Name"]["fd"], 1, "Expected 1 FD for Name field")
-        # self.assertEqual(cm["fields"]['people']["fields"]["Name"]["fa"], 1, "Expected 1 FA for Name field")
-        # self.assertEqual(cm["fields"]['people']["fields"]["Name"]["fn"], 0, "Expected 0 FN for Name field")
-        # self.assertEqual(cm["fields"]['people']["fields"]["Name"]["tn"], 0, "Expected 0 TN for Name field")
+        # assert cm["fields"]['people']["fields"]["Name"]["tp"] == 2, "Expected 2 TP for Name field"
+        # assert cm["fields"]['people']["fields"]["Name"]["fd"] == 1, "Expected 1 FD for Name field"
+        # assert cm["fields"]['people']["fields"]["Name"]["fa"] == 1, "Expected 1 FA for Name field"
+        # assert cm["fields"]['people']["fields"]["Name"]["fn"] == 0, "Expected 0 FN for Name field"
+        # assert cm["fields"]['people']["fields"]["Name"]["tn"] == 0, "Expected 0 TN for Name field"
 
     def test_book_info_list_structured_model(self):
         """Test that book_info list is correctly matched based on nested BookInfo objects."""
@@ -223,7 +209,7 @@ class TestPublicationRecordsMetricsCalculation(unittest.TestCase):
         pred_record = PublicationRecord(**self.pred_record)
 
         # Evaluate
-        results = self.evaluator.evaluate(gold_record, pred_record)
+        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
 
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
@@ -236,33 +222,33 @@ class TestPublicationRecordsMetricsCalculation(unittest.TestCase):
         # 0 TN
 
         # Check book_info field metrics: FD=1
-        self.assertEqual(cm["fields"]["book_info"]["tp"], 0, "Expected 0 TP")
-        self.assertEqual(cm["fields"]["book_info"]["fd"], 1, "Expected 1 FD")
-        self.assertEqual(cm["fields"]["book_info"]["fa"], 0, "Expected 0 FA")
-        self.assertEqual(cm["fields"]["book_info"]["fn"], 0, "Expected 0 FN")
-        self.assertEqual(cm["fields"]["book_info"]["tn"], 0, "Expected 0 TN")
+        assert cm["fields"]["book_info"]["tp"] == 0, "Expected 0 TP"
+        assert cm["fields"]["book_info"]["fd"] == 1, "Expected 1 FD"
+        assert cm["fields"]["book_info"]["fa"] == 0, "Expected 0 FA"
+        assert cm["fields"]["book_info"]["fn"] == 0, "Expected 0 FN"
+        assert cm["fields"]["book_info"]["tn"] == 0, "Expected 0 TN"
 
         # Check nested field metrics within book_info
         # # page field: TP=1
-        # self.assertEqual(cm["fields"]['book_info']["fields"]["pages"]['overall']["tp"], 1, "Expected 1 TP for pages field")
-        # self.assertEqual(cm["fields"]['book_info']["fields"]["pages"]['overall']["fd"], 0, "Expected 0 FD for pages field")
-        # self.assertEqual(cm["fields"]['book_info']["fields"]["pages"]['overall']["fa"], 0, "Expected 0 FA for pages field")
-        # self.assertEqual(cm["fields"]['book_info']["fields"]["pages"]['overall']["fn"], 0, "Expected 0 FN for pages field")
-        # self.assertEqual(cm["fields"]['book_info']["fields"]["pages"]['overall']["tn"], 0, "Expected 0 TN for pages field")
+        # assert cm["fields"]['book_info']["fields"]["pages"]['overall']["tp"] == 1, "Expected 1 TP for pages field"
+        # assert cm["fields"]['book_info']["fields"]["pages"]['overall']["fd"] == 0, "Expected 0 FD for pages field"
+        # assert cm["fields"]['book_info']["fields"]["pages"]['overall']["fa"] == 0, "Expected 0 FA for pages field"
+        # assert cm["fields"]['book_info']["fields"]["pages"]['overall']["fn"] == 0, "Expected 0 FN for pages field"
+        # assert cm["fields"]['book_info']["fields"]["pages"]['overall']["tn"] == 0, "Expected 0 TN for pages field"
 
         # # author field: FD=1
-        # self.assertEqual(cm["fields"]['book_info']["fields"]["author"]['overall']["tp"], 0, "Expected 0 TP for author field")
-        # self.assertEqual(cm["fields"]['book_info']["fields"]["author"]['overall']["fd"], 1, "Expected 1 FD for author field")
-        # self.assertEqual(cm["fields"]['book_info']["fields"]["author"]['overall']["fa"], 0, "Expected 0 FA for author field")
-        # self.assertEqual(cm["fields"]['book_info']["fields"]["author"]['overall']["fn"], 0, "Expected 0 FN for author field")
-        # self.assertEqual(cm["fields"]['book_info']["fields"]["author"]['overall']["tn"], 0, "Expected 0 TN for author field")
+        # assert cm["fields"]['book_info']["fields"]["author"]['overall']["tp"] == 0, "Expected 0 TP for author field"
+        # assert cm["fields"]['book_info']["fields"]["author"]['overall']["fd"] == 1, "Expected 1 FD for author field"
+        # assert cm["fields"]['book_info']["fields"]["author"]['overall']["fa"] == 0, "Expected 0 FA for author field"
+        # assert cm["fields"]['book_info']["fields"]["author"]['overall']["fn"] == 0, "Expected 0 FN for author field"
+        # assert cm["fields"]['book_info']["fields"]["author"]['overall']["tn"] == 0, "Expected 0 TN for author field"
 
         # # weight field: TP=1
-        # self.assertEqual(cm["fields"]['book_info']["fields"]["weight"]['overall']["tp"], 1, "Expected 1 TP for weight field")
-        # self.assertEqual(cm["fields"]['book_info']["fields"]["weight"]['overall']["fd"], 0, "Expected 0 FD for weight field")
-        # self.assertEqual(cm["fields"]['book_info']["fields"]["weight"]['overall']["fa"], 0, "Expected 0 FA for author field")
-        # self.assertEqual(cm["fields"]['book_info']["fields"]["weight"]['overall']["fn"], 0, "Expected 0 FN for author field")
-        # self.assertEqual(cm["fields"]['book_info']["fields"]["weight"]['overall']["tn"], 0, "Expected 0 TN for author field")
+        # assert cm["fields"]['book_info']["fields"]["weight"]['overall']["tp"] == 1, "Expected 1 TP for weight field"
+        # assert cm["fields"]['book_info']["fields"]["weight"]['overall']["fd"] == 0, "Expected 0 FD for weight field"
+        # assert cm["fields"]['book_info']["fields"]["weight"]['overall']["fa"] == 0, "Expected 0 FA for author field"
+        # assert cm["fields"]['book_info']["fields"]["weight"]['overall']["fn"] == 0, "Expected 0 FN for author field"
+        # assert cm["fields"]['book_info']["fields"]["weight"]['overall']["tn"] == 0, "Expected 0 TN for author field"
 
     def test_references_list_structured_model(self):
         """Test that references list is correctly matched based on nested Reference objects."""
@@ -271,7 +257,7 @@ class TestPublicationRecordsMetricsCalculation(unittest.TestCase):
         pred_record = PublicationRecord(**self.pred_record)
 
         # Evaluate
-        results = self.evaluator.evaluate(gold_record, pred_record)
+        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
 
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
@@ -284,33 +270,33 @@ class TestPublicationRecordsMetricsCalculation(unittest.TestCase):
         # 0 TN
 
         # Check references field metrics: TP=2, FD=1,
-        self.assertEqual(cm["fields"]["references"]["tp"], 2, "Expected 2 TP")
-        self.assertEqual(cm["fields"]["references"]["fd"], 1, "Expected 1 FD")
-        self.assertEqual(cm["fields"]["references"]["fa"], 0, "Expected 0 FA")
-        self.assertEqual(cm["fields"]["references"]["fn"], 0, "Expected 0 FN")
-        self.assertEqual(cm["fields"]["references"]["tn"], 0, "Expected 0 TN")
+        assert cm["fields"]["references"]["tp"] == 2, "Expected 2 TP"
+        assert cm["fields"]["references"]["fd"] == 1, "Expected 1 FD"
+        assert cm["fields"]["references"]["fa"] == 0, "Expected 0 FA"
+        assert cm["fields"]["references"]["fn"] == 0, "Expected 0 FN"
+        assert cm["fields"]["references"]["tn"] == 0, "Expected 0 TN"
 
         # # Check nested field metrics within references
         # # Volumn field: TP=3
-        # self.assertEqual(cm["fields"]['references']["fields"]["Volume"]["tp"], 3, "Expected 3 TP for Volume field")
-        # self.assertEqual(cm["fields"]['references']["fields"]["Volume"]["fd"], 0, "Expected 0 FD for Volume field")
-        # self.assertEqual(cm["fields"]['references']["fields"]["Volume"]["fa"], 0, "Expected 0 FA for Volume field")
-        # self.assertEqual(cm["fields"]['references']["fields"]["Volume"]["fn"], 0, "Expected 0 FN for Volume field")
-        # self.assertEqual(cm["fields"]['references']["fields"]["Volume"]["tn"], 0, "Expected 0 TN for Volume field")
+        # assert cm["fields"]['references']["fields"]["Volume"]["tp"] == 3, "Expected 3 TP for Volume field"
+        # assert cm["fields"]['references']["fields"]["Volume"]["fd"] == 0, "Expected 0 FD for Volume field"
+        # assert cm["fields"]['references']["fields"]["Volume"]["fa"] == 0, "Expected 0 FA for Volume field"
+        # assert cm["fields"]['references']["fields"]["Volume"]["fn"] == 0, "Expected 0 FN for Volume field"
+        # assert cm["fields"]['references']["fields"]["Volume"]["tn"] == 0, "Expected 0 TN for Volume field"
 
         # # Page field: TP=2, FD=1
-        # self.assertEqual(cm["fields"]['references']["fields"]["Page"]["tp"], 2, "Expected 2 TP for Page field")
-        # self.assertEqual(cm["fields"]['references']["fields"]["Page"]["fd"], 1, "Expected 1 FD for Page field")
-        # self.assertEqual(cm["fields"]['references']["fields"]["Page"]["fa"], 0, "Expected 0 FA for Page field")
-        # self.assertEqual(cm["fields"]['references']["fields"]["Page"]["fn"], 0, "Expected 0 FN for Page field")
-        # self.assertEqual(cm["fields"]['references']["fields"]["Page"]["tn"], 0, "Expected 0 TN for Page field")
+        # assert cm["fields"]['references']["fields"]["Page"]["tp"] == 2, "Expected 2 TP for Page field"
+        # assert cm["fields"]['references']["fields"]["Page"]["fd"] == 1, "Expected 1 FD for Page field"
+        # assert cm["fields"]['references']["fields"]["Page"]["fa"] == 0, "Expected 0 FA for Page field"
+        # assert cm["fields"]['references']["fields"]["Page"]["fn"] == 0, "Expected 0 FN for Page field"
+        # assert cm["fields"]['references']["fields"]["Page"]["tn"] == 0, "Expected 0 TN for Page field"
 
         # # Publication field: TP=3
-        # self.assertEqual(cm["fields"]['references']["fields"]["Publication"]["tp"], 3, "Expected 3 TP for Publication field")
-        # self.assertEqual(cm["fields"]['references']["fields"]["Publication"]["fa"], 0, "Expected 0 FA for Publication field")
-        # self.assertEqual(cm["fields"]['references']["fields"]["Publication"]["fa"], 0, "Expected 0 FA for Publication field")
-        # self.assertEqual(cm["fields"]['references']["fields"]["Publication"]["fn"], 0, "Expected 0 FN for Publication field")
-        # self.assertEqual(cm["fields"]['references']["fields"]["Publication"]["tn"], 0, "Expected 0 TN for Publication field")
+        # assert cm["fields"]['references']["fields"]["Publication"]["tp"] == 3, "Expected 3 TP for Publication field"
+        # assert cm["fields"]['references']["fields"]["Publication"]["fa"] == 0, "Expected 0 FA for Publication field"
+        # assert cm["fields"]['references']["fields"]["Publication"]["fa"] == 0, "Expected 0 FA for Publication field"
+        # assert cm["fields"]['references']["fields"]["Publication"]["fn"] == 0, "Expected 0 FN for Publication field"
+        # assert cm["fields"]['references']["fields"]["Publication"]["tn"] == 0, "Expected 0 TN for Publication field"
 
     def test_primitive_fields(self):
         """Test that primitive (non-list) fields are correctly evaluated."""
@@ -319,66 +305,56 @@ class TestPublicationRecordsMetricsCalculation(unittest.TestCase):
         pred_record = PublicationRecord(**self.pred_record)
 
         # Evaluate
-        results = self.evaluator.evaluate(gold_record, pred_record)
+        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
 
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
 
         # Check exact match fields
         # 5 TP: record_id, State, County, Edition, Date
-        self.assertEqual(
-            cm["fields"]["record_id"]["tp"], 1, "Expected 1 TP for record_id"
-        )
-        self.assertEqual(
-            cm["fields"]["record_id"]["fd"], 0, "Expected 0 TP for record_id"
-        )
-        self.assertEqual(
-            cm["fields"]["record_id"]["fa"], 0, "Expected 0 TP for record_id"
-        )
-        self.assertEqual(
-            cm["fields"]["record_id"]["fn"], 0, "Expected 0 TP for record_id"
-        )
-        self.assertEqual(
-            cm["fields"]["record_id"]["tn"], 0, "Expected 0 TP for record_id"
-        )
+        assert cm["fields"]["record_id"]["tp"] == 1, "Expected 1 TP for record_id"
+        assert cm["fields"]["record_id"]["fd"] == 0, "Expected 0 TP for record_id"
+        assert cm["fields"]["record_id"]["fa"] == 0, "Expected 0 TP for record_id"
+        assert cm["fields"]["record_id"]["fn"] == 0, "Expected 0 TP for record_id"
+        assert cm["fields"]["record_id"]["tn"] == 0, "Expected 0 TP for record_id"
 
-        self.assertEqual(cm["fields"]["State"]["tp"], 1, "Expected 1 TP for State")
-        self.assertEqual(cm["fields"]["State"]["fd"], 0, "Expected 0 TP for State")
-        self.assertEqual(cm["fields"]["State"]["fa"], 0, "Expected 0 TP for State")
-        self.assertEqual(cm["fields"]["State"]["fn"], 0, "Expected 0 TP for State")
-        self.assertEqual(cm["fields"]["State"]["tn"], 0, "Expected 0 TP for State")
+        assert cm["fields"]["State"]["tp"] == 1, "Expected 1 TP for State"
+        assert cm["fields"]["State"]["fd"] == 0, "Expected 0 TP for State"
+        assert cm["fields"]["State"]["fa"] == 0, "Expected 0 TP for State"
+        assert cm["fields"]["State"]["fn"] == 0, "Expected 0 TP for State"
+        assert cm["fields"]["State"]["tn"] == 0, "Expected 0 TP for State"
 
-        self.assertEqual(cm["fields"]["County"]["tp"], 1, "Expected 1 TP for County")
-        self.assertEqual(cm["fields"]["County"]["fd"], 0, "Expected 0 TP for County")
-        self.assertEqual(cm["fields"]["County"]["fa"], 0, "Expected 0 TP for County")
-        self.assertEqual(cm["fields"]["County"]["fn"], 0, "Expected 0 TP for County")
-        self.assertEqual(cm["fields"]["County"]["tn"], 0, "Expected 0 TP for County")
+        assert cm["fields"]["County"]["tp"] == 1, "Expected 1 TP for County"
+        assert cm["fields"]["County"]["fd"] == 0, "Expected 0 TP for County"
+        assert cm["fields"]["County"]["fa"] == 0, "Expected 0 TP for County"
+        assert cm["fields"]["County"]["fn"] == 0, "Expected 0 TP for County"
+        assert cm["fields"]["County"]["tn"] == 0, "Expected 0 TP for County"
 
-        self.assertEqual(cm["fields"]["Edition"]["tp"], 1, "Expected 1 TP for Edition")
-        self.assertEqual(cm["fields"]["Edition"]["fd"], 0, "Expected 0 TP for Edition")
-        self.assertEqual(cm["fields"]["Edition"]["fa"], 0, "Expected 0 TP for Edition")
-        self.assertEqual(cm["fields"]["Edition"]["fn"], 0, "Expected 0 TP for Edition")
-        self.assertEqual(cm["fields"]["Edition"]["tn"], 0, "Expected 0 TP for Edition")
+        assert cm["fields"]["Edition"]["tp"] == 1, "Expected 1 TP for Edition"
+        assert cm["fields"]["Edition"]["fd"] == 0, "Expected 0 TP for Edition"
+        assert cm["fields"]["Edition"]["fa"] == 0, "Expected 0 TP for Edition"
+        assert cm["fields"]["Edition"]["fn"] == 0, "Expected 0 TP for Edition"
+        assert cm["fields"]["Edition"]["tn"] == 0, "Expected 0 TP for Edition"
 
-        self.assertEqual(cm["fields"]["Date"]["tp"], 1, "Expected 1 TP for Date")
-        self.assertEqual(cm["fields"]["Date"]["fd"], 0, "Expected 0 TP for Date")
-        self.assertEqual(cm["fields"]["Date"]["fa"], 0, "Expected 0 TP for Date")
-        self.assertEqual(cm["fields"]["Date"]["fn"], 0, "Expected 0 TP for Date")
-        self.assertEqual(cm["fields"]["Date"]["tn"], 0, "Expected 0 TP for Date")
+        assert cm["fields"]["Date"]["tp"] == 1, "Expected 1 TP for Date"
+        assert cm["fields"]["Date"]["fd"] == 0, "Expected 0 TP for Date"
+        assert cm["fields"]["Date"]["fa"] == 0, "Expected 0 TP for Date"
+        assert cm["fields"]["Date"]["fn"] == 0, "Expected 0 TP for Date"
+        assert cm["fields"]["Date"]["tn"] == 0, "Expected 0 TP for Date"
 
         # Check Price field: FD=1
-        self.assertEqual(cm["fields"]["Price"]["tp"], 0, "Expected 0 TP for Price")
-        self.assertEqual(cm["fields"]["Price"]["fd"], 1, "Expected 1 TP for Price")
-        self.assertEqual(cm["fields"]["Price"]["fa"], 0, "Expected 0 TP for Price")
-        self.assertEqual(cm["fields"]["Price"]["fn"], 0, "Expected 0 TP for Price")
-        self.assertEqual(cm["fields"]["Price"]["tn"], 0, "Expected 0 TP for Price")
+        assert cm["fields"]["Price"]["tp"] == 0, "Expected 0 TP for Price"
+        assert cm["fields"]["Price"]["fd"] == 1, "Expected 1 TP for Price"
+        assert cm["fields"]["Price"]["fa"] == 0, "Expected 0 TP for Price"
+        assert cm["fields"]["Price"]["fn"] == 0, "Expected 0 TP for Price"
+        assert cm["fields"]["Price"]["tn"] == 0, "Expected 0 TP for Price"
 
         # Check Title field: FN=1
-        self.assertEqual(cm["fields"]["Title"]["tp"], 0, "Expected 0 TP for Title")
-        self.assertEqual(cm["fields"]["Title"]["fd"], 0, "Expected 0 FD for Title")
-        self.assertEqual(cm["fields"]["Title"]["fa"], 0, "Expected 0 FA for Title")
-        self.assertEqual(cm["fields"]["Title"]["fn"], 1, "Expected 1 FN for Title")
-        self.assertEqual(cm["fields"]["Title"]["tn"], 0, "Expected 0 TN for Title")
+        assert cm["fields"]["Title"]["tp"] == 0, "Expected 0 TP for Title"
+        assert cm["fields"]["Title"]["fd"] == 0, "Expected 0 FD for Title"
+        assert cm["fields"]["Title"]["fa"] == 0, "Expected 0 FA for Title"
+        assert cm["fields"]["Title"]["fn"] == 1, "Expected 1 FN for Title"
+        assert cm["fields"]["Title"]["tn"] == 0, "Expected 0 TN for Title"
 
     def test_overall_metrics(self):
         """Test correct aggregation and calculation of overall metrics."""
@@ -387,7 +363,7 @@ class TestPublicationRecordsMetricsCalculation(unittest.TestCase):
         pred_record = PublicationRecord(**self.pred_record)
 
         # Evaluate
-        results = self.evaluator.evaluate(gold_record, pred_record)
+        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
 
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
@@ -399,31 +375,27 @@ class TestPublicationRecordsMetricsCalculation(unittest.TestCase):
         # 1 FN: Title
         # 0 TN
 
-        self.assertEqual(cm["overall"]["tp"], 9, "Expected 9 TP")
-        self.assertEqual(cm["overall"]["fd"], 4, "Expected 4 FD")
-        self.assertEqual(cm["overall"]["fa"], 1, "Expected 1 FA")
-        self.assertEqual(cm["overall"]["fn"], 1, "Expected 1 FN")
-        self.assertEqual(cm["overall"]["tn"], 0, "Expected 0 TN")
+        assert cm["overall"]["tp"] == 9, "Expected 9 TP"
+        assert cm["overall"]["fd"] == 4, "Expected 4 FD"
+        assert cm["overall"]["fa"] == 1, "Expected 1 FA"
+        assert cm["overall"]["fn"] == 1, "Expected 1 FN"
+        assert cm["overall"]["tn"] == 0, "Expected 0 TN"
 
         # Check overall metrics with object-level counting
         # Expected precision = TP/(TP+FD+FA) = 9/(9+4+1) = 0.64
         # Expected recall option 1 = TP/(TP+FN) = 9/(9+1) = 0.9
         # Expected F1 with recall option 1 = 2*0.64*0.9/(0.64+0.9) = 0.75
-        self.assertAlmostEqual(results["overall"]["precision"], 0.64, places=2)
-        self.assertAlmostEqual(results["overall"]["recall"], 0.9, places=2)
-        self.assertAlmostEqual(results["overall"]["f1"], 0.75, places=2)
+        assert results["overall"]["precision"] == pytest.approx(0.64, abs=0.01)
+        assert results["overall"]["recall"] == pytest.approx(0.9, abs=0.01)
+        assert results["overall"]["f1"] == pytest.approx(0.75, abs=0.01)
 
         # Test with alternative recall formula (including FD in denominator)
-        results_alt = self.evaluator.evaluate(
-            gold_record, pred_record, recall_with_fd=True
+        results_alt = gold_record.compare_with(
+            pred_record, include_confusion_matrix=True, evaluator_format=True, recall_with_fd=True
         )
         # Test with alternative recall formula
         # Expected recall option 2 = TP/(TP+FN+FD) = 9/(9+1+4) = 0.64 with recall_with_fd=True
         # Expected F1 = 2*precision*recall/(precision+recall) = 2*0.64*0.64/(0.64+0.64) = 0.64
-        self.assertAlmostEqual(results["overall"]["precision"], 0.64, places=2)
-        self.assertAlmostEqual(results_alt["overall"]["recall"], 0.64, places=2)
-        self.assertAlmostEqual(results_alt["overall"]["f1"], 0.64, places=2)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert results["overall"]["precision"] == pytest.approx(0.64, abs=0.01)
+        assert results_alt["overall"]["recall"] == pytest.approx(0.64, abs=0.01)
+        assert results_alt["overall"]["f1"] == pytest.approx(0.64, abs=0.01)

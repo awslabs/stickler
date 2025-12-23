@@ -1,17 +1,17 @@
-"""Tests for StructuredModelEvaluator metrics calculation for nested structures with Invoice and LineItem models.
+"""Tests for compare_with() metrics calculation for nested structures with Invoice and LineItem models.
 
 This test verifies that we can calculate precision, recall, F1, and accuracy metrics
 at the field level and object level for both parent objects and nested child objects.
 """
 
-import unittest
+import pytest
 from typing import List
+from unittest.mock import patch
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparison_info import ComparisonInfo
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator.utils import anls_score
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 
 
 # Define the models for the test
@@ -57,10 +57,10 @@ class Invoice(StructuredModel):
     line_items: List[LineItem]
 
 
-class TestStructuredModelEvaluatorMetrics(unittest.TestCase):
+class TestStructuredModelEvaluatorMetrics:
     """Test cases for StructuredModelEvaluator metrics calculation."""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test data."""
         # Create ground truth invoice
         self.gt_line_items = [
@@ -140,41 +140,38 @@ class TestStructuredModelEvaluatorMetrics(unittest.TestCase):
             line_items=self.poor_line_items,
         )
 
-        # Initialize the evaluator
-        self.evaluator = StructuredModelEvaluator()
-
     def test_perfect_match(self):
         """Test metrics for perfect match case."""
-        results = self.evaluator.evaluate(self.gt_invoice, self.perfect_invoice)
+        results = self.gt_invoice.compare_with(self.perfect_invoice, evaluator_format=True)
 
         # Check overall metrics
-        self.assertEqual(results["overall"]["precision"], 1.0)
-        self.assertEqual(results["overall"]["recall"], 1.0)
-        self.assertEqual(results["overall"]["f1"], 1.0)
-        self.assertEqual(results["overall"]["accuracy"], 1.0)
+        assert results["overall"]["precision"] == 1.0
+        assert results["overall"]["recall"] == 1.0
+        assert results["overall"]["f1"] == 1.0
+        assert results["overall"]["accuracy"] == 1.0
 
         # Check field-level metrics for invoice fields
-        self.assertEqual(results["fields"]["invoice_number"]["precision"], 1.0)
-        self.assertEqual(results["fields"]["date"]["precision"], 1.0)
-        self.assertEqual(results["fields"]["vendor"]["precision"], 1.0)
-        self.assertEqual(results["fields"]["total_amount"]["precision"], 1.0)
+        assert results["fields"]["invoice_number"]["precision"] == 1.0
+        assert results["fields"]["date"]["precision"] == 1.0
+        assert results["fields"]["vendor"]["precision"] == 1.0
+        assert results["fields"]["total_amount"]["precision"] == 1.0
 
         # Check line items overall metrics
-        self.assertEqual(results["fields"]["line_items"]["overall"]["precision"], 1.0)
+        assert results["fields"]["line_items"]["overall"]["precision"] == 1.0
 
         # Check individual line item metrics
         for i in range(3):
             item_metrics = results["fields"]["line_items"]["items"][i]
-            self.assertEqual(item_metrics["overall"]["precision"], 1.0)
-            self.assertEqual(item_metrics["overall"]["recall"], 1.0)
-            self.assertEqual(item_metrics["overall"]["f1"], 1.0)
-            self.assertEqual(item_metrics["overall"]["accuracy"], 1.0)
+            assert item_metrics["overall"]["precision"] == 1.0
+            assert item_metrics["overall"]["recall"] == 1.0
+            assert item_metrics["overall"]["f1"] == 1.0
+            assert item_metrics["overall"]["accuracy"] == 1.0
 
             # Check field-level metrics for each line item
-            self.assertEqual(item_metrics["fields"]["description"]["precision"], 1.0)
-            self.assertEqual(item_metrics["fields"]["quantity"]["precision"], 1.0)
-            self.assertEqual(item_metrics["fields"]["unit_price"]["precision"], 1.0)
-            self.assertEqual(item_metrics["fields"]["total"]["precision"], 1.0)
+            assert item_metrics["fields"]["description"]["precision"] == 1.0
+            assert item_metrics["fields"]["quantity"]["precision"] == 1.0
+            assert item_metrics["fields"]["unit_price"]["precision"] == 1.0
+            assert item_metrics["fields"]["total"]["precision"] == 1.0
 
     def test_good_match(self):
         """Test metrics for good match case with minor errors."""
@@ -184,32 +181,32 @@ class TestStructuredModelEvaluatorMetrics(unittest.TestCase):
 
         # Calculate direct ANLS score for vendors
         vendor_score = anls_score(original_vendor, modified_vendor)
-        self.assertLess(vendor_score, 1.0)
-        self.assertGreater(vendor_score, 0.5)
+        assert vendor_score < 1.0
+        assert vendor_score > 0.5
 
     def test_poor_match(self):
         """Test metrics for poor match case with multiple errors."""
-        results = self.evaluator.evaluate(self.gt_invoice, self.poor_invoice)
+        results = self.gt_invoice.compare_with(self.poor_invoice, evaluator_format=True)
 
         # Check that overall metrics reflect the poor match
         overall_score = results["overall"]["anls_score"]
-        self.assertLess(overall_score, 0.8)
+        assert overall_score < 0.8
 
         # Check field-level metrics for incorrect fields
         vendor_score = results["fields"]["vendor"]["anls_score"]
-        self.assertLess(vendor_score, 0.7)
+        assert vendor_score < 0.7
 
         total_amount_score = results["fields"]["total_amount"]["anls_score"]
-        self.assertLess(total_amount_score, 0.8)
+        assert total_amount_score < 0.8
 
         # First line item has quantity and total errors
         if len(results["fields"]["line_items"]["items"]) > 0:
             item0_metrics = results["fields"]["line_items"]["items"][0]
             quantity_score = item0_metrics["fields"]["quantity"]["anls_score"]
-            self.assertLess(quantity_score, 1.0)
+            assert quantity_score < 1.0
 
             total_score = item0_metrics["fields"]["total"]["anls_score"]
-            self.assertLess(total_score, 1.0)
+            assert total_score < 1.0
 
         # Second line item has description error
         if len(results["fields"]["line_items"]["items"]) > 1:
@@ -217,9 +214,9 @@ class TestStructuredModelEvaluatorMetrics(unittest.TestCase):
             description_score = item1_metrics["fields"]["description"]["anls_score"]
             # Check the score directly without a threshold assertion
             # The test case has "Service X" vs "Service B" which produces a similarity score of about 0.89
-            self.assertNotEqual(
-                description_score, 1.0, "Description score should not be perfect"
-            )
+            assert (
+                description_score != 1.0
+            ), "Description score should not be perfect"
 
     def test_expected_calculations(self):
         """Test the expected metric calculations based on specific cases."""
@@ -281,8 +278,7 @@ class TestStructuredModelEvaluatorMetrics(unittest.TestCase):
         )
 
         # Evaluate
-        evaluator = StructuredModelEvaluator()
-        result = evaluator.evaluate(gt_invoice, pred_invoice)
+        result = gt_invoice.compare_with(pred_invoice, include_confusion_matrix=True)
 
         # Get confusion matrix
         cm = result["confusion_matrix"]
@@ -308,9 +304,9 @@ class TestStructuredModelEvaluatorMetrics(unittest.TestCase):
                 }
 
         # 1. Verify there's a single confusion matrix entry for line_items
-        self.assertIn(
-            "line_items", cm["fields"], "Expected line_items in confusion matrix fields"
-        )
+        assert (
+            "line_items" in cm["fields"]
+        ), "Expected line_items in confusion matrix fields"
 
         # 2. Get the line_items confusion matrix metrics
         line_items_cm = get_base_metrics(cm, "line_items")
@@ -322,23 +318,21 @@ class TestStructuredModelEvaluatorMetrics(unittest.TestCase):
         # - FN: 0 (No missing line items)
         # - TN: 0 (Always 0 for non-empty lists)
         # - FD may vary based on threshold matching
-        self.assertGreaterEqual(
-            line_items_cm["tp"], 2, "Expected atleast 2 true positives for line_items"
-        )
+        assert (
+            line_items_cm["tp"] >= 2
+        ), "Expected atleast 2 true positives for line_items"
         # The fd value may be 0 or 1 depending on implementation details and thresholds
-        self.assertIn(
-            line_items_cm["fd"],
-            [0, 1],
-            "False discovery should be 0 or 1 for line_items",
-        )
-        self.assertIn(
-            line_items_cm["fp"],
-            [0, 1],
-            "False positive should be 0 or 1 for line_items",
-        )
-        self.assertEqual(
-            line_items_cm["fn"], 0, "Expected 0 false negatives for line_items"
-        )
+        assert line_items_cm["fd"] in [
+            0,
+            1,
+        ], "False discovery should be 0 or 1 for line_items"
+        assert line_items_cm["fp"] in [
+            0,
+            1,
+        ], "False positive should be 0 or 1 for line_items"
+        assert (
+            line_items_cm["fn"] == 0
+        ), "Expected 0 false negatives for line_items"
 
         # 4. Verify we have hierarchical entries for fields within line items
         # These entries should be under line_items.fields structure
@@ -347,19 +341,12 @@ class TestStructuredModelEvaluatorMetrics(unittest.TestCase):
 
         # Check that each expected field is present in the hierarchical structure
         for expected_field in expected_field_entries:
-            self.assertIn(
-                expected_field,
-                line_items_fields,
-                f"Expected to find field {expected_field} in line_items fields",
-            )
+            assert (
+                expected_field in line_items_fields
+            ), f"Expected to find field {expected_field} in line_items fields"
 
         # We should NOT find entries like "line_items[0].description" with array indices
         for field_name in cm["fields"]:
-            self.assertFalse(
-                field_name.startswith("line_items["),
-                f"Found unexpected indexed field name in confusion matrix: {field_name}",
-            )
-
-
-if __name__ == "__main__":
-    unittest.main()
+            assert not field_name.startswith(
+                "line_items["
+            ), f"Found unexpected indexed field name in confusion matrix: {field_name}"

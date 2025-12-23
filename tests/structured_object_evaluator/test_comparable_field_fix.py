@@ -277,6 +277,3 @@ class TestComparableFieldFix:
         assert config2.threshold == 0.6
         assert config3.threshold == 1.0
 
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

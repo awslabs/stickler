@@ -9,7 +9,7 @@ This module provides functionality for displaying structured confusion matrix me
 - **Filtering and Sorting**: Ability to filter fields by regex pattern and sort by various metrics
 - **Terminal Color Support**: Automatic detection of color support with fallback to plain text
 - **File Output**: Option to save the output to a file
-- **Integration with Evaluator**: Directly accessible from the StructuredModelEvaluator class
+- **Integration with compare_with()**: Works with results from StructuredModel.compare_with()
 
 ## Usage
 
@@ -33,19 +33,22 @@ print_confusion_matrix(
 )
 ```
 
-### Integrated with Evaluator
+### Integrated with compare_with()
 
 ```python
-from stickler.structured_object_evaluator import StructuredModelEvaluator
+from stickler.structured_object_evaluator import StructuredModel, ComparableField
 
-# Create an evaluator
-evaluator = StructuredModelEvaluator()
+# Define your model
+class MyModel(StructuredModel):
+    # ... field definitions ...
+    pass
 
-# Run evaluation
-results = evaluator.evaluate(ground_truth, predictions)
+# Compare models
+results = ground_truth.compare_with(predictions, evaluator_format=True)
 
-# Pretty print the results directly from the evaluator
-evaluator.pretty_print_results(results)
+# Pretty print the results
+from stickler.structured_object_evaluator.utils.pretty_print import print_confusion_matrix
+print_confusion_matrix(results)
 
 # With options
 evaluator.pretty_print_results(

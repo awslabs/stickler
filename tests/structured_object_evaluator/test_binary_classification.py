@@ -1,7 +1,7 @@
 """
 Test binary classification behavior for StructuredModel comparisons.
 
-These tests validate that the StructuredModelEvaluator correctly handles binary
+These tests validate that the compare_with() method correctly handles binary
 classification based on threshold matching, particularly for nested objects and list fields.
 """
 
@@ -12,12 +12,13 @@ from pytest import approx
 from stickler.structured_object_evaluator import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 
 
 # Simple model for basic tests
 class SimpleModel(StructuredModel):
     """Simple model with different field types."""
+    
+    match_threshold = 0.7
 
     # High threshold field - must match closely to be counted as TP
     high_threshold_field: Optional[str] = ComparableField(
@@ -70,6 +71,8 @@ class LineItem(StructuredModel):
 
 class Invoice(StructuredModel):
     """Invoice with multiple line items."""
+    
+    match_threshold = 0.7
 
     # Critical identification field with high threshold
     invoice_number: str = ComparableField(
@@ -105,8 +108,8 @@ def test_binary_classification_simple():
         regular_field="Regular",
     )
 
-    evaluator = StructuredModelEvaluator(threshold=0.7)
-    result1 = evaluator.evaluate(gt1, pred1)
+    
+    result1 = gt1.compare_with(pred1, include_confusion_matrix=True, evaluator_format=True)
 
     # Check confusion matrix counts - all fields should be TP
     confusion_matrix = result1["confusion_matrix"]["fields"]
@@ -130,7 +133,7 @@ def test_binary_classification_simple():
         regular_field="Regular",
     )
 
-    result2 = evaluator.evaluate(gt2, pred2)
+    result2 = gt2.compare_with(pred2, include_confusion_matrix=True, evaluator_format=True)
     confusion_matrix2 = result2["confusion_matrix"]["fields"]
 
     # Check field-level confusion metrics
@@ -152,7 +155,7 @@ def test_binary_classification_simple():
         regular_field="Regular",
     )
 
-    result3 = evaluator.evaluate(gt3, pred3)
+    result3 = gt3.compare_with(pred3, include_confusion_matrix=True, evaluator_format=True)
     confusion_matrix3 = result3["confusion_matrix"]["fields"]
 
     # Check field-level confusion metrics
@@ -173,7 +176,7 @@ def test_binary_classification_simple():
         regular_field="Regular",
     )
 
-    result4 = evaluator.evaluate(gt4, pred4)
+    result4 = gt4.compare_with(pred4, include_confusion_matrix=True, evaluator_format=True)
     confusion_matrix4 = result4["confusion_matrix"]["fields"]
 
     # Check field-level confusion metrics
@@ -186,7 +189,7 @@ def test_binary_classification_simple():
 
 def test_binary_classification_derived_metrics():
     """Test derived binary classification metrics (precision, recall, F1)."""
-    evaluator = StructuredModelEvaluator(threshold=0.7)
+    
 
     # Create objects with mixed field matches
     gt = SimpleModel(
@@ -201,7 +204,7 @@ def test_binary_classification_derived_metrics():
         regular_field=None,  # FN
     )
 
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     # Get confusion matrix
     cm = result["confusion_matrix"]
@@ -285,8 +288,8 @@ def test_nested_model_classification():
         ],
     )
 
-    evaluator = StructuredModelEvaluator(threshold=0.7)
-    exact_result = evaluator.evaluate(gt_invoice, exact_pred)
+    
+    exact_result = gt_invoice.compare_with(exact_pred, include_confusion_matrix=True, evaluator_format=True)
 
     # Should be a perfect match based on score
     assert exact_result["overall"]["anls_score"] >= Invoice.match_threshold
@@ -329,7 +332,7 @@ def test_nested_model_classification():
         ],
     )
 
-    partial_result = evaluator.evaluate(gt_invoice, partial_pred)
+    partial_result = gt_invoice.compare_with(partial_pred, include_confusion_matrix=True, evaluator_format=True)
 
     # Check top-level invoice fields
     cm_partial = partial_result["confusion_matrix"]["fields"]
@@ -372,7 +375,7 @@ def test_nested_model_classification():
         ],
     )
 
-    non_match_result = evaluator.evaluate(gt_invoice, non_match_pred)
+    non_match_result = gt_invoice.compare_with(non_match_pred, include_confusion_matrix=True, evaluator_format=True)
 
     # Implementation note: With the current setup, the invoice numbers "INV-2023-001" vs "INV-2023-002"
     # are similar enough to still register as a match in the structured_object_evaluator,
@@ -387,7 +390,7 @@ def test_nested_model_classification():
 
 def test_confusion_matrix_metrics():
     """Test the structured model evaluator's confusion matrix metrics."""
-    evaluator = StructuredModelEvaluator(threshold=0.7)
+    
 
     # Create a simple model for testing
     gt = SimpleModel(
@@ -402,7 +405,7 @@ def test_confusion_matrix_metrics():
     )
 
     # Use metrics evaluator to get classification
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True, evaluator_format=True)
 
     # Check field-level classifications in confusion matrix
     cm = result["confusion_matrix"]["fields"]
@@ -434,7 +437,7 @@ def test_confusion_matrix_metrics():
 
 def test_null_value_handling():
     """Test handling of null/empty values in binary classification."""
-    evaluator = StructuredModelEvaluator(threshold=0.7)
+    
 
     # Case 1: GT value exists, prediction is null
     gt1 = SimpleModel(
@@ -448,7 +451,7 @@ def test_null_value_handling():
         regular_field="Regular",
     )
 
-    result1 = evaluator.evaluate(gt1, pred1)
+    result1 = gt1.compare_with(pred1, include_confusion_matrix=True, evaluator_format=True)
     cm1 = result1["confusion_matrix"]["fields"]
 
     # Should be FN (false negative) - exists in GT but missing in prediction
@@ -466,7 +469,7 @@ def test_null_value_handling():
         regular_field="Regular",
     )
 
-    result2 = evaluator.evaluate(gt2, pred2)
+    result2 = gt2.compare_with(pred2, include_confusion_matrix=True, evaluator_format=True)
     cm2 = result2["confusion_matrix"]["fields"]
 
     # Should be FP (false positive) - missing in GT but exists in prediction
@@ -484,12 +487,8 @@ def test_null_value_handling():
         regular_field="Regular",
     )
 
-    result3 = evaluator.evaluate(gt3, pred3)
+    result3 = gt3.compare_with(pred3, include_confusion_matrix=True, evaluator_format=True)
     cm3 = result3["confusion_matrix"]["fields"]
 
     # Should be TN (true negative) - missing in both GT and prediction
     assert cm3["high_threshold_field"]["tn"] == 1
-
-
-if __name__ == "__main__":
-    pytest.main()

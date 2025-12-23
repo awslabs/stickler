@@ -911,15 +911,3 @@ class TestMultiDocumentAggregation:
             f"Expected 50 processed documents, got {bulk_evaluator._processed_count}"
         )
 
-
-if __name__ == "__main__":
-    # Run specific test for debugging
-    test_class = TestSingleDocumentParity()
-    test_class.test_simple_model_perfect_match()
-    print("Single document parity tests passed!")
-
-    # Run multi-document aggregation tests
-    test_class2 = TestMultiDocumentAggregation()
-    test_class2.test_two_identical_documents_doubling()
-    test_class2.test_mixed_results_aggregation()
-    print("Multi-document aggregation tests passed!")
