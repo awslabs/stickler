@@ -926,24 +926,6 @@ class StructuredModel(BaseModel):
         collector = NonMatchCollector(self)
         return collector.collect_enhanced_non_matches(recursive_result, other)
 
-    def _collect_non_matches(
-        self, other: "StructuredModel", base_path: str = ""
-    ) -> List[NonMatchField]:
-        """Collect non-matches for detailed analysis.
-        
-        This method delegates to NonMatchCollector for the actual implementation.
-
-        Args:
-            other: Other model to compare with
-            base_path: Base path for field naming (e.g., "address")
-
-        Returns:
-            List of NonMatchField objects documenting non-matches
-        """
-        from .non_match_collector import NonMatchCollector
-        collector = NonMatchCollector(self)
-        return collector.collect_non_matches(other, base_path)
-
     def compare(self, other: "StructuredModel") -> float:
         """Compare this model with another and return a scalar similarity score.
 
@@ -996,6 +978,7 @@ class StructuredModel(BaseModel):
         evaluator_format: bool = False,
         recall_with_fd: bool = False,
         add_derived_metrics: bool = True,
+        document_field_comparisons: bool = False,
     ) -> Dict[str, Any]:
         """Compare this model with another instance using SINGLE TRAVERSAL optimization.
         
@@ -1009,6 +992,8 @@ class StructuredModel(BaseModel):
             recall_with_fd: If True, include FD in recall denominator (TP/(TP+FN+FD))
                             If False, use traditional recall (TP/(TP+FN))
             add_derived_metrics: Whether to add derived metrics to confusion matrix
+            document_field_comparisons: Whether to document all matches and non matches made in the comparison
+
 
         Returns:
             Dictionary with comparison results including:
@@ -1017,6 +1002,7 @@ class StructuredModel(BaseModel):
             - all_fields_matched: Whether all fields matched
             - confusion_matrix: (optional) Confusion matrix data if requested
             - non_matches: (optional) Non-match documentation if requested
+            - field_comparisons: (optional) Field level comparison information if requested
         """
         from .comparison_engine import ComparisonEngine
         engine = ComparisonEngine(self)
@@ -1027,6 +1013,7 @@ class StructuredModel(BaseModel):
             evaluator_format=evaluator_format,
             recall_with_fd=recall_with_fd,
             add_derived_metrics=add_derived_metrics,
+            document_field_comparisons=document_field_comparisons,
         )
 
     def _convert_score_to_binary_metrics(
