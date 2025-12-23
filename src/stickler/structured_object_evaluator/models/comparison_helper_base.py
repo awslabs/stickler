@@ -51,7 +51,6 @@ class ComparisonHelperBase(ABC):
         """
         assignments = []
         matched_pairs_with_scores = []
-
         if gt_list and pred_list:
             hungarian_info = self.hungarian_helper.get_complete_matching_info(
                 gt_list, pred_list
@@ -70,7 +69,6 @@ class ComparisonHelperBase(ABC):
             is_match: Whether this is considered a match
             score: Similarity score
             threshold: Match threshold
-
         Returns:
             Descriptive reason string
         """
@@ -111,12 +109,10 @@ class ComparisonHelperBase(ABC):
             pred_list: Prediction list
             matched_pairs_with_scores: List of (gt_idx, pred_idx, score) tuples
             match_threshold: Threshold for determining matches
-
         Returns:
             List of entries for matched pairs
         """
         entries = []
-
         for gt_idx, pred_idx, similarity_score in matched_pairs_with_scores:
             if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                 gt_item = gt_list[gt_idx]
@@ -154,13 +150,11 @@ class ComparisonHelperBase(ABC):
             field_name: Name of the list field
             gt_list: Ground truth list
             assignments: List of (gt_idx, pred_idx) assignment pairs
-
         Returns:
             List of entries for unmatched GT items
         """
         entries = []
         matched_gt_indices = set(idx for idx, _ in assignments)
-
         for gt_idx, gt_item in enumerate(gt_list):
             if gt_idx not in matched_gt_indices:
                 extracted_entries = self._extract_entries_from_objects(
@@ -186,13 +180,11 @@ class ComparisonHelperBase(ABC):
             field_name: Name of the list field
             pred_list: Prediction list
             assignments: List of (gt_idx, pred_idx) assignment pairs
-
         Returns:
             List of entries for unmatched prediction items
         """
         entries = []
         matched_pred_indices = set(idx for _, idx in assignments)
-
         for pred_idx, pred_item in enumerate(pred_list):
             if pred_idx not in matched_pred_indices:
                 extracted_entries = self._extract_entries_from_objects(
@@ -218,7 +210,6 @@ class ComparisonHelperBase(ABC):
             field_name: Name of the field
             gt_list: Ground truth list (may be empty/None)
             pred_list: Prediction list (may be empty/None)
-
         Returns:
             List of entries for null cases
         """
@@ -283,7 +274,6 @@ class ComparisonHelperBase(ABC):
             is_match: Whether the overall objects match
             similarity_score: Overall similarity score
             reason: Overall comparison reason
-
         Returns:
             List of entries specific to the helper type
         """

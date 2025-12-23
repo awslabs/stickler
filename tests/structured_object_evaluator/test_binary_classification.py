@@ -20,6 +20,8 @@ class SimpleModel(StructuredModel):
 
     match_threshold = 0.7
 
+    match_threshold = 0.7
+
     # High threshold field - must match closely to be counted as TP
     high_threshold_field: Optional[str] = ComparableField(
         comparator=LevenshteinComparator(),
@@ -71,6 +73,8 @@ class LineItem(StructuredModel):
 
 class Invoice(StructuredModel):
     """Invoice with multiple line items."""
+
+    match_threshold = 0.7
 
     match_threshold = 0.7
 

@@ -21,6 +21,8 @@ class Address(StructuredModel):
 
     match_threshold = 0.8
 
+    match_threshold = 0.8
+
     street: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.8)
     city: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.9)
     state: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.9)
@@ -31,6 +33,8 @@ class Address(StructuredModel):
 
 class Person(StructuredModel):
     """Test model for a person."""
+
+    match_threshold = 0.8
 
     match_threshold = 0.8
 

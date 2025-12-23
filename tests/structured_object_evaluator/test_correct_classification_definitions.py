@@ -55,7 +55,6 @@ class ListModel(StructuredModel):
 
 def test_false_positive_combination():
     """Test that FA and FD are both counted as FP in precision calculation."""
-
     # Ensure default threshold
     SimpleModel.match_threshold = 0.7
 
@@ -98,7 +97,6 @@ def test_false_positive_combination():
 
 def test_simple_field_correct_classification():
     """Test correct classification for simple fields with mixed scenarios."""
-
     # Ensure default threshold
     SimpleModel.match_threshold = 0.7
 
@@ -177,7 +175,6 @@ def test_hungarian_matching_correct_fp_handling():
 
     cm = result["confusion_matrix"]
     items_cm = cm["fields"]["items"]
-
     # Access the overall metrics for the items field
     items_overall = items_cm["overall"]
 
@@ -212,7 +209,6 @@ def test_hungarian_matching_correct_fp_handling():
 
 def test_nested_field_aggregation():
     """Test that nested field metrics are correctly aggregated with FP = FA + FD."""
-
     # Ensure default threshold
     SimpleModel.match_threshold = 0.7
 
@@ -305,7 +301,6 @@ def test_nested_field_aggregation():
 
 def test_edge_cases_with_correct_classification():
     """Test edge cases (empty lists, null values) with correct FP handling."""
-
     # Ensure default threshold
     SimpleModel.match_threshold = 0.7
 
@@ -384,7 +379,6 @@ def test_edge_cases_with_correct_classification():
 
 def test_precision_formula_validation():
     """Explicit test to validate that precision uses the correct formula: TP / (TP + FP)."""
-
     # Ensure default threshold
     SimpleModel.match_threshold = 0.7
 

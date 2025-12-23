@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 
 class FieldComparisonCollector:
     """Collects all field-level comparison data for detailed analysis.
-
     This class is responsible for collecting and documenting ALL field comparisons
     between compared StructuredModel instances, including both matches and non-matches.
     It provides comprehensive field-level granularity for analysis purposes.
@@ -24,7 +23,6 @@ class FieldComparisonCollector:
 
     def __init__(self, model: "StructuredModel"):
         """Initialize collector with the ground truth model.
-
         Args:
             model: The ground truth StructuredModel instance
         """

@@ -110,7 +110,6 @@ class FieldComparisonHelper(ComparisonHelperBase):
             is_match: Whether the overall objects match
             similarity_score: Overall similarity score
             reason: Overall comparison reason
-
         Returns:
             List of field-level comparison entries
         """

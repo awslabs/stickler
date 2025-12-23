@@ -572,7 +572,6 @@ class TestFieldComparisonCollection:
         assert "non_matches" in result
         assert "field_scores" in result
         assert "overall_score" in result
-
         # Field comparisons should have nested field paths
         field_comparisons = result["field_comparisons"]
         nested_fields = [fc for fc in field_comparisons if "." in fc["expected_key"]]
@@ -608,7 +607,6 @@ class TestFieldComparisonCollection:
             assert isinstance(fc["score"], (int, float))
             assert isinstance(fc["weighted_score"], (int, float))
             assert isinstance(fc["reason"], str)
-
             # Validate score ranges
             assert 0.0 <= fc["score"] <= 1.0
             assert fc["weighted_score"] >= 0.0

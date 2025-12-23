@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING, Any, Dict, List
 from .comparable_field import ComparableField
 from .comparison_helper import ComparisonHelper
 from .hungarian_helper import HungarianHelper
-from .comparison_helper import ComparisonHelper 
 from .metrics_helper import MetricsHelper
 
 if TYPE_CHECKING:
@@ -197,11 +196,9 @@ class StructuredListComparator:
                 )
             else:
                 threshold_corrected_pairs.append((gt_idx, pred_idx, raw_score))
-        
-        classification_threshold = (
-                0.01  # Almost everything that's not 0.0 should be TP
-            )
-        
+
+        classification_threshold = 0.01  # Almost everything that's not 0.0 should be TP
+
         match_result = ComparisonHelper.unordered_list_metrics(
             threshold_corrected_pairs, gt_list, pred_list, classification_threshold
         )

@@ -19,6 +19,8 @@ class SimpleModel(StructuredModel):
 
     match_threshold = 0.7
 
+    match_threshold = 0.7
+
     name: str = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.7, weight=1.0
     )
@@ -35,6 +37,8 @@ class NestedModel(StructuredModel):
 
     match_threshold = 0.7
 
+    match_threshold = 0.7
+
     id: str = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.9, weight=1.0
     )
@@ -43,6 +47,8 @@ class NestedModel(StructuredModel):
 
 class ListModel(StructuredModel):
     """Model with list fields for testing confusion matrix metrics on lists."""
+
+    match_threshold = 0.7
 
     match_threshold = 0.7
 

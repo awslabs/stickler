@@ -122,7 +122,6 @@ class NonMatchesHelper(ComparisonHelperBase):
         """
         # Use base class method but filter for non-matches only
         all_entries = self.collect_list_entries(field_name, gt_list, pred_list)
-
         # Filter for non-matches only (entries where match is False or non_match_type exists)
         non_matches = []
         for entry in all_entries:
@@ -154,14 +153,12 @@ class NonMatchesHelper(ComparisonHelperBase):
             is_match: Whether the overall objects match
             similarity_score: Overall similarity score
             reason: Overall comparison reason
-
         Returns:
             List of non-match entries
         """
         # Only return entries for non-matches
         if is_match:
             return []
-
         # Determine non-match type based on available objects
         if gt_object is None:
             non_match_type = "FA"

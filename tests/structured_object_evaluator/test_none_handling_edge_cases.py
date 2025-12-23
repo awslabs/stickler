@@ -12,7 +12,6 @@ from stickler.structured_object_evaluator.models.structured_model import Structu
 
 class Transaction(StructuredModel):
     match_threshold = 0.7
-
     amount: float = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.9, weight=1.0
     )
@@ -23,7 +22,6 @@ class Transaction(StructuredModel):
 
 class Document(StructuredModel):
     match_threshold = 0.7
-
     id: str = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.9, weight=1.0
     )

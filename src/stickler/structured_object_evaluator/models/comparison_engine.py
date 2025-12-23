@@ -222,7 +222,6 @@ class ComparisonEngine:
         4. Optionally adds non-match documentation
         5. Optionally add details on each primitive field comparison
         6. Optionally formats results for evaluator
-
         Args:
             other: Another instance of the same model to compare with
             include_confusion_matrix: Whether to include confusion matrix calculations
@@ -232,7 +231,6 @@ class ComparisonEngine:
                             If False, use traditional recall (TP/(TP+FN))
             add_derived_metrics: Whether to add derived metrics to confusion matrix
             document_field_comparisons: Whether to document all matches and non matches made in the comparison
-
         Returns:
             Dictionary with comparison results:
             {
@@ -299,6 +297,16 @@ class ComparisonEngine:
                 recursive_result, other
             )
             result["non_matches"] = non_matches
+
+        # Add optional field comparison documentation
+        if document_field_comparisons:
+            # Use FieldComparisonCollector for comprehensive field-level comparisons
+            field_comparisons = (
+                self.field_comparison_collector.collect_field_comparisons(
+                    recursive_result, other
+                )
+            )
+            result["field_comparisons"] = field_comparisons
 
         # Add optional field comparison documentation
         if document_field_comparisons:

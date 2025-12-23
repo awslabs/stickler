@@ -155,7 +155,6 @@ def test_list_classification_logic():
     """
     # Ensure default threshold
     SimpleModel.match_threshold = 0.7
-
     # 1. Empty lists (TN)
     gt = ListModel(id="empty", tags=[], items=[])
     pred = ListModel(id="empty", tags=[], items=[])
@@ -237,7 +236,6 @@ def test_nested_model_classification_logic():
     """
     # Ensure default threshold
     SimpleModel.match_threshold = 0.7
-
     # Create test nested models
     details1 = SimpleModel(name="Details 1", count=1, description="First details")
     details_different = SimpleModel(name="Different", count=99, description="Other")
@@ -311,7 +309,6 @@ def test_edge_cases_classification_logic():
     """
     # Ensure default threshold
     SimpleModel.match_threshold = 0.7
-
     # 1. Empty string vs null
     gt = SimpleModel(name="", count=None, description=None)
     pred = SimpleModel(name=None, count=None, description=None)
@@ -339,7 +336,6 @@ def test_edge_cases_classification_logic():
     # 3. Threshold boundary - exactly at threshold
     # Create a specific threshold
     SimpleModel.match_threshold = 0.75
-
     # For Levenshtein, "abcd" vs "abcx" has similarity 0.75
     gt = SimpleModel(name="abcd", count=1, description="test")
     pred = SimpleModel(name="abcx", count=1, description="test")
