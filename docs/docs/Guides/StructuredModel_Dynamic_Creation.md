@@ -400,15 +400,9 @@ result = person1.compare_with(person2)
 print(f"Similarity: {result['overall_score']:.3f}")
 ```
 
-<<<<<<< HEAD
 ### Custom Configuration Schema
 
 #### Top-Level Configuration
-=======
-## Configuration Schema
-
-### Top-Level Configuration
->>>>>>> main
 
 ```json
 {
@@ -420,13 +414,9 @@ print(f"Similarity: {result['overall_score']:.3f}")
 }
 ```
 
-<<<<<<< HEAD
-#### Primitive Field Configuration
-=======
 ### Field Configuration
 
 #### Primitive Fields
->>>>>>> main
 
 ```json
 {
@@ -543,21 +533,12 @@ print(f"Similarity: {result['overall_score']:.3f}")
 }
 ```
 
-<<<<<<< HEAD
 ### Nested Models with Custom Configuration
 
 #### Single Nested Model
 
 ```python
 company_config = {
-=======
-## Nested Model Examples
-
-### Single Nested Model
-
-```json
-{
->>>>>>> main
     "model_name": "Company",
     "fields": {
         "name": {
@@ -587,7 +568,6 @@ company_config = {
         }
     }
 }
-<<<<<<< HEAD
 
 Company = StructuredModel.model_from_json(company_config)
 
@@ -603,14 +583,6 @@ company = Company(**company_json)
 
 ```python
 company_config = {
-=======
-```
-
-### List of Nested Models
-
-```json
-{
->>>>>>> main
     "model_name": "Company",
     "fields": {
         "name": {
@@ -646,7 +618,6 @@ company_config = {
         }
     }
 }
-<<<<<<< HEAD
 
 Company = StructuredModel.model_from_json(company_config)
 
@@ -659,8 +630,6 @@ company_json = {
     ]
 }
 company = Company(**company_json)
-=======
->>>>>>> main
 ```
 
 ## Loading from JSON Files
@@ -896,7 +865,6 @@ except ValueError as e:
     print(f"Configuration error: {e}")
 ```
 
-<<<<<<< HEAD
 ## Example Scripts
 
 Stickler includes complete working examples for both methods:
@@ -954,10 +922,3 @@ python examples/scripts/json_to_evaluation_demo.py
 - [README: JSON Schema Extensions Reference](../README.md#json-schema-extensions-x-aws-stickler--complete-reference)
 - [StructuredModel Advanced Functionality](StructuredModel_Advanced_Functionality.md)
 - [Comparators Documentation](../src/stickler/comparators/Comparators.md)
-=======
-## See Also
-
-- [StructuredModel Advanced Functionality](StructuredModel_Advanced_Functionality.md)
-- [Comparators Documentation](../src/stickler/comparators/Comparators.md)
-- [Examples](../examples/scripts/model_from_json_demo.py)
->>>>>>> main
