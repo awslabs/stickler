@@ -38,7 +38,8 @@ class ConfidenceCalculator:
         
         pred_confidences = pred_instance.get_all_confidences()
         field_comparisons = comparison_result.get('field_comparisons', [])
-        print(field_comparisons)
+        if not field_comparisons:
+            raise ValueError("No field comparisons found in comparison result.")
         for field_comparison in field_comparisons:
             field_path = field_comparison['actual_key']
             is_match = field_comparison['match'] 

@@ -236,6 +236,7 @@ class ComparisonEngine:
                 "confusion_matrix": {...},  # If include_confusion_matrix=True
                 "non_matches": [...],  # If document_non_matches=True
                 "field_comparisons": [...] # If field_comparisons=True
+                "auroc_confidence_metric": float # If add_confidence_metrics=True
             }
             
         Example:

@@ -1025,7 +1025,7 @@ class StructuredModel(BaseModel):
                             If False, use traditional recall (TP/(TP+FN))
             add_derived_metrics: Whether to add derived metrics to confusion matrix
             document_field_comparisons: Whether to document all matches and non matches made in the comparison
-
+            add_confidence_metrics: Whether to add AUROC confidence metric
 
         Returns:
             Dictionary with comparison results including:
@@ -1035,6 +1035,7 @@ class StructuredModel(BaseModel):
             - confusion_matrix: (optional) Confusion matrix data if requested
             - non_matches: (optional) Non-match documentation if requested
             - field_comparisons: (optional) Field level comparison information if requested
+            - auroc_confidence_metric: (optional) AUROC confidence metric if requested
         """
         from .comparison_engine import ComparisonEngine
         engine = ComparisonEngine(self)
