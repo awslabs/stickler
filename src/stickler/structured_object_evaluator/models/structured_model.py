@@ -1010,6 +1010,7 @@ class StructuredModel(BaseModel):
         recall_with_fd: bool = False,
         add_derived_metrics: bool = True,
         document_field_comparisons: bool = False,
+        add_confidence_metrics: bool = False
     ) -> Dict[str, Any]:
         """Compare this model with another instance using SINGLE TRAVERSAL optimization.
         
@@ -1045,6 +1046,7 @@ class StructuredModel(BaseModel):
             recall_with_fd=recall_with_fd,
             add_derived_metrics=add_derived_metrics,
             document_field_comparisons=document_field_comparisons,
+            add_confidence_metrics=add_confidence_metrics
         )
 
     def _convert_score_to_binary_metrics(
