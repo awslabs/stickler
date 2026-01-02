@@ -10,6 +10,7 @@ from typing import (
     Dict,
     List,
     Type,
+    Optional,
     Union,
     ClassVar,
     get_origin,
@@ -18,7 +19,7 @@ from typing import (
 import inspect
 
 from stickler.comparators.base import BaseComparator
-
+from .confidence_helper import ConfidenceHelper
 from .comparable_field import ComparableField
 from .non_match_field import NonMatchField
 from .hungarian_helper import HungarianHelper
@@ -236,6 +237,12 @@ class StructuredModel(BaseModel):
                                     f"'comparator' parameter in ComparableField. Object comparison uses each "
                                     f"StructuredModel's individual field comparators instead."
                                 )
+                            
+    def model_post_init(self, __context):
+        """Initialize confidence storage after model creation."""
+        # Use object.__setattr__ to bypass Pydantic field detection
+        object.__setattr__(self, 'field_confidences', {})
+
 
     @classmethod
     def _is_list_of_structured_model_type(cls, field_type) -> bool:
@@ -270,8 +277,23 @@ class StructuredModel(BaseModel):
 
         return False
 
+    def get_field_confidence(self, field_name: str) -> Optional[float]:
+        """Get confidence for a field."""
+        # Don't create the attribute - just check if it exists
+        if not hasattr(self, 'field_confidences'):
+            return None
+        return self.field_confidences.get(field_name)
+
+    def get_all_confidences(self) -> Dict[str, float]:
+        """Get all confidences."""
+        # Don't create the attribute - return empty dict if no confidence data
+        if not hasattr(self, 'field_confidences'):
+            return {}
+        return self.field_confidences.copy()
+
+
     @classmethod
-    def from_json(cls, json_data: Dict[str, Any]) -> "StructuredModel":
+    def from_json(cls, json_data: Dict[str, Any], process_confidence = True) -> "StructuredModel":
         """Create a StructuredModel instance from JSON data.
 
         This method handles missing fields gracefully and stores extra fields
@@ -283,7 +305,16 @@ class StructuredModel(BaseModel):
         Returns:
             StructuredModel instance created from the JSON data
         """
-        return ConfigurationHelper.from_json(cls, json_data)
+        if process_confidence:
+            # Only process confidence on the top-level call
+            processed_data, confidences = ConfidenceHelper.process_confidence_structures(json_data)
+            instance = ConfigurationHelper.from_json(cls, processed_data)
+            if confidences:  # Only set if we have confidence data
+                object.__setattr__(instance, 'field_confidences', confidences)
+        else:
+            # Skip confidence processing for recursive calls
+            instance = ConfigurationHelper.from_json(cls, json_data)
+        return instance
 
     @classmethod
     def model_from_json(cls, config: Dict[str, Any]) -> Type["StructuredModel"]:
