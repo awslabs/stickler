@@ -13,6 +13,7 @@ VALIDATED AGAINST ACTUAL OUTPUT - This documentation has been validated against 
 | Default (none) | `field_scores`, `overall_score`, `all_fields_matched` | Basic similarity scoring |
 | `include_confusion_matrix=True` | + `confusion_matrix` | Detailed metrics and analysis |
 | `document_non_matches=True` | + `non_matches` | Debugging field failures |
+| `document_field_comparisons=True` | + `field_comparisons` | Comprehensive field-level analysis |
 | `evaluator_format=True` | `overall`, `fields`, `confusion_matrix`, `non_matches` | Evaluation tool integration |
 
 ## Table of Contents
@@ -214,7 +215,97 @@ Adds a `non_matches` list to the top level containing details about fields that 
 - **similarity_score**: Actual similarity score achieved
 - **details**: Additional information including human-readable reason
 
-### Output Mode 4: Evaluator Format
+### Output Mode 4: With Field Comparisons Documentation
+
+When called with `document_field_comparisons=True`:
+
+```python
+result = model1.compare_with(model2, document_field_comparisons=True)
+```
+
+Adds a `field_comparisons` list to the top level containing detailed information about ALL field-level comparisons (both matches and non-matches):
+
+```json
+{
+  "field_scores": {...},
+  "overall_score": 0.85,
+  "all_fields_matched": false,
+  "field_comparisons": [
+    {
+      "expected_key": "invoice_id",
+      "expected_value": "INV-2024-001",
+      "actual_key": "invoice_id", 
+      "actual_value": "INV-2024-001",
+      "match": true,
+      "score": 1.0,
+      "weighted_score": 3.0,
+      "reason": "exact match"
+    },
+    {
+      "expected_key": "customer_name",
+      "expected_value": "Acme Corporation",
+      "actual_key": "customer_name",
+      "actual_value": "ACME Corp",
+      "match": true,
+      "score": 0.85,
+      "weighted_score": 1.275,
+      "reason": "above threshold (0.850 >= 0.8)"
+    },
+    {
+      "expected_key": "line_items[0].description",
+      "expected_value": "Widget A",
+      "actual_key": "line_items[1].description", 
+      "actual_value": "Widget A",
+      "match": true,
+      "score": 1.0,
+      "weighted_score": 1.0,
+      "reason": "exact match"
+    },
+    {
+      "expected_key": "contact.phone",
+      "expected_value": "555-123-4567",
+      "actual_key": "contact.phone",
+      "actual_value": "555-999-8888", 
+      "match": false,
+      "score": 0.3,
+      "weighted_score": 0.0,
+      "reason": "below threshold (0.300 < 1.0)"
+    }
+  ]
+}
+```
+
+#### Field Comparison Entry Fields
+
+- **expected_key**: Field path in ground truth (dot notation for nested fields, bracket notation for lists). This will always have a value.
+- **expected_value**: The ground truth value for this field
+- **actual_key**: Field path in prediction (may differ for list items due to Hungarian matching). This will be None if the prediction does not exist.
+- **actual_value**: The predicted value for this field
+- **match**: Boolean indicating if this field comparison was considered a match (score >= threshold)
+- **score**: Raw similarity score between the values (0.0 to 1.0)
+- **weighted_score**: Score multiplied by the field's weight (used in overall score calculation)
+- **reason**: Human-readable explanation of the comparison result
+
+#### Key Features of Field Comparisons
+
+**Comprehensive Coverage**: Documents ALL field comparisons, including:
+- Primitive fields (strings, numbers, booleans)
+- Nested object fields (with dot notation paths)
+- List item fields (with bracket notation and Hungarian matching results)
+- Both matches and non-matches
+
+**Hungarian Matching Awareness**: For list fields, shows which specific items were matched together:
+- `expected_key: "line_items[0].product"` 
+- `actual_key: "line_items[2].product"`
+- This indicates the first ground truth item was matched with the third prediction item
+
+**Hierarchical Field Paths**: Uses intuitive path notation:
+- Simple fields: `"customer_name"`
+- Nested objects: `"address.street"`
+- List items: `"line_items[0].description"`
+- Deeply nested: `"customer.addresses[1].street"`
+
+### Output Mode 5: Evaluator Format
 
 When called with `evaluator_format=True`:
 
@@ -272,7 +363,8 @@ result = model1.compare_with(
     document_non_matches=True,       # Document what didn't match
     evaluator_format=False,          # Format for evaluation tools
     recall_with_fd=False,           # Include FD in recall calculation
-    add_derived_metrics=True        # Add precision/recall/F1 metrics
+    add_derived_metrics=True,       # Add precision/recall/F1 metrics
+    document_field_comparisons=False # Document all field-level comparisons
 )
 ```
 
@@ -377,6 +469,26 @@ for field_name, field_data in cm['fields'].items():
 non_matches = result.get('non_matches', [])
 for nm in non_matches:
     print(f"Field {nm['field_path']} failed: {nm['non_match_type']}")
+
+# Comprehensive field-level analysis
+result = model1.compare_with(
+    model2,
+    document_field_comparisons=True,
+    include_confusion_matrix=True
+)
+
+# Access detailed field comparisons
+field_comparisons = result.get('field_comparisons', [])
+for fc in field_comparisons:
+    status = "✓" if fc['match'] else "✗"
+    print(f"{status} {fc['expected_key']}: {fc['score']:.3f} ({fc['reason']})")
+    if fc['expected_key'] != fc['actual_key']:
+        print(f"  → Matched with: {fc['actual_key']}")
+
+# Filter for specific types of comparisons
+matches = [fc for fc in field_comparisons if fc['match']]
+non_matches = [fc for fc in field_comparisons if not fc['match']]
+print(f"\nSummary: {len(matches)} matches, {len(non_matches)} non-matches")
 ```
 
 ### Aggregate Field Analysis

@@ -94,7 +94,7 @@ def test_aggregate_false_prevents_nested_rollup():
     email_cm = contact_fields["email"]["overall"]
     assert email_cm["fa"] == 1, f"Expected email FA=1, got {email_cm['fa']}"
 
-    print("✅ Test passed: aggregate=False correctly prevents nested rollup")
+    print("Test passed: aggregate=False correctly prevents nested rollup")
 
 
 def test_aggregate_true_would_rollup():
@@ -139,11 +139,4 @@ def test_aggregate_true_would_rollup():
 
     # We don't assert specific values here since  behavior may vary,
     # but we document that it's different from aggregate=False
-    print("✅ Aggregate=True behavior documented (may differ based on implementation)")
-
-
-if __name__ == "__main__":
-    test_aggregate_false_prevents_nested_rollup()
-    test_aggregate_true_would_rollup()
-
-    print("\n✅ All aggregate contact rollup tests passed!")
+    print("Aggregate=True behavior documented (may differ based on implementation)")

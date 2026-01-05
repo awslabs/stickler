@@ -2,9 +2,17 @@ name: Security Scan
 
 on: [push, pull_request]
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   security:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+      pull-requests: write
     strategy:
       matrix:
         python-version: ["3.12"]
@@ -24,7 +32,13 @@ jobs:
           pip install bandit[toml]
           bandit -r src/ -f json -o bandit-report.json || true
           bandit -r src/ -f txt
+      - name: Install ASH
+        run: |
+          pip install git+https://github.com/awslabs/automated-security-helper.git@v3.1.2
+      - name: Run ASH Security Scan
         continue-on-error: true
+        run: |
+          ash --mode local 
       - name: Upload Security Reports
         uses: actions/upload-artifact@v4
         if: always()
@@ -32,3 +46,25 @@ jobs:
           name: security-reports
           path: |
             bandit-report.json
+            .ash/ash_output/
+      - name: Add Security Report to PR
+        uses: actions/github-script@v7
+        if: always() && github.event_name == 'pull_request'
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const reportPath = '.ash/ash_output/reports/ash.summary.md';
+            
+            if (fs.existsSync(reportPath)) {
+              const reportContent = fs.readFileSync(reportPath, 'utf8');
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: '## 🔒 Security Scan Results\n\n' + reportContent
+              });
+            } else {
+              console.log('ASH summary report not found');
+            }

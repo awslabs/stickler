@@ -1,6 +1,6 @@
 """Tests for comparators used in the structured object evaluator."""
 
-import unittest
+import pytest
 
 from stickler.structured_object_evaluator import StructuredModel, ComparableField
 from stickler.comparators.base import BaseComparator
@@ -22,65 +22,65 @@ except ImportError:
     SEMANTIC_AVAILABLE = False
 
 
-class TestLevenshteinComparator(unittest.TestCase):
+class TestLevenshteinComparator:
     """Test cases for the LevenshteinComparator."""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test fixtures."""
         self.comparator = LevenshteinComparator()
 
     def test_exact_match(self):
         """Test exact string match."""
-        self.assertEqual(self.comparator.compare("hello", "hello"), 1.0)
+        assert self.comparator.compare("hello", "hello") == 1.0
 
     def test_similar_match(self):
         """Test similar string match."""
         score = self.comparator.compare("hello", "helo")
-        self.assertGreater(score, 0.0)
-        self.assertLess(score, 1.0)
+        assert score > 0.0
+        assert score < 1.0
 
     def test_different_match(self):
         """Test completely different strings."""
         score = self.comparator.compare("hello", "world")
-        self.assertGreater(score, 0.0)  # Even different strings have some similarity
-        self.assertLess(score, 0.5)  # But the score should be low
+        assert score > 0.0  # Even different strings have some similarity
+        assert score < 0.5  # But the score should be low
 
     def test_case_sensitivity(self):
         """Test case sensitivity."""
         # Note: Some implementations might not be case sensitive
         score = self.comparator.compare("Hello", "hello")
         if score < 1.0:
-            self.assertLess(score, 1.0)  # Should be case sensitive
+            assert score < 1.0  # Should be case sensitive
         else:
             # If the implementation is not case sensitive, this will pass
-            self.assertEqual(score, 1.0)
+            assert score == 1.0
 
     def test_empty_strings(self):
         """Test empty strings."""
-        self.assertEqual(self.comparator.compare("", ""), 1.0)
-        self.assertEqual(self.comparator.compare("hello", ""), 0.0)
-        self.assertEqual(self.comparator.compare("", "hello"), 0.0)
+        assert self.comparator.compare("", "") == 1.0
+        assert self.comparator.compare("hello", "") == 0.0
+        assert self.comparator.compare("", "hello") == 0.0
 
     def test_none_values(self):
         """Test None values."""
-        self.assertEqual(self.comparator.compare(None, None), 1.0)
-        self.assertEqual(self.comparator.compare("hello", None), 0.0)
-        self.assertEqual(self.comparator.compare(None, "hello"), 0.0)
+        assert self.comparator.compare(None, None) == 1.0
+        assert self.comparator.compare("hello", None) == 0.0
+        assert self.comparator.compare(None, "hello") == 0.0
 
 
-class TestNumericComparator(unittest.TestCase):
+class TestNumericComparator:
     """Test cases for the NumericComparator."""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test fixtures."""
         self.comparator = NumericComparator()
 
     def test_exact_match(self):
         """Test exact numeric match."""
-        self.assertEqual(self.comparator.compare("123", "123"), 1.0)
-        self.assertEqual(self.comparator.compare(123, 123), 1.0)
-        self.assertEqual(self.comparator.compare("123.45", "123.45"), 1.0)
-        self.assertEqual(self.comparator.compare(123.45, 123.45), 1.0)
+        assert self.comparator.compare("123", "123") == 1.0
+        assert self.comparator.compare(123, 123) == 1.0
+        assert self.comparator.compare("123.45", "123.45") == 1.0
+        assert self.comparator.compare(123.45, 123.45) == 1.0
 
     def test_similar_match(self):
         """Test similar numeric match with tolerance."""
@@ -91,67 +91,66 @@ class TestNumericComparator(unittest.TestCase):
 
         # Either they're considered equal (1.0) or different (0.0)
         # depending on the implementation
-        self.assertTrue(score1 == 1.0 or score1 == 0.0)
-        self.assertTrue(score2 == 1.0 or score2 == 0.0)
+        assert score1 == 1.0 or score1 == 0.0
+        assert score2 == 1.0 or score2 == 0.0
 
     def test_different_match(self):
         """Test completely different numbers."""
-        self.assertEqual(self.comparator.compare(123, 456), 0.0)
-        self.assertEqual(self.comparator.compare("123", "456"), 0.0)
+        assert self.comparator.compare(123, 456) == 0.0
+        assert self.comparator.compare("123", "456") == 0.0
 
     def test_string_formatting(self):
         """Test string formatting of numbers."""
-        self.assertEqual(self.comparator.compare("$123.45", "123.45"), 1.0)
-        self.assertEqual(self.comparator.compare("123.45", "$123.45"), 1.0)
-        self.assertEqual(self.comparator.compare("1,234.56", "1234.56"), 1.0)
-        self.assertEqual(self.comparator.compare("1234.56", "1,234.56"), 1.0)
+        assert self.comparator.compare("$123.45", "123.45") == 1.0
+        assert self.comparator.compare("123.45", "$123.45") == 1.0
+        assert self.comparator.compare("1,234.56", "1234.56") == 1.0
+        assert self.comparator.compare("1234.56", "1,234.56") == 1.0
 
     def test_none_values(self):
         """Test None values."""
-        self.assertEqual(self.comparator.compare(None, None), 1.0)
-        self.assertEqual(self.comparator.compare(123, None), 0.0)
-        self.assertEqual(self.comparator.compare(None, 123), 0.0)
+        assert self.comparator.compare(None, None) == 1.0
+        assert self.comparator.compare(123, None) == 0.0
+        assert self.comparator.compare(None, 123) == 0.0
 
 
-@unittest.skipIf(not FUZZY_AVAILABLE, "FuzzyComparator not available")
-class TestFuzzyComparator(unittest.TestCase):
+@pytest.mark.skipif(not FUZZY_AVAILABLE, reason="FuzzyComparator not available")
+class TestFuzzyComparator:
     """Test cases for the FuzzyComparator."""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test fixtures."""
         self.comparator = FuzzyComparator()
 
     def test_exact_match(self):
         """Test exact string match."""
-        self.assertEqual(self.comparator.compare("hello", "hello"), 1.0)
+        assert self.comparator.compare("hello", "hello") == 1.0
 
     def test_similar_match(self):
         """Test similar string match."""
         score = self.comparator.compare("hello", "helo")
-        self.assertGreater(score, 0.0)
-        self.assertLess(score, 1.0)
+        assert score > 0.0
+        assert score < 1.0
 
     def test_different_match(self):
         """Test completely different strings."""
         score = self.comparator.compare("hello", "world")
-        self.assertGreater(score, 0.0)  # Even different strings have some similarity
-        self.assertLess(score, 0.5)  # But the score should be low
+        assert score > 0.0  # Even different strings have some similarity
+        assert score < 0.5  # But the score should be low
 
 
-@unittest.skipIf(not SEMANTIC_AVAILABLE, "SemanticComparator not available")
-class TestSemanticComparator(unittest.TestCase):
+@pytest.mark.skipif(not SEMANTIC_AVAILABLE, reason="SemanticComparator not available")
+class TestSemanticComparator:
     """Test cases for the SemanticComparator."""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test fixtures."""
         # Skip this test if SemanticComparator is not available
         if not SEMANTIC_AVAILABLE:
-            self.skipTest("SemanticComparator not available")
-            return
+            pytest.skip("SemanticComparator not available")
 
         # For now, we'll skip the actual tests since the implementation
         # might vary and we don't want to make API calls in tests
-        self.skipTest("SemanticComparator tests require API access")
+        pytest.skip("SemanticComparator tests require API access")
 
 
 class CustomComparator(BaseComparator):
@@ -174,30 +173,30 @@ class CustomComparator(BaseComparator):
         return min_len / max_len
 
 
-class TestCustomComparator(unittest.TestCase):
+class TestCustomComparator:
     """Test cases for a custom comparator."""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test fixtures."""
         self.comparator = CustomComparator()
 
     def test_exact_match(self):
         """Test exact length match."""
-        self.assertEqual(self.comparator.compare("hello", "world"), 1.0)
+        assert self.comparator.compare("hello", "world") == 1.0
 
     def test_similar_match(self):
         """Test similar length match."""
-        self.assertEqual(self.comparator.compare("hello", "hi"), 0.4)  # 2/5
+        assert self.comparator.compare("hello", "hi") == 0.4  # 2/5
 
     def test_different_match(self):
         """Test completely different lengths."""
-        self.assertEqual(self.comparator.compare("a", "abcdefghij"), 0.1)  # 1/10
+        assert self.comparator.compare("a", "abcdefghij") == 0.1  # 1/10
 
     def test_empty_strings(self):
         """Test empty strings."""
-        self.assertEqual(self.comparator.compare("", ""), 1.0)
-        self.assertEqual(self.comparator.compare("hello", ""), 0.0)
-        self.assertEqual(self.comparator.compare("", "hello"), 0.0)
+        assert self.comparator.compare("", "") == 1.0
+        assert self.comparator.compare("hello", "") == 0.0
+        assert self.comparator.compare("", "hello") == 0.0
 
 
 class Person(StructuredModel):
@@ -209,7 +208,7 @@ class Person(StructuredModel):
     bio: str = ComparableField(comparator=CustomComparator(), threshold=0.7, weight=0.5)
 
 
-class TestComparatorIntegration(unittest.TestCase):
+class TestComparatorIntegration:
     """Test cases for integrating comparators with StructuredModel."""
 
     def test_custom_comparator_integration(self):
@@ -223,15 +222,11 @@ class TestComparatorIntegration(unittest.TestCase):
 
         # Check field scores - the exact values might depend on the implementation
         # so we'll just check that they're in the expected range
-        self.assertGreaterEqual(result["field_scores"]["name"], 0.0)
-        self.assertLessEqual(result["field_scores"]["name"], 1.0)
-        self.assertGreaterEqual(result["field_scores"]["bio"], 0.0)
-        self.assertLessEqual(result["field_scores"]["bio"], 1.0)
+        assert result["field_scores"]["name"] >= 0.0
+        assert result["field_scores"]["name"] <= 1.0
+        assert result["field_scores"]["bio"] >= 0.0
+        assert result["field_scores"]["bio"] <= 1.0
 
         # Check overall score is in the expected range
-        self.assertGreaterEqual(result["overall_score"], 0.0)
-        self.assertLessEqual(result["overall_score"], 1.0)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert result["overall_score"] >= 0.0
+        assert result["overall_score"] <= 1.0

@@ -1,6 +1,6 @@
 """Test integration of structured models with the main anls_score function."""
 
-import unittest
+import pytest
 
 from stickler.structured_object_evaluator.utils.anls_score import anls_score
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
@@ -28,7 +28,7 @@ class NestedDocument(StructuredModel):
     tags: list[str] = ComparableField(comparator=LevenshteinComparator(), threshold=0.9)
 
 
-class TestStructuredIntegration(unittest.TestCase):
+class TestStructuredIntegration:
     """Test integration of structured models with anls_score."""
 
     def test_simple_document_comparison(self):
@@ -48,7 +48,7 @@ class TestStructuredIntegration(unittest.TestCase):
         )
 
         score = anls_score(gt, exact_match)
-        self.assertEqual(score, 1.0)
+        assert score == 1.0
 
         # Test close match
         close_match = SimpleDocument(
@@ -58,18 +58,18 @@ class TestStructuredIntegration(unittest.TestCase):
         )
 
         score = anls_score(gt, close_match)
-        self.assertGreater(score, 0.7)  # Should be reasonably high score
+        assert score > 0.7  # Should be reasonably high score
 
         # Test with return_key_scores
         score, field_scores = anls_score(gt, close_match, return_key_scores=True)
         # Field scores are directly returned in the dictionary
-        self.assertIn("title", field_scores)
-        self.assertIn("author", field_scores)
-        self.assertIn("content", field_scores)
+        assert "title" in field_scores
+        assert "author" in field_scores
+        assert "content" in field_scores
 
         # Test with return_gt
         score, returned_gt = anls_score(gt, close_match, return_gt=True)
-        self.assertEqual(returned_gt, gt)  # Should return the original GT
+        assert returned_gt == gt  # Should return the original GT
 
     def test_nested_document_comparison(self):
         """Test comparison of nested document models."""
@@ -95,18 +95,18 @@ class TestStructuredIntegration(unittest.TestCase):
 
         # Since we're testing the integration, just make sure it runs without errors
         score = anls_score(gt, variation)
-        self.assertGreaterEqual(score, 0.0)
-        self.assertLessEqual(score, 1.0)
+        assert score >= 0.0
+        assert score <= 1.0
 
         # Test with return_key_scores and return_gt
         score, returned_gt, field_scores = anls_score(
             gt, variation, return_gt=True, return_key_scores=True
         )
-        self.assertEqual(returned_gt, gt)  # Should return the original GT
+        assert returned_gt == gt  # Should return the original GT
 
         # Field scores are directly returned in the dictionary
-        self.assertIn("metadata", field_scores)
-        self.assertIn("tags", field_scores)
+        assert "metadata" in field_scores
+        assert "tags" in field_scores
 
     def test_dictionary_comparison(self):
         """Test that anls_score still works with traditional types."""
@@ -132,8 +132,4 @@ class TestStructuredIntegration(unittest.TestCase):
 
         # Make sure regular dict comparison still works
         score = anls_score(gt_dict, pred_dict)
-        self.assertGreater(score, 0.5)  # Should have a reasonable score
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert score > 0.5  # Should have a reasonable score

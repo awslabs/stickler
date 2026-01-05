@@ -1,7 +1,7 @@
 """
-Test module for 6-level deep nesting in StructuredModelEvaluator.
+Test module for 6-level deep nesting with compare_with().
 
-This comprehensive test suite verifies that the evaluator can handle arbitrarily
+This comprehensive test suite verifies that compare_with() can handle arbitrarily
 deep nesting structures up to 6 levels, testing:
 - Recursive field comparison accuracy
 - Confusion matrix aggregation across all levels
@@ -23,7 +23,6 @@ from typing import List, Optional
 from stickler.structured_object_evaluator import (
     StructuredModel,
     ComparableField,
-    StructuredModelEvaluator,
 )
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.exact import ExactComparator
@@ -142,6 +141,8 @@ class Department(StructuredModel):
 class Company(StructuredModel):
     """Level 1: Top-level Company containing Departments."""
 
+    match_threshold = 0.7
+
     id: str = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.9, weight=2.0
     )
@@ -160,12 +161,6 @@ class Company(StructuredModel):
 
 class TestDeepNesting6Levels:
     """Test suite for 6-level deep nesting scenarios."""
-
-    def setUp(self):
-        """Set up test evaluator."""
-        self.evaluator = StructuredModelEvaluator(
-            threshold=0.7, document_non_matches=True
-        )
 
     def create_test_company(self, variation: str = "base") -> Company:
         """Create SIMPLIFIED test company with 6 levels of nesting - PERFORMANCE OPTIMIZED.
@@ -370,14 +365,13 @@ class TestDeepNesting6Levels:
 
     def test_perfect_match_6_levels(self):
         """Test perfect match across all 6 levels of nesting."""
-        self.setUp()
 
         # Create identical companies
         gt_company = self.create_test_company("base")
         pred_company = self.create_test_company("base")
 
         # Evaluate
-        result = self.evaluator.evaluate(gt_company, pred_company)
+        result = gt_company.compare_with(pred_company, include_confusion_matrix=True, document_non_matches=True, evaluator_format=True)
 
         # Should be perfect match
         assert result["overall"]["anls_score"] == 1.0, (
@@ -393,7 +387,6 @@ class TestDeepNesting6Levels:
 
     def test_differences_at_each_level(self):
         """Test differences at each individual level (1-6) - OPTIMIZED VERSION."""
-        self.setUp()
 
         # Create base company once
         base_company = self.create_test_company("base")
@@ -409,9 +402,8 @@ class TestDeepNesting6Levels:
             modified_company = self.create_test_company(variation)
 
             # Clear non-matches from previous test
-            self.evaluator.clear_non_match_documents()
 
-            result = self.evaluator.evaluate(base_company, modified_company)
+            result = base_company.compare_with(modified_company, include_confusion_matrix=True, document_non_matches=True, evaluator_format=True)
 
             # Should detect differences but not be zero
             assert 0.0 < result["overall"]["anls_score"] < 1.0, (
@@ -429,12 +421,11 @@ class TestDeepNesting6Levels:
 
     def test_deep_field_path_generation(self):
         """Test that field paths are correctly generated for 6-level deep nesting."""
-        self.setUp()
 
         base_company = self.create_test_company("base")
         level6_diff_company = self.create_test_company("level6_diff")
 
-        result = self.evaluator.evaluate(base_company, level6_diff_company)
+        result = base_company.compare_with(level6_diff_company, include_confusion_matrix=True, document_non_matches=True, evaluator_format=True)
 
         # Should have non-matches with deep field paths
         non_matches = result["non_matches"]
@@ -466,12 +457,11 @@ class TestDeepNesting6Levels:
 
     def test_confusion_matrix_aggregation_6_levels(self):
         """Test confusion matrix aggregation across 6 levels."""
-        self.setUp()
 
         base_company = self.create_test_company("base")
         mixed_diff_company = self.create_test_company("level3_diff")
 
-        result = self.evaluator.evaluate(base_company, mixed_diff_company)
+        result = base_company.compare_with(mixed_diff_company, include_confusion_matrix=True, document_non_matches=True, evaluator_format=True)
 
         # Should have confusion matrix data
         assert "confusion_matrix" in result, "Expected confusion matrix in result"
@@ -530,8 +520,6 @@ class TestDeepNesting6Levels:
         import psutil
         import os
 
-        self.setUp()
-
         # Measure initial memory
         process = psutil.Process(os.getpid())
         initial_memory = process.memory_info().rss / (1024 * 1024)  # MB
@@ -550,7 +538,7 @@ class TestDeepNesting6Levels:
             modified = self.create_test_company(
                 "level6_diff" if i % 2 == 0 else "level3_diff"
             )
-            result = self.evaluator.evaluate(company, modified)
+            result = company.compare_with(modified, include_confusion_matrix=True, document_non_matches=True, evaluator_format=True)
             results.append(result)
 
         end_time = time.time()
@@ -579,7 +567,6 @@ class TestDeepNesting6Levels:
 
     def test_lists_of_nested_objects_6_levels(self):
         """Test lists containing deeply nested objects."""
-        self.setUp()
 
         # Create companies with different numbers of nested objects
         base_company = self.create_test_company("base")
@@ -589,7 +576,7 @@ class TestDeepNesting6Levels:
             "base"
         )  # Same as base to ensure teams are present
 
-        result = self.evaluator.evaluate(base_company, regular_company)
+        result = base_company.compare_with(regular_company, include_confusion_matrix=True, document_non_matches=True, evaluator_format=True)
 
         # Should be a perfect match since both are identical
         assert result["overall"]["anls_score"] == 1.0, (
@@ -633,7 +620,6 @@ class TestDeepNesting6Levels:
 
     def test_null_handling_at_deep_levels(self):
         """Test handling of null values at various deep nesting levels."""
-        self.setUp()
 
         base_company = self.create_test_company("base")
 
@@ -648,8 +634,7 @@ class TestDeepNesting6Levels:
         for variation, scenario_name in test_scenarios:
             null_company = self.create_test_company(variation)
 
-            self.evaluator.clear_non_match_documents()
-            result = self.evaluator.evaluate(base_company, null_company)
+            result = base_company.compare_with(null_company, include_confusion_matrix=True, document_non_matches=True, evaluator_format=True)
 
             # Should detect the null differences
             assert result["overall"]["anls_score"] < 1.0, (
@@ -671,7 +656,6 @@ class TestDeepNesting6Levels:
 
     def test_edge_case_empty_structures(self):
         """Test edge cases with empty structures at deep levels."""
-        self.setUp()
 
         base_company = self.create_test_company("base")
 
@@ -686,8 +670,7 @@ class TestDeepNesting6Levels:
         for variation, scenario_name in empty_scenarios:
             empty_company = self.create_test_company(variation)
 
-            self.evaluator.clear_non_match_documents()
-            result = self.evaluator.evaluate(base_company, empty_company)
+            result = base_company.compare_with(empty_company, include_confusion_matrix=True, document_non_matches=True, evaluator_format=True)
 
             # Should handle empty lists gracefully
             assert 0.0 <= result["overall"]["anls_score"] <= 1.0, (
@@ -703,7 +686,7 @@ class TestDeepNesting6Levels:
 
 
 def test_integration_with_evaluator():
-    """Test integration between deep nesting and StructuredModelEvaluator."""
+    """Test integration between deep nesting and compare_with() method."""
     # Quick integration test to ensure everything works together
     test_instance = TestDeepNesting6Levels()
 

@@ -42,6 +42,7 @@ class ComparisonEngine:
         # Initialize components lazily to avoid circular imports
         self._dispatcher = None
         self._non_match_collector = None
+        self._field_comparison_collector = None
         self._confusion_matrix_builder = None
 
     @property
@@ -59,6 +60,14 @@ class ComparisonEngine:
             from .non_match_collector import NonMatchCollector
             self._non_match_collector = NonMatchCollector(self.model)
         return self._non_match_collector
+
+    @property
+    def field_comparison_collector(self):
+        """Lazy initialization of FieldComparisonCollector."""
+        if self._field_comparison_collector is None:
+            from .field_comparison_collector import FieldComparisonCollector
+            self._field_comparison_collector = FieldComparisonCollector(self.model)
+        return self._field_comparison_collector
 
     @property
     def confusion_matrix_builder(self):
@@ -190,6 +199,7 @@ class ComparisonEngine:
         evaluator_format: bool = False,
         recall_with_fd: bool = False,
         add_derived_metrics: bool = True,
+        document_field_comparisons: bool = False
     ) -> Dict[str, Any]:
         """Compare with another instance using single traversal.
         
@@ -203,7 +213,8 @@ class ComparisonEngine:
         2. Extracts field scores and overall metrics
         3. Optionally adds confusion matrix with aggregate and derived metrics
         4. Optionally adds non-match documentation
-        5. Optionally formats results for evaluator
+        5. Optionally add details on each primitive field comparison
+        6. Optionally formats results for evaluator
         
         Args:
             other: Another instance of the same model to compare with
@@ -213,6 +224,7 @@ class ComparisonEngine:
             recall_with_fd: If True, include FD in recall denominator (TP/(TP+FN+FD))
                             If False, use traditional recall (TP/(TP+FN))
             add_derived_metrics: Whether to add derived metrics to confusion matrix
+            document_field_comparisons: Whether to document all matches and non matches made in the comparison
             
         Returns:
             Dictionary with comparison results:
@@ -221,7 +233,8 @@ class ComparisonEngine:
                 "overall_score": float,
                 "all_fields_matched": bool,
                 "confusion_matrix": {...},  # If include_confusion_matrix=True
-                "non_matches": [...]  # If document_non_matches=True
+                "non_matches": [...],  # If document_non_matches=True
+                "field_comparisons": [...] # If field_comparisons=True
             }
             
         Example:
@@ -276,6 +289,12 @@ class ComparisonEngine:
             # Use NonMatchCollector for enhanced object-level non-matches
             non_matches = self.non_match_collector.collect_enhanced_non_matches(recursive_result, other)
             result["non_matches"] = non_matches
+        
+        # Add optional field comparison documentation
+        if document_field_comparisons:
+            # Use FieldComparisonCollector for comprehensive field-level comparisons
+            field_comparisons = self.field_comparison_collector.collect_field_comparisons(recursive_result, other)
+            result["field_comparisons"] = field_comparisons
 
         # If evaluator_format is requested, transform the result
         if evaluator_format:
@@ -337,7 +356,7 @@ class ComparisonEngine:
                 and pred_val
             ):
                 # Check if list contains StructuredModel instances
-                if gt_val and hasattr(gt_val[0], '__class__') and hasattr(gt_val[0].__class__, 'model_fields'):
+                if gt_val and isinstance(gt_val[0], StructuredModel) and isinstance(gt_val[0].__class__, StructuredModel):
                     # Import HungarianHelper for matching
                     from .hungarian_helper import HungarianHelper
                     

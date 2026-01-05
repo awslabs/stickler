@@ -12,12 +12,13 @@ from typing import Dict, Any, List, Optional
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 
 
 # Test Models
 class SimpleModel(StructuredModel):
     """Simple model with basic field types for testing confusion matrix metrics."""
+    
+    match_threshold = 0.7
 
     name: str = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.7, weight=1.0
@@ -32,6 +33,8 @@ class SimpleModel(StructuredModel):
 
 class NestedModel(StructuredModel):
     """Model with a nested structured model field."""
+    
+    match_threshold = 0.7
 
     id: str = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.9, weight=1.0
@@ -41,6 +44,8 @@ class NestedModel(StructuredModel):
 
 class ListModel(StructuredModel):
     """Model with list fields for testing confusion matrix metrics on lists."""
+    
+    match_threshold = 0.7
 
     id: str = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.9, weight=1.0
@@ -101,12 +106,12 @@ def get_derived_metrics(cm_result, field_name):
 # Test cases
 def test_simple_field_classification():
     """Test the basic confusion matrix classification for simple fields."""
-    evaluator = StructuredModelEvaluator(threshold=0.7)
+    
 
     # 1. True Positive - non-null values that match
     gt = SimpleModel(name="John Doe", count=42, description="Test description")
     pred = SimpleModel(name="John Doe", count=42, description="Test description")
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     # Check the confusion matrix metrics
     cm = result["confusion_matrix"]
@@ -134,7 +139,7 @@ def test_simple_field_classification():
     # 2. False Negative - GT non-null, prediction null
     gt = SimpleModel(name="John Doe", count=42, description="Test description")
     pred = SimpleModel(name="John Doe", count=None, description=None)
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     name_cm = get_base_metrics(cm, "name")
@@ -153,7 +158,7 @@ def test_simple_field_classification():
     # 3. False Positive - GT null, prediction non-null
     gt = SimpleModel(name="John Doe", count=None, description=None)
     pred = SimpleModel(name="John Doe", count=42, description="Test description")
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     name_cm = get_base_metrics(cm, "name")
@@ -173,7 +178,7 @@ def test_simple_field_classification():
     # 4. True Negative - both null
     gt = SimpleModel(name="John Doe", count=None, description=None)
     pred = SimpleModel(name="John Doe", count=None, description=None)
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     name_cm = get_base_metrics(cm, "name")
@@ -193,7 +198,7 @@ def test_simple_field_classification():
     # 5. False Discovery - both non-null but don't match
     gt = SimpleModel(name="John Doe", count=42, description="Test description")
     pred = SimpleModel(name="John Doe", count=43, description="Different description")
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     name_cm = get_base_metrics(cm, "name")
@@ -213,12 +218,12 @@ def test_simple_field_classification():
 
 def test_list_primitive_values():
     """Test confusion matrix metrics for fields containing lists of primitive values."""
-    evaluator = StructuredModelEvaluator(threshold=0.7)
+    
 
     # 1. Exact match lists
     gt = ListModel(id="list1", tags=["red", "blue", "green"], items=[])
     pred = ListModel(id="list1", tags=["red", "blue", "green"], items=[])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     tags_cm = get_base_metrics(cm, "tags")
@@ -227,7 +232,7 @@ def test_list_primitive_values():
     # 2. Different order lists (should still be TP for each element)
     gt = ListModel(id="list2", tags=["red", "blue", "green"], items=[])
     pred = ListModel(id="list2", tags=["green", "red", "blue"], items=[])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     tags_cm = get_base_metrics(cm, "tags")
@@ -236,7 +241,7 @@ def test_list_primitive_values():
     # 3. Missing items in prediction (FN)
     gt = ListModel(id="list3", tags=["red", "blue", "green"], items=[])
     pred = ListModel(id="list3", tags=["red", "blue"], items=[])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     tags_cm = get_base_metrics(cm, "tags")
@@ -245,7 +250,7 @@ def test_list_primitive_values():
     # 4. Extra items in prediction (FP)
     gt = ListModel(id="list4", tags=["red", "blue"], items=[])
     pred = ListModel(id="list4", tags=["red", "blue", "green"], items=[])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     tags_cm = get_base_metrics(cm, "tags")
@@ -254,7 +259,7 @@ def test_list_primitive_values():
     # 5. Some matching, some not matching (mixed TP, FP, FD)
     gt = ListModel(id="list5", tags=["red", "blue", "green"], items=[])
     pred = ListModel(id="list5", tags=["red", "yellow", "orange", "blue"], items=[])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     tags_cm = get_base_metrics(cm, "tags")
@@ -269,7 +274,7 @@ def test_list_primitive_values():
     # 6. Similar but not exact strings (FD based on threshold)
     gt = ListModel(id="list6", tags=["apple", "banana", "cherry"], items=[])
     pred = ListModel(id="list6", tags=["aple", "bananna", "cheery"], items=[])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     tags_cm = get_base_metrics(cm, "tags")
@@ -283,7 +288,6 @@ def test_list_primitive_values():
 
 def test_list_structured_models():
     """Test confusion matrix metrics for fields containing lists of structured models."""
-    evaluator = StructuredModelEvaluator(threshold=0.7)
 
     # Create test items
     item1 = SimpleModel(name="Item 1", count=1, description="First item")
@@ -298,7 +302,7 @@ def test_list_structured_models():
     # 1. Exact match lists
     gt = ListModel(id="struct1", tags=[], items=[item1, item2, item3])
     pred = ListModel(id="struct1", tags=[], items=[item1, item2, item3])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     items_cm = get_base_metrics(cm, "items")
@@ -307,7 +311,7 @@ def test_list_structured_models():
     # 2. Different order lists
     gt = ListModel(id="struct2", tags=[], items=[item1, item2, item3])
     pred = ListModel(id="struct2", tags=[], items=[item3, item1, item2])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     items_cm = get_base_metrics(cm, "items")
@@ -316,7 +320,7 @@ def test_list_structured_models():
     # 3. Missing items in prediction (FN)
     gt = ListModel(id="struct3", tags=[], items=[item1, item2, item3])
     pred = ListModel(id="struct3", tags=[], items=[item1, item2])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     items_cm = get_base_metrics(cm, "items")
@@ -325,7 +329,7 @@ def test_list_structured_models():
     # 4. Extra items in prediction (FP)
     gt = ListModel(id="struct4", tags=[], items=[item1, item2])
     pred = ListModel(id="struct4", tags=[], items=[item1, item2, item4])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     items_cm = get_base_metrics(cm, "items")
@@ -336,7 +340,7 @@ def test_list_structured_models():
     pred = ListModel(
         id="struct5", tags=[], items=[item1_similar, item2_different, item3]
     )
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     items_cm = get_base_metrics(cm, "items")
@@ -350,7 +354,6 @@ def test_list_structured_models():
 
 def test_nested_structured_models():
     """Test confusion matrix metrics for fields containing nested structured models."""
-    evaluator = StructuredModelEvaluator(threshold=0.7)
 
     # Create test nested models
     details1 = SimpleModel(name="Details 1", count=1, description="First details")
@@ -363,10 +366,10 @@ def test_nested_structured_models():
     # 1. Exact match of nested model
     gt = NestedModel(id="nested1", details=details1)
     pred = NestedModel(id="nested1", details=details1)
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
-    id_cm = extract_basic_metrics(cm["fields"]["id"])
+    id_cm = get_base_metrics(cm, "id")
     assert id_cm == {"tp": 1, "fp": 0, "tn": 0, "fn": 0, "fd": 0, "fa": 0}
     # For the nested model field, it should be classified as a single TP
     # since the entire nested model is an exact match
@@ -376,11 +379,11 @@ def test_nested_structured_models():
     # 2. Similar nested model (some fields match, some don't)
     gt = NestedModel(id="nested2", details=details1)
     pred = NestedModel(id="nested2", details=details1_similar)
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     # ID field is exact match
-    id_cm = extract_basic_metrics(cm["fields"]["id"])
+    id_cm = get_base_metrics(cm, "id")
     assert id_cm == {"tp": 1, "fp": 0, "tn": 0, "fn": 0, "fd": 0, "fa": 0}
     # Nested model should be classified based on overall match
     details_cm = get_base_metrics(cm, "details")
@@ -390,7 +393,7 @@ def test_nested_structured_models():
     # 3. Completely different nested model
     gt = NestedModel(id="nested3", details=details1)
     pred = NestedModel(id="nested3", details=details1_different)
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     # Nested model should be classified as FD since it's completely different
@@ -400,7 +403,7 @@ def test_nested_structured_models():
     # 4. Missing nested model (null in prediction)
     gt = NestedModel(id="nested4", details=details1)
     pred = NestedModel(id="nested4", details=None)
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     # Nested model should be classified as FN since it's missing in prediction
@@ -410,7 +413,7 @@ def test_nested_structured_models():
     # 5. Extra nested model (null in GT)
     gt = NestedModel(id="nested5", details=None)
     pred = NestedModel(id="nested5", details=details1)
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     # Nested model should be classified as FP since it's missing in GT
@@ -420,12 +423,11 @@ def test_nested_structured_models():
 
 def test_empty_lists_and_edge_cases():
     """Test confusion matrix metrics for empty lists and edge cases."""
-    evaluator = StructuredModelEvaluator(threshold=0.7)
 
     # 1. Empty lists in both GT and prediction (should be TN)
     gt = ListModel(id="empty1", tags=[], items=[])
     pred = ListModel(id="empty1", tags=[], items=[])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     tags_cm = get_base_metrics(cm, "tags")
@@ -436,7 +438,7 @@ def test_empty_lists_and_edge_cases():
     # 2. Empty list in GT, non-empty in prediction (should be FP)
     gt = ListModel(id="empty2", tags=[], items=[])
     pred = ListModel(id="empty2", tags=["red", "blue"], items=[])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     tags_cm = get_base_metrics(cm, "tags")
@@ -445,7 +447,7 @@ def test_empty_lists_and_edge_cases():
     # 3. Non-empty list in GT, empty in prediction (should be FN)
     gt = ListModel(id="empty3", tags=["red", "blue"], items=[])
     pred = ListModel(id="empty3", tags=[], items=[])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     tags_cm = get_base_metrics(cm, "tags")
@@ -454,7 +456,7 @@ def test_empty_lists_and_edge_cases():
     # 4. None list vs empty list
     gt = ListModel(id="empty4", tags=None, items=None)
     pred = ListModel(id="empty4", tags=[], items=[])
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     cm = result["confusion_matrix"]
     # None and empty list should be treated the same (as null)
@@ -466,7 +468,6 @@ def test_empty_lists_and_edge_cases():
 
 def test_derived_metrics():
     """Test that derived metrics (precision, recall, F1) are correctly calculated from confusion matrix."""
-    evaluator = StructuredModelEvaluator(threshold=0.7)
 
     # Create a model with mixed TP, FP, FN, FD
     gt = ListModel(
@@ -487,7 +488,7 @@ def test_derived_metrics():
         ],
     )
 
-    result = evaluator.evaluate(gt, pred)
+    result = gt.compare_with(pred, include_confusion_matrix=True)
 
     # Verify that derived metrics exist and make sense
     # For the tags field: 2 TP (red, green), 1 FP (yellow), 1 FN (blue)

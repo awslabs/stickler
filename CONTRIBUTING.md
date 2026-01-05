@@ -1,11 +1,93 @@
 # Contributing Guidelines
 
-Thank you for your interest in contributing to our project. Whether it's a bug report, new feature, correction, or additional
-documentation, we greatly value feedback and contributions from our community.
+Thank you for your interest in contributing to Stickler! Whether it's a bug report, new feature, correction, or additional documentation, we greatly value feedback and contributions from our community.
 
 Please read through this document before submitting any issues or pull requests to ensure we have all the necessary
 information to effectively respond to your bug report or contribution.
 
+
+## Quick Start for Contributors
+
+### Prerequisites
+
+- Python 3.12+
+- [conda](https://github.com/conda/conda?tab=readme-ov-file#installation) (recommended) or venv
+- Git
+
+### Setup
+
+```bash
+# Clone and setup
+git clone https://github.com/awslabs/stickler.git
+cd stickler
+conda create -n stickler python=3.12 -y
+conda activate stickler
+pip install -e ".[dev]"
+
+# Verify installation
+pytest tests/ -v --tb=short
+```
+
+### Development Workflow
+
+1. Create a branch from `dev`: `git checkout -b feature/your-feature dev`
+2. Make your changes
+3. Run tests: `pytest tests/`
+4. Run linting: `ruff check .`
+5. Commit with conventional format: `feat: add new feature`
+6. Submit PR to `dev` branch
+
+## Detailed Guides
+
+For comprehensive documentation, see:
+
+| Guide | Description |
+|-------|-------------|
+| [Development Setup](docs/docs/Contributing/development-setup.md) | Full environment configuration |
+| [Testing Guide](docs/docs/Contributing/testing-guide.md) | Test patterns and best practices |
+| [Code Style](docs/docs/Contributing/code-style.md) | Naming conventions and linting |
+| [Pull Request Guide](docs/docs/Contributing/pull-request-guide.md) | Branch workflow and PR process |
+
+## Quick Reference
+
+### Common Commands
+
+| Task | Command |
+|------|---------|
+| Run all tests | `pytest tests/` |
+| Run with coverage | `coverage run -m pytest tests/ && coverage report` |
+| Run specific tests | `pytest tests/ -k "pattern"` |
+| Lint check | `ruff check .` |
+| Lint fix | `ruff check --fix .` |
+
+### Commit Message Format
+
+```
+type: brief description
+```
+
+**Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
+
+### Documentation Contributions
+
+Documentation is built with MkDocs and lives in the `docs/` directory.
+
+```bash
+# Setup and serve docs locally
+cd docs
+make install  # Install dependencies
+make docs     # Start dev server at http://127.0.0.1:8000
+```
+
+When contributing documentation:
+- Edit Markdown files in `docs/docs/`
+- Follow existing structure and style
+- Test locally with `make docs` before submitting PR
+- Documentation PRs should also target `dev` branch
+
+See the [Building Documentation](docs/docs/Contributing/development-setup.md#building-documentation) section for detailed information.
+
+---
 
 ## Reporting Bugs/Feature Requests
 

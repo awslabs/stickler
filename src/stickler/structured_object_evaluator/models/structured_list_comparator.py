@@ -13,6 +13,7 @@ Current Behavior Preserved (including bugs):
 
 from typing import List, Dict, Any, TYPE_CHECKING
 from .hungarian_helper import HungarianHelper
+from .comparison_helper import ComparisonHelper 
 from .metrics_helper import MetricsHelper
 from .comparable_field import ComparableField
 
@@ -64,16 +65,7 @@ class StructuredListComparator:
                 self.parent_model.__class__, "match_threshold", 0.7
             )
 
-        # Handle empty list cases with beautiful match statements
-        early_exit_result = self._handle_struct_list_empty_cases(
-            gt_list, pred_list, weight
-        )
-        if early_exit_result is not None:
-            return early_exit_result
-
-        # Normalize None to empty lists for consistent processing below
-        gt_list = gt_list or []
-        pred_list = pred_list or []
+        # Removed duplicate handling of the empty lists, already done in the field comparison dispatcher
 
         # Calculate object-level metrics using extracted method
         (
@@ -85,7 +77,7 @@ class StructuredListComparator:
 
         # Calculate raw similarity score using extracted method
         raw_similarity = self._calculate_struct_list_similarity(
-            gt_list, pred_list, info
+            matched_pairs, gt_list, pred_list, info
         )
 
         # CRITICAL FIX: For structured lists, we NEVER clip under threshold - partial matches are important
@@ -114,75 +106,6 @@ class StructuredListComparator:
         }
 
         return final_result
-
-    def _handle_struct_list_empty_cases(
-        self,
-        gt_list: List["StructuredModel"],
-        pred_list: List["StructuredModel"],
-        weight: float,
-    ) -> dict:
-        """Handle empty list cases with beautiful match statements.
-
-        Args:
-            gt_list: Ground truth list (may be None)
-            pred_list: Predicted list (may be None)
-            weight: Field weight for scoring
-
-        Returns:
-            Result dictionary if early exit needed, None if should continue processing
-        """
-        # Normalize None to empty lists for consistent handling
-        gt_len = len(gt_list or [])
-        pred_len = len(pred_list or [])
-
-        match (gt_len, pred_len):
-            case (0, 0):
-                # Both empty lists → True Negative
-                return {
-                    "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
-                    "fields": {},
-                    "raw_similarity_score": 1.0,
-                    "similarity_score": 1.0,
-                    "threshold_applied_score": 1.0,
-                    "weight": weight,
-                }
-            case (0, pred_len):
-                # GT empty, pred has items → False Alarms
-                return {
-                    "overall": {
-                        "tp": 0,
-                        "fa": pred_len,
-                        "fd": 0,
-                        "fp": pred_len,
-                        "tn": 0,
-                        "fn": 0,
-                    },
-                    "fields": {},
-                    "raw_similarity_score": 0.0,
-                    "similarity_score": 0.0,
-                    "threshold_applied_score": 0.0,
-                    "weight": weight,
-                }
-            case (gt_len, 0):
-                # GT has items, pred empty → False Negatives
-                return {
-                    "overall": {
-                        "tp": 0,
-                        "fa": 0,
-                        "fd": 0,
-                        "fp": 0,
-                        "tn": 0,
-                        "fn": gt_len,
-                    },
-                    "fields": {},
-                    "raw_similarity_score": 0.0,
-                    "similarity_score": 0.0,
-                    "threshold_applied_score": 0.0,
-                    "weight": weight,
-                }
-            case _:
-                # Both non-empty, continue processing
-                return None
 
     def _calculate_object_level_metrics(
         self,
@@ -241,6 +164,7 @@ class StructuredListComparator:
 
     def _calculate_struct_list_similarity(
         self,
+        matched_pairs: List[Any],
         gt_list: List["StructuredModel"],
         pred_list: List["StructuredModel"],
         info: "ComparableField",
@@ -255,14 +179,32 @@ class StructuredListComparator:
         Returns:
             Raw similarity score between 0.0 and 1.0
         """
-        if len(pred_list) > 0:
-            # Use parent model's comparison method
-            match_result = self.parent_model._compare_unordered_lists(
-                gt_list, pred_list, info.comparator, info.threshold
+        # Updated code to not use helper that was calling Hungarian match again, and instead use already generated matched pairs
+        threshold_corrected_pairs = []
+        for gt_idx, pred_idx, raw_score in matched_pairs:
+            if gt_idx < len(gt_list) and pred_idx < len(pred_list):
+                gt_item = gt_list[gt_idx]
+                pred_item = pred_list[pred_idx]
+
+                # Use individual comparison with threshold application (same as .compare_with())
+                individual_result = gt_item.compare_with(pred_item)
+                threshold_applied_score = individual_result["overall_score"]
+
+                threshold_corrected_pairs.append(
+                    (gt_idx, pred_idx, threshold_applied_score)
+                )
+            else:
+                threshold_corrected_pairs.append((gt_idx, pred_idx, raw_score))
+        
+        classification_threshold = (
+                0.01  # Almost everything that's not 0.0 should be TP
             )
-            return match_result.get("overall_score", 0.0)
-        else:
-            return 0.0
+        
+        match_result = ComparisonHelper.unordered_list_metrics(
+            threshold_corrected_pairs, gt_list, pred_list, classification_threshold
+        )
+
+        return match_result.get("overall_score", 0.0)
 
     def _calculate_nested_field_metrics(
         self,

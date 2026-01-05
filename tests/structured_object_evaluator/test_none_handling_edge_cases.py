@@ -9,10 +9,11 @@ from typing import List, Optional
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.structured_object_evaluator.evaluator import StructuredModelEvaluator
 
 
 class Transaction(StructuredModel):
+    match_threshold = 0.7
+    
     amount: float = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.9, weight=1.0
     )
@@ -22,6 +23,8 @@ class Transaction(StructuredModel):
 
 
 class Document(StructuredModel):
+    match_threshold = 0.7
+    
     id: str = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.9, weight=1.0
     )
@@ -36,8 +39,6 @@ class TestNoneHandlingEdgeCases:
 
     def test_none_vs_populated_list_false_alarm(self):
         """Test GT=None vs Prediction=populated list (should generate FA)."""
-        evaluator = StructuredModelEvaluator(threshold=0.7)
-
         # GT has None, Prediction has transactions (should be FA)
         gt = Document(id="doc1", transactions=None, total_amount=100.0)
         pred_transactions = [
@@ -46,7 +47,7 @@ class TestNoneHandlingEdgeCases:
         ]
         pred = Document(id="doc1", transactions=pred_transactions, total_amount=100.0)
 
-        result = evaluator.evaluate(gt, pred)
+        result = gt.compare_with(pred, include_confusion_matrix=True)
         cm = result["confusion_matrix"]
 
         # Extract transactions metrics
@@ -73,8 +74,6 @@ class TestNoneHandlingEdgeCases:
 
     def test_populated_list_vs_none_false_negative(self):
         """Test GT=populated list vs Prediction=None (should generate FN)."""
-        evaluator = StructuredModelEvaluator(threshold=0.7)
-
         # GT has transactions, Prediction has None (should be FN)
         gt_transactions = [
             Transaction(amount=100.0, description="Payment 1"),
@@ -83,7 +82,7 @@ class TestNoneHandlingEdgeCases:
         gt = Document(id="doc2", transactions=gt_transactions, total_amount=100.0)
         pred = Document(id="doc2", transactions=None, total_amount=100.0)
 
-        result = evaluator.evaluate(gt, pred)
+        result = gt.compare_with(pred, include_confusion_matrix=True)
         cm = result["confusion_matrix"]
 
         transactions_field = cm["fields"]["transactions"]
@@ -109,13 +108,11 @@ class TestNoneHandlingEdgeCases:
 
     def test_none_vs_none_true_negative(self):
         """Test GT=None vs Prediction=None (should be TN)."""
-        evaluator = StructuredModelEvaluator(threshold=0.7)
-
         # Both documents have None transactions
         gt = Document(id="doc3", transactions=None, total_amount=100.0)
         pred = Document(id="doc3", transactions=None, total_amount=100.0)
 
-        result = evaluator.evaluate(gt, pred)
+        result = gt.compare_with(pred, include_confusion_matrix=True)
         cm = result["confusion_matrix"]
 
         transactions_field = cm["fields"]["transactions"]
@@ -138,13 +135,11 @@ class TestNoneHandlingEdgeCases:
 
     def test_empty_list_vs_none_equivalent(self):
         """Test empty list vs None - they are treated as equivalent states."""
-        evaluator = StructuredModelEvaluator(threshold=0.7)
-
         # GT has empty list, Prediction has None
         gt = Document(id="doc4", transactions=[], total_amount=0.0)
         pred = Document(id="doc4", transactions=None, total_amount=0.0)
 
-        result = evaluator.evaluate(gt, pred)
+        result = gt.compare_with(pred, include_confusion_matrix=True)
         cm = result["confusion_matrix"]
 
         # Empty list and None are treated as equivalent states in this implementation
@@ -184,8 +179,7 @@ class TestNoneHandlingEdgeCases:
 
         transactions_field = cm["fields"]["transactions"]
 
-        # Raw compare_with result structure includes metrics under "overall" key
-        # Different from evaluator.evaluate() which flattens the structure
+        # compare_with result structure includes metrics under "overall" key
         if "overall" in transactions_field:
             transactions_metrics = transactions_field["overall"]
         else:

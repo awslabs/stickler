@@ -1,6 +1,6 @@
 """Integration tests for the structured object evaluator."""
 
-import unittest
+import pytest
 from typing import List
 
 from pydantic import Field
@@ -49,7 +49,7 @@ class Company(StructuredModel):
     employees: List[Person]
 
 
-class TestIntegration(unittest.TestCase):
+class TestIntegration:
     """Integration tests for the structured object evaluator."""
 
     def test_nested_models_comparison(self):
@@ -71,11 +71,11 @@ class TestIntegration(unittest.TestCase):
         result = compare_structured_models(person1, person2)
 
         # Check the result
-        self.assertEqual(result["overall_score"], 1.0)
-        self.assertTrue(result["all_fields_matched"])
-        self.assertEqual(result["field_scores"]["name"], 1.0)
-        self.assertEqual(result["field_scores"]["age"], 1.0)
-        self.assertEqual(result["field_scores"]["address"], 1.0)
+        assert result["overall_score"] == 1.0
+        assert result["all_fields_matched"]
+        assert result["field_scores"]["name"] == 1.0
+        assert result["field_scores"]["age"] == 1.0
+        assert result["field_scores"]["address"] == 1.0
 
     def test_list_field_comparison(self):
         """Test comparison of models with list fields."""
@@ -118,11 +118,11 @@ class TestIntegration(unittest.TestCase):
         result = compare_structured_models(company1, company2)
 
         # Check the result
-        self.assertEqual(result["overall_score"], 1.0)
-        self.assertTrue(result["all_fields_matched"])
-        self.assertEqual(result["field_scores"]["name"], 1.0)
-        self.assertEqual(result["field_scores"]["founded_year"], 1.0)
-        self.assertEqual(result["field_scores"]["employees"], 1.0)
+        assert result["overall_score"] == 1.0
+        assert result["all_fields_matched"]
+        assert result["field_scores"]["name"] == 1.0
+        assert result["field_scores"]["founded_year"] == 1.0
+        assert result["field_scores"]["employees"] == 1.0
 
     def test_anls_score_with_structured_models(self):
         """Test anls_score with structured models."""
@@ -143,7 +143,7 @@ class TestIntegration(unittest.TestCase):
         score = anls_score(person1, person2)
 
         # Check the result
-        self.assertEqual(score, 1.0)
+        assert score == 1.0
 
         # Test with return_gt and return_key_scores
         score, closest_gt, key_scores = anls_score(
@@ -151,12 +151,12 @@ class TestIntegration(unittest.TestCase):
         )
 
         # Check the result
-        self.assertEqual(score, 1.0)
+        assert score == 1.0
         # The closest_gt is now the original Person object
-        self.assertEqual(closest_gt.name, "John Doe")
-        self.assertEqual(closest_gt.age, 30)
-        self.assertEqual(closest_gt.address.street, "123 Main St")
-        self.assertIsInstance(key_scores, dict)
+        assert closest_gt.name == "John Doe"
+        assert closest_gt.age == 30
+        assert closest_gt.address.street == "123 Main St"
+        assert isinstance(key_scores, dict)
 
     def test_compare_json_with_nested_structure(self):
         """Test compare_json with nested structure."""
@@ -177,12 +177,8 @@ class TestIntegration(unittest.TestCase):
         result = compare_json(json1, json2, Person)
 
         # Check the result
-        self.assertEqual(result["overall_score"], 1.0)
-        self.assertTrue(result["all_fields_matched"])
-        self.assertEqual(result["field_scores"]["name"], 1.0)
-        self.assertEqual(result["field_scores"]["age"], 1.0)
-        self.assertEqual(result["field_scores"]["address"], 1.0)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert result["overall_score"] == 1.0
+        assert result["all_fields_matched"]
+        assert result["field_scores"]["name"] == 1.0
+        assert result["field_scores"]["age"] == 1.0
+        assert result["field_scores"]["address"] == 1.0

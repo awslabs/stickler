@@ -381,7 +381,7 @@ The Structured Object Evaluator has been optimized to eliminate redundant Hungar
 The comparison pipeline uses a constructive building approach in `compare_recursive()` followed by lightweight post-processing transformations:
 
 1. **Primary Traversal**: `compare_recursive()` builds the comparison tree structure efficiently
-2. **Aggregate Metrics**: `_calculate_aggregate_metrics()` adds Universal Aggregate Field data
+2. **Aggregate Metrics**: `AggregateMetricsCalculator.calculate_aggregate_metrics()` adds Universal Aggregate Field data
 3. **Derived Metrics**: `_add_derived_metrics_to_result()` adds precision, recall, F1 scores
 
 This architecture prioritizes correctness of the core comparison logic while keeping post-processing transformations simple and maintainable. The post-processing steps operate on already-computed confusion matrix data and represent a small fraction of total computation time.
