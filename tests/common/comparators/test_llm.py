@@ -1,4 +1,5 @@
 import json
+import socket
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -10,6 +11,33 @@ class TestLLMComparator:
     """
     Test cases for the LLMComparator class used for comparing values using LLM models.
     """
+
+    @pytest.fixture(autouse=True)
+    def setup_method(self):
+        """Set up test fixtures."""
+        # Mock the Agent class
+        self.agent_patcher = patch("stickler.comparators.llm.Agent")
+        self.mock_agent_class = self.agent_patcher.start()
+        self.mock_agent = MagicMock()
+        self.mock_agent_class.return_value = self.mock_agent
+        
+        # Create comparator instance
+        self.comparator = LLMComparator(
+            model="us.anthropic.claude-3-haiku-20240307-v1:0"
+        )
+        
+        yield
+        
+        # Cleanup
+        self.agent_patcher.stop()
+
+    def _mock_agent_response(self, content_text):
+        """Helper to mock Agent response."""
+        mock_result = MagicMock()
+        mock_result.message = {
+            'content': [{'text': content_text}]
+        }
+        self.mock_agent.return_value = mock_result
 
     @pytest.mark.skip(reason="Not implemented yet")
     def test_init(self):
@@ -142,21 +170,9 @@ class TestLLMComparator:
             model_name="test-model", prompt_template=custom_prompt
         )
 
-    def tearDown(self):
-        """Clean up after tests."""
-        self.agent_patcher.stop()
-
-    def _mock_agent_response(self, content_text):
-        """Helper to mock Agent response."""
-        mock_result = MagicMock()
-        mock_result.message = {
-            'content': [{'text': content_text}]
-        }
-        self.mock_agent.return_value = mock_result
-
     def test_inheritance(self):
         """Test that LLMComparator inherits from BaseComparator."""
-        self.assertIsInstance(self.comparator, BaseComparator)
+        assert isinstance(self.comparator, BaseComparator)
 
     @pytest.mark.skip(reason="Not implemented yet")
     @patch("stickler.comparators.llm.BedrockRuntime")
@@ -171,25 +187,23 @@ class TestLLMComparator:
         self._mock_agent_response("false")
         
         result = self.comparator.compare("test", "completely different")
-        self.assertEqual(result, 0.0)
+        assert result == 0.0
 
     def test_case_variations(self):
         """Test different case variations of true/false responses."""
         # Test true variations
         true_cases = ["TRUE", "True", "true", " true ", "  TRUE  "]
         for response in true_cases:
-            with self.subTest(response=response):
-                self._mock_agent_response(response)
-                result = self.comparator.compare("value1", "value2")
-                self.assertEqual(result, 1.0)
+            self._mock_agent_response(response)
+            result = self.comparator.compare("value1", "value2")
+            assert result == 1.0, f"Failed for response: {response}"
 
         # Test false variations  
         false_cases = ["FALSE", "False", "false", " false ", "  FALSE  "]
         for response in false_cases:
-            with self.subTest(response=response):
-                self._mock_agent_response(response)
-                result = self.comparator.compare("value1", "value2")
-                self.assertEqual(result, 0.0)
+            self._mock_agent_response(response)
+            result = self.comparator.compare("value1", "value2")
+            assert result == 0.0, f"Failed for response: {response}"
 
     def test_ambiguous_response(self):
         """Test that ambiguous responses default to 0.0."""
@@ -199,16 +213,15 @@ class TestLLMComparator:
         ]
         
         for response in ambiguous_responses:
-            with self.subTest(response=response):
-                self._mock_agent_response(response)
-                result = self.comparator.compare("value1", "value2")
-                self.assertEqual(result, 0.0)
+            self._mock_agent_response(response)
+            result = self.comparator.compare("value1", "value2")
+            assert result == 0.0, f"Failed for response: {response}"
 
     def test_none_values(self):
         """Test that None values are handled properly."""
         # Both None should return 1.0 without calling agent
         result = self.comparator.compare(None, None)
-        self.assertEqual(result, 1.0)
+        assert result == 1.0
         self.mock_agent.assert_not_called()
 
         # Reset mock for next tests
@@ -216,11 +229,11 @@ class TestLLMComparator:
 
         # None vs value should return 0.0 without calling agent
         result = self.comparator.compare(None, "test")
-        self.assertEqual(result, 0.0)
+        assert result == 0.0
         self.mock_agent.assert_not_called()
 
         result = self.comparator.compare("test", None)
-        self.assertEqual(result, 0.0)
+        assert result == 0.0
         self.mock_agent.assert_not_called()
 
     def test_empty_strings(self):
@@ -228,7 +241,7 @@ class TestLLMComparator:
         self._mock_agent_response("true")
         
         result = self.comparator.compare("", "")
-        self.assertEqual(result, 1.0)
+        assert result == 1.0
         
         # Should call the agent for empty strings
         self.mock_agent.assert_called_once()
@@ -238,31 +251,31 @@ class TestLLMComparator:
         self._mock_agent_response("true")
         
         result = self.comparator.compare(123, 123)
-        self.assertEqual(result, 1.0)
+        assert result == 1.0
         
         # Verify the agent was called with a prompt containing string representations
         self.mock_agent.assert_called_once()
         call_args = self.mock_agent.call_args[0][0]  # First positional argument (prompt)
-        self.assertIn("123", call_args)
+        assert "123" in call_args
 
     def test_binary_compare(self):
         """Test binary_compare returns correct (tp, fp) tuples."""
         # Test true response with default threshold (0.7)
         self._mock_agent_response("true")
         result = self.comparator.binary_compare("test", "test")
-        self.assertEqual(result, (1, 0))  # True positive
+        assert result == (1, 0)  # True positive
 
         # Test false response
         self._mock_agent_response("false")
         result = self.comparator.binary_compare("test", "different")
-        self.assertEqual(result, (0, 1))  # False positive
+        assert result == (0, 1)  # False positive
 
         # Test with different threshold
         high_threshold = LLMComparator(model="test-model", eval_guidelines=None)
         high_threshold.threshold = 0.9
         self._mock_agent_response("true")
         result = high_threshold.binary_compare("value1", "value2")
-        self.assertEqual(result, (1, 0))
+        assert result == (1, 0)
 
     def test_custom_initialization(self):
         """Test custom initialization parameters."""
@@ -271,24 +284,24 @@ class TestLLMComparator:
             model="custom-model",
             eval_guidelines=custom_guidelines
         )
-        self.assertEqual(comparator.model, "custom-model")
-        self.assertEqual(comparator.eval_guidelines, custom_guidelines)
-        self.assertEqual(comparator.threshold, 0.7)  # BaseComparator default
+        assert comparator.model == "custom-model"
+        assert comparator.eval_guidelines == custom_guidelines
+        assert comparator.threshold == 0.7  # BaseComparator default
 
     def test_default_initialization(self):
         """Test default initialization parameters."""
         comparator = LLMComparator(
             model="us.anthropic.claude-3-haiku-20240307-v1:0"
         )
-        self.assertEqual(comparator.model, "us.anthropic.claude-3-haiku-20240307-v1:0")
-        self.assertIsNone(comparator.eval_guidelines)
-        self.assertEqual(comparator.threshold, 0.7)  # BaseComparator default
+        assert comparator.model == "us.anthropic.claude-3-haiku-20240307-v1:0"
+        assert comparator.eval_guidelines is None
+        assert comparator.threshold == 0.7  # BaseComparator default
 
     def test_agent_exception_handling(self):
         """Test that Agent exceptions are handled gracefully."""
         self.mock_agent.side_effect = Exception("Agent Error")
         
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             self.comparator.compare("value1", "value2")
 
     def test_agent_response_format_error(self):
@@ -298,7 +311,7 @@ class TestLLMComparator:
         mock_result.message = {"unexpected_field": "value"}
         self.mock_agent.return_value = mock_result
         
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             self.comparator.compare("value1", "value2")
 
     def test_agent_initialization(self):
@@ -320,12 +333,12 @@ class TestLLMComparator:
         )
         
         result = comparator_with_guidelines.compare("value1", "value2")
-        self.assertEqual(result, 1.0)
+        assert result == 1.0
         
         # Check that guidelines were included in the prompt
         call_args = self.mock_agent.call_args[0][0]
-        self.assertIn("Use strict comparison rules", call_args)
-        self.assertIn("<guidelines>", call_args)
+        assert "Use strict comparison rules" in call_args
+        assert "<guidelines>" in call_args
 
     def test_prompt_template_without_guidelines(self):
         """Test that prompt works correctly without eval_guidelines."""
@@ -337,11 +350,11 @@ class TestLLMComparator:
         )
         
         result = comparator_no_guidelines.compare("value1", "value2")
-        self.assertEqual(result, 0.0)
+        assert result == 0.0
         
         # Check that guidelines section is not included
         call_args = self.mock_agent.call_args[0][0]
-        self.assertNotIn("<guidelines>", call_args)
+        assert "<guidelines>" not in call_args
 
     def test_get_comparison_details(self):
         """Test get_comparison_details method."""
@@ -349,14 +362,14 @@ class TestLLMComparator:
         
         details = self.comparator.get_comparison_details("value1", "value2")
         
-        self.assertIn("prompt", details)
-        self.assertIn("llm_response", details)
-        self.assertIn("model_id", details)
-        self.assertIn("comparison_result", details)
+        assert "prompt" in details
+        assert "llm_response" in details
+        assert "model_id" in details
+        assert "comparison_result" in details
         
-        self.assertEqual(details["llm_response"], "true")
-        self.assertEqual(details["model_id"], "us.anthropic.claude-3-haiku-20240307-v1:0")
-        self.assertEqual(details["comparison_result"], 1.0)
+        assert details["llm_response"] == "true"
+        assert details["model_id"] == "us.anthropic.claude-3-haiku-20240307-v1:0"
+        assert details["comparison_result"] == 1.0
 
     def test_get_comparison_details_error_handling(self):
         """Test get_comparison_details error handling."""
@@ -364,15 +377,15 @@ class TestLLMComparator:
         
         details = self.comparator.get_comparison_details("value1", "value2")
         
-        self.assertIn("error", details)
-        self.assertIn("comparison_result", details)
-        self.assertEqual(details["comparison_result"], False)
+        assert "error" in details
+        assert "comparison_result" in details
+        assert details["comparison_result"] == False
 
     def test_string_representation(self):
         """Test string representations for serialization."""
-        self.assertEqual(str(self.comparator), "LLMComparator")
-        self.assertIn("LLMComparator", repr(self.comparator))
-        self.assertIn("threshold", repr(self.comparator))
+        assert str(self.comparator) == "LLMComparator"
+        assert "LLMComparator" in repr(self.comparator)
+        assert "threshold" in repr(self.comparator)
 
     # Enhanced Error Handling Tests
 
@@ -380,7 +393,7 @@ class TestLLMComparator:
         """Test handling of AWS NoCredentialsError."""
         self.mock_agent.side_effect = NoCredentialsError()
         
-        with self.assertRaises(NoCredentialsError):
+        with pytest.raises(NoCredentialsError):
             self.comparator.compare("value1", "value2")
 
     def test_client_error_handling(self):
@@ -389,23 +402,21 @@ class TestLLMComparator:
         client_error = ClientError(error_response, 'InvokeModel')
         self.mock_agent.side_effect = client_error
         
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             self.comparator.compare("value1", "value2")
 
     def test_timeout_error_handling(self):
         """Test handling of timeout errors."""
-        import socket
         self.mock_agent.side_effect = socket.timeout("Connection timed out")
         
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             self.comparator.compare("value1", "value2")
 
     def test_connection_error_handling(self):
         """Test handling of connection errors."""
-        import socket
         self.mock_agent.side_effect = ConnectionError("Connection failed")
         
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             self.comparator.compare("value1", "value2")
 
     def test_malformed_response_missing_message(self):
@@ -414,7 +425,7 @@ class TestLLMComparator:
         mock_result.message = None
         self.mock_agent.return_value = mock_result
         
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             self.comparator.compare("value1", "value2")
 
     def test_malformed_response_missing_content(self):
@@ -423,7 +434,7 @@ class TestLLMComparator:
         mock_result.message = {"no_content": "value"}
         self.mock_agent.return_value = mock_result
         
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             self.comparator.compare("value1", "value2")
 
     def test_malformed_response_empty_content_array(self):
@@ -432,7 +443,7 @@ class TestLLMComparator:
         mock_result.message = {"content": []}
         self.mock_agent.return_value = mock_result
         
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             self.comparator.compare("value1", "value2")
 
     def test_malformed_response_missing_text_key(self):
@@ -441,7 +452,7 @@ class TestLLMComparator:
         mock_result.message = {"content": [{"no_text": "value"}]}
         self.mock_agent.return_value = mock_result
         
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             self.comparator.compare("value1", "value2")
 
     def test_error_recovery_after_exception(self):
@@ -449,7 +460,7 @@ class TestLLMComparator:
         # First call raises exception
         self.mock_agent.side_effect = Exception("Temporary error")
         
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             self.comparator.compare("value1", "value2")
         
         # Reset mock and verify subsequent calls work
@@ -457,43 +468,43 @@ class TestLLMComparator:
         self._mock_agent_response("true")
         
         result = self.comparator.compare("value3", "value4")
-        self.assertEqual(result, 1.0)
+        assert result == 1.0
 
     def test_get_comparison_details_comprehensive_error_handling(self):
         """Test comprehensive error handling in get_comparison_details."""
         # Test NoCredentialsError
         self.mock_agent.side_effect = NoCredentialsError()
         details = self.comparator.get_comparison_details("value1", "value2")
-        self.assertIn("error", details)
-        self.assertEqual(details["comparison_result"], False)
+        assert "error" in details
+        assert details["comparison_result"] == False
         
         # Test ClientError
         error_response = {'Error': {'Code': 'ThrottlingException', 'Message': 'Rate exceeded'}}
         self.mock_agent.side_effect = ClientError(error_response, 'InvokeModel')
         details = self.comparator.get_comparison_details("value1", "value2")
-        self.assertIn("error", details)
-        self.assertEqual(details["comparison_result"], False)
+        assert "error" in details
+        assert details["comparison_result"] == False
         
         # Test generic exception
         self.mock_agent.side_effect = Exception("Generic error")
         details = self.comparator.get_comparison_details("value1", "value2")
-        self.assertIn("error", details)
-        self.assertEqual(details["comparison_result"], False)
+        assert "error" in details
+        assert details["comparison_result"] == False
 
     def test_model_initialization_error(self):
         """Test error handling during model initialization."""
         with patch("stickler.comparators.llm.Agent") as mock_agent_class:
             mock_agent_class.side_effect = Exception("Model initialization failed")
             
-            with self.assertRaises(Exception):
+            with pytest.raises(Exception):
                 LLMComparator(model="invalid-model")
 
     def test_none_model_initialization_error(self):
         """Test error when model is None during initialization."""
-        with self.assertRaises(ValueError) as context:
+        with pytest.raises(ValueError) as context:
             LLMComparator(model=None)
         
-        self.assertIn("Model must be provided", str(context.exception))
+        assert "Model must be provided" in str(context.value)
 
     def test_rate_limiting_simulation(self):
         """Test handling of rate limiting errors."""
@@ -501,7 +512,7 @@ class TestLLMComparator:
         throttling_error = ClientError(error_response, 'InvokeModel')
         self.mock_agent.side_effect = throttling_error
         
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             self.comparator.compare("value1", "value2")
 
     def test_service_unavailable_simulation(self):
@@ -510,6 +521,5 @@ class TestLLMComparator:
         service_error = ClientError(error_response, 'InvokeModel')
         self.mock_agent.side_effect = service_error
         
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             self.comparator.compare("value1", "value2")
-
