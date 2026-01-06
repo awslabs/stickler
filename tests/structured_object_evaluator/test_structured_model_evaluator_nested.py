@@ -367,11 +367,11 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
 
-        # Direct access to metrics for pet fields (not in "overall")
+        # petId metrics
         self.assertEqual(
             get_metric(cm["fields"]["pets"]["fields"]["petId"], "tp"),
-            1,
-            "Expected 1 true positives",
+            2,
+            "Expected 2 true positives",
         )
         self.assertEqual(
             get_metric(cm["fields"]["pets"]["fields"]["petId"], "fd"),
@@ -394,10 +394,11 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
             "Expected 0 true negatives",
         )
 
+        # name metrics
         self.assertEqual(
             get_metric(cm["fields"]["pets"]["fields"]["name"], "tp"),
-            1,
-            "Expected 1 true positives",
+            2,
+            "Expected 2 true positives",
         )
         self.assertEqual(
             get_metric(cm["fields"]["pets"]["fields"]["name"], "fd"),
@@ -420,11 +421,11 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
             "Expected 0 true negatives",
         )
 
-        # Species metrics - Debug showed TP=0, not 1 as expected
+        # species metrics
         self.assertEqual(
             get_metric(cm["fields"]["pets"]["fields"]["species"], "tp"),
-            0,
-            "Expected 0 true positives",
+            1,
+            "Expected 1 true positives",
         )
         self.assertEqual(
             get_metric(cm["fields"]["pets"]["fields"]["species"], "fd"),
@@ -447,7 +448,7 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
             "Expected 0 true negatives",
         )
 
-        # Overall pets metrics - Using "overall" key for individual pets field performance
+        # Overall pets metrics
         self.assertEqual(
             get_metric(cm["fields"]["pets"], "tp"),
             1,
@@ -548,7 +549,7 @@ class TestVetRecordsMetricsCalculation(unittest.TestCase):
         self.assertAlmostEqual(derived_metrics_alt["cm_precision"], 0.692, places=3)
         self.assertAlmostEqual(
             derived_metrics_alt["cm_recall"], 
-            0.720, 
+            0.750, 
             places=3,
             msg="Recall with FD should be TP/(TP+FN+FD) = 9/(9+1+2) = 9/12 = 0.75"
         )
