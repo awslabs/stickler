@@ -356,7 +356,7 @@ class TestVetRecordsMetricsCalculation:
             get_metric(cm["fields"]["pets"]["fields"]["name"], "tn") == 0
         ), "Expected 0 true negatives"
 
-        # Species metrics - Debug showed TP=0, not 1 as expected
+        # Species metrics
         assert (
             get_metric(cm["fields"]["pets"]["fields"]["species"], "tp") == 1
         ), "Expected 1 true positives"
