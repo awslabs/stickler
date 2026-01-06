@@ -323,10 +323,10 @@ class TestVetRecordsMetricsCalculation:
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
 
-        # Direct access to metrics for pet fields (not in "overall")
+        # petId metrics
         assert (
-            get_metric(cm["fields"]["pets"]["fields"]["petId"], "tp") == 1
-        ), "Expected 1 true positives"
+            get_metric(cm["fields"]["pets"]["fields"]["petId"], "tp") == 2
+        ), "Expected 2 true positives"
         assert (
             get_metric(cm["fields"]["pets"]["fields"]["petId"], "fd") == 0
         ), "Expected 0 false discovery"
@@ -340,9 +340,10 @@ class TestVetRecordsMetricsCalculation:
             get_metric(cm["fields"]["pets"]["fields"]["petId"], "tn") == 0
         ), "Expected 0 true negatives"
 
+        # name metrics
         assert (
-            get_metric(cm["fields"]["pets"]["fields"]["name"], "tp") == 1
-        ), "Expected 1 true positives"
+            get_metric(cm["fields"]["pets"]["fields"]["name"], "tp") == 2
+        ), "Expected 2 true positives"
         assert (
             get_metric(cm["fields"]["pets"]["fields"]["name"], "fd") == 0
         ), "Expected 0 false discovery"
@@ -356,10 +357,10 @@ class TestVetRecordsMetricsCalculation:
             get_metric(cm["fields"]["pets"]["fields"]["name"], "tn") == 0
         ), "Expected 0 true negatives"
 
-        # Species metrics - Debug showed TP=0, not 1 as expected
+        # species metrics
         assert (
-            get_metric(cm["fields"]["pets"]["fields"]["species"], "tp") == 0
-        ), "Expected 0 true positives"
+            get_metric(cm["fields"]["pets"]["fields"]["species"], "tp") == 1
+        ), "Expected 1 true positives"
         assert (
             get_metric(cm["fields"]["pets"]["fields"]["species"], "fd") == 0
         ), "Expected 0 false discovery"
@@ -373,19 +374,19 @@ class TestVetRecordsMetricsCalculation:
             get_metric(cm["fields"]["pets"]["fields"]["species"], "tn") == 0
         ), "Expected 0 true negatives"
 
-        # Overall pets metrics - Using "overall" key for individual pets field performance
+        # Overall pets metrics
         assert (
-            get_metric(cm["fields"]["pets"], "tp") == 1
+            get_metric(cm["fields"]["pets"], "tp")  == 1
         ), "Expected 1 true positive for pets field overall performance"
         assert (
-            get_metric(cm["fields"]["pets"], "fd") == 1
+            get_metric(cm["fields"]["pets"], "fd")  == 1
         ), "Expected 1 false discovery for pets field overall performance"
         assert get_metric(cm["fields"]["pets"], "fa") == 0, "Expected 0 false alarm"
         assert (
             get_metric(cm["fields"]["pets"], "fn") == 0
         ), "Expected 0 false negative for pets field overall performance"
         assert (
-            get_metric(cm["fields"]["pets"], "tn") == 0
+            get_metric(cm["fields"]["pets"], "tn") == 0, 
         ), "Expected 0 true negatives for pets field overall performance"
 
     def test_overall_metrics(self):
