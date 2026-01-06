@@ -308,7 +308,7 @@ class TestEcommerceOrdersAggregateComprehensive:
 
         # gt_json["Customers"][1]["Is_Premium_Member"], pred_json["Customers"][0]["Is_Premium_Member"]:  1 true positive
         # gt_json["Customers"][3]["Is_Premium_Member"], pred_json["Customers"][1]["Is_Premium_Member"]:  1 true positive
-        # gt_json["Customers"][0]["Is_Premium_Member"], gt_json["Customers"][2]["Is_Premium_Member"]: Nothing true about non matches
+        # gt_json["Customers"][0]["Is_Premium_Member"], gt_json["Customers"][2]["Is_Premium_Member"]: Non matches do not contribute to true negatives
         assert cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["tp"] == 2, f'Expected Is_Premium_Member aggregate TP=2, got {cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["tp"]}'
         assert cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fa"] == 0, f'Expected Is_Premium_Member aggregate FA=0, got {cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fa"]}'
         assert cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fd"] == 0, f'Expected Is_Premium_Member aggregate FD=0, got {cm["fields"]["Customers"]["fields"]["Is_Premium_Member"]["aggregate"]["fd"]}'
@@ -335,7 +335,7 @@ class TestEcommerceOrdersAggregateComprehensive:
 
         # gt_json["Customers"][1]["Loyalty_Status"], pred_json["Customers"][0]["Loyalty_Status"]:  1 true positive (object level) or 2 true positive (aggregate level)
         # gt_json["Customers"][3]["Loyalty_Status"], pred_json["Customers"][1]["Loyalty_Status"]:  1 true negative
-        # gt_json["Customers"][0]["Loyalty_Status"], gt_json["Customers"][2]["Loyalty_Status"]: Nothing true about non matches
+        # gt_json["Customers"][0]["Loyalty_Status"], gt_json["Customers"][2]["Loyalty_Status"]: Non matches do not contribute to true negatives
         assert cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["tp"] == 2, f'Expected Loyalty_Status aggregate TP=2, got {cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["tp"]}'
         assert cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fa"] == 0, f'Expected Loyalty_Status aggregate FA=0, got {cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fa"]}'
         assert cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fd"] == 0, f'Expected Loyalty_Status aggregate FD=0, got {cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fd"]}'
@@ -349,7 +349,7 @@ class TestEcommerceOrdersAggregateComprehensive:
         assert cm["fields"]["Customers"]["overall"]["tn"] == 0, f'Expected Customers overall TN=0, got {cm["fields"]["Customers"]["overall"]["tn"]}'
         assert cm["fields"]["Customers"]["overall"]["fn"] == 2, f'Expected Customers overall FN=2, got {cm["fields"]["Customers"]["overall"]["fn"]}'
 
-        # at the field level within all matched entries (2 matched entries are considered for the sub field comparison, 1 unmatched entries are contributing to the fn or tn)     
+        # at the field level all entries, either matched or unmatched, are considered for the sub field comparison   
         assert cm["fields"]["Customers"]["aggregate"]["tp"] == 12, f'Expected Customers aggregate TP=12, got {cm["fields"]["Customers"]["aggregate"]["tp"]}'
         assert cm["fields"]["Customers"]["aggregate"]["fa"] == 0, f'Expected Customers aggregate FA=0, got {cm["fields"]["Customers"]["aggregate"]["fa"]}'
         assert cm["fields"]["Customers"]["aggregate"]["fd"] == 2, f'Expected Customers aggregate FD=2, got {cm["fields"]["Customers"]["aggregate"]["fd"]}'
@@ -464,7 +464,8 @@ class TestEcommerceOrdersAggregateComprehensive:
         assert aggregate["tp"] == 20, f'Expected TP=20, got {aggregate["tp"]}'
         assert aggregate["fa"] == 2, f'Expected FA=2, got {aggregate["fa"]}'
         assert aggregate["fd"] == 5, f'Expected FD=5, got {aggregate["fd"]}'
-        assert aggregate["tn"] == 4, f'Expected TN=4, got {aggregate["tn"]}'
+        # 4 TN: Order_Info.Order_Status.Category_Code, Order_Info.Store_Location, Customers.Loyalty_Status, Discounts.Discount_Code
+        assert aggregate["tn"] == 4, f'Expected TN=4, got {aggregate["tn"]}' 
         assert aggregate["fn"] == 10, f'Expected FN=10, got {aggregate["fn"]}'
         
     def test_hungarian_matching_verification(self):
