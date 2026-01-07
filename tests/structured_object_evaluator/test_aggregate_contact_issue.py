@@ -80,7 +80,6 @@ def test_contact_object_level_metrics_not_rollup():
     expected_contact_fa = 0  # No false alarms (both sides have 1 contact)
     expected_contact_fp = 1  # fp = fa + fd = 0 + 1 = 1
     expected_contact_tp = 0  # No true positives
-    expected_contact_tn = 0  # No true negatives
     expected_contact_fn = 0  # No false negatives
 
     # CURRENT BUG: These will fail because it's rolling up nested field metrics (fd=1, fa=1, fp=2)

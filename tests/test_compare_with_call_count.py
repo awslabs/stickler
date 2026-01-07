@@ -24,7 +24,7 @@ def test_compare_with_single_call_per_field():
         LevenshteinComparator, "compare", wraps=LevenshteinComparator().compare
     ) as mock_compare:
         # Perform comparison
-        result = gt.compare_with(pred)
+        gt.compare_with(pred)
 
         # Verify the comparator was called exactly twice (once for each field)
         assert mock_compare.call_count == 2, (
@@ -61,7 +61,7 @@ def test_compare_with_confusion_matrix_no_extra_calls():
         LevenshteinComparator, "compare", wraps=LevenshteinComparator().compare
     ) as mock_compare:
         # Perform comparison with confusion matrix enabled
-        result = gt.compare_with(pred, include_confusion_matrix=True)
+        gt.compare_with(pred, include_confusion_matrix=True)
 
         # Verify the comparator was still called exactly twice
         assert mock_compare.call_count == 2, (
@@ -87,7 +87,7 @@ def test_compare_with_all_options_no_extra_calls():
         LevenshteinComparator, "compare", wraps=LevenshteinComparator().compare
     ) as mock_compare:
         # Perform comparison with all options enabled
-        result = gt.compare_with(
+        gt.compare_with(
             pred,
             include_confusion_matrix=True,
             document_non_matches=True,
@@ -120,13 +120,13 @@ def test_multiple_compare_with_calls_increment_correctly():
         LevenshteinComparator, "compare", wraps=LevenshteinComparator().compare
     ) as mock_compare:
         # First comparison
-        result1 = gt.compare_with(pred1)
+        gt.compare_with(pred1)
         assert mock_compare.call_count == 2, (
             f"After first comparison: {mock_compare.call_count} calls, expected 2"
         )
 
         # Second comparison should add 2 more calls
-        result2 = gt.compare_with(pred2)
+        gt.compare_with(pred2)
         assert mock_compare.call_count == 4, (
             f"After second comparison: {mock_compare.call_count} calls, expected 4"
         )
@@ -154,7 +154,7 @@ def test_nested_model_comparisons_single_call():
         LevenshteinComparator, "compare", wraps=LevenshteinComparator().compare
     ) as mock_compare:
         # Perform comparison
-        result = gt.compare_with(pred)
+        gt.compare_with(pred)
 
         # Should have calls for:
         # 1. Person.name comparison
@@ -186,7 +186,7 @@ def test_list_field_comparisons_reasonable_calls():
         LevenshteinComparator, "compare", wraps=LevenshteinComparator().compare
     ) as mock_compare:
         # Perform comparison
-        result = gt.compare_with(pred)
+        gt.compare_with(pred)
 
         # Should have calls for:
         # 1. name field comparison

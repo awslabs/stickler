@@ -70,7 +70,7 @@ def test_performance_simple_comparison():
     iterations = 50
     start = time.time()
     for _ in range(iterations):
-        result = gt.compare_with(pred, include_confusion_matrix=True)
+        gt.compare_with(pred, include_confusion_matrix=True)
     elapsed = time.time() - start
     
     avg_time = elapsed / iterations
@@ -131,7 +131,7 @@ def test_performance_nested_comparison():
     iterations = 50
     start = time.time()
     for _ in range(iterations):
-        result = gt.compare_with(pred, include_confusion_matrix=True, document_non_matches=True)
+        gt.compare_with(pred, include_confusion_matrix=True, document_non_matches=True)
     elapsed = time.time() - start
     
     avg_time = elapsed / iterations
@@ -177,7 +177,7 @@ def test_performance_large_list_comparison():
     iterations = 20
     start = time.time()
     for _ in range(iterations):
-        result = gt.compare_with(pred, include_confusion_matrix=True)
+        gt.compare_with(pred, include_confusion_matrix=True)
     elapsed = time.time() - start
     
     avg_time = elapsed / iterations

@@ -372,6 +372,6 @@ if __name__ == "__main__":
     test_case = TestNestedObjectNotebookCase()
     gt = create_ground_truth_order()
 
-    test_case.test_missing_item_case_detailed(gt, evaluator)
-    test_case.test_all_cases_comparison(gt, evaluator)
+    test_case.test_missing_item_case_detailed(gt)
+    test_case.test_all_cases_comparison(gt)
     test_case.test_products_list_evaluation(gt)

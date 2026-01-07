@@ -108,7 +108,7 @@ def test_missing_fields_handling():
     assert pred.vendor_name is None
 
     # But all_fields_matched should be False due to missing fields
-    assert comparison["all_fields_matched"] == False
+    assert not comparison["all_fields_matched"]
 
     # Overall score should be calculated based on fields present in both models
     # with weights taken into account
@@ -163,7 +163,7 @@ def test_extra_fields_handling():
 
     # Overall score should be perfect
     assert comparison["overall_score"] == 1.0
-    assert comparison["all_fields_matched"] == True
+    assert comparison["all_fields_matched"]
 
 
 def test_compare_json_utility():

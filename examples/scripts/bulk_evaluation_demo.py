@@ -249,7 +249,7 @@ def demo_evaluation_with_output():
         evaluator.update(gt_doc, pred_doc, doc_id)
 
     # Get results and save metrics
-    result = evaluator.compute()
+    evaluator.compute()
     evaluator.save_metrics(metrics_file)
 
     print("\n💾 Output Files Created:")
@@ -341,7 +341,7 @@ def main():
     print("=" * 60)
 
     # Demo 1: Basic bulk evaluation
-    evaluator = demo_basic_bulk_evaluation()
+    demo_basic_bulk_evaluation()
 
     # Demo 2: Batch processing
     demo_batch_processing()

@@ -356,7 +356,7 @@ def test_nested_structured_models():
 
     # Create test nested models
     details1 = SimpleModel(name="Details 1", count=1, description="First details")
-    details2 = SimpleModel(name="Details 2", count=2, description=None)
+    SimpleModel(name="Details 2", count=2, description=None)
 
     # Similar but not exact nested model
     details1_similar = SimpleModel(name="Details 1", count=1, description="First")

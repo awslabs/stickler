@@ -242,7 +242,7 @@ class TestComparableFieldFix:
         assert isinstance(config.comparator, CustomTestComparator)
         assert config.threshold == 0.75
         assert config.weight == 2.5
-        assert config.clip_under_threshold == False
+        assert not config.clip_under_threshold
 
     def test_multiple_custom_comparators(self):
         """Test that multiple different custom comparators can coexist."""

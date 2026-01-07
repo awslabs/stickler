@@ -118,7 +118,7 @@ class TestScoringConsistencyFix:
 
         # Get individual threshold-applied scores
         self.test_individual_invoice_scores_with_thresholds()
-        individual_scores, individual_avg = (
+        _individual_scores, individual_avg = (
             self.individual_scores,
             self.expected_individual_avg,
         )
@@ -172,7 +172,7 @@ class TestScoringConsistencyFix:
 
         # Get the individual scores (what users expect)
         self.test_individual_invoice_scores_with_thresholds()
-        individual_scores, individual_avg = (
+        _individual_scores, individual_avg = (
             self.individual_scores,
             self.expected_individual_avg,
         )

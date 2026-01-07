@@ -170,7 +170,7 @@ class TestNestedConfusionMatrixAggregation:
 
         # 5. Calculate the expected counts for each field type across all line items
         # We can use the line_items aggregate metrics to verify aggregation is working correctly
-        line_item_metrics = cm["fields"]["line_items"]["aggregate"]
+        cm["fields"]["line_items"]["aggregate"]
 
         # 6. Verify each field has correct counts based on our test data
         # Actual aggregated counts based on implementation behavior:

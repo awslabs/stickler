@@ -9,5 +9,7 @@ from .visualization_engine import VisualizationEngine
 
 __all__ = [
     "EvaluationHTMLReporter",
-    "ReportConfig"
+    "ReportConfig",
+    "SectionGenerator",
+    "VisualizationEngine"
 ]

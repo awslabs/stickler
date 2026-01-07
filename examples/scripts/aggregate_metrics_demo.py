@@ -212,7 +212,7 @@ def demonstrate_deprecation_warning():
         warnings.simplefilter("always")
 
         # This will trigger a deprecation warning
-        field = ComparableField(aggregate=True, comparator=ExactComparator())
+        ComparableField(aggregate=True, comparator=ExactComparator())
 
         if w:
             print(f"   Warning: {w[0].message}")

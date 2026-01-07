@@ -405,7 +405,7 @@ class TestFieldComparisonCollection:
         
         # Should have comparisons for the items in model2 (false alarms)
         tag_comparisons = [fc for fc in field_comparisons if fc["expected_key"].startswith("tags[")]
-        score_comparisons = [fc for fc in field_comparisons if fc["expected_key"].startswith("scores[")]
+        [fc for fc in field_comparisons if fc["expected_key"].startswith("scores[")]
         
         # Should have false alarm entries
         if tag_comparisons:
@@ -430,7 +430,7 @@ class TestFieldComparisonCollection:
         
         # Should have comparisons for all items
         tag_comparisons = [fc for fc in field_comparisons if fc["expected_key"].startswith("tags[")]
-        score_comparisons = [fc for fc in field_comparisons if fc["expected_key"].startswith("scores[")]
+        [fc for fc in field_comparisons if fc["expected_key"].startswith("scores[")]
         
         # Should have matches and non-matches
         tag_matches = [fc for fc in tag_comparisons if fc["match"]]

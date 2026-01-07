@@ -124,7 +124,7 @@ def test_case_sensitivity():
     # Get scores for each field
     results = gt.compare_with(pred, evaluator_format=True)
 
-    strict_score = results["fields"]["strict_field"]["anls_score"]
+    results["fields"]["strict_field"]["anls_score"]
     standard_score = results["fields"]["standard_field"]["anls_score"]
 
     # Standard LevenshteinComparator normalizes to lowercase, so score should be 1.0
@@ -239,7 +239,7 @@ def test_fuzzy_comparator_variants():
     )
 
     # Get scores
-    results = gt.compare_with(pred, evaluator_format=True)
+    gt.compare_with(pred, evaluator_format=True)
 
     # We only care about the relative performance for this test
     # Test directly against FuzzyComparator methods to validate differences
@@ -304,7 +304,7 @@ def test_threshold_effects():
     raw_similarity = LevenshteinComparator().compare("Hello World", "Hello Wrld")
 
     # Get the scores from the evaluator
-    strict_score = results["fields"]["strict"]["anls_score"]
+    results["fields"]["strict"]["anls_score"]
     moderate_score = results["fields"]["moderate"]["anls_score"]
     lenient_score = results["fields"]["lenient"]["anls_score"]
 

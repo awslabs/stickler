@@ -5,9 +5,14 @@ JSON processing, and schema generation for StructuredModel instances.
 """
 
 import inspect
-from typing import Any, Dict, Union, get_args, get_origin
+from typing import TYPE_CHECKING, Any, Dict, Union, get_args, get_origin
 
 from stickler.comparators.levenshtein import LevenshteinComparator
+
+if TYPE_CHECKING:
+    from stickler.structured_object_evaluator.models.comparison_info import (
+        ComparableFieldConfig,
+    )
 from stickler.comparators.structured import StructuredModelComparator
 
 

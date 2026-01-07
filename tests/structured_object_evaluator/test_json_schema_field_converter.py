@@ -39,10 +39,10 @@ class TestConvertPropertiesToFields:
         assert "active" in field_definitions
 
         # Check types
-        assert field_definitions["name"][0] == str
-        assert field_definitions["age"][0] == int
-        assert field_definitions["price"][0] == float
-        assert field_definitions["active"][0] == bool
+        assert field_definitions["name"][0] is str
+        assert field_definitions["age"][0] is int
+        assert field_definitions["price"][0] is float
+        assert field_definitions["active"][0] is bool
 
         # Check required vs optional (via is_required)
         name_field = field_definitions["name"][1]
@@ -195,12 +195,12 @@ class TestConvertPropertiesToFields:
 
         # Verify they are List types
         assert hasattr(tags_type, "__origin__")
-        assert tags_type.__origin__ == list
-        assert tags_type.__args__[0] == str
+        assert tags_type.__origin__ is list
+        assert tags_type.__args__[0] is str
 
         assert hasattr(scores_type, "__origin__")
-        assert scores_type.__origin__ == list
-        assert scores_type.__args__[0] == float
+        assert scores_type.__origin__ is list
+        assert scores_type.__args__[0] is float
 
     def test_convert_empty_properties(self):
         """Test converting empty properties dictionary."""
@@ -474,7 +474,7 @@ class TestRefResolution:
         
         # Verify it's a List type
         assert hasattr(items_type, "__origin__")
-        assert items_type.__origin__ == list
+        assert items_type.__origin__ is list
         
         # Verify element is a StructuredModel subclass
         from stickler.structured_object_evaluator.models.structured_model import (
@@ -630,7 +630,7 @@ class TestArrayHandling:
         
         # Verify it's a List type
         assert hasattr(employees_type, "__origin__")
-        assert employees_type.__origin__ == list
+        assert employees_type.__origin__ is list
         
         # Verify element is a StructuredModel subclass
         from stickler.structured_object_evaluator.models.structured_model import (
@@ -693,10 +693,10 @@ class TestArrayHandling:
         )
 
         # Check all array types
-        assert field_definitions["strings"][0].__args__[0] == str
-        assert field_definitions["integers"][0].__args__[0] == int
-        assert field_definitions["numbers"][0].__args__[0] == float
-        assert field_definitions["booleans"][0].__args__[0] == bool
+        assert field_definitions["strings"][0].__args__[0] is str
+        assert field_definitions["integers"][0].__args__[0] is int
+        assert field_definitions["numbers"][0].__args__[0] is float
+        assert field_definitions["booleans"][0].__args__[0] is bool
 
 
 class TestErrorHandling:

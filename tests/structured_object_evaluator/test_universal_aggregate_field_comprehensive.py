@@ -163,7 +163,7 @@ class TestUniversalAggregateField:
             warnings.simplefilter("always")
 
             # This should trigger a deprecation warning
-            field = ComparableField(aggregate=True)
+            ComparableField(aggregate=True)
 
             # Verify warning was triggered
             assert len(w) == 1

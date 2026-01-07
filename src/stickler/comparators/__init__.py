@@ -16,7 +16,7 @@ from stickler.comparators.utils import generate_bedrock_embedding
 
 # Import BERTComparator if evaluate is available
 try:
-    from stickler.comparators.bert import BERTComparator
+    from stickler.comparators.bert import BERTComparator  # noqa: F401
 
     BERT_AVAILABLE = True
 except ImportError:
@@ -24,7 +24,11 @@ except ImportError:
 
 # Import FuzzyComparator and Fuzz alias only if rapidfuzz is available
 try:
-    from stickler.comparators.fuzzy import RAPIDFUZZ_AVAILABLE, Fuzz, FuzzyComparator
+    from stickler.comparators.fuzzy import (  # noqa: F401
+        RAPIDFUZZ_AVAILABLE,
+        Fuzz,
+        FuzzyComparator,
+    )
 except ImportError:
     RAPIDFUZZ_AVAILABLE = False
 

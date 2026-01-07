@@ -15,7 +15,7 @@ except ImportError:
     FUZZY_AVAILABLE = False
 
 try:
-    from stickler.comparators.semantic import SemanticComparator
+    from stickler.comparators.semantic import SemanticComparator  # noqa: F401
 
     SEMANTIC_AVAILABLE = True
 except ImportError:
