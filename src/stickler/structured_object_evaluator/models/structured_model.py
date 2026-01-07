@@ -1112,3 +1112,159 @@ class StructuredModel(BaseModel):
                     field_props["x-comparison"] = temp_schema["x-comparison"]
 
         return schema
+    
+    @classmethod
+    def to_json_schema(cls) -> Dict[str, Any]:
+        """Export model as JSON Schema with x-aws-stickler-* extensions.
+        
+        Creates a JSON Schema document compatible with from_json_schema() for
+        round-trip serialization. Extracts comparison metadata from fields and
+        formats them as x-aws-stickler-* extensions.
+        
+        Returns:
+            JSON Schema dict with x-aws-stickler-* extensions
+            
+        Example:
+            >>> class Product(StructuredModel):
+            ...     name: str = ComparableField(threshold=0.8, weight=2.0)
+            ...     price: float = ComparableField(threshold=0.95)
+            >>> schema = Product.to_json_schema()
+            >>> ReconstructedProduct = StructuredModel.from_json_schema(schema)
+            >>> # ReconstructedProduct has identical comparison behavior
+        """
+        from .json_schema_field_converter import JsonSchemaFieldConverter
+        from typing import get_origin, get_args
+        
+        # Create converter for export operations
+        converter = JsonSchemaFieldConverter(schema={}, field_path="")
+        
+        schema = {
+            "type": "object",
+            "x-aws-stickler-model-name": cls.__name__,
+            "properties": {},
+            "required": []
+        }
+        
+        # Add match_threshold if available
+        if hasattr(cls, "_match_threshold"):
+            schema["x-aws-stickler-match-threshold"] = cls._match_threshold
+        
+        for field_name, field_info in cls.model_fields.items():
+            # Skip extra_fields to avoid circular serialization issues
+            if field_name == "extra_fields":
+                continue
+            
+            field_type = field_info.annotation
+            
+            # Check if nested StructuredModel - recursively export to maintain full configuration
+            if cls._is_structured_model_type(field_type):
+                property_schema = field_type.to_json_schema()
+            elif get_origin(field_type) is list:
+                # Handle List[StructuredModel] or List[primitive]
+                element_type = get_args(field_type)[0]
+                if cls._is_structured_model_type(element_type):
+                    # List of StructuredModels - recursively export element schema
+                    property_schema = {
+                        "type": "array",
+                        "items": element_type.to_json_schema()
+                    }
+                else:
+                    # Primitive list - use converter
+                    property_schema = converter.field_to_property(field_type, field_info)
+            else:
+                # Primitive type - use converter for consistent formatting
+                property_schema = converter.field_to_property(field_type, field_info)
+            
+            schema["properties"][field_name] = property_schema
+            
+            # Add to required if field is required (Pydantic uses is_required())
+            if field_info.is_required():
+                schema["required"].append(field_name)
+        
+        return schema
+    
+    @staticmethod
+    def _is_structured_model_type(field_type: Type) -> bool:
+        """Check if type is a StructuredModel subclass.
+        
+        Used to identify nested StructuredModels that need recursive export.
+        
+        Args:
+            field_type: Type annotation to check
+            
+        Returns:
+            True if field_type is a StructuredModel subclass
+        """
+        try:
+            return isinstance(field_type, type) and issubclass(field_type, StructuredModel)
+        except TypeError:
+            return False
+    
+    @classmethod
+    def to_stickler_config(cls) -> Dict[str, Any]:
+        """Export model as custom Stickler JSON configuration.
+        
+        Creates a configuration dict compatible with model_from_json() for
+        round-trip serialization. Extracts comparison metadata and formats
+        them in the custom Stickler configuration format.
+        
+        Returns:
+            Stickler config dict with model_name and fields
+            
+        Example:
+            >>> class Product(StructuredModel):
+            ...     name: str = ComparableField(threshold=0.8, weight=2.0)
+            ...     price: float = ComparableField(threshold=0.95)
+            >>> config = Product.to_stickler_config()
+            >>> ReconstructedProduct = StructuredModel.model_from_json(config)
+            >>> # ReconstructedProduct has identical comparison behavior
+        """
+        from .json_schema_field_converter import JsonSchemaFieldConverter
+        from typing import get_origin, get_args
+        
+        # Create converter for export operations
+        converter = JsonSchemaFieldConverter(schema={}, field_path="")
+        
+        config = {
+            "model_name": cls.__name__,
+            "fields": {}
+        }
+        
+        # Add match_threshold if available
+        if hasattr(cls, "_match_threshold"):
+            config["match_threshold"] = cls._match_threshold
+        
+        for field_name, field_info in cls.model_fields.items():
+            # Skip extra_fields to avoid circular serialization issues
+            if field_name == "extra_fields":
+                continue
+            
+            field_type = field_info.annotation
+            
+            # Check if nested StructuredModel - use "structured_model" type
+            if cls._is_structured_model_type(field_type):
+                field_config = {
+                    "type": "structured_model",
+                    # Recursively export nested model's fields
+                    "fields": field_type.to_stickler_config()["fields"]
+                }
+            elif get_origin(field_type) is list:
+                # Handle List[StructuredModel] or List[primitive]
+                element_type = get_args(field_type)[0]
+                if cls._is_structured_model_type(element_type):
+                    # List of StructuredModels - use "list_structured_model" type
+                    field_config = {
+                        "type": "list_structured_model",
+                        # Recursively export element model's fields
+                        "fields": element_type.to_stickler_config()["fields"]
+                    }
+                else:
+                    # Primitive list - use converter
+                    field_config = converter.field_to_stickler_config(field_type, field_info)
+            else:
+                # Primitive type - use converter for consistent formatting
+                field_config = converter.field_to_stickler_config(field_type, field_info)
+            
+            config["fields"][field_name] = field_config
+        
+        return config
