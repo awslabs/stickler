@@ -38,7 +38,3 @@ lint-cicd:
 		exit 1; \
 	fi
 	@echo -e "$(GREEN)All code quality checks passed!$(NC)"
-
-# Run unit tests (delegates to tests/Makefile)
-test:
-	$(MAKE) test -C ./tests
