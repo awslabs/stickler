@@ -4,11 +4,12 @@ This module provides utilities for handling field configuration, type checking,
 JSON processing, and schema generation for StructuredModel instances.
 """
 
-from typing import Any, Dict, Union, get_origin, get_args
 import inspect
+from typing import Any, Dict, Union, get_args, get_origin
 
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.structured import StructuredModelComparator
+
 
 class ConfigurationHelper:
     """Helper class for StructuredModel configuration and schema operations."""

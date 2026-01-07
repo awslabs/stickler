@@ -1,9 +1,10 @@
 import json
 import socket
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from botocore.exceptions import NoCredentialsError, ClientError
+import pytest
+from botocore.exceptions import ClientError, NoCredentialsError
+
 from stickler.comparators import BaseComparator, LLMComparator
 
 

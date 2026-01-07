@@ -5,12 +5,14 @@ at the field level and object level for both parent objects and nested child obj
 using the structured_object_evaluator.
 """
 
-import pytest
 from typing import List
 
-from stickler.structured_object_evaluator import StructuredModel, ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.structured_object_evaluator import anls_score
+from stickler.structured_object_evaluator import (
+    ComparableField,
+    StructuredModel,
+    anls_score,
+)
 
 
 # Define the models for the test

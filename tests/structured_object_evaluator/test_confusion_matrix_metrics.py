@@ -6,12 +6,11 @@ Tests cover all classification cases (TP, FP, TN, FN, FD) for different field ty
 3. Nested structured models
 """
 
-import pytest
-from typing import Dict, Any, List, Optional
+from typing import List, Optional
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
 # Test Models

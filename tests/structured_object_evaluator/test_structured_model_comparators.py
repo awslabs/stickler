@@ -7,10 +7,10 @@ for different fields and produce different results accordingly.
 from typing import Any
 
 from stickler.comparators.base import BaseComparator
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.fuzzy import FuzzyComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
 # Create a custom comparator for special handling

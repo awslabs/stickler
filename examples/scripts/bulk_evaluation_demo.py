@@ -8,16 +8,17 @@ Usage:
     python bulk_evaluation_demo.py
 """
 
-from typing import List
-import time
 import json
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+import random
+import time
+from typing import List
+
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
 )
-import random
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
 # Define a simple document model for demonstration

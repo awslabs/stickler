@@ -6,15 +6,14 @@ This test suite verifies that the ComparableField fix properly preserves
 custom comparators and doesn't fall back silently to LevenshteinComparator.
 """
 
-import pytest
-from src.stickler.structured_object_evaluator import StructuredModel, ComparableField
+from src.stickler.structured_object_evaluator import ComparableField, StructuredModel
 from src.stickler.structured_object_evaluator.models.configuration_helper import (
     ConfigurationHelper,
 )
-from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.comparators.exact import ExactComparator
-from stickler.comparators.numeric import NumericComparator
 from stickler.comparators.base import BaseComparator
+from stickler.comparators.exact import ExactComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.comparators.numeric import NumericComparator
 
 
 class CustomTestComparator(BaseComparator):

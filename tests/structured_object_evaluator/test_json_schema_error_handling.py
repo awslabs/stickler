@@ -5,10 +5,8 @@ including validation of x-aws-stickler-* extensions and field path tracking.
 """
 
 import pytest
+
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.json_schema_field_converter import (
-    JsonSchemaFieldConverter,
-)
 
 
 class TestThresholdValidation:

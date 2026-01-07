@@ -2,11 +2,12 @@
 
 """Test Phase 1 refactor functionality for StructuredModel enhanced compare_with method."""
 
-from typing import Optional, List
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.comparators.levenshtein import LevenshteinComparator
+from typing import List, Optional
+
 from stickler.comparators.exact import ExactComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
 class Phase1TestModel(StructuredModel):

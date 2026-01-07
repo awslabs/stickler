@@ -6,17 +6,16 @@ an Invoice, we only have one confusion matrix entry per field type (like "descri
 with aggregated counts across all instances, rather than separate entries for each instance.
 """
 
-import pytest
-import sys
 import os
-from typing import List, Dict, Any
+import sys
+from typing import Any, Dict, List
 
 # Add the project root directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
 class LineItem(StructuredModel):

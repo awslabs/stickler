@@ -1,17 +1,16 @@
 """Integration tests for the structured object evaluator."""
 
-import pytest
 from typing import List
 
 from pydantic import Field
 
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator import (
-    StructuredModel,
     ComparableField,
+    StructuredModel,
     anls_score,
-    compare_structured_models,
     compare_json,
+    compare_structured_models,
 )
 
 

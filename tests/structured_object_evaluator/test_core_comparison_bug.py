@@ -7,12 +7,13 @@ This is a CRITICAL issue affecting the core functionality of the library.
 """
 
 from typing import List
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+
 from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.structured_object_evaluator.models.structured_list_comparator import (
     StructuredListComparator,
 )
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
 class Invoice(StructuredModel):

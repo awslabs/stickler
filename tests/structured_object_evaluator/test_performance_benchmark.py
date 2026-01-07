@@ -19,8 +19,8 @@ CI Performance (GitHub Actions):
 """
 import time
 from typing import List
+
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.comparators import ExactComparator
 
 
 class Address(StructuredModel):

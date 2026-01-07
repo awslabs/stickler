@@ -9,17 +9,14 @@ which provides detailed field-level comparison information including:
 - Integration with other flags (include_confusion_matrix, document_non_matches)
 """
 
-import pytest
 from typing import List, Optional
 
-from pydantic import Field
-
+from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.numeric import NumericComparator
-from stickler.comparators.exact import ExactComparator
 from stickler.structured_object_evaluator import (
-    StructuredModel,
     ComparableField,
+    StructuredModel,
 )
 
 

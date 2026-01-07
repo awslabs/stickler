@@ -1,16 +1,14 @@
 """Integration tests for JsonSchemaFieldConverter.convert_properties_to_fields()."""
 
-import pytest
-from typing import List
-from pydantic import Field
-from pydantic_core import PydanticUndefined
 
+import pytest
+
+from stickler.comparators.exact import ExactComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.comparators.numeric import NumericComparator
 from stickler.structured_object_evaluator.models.json_schema_field_converter import (
     JsonSchemaFieldConverter,
 )
-from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.comparators.numeric import NumericComparator
-from stickler.comparators.exact import ExactComparator
 
 
 class TestConvertPropertiesToFields:
@@ -358,7 +356,9 @@ class TestRefResolution:
         home_type = field_definitions["home"][0]
         
         # Verify it's a StructuredModel subclass
-        from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+        from stickler.structured_object_evaluator.models.structured_model import (
+            StructuredModel,
+        )
         assert issubclass(home_type, StructuredModel)
 
     def test_resolve_ref_from_defs(self):
@@ -390,7 +390,9 @@ class TestRefResolution:
         contact_type = field_definitions["contact"][0]
         
         # Verify it's a StructuredModel subclass
-        from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+        from stickler.structured_object_evaluator.models.structured_model import (
+            StructuredModel,
+        )
         assert issubclass(contact_type, StructuredModel)
 
     def test_resolve_ref_not_found_in_definitions(self):
@@ -475,7 +477,9 @@ class TestRefResolution:
         assert items_type.__origin__ == list
         
         # Verify element is a StructuredModel subclass
-        from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+        from stickler.structured_object_evaluator.models.structured_model import (
+            StructuredModel,
+        )
         assert issubclass(items_type.__args__[0], StructuredModel)
 
 
@@ -509,7 +513,9 @@ class TestNestedObjectHandling:
         person_type = field_definitions["person"][0]
         
         # Verify it's a StructuredModel subclass
-        from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+        from stickler.structured_object_evaluator.models.structured_model import (
+            StructuredModel,
+        )
         assert issubclass(person_type, StructuredModel)
         
         # Verify nested model has correct fields
@@ -581,7 +587,9 @@ class TestNestedObjectHandling:
         assert "company" in field_definitions
         company_type = field_definitions["company"][0]
         
-        from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+        from stickler.structured_object_evaluator.models.structured_model import (
+            StructuredModel,
+        )
         assert issubclass(company_type, StructuredModel)
         
         # Verify nested fields exist
@@ -625,7 +633,9 @@ class TestArrayHandling:
         assert employees_type.__origin__ == list
         
         # Verify element is a StructuredModel subclass
-        from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+        from stickler.structured_object_evaluator.models.structured_model import (
+            StructuredModel,
+        )
         element_type = employees_type.__args__[0]
         assert issubclass(element_type, StructuredModel)
         

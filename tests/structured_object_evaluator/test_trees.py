@@ -2,15 +2,15 @@
 
 import pytest
 
+from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator.trees import (
-    ANLSTree,
     ANLSDict,
     ANLSLeaf,
     ANLSList,
     ANLSNone,
+    ANLSTree,
     ANLSTuple,
 )
-from stickler.comparators.levenshtein import LevenshteinComparator
 
 
 class TestANLSTree:

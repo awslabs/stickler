@@ -2,10 +2,10 @@
 Tests for VisualizationEngine class.
 """
 
-import pytest
-from unittest.mock import Mock, patch
-from stickler.reporting.html.visualization_engine import VisualizationEngine
+from unittest.mock import patch
+
 from stickler.reporting.html.report_config import ReportConfig
+from stickler.reporting.html.visualization_engine import VisualizationEngine
 
 
 class TestVisualizationEngine:

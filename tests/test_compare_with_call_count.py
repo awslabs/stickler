@@ -1,7 +1,8 @@
 """Test that compare_with doesn't unnecessarily loop/call comparators multiple times."""
 
 from unittest.mock import patch
-from stickler import StructuredModel, ComparableField
+
+from stickler import ComparableField, StructuredModel
 from stickler.comparators.levenshtein import LevenshteinComparator
 
 
