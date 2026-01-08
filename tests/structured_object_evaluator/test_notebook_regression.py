@@ -7,13 +7,14 @@ This test reproduces the exact scenario from testing_nested_object_results.ipynb
 where the Attributes.name field should have TP=2 but is currently broken.
 """
 
-import pytest
 from typing import List, Optional
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.comparators.levenshtein import LevenshteinComparator
+import pytest
+
 from stickler.comparators.exact import ExactComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
 class Attribute(StructuredModel):

@@ -4,7 +4,6 @@ This module tests the functionality of all comparators in the common module
 to ensure they work correctly and maintain compatibility with existing code.
 """
 
-import pytest
 
 from stickler.comparators import (
     LevenshteinComparator,

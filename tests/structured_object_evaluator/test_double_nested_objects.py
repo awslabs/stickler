@@ -7,12 +7,12 @@ levels of nesting (e.g., A contains B contains C).
 
 from typing import List, Optional
 
+from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator import (
-    StructuredModel,
     ComparableField,
     NonMatchType,
+    StructuredModel,
 )
-from stickler.comparators.levenshtein import LevenshteinComparator
 
 
 # Define test models with double nesting

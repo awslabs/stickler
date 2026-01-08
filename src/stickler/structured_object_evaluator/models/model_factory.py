@@ -6,12 +6,13 @@ to separate model creation concerns from the core StructuredModel class.
 """
 
 from typing import Any, Dict, Type
+
 from pydantic import create_model
 
 from .field_converter import (
     convert_fields_config,
-    validate_fields_config,
     get_global_converter,
+    validate_fields_config,
 )
 
 

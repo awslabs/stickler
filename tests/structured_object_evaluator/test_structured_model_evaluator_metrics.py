@@ -4,13 +4,11 @@ This test verifies that we can calculate precision, recall, F1, and accuracy met
 at the field level and object level for both parent objects and nested child objects.
 """
 
-import pytest
 from typing import List
-from unittest.mock import patch
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparison_info import ComparisonInfo
 from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator.models.comparison_info import ComparisonInfo
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.utils import anls_score
 
 

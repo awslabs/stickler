@@ -7,9 +7,9 @@ Test the three possible leaf conditions for comparison in a structured object.
 
 from typing import List
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
 # 1. Test for a simple value (ComparableField)

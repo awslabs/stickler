@@ -4,29 +4,29 @@ This module provides the StructuredModel class for defining structured data mode
 with comparison configuration and evaluation capabilities.
 """
 
-from pydantic import BaseModel, Field
+import inspect
 from typing import (
     Any,
+    ClassVar,
     Dict,
     List,
     Type,
     Optional,
     Union,
-    ClassVar,
-    get_origin,
     get_args,
+    get_origin,
 )
-import inspect
+
+from pydantic import BaseModel, Field
 
 from stickler.comparators.base import BaseComparator
 from .confidence_helper import ConfidenceHelper
 from .comparable_field import ComparableField
-from .non_match_field import NonMatchField
+from .comparison_helper import ComparisonHelper
+from .configuration_helper import ConfigurationHelper
+from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
-from .configuration_helper import ConfigurationHelper
-from .comparison_helper import ComparisonHelper
-from .evaluator_format_helper import EvaluatorFormatHelper
 
 
 class StructuredModel(BaseModel):

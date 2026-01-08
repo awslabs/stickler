@@ -2,7 +2,8 @@
 Configuration classes for HTML report generation.
 """
 
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
 from pydantic import BaseModel, Field, field_validator
 
 

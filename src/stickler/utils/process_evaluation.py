@@ -1,6 +1,8 @@
-from stickler.utils.markdown_util import MarkdownUtil
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
+
+from stickler.utils.markdown_util import MarkdownUtil
 
 
 class ProcessEvaluation(BaseModel):

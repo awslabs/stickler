@@ -6,13 +6,13 @@ with configurable comparison strategies and detailed evaluation metrics.
 """
 
 from .structured_object_evaluator import (
-    StructuredModel,
     ComparableField,
     NonMatchField,
     NonMatchType,
-    compare_structured_models,
+    StructuredModel,
     anls_score,
     compare_json,
+    compare_structured_models,
 )
 
 __version__ = "0.1.0"

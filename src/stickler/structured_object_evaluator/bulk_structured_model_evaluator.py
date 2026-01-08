@@ -9,11 +9,11 @@ memory-efficient processing of large datasets through accumulation-based evaluat
 """
 
 import gc
-import time
 import json
-from collections import defaultdict
-from typing import List, Dict, Any, Optional, Type, Tuple, Union
 import logging
+import time
+from collections import defaultdict
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.utils.process_evaluation import ProcessEvaluation

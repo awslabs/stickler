@@ -5,7 +5,7 @@ comparison process for StructuredModel instances, coordinating between the
 dispatcher, collectors, and calculators.
 """
 
-from typing import Any, Dict, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel

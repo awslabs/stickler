@@ -6,8 +6,8 @@ to ensure it works correctly and maintains compatibility with existing code.
 
 import pytest
 
-from stickler.comparators import LevenshteinComparator, NumericComparator
 from stickler.algorithms import HungarianMatcher
+from stickler.comparators import LevenshteinComparator, NumericComparator
 
 
 class TestHungarianMatcher:
