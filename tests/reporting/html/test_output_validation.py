@@ -3,12 +3,12 @@ Output validation tests for HTML reporting module.
 Tests HTML structure, content accuracy, and file system validation.
 """
 
-import pytest
 import os
-import tempfile
 import shutil
-from bs4 import BeautifulSoup
+import tempfile
 from unittest.mock import Mock
+
+from bs4 import BeautifulSoup
 
 from stickler.reporting.html.html_reporter import EvaluationHTMLReporter
 from stickler.reporting.html.report_config import ReportConfig

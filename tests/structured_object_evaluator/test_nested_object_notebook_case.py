@@ -6,14 +6,14 @@ of nested object evaluation results.
 """
 
 import json
-import pytest
 from typing import List, Optional
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+import pytest
 
-from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.exact import ExactComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
 class Attribute(StructuredModel):
@@ -372,6 +372,6 @@ if __name__ == "__main__":
     test_case = TestNestedObjectNotebookCase()
     gt = create_ground_truth_order()
 
-    test_case.test_missing_item_case_detailed(gt, evaluator)
-    test_case.test_all_cases_comparison(gt, evaluator)
+    test_case.test_missing_item_case_detailed(gt)
+    test_case.test_all_cases_comparison(gt)
     test_case.test_products_list_evaluation(gt)

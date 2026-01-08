@@ -8,6 +8,7 @@ capabilities including nested models and custom comparators.
 """
 
 import json
+
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
@@ -327,8 +328,8 @@ def demo_json_file_loading():
     }
 
     # Save to temporary file
-    import tempfile
     import os
+    import tempfile
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(config, f, indent=2)

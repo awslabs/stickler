@@ -4,16 +4,17 @@ This module tests the new create_model_from_fields() method that accepts
 pre-converted Pydantic field definitions.
 """
 
-import pytest
 from typing import List
+
+import pytest
 from pydantic import ValidationError
 
+from stickler.comparators.exact import ExactComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.comparators.numeric import NumericComparator
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.structured_object_evaluator.models.model_factory import ModelFactory
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.comparators.exact import ExactComparator
-from stickler.comparators.numeric import NumericComparator
 
 
 class TestCreateModelFromFields:
@@ -314,7 +315,6 @@ class TestCreateModelFromFields:
 
     def test_pydantic_validation_works(self):
         """Test that Pydantic validation is properly enforced."""
-        from pydantic import Field
         
         field_definitions = {
             "required_field": (

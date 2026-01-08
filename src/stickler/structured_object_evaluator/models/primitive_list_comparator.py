@@ -21,7 +21,7 @@ Trade-offs:
 - Architecturally less pure than type-based structure (primitives flat, structured hierarchical)
 """
 
-from typing import List, Any, Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, List
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel

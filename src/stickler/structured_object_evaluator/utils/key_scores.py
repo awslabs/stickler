@@ -1,7 +1,7 @@
 """Utility functions for handling key scores in structured object evaluation."""
 
-from typing import Any, Optional, Dict, List, Tuple
 from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Tuple
 
 
 @dataclass

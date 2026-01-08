@@ -5,13 +5,13 @@ These tests validate that the compare_with() method correctly handles binary
 classification based on threshold matching, particularly for nested objects and list fields.
 """
 
-import pytest
-from typing import Optional, List
+from typing import List, Optional
+
 from pytest import approx
 
+from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.comparators.levenshtein import LevenshteinComparator
 
 
 # Simple model for basic tests

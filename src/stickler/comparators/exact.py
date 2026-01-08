@@ -2,8 +2,8 @@
 
 from typing import Any
 
-from stickler.utils.text_normalizers import strip_punctuation_space, lowercase
 from stickler.comparators.base import BaseComparator
+from stickler.utils.text_normalizers import lowercase, strip_punctuation_space
 
 
 class ExactComparator(BaseComparator):

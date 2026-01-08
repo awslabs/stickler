@@ -1,8 +1,9 @@
 """Semantic comparator for embedding-based similarity."""
 
 from functools import partial
-from scipy import spatial
 from typing import Callable, Optional
+
+from scipy import spatial
 
 from stickler.comparators.base import BaseComparator
 from stickler.comparators.utils import generate_bedrock_embedding

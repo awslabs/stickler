@@ -4,6 +4,7 @@ This module tests the JSON Schema to StructuredModel conversion functionality.
 """
 
 import pytest
+
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 

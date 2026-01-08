@@ -4,7 +4,8 @@ This module provides a registry system for mapping string names to comparator cl
 enabling configuration-based comparator selection in model_from_json().
 """
 
-from typing import Dict, Type, Any, Optional, List
+from typing import Any, Dict, List, Optional, Type
+
 from stickler.comparators.base import BaseComparator
 
 

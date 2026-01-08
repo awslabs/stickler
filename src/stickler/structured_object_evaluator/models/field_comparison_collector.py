@@ -5,7 +5,8 @@ and documentation of ALL field comparisons (both matches and non-matches) during
 structured object comparison.
 """
 import math
-from typing import List, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List
+
 from .field_comparison_helper import FieldComparisonHelper
 
 if TYPE_CHECKING:
