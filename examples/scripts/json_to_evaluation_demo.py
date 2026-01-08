@@ -12,9 +12,10 @@ No Python object construction - everything comes from JSON!
 """
 
 import json
-import tempfile
 import os
+import tempfile
 from pathlib import Path
+
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 

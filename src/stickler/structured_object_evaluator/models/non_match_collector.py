@@ -4,9 +4,10 @@ This module provides the NonMatchCollector class that handles the collection
 and documentation of non-matching fields during structured object comparison.
 """
 
-from typing import List, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List
+
+from .non_match_field import NonMatchType
 from .non_matches_helper import NonMatchesHelper
-from .non_match_field import NonMatchField, NonMatchType
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel

@@ -1,10 +1,11 @@
 """BERT-based semantic comparator."""
 
-import evaluate
 from typing import Any
 
-from stickler.utils import strip_punctuation_space
+import evaluate
+
 from stickler.comparators.base import BaseComparator
+from stickler.utils import strip_punctuation_space
 
 # Load BERT model globally
 try:

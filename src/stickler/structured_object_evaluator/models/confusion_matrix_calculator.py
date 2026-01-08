@@ -4,12 +4,12 @@ This module provides the ConfusionMatrixCalculator class for calculating
 confusion matrix metrics (TP, FP, TN, FN, FD, FA) for field comparisons.
 """
 
-from typing import Any, Dict, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from .field_helper import FieldHelper
 from .hungarian_helper import HungarianHelper
-from .non_matches_helper import NonMatchesHelper
 from .metrics_helper import MetricsHelper
+from .non_matches_helper import NonMatchesHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel

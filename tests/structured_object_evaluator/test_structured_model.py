@@ -1,6 +1,5 @@
 """Tests for structured model comparison using the new StructuredModel implementation."""
 
-import pytest
 from typing import Optional
 
 from pydantic import Field
@@ -9,13 +8,13 @@ from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.numeric import NumericComparator
 
 try:
-    from stickler.comparators.fuzzy import FuzzyComparator, THEFUZZ_AVAILABLE
+    from stickler.comparators.fuzzy import THEFUZZ_AVAILABLE, FuzzyComparator
 except ImportError:
     THEFUZZ_AVAILABLE = False
     FuzzyComparator = None
 
 # Import from the new structured_object_evaluator module
-from stickler.structured_object_evaluator import StructuredModel, ComparableField
+from stickler.structured_object_evaluator import ComparableField, StructuredModel
 
 
 # Define example models for testing

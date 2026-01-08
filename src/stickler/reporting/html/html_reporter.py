@@ -2,21 +2,21 @@
 Simple HTML reporter for evaluation results - v0.
 """
 
-import os
-import time
-import json
-import shutil
 import html
+import json
 import logging
-from typing import Dict, Any, Optional, Union, List
+import os
+import shutil
+import time
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.reporting.html.report_config import ReportConfig, ReportResult
-from stickler.reporting.html.visualization_engine import VisualizationEngine
-from stickler.utils.process_evaluation import ProcessEvaluation
 from stickler.reporting.html.section_generator import SectionGenerator
 from stickler.reporting.html.utils.data_extractors import DataExtractor
+from stickler.reporting.html.visualization_engine import VisualizationEngine
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+from stickler.utils.process_evaluation import ProcessEvaluation
 
 logger = logging.getLogger(__name__)
 

@@ -7,12 +7,12 @@ functionality, which captures detailed information about false positives and fal
 
 from typing import List, Optional
 
+from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator import (
-    StructuredModel,
     ComparableField,
     NonMatchType,
+    StructuredModel,
 )
-from stickler.comparators.levenshtein import LevenshteinComparator
 
 
 # Define test models

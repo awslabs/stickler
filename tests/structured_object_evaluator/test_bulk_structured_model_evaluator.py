@@ -8,17 +8,18 @@ memory efficiency, error handling, state management, and distributed processing
 capabilities of the new BulkStructuredModelEvaluator.
 """
 
-import pytest
 import json
-import pandas as pd
 from typing import List, Optional
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+import pandas as pd
+import pytest
+
 from stickler.comparators.exact import ExactComparator
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
 )
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.utils.process_evaluation import ProcessEvaluation
 
 

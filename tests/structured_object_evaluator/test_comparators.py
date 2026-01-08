@@ -2,10 +2,10 @@
 
 import pytest
 
-from stickler.structured_object_evaluator import StructuredModel, ComparableField
 from stickler.comparators.base import BaseComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.numeric import NumericComparator
+from stickler.structured_object_evaluator import ComparableField, StructuredModel
 
 try:
     from stickler.comparators.fuzzy import FuzzyComparator
@@ -15,7 +15,7 @@ except ImportError:
     FUZZY_AVAILABLE = False
 
 try:
-    from stickler.comparators.semantic import SemanticComparator
+    from stickler.comparators.semantic import SemanticComparator  # noqa: F401
 
     SEMANTIC_AVAILABLE = True
 except ImportError:

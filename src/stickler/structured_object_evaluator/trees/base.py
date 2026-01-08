@@ -59,11 +59,11 @@ class ANLSTree(abc.ABC):
         """
         # Import locally to avoid circular imports
         # These classes will be implemented in separate files
-        from .tuple_tree import ANLSTuple
-        from .list_tree import ANLSList
         from .dict_tree import ANLSDict
-        from .none_tree import ANLSNone
         from .leaf_tree import ANLSLeaf
+        from .list_tree import ANLSList
+        from .none_tree import ANLSNone
+        from .tuple_tree import ANLSTuple
 
         if isinstance(obj, tuple):
             return ANLSTuple(obj, is_gt=is_gt, comparator=comparator)
