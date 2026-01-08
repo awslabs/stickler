@@ -481,7 +481,7 @@ def advanced_extensions_and_refs_example():
     print(f"\nOverall Score: {result['overall_score']:.3f}")
     print(f"All Fields Matched: {result['all_fields_matched']}")
     
-    print(f"\nTop-level Field Scores:")
+    print("\nTop-level Field Scores:")
     for field in ['order_id', 'customer', 'shipping_address', 'total_amount', 'items']:
         if field in result['field_scores']:
             print(f"  {field}: {result['field_scores'][field]:.3f}")

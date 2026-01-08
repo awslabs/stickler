@@ -19,13 +19,15 @@ Example:
         ...         threshold=0.8
         ...     )
 """
-from strands.models import Model
-from strands import Agent
 import html
 from typing import Any, Dict, Union
-from stickler.comparators.base import BaseComparator
-from jinja2 import Template
+
 from botocore.exceptions import NoCredentialsError
+from jinja2 import Template
+from strands import Agent
+from strands.models import Model
+
+from stickler.comparators.base import BaseComparator
 
 
 class LLMComparator(BaseComparator):
@@ -202,7 +204,7 @@ class LLMComparator(BaseComparator):
                 return 0.0
             
         except NoCredentialsError:
-            print(f"Error: AWS credentials not found.")
+            print("Error: AWS credentials not found.")
             raise 
 
         except Exception as e:

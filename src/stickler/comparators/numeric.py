@@ -1,8 +1,8 @@
 """Numeric comparison comparator."""
 
-from typing import Any, Union, Optional
 import re
 from decimal import Decimal, InvalidOperation
+from typing import Any, Optional, Union
 
 from stickler.comparators.base import BaseComparator
 

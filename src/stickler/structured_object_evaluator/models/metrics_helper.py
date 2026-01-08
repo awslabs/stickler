@@ -1,7 +1,7 @@
 """Metrics calculation helper for StructuredModel comparisons."""
 
-from typing import Dict, Any
 from collections import OrderedDict
+from typing import Any, Dict
 
 
 class MetricsHelper:

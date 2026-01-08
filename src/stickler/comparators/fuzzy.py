@@ -6,7 +6,8 @@ for better string matching. RapidFuzz is a high-performance alternative to
 thefuzz/fuzzywuzzy with the same API.
 """
 
-from typing import Any, Optional, Dict
+from typing import Any, Dict, Optional
+
 from stickler.comparators.base import BaseComparator
 
 # Check if rapidfuzz is available

@@ -6,11 +6,12 @@ expected behavior and is consistent with the design requirements.
 Migrated from test_star_metrics to preserve test coverage.
 """
 
-from pytest import approx
-from typing import Optional, Dict, List, Any
+from typing import Any, Dict, List, Optional
 
-from stickler.structured_object_evaluator import StructuredModel, ComparableField
+from pytest import approx
+
 from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator import ComparableField, StructuredModel
 
 
 class SimpleModel(StructuredModel):
