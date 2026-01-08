@@ -19,7 +19,8 @@ dependencies = [
     "scipy>=1.10.0",
     "psutil>=5.8.0",
     "pandas>=1.5.0",
-    "jsonschema>=4.0.0"
+    "jsonschema>=4.0.0",
+    "jinja2>=3.1.6,<3.2.0"
 ]
 
 [project.optional-dependencies]
@@ -30,10 +31,8 @@ dev = [
     "beautifulsoup4>=4.14.2",
     "ruff>=0.14.10",
 ]
-
 llm = [
-    "strands-agents>=1.0.0,<=1.16.0",
-    "jinja2>=3.0.0,<=3.1.6"
+    "strands-agents>=1.0.0,<=1.16.0"
 ]
 
 
