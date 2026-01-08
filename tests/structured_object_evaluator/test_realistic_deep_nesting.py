@@ -15,16 +15,16 @@ Level 1: Organization (1 instance)
 Total objects: ~10 (not 64!), testing both single nesting and small lists.
 """
 
-import time
 import signal
+import time
 from typing import List
 
-from stickler.structured_object_evaluator import (
-    StructuredModel,
-    ComparableField,
-)
-from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.exact import ExactComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator import (
+    ComparableField,
+    StructuredModel,
+)
 
 
 # Timeout decorator for performance safety

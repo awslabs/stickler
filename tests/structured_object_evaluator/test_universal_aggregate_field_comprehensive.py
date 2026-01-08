@@ -11,19 +11,20 @@ This test suite validates that the new universal aggregate field feature works c
 5. Structure is consistent across all levels
 """
 
-import pytest
 import warnings
-from typing import Optional, List
+from typing import List, Optional
 
-from stickler.structured_object_evaluator.models.structured_model import (
-    StructuredModel,
-)
-from stickler.structured_object_evaluator.models.comparable_field import (
+import pytest
+
+from src.stickler.comparators.exact import ExactComparator
+from src.stickler.comparators.levenshtein import LevenshteinComparator
+from src.stickler.comparators.numeric import NumericComparator
+from src.stickler.structured_object_evaluator.models.comparable_field import (
     ComparableField,
 )
-from stickler.comparators.exact import ExactComparator
-from stickler.comparators.numeric import NumericComparator
-from stickler.comparators.levenshtein import LevenshteinComparator
+from src.stickler.structured_object_evaluator.models.structured_model import (
+    StructuredModel,
+)
 
 
 # Define test models for comprehensive testing
@@ -162,8 +163,8 @@ class TestUniversalAggregateField:
             warnings.simplefilter("always")
             
             # This should trigger a deprecation warning
-            field = ComparableField(aggregate=True)
-            
+            ComparableField(aggregate=True)
+
             # Verify warning was triggered
             assert len(w) == 1
             assert issubclass(w[0].category, DeprecationWarning)

@@ -4,9 +4,10 @@ This module provides the ComparableField function for creating fields in structu
 with comparison configuration parameters.
 """
 
-from typing import Any, Dict, Optional
-from pydantic import Field
 import warnings
+from typing import Any, Dict, Optional
+
+from pydantic import Field
 
 from stickler.comparators.base import BaseComparator
 from stickler.comparators.levenshtein import LevenshteinComparator

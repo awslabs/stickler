@@ -1,8 +1,10 @@
 """Non-matches helper for StructuredModel comparisons."""
 
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 from .comparison_helper_base import ComparisonHelperBase
 from .non_match_field import NonMatchType
+
 
 class NonMatchesHelper(ComparisonHelperBase):
     """Helper class for collecting and formatting non-matches in StructuredModel comparisons."""

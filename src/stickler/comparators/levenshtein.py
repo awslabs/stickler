@@ -1,6 +1,7 @@
 """Levenshtein distance comparator implementation."""
 
-from typing import Any, Optional, Dict
+from typing import Any, Dict, Optional
+
 from stickler.comparators.base import BaseComparator
 
 

@@ -6,12 +6,11 @@ Tests cover all classification cases (TP, FP, TN, FN, FD) for different field ty
 3. Nested structured models
 """
 
-import pytest
-from typing import Dict, Any, List, Optional
+from typing import List, Optional
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
 # Test Models
@@ -357,7 +356,7 @@ def test_nested_structured_models():
 
     # Create test nested models
     details1 = SimpleModel(name="Details 1", count=1, description="First details")
-    details2 = SimpleModel(name="Details 2", count=2, description=None)
+    SimpleModel(name="Details 2", count=2, description=None)
 
     # Similar but not exact nested model
     details1_similar = SimpleModel(name="Details 1", count=1, description="First")

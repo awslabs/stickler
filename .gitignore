@@ -2,8 +2,12 @@
 .vscode/settings.json
 **/__pycache__/
 **/*.egg-info/
+.venv/
 .coverage
 .ash/
+.temp/
+uv.lock
 
 .kiro/*
 .kiro/**/*
+

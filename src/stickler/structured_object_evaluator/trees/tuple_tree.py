@@ -1,8 +1,9 @@
 """Tuple node implementation for the ANLS* tree."""
 
-from typing import Any, Optional, Tuple, List, Dict
+from typing import Any, Dict, List, Optional, Tuple
 
 from stickler.comparators.base import BaseComparator
+
 from .base import ANLSTree
 
 

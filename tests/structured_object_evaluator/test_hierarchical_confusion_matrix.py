@@ -15,13 +15,14 @@ Level 3: Attribute (in Optional[List[Attribute]])
 Level 4: AttributeProperty (in Optional[List[AttributeProperty]])
 """
 
-import pytest
 from typing import List, Optional
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.comparators.levenshtein import LevenshteinComparator
+import pytest
+
 from stickler.comparators.exact import ExactComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 # Test Models - 4 Level Hierarchy
 

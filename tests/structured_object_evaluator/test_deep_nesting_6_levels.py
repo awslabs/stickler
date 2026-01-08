@@ -20,12 +20,12 @@ Level 1: Company
 
 from typing import List, Optional
 
-from stickler.structured_object_evaluator import (
-    StructuredModel,
-    ComparableField,
-)
-from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.exact import ExactComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator import (
+    ComparableField,
+    StructuredModel,
+)
 
 
 # Level 6: Subtask (deepest level)
@@ -516,9 +516,10 @@ class TestDeepNesting6Levels:
 
     def test_performance_with_deep_nesting(self):
         """Test performance and memory usage with deep nesting."""
-        import time
-        import psutil
         import os
+        import time
+
+        import psutil
 
         # Measure initial memory
         process = psutil.Process(os.getpid())

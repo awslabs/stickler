@@ -7,12 +7,12 @@ This test gradually increases nesting depth to identify where performance issues
 import time
 from typing import List, Optional
 
-from stickler.structured_object_evaluator import (
-    StructuredModel,
-    ComparableField,
-)
-from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.exact import ExactComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator import (
+    ComparableField,
+    StructuredModel,
+)
 
 
 # Level 1: Simple model

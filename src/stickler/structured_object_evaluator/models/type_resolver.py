@@ -4,8 +4,8 @@ This module provides utilities for converting string type names to Python types,
 enabling configuration-based type specification in model_from_json().
 """
 
-from typing import Dict, Type, Any, Union, List, get_origin, get_args
 import re
+from typing import Any, Dict, List, Type, Union, get_args, get_origin
 
 
 class TypeResolver:
@@ -32,7 +32,7 @@ class TypeResolver:
         self._type_registry["set"] = set
 
         # Typing module types
-        from typing import List, Dict, Tuple, Set, Optional, Union, Any
+        from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
         self._type_registry["List"] = List
         self._type_registry["Dict"] = Dict

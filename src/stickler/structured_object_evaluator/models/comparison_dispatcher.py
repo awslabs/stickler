@@ -4,9 +4,10 @@ This module provides the ComparisonDispatcher class that routes field comparison
 to appropriate handlers based on field type and null states.
 """
 
-from typing import Any, Dict, Optional, TYPE_CHECKING
-from .result_helper import ResultHelper
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
 from .null_helper import NullHelper
+from .result_helper import ResultHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel

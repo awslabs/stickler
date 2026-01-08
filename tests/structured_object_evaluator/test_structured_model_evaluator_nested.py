@@ -2,14 +2,16 @@
 Tests for StructuredModel.compare_with() metrics calculation for veterinary records models.
 """
 
-import pytest
-from typing import Optional, List
+from typing import List, Optional
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+import pytest
+
+from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.numeric import NumericComparator
-from stickler.comparators.exact import ExactComparator
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+
 # Note: No longer using StructuredModelEvaluator - using direct compare_with() method
 
 

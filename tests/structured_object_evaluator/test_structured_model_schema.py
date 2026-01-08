@@ -7,10 +7,9 @@ with all comparison metadata intact.
 import json
 from typing import List, Optional
 
-
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
 class SimpleTestModel(StructuredModel):
@@ -138,7 +137,7 @@ def test_schema_serialization():
     # Test with nested model as well
     nested_schema = NestedTestModel.model_json_schema()
     nested_json = json.dumps(nested_schema)
-    parsed_nested = json.loads(nested_json)
+    json.loads(nested_json)
 
 
 def test_schema_validation_compatibility():

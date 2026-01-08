@@ -9,9 +9,10 @@ from typing import List, Optional
 
 from pydantic import Field
 
-# Import from structured_object_evaluator instead of anls_star_lib
-from stickler.structured_object_evaluator import StructuredModel, ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
+
+# Import from structured_object_evaluator instead of anls_star_lib
+from stickler.structured_object_evaluator import ComparableField, StructuredModel
 
 
 class SimpleTestModel(StructuredModel):
@@ -139,7 +140,7 @@ def test_schema_serialization():
     # Test with nested model as well
     nested_schema = NestedTestModel.model_json_schema()
     nested_json = json.dumps(nested_schema)
-    parsed_nested = json.loads(nested_json)
+    json.loads(nested_json)
 
 
 def test_schema_validation_compatibility():
