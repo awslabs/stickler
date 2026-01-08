@@ -14,6 +14,14 @@ from stickler.comparators.semantic import SemanticComparator
 from stickler.comparators.structured import StructuredModelComparator
 from stickler.comparators.utils import generate_bedrock_embedding
 
+# Import LLMComparator if strands-agents is available
+try:
+    from stickler.comparators.llm import LLMComparator  # noqa: F401
+
+    LLM_AVAILABLE = True
+except ImportError:
+    LLM_AVAILABLE = False
+
 # Import BERTComparator if evaluate is available
 try:
     from stickler.comparators.bert import BERTComparator  # noqa: F401
@@ -39,11 +47,14 @@ __all__ = [
     "NumericComparator",
     "NumericExactC",
     "ExactComparator",
-    "LLMComparator",
     "StructuredModelComparator",
     "SemanticComparator",
     "generate_bedrock_embedding",
 ]
+
+# Add LLMComparator to __all__ if available
+if LLM_AVAILABLE:
+    __all__.append("LLMComparator")
 
 # Add BERTComparator to __all__ if available
 if BERT_AVAILABLE:
@@ -53,4 +64,3 @@ if BERT_AVAILABLE:
 if RAPIDFUZZ_AVAILABLE:
     __all__.append("FuzzyComparator")
     __all__.append("Fuzz")
-
