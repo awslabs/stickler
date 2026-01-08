@@ -2,15 +2,13 @@
 Tests for EvaluationHTMLReporter class with comprehensive error handling.
 """
 
-import pytest
 import os
-import tempfile
 import shutil
-from unittest.mock import Mock, patch, mock_open, MagicMock
-from pathlib import Path
+import tempfile
+from unittest.mock import Mock, mock_open, patch
 
 from stickler.reporting.html.html_reporter import EvaluationHTMLReporter
-from stickler.reporting.html.report_config import ReportConfig, ReportResult
+from stickler.reporting.html.report_config import ReportConfig
 from stickler.utils.process_evaluation import ProcessEvaluation
 
 

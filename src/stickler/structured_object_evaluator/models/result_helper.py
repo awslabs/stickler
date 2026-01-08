@@ -4,7 +4,7 @@ This module provides utility methods for creating common result structures
 used throughout the comparison process.
 """
 
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 class ResultHelper:

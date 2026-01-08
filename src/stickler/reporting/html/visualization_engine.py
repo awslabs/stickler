@@ -2,9 +2,10 @@
 Simple visualization engine for HTML reports - v0.
 """
 import html
-from typing import Dict, Any
-from stickler.reporting.html.utils import ColorUtils
+from typing import Any, Dict
+
 from stickler.reporting.html.report_config import ReportConfig
+from stickler.reporting.html.utils import ColorUtils
 
 
 class VisualizationEngine:

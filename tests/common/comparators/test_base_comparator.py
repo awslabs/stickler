@@ -1,6 +1,5 @@
 """Unit tests for the BaseComparator class."""
 
-import pytest
 from typing import Any
 
 from stickler.comparators.base import BaseComparator

@@ -4,7 +4,8 @@ This module provides utilities for converting JSON field configurations to
 Pydantic Field instances with ComparableField functionality.
 """
 
-from typing import Dict, Any, Tuple, Type
+from typing import Any, Dict, Tuple, Type
+
 from pydantic import Field
 
 from .comparable_field import ComparableField
@@ -116,7 +117,7 @@ class FieldConverter:
             ValueError: If configuration is invalid
         """
         from typing import List, Optional
-        from pydantic import Field
+
 
         type_string = field_config["type"]
         nested_fields_config = field_config["fields"]

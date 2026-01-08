@@ -26,6 +26,23 @@ ruff check --fix .
 ruff check src/stickler/comparators/
 ```
 
+### Automatic Formatting in VS Code
+
+To enable automatic code formatting and linting in VS Code:
+
+1. Copy the example settings file:
+   ```bash
+   cp .vscode/settings.json.example .vscode/settings.json
+   ```
+
+2. Install the Ruff extension for VS Code (if not already installed):
+   - Open VS Code
+   - Go to Extensions (Cmd+Shift+X on macOS, Ctrl+Shift+X on Windows/Linux)
+   - Search for "Ruff" by Charlie Marsh
+   - Click Install
+
+The settings file configures VS Code to automatically format Python files on save and organize imports using Ruff.
+
 ### CI Integration
 
 Linting runs automatically on every push and pull request via GitHub Actions. While currently non-blocking, you should address linting issues before submitting PRs.

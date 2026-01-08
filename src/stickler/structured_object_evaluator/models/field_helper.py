@@ -1,7 +1,7 @@
 """Field operations helper for StructuredModel comparisons."""
 
-from typing import Any, List, Type, get_origin, get_args
 import inspect
+from typing import Any, List, Type, get_args, get_origin
 
 
 class FieldHelper:
