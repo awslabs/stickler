@@ -9,6 +9,10 @@ The comparator integrates with AWS Bedrock models through the strands-agents
 library and supports customizable evaluation guidelines for domain-specific
 comparison logic.
 
+Note:
+    This comparator requires the optional 'llm' dependencies. Install with:
+    pip install stickler-eval[llm]
+
 Example:
     Integration with StructuredModel:
         >>> from stickler.structured_object_evaluator.models.comparable_field import ComparableField
@@ -19,13 +23,27 @@ Example:
         ...         threshold=0.8
         ...     )
 """
-from strands.models import Model
-from strands import Agent
 import html
 from typing import Any, Dict, Union
 from stickler.comparators.base import BaseComparator
 from jinja2 import Template
-from botocore.exceptions import NoCredentialsError
+
+try:
+    from strands.models import Model
+    from strands import Agent
+    from botocore.exceptions import NoCredentialsError
+    STRANDS_AVAILABLE = True
+except ImportError:
+    STRANDS_AVAILABLE = False
+    # Create mock classes for when strands is not available
+    class Model:
+        pass
+    
+    class Agent:
+        pass
+    
+    class NoCredentialsError(Exception):
+        pass
 
 
 class LLMComparator(BaseComparator):
@@ -68,7 +86,8 @@ class LLMComparator(BaseComparator):
                 comparison rules (e.g., "Consider abbreviations equivalent").
         
         Raises:
-            Exception: If the model cannot be initialized or AWS credentials are invalid.
+            ImportError: If strands-agents is not installed.
+            ValueError: If the model parameter is not provided.
         
         Example:
             >>> # Basic initialization
@@ -81,6 +100,14 @@ class LLMComparator(BaseComparator):
             ... )
         """
         super().__init__()
+        
+        # Check if strands is available
+        if not STRANDS_AVAILABLE:
+            raise ImportError(
+                "LLMComparator requires the 'strands-agents' package. "
+                "Install it with: pip install stickler-eval[llm]"
+            )
+        
         if model is None:
             raise ValueError("Model must be provided for LLMComparator.")
         self.model = model

@@ -10,9 +10,15 @@ from stickler.comparators.base import BaseComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.numeric import NumericComparator, NumericExactC
 from stickler.comparators.exact import ExactComparator
-from stickler.comparators.llm import LLMComparator
 from stickler.comparators.structured import StructuredModelComparator
 from stickler.comparators.semantic import SemanticComparator
+
+# Import LLMComparator if strands-agents is available
+try:
+    from stickler.comparators.llm import LLMComparator
+    LLM_AVAILABLE = True
+except ImportError:
+    LLM_AVAILABLE = False
 
 # Import BERTComparator if evaluate is available
 try:
@@ -35,11 +41,14 @@ __all__ = [
     "NumericComparator",
     "NumericExactC",
     "ExactComparator",
-    "LLMComparator",
     "StructuredModelComparator",
     "SemanticComparator",
     "generate_bedrock_embedding",
 ]
+
+# Add LLMComparator to __all__ if available
+if LLM_AVAILABLE:
+    __all__.append("LLMComparator")
 
 # Add BERTComparator to __all__ if available
 if BERT_AVAILABLE:
@@ -49,4 +58,3 @@ if BERT_AVAILABLE:
 if RAPIDFUZZ_AVAILABLE:
     __all__.append("FuzzyComparator")
     __all__.append("Fuzz")
-
