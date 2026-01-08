@@ -8,12 +8,13 @@ This test suite validates:
 """
 
 from typing import Optional
+
 from pydantic import Field
 
+from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.structured_object_evaluator.utils.compare_json import compare_json
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.comparators.levenshtein import LevenshteinComparator
 
 
 class InvoiceModel(StructuredModel):
@@ -107,7 +108,7 @@ def test_missing_fields_handling():
     assert pred.vendor_name is None
 
     # But all_fields_matched should be False due to missing fields
-    assert comparison["all_fields_matched"] == False
+    assert not comparison["all_fields_matched"]
 
     # Overall score should be calculated based on fields present in both models
     # with weights taken into account
@@ -162,7 +163,7 @@ def test_extra_fields_handling():
 
     # Overall score should be perfect
     assert comparison["overall_score"] == 1.0
-    assert comparison["all_fields_matched"] == True
+    assert comparison["all_fields_matched"]
 
 
 def test_compare_json_utility():

@@ -6,6 +6,7 @@ with comparison configuration parameters.
 """
 
 from typing import Any, Dict, Optional
+
 from pydantic.fields import FieldInfo
 
 from stickler.comparators.base import BaseComparator

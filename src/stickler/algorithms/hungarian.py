@@ -6,8 +6,9 @@ key information extraction tasks.
 """
 
 import traceback
+from typing import Any, Callable, List, Optional, Tuple, Union
+
 import numpy as np
-from typing import Any, List, Tuple, Callable, Optional, Union
 from munkres import Munkres, make_cost_matrix
 
 from stickler.comparators.base import BaseComparator

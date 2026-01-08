@@ -8,7 +8,7 @@ in a more readable and visually appealing format.
 import os
 import re
 import sys
-from typing import Dict, Any, Optional, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 
 # ANSI color codes for terminal output
@@ -1340,8 +1340,8 @@ def print_confusion_matrix_html(
     # with richer HTML formatting, tables, and visualizations
 
     # For now, use the same output as the terminal version
-    from io import StringIO
     import sys
+    from io import StringIO
 
     # Capture output in a string
     old_stdout = sys.stdout

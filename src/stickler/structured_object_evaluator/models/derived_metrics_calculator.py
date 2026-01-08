@@ -4,7 +4,7 @@ This module provides the DerivedMetricsCalculator class for calculating
 derived metrics (precision, recall, F1, accuracy) from basic confusion matrix counts.
 """
 
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 class DerivedMetricsCalculator:

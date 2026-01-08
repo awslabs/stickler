@@ -2,7 +2,8 @@
 
 import math
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 from .hungarian_helper import HungarianHelper
 
 DEFAULT_MATCH_THRESHOLD = 0.7

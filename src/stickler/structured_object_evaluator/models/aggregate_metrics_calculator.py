@@ -4,7 +4,6 @@ This module provides the AggregateMetricsCalculator class for calculating
 aggregate confusion matrix metrics by rolling up child field metrics to parent nodes.
 """
 
-from typing import Dict, Any
 
 
 class AggregateMetricsCalculator:
@@ -178,7 +177,7 @@ class AggregateMetricsCalculator:
                     aggregate_metrics[metric] = result_copy.get(metric, 0)
 
                 # Wrap legacy structure in "overall" key to maintain consistency
-                if not "overall" in result_copy:
+                if "overall" not in result_copy:
                     # Move all basic metrics to "overall" key
                     result_copy["overall"] = legacy_metrics
                     # Remove basic metrics from top level to avoid duplication

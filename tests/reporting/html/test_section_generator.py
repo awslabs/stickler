@@ -2,11 +2,11 @@
 Tests for SectionGenerator class.
 """
 
-import pytest
 from unittest.mock import Mock, patch
+
+from stickler.reporting.html.report_config import ReportConfig
 from stickler.reporting.html.section_generator import SectionGenerator
 from stickler.reporting.html.visualization_engine import VisualizationEngine
-from stickler.reporting.html.report_config import ReportConfig
 from stickler.utils.process_evaluation import ProcessEvaluation
 
 

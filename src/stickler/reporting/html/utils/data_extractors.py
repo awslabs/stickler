@@ -3,7 +3,8 @@ Data extraction utilities for HTML reporting.
 Centralizes data access patterns that were previously duplicated across multiple modules.
 """
 import logging
-from typing import Dict, Any, Union, List, Optional
+from typing import Any, Dict, List, Optional, Union
+
 from stickler.utils.process_evaluation import ProcessEvaluation
 
 logger = logging.getLogger(__name__)
