@@ -8,14 +8,15 @@ of matches and appropriate counting of TP, FP, and FN values.
 This test is migrated from anls_star_lib test_star_metrics.
 """
 
-import pytest
 from typing import List
 
-from stickler.structured_object_evaluator import StructuredModel
-from stickler.structured_object_evaluator import ComparableField
+import pytest
+
+from stickler.algorithms.hungarian import HungarianMatcher as Hungarian
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.structured import StructuredModelComparator
-from stickler.algorithms.hungarian import HungarianMatcher as Hungarian
+from stickler.structured_object_evaluator import ComparableField, StructuredModel
+
 
 # Helper function to replicate compare_structured_models from the old implementation
 def compare_structured_models(model1, model2):

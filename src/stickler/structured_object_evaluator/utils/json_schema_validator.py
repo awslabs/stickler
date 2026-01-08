@@ -7,8 +7,7 @@ StructuredModel classes.
 
 from typing import Any, Dict
 
-import jsonschema
-from jsonschema import Draft7Validator, ValidationError
+from jsonschema import Draft7Validator
 
 
 def validate_json_schema(schema: Dict[str, Any]) -> None:

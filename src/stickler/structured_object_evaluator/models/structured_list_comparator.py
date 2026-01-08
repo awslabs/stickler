@@ -11,11 +11,12 @@ Current Behavior Preserved (including bugs):
 - Object-level counting discrepancies in some scenarios (bug)
 """
 
-from typing import List, Dict, Any, TYPE_CHECKING
-from .hungarian_helper import HungarianHelper
-from .comparison_helper import ComparisonHelper 
-from .metrics_helper import MetricsHelper
+from typing import TYPE_CHECKING, Any, Dict, List
+
 from .comparable_field import ComparableField
+from .comparison_helper import ComparisonHelper
+from .hungarian_helper import HungarianHelper
+from .metrics_helper import MetricsHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel

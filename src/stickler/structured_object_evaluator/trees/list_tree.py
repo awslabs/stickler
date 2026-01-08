@@ -1,9 +1,12 @@
 """List node implementation for the ANLS* tree."""
 
-from typing import Any, Optional, Tuple, List as PyList, Dict, cast
+from typing import Any, Dict, Optional, Tuple, cast
+from typing import List as PyList
 
 from munkres import Munkres, make_cost_matrix
+
 from stickler.comparators.base import BaseComparator
+
 from .base import ANLSTree
 
 

@@ -1,9 +1,10 @@
 import json
 import socket
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from botocore.exceptions import NoCredentialsError, ClientError
+import pytest
+from botocore.exceptions import ClientError, NoCredentialsError
+
 from stickler.comparators import BaseComparator, LLMComparator
 
 
@@ -166,7 +167,7 @@ class TestLLMComparator:
         mock_bedrock.return_value = mock_client
 
         custom_prompt = "Custom prompt {value1} vs {value2}"
-        comparator = LLMComparator(
+        LLMComparator(
             model_name="test-model", prompt_template=custom_prompt
         )
 
@@ -379,7 +380,7 @@ class TestLLMComparator:
         
         assert "error" in details
         assert "comparison_result" in details
-        assert details["comparison_result"] == False
+        assert not details["comparison_result"]
 
     def test_string_representation(self):
         """Test string representations for serialization."""
@@ -476,20 +477,20 @@ class TestLLMComparator:
         self.mock_agent.side_effect = NoCredentialsError()
         details = self.comparator.get_comparison_details("value1", "value2")
         assert "error" in details
-        assert details["comparison_result"] == False
+        assert not details["comparison_result"]
         
         # Test ClientError
         error_response = {'Error': {'Code': 'ThrottlingException', 'Message': 'Rate exceeded'}}
         self.mock_agent.side_effect = ClientError(error_response, 'InvokeModel')
         details = self.comparator.get_comparison_details("value1", "value2")
         assert "error" in details
-        assert details["comparison_result"] == False
+        assert not details["comparison_result"]
         
         # Test generic exception
         self.mock_agent.side_effect = Exception("Generic error")
         details = self.comparator.get_comparison_details("value1", "value2")
         assert "error" in details
-        assert details["comparison_result"] == False
+        assert not details["comparison_result"]
 
     def test_model_initialization_error(self):
         """Test error handling during model initialization."""

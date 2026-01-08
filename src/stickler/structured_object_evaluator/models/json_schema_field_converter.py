@@ -4,12 +4,10 @@ This module provides utilities for converting JSON Schema properties to
 Pydantic Field instances with ComparableField functionality.
 """
 
-from typing import Dict, Any, Tuple, Type, List, Optional
-from pydantic import Field
+from typing import Any, Dict, List, Tuple, Type
 
 from .comparable_field import ComparableField
 from .comparator_registry import create_comparator
-
 
 # Type mapping from JSON Schema types to Python types
 JSON_TYPE_TO_PYTHON_TYPE = {
@@ -318,7 +316,6 @@ class JsonSchemaFieldConverter:
         """
         if field_path is None:
             field_path = field_name
-        from typing import List
         
         # Recursively create nested model from the nested schema
         # Import here to avoid circular dependency
@@ -334,7 +331,7 @@ class JsonSchemaFieldConverter:
         
         try:
             NestedModel = StructuredModel._from_json_schema_internal(enriched_schema, field_path=field_path)
-        except ValueError as e:
+        except ValueError:
             # Nested errors already have field path context
             raise
         
@@ -393,7 +390,7 @@ class JsonSchemaFieldConverter:
             from .structured_model import StructuredModel
             try:
                 ElementModel = StructuredModel._from_json_schema_internal(items_schema, field_path=f"{field_path}[]")
-            except ValueError as e:
+            except ValueError:
                 # Nested errors already have field path context
                 raise
             field_type = List[ElementModel]

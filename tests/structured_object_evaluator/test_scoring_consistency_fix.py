@@ -9,9 +9,10 @@ SOLUTION: Make list comparison use threshold-applied scores for consistency.
 """
 
 from typing import List
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+
 from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
 class Invoice(StructuredModel):
@@ -117,7 +118,7 @@ class TestScoringConsistencyFix:
 
         # Get individual threshold-applied scores
         self.test_individual_invoice_scores_with_thresholds()
-        individual_scores, individual_avg = (
+        _individual_scores, individual_avg = (
             self.individual_scores,
             self.expected_individual_avg,
         )
@@ -171,7 +172,7 @@ class TestScoringConsistencyFix:
 
         # Get the individual scores (what users expect)
         self.test_individual_invoice_scores_with_thresholds()
-        individual_scores, individual_avg = (
+        _individual_scores, individual_avg = (
             self.individual_scores,
             self.expected_individual_avg,
         )

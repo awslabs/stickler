@@ -4,6 +4,7 @@ Tests for ReportConfig and ReportResult classes.
 
 import pytest
 from pydantic import ValidationError
+
 from stickler.reporting.html.report_config import ReportConfig, ReportResult
 
 

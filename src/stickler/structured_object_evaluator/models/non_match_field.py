@@ -5,10 +5,11 @@ This module provides data models for documenting and tracking non-matches
 It also includes utilities for filtering, exporting, and analyzing non-matches.
 """
 
-from enum import Enum
 import json
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -150,7 +151,7 @@ class NonMatchField(BaseModel):
         )
 
         # Print summary counts
-        print(f"Non-matches summary:")
+        print("Non-matches summary:")
         print(f"- False Alarms: {len(false_alarms)}")
         print(f"- False Discoveries: {len(false_discoveries)}")
         print(f"- False Negatives: {len(false_negatives)}")
