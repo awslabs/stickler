@@ -203,35 +203,6 @@ class HungarianMatcher:
         # Prepare lists
         prepared_list1, prepared_list2 = self._prepare_lists(list1, list2)
 
-        # Handle simple case efficiently: single items
-        if len(prepared_list1) == 1 and len(prepared_list2) == 1:
-            # Directly compare the single items
-            if hasattr(self.comparator, "compare"):
-                score = self.comparator.compare(prepared_list1[0], prepared_list2[0])
-            else:
-                score = self.comparator(prepared_list1[0], prepared_list2[0])
-
-            if score > 0:
-                return {
-                    "matched_pairs": [(0, 0, score)],
-                    "tp": 1,
-                    "fp": 0,
-                    "fn": 0,
-                    "precision": 1.0,
-                    "recall": 1.0,
-                    "f1": 1.0,
-                }
-            else:
-                return {
-                    "matched_pairs": [],
-                    "tp": 0,
-                    "fp": 1,
-                    "fn": 1,
-                    "precision": 0.0,
-                    "recall": 0.0,
-                    "f1": 0.0,
-                }
-
         # Handle empty lists
         if not prepared_list1 and not prepared_list2:
             return {
