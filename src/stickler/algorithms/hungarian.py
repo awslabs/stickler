@@ -211,8 +211,7 @@ class HungarianMatcher:
             else:
                 score = self.comparator(prepared_list1[0], prepared_list2[0])
 
-            if score > 0:
-                return {
+            return {
                     "matched_pairs": [(0, 0, score)],
                     "tp": 1,
                     "fp": 0,
@@ -220,16 +219,6 @@ class HungarianMatcher:
                     "precision": 1.0,
                     "recall": 1.0,
                     "f1": 1.0,
-                }
-            else:
-                return {
-                    "matched_pairs": [],
-                    "tp": 0,
-                    "fp": 1,
-                    "fn": 1,
-                    "precision": 0.0,
-                    "recall": 0.0,
-                    "f1": 0.0,
                 }
 
         # Handle empty lists
