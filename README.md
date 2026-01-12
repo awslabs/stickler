@@ -117,6 +117,28 @@ result = ground_truth.compare_with(prediction, evaluator_format=True)
 print(f"Overall Score: {result['overall']['anls_score']:.3f}")
 ```
 
+### Confidence Evaluation
+
+Evaluate prediction confidence calibration with AUROC metrics:
+
+```python
+# Prediction with confidence scores
+prediction = Invoice.from_json({
+    "invoice_number": {"value": "INV-2024-001", "confidence": 0.95},
+    "total": {"value": 1247.50, "confidence": 0.8}
+})
+
+# Enable confidence metrics
+result = ground_truth.compare_with(
+    prediction,
+    add_confidence_metrics=True,
+    document_field_comparisons=True
+)
+
+print(f"Overall Score: {result['overall_score']:.3f}")
+print(f"Confidence AUROC: {result['auroc_confidence_metric']:.3f}")
+```
+
 ### Dynamic Model Creation (New!)
 
 Create models from JSON configuration for maximum flexibility:
