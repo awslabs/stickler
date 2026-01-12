@@ -116,14 +116,13 @@ class ComparisonDispatcher:
         # Optional[List[StructuredModel]], etc.). This determines which dispatch
         # path to take.
         is_list_field = self.model._is_list_field(field_name)
+        is_structured_list_field = self.model._is_structured_list_field(field_name)
 
         # Get hierarchical needs for both ground truth and prediction.
         # These flags control whether we need to maintain hierarchical structure
         # for list fields (e.g., List[StructuredModel] vs List[str]).
-        gt_needs_hierarchy = self.model._should_use_hierarchical_structure(gt_val, field_name)
-        pred_needs_hierarchy = self.model._should_use_hierarchical_structure(
-            pred_val, field_name
-        )
+        #gt_needs_hierarchy = self.model._should_use_hierarchical_structure(gt_val, field_name)
+        #pred_needs_hierarchy = self.model._should_use_hierarchical_structure(pred_val, field_name)
 
         # ============================================================================
         # STEP 3: Handle list field null cases (early exit)
@@ -134,7 +133,7 @@ class ComparisonDispatcher:
         # - GT None/empty, Pred populated → FA (False Alarm)
         # - GT populated, Pred None/empty → FN (False Negative)
         # - Both populated → Continue to type-based dispatch (returns None)
-        if is_list_field and not (gt_needs_hierarchy or pred_needs_hierarchy):
+        if is_list_field and not is_structured_list_field:
             list_result = self.handle_list_field_dispatch(gt_val, pred_val, weight)
             if list_result is not None:
                 # Early exit: null case handled, return result
@@ -150,9 +149,11 @@ class ComparisonDispatcher:
         # - GT null, Pred non-null → FA (False Alarm)
         # - GT non-null, Pred null → FN (False Negative)
         # - Both non-null → Continue to type-based dispatch
-        if not (gt_needs_hierarchy or pred_needs_hierarchy):
-            gt_effectively_null_prim = NullHelper.is_effectively_null_for_primitives(gt_val)
-            pred_effectively_null_prim = NullHelper.is_effectively_null_for_primitives(pred_val)
+        if not is_structured_list_field:
+            gt_effectively_null_prim = self.model._is_effectively_null_for_primitives(gt_val)
+            pred_effectively_null_prim = self.model._is_effectively_null_for_primitives(
+                pred_val
+            )
 
             match (gt_effectively_null_prim, pred_effectively_null_prim):
                 case (True, True):
@@ -190,17 +191,15 @@ class ComparisonDispatcher:
         ):
             return self.field_comparator.compare_primitive_with_scores(gt_val, pred_val, field_name)
         
-        # CASE 2: Both are lists (non-empty, null/empty cases already handled in STEP 3)
-        # Determine if this is a structured list or primitive list by inspecting elements
-        elif isinstance(gt_val, list) and isinstance(pred_val, list):
-            # Check if this is a List[StructuredModel] by inspecting first element
-            #if gt_val and isinstance(gt_val[0], StructuredModel):
-            if gt_needs_hierarchy or pred_needs_hierarchy:
+        # CASE 2: Handle list fields. 
+        # Note, if it's a primitive list, null/empty cases already handled in STEP 3.
+        elif is_list_field:
+            if is_structured_list_field:
                 # Delegate to StructuredListComparator for List[StructuredModel]
                 return self.structured_list_comparator.compare_struct_list_with_scores(
                     gt_val, pred_val, field_name
                 )
-            else:
+            else: 
                 # Delegate to PrimitiveListComparator for List[primitive]
                 return self.primitive_list_comparator.compare_primitive_list_with_scores(
                     gt_val, pred_val, field_name

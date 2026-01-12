@@ -649,6 +649,23 @@ class StructuredModel(BaseModel):
                         return True
         return False
 
+    def _is_structured_list_field(self, field_name: str) -> bool:
+        """Check if a field is a List[StructuredModel] type.
+
+        Args:
+            field_name: Name of the field to check
+
+        Returns:
+            True if the field is a List[StructuredModel] type, False otherwise
+        """
+        field_info = self.__class__.model_fields.get(field_name)
+        if not field_info:
+            return False
+
+        field_type = field_info.annotation
+        # Use the existing class method to check if it's List[StructuredModel]
+        return self.__class__._is_list_of_structured_model_type(field_type)
+
     def _handle_list_field_dispatch(
         self, gt_val: Any, pred_val: Any, weight: float
     ) -> dict:
