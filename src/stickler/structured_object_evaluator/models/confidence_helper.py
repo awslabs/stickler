@@ -1,6 +1,7 @@
-    
-from pydantic import BaseModel
 from typing import Any, Dict
+
+from pydantic import BaseModel
+
 
 class ConfidenceHelper(BaseModel):
     @staticmethod
@@ -13,8 +14,13 @@ class ConfidenceHelper(BaseModel):
         Return:
             bool: If the data has confidence values
         """
-        return (isinstance(data, dict) and "value" in data and "confidence" in data and len(data) == 2)
-    
+        return (
+            isinstance(data, dict)
+            and "value" in data
+            and "confidence" in data
+            and len(data) == 2
+        )
+
     @classmethod
     def process_confidence_structures(cls, data: Any, field_path: str = "") -> tuple:
         """Process confidence structures recursively.
@@ -24,7 +30,7 @@ class ConfidenceHelper(BaseModel):
             field_path: The current field path for error messages
 
         Returns:
-            tuple: value dictionary, confidence dictionary if the confidence values exists 
+            tuple: value dictionary, confidence dictionary if the confidence values exists
         """
         if isinstance(data, dict):
             # Check if this is a confidence structure
@@ -36,7 +42,9 @@ class ConfidenceHelper(BaseModel):
                 all_confidences = {}
                 for key, value in data.items():
                     new_path = f"{field_path}.{key}" if field_path else key
-                    processed_value, confidences = cls.process_confidence_structures(value, new_path)
+                    processed_value, confidences = cls.process_confidence_structures(
+                        value, new_path
+                    )
                     processed[key] = processed_value
                     all_confidences.update(confidences)
                 return processed, all_confidences
@@ -46,7 +54,9 @@ class ConfidenceHelper(BaseModel):
             all_confidences = {}
             for i, item in enumerate(data):
                 item_path = f"{field_path}[{i}]"
-                processed_item, confidences = cls.process_confidence_structures(item, item_path)
+                processed_item, confidences = cls.process_confidence_structures(
+                    item, item_path
+                )
                 processed_list.append(processed_item)
                 all_confidences.update(confidences)
             return processed_list, all_confidences
