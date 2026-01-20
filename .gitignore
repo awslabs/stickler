@@ -4,6 +4,7 @@
 **/*.egg-info/
 .coverage
 .ash/
+.temp/
 
 .kiro/*
 .kiro/**/*
