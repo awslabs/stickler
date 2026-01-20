@@ -14,12 +14,7 @@ class ConfidenceHelper(BaseModel):
         Return:
             bool: If the data has confidence values
         """
-        return (
-            isinstance(data, dict)
-            and "value" in data
-            and "confidence" in data
-            and len(data) == 2
-        )
+        return isinstance(data, dict) and "value" in data and "confidence" in data
 
     @classmethod
     def process_confidence_structures(cls, data: Any, field_path: str = "") -> tuple:
