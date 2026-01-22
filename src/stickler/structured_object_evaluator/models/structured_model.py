@@ -252,14 +252,8 @@ class StructuredModel(BaseModel):
         if origin is list or origin is List:
             args = get_args(field_type)
             if args:
-                element_type = args[0]
-                # Check if element type is a StructuredModel subclass
-                try:
-                    return inspect.isclass(element_type) and issubclass(
-                        element_type, StructuredModel
-                    )
-                except (TypeError, AttributeError):
-                    return False
+                # Use consolidated method for element type check
+                return cls._is_structured_model_type(args[0])
 
         # Handle Union types (like Optional[List[StructuredModel]])
         elif origin is Union:
