@@ -4,11 +4,12 @@ This module tests the to_json_schema() and to_stickler_config() methods
 that export StructuredModel configurations for serialization.
 """
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from typing import List
+
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.numeric import NumericComparator
-from typing import List
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
 class SimpleProduct(StructuredModel):
