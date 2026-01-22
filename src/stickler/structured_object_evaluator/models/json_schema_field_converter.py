@@ -7,6 +7,8 @@ Pydantic Field instances with ComparableField functionality.
 from typing import Dict, Any, Tuple, Type, List, Optional
 from pydantic import Field
 
+from pydantic.fields import FieldInfo
+
 from .comparable_field import ComparableField
 from .comparator_registry import create_comparator
 
@@ -453,7 +455,7 @@ class JsonSchemaFieldConverter:
         return field_type, field
 
     
-    def field_to_property(self, field_type: Type, field_info) -> Dict[str, Any]:
+    def field_to_property(self, field_type: Type, field_info: FieldInfo) -> Dict[str, Any]:
         """Convert Pydantic field to JSON Schema property.
         
         Extracts comparison metadata from the field's json_schema_extra attribute
@@ -465,37 +467,26 @@ class JsonSchemaFieldConverter:
             
         Returns:
             JSON Schema property dict with x-aws-stickler-* extensions
-            
-        Example:
-            >>> converter = JsonSchemaFieldConverter(schema={}, field_path="")
-            >>> field_info = model.model_fields["name"]
-            >>> property_schema = converter.field_to_property(str, field_info)
-            >>> print(property_schema["x-aws-stickler-comparator"])
-            'LevenshteinComparator'
         """
-        # Use reverse mapping to avoid duplicating type definitions
         json_type = PYTHON_TYPE_TO_JSON_TYPE.get(field_type, "string")
-        
         property_schema = {"type": json_type}
         
-        # Extract metadata from field
+        # Extract metadata and build extensions using consolidated helper
         metadata = self._extract_field_metadata(field_info)
+        extensions = self._build_comparison_extensions(metadata, format="json_schema")
+        property_schema.update(extensions)
         
-        # Add x-aws-stickler-* extensions only if metadata exists
-        if metadata.get("comparator"):
-            property_schema["x-aws-stickler-comparator"] = metadata["comparator"].__class__.__name__
-        if "threshold" in metadata:
-            property_schema["x-aws-stickler-threshold"] = metadata["threshold"]
-        if "weight" in metadata:
-            property_schema["x-aws-stickler-weight"] = metadata["weight"]
-        if metadata.get("clip_under_threshold") is not None:
-            property_schema["x-aws-stickler-clip-under-threshold"] = metadata["clip_under_threshold"]
-        if metadata.get("aggregate"):
-            property_schema["x-aws-stickler-aggregate"] = metadata["aggregate"]
+        # Add Pydantic field params
+        if field_info.description:
+            property_schema["description"] = field_info.description
+        if field_info.alias:
+            property_schema["alias"] = field_info.alias
+        if field_info.examples:
+            property_schema["examples"] = field_info.examples
         
         return property_schema
     
-    def field_to_stickler_config(self, field_type: Type, field_info) -> Dict[str, Any]:
+    def field_to_stickler_config(self, field_type: Type, field_info: FieldInfo) -> Dict[str, Any]:
         """Convert Pydantic field to Stickler config format.
         
         Extracts comparison metadata and formats it as custom Stickler configuration
@@ -507,54 +498,81 @@ class JsonSchemaFieldConverter:
             
         Returns:
             Stickler field config dict with type, comparator, threshold, etc.
-            
-        Example:
-            >>> converter = JsonSchemaFieldConverter(schema={}, field_path="")
-            >>> field_info = model.model_fields["name"]
-            >>> config = converter.field_to_stickler_config(str, field_info)
-            >>> print(config["type"])
-            'str'
         """
-        # Use reverse mapping for Stickler type strings
         stickler_type = PYTHON_TYPE_TO_STICKLER_TYPE.get(field_type, "str")
-        
         field_config = {"type": stickler_type}
         
-        # Extract metadata
+        # Extract metadata and build extensions using consolidated helper
         metadata = self._extract_field_metadata(field_info)
+        extensions = self._build_comparison_extensions(metadata, format="stickler_config")
+        field_config.update(extensions)
         
-        # Add comparison config only if metadata exists
-        if metadata.get("comparator"):
-            field_config["comparator"] = metadata["comparator"].__class__.__name__
-        if "threshold" in metadata:
-            field_config["threshold"] = metadata["threshold"]
-        if "weight" in metadata:
-            field_config["weight"] = metadata["weight"]
-        if metadata.get("clip_under_threshold") is not None:
-            field_config["clip_under_threshold"] = metadata["clip_under_threshold"]
-        if metadata.get("aggregate"):
-            field_config["aggregate"] = metadata["aggregate"]
-        
-        # Add Pydantic field params - use is_required() for Pydantic compatibility
+        # Add Pydantic field params
         field_config["required"] = field_info.is_required()
         if not field_info.is_required():
             field_config["default"] = field_info.default
         if field_info.description:
             field_config["description"] = field_info.description
+        if field_info.alias:
+            field_config["alias"] = field_info.alias
+        if field_info.examples:
+            field_config["examples"] = field_info.examples
         
         return field_config
     
-    def _extract_field_metadata(self, field_info) -> Dict[str, Any]:
+    def _build_comparison_extensions(
+        self, 
+        metadata: Dict[str, Any], 
+        format: str = "json_schema"
+    ) -> Dict[str, Any]:
+        """Build comparison extensions in specified format.
+        
+        Consolidates duplicate logic from field_to_property() and field_to_stickler_config().
+        
+        Args:
+            metadata: Extracted field metadata from _extract_field_metadata()
+            format: Output format - "json_schema" or "stickler_config"
+        
+        Returns:
+            Dictionary with comparison extensions in the specified format
+        """
+        extensions = {}
+        prefix = "x-aws-stickler-" if format == "json_schema" else ""
+        
+        # Export comparator class name and configuration
+        if metadata.get("comparator"):
+            comparator = metadata["comparator"]
+            extensions[f"{prefix}comparator"] = comparator.__class__.__name__
+            
+            # Export comparator configuration (e.g., tolerance, case_sensitive)
+            if hasattr(comparator, "config") and comparator.config:
+                config_key = f"{prefix}comparator-config" if format == "json_schema" else "comparator_config"
+                extensions[config_key] = comparator.config
+        
+        # Export comparison parameters
+        if "threshold" in metadata:
+            extensions[f"{prefix}threshold"] = metadata["threshold"]
+        if "weight" in metadata:
+            extensions[f"{prefix}weight"] = metadata["weight"]
+        if metadata.get("clip_under_threshold") is not None:
+            clip_key = f"{prefix}clip-under-threshold" if format == "json_schema" else "clip_under_threshold"
+            extensions[clip_key] = metadata["clip_under_threshold"]
+        if metadata.get("aggregate") is not None:
+            extensions[f"{prefix}aggregate"] = metadata["aggregate"]
+        
+        return extensions
+    
+    def _extract_field_metadata(self, field_info: FieldInfo) -> Dict[str, Any]:
         """Extract comparison metadata from field's json_schema_extra.
         
-        The metadata is stored as attributes on the json_schema_extra function
-        by ComparableField() to work around Pydantic's __slots__ restriction.
+        Only includes attributes that are explicitly set (no default values).
         
         Args:
             field_info: Pydantic FieldInfo object
             
         Returns:
-            Dictionary with comparator, threshold, weight, etc.
+            Dictionary with explicitly set comparator, threshold, weight, etc.
+            Empty dict if no metadata found.
         """
         if not hasattr(field_info, "json_schema_extra"):
             return {}
@@ -563,11 +581,22 @@ class JsonSchemaFieldConverter:
         if not callable(json_func):
             return {}
         
-        # Extract stored attributes from the function object
-        return {
-            "comparator": getattr(json_func, "_comparator_instance", None),
-            "threshold": getattr(json_func, "_threshold", 0.5),
-            "weight": getattr(json_func, "_weight", 1.0),
-            "clip_under_threshold": getattr(json_func, "_clip_under_threshold", True),
-            "aggregate": getattr(json_func, "_aggregate", False),
-        }
+        # Only include attributes that are explicitly set
+        metadata = {}
+        
+        if hasattr(json_func, "_comparator_instance"):
+            metadata["comparator"] = json_func._comparator_instance
+        
+        if hasattr(json_func, "_threshold"):
+            metadata["threshold"] = json_func._threshold
+        
+        if hasattr(json_func, "_weight"):
+            metadata["weight"] = json_func._weight
+        
+        if hasattr(json_func, "_clip_under_threshold"):
+            metadata["clip_under_threshold"] = json_func._clip_under_threshold
+        
+        if hasattr(json_func, "_aggregate"):
+            metadata["aggregate"] = json_func._aggregate
+        
+        return metadata

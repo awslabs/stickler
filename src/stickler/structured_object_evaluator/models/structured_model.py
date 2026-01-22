@@ -1132,10 +1132,9 @@ class StructuredModel(BaseModel):
             >>> ReconstructedProduct = StructuredModel.from_json_schema(schema)
             >>> # ReconstructedProduct has identical comparison behavior
         """
-        from .json_schema_field_converter import JsonSchemaFieldConverter
-        from typing import get_origin, get_args
+        from .json_schema_field_converter import JsonSchemaFieldConverter, PYTHON_TYPE_TO_JSON_TYPE
         
-        # Create converter for export operations
+        # schema/field_path unused for export operations - only needed for import
         converter = JsonSchemaFieldConverter(schema={}, field_path="")
         
         schema = {
@@ -1145,9 +1144,10 @@ class StructuredModel(BaseModel):
             "required": []
         }
         
-        # Add match_threshold if available
-        if hasattr(cls, "_match_threshold"):
-            schema["x-aws-stickler-match-threshold"] = cls._match_threshold
+        # Add match_threshold if available (check both attribute names for compatibility)
+        threshold = getattr(cls, "match_threshold", None) or getattr(cls, "_match_threshold", None)
+        if threshold is not None:
+            schema["x-aws-stickler-match-threshold"] = threshold
         
         for field_name, field_info in cls.model_fields.items():
             # Skip extra_fields to avoid circular serialization issues
@@ -1156,12 +1156,26 @@ class StructuredModel(BaseModel):
             
             field_type = field_info.annotation
             
+            # Validate field has type annotation
+            if field_type is None:
+                raise ValueError(f"Field '{field_name}' has no type annotation")
+            
+            # Unwrap Optional before type checking
+            field_type, _ = cls._unwrap_optional(field_type)
+            
             # Check if nested StructuredModel - recursively export to maintain full configuration
             if cls._is_structured_model_type(field_type):
                 property_schema = field_type.to_json_schema()
             elif get_origin(field_type) is list:
                 # Handle List[StructuredModel] or List[primitive]
-                element_type = get_args(field_type)[0]
+                args = get_args(field_type)
+                if not args:
+                    raise ValueError(
+                        f"Field '{field_name}' has unparameterized list type. "
+                        f"Use List[str], List[int], etc."
+                    )
+                element_type = args[0]
+                
                 if cls._is_structured_model_type(element_type):
                     # List of StructuredModels - recursively export element schema
                     property_schema = {
@@ -1169,8 +1183,16 @@ class StructuredModel(BaseModel):
                         "items": element_type.to_json_schema()
                     }
                 else:
-                    # Primitive list - use converter
-                    property_schema = converter.field_to_property(field_type, field_info)
+                    # Primitive list - build array schema manually
+                    json_element_type = PYTHON_TYPE_TO_JSON_TYPE.get(element_type, "string")
+                    property_schema = {
+                        "type": "array",
+                        "items": {"type": json_element_type}
+                    }
+                    # Extract and add stickler extensions from field metadata
+                    metadata = converter._extract_field_metadata(field_info)
+                    extensions = converter._build_comparison_extensions(metadata, format="json_schema")
+                    property_schema.update(extensions)
             else:
                 # Primitive type - use converter for consistent formatting
                 property_schema = converter.field_to_property(field_type, field_info)
@@ -1184,10 +1206,27 @@ class StructuredModel(BaseModel):
         return schema
     
     @staticmethod
+    def _unwrap_optional(field_type: Type) -> tuple:
+        """Unwrap Optional[T] to (T, True) or return (T, False) if not Optional.
+        
+        Args:
+            field_type: Type annotation to unwrap
+            
+        Returns:
+            Tuple of (unwrapped_type, is_optional)
+        """
+        if get_origin(field_type) is Union:
+            args = get_args(field_type)
+            non_none_args = [arg for arg in args if arg is not type(None)]
+            if len(non_none_args) == 1 and type(None) in args:
+                return non_none_args[0], True
+        return field_type, False
+    
+    @staticmethod
     def _is_structured_model_type(field_type: Type) -> bool:
         """Check if type is a StructuredModel subclass.
         
-        Used to identify nested StructuredModels that need recursive export.
+        Handles Union/Optional types by unwrapping them first.
         
         Args:
             field_type: Type annotation to check
@@ -1195,8 +1234,11 @@ class StructuredModel(BaseModel):
         Returns:
             True if field_type is a StructuredModel subclass
         """
+        # Unwrap Optional/Union types
+        unwrapped_type, _ = StructuredModel._unwrap_optional(field_type)
+        
         try:
-            return isinstance(field_type, type) and issubclass(field_type, StructuredModel)
+            return isinstance(unwrapped_type, type) and issubclass(unwrapped_type, StructuredModel)
         except TypeError:
             return False
     
@@ -1220,9 +1262,8 @@ class StructuredModel(BaseModel):
             >>> # ReconstructedProduct has identical comparison behavior
         """
         from .json_schema_field_converter import JsonSchemaFieldConverter
-        from typing import get_origin, get_args
         
-        # Create converter for export operations
+        # schema/field_path unused for export operations - only needed for import
         converter = JsonSchemaFieldConverter(schema={}, field_path="")
         
         config = {
@@ -1230,9 +1271,10 @@ class StructuredModel(BaseModel):
             "fields": {}
         }
         
-        # Add match_threshold if available
-        if hasattr(cls, "_match_threshold"):
-            config["match_threshold"] = cls._match_threshold
+        # Add match_threshold if available (check both attribute names for compatibility)
+        threshold = getattr(cls, "match_threshold", None) or getattr(cls, "_match_threshold", None)
+        if threshold is not None:
+            config["match_threshold"] = threshold
         
         for field_name, field_info in cls.model_fields.items():
             # Skip extra_fields to avoid circular serialization issues
@@ -1240,6 +1282,13 @@ class StructuredModel(BaseModel):
                 continue
             
             field_type = field_info.annotation
+            
+            # Validate field has type annotation
+            if field_type is None:
+                raise ValueError(f"Field '{field_name}' has no type annotation")
+            
+            # Unwrap Optional before type checking
+            field_type, _ = cls._unwrap_optional(field_type)
             
             # Check if nested StructuredModel - use "structured_model" type
             if cls._is_structured_model_type(field_type):
@@ -1250,7 +1299,14 @@ class StructuredModel(BaseModel):
                 }
             elif get_origin(field_type) is list:
                 # Handle List[StructuredModel] or List[primitive]
-                element_type = get_args(field_type)[0]
+                args = get_args(field_type)
+                if not args:
+                    raise ValueError(
+                        f"Field '{field_name}' has unparameterized list type. "
+                        f"Use List[str], List[int], etc."
+                    )
+                element_type = args[0]
+                
                 if cls._is_structured_model_type(element_type):
                     # List of StructuredModels - use "list_structured_model" type
                     field_config = {

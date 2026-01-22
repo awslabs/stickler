@@ -16,10 +16,12 @@ A typical workflow is to create a model with default comparators, export the con
 from stickler import StructuredModel, ComparableField
 
 # Step 1: Create model with defaults
+# Note: default=... means "required" in Pydantic
+# Use default=None for optional fields
 class Product(StructuredModel):
-    name: str = ComparableField(default=...)
-    price: float = ComparableField(default=...)
-    description: str = ComparableField(default=...)
+    name: str = ComparableField(default=...)        # Required field
+    price: float = ComparableField(default=...)     # Required field
+    description: str = ComparableField(default=None) # Optional field
 
 # Step 2: Export to get default configuration
 config = Product.to_stickler_config()
@@ -81,11 +83,13 @@ ReconstructedProduct = StructuredModel.from_json_schema(schema)
   "properties": {
     "name": {
       "type": "string",
+      "x-aws-stickler-comparator": "LevenshteinComparator",
       "x-aws-stickler-threshold": 0.8,
       "x-aws-stickler-weight": 2.0
     },
     "price": {
       "type": "number",
+      "x-aws-stickler-comparator": "NumericComparator",
       "x-aws-stickler-threshold": 0.95
     }
   },
@@ -120,12 +124,14 @@ ReconstructedProduct = StructuredModel.model_from_json(config)
   "fields": {
     "name": {
       "type": "str",
+      "comparator": "LevenshteinComparator",
       "threshold": 0.8,
       "weight": 2.0,
       "required": true
     },
     "price": {
       "type": "float",
+      "comparator": "NumericComparator",
       "threshold": 0.95,
       "required": true
     }
@@ -178,24 +184,32 @@ config = Customer.to_stickler_config()
 
 ## Lists of StructuredModels
 
-Lists are exported with their element schemas:
+Lists are exported with their element schemas.
+
+**Important:** When comparing `List[StructuredModel]` fields, Stickler uses the element model's `match_threshold` class attribute for Hungarian matching. You cannot specify a custom threshold or comparator on the list field itself.
 
 ```python
 from typing import List
 
+class LineItem(StructuredModel):
+    match_threshold = 0.8  # Used for matching list elements
+    product: str = ComparableField(default=...)
+    quantity: int = ComparableField(default=...)
+
 class Order(StructuredModel):
     order_id: str = ComparableField(threshold=1.0, default=...)
-    products: List[Product] = ComparableField(default=...)
+    # The list field uses LineItem.match_threshold for matching
+    products: List[LineItem] = ComparableField(default=...)
 
 # JSON Schema export
 schema = Order.to_json_schema()
 # schema["properties"]["products"]["type"] == "array"
-# schema["properties"]["products"]["items"] contains Product schema
+# schema["properties"]["products"]["items"] contains LineItem schema
 
 # Stickler config export
 config = Order.to_stickler_config()
 # config["fields"]["products"]["type"] == "list_structured_model"
-# config["fields"]["products"]["fields"] contains Product fields
+# config["fields"]["products"]["fields"] contains LineItem fields
 ```
 
 ## Round-trip Examples
@@ -391,4 +405,4 @@ git commit -m "Add Product model schema v1"
 
 - [StructuredModel Dynamic Creation](StructuredModel_Dynamic_Creation.md) - Import methods
 - [StructuredModel Advanced Functionality](StructuredModel_Advanced_Functionality.md) - Comparison features
-- [JSON Schema Extensions Reference](../README.md#json-schema-extensions-x-aws-stickler--complete-reference) - Full extension documentation
+- [JSON Schema Extensions](../../index.md) - Full extension documentation in main README

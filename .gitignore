@@ -7,3 +7,5 @@
 
 .kiro/*
 .kiro/**/*
+
+build/
