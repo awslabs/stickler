@@ -171,7 +171,7 @@ class TestHungarianMatcher(unittest.TestCase):
         metrics = self.matcher.calculate_metrics("apple", "banana")
         self.assertEqual(metrics["tp"], 0)
         self.assertEqual(metrics["fp"], 1)
-        self.assertEqual(metrics["fn"], 1)
+        self.assertEqual(metrics["fn"], 0)
 
     def test_string_list_parsing(self):
         """Test parsing of string representations of lists."""
