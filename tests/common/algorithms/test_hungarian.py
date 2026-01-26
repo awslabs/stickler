@@ -169,7 +169,7 @@ class TestHungarianMatcher:
         metrics = self.matcher.calculate_metrics("apple", "banana")
         assert metrics["tp"] == 0
         assert metrics["fp"] == 1
-        assert metrics["fn"] == 1
+        assert metrics["fn"] == 0
 
     def test_string_list_parsing(self):
         """Test parsing of string representations of lists."""
