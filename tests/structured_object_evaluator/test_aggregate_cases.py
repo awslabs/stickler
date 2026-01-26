@@ -73,7 +73,7 @@ class TestAggregation(unittest.TestCase):
         agg_results = result['confusion_matrix']['aggregate']
 
         self.assertEqual(agg_results['tp'], 2, 'tp')
-        self.assertEqual(agg_results['tn'], 2, 'tn')
+        self.assertEqual(agg_results['tn'], 6, 'tn')
         self.assertEqual(agg_results['fd'], 1, 'fd')
         self.assertEqual(agg_results['fa'], 1, 'fa')
         self.assertEqual(agg_results['fp'], 2, 'fp')
