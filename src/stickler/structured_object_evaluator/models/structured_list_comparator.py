@@ -524,7 +524,6 @@ class StructuredListComparator:
     
     def _get_all_leaves(self, model_class: Type[StructuredModel], prefix: str) -> List[str]:
         """Recursively get all leaf nodes in the model."""
-        #leaves = []
         metrics = {}
         
         for fname, field_info in model_class.model_fields.items():
@@ -539,7 +538,6 @@ class StructuredListComparator:
             
             if nested_model:
                 # Recurse into nested model
-                #leaves.extend()
                 field_metrics = self._get_all_leaves(nested_model, full_path)
                 metrics[fname] = {
                     "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
@@ -547,7 +545,6 @@ class StructuredListComparator:
                     }
             else:
                 # This is a leaf node
-                #leaves.append(full_path)
                 metrics[fname] = {
                     "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
                     "fields": {},
