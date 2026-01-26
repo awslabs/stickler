@@ -16,8 +16,9 @@ from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
 from .comparable_field import ComparableField
 
-if TYPE_CHECKING:
-    from .structured_model import StructuredModel
+#if TYPE_CHECKING:
+from .structured_model import StructuredModel
+from typing import Type, List, get_origin, get_args, Union
 
 
 class StructuredListComparator:
@@ -66,7 +67,7 @@ class StructuredListComparator:
 
         # Handle empty list cases with beautiful match statements
         early_exit_result = self._handle_struct_list_empty_cases(
-            gt_list, pred_list, weight
+            gt_list, pred_list, weight, field_name
         )
         if early_exit_result is not None:
             return early_exit_result
@@ -119,6 +120,7 @@ class StructuredListComparator:
         gt_list: List["StructuredModel"],
         pred_list: List["StructuredModel"],
         weight: float,
+        field_name: str,
     ) -> dict:
         """Handle empty list cases with beautiful match statements.
 
@@ -136,10 +138,11 @@ class StructuredListComparator:
 
         match (gt_len, pred_len):
             case (0, 0):
+                fields_metrics = self._get_leaves_under_field(self.parent_model.__class__, field_name)
                 # Both empty lists → True Negative
                 return {
                     "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
-                    "fields": {},
+                    "fields": fields_metrics,
                     "raw_similarity_score": 1.0,
                     "similarity_score": 1.0,
                     "threshold_applied_score": 1.0,
@@ -578,6 +581,93 @@ class StructuredListComparator:
         # UNIFIED STRUCTURE: Wrap primitive field metrics in 'overall' for consistency
         # This ensures all fields use the same access pattern: field_data['overall']
         return {"overall": sub_field_metrics}
+    
+    def _get_all_leaves(self, model_class: Type[StructuredModel], prefix: str) -> List[str]:
+        """Recursively get all leaf nodes in the model."""
+        #leaves = []
+        metrics = {}
+        
+        for fname, field_info in model_class.model_fields.items():
+            if fname == "extra_fields":
+                continue
+                
+            full_path = f"{prefix}.{fname}" if prefix else fname
+            field_type = field_info.annotation
+            
+            # Check if it's a nested StructuredModel
+            nested_model = self._get_nested_model_type(field_type)
+            
+            if nested_model:
+                # Recurse into nested model
+                #leaves.extend()
+                field_metrics = self._get_all_leaves(nested_model, full_path)
+                metrics[fname] = {
+                    "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
+                    "fields": field_metrics,
+                    }
+            else:
+                # This is a leaf node
+                #leaves.append(full_path)
+                metrics[fname] = {
+                    "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
+                    "fields": {},
+                    }
+        
+        return metrics
+
+
+    def _get_leaves_under_field(self, model_class: Type[StructuredModel], field_name: str) -> List[str]:
+        """Get all leaf nodes under a specific field."""
+        # Find the field in the model
+        if field_name not in model_class.model_fields:
+            raise ValueError(f"Field '{field_name}' not found in {model_class.__name__}")
+        
+        field_info = model_class.model_fields[field_name]
+        field_type = field_info.annotation
+        
+        # Get the nested model type (handles List[Model] and direct Model)
+        nested_model = self._get_nested_model_type(field_type)
+        
+        if not nested_model:
+            # This field itself is a leaf
+            return [field_name]
+        
+        # Get all leaves under this nested model
+        return self._get_all_leaves(nested_model, field_name)
+
+
+    def _get_nested_model_type(self, field_type) -> Type[StructuredModel]:
+        """
+        Extract nested StructuredModel type from field annotation.
+        Handles: StructuredModel, List[StructuredModel], Optional[StructuredModel], etc.
+        """
+        origin = get_origin(field_type)
+        
+        # Handle Optional/Union types
+        if origin is Union:
+            args = get_args(field_type)
+            for arg in args:
+                if arg is not type(None):
+                    nested = self._get_nested_model_type(arg)
+                    if nested:
+                        return nested
+            return None
+        
+        # Handle List types
+        if origin is list or origin is List:
+            args = get_args(field_type)
+            if args:
+                return self._get_nested_model_type(args[0])
+            return None
+        
+        # Direct StructuredModel type
+        try:
+            if isinstance(field_type, type) and issubclass(field_type, StructuredModel):
+                return field_type
+        except (TypeError, AttributeError):
+            pass
+        
+        return None
 
 
 # Import needed at bottom to avoid circular imports
