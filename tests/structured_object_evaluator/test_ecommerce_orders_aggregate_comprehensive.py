@@ -334,12 +334,12 @@ class TestEcommerceOrdersAggregateComprehensive:
         assert cm["fields"]["Customers"]["fields"]["Shipping_Address"]["aggregate"]["fn"] == 2, f'Expected Shipping_Address aggregate FN=2, got {cm["fields"]["Customers"]["fields"]["Shipping_Address"]["aggregate"]["fn"]}'
 
         # gt_json["Customers"][1]["Loyalty_Status"], pred_json["Customers"][0]["Loyalty_Status"]:  1 true positive (object level) or 2 true positive (aggregate level)
-        # gt_json["Customers"][3]["Loyalty_Status"], pred_json["Customers"][1]["Loyalty_Status"]:  1 true negative
+        # gt_json["Customers"][3]["Loyalty_Status"], pred_json["Customers"][1]["Loyalty_Status"]:  2 true negative: one for each of it's child leaf nodes
         # gt_json["Customers"][0]["Loyalty_Status"], gt_json["Customers"][2]["Loyalty_Status"]: Non matches do not contribute to true negatives
         assert cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["tp"] == 2, f'Expected Loyalty_Status aggregate TP=2, got {cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["tp"]}'
         assert cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fa"] == 0, f'Expected Loyalty_Status aggregate FA=0, got {cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fa"]}'
         assert cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fd"] == 0, f'Expected Loyalty_Status aggregate FD=0, got {cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fd"]}'
-        assert cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["tn"] == 1, f'Expected Loyalty_Status aggregate TN=1, got {cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["tn"]}'
+        assert cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["tn"] == 2, f'Expected Loyalty_Status aggregate TN=2, got {cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["tn"]}'
         assert cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fn"] == 0, f'Expected Loyalty_Status aggregate FN=0, got {cm["fields"]["Customers"]["fields"]["Loyalty_Status"]["aggregate"]["fn"]}'
 
         # at the object level with match_threshold = 1.0, 2 false discoveries and 2 false negatives (2 entries are matched, but below threshold, 2 entries are missing in prediction)
@@ -349,11 +349,12 @@ class TestEcommerceOrdersAggregateComprehensive:
         assert cm["fields"]["Customers"]["overall"]["tn"] == 0, f'Expected Customers overall TN=0, got {cm["fields"]["Customers"]["overall"]["tn"]}'
         assert cm["fields"]["Customers"]["overall"]["fn"] == 2, f'Expected Customers overall FN=2, got {cm["fields"]["Customers"]["overall"]["fn"]}'
 
-        # at the field level all entries, either matched or unmatched, are considered for the sub field comparison   
+        # at the field level all entries, either matched or unmatched, are considered for the sub field comparison
+        # 2 true negative from Loyalty_Status: one for each of it's child leaf nodes
         assert cm["fields"]["Customers"]["aggregate"]["tp"] == 12, f'Expected Customers aggregate TP=12, got {cm["fields"]["Customers"]["aggregate"]["tp"]}'
         assert cm["fields"]["Customers"]["aggregate"]["fa"] == 0, f'Expected Customers aggregate FA=0, got {cm["fields"]["Customers"]["aggregate"]["fa"]}'
         assert cm["fields"]["Customers"]["aggregate"]["fd"] == 2, f'Expected Customers aggregate FD=2, got {cm["fields"]["Customers"]["aggregate"]["fd"]}'
-        assert cm["fields"]["Customers"]["aggregate"]["tn"] == 1, f'Expected Customers aggregate TN=1, got {cm["fields"]["Customers"]["aggregate"]["tn"]}'
+        assert cm["fields"]["Customers"]["aggregate"]["tn"] == 2, f'Expected Customers aggregate TN=2, got {cm["fields"]["Customers"]["aggregate"]["tn"]}'
         assert cm["fields"]["Customers"]["aggregate"]["fn"] == 10, f'Expected Customers aggregate FN=10, got {cm["fields"]["Customers"]["aggregate"]["fn"]}'
 
     def test_products_field_aggregate_counts(self):
@@ -464,8 +465,8 @@ class TestEcommerceOrdersAggregateComprehensive:
         assert aggregate["tp"] == 20, f'Expected TP=20, got {aggregate["tp"]}'
         assert aggregate["fa"] == 2, f'Expected FA=2, got {aggregate["fa"]}'
         assert aggregate["fd"] == 5, f'Expected FD=5, got {aggregate["fd"]}'
-        # 4 TN: Order_Info.Order_Status.Category_Code, Order_Info.Store_Location, Customers.Loyalty_Status, Discounts.Discount_Code
-        assert aggregate["tn"] == 4, f'Expected TN=4, got {aggregate["tn"]}' 
+        # 5 TN: Order_Info.Order_Status.Category_Code, Order_Info.Store_Location, Customers.Loyalty_Status.Category_Code, Customers.Loyalty_Status.Category_Name, Discounts.Discount_Code
+        assert aggregate["tn"] == 5, f'Expected TN=5, got {aggregate["tn"]}' 
         assert aggregate["fn"] == 10, f'Expected FN=10, got {aggregate["fn"]}'
         
     def test_hungarian_matching_verification(self):
@@ -622,9 +623,9 @@ class TestEcommerceOrdersAggregateComprehensive:
         products_agg = cm["fields"]["Products"]["aggregate"]
         discounts_agg = cm["fields"]["Discounts"]["aggregate"]
         
-        assert customers_agg["tn"] == 1, f'Expected Customers TN=1 for empty lists, got {customers_agg["tn"]}'
-        assert products_agg["tn"] == 1, f'Expected Products TN=1 for empty lists, got {products_agg["tn"]}'
-        assert discounts_agg["tn"] == 1, f'Expected Discounts TN=1 for empty lists, got {discounts_agg["tn"]}'
+        assert customers_agg["tn"] == 8, f'Expected Customers TN=8 for empty lists, got {customers_agg["tn"]}'
+        assert products_agg["tn"] == 2, f'Expected Products TN=2 for empty lists, got {products_agg["tn"]}'
+        assert discounts_agg["tn"] == 3, f'Expected Discounts TN=3 for empty lists, got {discounts_agg["tn"]}'
 
     def test_threshold_based_classification(self):
         """Test that threshold-based classification works correctly in aggregates."""
