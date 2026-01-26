@@ -226,7 +226,7 @@ def test_list_classification_logic():
     assert tags_cm["fp"] > 0, (
         "Items in EST but not in GT (null) should be False Alarm (FP)"
     )
-    assert items_cm["tn"] == 1, "Both empty lists should be TN"
+    assert items_cm["tn"] == 1, f"Both empty lists should be TN: {items_cm}"
 
 
 def test_nested_model_classification_logic():
