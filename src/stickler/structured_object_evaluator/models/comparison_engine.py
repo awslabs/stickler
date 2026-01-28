@@ -199,7 +199,8 @@ class ComparisonEngine:
         evaluator_format: bool = False,
         recall_with_fd: bool = False,
         add_derived_metrics: bool = True,
-        document_field_comparisons: bool = False
+        document_field_comparisons: bool = False,
+        add_confidence_metrics: bool = False
     ) -> Dict[str, Any]:
         """Compare with another instance using single traversal.
         
@@ -235,6 +236,7 @@ class ComparisonEngine:
                 "confusion_matrix": {...},  # If include_confusion_matrix=True
                 "non_matches": [...],  # If document_non_matches=True
                 "field_comparisons": [...] # If field_comparisons=True
+                "auroc_confidence_metric": float # If add_confidence_metrics=True
             }
             
         Example:
@@ -296,9 +298,17 @@ class ComparisonEngine:
             field_comparisons = self.field_comparison_collector.collect_field_comparisons(recursive_result, other)
             result["field_comparisons"] = field_comparisons
 
+        # If add_confidence_metrics is requested, add confidence metrics
+        if add_confidence_metrics:
+            from .confidence_calculator import ConfidenceCalculator
+            calculator = ConfidenceCalculator()
+            auroc = calculator.calculate_overall_auroc(result, other)
+            result['auroc_confidence_metric'] = auroc
+
         # If evaluator_format is requested, transform the result
         if evaluator_format:
             return self.model._format_for_evaluator(result, other, recall_with_fd)
+        
 
         return result
 
