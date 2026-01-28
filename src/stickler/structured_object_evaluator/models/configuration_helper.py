@@ -535,6 +535,6 @@ class ConfigurationHelper:
             Dictionary with processed nested data
         """
         # Recursively call from_json to handle missing fields in nested object
-        nested_instance = structured_class.from_json(nested_data)
+        nested_instance = structured_class.from_json(nested_data, process_confidence=False)
         # Return the model_dump to get properly processed data
         return nested_instance.model_dump()
