@@ -676,3 +676,8 @@ print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # ~1.0 - match
 ## Examples
 
 Check out the `examples/` directory for more detailed usage examples and notebooks.
+
+# A note for AI assisted coding agents
+- The project uses coding assistant agnostic context files, like README.md and AGENTS.md
+- When working in a directory, always look for a README.md and/or AGENTS.md file for important context about the directory/code contained within.
+- Read this [AGENTS.md](./AGENTS.md) file for more information
