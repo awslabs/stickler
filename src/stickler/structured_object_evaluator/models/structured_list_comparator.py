@@ -66,7 +66,16 @@ class StructuredListComparator:
                 self.parent_model.__class__, "match_threshold", 0.7
             )
 
-        # Removed duplicate handling of the empty lists, already done in the field comparison dispatcher
+        # Handle empty list cases with beautiful match statements
+        early_exit_result = self._handle_struct_list_empty_cases(
+            gt_list, pred_list, weight, field_name
+        )
+        if early_exit_result is not None:
+            return early_exit_result
+
+        # Normalize None to empty lists for consistent processing below
+        gt_list = gt_list or []
+        pred_list = pred_list or []
 
         # Calculate object-level metrics using extracted method
         (
@@ -107,6 +116,44 @@ class StructuredListComparator:
         }
         return final_result
 
+    def _handle_struct_list_empty_cases(
+            self,
+            gt_list: List["StructuredModel"],
+            pred_list: List["StructuredModel"],
+            weight: float,
+            field_name: str,
+        ) -> dict:
+            """Handle empty list cases with beautiful match statements.
+
+            Args:
+                gt_list: Ground truth list (may be None)
+                pred_list: Predicted list (may be None)
+                weight: Field weight for scoring
+
+            Returns:
+                Result dictionary if early exit needed, None if should continue processing
+            """
+            # Normalize None to empty lists for consistent handling
+            gt_len = len(gt_list or [])
+            pred_len = len(pred_list or [])
+
+            match (gt_len, pred_len):
+                case (0, 0):
+                    fields_metrics = self._get_leaves_under_field(self.parent_model.__class__, field_name)
+                    # Both empty lists → True Negative
+                    return {
+                        "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
+                        "fields": fields_metrics,
+                        "raw_similarity_score": 1.0,
+                        "similarity_score": 1.0,
+                        "threshold_applied_score": 1.0,
+                        "weight": weight,
+                    }
+
+                case _:
+                    # Both non-empty, continue processing
+                    return None
+                
     def _calculate_object_level_metrics(
         self,
         gt_list: List["StructuredModel"],
