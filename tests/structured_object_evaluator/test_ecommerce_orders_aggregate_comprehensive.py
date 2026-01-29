@@ -7,7 +7,7 @@ for complex hierarchical structures with nested objects and lists.
 """
 
 import json
-import pytest
+
 from typing import Optional, List, Any, Dict, Union
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
