@@ -150,8 +150,8 @@ class ComparisonDispatcher:
         # - GT non-null, Pred null → FN (False Negative)
         # - Both non-null → Continue to type-based dispatch
         if not is_structured_list_field:
-            gt_effectively_null_prim = self.model._is_effectively_null_for_primitives(gt_val)
-            pred_effectively_null_prim = self.model._is_effectively_null_for_primitives(
+            gt_effectively_null_prim = NullHelper.is_effectively_null_for_primitives(gt_val)
+            pred_effectively_null_prim = NullHelper.is_effectively_null_for_primitives(
                 pred_val
             )
 
