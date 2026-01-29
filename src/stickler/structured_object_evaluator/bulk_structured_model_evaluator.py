@@ -572,7 +572,7 @@ class BulkStructuredModelEvaluator:
         # Aggregate metrics (if enabled)
         if self.include_aggregates and "aggregate" in overall_metrics:
             aggregate = overall_metrics["aggregate"]
-            print(f"\nAGGREGATE METRICS:")
+            print("\nAGGREGATE METRICS:")
             print("-" * 40)
             print(f"  True Positives (TP):    {aggregate.get('tp', 0):,}")
             print(f"  False Positives (FP):   {aggregate.get('fp', 0):,}")  
