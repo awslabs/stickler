@@ -522,7 +522,7 @@ class StructuredListComparator:
         # This ensures all fields use the same access pattern: field_data['overall']
         return {"overall": sub_field_metrics}
     
-    def _get_all_leaves(self, model_class: Type[StructuredModel], prefix: str) -> List[str]:
+    def _get_all_leaves(self, model_class: "StructuredModel", prefix: str) -> List[str]:
         """Recursively get all leaf nodes in the model."""
         metrics = {}
         
@@ -553,7 +553,7 @@ class StructuredListComparator:
         return metrics
 
 
-    def _get_leaves_under_field(self, model_class: Type[StructuredModel], field_name: str) -> List[str]:
+    def _get_leaves_under_field(self, model_class: "StructuredModel", field_name: str) -> List[str]:
         """Get all leaf nodes under a specific field."""
         # Find the field in the model
         if field_name not in model_class.model_fields:
@@ -573,7 +573,7 @@ class StructuredListComparator:
         return self._get_all_leaves(nested_model, field_name)
 
 
-    def _get_nested_model_type(self, field_type) -> Type[StructuredModel]:
+    def _get_nested_model_type(self, field_type) -> "StructuredModel":
         """
         Extract nested StructuredModel type from field annotation.
         Handles: StructuredModel, List[StructuredModel], Optional[StructuredModel], etc.
