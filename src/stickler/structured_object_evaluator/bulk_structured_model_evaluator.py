@@ -15,9 +15,9 @@ import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
+from stickler.structured_object_evaluator.models.metrics_helper import MetricsHelper
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.utils.process_evaluation import ProcessEvaluation
-from stickler.structured_object_evaluator.models.metrics_helper import MetricsHelper
 
 logger = logging.getLogger(__name__)
 

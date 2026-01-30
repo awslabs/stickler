@@ -11,7 +11,7 @@ Current Behavior Preserved (including bugs):
 - Object-level counting discrepancies in some scenarios (bug)
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Type, get_origin, get_args, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Union, get_args, get_origin
 
 from .comparable_field import ComparableField
 from .comparison_helper import ComparisonHelper

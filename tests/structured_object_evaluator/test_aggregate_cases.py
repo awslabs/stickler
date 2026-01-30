@@ -4,12 +4,12 @@
 # - Only structured
 # - Structured list
 
-from typing import Optional, List, Any
+from typing import Any, List, Optional
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.comparators.numeric import NumericComparator
 from stickler.comparators.exact import ExactComparator
+from stickler.comparators.numeric import NumericComparator
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 exact_field = ComparableField(
         comparator=ExactComparator(),  
