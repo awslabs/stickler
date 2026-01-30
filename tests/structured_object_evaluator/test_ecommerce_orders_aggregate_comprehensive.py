@@ -7,19 +7,18 @@ for complex hierarchical structures with nested objects and lists.
 """
 
 import json
-
-from typing import Optional, List, Any, Dict, Union
-
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.comparators.numeric import NumericComparator
-from stickler.comparators.exact import ExactComparator
-from stickler.comparators.fuzzy import FuzzyComparator
+import os
 
 # Import the models from the e-commerce orders file
 import sys
-import os
+from typing import Any, List, Optional, Union
+
+from stickler.comparators.exact import ExactComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.comparators.numeric import NumericComparator
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Define the same field configurations as in the original model
@@ -471,7 +470,9 @@ class TestEcommerceOrdersAggregateComprehensive:
         
     def test_hungarian_matching_verification(self):
         """Test that Hungarian matching works correctly for the Customers list."""
-        from stickler.structured_object_evaluator.models.hungarian_helper import HungarianHelper
+        from stickler.structured_object_evaluator.models.hungarian_helper import (
+            HungarianHelper,
+        )
         
         hungarian_helper = HungarianHelper()
         hungarian_info = hungarian_helper.get_complete_matching_info(
@@ -479,7 +480,7 @@ class TestEcommerceOrdersAggregateComprehensive:
         )
         matched_pairs = hungarian_info["matched_pairs"]
         
-        print(f"\n=== HUNGARIAN MATCHING RESULTS ===")
+        print("\n=== HUNGARIAN MATCHING RESULTS ===")
         print(f"Matched pairs: {matched_pairs}")
         
         # Expected from comments:
@@ -500,7 +501,9 @@ class TestEcommerceOrdersAggregateComprehensive:
 
     def test_products_hungarian_matching(self):
         """Test Hungarian matching for Products list."""
-        from stickler.structured_object_evaluator.models.hungarian_helper import HungarianHelper
+        from stickler.structured_object_evaluator.models.hungarian_helper import (
+            HungarianHelper,
+        )
         
         hungarian_helper = HungarianHelper()
         hungarian_info = hungarian_helper.get_complete_matching_info(
@@ -508,7 +511,7 @@ class TestEcommerceOrdersAggregateComprehensive:
         )
         matched_pairs = hungarian_info["matched_pairs"]
         
-        print(f"\n=== PRODUCTS HUNGARIAN MATCHING ===")
+        print("\n=== PRODUCTS HUNGARIAN MATCHING ===")
         print(f"Matched pairs: {matched_pairs}")
         
         # Expected from comments:
@@ -526,7 +529,9 @@ class TestEcommerceOrdersAggregateComprehensive:
 
     def test_discounts_hungarian_matching(self):
         """Test Hungarian matching for Discounts list."""
-        from stickler.structured_object_evaluator.models.hungarian_helper import HungarianHelper
+        from stickler.structured_object_evaluator.models.hungarian_helper import (
+            HungarianHelper,
+        )
         
         hungarian_helper = HungarianHelper()
         hungarian_info = hungarian_helper.get_complete_matching_info(
@@ -534,7 +539,7 @@ class TestEcommerceOrdersAggregateComprehensive:
         )
         matched_pairs = hungarian_info["matched_pairs"]
         
-        print(f"\n=== DISCOUNTS HUNGARIAN MATCHING ===")
+        print("\n=== DISCOUNTS HUNGARIAN MATCHING ===")
         print(f"Matched pairs: {matched_pairs}")
         
         # Discounts matching may result in 0 or 1 pairs depending on similarity threshold
