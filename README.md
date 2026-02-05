@@ -1,5 +1,7 @@
 # Stickler: Structured Object Evaluation for GenAI
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/awslabs/stickler)
+
 When in the course of human events, it becomes necessary to evaluate structured outputs from generative AI systems, we must acknowledge that traditional evaluation treats all fields equally. But **not all fields are created equal**.
 
 **Stickler is a Python library that enables complex structured JSON comparison and evaluation** that lets you focus on the fields your customer actually cares about, to answer the question: "Is it doing a good job?" 
