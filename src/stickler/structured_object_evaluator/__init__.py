@@ -4,6 +4,7 @@ This package provides tools for evaluating structured objects using configurable
 comparison metrics and displaying the results in a user-friendly format.
 """
 
+from .bulk_structured_model_evaluator import aggregate_from_comparisons
 from .models.comparable_field import ComparableField
 from .models.non_match_field import NonMatchField, NonMatchType
 from .models.structured_model import StructuredModel
@@ -19,6 +20,7 @@ __all__ = [
     "compare_structured_models",
     "anls_score",
     "compare_json",
+    "aggregate_from_comparisons",
     "ScoreNode",
     "construct_nested_dict",
     "merge_and_calculate_mean",
