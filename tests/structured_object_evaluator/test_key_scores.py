@@ -1,6 +1,5 @@
 """Tests for the key_scores utility module."""
 
-
 from stickler.structured_object_evaluator.utils.key_scores import (
     ScoreNode,
     construct_nested_dict,

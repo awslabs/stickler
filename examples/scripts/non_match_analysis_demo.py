@@ -110,7 +110,9 @@ def demonstrate_basic_evaluation(gt_order, pred_order):
     print("\n🔍 Basic Evaluation (No Non-Match Documentation)")
     print("=" * 60)
 
-    result = gt_order.compare_with(pred_order, evaluator_format=True, document_non_matches=False)
+    result = gt_order.compare_with(
+        pred_order, evaluator_format=True, document_non_matches=False
+    )
 
     print("Overall Scores:")
     print(f"  Precision: {result['overall']['precision']:.3f}")
@@ -133,7 +135,9 @@ def demonstrate_enhanced_non_matches(gt_order, pred_order):
     print("\n🔍 Enhanced Non-Match Analysis")
     print("=" * 50)
 
-    result = gt_order.compare_with(pred_order, evaluator_format=True, document_non_matches=True)
+    result = gt_order.compare_with(
+        pred_order, evaluator_format=True, document_non_matches=True
+    )
 
     # Show non-matches
     non_matches = result.get("non_matches", [])
@@ -299,7 +303,9 @@ def main():
     demonstrate_compare_with_method(gt_order, pred_order)
 
     # Analyze non-matches for practical debugging
-    result = gt_order.compare_with(pred_order, evaluator_format=True, document_non_matches=True)
+    result = gt_order.compare_with(
+        pred_order, evaluator_format=True, document_non_matches=True
+    )
     non_matches = result.get("non_matches", [])
     analyze_non_matches_for_debugging(non_matches)
 

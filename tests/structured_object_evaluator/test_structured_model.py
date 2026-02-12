@@ -211,7 +211,9 @@ class TestStructuredModels:
         # Check that nested address was evaluated correctly
         assert "address" in result["field_scores"]
         # With recursive thresholding, address score may be 0 if it falls below its threshold
-        assert result["field_scores"]["address"] >= 0.0  # Address score should be 0 or higher
+        assert (
+            result["field_scores"]["address"] >= 0.0
+        )  # Address score should be 0 or higher
 
         # Test with poor match in nested object but good parent match
         nested_poor_match = Organization(

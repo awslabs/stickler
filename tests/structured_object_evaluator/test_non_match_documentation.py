@@ -18,7 +18,7 @@ from stickler.structured_object_evaluator import (
 # Define test models
 class Address(StructuredModel):
     """Test model for an address."""
-    
+
     match_threshold = 0.8
 
     street: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.8)
@@ -31,7 +31,7 @@ class Address(StructuredModel):
 
 class Person(StructuredModel):
     """Test model for a person."""
-    
+
     match_threshold = 0.8
 
     name: str = ComparableField(
@@ -76,7 +76,9 @@ def test_document_non_matches():
     )
 
     # Evaluate prediction against ground truth with non-match documentation
-    result = gt_person.compare_with(pred_person, include_confusion_matrix=True, document_non_matches=True)
+    result = gt_person.compare_with(
+        pred_person, include_confusion_matrix=True, document_non_matches=True
+    )
 
     # Verify non-matches were documented
     assert len(result["non_matches"]) > 0, "Expected non-matches to be documented"
@@ -127,7 +129,9 @@ def test_non_match_documentation_disabled():
     pred = Address(street="123 Main St", city="New Yrok", state="N.Y.", zip_code=None)
 
     # Evaluate with non-match documentation disabled
-    result = gt.compare_with(pred, include_confusion_matrix=True, document_non_matches=False)
+    result = gt.compare_with(
+        pred, include_confusion_matrix=True, document_non_matches=False
+    )
 
     # Verify no non-matches were documented
     assert "non_matches" not in result or len(result.get("non_matches", [])) == 0, (

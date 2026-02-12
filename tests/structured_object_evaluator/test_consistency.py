@@ -69,9 +69,7 @@ class TestConsistency:
 
         # Check that the results are consistent
         assert model_result["overall_score"] == json_result["overall_score"]
-        assert (
-            model_result["all_fields_matched"] == json_result["all_fields_matched"]
-        )
+        assert model_result["all_fields_matched"] == json_result["all_fields_matched"]
         assert model_result["field_scores"] == json_result["field_scores"]
 
     def test_anls_score_with_different_return_options(self):

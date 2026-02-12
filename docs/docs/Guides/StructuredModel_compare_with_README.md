@@ -366,7 +366,8 @@ result = model1.compare_with(
     add_confidence_metrics=True,     # Add AUROC confidence calibration metric
     evaluator_format=False,          # Format for evaluation tools
     recall_with_fd=False,           # Include FD in recall calculation
-    add_derived_metrics=True        # Add precision/recall/F1 metrics
+    add_derived_metrics=True,       # Add precision/recall/F1 metrics
+    document_field_comparisons=False # Document all field-level comparisons
 )
 ```
 

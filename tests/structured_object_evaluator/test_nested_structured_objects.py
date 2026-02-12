@@ -135,7 +135,9 @@ class TestVetRecordsMetricsCalculation:
         pred_record = VeterinaryRecord(**self.pred_record)
 
         # Evaluate
-        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
+        results = gold_record.compare_with(
+            pred_record, include_confusion_matrix=True, evaluator_format=True
+        )
 
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
@@ -159,38 +161,38 @@ class TestVetRecordsMetricsCalculation:
 
         # The id field metrics are inside the "overall" key
         # assert cm["fields"]['owner']["fields"]["id"]["overall"]["aggregate"] == False, "Expected aggregate to be False"
-        assert (
-            cm["fields"]["owner"]["fields"]["id"]["overall"]["tp"] == 1
-        ), "Expected 1 true positives"
-        assert (
-            cm["fields"]["owner"]["fields"]["id"]["overall"]["fd"] == 0
-        ), "Expected 0 false discovery"
-        assert (
-            cm["fields"]["owner"]["fields"]["id"]["overall"]["fa"] == 0
-        ), "Expected 0 false alarm"
-        assert (
-            cm["fields"]["owner"]["fields"]["id"]["overall"]["fn"] == 0
-        ), "Expected 0 false negatives"
-        assert (
-            cm["fields"]["owner"]["fields"]["id"]["overall"]["tn"] == 0
-        ), "Expected 0 true negatives"
+        assert cm["fields"]["owner"]["fields"]["id"]["overall"]["tp"] == 1, (
+            "Expected 1 true positives"
+        )
+        assert cm["fields"]["owner"]["fields"]["id"]["overall"]["fd"] == 0, (
+            "Expected 0 false discovery"
+        )
+        assert cm["fields"]["owner"]["fields"]["id"]["overall"]["fa"] == 0, (
+            "Expected 0 false alarm"
+        )
+        assert cm["fields"]["owner"]["fields"]["id"]["overall"]["fn"] == 0, (
+            "Expected 0 false negatives"
+        )
+        assert cm["fields"]["owner"]["fields"]["id"]["overall"]["tn"] == 0, (
+            "Expected 0 true negatives"
+        )
 
         # assert cm["fields"]['owner']["fields"]["name"]["overall"]["aggregate"] == False, "Expected aggregate to be False"
-        assert (
-            cm["fields"]["owner"]["fields"]["name"]["overall"]["tp"] == 1
-        ), "Expected 1 true positives"
-        assert (
-            cm["fields"]["owner"]["fields"]["name"]["overall"]["fd"] == 0
-        ), "Expected 0 false discovery"
-        assert (
-            cm["fields"]["owner"]["fields"]["name"]["overall"]["fa"] == 0
-        ), "Expected 0 false alarm"
-        assert (
-            cm["fields"]["owner"]["fields"]["name"]["overall"]["fn"] == 0
-        ), "Expected 0 false negatives"
-        assert (
-            cm["fields"]["owner"]["fields"]["name"]["overall"]["tn"] == 0
-        ), "Expected 0 true negatives"
+        assert cm["fields"]["owner"]["fields"]["name"]["overall"]["tp"] == 1, (
+            "Expected 1 true positives"
+        )
+        assert cm["fields"]["owner"]["fields"]["name"]["overall"]["fd"] == 0, (
+            "Expected 0 false discovery"
+        )
+        assert cm["fields"]["owner"]["fields"]["name"]["overall"]["fa"] == 0, (
+            "Expected 0 false alarm"
+        )
+        assert cm["fields"]["owner"]["fields"]["name"]["overall"]["fn"] == 0, (
+            "Expected 0 false negatives"
+        )
+        assert cm["fields"]["owner"]["fields"]["name"]["overall"]["tn"] == 0, (
+            "Expected 0 true negatives"
+        )
 
         # Contact field metrics are in the nested fields
         # assert cm["fields"]['owner']["fields"]["contact"]["fields"]["phone"]["overall"]["aggregate"] == False, "Expected aggregate to be False"
@@ -259,33 +261,33 @@ class TestVetRecordsMetricsCalculation:
 
         # Contact overall metrics are also in an "overall" key
         # assert cm["fields"]['owner']["fields"]["contact"]["overall"]["aggregate"] == False, "Expected aggregate to be False"
-        assert (
-            cm["fields"]["owner"]["fields"]["contact"]["overall"]["tp"] == 0
-        ), "Expected 0 true positives"
-        assert (
-            cm["fields"]["owner"]["fields"]["contact"]["overall"]["fd"] == 1
-        ), "Expected 1 false discovery"
-        assert (
-            cm["fields"]["owner"]["fields"]["contact"]["overall"]["fa"] == 0
-        ), "Expected 0 false alarm (object-level counting - both GT and Pred have contact objects)"
-        assert (
-            cm["fields"]["owner"]["fields"]["contact"]["overall"]["fn"] == 0
-        ), "Expected 0 false negatives"
-        assert (
-            cm["fields"]["owner"]["fields"]["contact"]["overall"]["tn"] == 0
-        ), "Expected 0 true negatives"
+        assert cm["fields"]["owner"]["fields"]["contact"]["overall"]["tp"] == 0, (
+            "Expected 0 true positives"
+        )
+        assert cm["fields"]["owner"]["fields"]["contact"]["overall"]["fd"] == 1, (
+            "Expected 1 false discovery"
+        )
+        assert cm["fields"]["owner"]["fields"]["contact"]["overall"]["fa"] == 0, (
+            "Expected 0 false alarm (object-level counting - both GT and Pred have contact objects)"
+        )
+        assert cm["fields"]["owner"]["fields"]["contact"]["overall"]["fn"] == 0, (
+            "Expected 0 false negatives"
+        )
+        assert cm["fields"]["owner"]["fields"]["contact"]["overall"]["tn"] == 0, (
+            "Expected 0 true negatives"
+        )
 
         # Owner overall metrics
         # assert cm["fields"]['owner']["aggregate"] == False, "Expected aggregate to be False"
-        assert (
-            cm["fields"]["owner"]["tp"] == 0
-        ), "Expected 0 true positives (object-level counting - owner object similarity below threshold due to contact differences)"
-        assert (
-            cm["fields"]["owner"]["fd"] == 1
-        ), "Expected 1 false discovery (object-level counting - owner objects present but don't match)"
-        assert (
-            cm["fields"]["owner"]["fa"] == 0
-        ), "Expected 0 false alarm (object-level counting - both GT and Pred have owner objects)"
+        assert cm["fields"]["owner"]["tp"] == 0, (
+            "Expected 0 true positives (object-level counting - owner object similarity below threshold due to contact differences)"
+        )
+        assert cm["fields"]["owner"]["fd"] == 1, (
+            "Expected 1 false discovery (object-level counting - owner objects present but don't match)"
+        )
+        assert cm["fields"]["owner"]["fa"] == 0, (
+            "Expected 0 false alarm (object-level counting - both GT and Pred have owner objects)"
+        )
         assert cm["fields"]["owner"]["fn"] == 0, "Expected 0 false negatives"
         assert cm["fields"]["owner"]["tn"] == 0, "Expected 0 true negatives"
 
@@ -296,7 +298,9 @@ class TestVetRecordsMetricsCalculation:
         pred_record = VeterinaryRecord(**self.pred_record)
 
         # Evaluate
-        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
+        results = gold_record.compare_with(
+            pred_record, include_confusion_matrix=True, evaluator_format=True
+        )
 
         # Expected metrics for pets
         # 0 true positive
@@ -313,9 +317,9 @@ class TestVetRecordsMetricsCalculation:
         if "fields" in cm["fields"]["pets"]:
             nested_fields = cm["fields"]["pets"]["fields"]
             # Should be empty - no pets meet 1.0 threshold, so no recursive field analysis
-            assert (
-                len(nested_fields) == 0
-            ), "Expected no nested field metrics for poor pet matches"
+            assert len(nested_fields) == 0, (
+                "Expected no nested field metrics for poor pet matches"
+            )
         else:
             # This is also acceptable - no nested fields at all when all matches are below threshold
             pass
@@ -345,7 +349,9 @@ class TestVetRecordsMetricsCalculation:
         pred_record = VeterinaryRecord(**self.pred_record)
 
         # Evaluate
-        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
+        results = gold_record.compare_with(
+            pred_record, include_confusion_matrix=True, evaluator_format=True
+        )
 
         # Expected metrics WITH OBJECT-LEVEL COUNTING
         # 1 true positive: recordId
@@ -359,13 +365,13 @@ class TestVetRecordsMetricsCalculation:
 
         assert cm["overall"]["tp"] == 1, "Expected 1 true positives"
         assert cm["overall"]["tn"] == 0, "Expected 0 true negatives"
-        assert (
-            cm["overall"]["fd"] == 3
-        ), "Expected 3 false discovery"  # CORRECTED: 1 owner + 2 pets
+        assert cm["overall"]["fd"] == 3, (
+            "Expected 3 false discovery"
+        )  # CORRECTED: 1 owner + 2 pets
         assert cm["overall"]["fa"] == 0, "Expected 0 false alarm"
-        assert (
-            cm["overall"]["fp"] == 3
-        ), "Expected 3 false positive"  # false discovery + false alarm (3 + 0)
+        assert cm["overall"]["fp"] == 3, (
+            "Expected 3 false positive"
+        )  # false discovery + false alarm (3 + 0)
         assert cm["overall"]["fn"] == 0, "Expected 0 false negative"
 
         # Check overall metrics with object-level counting
@@ -381,7 +387,10 @@ class TestVetRecordsMetricsCalculation:
         # Expected recall = TP/(TP+FN+FD) = 1/(1+0+3) = 0.25 with recall_with_fd=True
         # Expected F1 = 2*precision*recall/(precision+recall) = 2*0.25*0.25/(0.25+0.25) = 0.25
         results_alt = gold_record.compare_with(
-            pred_record, include_confusion_matrix=True, evaluator_format=True, recall_with_fd=True
+            pred_record,
+            include_confusion_matrix=True,
+            evaluator_format=True,
+            recall_with_fd=True,
         )
         assert results_alt["overall"]["precision"] == pytest.approx(0.25, abs=0.01)
         assert results_alt["overall"]["recall"] == pytest.approx(0.25, abs=0.01)

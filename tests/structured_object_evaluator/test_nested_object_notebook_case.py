@@ -315,7 +315,9 @@ class TestNestedObjectNotebookCase:
 
         for case in cases:
             prediction = create_prediction_order(case)
-            result = ground_truth.compare_with(prediction, include_confusion_matrix=True, evaluator_format=True)
+            result = ground_truth.compare_with(
+                prediction, include_confusion_matrix=True, evaluator_format=True
+            )
 
             # Extract overall score correctly
             overall_score = result.get("overall_score", "N/A")

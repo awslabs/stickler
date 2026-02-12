@@ -1,5 +1,3 @@
-
-
 """
 Comprehensive tests for the Universal Aggregate Field feature.
 
@@ -183,22 +181,20 @@ class TestUniversalAggregateField:
         assert "aggregate" in cm, "Top level missing aggregate field"
 
         # Overall level should NOT have aggregate (it's a sibling, not nested)
-        assert (
-            "aggregate" not in cm["overall"]
-        ), "Overall should not contain nested aggregate"
+        assert "aggregate" not in cm["overall"], (
+            "Overall should not contain nested aggregate"
+        )
 
         # Every field should have aggregate as sibling of overall/fields
         for field_name, field_data in cm["fields"].items():
-            assert (
-                "aggregate" in field_data
-            ), f"Field '{field_name}' missing aggregate"
+            assert "aggregate" in field_data, f"Field '{field_name}' missing aggregate"
 
             # If field has nested fields, check them too
             if "fields" in field_data and field_data["fields"]:
                 for nested_name, nested_data in field_data["fields"].items():
-                    assert (
-                        "aggregate" in nested_data
-                    ), f"Nested field '{field_name}.{nested_name}' missing aggregate"
+                    assert "aggregate" in nested_data, (
+                        f"Nested field '{field_name}.{nested_name}' missing aggregate"
+                    )
 
     def test_aggregate_field_structure_consistency(self):
         """Test that aggregate fields have consistent structure."""
@@ -213,27 +209,27 @@ class TestUniversalAggregateField:
             # Must have confusion matrix metrics
             required_metrics = ["tp", "fa", "fd", "fp", "tn", "fn"]
             for metric in required_metrics:
-                assert (
-                    metric in aggregate_data
-                ), f"Aggregate at '{path}' missing {metric}"
-                assert isinstance(
-                    aggregate_data[metric], int
-                ), f"Aggregate {metric} at '{path}' not integer"
+                assert metric in aggregate_data, (
+                    f"Aggregate at '{path}' missing {metric}"
+                )
+                assert isinstance(aggregate_data[metric], int), (
+                    f"Aggregate {metric} at '{path}' not integer"
+                )
 
             # Must have derived metrics
-            assert (
-                "derived" in aggregate_data
-            ), f"Aggregate at '{path}' missing derived metrics"
+            assert "derived" in aggregate_data, (
+                f"Aggregate at '{path}' missing derived metrics"
+            )
             derived = aggregate_data["derived"]
 
             derived_metrics = ["cm_precision", "cm_recall", "cm_f1", "cm_accuracy"]
             for metric in derived_metrics:
-                assert (
-                    metric in derived
-                ), f"Aggregate derived at '{path}' missing {metric}"
-                assert isinstance(
-                    derived[metric], (int, float)
-                ), f"Derived {metric} at '{path}' not numeric"
+                assert metric in derived, (
+                    f"Aggregate derived at '{path}' missing {metric}"
+                )
+                assert isinstance(derived[metric], (int, float)), (
+                    f"Derived {metric} at '{path}' not numeric"
+                )
 
         # Validate top-level aggregate
         validate_aggregate_structure(cm["aggregate"], "top")
@@ -277,9 +273,9 @@ class TestUniversalAggregateField:
 
         top_aggregate = cm["aggregate"]
         for metric, expected in expected_top_aggregate.items():
-            assert (
-                top_aggregate[metric] == expected
-            ), f"Top aggregate {metric}: expected {expected}, got {top_aggregate[metric]}"
+            assert top_aggregate[metric] == expected, (
+                f"Top aggregate {metric}: expected {expected}, got {top_aggregate[metric]}"
+            )
 
     def test_nested_aggregate_calculations(self):
         """Test aggregate calculations for nested structures."""
@@ -348,9 +344,9 @@ class TestUniversalAggregateField:
         # For primitive fields, aggregate should equal overall (excluding derived)
         confusion_metrics = ["tp", "fa", "fd", "fp", "tn", "fn"]
         for metric in confusion_metrics:
-            assert (
-                overall_metrics[metric] == aggregate_metrics[metric]
-            ), f"Primitive field record_id: aggregate {metric} != overall {metric}"
+            assert overall_metrics[metric] == aggregate_metrics[metric], (
+                f"Primitive field record_id: aggregate {metric} != overall {metric}"
+            )
 
     def test_aggregate_derived_metrics_calculation(self):
         """Test that derived metrics in aggregate fields are calculated correctly."""
@@ -395,9 +391,9 @@ class TestUniversalAggregateField:
         # Top level structure validation
         expected_top_keys = {"overall", "fields", "aggregate", "non_matches"}
         actual_top_keys = set(cm.keys())
-        assert expected_top_keys.issubset(
-            actual_top_keys
-        ), f"Top level missing keys. Expected subset: {expected_top_keys}, Got: {actual_top_keys}"
+        assert expected_top_keys.issubset(actual_top_keys), (
+            f"Top level missing keys. Expected subset: {expected_top_keys}, Got: {actual_top_keys}"
+        )
 
         # Field level structure validation - updated for unified structure
         for field_name, field_data in cm["fields"].items():
@@ -407,17 +403,17 @@ class TestUniversalAggregateField:
                 # All fields must have 'overall' and 'aggregate'
                 required_keys = {"overall", "aggregate"}
                 actual_field_keys = set(field_data.keys())
-                assert required_keys.issubset(
-                    actual_field_keys
-                ), f"Field '{field_name}' missing required keys. Expected subset: {required_keys}, Got: {actual_field_keys}"
+                assert required_keys.issubset(actual_field_keys), (
+                    f"Field '{field_name}' missing required keys. Expected subset: {required_keys}, Got: {actual_field_keys}"
+                )
 
                 # Parent container fields (List, StructuredModel with nested fields) also have 'fields'
                 # Primitive fields (str, int, etc.) do not have 'fields' - this is the semantic meaning
 
                 # Aggregate should NOT be nested in overall
-                assert (
-                    "aggregate" not in field_data["overall"]
-                ), f"Field '{field_name}' has aggregate nested in overall (should be sibling)"
+                assert "aggregate" not in field_data["overall"], (
+                    f"Field '{field_name}' has aggregate nested in overall (should be sibling)"
+                )
 
     def test_no_configuration_required(self):
         """Test that aggregate fields work without any configuration."""

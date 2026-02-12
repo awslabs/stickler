@@ -140,7 +140,9 @@ class TestStructuredModelEvaluatorMetrics:
 
     def test_perfect_match(self):
         """Test metrics for perfect match case."""
-        results = self.gt_invoice.compare_with(self.perfect_invoice, evaluator_format=True)
+        results = self.gt_invoice.compare_with(
+            self.perfect_invoice, evaluator_format=True
+        )
 
         # Check overall metrics
         assert results["overall"]["precision"] == 1.0
@@ -212,9 +214,7 @@ class TestStructuredModelEvaluatorMetrics:
             description_score = item1_metrics["fields"]["description"]["anls_score"]
             # Check the score directly without a threshold assertion
             # The test case has "Service X" vs "Service B" which produces a similarity score of about 0.89
-            assert (
-                description_score != 1.0
-            ), "Description score should not be perfect"
+            assert description_score != 1.0, "Description score should not be perfect"
 
     def test_expected_calculations(self):
         """Test the expected metric calculations based on specific cases."""
@@ -302,9 +302,9 @@ class TestStructuredModelEvaluatorMetrics:
                 }
 
         # 1. Verify there's a single confusion matrix entry for line_items
-        assert (
-            "line_items" in cm["fields"]
-        ), "Expected line_items in confusion matrix fields"
+        assert "line_items" in cm["fields"], (
+            "Expected line_items in confusion matrix fields"
+        )
 
         # 2. Get the line_items confusion matrix metrics
         line_items_cm = get_base_metrics(cm, "line_items")
@@ -316,9 +316,9 @@ class TestStructuredModelEvaluatorMetrics:
         # - FN: 0 (No missing line items)
         # - TN: 0 (Always 0 for non-empty lists)
         # - FD may vary based on threshold matching
-        assert (
-            line_items_cm["tp"] >= 2
-        ), "Expected atleast 2 true positives for line_items"
+        assert line_items_cm["tp"] >= 2, (
+            "Expected atleast 2 true positives for line_items"
+        )
         # The fd value may be 0 or 1 depending on implementation details and thresholds
         assert line_items_cm["fd"] in [
             0,
@@ -328,9 +328,7 @@ class TestStructuredModelEvaluatorMetrics:
             0,
             1,
         ], "False positive should be 0 or 1 for line_items"
-        assert (
-            line_items_cm["fn"] == 0
-        ), "Expected 0 false negatives for line_items"
+        assert line_items_cm["fn"] == 0, "Expected 0 false negatives for line_items"
 
         # 4. Verify we have hierarchical entries for fields within line items
         # These entries should be under line_items.fields structure
@@ -339,12 +337,12 @@ class TestStructuredModelEvaluatorMetrics:
 
         # Check that each expected field is present in the hierarchical structure
         for expected_field in expected_field_entries:
-            assert (
-                expected_field in line_items_fields
-            ), f"Expected to find field {expected_field} in line_items fields"
+            assert expected_field in line_items_fields, (
+                f"Expected to find field {expected_field} in line_items fields"
+            )
 
         # We should NOT find entries like "line_items[0].description" with array indices
         for field_name in cm["fields"]:
-            assert not field_name.startswith(
-                "line_items["
-            ), f"Found unexpected indexed field name in confusion matrix: {field_name}"
+            assert not field_name.startswith("line_items["), (
+                f"Found unexpected indexed field name in confusion matrix: {field_name}"
+            )
