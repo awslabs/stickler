@@ -218,8 +218,9 @@ class JsonSchemaFieldConverter:
         # Extract comparator
         if "x-aws-stickler-comparator" in property_schema:
             comparator_name = property_schema["x-aws-stickler-comparator"]
+            comparator_config = property_schema.get("x-aws-stickler-comparator-config", {})
             try:
-                extensions["comparator"] = self._create_comparator_from_name(comparator_name)
+                extensions["comparator"] = create_comparator(comparator_name, comparator_config)
             except Exception as e:
                 field_info = f" in field '{field_path}'" if field_path else ""
                 raise ValueError(
@@ -537,6 +538,8 @@ class JsonSchemaFieldConverter:
             Dictionary with comparison extensions in the specified format
         """
         extensions = {}
+        if format not in ("json_schema", "stickler_config"):
+            raise ValueError(f"Unsupported format: {format!r}. Use 'json_schema' or 'stickler_config'.")
         prefix = "x-aws-stickler-" if format == "json_schema" else ""
         
         # Export comparator class name and configuration

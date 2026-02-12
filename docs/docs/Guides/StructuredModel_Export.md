@@ -405,4 +405,4 @@ git commit -m "Add Product model schema v1"
 
 - [StructuredModel Dynamic Creation](StructuredModel_Dynamic_Creation.md) - Import methods
 - [StructuredModel Advanced Functionality](StructuredModel_Advanced_Functionality.md) - Comparison features
-- [JSON Schema Extensions](../../index.md) - Full extension documentation in main README
+- [JSON Schema Extensions](../Getting-Started/README.md) - Full extension documentation

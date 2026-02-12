@@ -4,7 +4,7 @@ This module tests that models can be exported and re-imported while
 preserving their comparison behavior.
 """
 
-from typing import List
+from typing import List, Optional
 
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.numeric import NumericComparator
@@ -218,3 +218,52 @@ def test_multiple_roundtrips():
     result2 = p2.compare_with(p2)
     
     assert result_orig["overall_score"] == result1["overall_score"] == result2["overall_score"] == 1.0
+
+
+def test_optional_field_roundtrip():
+    """Test round-trip with Optional fields preserves comparison behavior."""
+
+    class OptionalModel(StructuredModel):
+        name: str = ComparableField(threshold=0.8, default=...)
+        note: Optional[str] = ComparableField(threshold=0.6, default=None)
+
+    # JSON Schema round-trip
+    schema = OptionalModel.to_json_schema()
+    Reconstructed = StructuredModel.from_json_schema(schema)
+
+    # Test with non-None values (Optional nature is not preserved in round-trip — known limitation)
+    o1 = OptionalModel(name="Test", note="hello")
+    r1 = Reconstructed(name="Test", note="hello")
+
+    result_orig = o1.compare_with(o1)
+    result_recon = r1.compare_with(r1)
+
+    assert result_orig["overall_score"] == 1.0
+    assert result_recon["overall_score"] == 1.0
+
+
+def test_numeric_comparator_tolerance_roundtrip():
+    """Test that NumericComparator tolerance is preserved after round-trip."""
+
+    class TolerantModel(StructuredModel):
+        value: float = ComparableField(
+            comparator=NumericComparator(absolute_tolerance=0.5),
+            threshold=1.0,
+            default=...
+        )
+
+    # JSON Schema round-trip
+    schema = TolerantModel.to_json_schema()
+    Reconstructed = StructuredModel.from_json_schema(schema)
+    r1 = Reconstructed(value=100.0)
+    r2 = Reconstructed(value=100.3)
+    result = r1.compare_with(r2)
+    assert result["field_scores"]["value"] == 1.0
+
+    # Stickler config round-trip
+    config = TolerantModel.to_stickler_config()
+    Reconstructed2 = StructuredModel.model_from_json(config)
+    r3 = Reconstructed2(value=100.0)
+    r4 = Reconstructed2(value=100.3)
+    result2 = r3.compare_with(r4)
+    assert result2["field_scores"]["value"] == 1.0

@@ -1157,9 +1157,9 @@ class StructuredModel(BaseModel):
         }
 
         # Add match_threshold if available (check both attribute names for compatibility)
-        threshold = getattr(cls, "match_threshold", None) or getattr(
-            cls, "_match_threshold", None
-        )
+        threshold = getattr(cls, "match_threshold", None)
+        if threshold is None:
+            threshold = getattr(cls, "_match_threshold", None)
         if threshold is not None:
             schema["x-aws-stickler-match-threshold"] = threshold
 
@@ -1172,6 +1172,7 @@ class StructuredModel(BaseModel):
 
             # Validate field has type annotation
             if field_type is None:
+                # Defensive: unreachable through normal Pydantic model construction
                 raise ValueError(f"Field '{field_name}' has no type annotation")
 
             # Unwrap Optional before type checking
@@ -1184,6 +1185,7 @@ class StructuredModel(BaseModel):
                 # Handle List[StructuredModel] or List[primitive]
                 args = get_args(field_type)
                 if not args:
+                    # Defensive: unreachable through normal Pydantic model construction
                     raise ValueError(
                         f"Field '{field_name}' has unparameterized list type. "
                         f"Use List[str], List[int], etc."
@@ -1289,9 +1291,9 @@ class StructuredModel(BaseModel):
         config = {"model_name": cls.__name__, "fields": {}}
 
         # Add match_threshold if available (check both attribute names for compatibility)
-        threshold = getattr(cls, "match_threshold", None) or getattr(
-            cls, "_match_threshold", None
-        )
+        threshold = getattr(cls, "match_threshold", None)
+        if threshold is None:
+            threshold = getattr(cls, "_match_threshold", None)
         if threshold is not None:
             config["match_threshold"] = threshold
 
@@ -1304,6 +1306,7 @@ class StructuredModel(BaseModel):
 
             # Validate field has type annotation
             if field_type is None:
+                # Defensive: unreachable through normal Pydantic model construction
                 raise ValueError(f"Field '{field_name}' has no type annotation")
 
             # Unwrap Optional before type checking
@@ -1311,15 +1314,17 @@ class StructuredModel(BaseModel):
 
             # Check if nested StructuredModel - use "structured_model" type
             if cls._is_structured_model_type(field_type):
-                field_config = {
-                    "type": "structured_model",
-                    # Recursively export nested model's fields
-                    "fields": field_type.to_stickler_config()["fields"],
-                }
+                nested_config = field_type.to_stickler_config()
+                field_config = {"type": "structured_model", "fields": nested_config["fields"]}
+                if nested_config.get("model_name"):
+                    field_config["model_name"] = nested_config["model_name"]
+                if nested_config.get("match_threshold") is not None:
+                    field_config["match_threshold"] = nested_config["match_threshold"]
             elif get_origin(field_type) is list:
                 # Handle List[StructuredModel] or List[primitive]
                 args = get_args(field_type)
                 if not args:
+                    # Defensive: unreachable through normal Pydantic model construction
                     raise ValueError(
                         f"Field '{field_name}' has unparameterized list type. "
                         f"Use List[str], List[int], etc."
@@ -1327,12 +1332,12 @@ class StructuredModel(BaseModel):
                 element_type = args[0]
 
                 if cls._is_structured_model_type(element_type):
-                    # List of StructuredModels - use "list_structured_model" type
-                    field_config = {
-                        "type": "list_structured_model",
-                        # Recursively export element model's fields
-                        "fields": element_type.to_stickler_config()["fields"],
-                    }
+                    nested_config = element_type.to_stickler_config()
+                    field_config = {"type": "list_structured_model", "fields": nested_config["fields"]}
+                    if nested_config.get("model_name"):
+                        field_config["model_name"] = nested_config["model_name"]
+                    if nested_config.get("match_threshold") is not None:
+                        field_config["match_threshold"] = nested_config["match_threshold"]
                 else:
                     # Primitive list - use converter
                     field_config = converter.field_to_stickler_config(

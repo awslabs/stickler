@@ -4,7 +4,7 @@ This module tests the to_json_schema() and to_stickler_config() methods
 that export StructuredModel configurations for serialization.
 """
 
-from typing import List
+from typing import List, Optional
 
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.numeric import NumericComparator
@@ -193,3 +193,58 @@ def test_export_preserves_metadata():
     assert field_config["weight"] == 1.5
     assert field_config["clip_under_threshold"] is False
     assert field_config["aggregate"] is True
+
+
+class OptionalFieldModel(StructuredModel):
+    """Model with Optional fields for testing export."""
+    required_name: str = ComparableField(threshold=0.8, default=...)
+    optional_note: Optional[str] = ComparableField(threshold=0.6, default=None)
+    optional_product: Optional[SimpleProduct] = ComparableField(default=None)
+    optional_products: Optional[List[SimpleProduct]] = ComparableField(default=None)
+
+
+def test_to_json_schema_optional_fields():
+    """Test that Optional fields export correctly and are not in required list."""
+    schema = OptionalFieldModel.to_json_schema()
+
+    # Required field is in required list
+    assert "required_name" in schema["required"]
+
+    # Optional fields are NOT in required list
+    assert "optional_note" not in schema["required"]
+    assert "optional_product" not in schema["required"]
+    assert "optional_products" not in schema["required"]
+
+    # Optional[str] unwraps to string type
+    assert schema["properties"]["optional_note"]["type"] == "string"
+
+    # Optional[StructuredModel] unwraps to nested object schema
+    product_prop = schema["properties"]["optional_product"]
+    assert product_prop["type"] == "object"
+    assert "name" in product_prop["properties"]
+    assert "price" in product_prop["properties"]
+
+    # Optional[List[StructuredModel]] unwraps to array with nested items
+    products_prop = schema["properties"]["optional_products"]
+    assert products_prop["type"] == "array"
+    assert products_prop["items"]["type"] == "object"
+    assert "name" in products_prop["items"]["properties"]
+
+
+def test_to_stickler_config_optional_fields():
+    """Test that Optional fields export correctly in Stickler config format."""
+    config = OptionalFieldModel.to_stickler_config()
+
+    # Optional[str] unwraps to str type
+    assert config["fields"]["optional_note"]["type"] == "str"
+
+    # Optional[StructuredModel] unwraps to structured_model type
+    product_field = config["fields"]["optional_product"]
+    assert product_field["type"] == "structured_model"
+    assert "name" in product_field["fields"]
+    assert "price" in product_field["fields"]
+
+    # Optional[List[StructuredModel]] unwraps to list_structured_model type
+    products_field = config["fields"]["optional_products"]
+    assert products_field["type"] == "list_structured_model"
+    assert "name" in products_field["fields"]
