@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from .null_helper import NullHelper
 from .result_helper import ResultHelper
+from .null_helper import NullHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel

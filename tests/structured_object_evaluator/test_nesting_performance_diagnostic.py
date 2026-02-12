@@ -164,7 +164,9 @@ def test_performance_by_level():
     start_time = time.time()
     item1 = create_simple_item(1, "base")
     item2 = create_simple_item(1, "diff")
-    result = item1.compare_with(item2, include_confusion_matrix=True, evaluator_format=True)
+    result = item1.compare_with(
+        item2, include_confusion_matrix=True, evaluator_format=True
+    )
     duration = time.time() - start_time
     print(f"   Time: {duration:.3f}s | Score: {result['overall']['anls_score']:.3f}")
 
@@ -177,7 +179,9 @@ def test_performance_by_level():
     start_time = time.time()
     container1 = create_container(1, "base")
     container2 = create_container(1, "diff")
-    result = container1.compare_with(container2, include_confusion_matrix=True, evaluator_format=True)
+    result = container1.compare_with(
+        container2, include_confusion_matrix=True, evaluator_format=True
+    )
     duration = time.time() - start_time
     print(f"   Time: {duration:.3f}s | Score: {result['overall']['anls_score']:.3f}")
 
@@ -190,7 +194,9 @@ def test_performance_by_level():
     start_time = time.time()
     group1 = create_group(1, "base")
     group2 = create_group(1, "diff")
-    result = group1.compare_with(group2, include_confusion_matrix=True, evaluator_format=True)
+    result = group1.compare_with(
+        group2, include_confusion_matrix=True, evaluator_format=True
+    )
     duration = time.time() - start_time
     print(f"   Time: {duration:.3f}s | Score: {result['overall']['anls_score']:.3f}")
 
@@ -203,7 +209,9 @@ def test_performance_by_level():
     start_time = time.time()
     dept1 = create_department(1, "base")
     dept2 = create_department(1, "diff")
-    result = dept1.compare_with(dept2, include_confusion_matrix=True, evaluator_format=True)
+    result = dept1.compare_with(
+        dept2, include_confusion_matrix=True, evaluator_format=True
+    )
     duration = time.time() - start_time
     print(f"   Time: {duration:.3f}s | Score: {result['overall']['anls_score']:.3f}")
 
@@ -229,7 +237,9 @@ def test_with_non_match_documentation():
     start_time = time.time()
     container1 = create_container(1, "base")
     container2 = create_container(1, "diff")
-    result = container1.compare_with(container2, include_confusion_matrix=True, evaluator_format=True)
+    result = container1.compare_with(
+        container2, include_confusion_matrix=True, evaluator_format=True
+    )
     duration = time.time() - start_time
     print(f"   Time: {duration:.3f}s | Score: {result['overall']['anls_score']:.3f}")
     print(f"   Non-matches: {len(result.get('non_matches', []))}")

@@ -149,7 +149,9 @@ class TestStructuredObjectMetrics:
     def test_perfect_match(self):
         """Test metrics for perfect match case."""
         # Use the compare_with method
-        results = self.gt_invoice.compare_with(self.perfect_invoice, evaluator_format=True)
+        results = self.gt_invoice.compare_with(
+            self.perfect_invoice, evaluator_format=True
+        )
 
         # Check overall metrics
         assert results["overall"]["precision"] == 1.0
@@ -220,9 +222,7 @@ class TestStructuredObjectMetrics:
             item1_metrics = results["fields"]["line_items"]["items"][1]
             description_score = item1_metrics["fields"]["description"]["anls_score"]
             # The test case has "Service X" vs "Service B" which produces a similarity score below 1.0
-            assert (
-                description_score != 1.0
-            ), "Description score should not be perfect"
+            assert description_score != 1.0, "Description score should not be perfect"
 
     def test_confusion_matrix_aggregation_for_nested_objects(self):
         """
@@ -291,9 +291,9 @@ class TestStructuredObjectMetrics:
             }
 
         # Verify line_items field is present in confusion matrix
-        assert (
-            "line_items" in cm["fields"]
-        ), "Expected line_items in confusion matrix fields"
+        assert "line_items" in cm["fields"], (
+            "Expected line_items in confusion matrix fields"
+        )
 
         # Get line_items confusion matrix metrics
         get_base_metrics(cm, "line_items")
@@ -302,21 +302,21 @@ class TestStructuredObjectMetrics:
         expected_field_entries = ["description", "quantity", "unit_price", "total"]
 
         # Check that each expected field is present in the hierarchical structure
-        assert (
-            "line_items" in cm["fields"]
-        ), "Expected line_items in confusion matrix fields"
-        assert (
-            "fields" in cm["fields"]["line_items"]
-        ), "Expected fields in line_items structure"
+        assert "line_items" in cm["fields"], (
+            "Expected line_items in confusion matrix fields"
+        )
+        assert "fields" in cm["fields"]["line_items"], (
+            "Expected fields in line_items structure"
+        )
 
         line_items_fields = cm["fields"]["line_items"]["fields"]
         for expected_field in expected_field_entries:
-            assert (
-                expected_field in line_items_fields
-            ), f"Expected to find field {expected_field} in line_items fields"
+            assert expected_field in line_items_fields, (
+                f"Expected to find field {expected_field} in line_items fields"
+            )
 
         # We should NOT find entries like "line_items[0].description" with array indices
         for field_name in cm["fields"]:
-            assert not field_name.startswith(
-                "line_items["
-            ), f"Found unexpected indexed field name in confusion matrix: {field_name}"
+            assert not field_name.startswith("line_items["), (
+                f"Found unexpected indexed field name in confusion matrix: {field_name}"
+            )

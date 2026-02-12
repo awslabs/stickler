@@ -1,9 +1,10 @@
 """Field comparison collector for StructuredModel comparisons.
 
 This module provides the FieldComparisonCollector class that handles the collection
-and documentation of ALL field comparisons (both matches and non-matches) during 
+and documentation of ALL field comparisons (both matches and non-matches) during
 structured object comparison.
 """
+
 import math
 from typing import TYPE_CHECKING, Any, Dict, List
 
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
 
 class FieldComparisonCollector:
     """Collects all field-level comparison data for detailed analysis.
-    
+
     This class is responsible for collecting and documenting ALL field comparisons
     between compared StructuredModel instances, including both matches and non-matches.
     It provides comprehensive field-level granularity for analysis purposes.
@@ -23,7 +24,7 @@ class FieldComparisonCollector:
 
     def __init__(self, model: "StructuredModel"):
         """Initialize collector with the ground truth model.
-        
+
         Args:
             model: The ground truth StructuredModel instance
         """
@@ -31,20 +32,18 @@ class FieldComparisonCollector:
         self.helper = FieldComparisonHelper()
 
     def collect_field_comparisons(
-        self, 
-        recursive_result: dict, 
-        other: "StructuredModel"
+        self, recursive_result: dict, other: "StructuredModel"
     ) -> List[Dict[str, Any]]:
         """Collect all field comparisons with detailed metadata.
-        
+
         This method walks through the recursive comparison result and collects
         ALL field comparisons (matches and non-matches) at the field level,
         providing detailed information about each comparison.
-        
+
         Args:
             recursive_result: Result from compare_recursive containing field comparison details
             other: The predicted StructuredModel instance
-            
+
         Returns:
             List of field comparison dictionaries with detailed information:
             [
@@ -88,10 +87,7 @@ class FieldComparisonCollector:
                 )
                 all_field_comparisons.extend(null_comparisons)
 
-            elif (
-                isinstance(gt_val, list)
-                and isinstance(pred_val, list)
-            ):
+            elif isinstance(gt_val, list) and isinstance(pred_val, list):
                 # Use FieldComparisonHelper for primitive list collection
                 list_comparisons = self.helper.collect_list_entries(
                     field_name, gt_val, pred_val
@@ -100,6 +96,7 @@ class FieldComparisonCollector:
 
             else:
                 from .structured_model import StructuredModel
+
                 # Handle nested StructuredModel objects for detailed field comparison collection
                 if (
                     isinstance(gt_val, StructuredModel)
@@ -125,23 +122,27 @@ class FieldComparisonCollector:
                 else:
                     # Extract comparison details from field_result
                     raw_score = field_result.get("raw_similarity_score", 0.0)
-                    threshold_score = field_result.get("threshold_applied_score", raw_score)
+                    threshold_score = field_result.get(
+                        "threshold_applied_score", raw_score
+                    )
                     weight = field_result.get("weight", 1.0)
                     weighted_score = threshold_score * weight
-                    
+
                     # Determine if this is a match based on threshold
                     info = self.model._get_comparison_info(field_name)
                     is_match = bool(raw_score >= info.threshold)
-                    
+
                     # Determine reason
                     if is_match:
                         if math.isclose(raw_score, 1.0):
                             reason = "exact match"
                         else:
-                            reason = f"above threshold ({raw_score:.3f} >= {info.threshold})"
+                            reason = (
+                                f"above threshold ({raw_score:.3f} >= {info.threshold})"
+                            )
                     else:
                         reason = f"below threshold ({raw_score:.3f} < {info.threshold})"
-                    
+
                     # Handle missing fields
                     if pred_val is None and gt_val is not None:
                         reason = "false negative (unmatched ground truth)"
@@ -162,7 +163,7 @@ class FieldComparisonCollector:
                         "match": is_match,
                         "score": raw_score,
                         "weighted_score": weighted_score,
-                        "reason": reason
+                        "reason": reason,
                     }
                     all_field_comparisons.append(entry)
 

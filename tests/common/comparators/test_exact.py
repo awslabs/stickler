@@ -1,6 +1,5 @@
 """Tests for ExactComparator."""
 
-
 from stickler.comparators import ExactComparator
 
 

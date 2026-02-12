@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, Dict, List
 from .comparable_field import ComparableField
 from .comparison_helper import ComparisonHelper
 from .hungarian_helper import HungarianHelper
+from .comparison_helper import ComparisonHelper 
 from .metrics_helper import MetricsHelper
 
 if TYPE_CHECKING:

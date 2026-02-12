@@ -1,5 +1,3 @@
-
-
 """
 Test Optional[List[StructuredModel]] None vs populated edge cases.
 These tests validate that None vs populated scenarios generate proper FA/FN metrics.
@@ -14,7 +12,7 @@ from stickler.structured_object_evaluator.models.structured_model import Structu
 
 class Transaction(StructuredModel):
     match_threshold = 0.7
-    
+
     amount: float = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.9, weight=1.0
     )
@@ -25,7 +23,7 @@ class Transaction(StructuredModel):
 
 class Document(StructuredModel):
     match_threshold = 0.7
-    
+
     id: str = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.9, weight=1.0
     )

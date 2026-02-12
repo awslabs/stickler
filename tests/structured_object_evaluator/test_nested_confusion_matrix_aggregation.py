@@ -137,7 +137,9 @@ class TestNestedConfusionMatrixAggregation:
                 print(f"  Values: {values}")
 
         # 1. Check there's only one confusion matrix entry for line_items
-        assert "line_items" in cm["fields"], "Expected line_items in confusion matrix fields"
+        assert "line_items" in cm["fields"], (
+            "Expected line_items in confusion matrix fields"
+        )
 
         # 2. Fields within line_items should have their own confusion matrix entries
         # Access through hierarchical structure
@@ -197,19 +199,19 @@ class TestNestedConfusionMatrixAggregation:
             unit_price_cm = self.get_base_metrics(cm, "line_items.unit_price")
             print(f"\nUnit price confusion matrix: {unit_price_cm}")
             assert unit_price_cm.get("tp", 0) == 2, "Expected 2 TPs for unit_price"
-            assert (
-                unit_price_cm.get("fd", 0) == 1
-            ), "Expected 1 FD for unit_price (10.0 vs 11.0)"
+            assert unit_price_cm.get("fd", 0) == 1, (
+                "Expected 1 FD for unit_price (10.0 vs 11.0)"
+            )
 
         if "line_items.total" in cm["fields"]:
             total_cm = self.get_base_metrics(cm, "line_items.total")
             print(f"\nTotal confusion matrix: {total_cm}")
-            assert (
-                total_cm.get("tp", 0) == 1
-            ), "Expected 1 TP for total (only 90.0=90.0 matches)"
-            assert (
-                total_cm.get("fd", 0) == 2
-            ), "Expected 2 FDs for total (10.0≠11.0, 40.0≠60.0)"
+            assert total_cm.get("tp", 0) == 1, (
+                "Expected 1 TP for total (only 90.0=90.0 matches)"
+            )
+            assert total_cm.get("fd", 0) == 2, (
+                "Expected 2 FDs for total (10.0≠11.0, 40.0≠60.0)"
+            )
 
     def test_detailed_confusion_matrix_structure(self):
         """

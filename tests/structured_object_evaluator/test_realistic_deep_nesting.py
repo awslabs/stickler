@@ -303,10 +303,10 @@ class TestRealisticDeepNesting:
             modified_org = self.create_test_organization(variation)
 
             result = base_org.compare_with(
-                modified_org, 
+                modified_org,
                 evaluator_format=True,
                 document_non_matches=True,
-                include_confusion_matrix=True
+                include_confusion_matrix=True,
             )
 
             duration = time.time() - start_time
@@ -335,10 +335,10 @@ class TestRealisticDeepNesting:
         level6_diff_org = self.create_test_organization("level6_diff")
 
         result = base_org.compare_with(
-            level6_diff_org, 
+            level6_diff_org,
             evaluator_format=True,
             document_non_matches=True,
-            include_confusion_matrix=True
+            include_confusion_matrix=True,
         )
 
         duration = time.time() - start_time
@@ -381,10 +381,10 @@ class TestRealisticDeepNesting:
         diff_org = self.create_test_organization("level3_diff")
 
         result = base_org.compare_with(
-            diff_org, 
+            diff_org,
             evaluator_format=True,
             document_non_matches=True,
-            include_confusion_matrix=True
+            include_confusion_matrix=True,
         )
 
         duration = time.time() - start_time
@@ -437,10 +437,10 @@ class TestRealisticDeepNesting:
                 "level6_diff" if i % 2 == 0 else "level3_diff"
             )
             result = org.compare_with(
-                modified, 
+                modified,
                 evaluator_format=True,
                 document_non_matches=True,
-                include_confusion_matrix=True
+                include_confusion_matrix=True,
             )
             results.append(result)
 

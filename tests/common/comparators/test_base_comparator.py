@@ -61,16 +61,31 @@ class TestBaseComparator:
         # Default threshold (0.7)
         assert self.comparator.binary_compare("test", "test") == (1, 0)  # 1.0 >= 0.7
         assert self.comparator.binary_compare("test", "testing") == (0, 1)  # 0.5 < 0.7
-        assert self.comparator.binary_compare("test", "different") == (0, 1)  # 0.0 < 0.7
+        assert self.comparator.binary_compare("test", "different") == (
+            0,
+            1,
+        )  # 0.0 < 0.7
 
         # High threshold (0.9)
-        assert self.high_threshold.binary_compare("test", "test") == (1, 0)  # 1.0 >= 0.9
-        assert self.high_threshold.binary_compare("test", "testing") == (0, 1)  # 0.5 < 0.9
+        assert self.high_threshold.binary_compare("test", "test") == (
+            1,
+            0,
+        )  # 1.0 >= 0.9
+        assert self.high_threshold.binary_compare("test", "testing") == (
+            0,
+            1,
+        )  # 0.5 < 0.9
 
         # Low threshold (0.4)
         assert self.low_threshold.binary_compare("test", "test") == (1, 0)  # 1.0 >= 0.4
-        assert self.low_threshold.binary_compare("test", "testing") == (1, 0)  # 0.5 >= 0.4
-        assert self.low_threshold.binary_compare("test", "different") == (0, 1)  # 0.0 < 0.4
+        assert self.low_threshold.binary_compare("test", "testing") == (
+            1,
+            0,
+        )  # 0.5 >= 0.4
+        assert self.low_threshold.binary_compare("test", "different") == (
+            0,
+            1,
+        )  # 0.0 < 0.4
 
     def test_none_values(self):
         """Test handling of None values."""

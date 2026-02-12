@@ -13,17 +13,17 @@ if TYPE_CHECKING:
 
 class ComparisonEngine:
     """Orchestrates the comparison process for StructuredModel instances.
-    
+
     This class is the main orchestrator for comparing two StructuredModel instances.
     It coordinates between:
     - ComparisonDispatcher: Routes field comparisons to appropriate handlers
     - NonMatchCollector: Collects and documents non-matching fields
     - ConfusionMatrixCalculator: Calculates confusion matrix metrics
-    
+
     The engine implements a single-traversal optimization where all comparison
     data (scores, metrics, non-matches) is collected in one pass through the
     model structure.
-    
+
     Attributes:
         model: The ground truth StructuredModel instance used for comparison
         dispatcher: ComparisonDispatcher for routing field comparisons
@@ -33,12 +33,12 @@ class ComparisonEngine:
 
     def __init__(self, model: "StructuredModel"):
         """Initialize engine with the ground truth model.
-        
+
         Args:
             model: The ground truth StructuredModel instance
         """
         self.model = model
-        
+
         # Initialize components lazily to avoid circular imports
         self._dispatcher = None
         self._non_match_collector = None
@@ -50,6 +50,7 @@ class ComparisonEngine:
         """Lazy initialization of ComparisonDispatcher."""
         if self._dispatcher is None:
             from .comparison_dispatcher import ComparisonDispatcher
+
             self._dispatcher = ComparisonDispatcher(self.model)
         return self._dispatcher
 
@@ -58,6 +59,7 @@ class ComparisonEngine:
         """Lazy initialization of NonMatchCollector."""
         if self._non_match_collector is None:
             from .non_match_collector import NonMatchCollector
+
             self._non_match_collector = NonMatchCollector(self.model)
         return self._non_match_collector
 
@@ -66,6 +68,7 @@ class ComparisonEngine:
         """Lazy initialization of FieldComparisonCollector."""
         if self._field_comparison_collector is None:
             from .field_comparison_collector import FieldComparisonCollector
+
             self._field_comparison_collector = FieldComparisonCollector(self.model)
         return self._field_comparison_collector
 
@@ -74,26 +77,27 @@ class ComparisonEngine:
         """Lazy initialization of ConfusionMatrixBuilder."""
         if self._confusion_matrix_builder is None:
             from .confusion_matrix_builder import ConfusionMatrixBuilder
+
             self._confusion_matrix_builder = ConfusionMatrixBuilder(self.model)
         return self._confusion_matrix_builder
 
     def compare_recursive(self, other: "StructuredModel") -> Dict[str, Any]:
         """The core recursive comparison function.
-        
+
         This method performs a single-traversal comparison of two StructuredModel
         instances, collecting both confusion matrix metrics and similarity scores
         in one pass through the model structure.
-        
+
         The comparison process:
         1. Iterates through all fields in the ground truth model
         2. Dispatches each field comparison to the appropriate handler
         3. Aggregates metrics and scores from field comparisons
         4. Handles hallucinated fields (extra fields) as False Alarms
         5. Calculates overall similarity score and match status
-        
+
         Args:
             other: Another instance of the same model to compare with
-            
+
         Returns:
             Dictionary with hierarchical comparison results:
             {
@@ -119,7 +123,7 @@ class ComparisonEngine:
                 },
                 "non_matches": []  # Populated by collectors if requested
             }
-            
+
         Example:
             >>> engine = ComparisonEngine(gt_model)
             >>> result = engine.compare_recursive(pred_model)
@@ -153,7 +157,9 @@ class ComparisonEngine:
             pred_val = getattr(other, field_name, None)
 
             # Enhanced dispatch returns both metrics AND scores
-            field_result = self.dispatcher.dispatch_field_comparison(field_name, gt_val, pred_val)
+            field_result = self.dispatcher.dispatch_field_comparison(
+                field_name, gt_val, pred_val
+            )
 
             result["fields"][field_name] = field_result
 
@@ -200,15 +206,15 @@ class ComparisonEngine:
         recall_with_fd: bool = False,
         add_derived_metrics: bool = True,
         document_field_comparisons: bool = False,
-        add_confidence_metrics: bool = False
+        add_confidence_metrics: bool = False,
     ) -> Dict[str, Any]:
         """Compare with another instance using single traversal.
-        
+
         This is the main public API for comparing two StructuredModel instances.
         It uses the single-traversal optimization to collect all comparison data
         in one pass, then optionally adds confusion matrix metrics and non-match
         documentation based on the provided flags.
-        
+
         The comparison process:
         1. Calls compare_recursive to get base comparison results
         2. Extracts field scores and overall metrics
@@ -216,7 +222,7 @@ class ComparisonEngine:
         4. Optionally adds non-match documentation
         5. Optionally add details on each primitive field comparison
         6. Optionally formats results for evaluator
-        
+
         Args:
             other: Another instance of the same model to compare with
             include_confusion_matrix: Whether to include confusion matrix calculations
@@ -226,7 +232,7 @@ class ComparisonEngine:
                             If False, use traditional recall (TP/(TP+FN))
             add_derived_metrics: Whether to add derived metrics to confusion matrix
             document_field_comparisons: Whether to document all matches and non matches made in the comparison
-            
+
         Returns:
             Dictionary with comparison results:
             {
@@ -238,7 +244,7 @@ class ComparisonEngine:
                 "field_comparisons": [...] # If field_comparisons=True
                 "auroc_confidence_metric": float # If add_confidence_metrics=True
             }
-            
+
         Example:
             >>> engine = ComparisonEngine(gt_model)
             >>> result = engine.compare_with(
@@ -281,7 +287,7 @@ class ComparisonEngine:
             confusion_matrix = self.confusion_matrix_builder.build_confusion_matrix(
                 recursive_result,
                 add_derived_metrics=add_derived_metrics,
-                recall_with_fd=recall_with_fd
+                recall_with_fd=recall_with_fd,
             )
 
             result["confusion_matrix"] = confusion_matrix
@@ -289,32 +295,38 @@ class ComparisonEngine:
         # Add optional non-match documentation
         if document_non_matches:
             # Use NonMatchCollector for enhanced object-level non-matches
-            non_matches = self.non_match_collector.collect_enhanced_non_matches(recursive_result, other)
+            non_matches = self.non_match_collector.collect_enhanced_non_matches(
+                recursive_result, other
+            )
             result["non_matches"] = non_matches
-        
+
         # Add optional field comparison documentation
         if document_field_comparisons:
             # Use FieldComparisonCollector for comprehensive field-level comparisons
-            field_comparisons = self.field_comparison_collector.collect_field_comparisons(recursive_result, other)
+            field_comparisons = (
+                self.field_comparison_collector.collect_field_comparisons(
+                    recursive_result, other
+                )
+            )
             result["field_comparisons"] = field_comparisons
 
         # If add_confidence_metrics is requested, add confidence metrics
         if add_confidence_metrics:
             from .confidence_calculator import ConfidenceCalculator
+
             calculator = ConfidenceCalculator()
             auroc = calculator.calculate_overall_auroc(result, other)
-            result['auroc_confidence_metric'] = auroc
+            result["auroc_confidence_metric"] = auroc
 
         # If evaluator_format is requested, transform the result
         if evaluator_format:
             return self.model._format_for_evaluator(result, other, recall_with_fd)
-        
 
         return result
 
     def _aggregate_to_overall(self, field_result: dict, overall: dict) -> None:
         """Simple aggregation to overall metrics.
-        
+
         Args:
             field_result: Result from a field comparison
             overall: Overall metrics dictionary to update
@@ -344,7 +356,7 @@ class ComparisonEngine:
 
         # Also recursively check nested StructuredModel objects for extra fields
         from .structured_model import StructuredModel
-        
+
         for field_name in self.model.__class__.model_fields:
             if field_name == "extra_fields":
                 continue
@@ -353,7 +365,9 @@ class ComparisonEngine:
             pred_val = getattr(other, field_name, None)
 
             # Check nested StructuredModel objects
-            if isinstance(gt_val, StructuredModel) and isinstance(pred_val, StructuredModel):
+            if isinstance(gt_val, StructuredModel) and isinstance(
+                pred_val, StructuredModel
+            ):
                 # Create engine for nested model and count its extra fields
                 nested_engine = ComparisonEngine(gt_val)
                 fa_count += nested_engine._count_extra_fields_as_false_alarms(pred_val)
@@ -366,10 +380,14 @@ class ComparisonEngine:
                 and pred_val
             ):
                 # Check if list contains StructuredModel instances
-                if gt_val and isinstance(gt_val[0], StructuredModel) and isinstance(gt_val[0].__class__, StructuredModel):
+                if (
+                    gt_val
+                    and isinstance(gt_val[0], StructuredModel)
+                    and isinstance(gt_val[0].__class__, StructuredModel)
+                ):
                     # Import HungarianHelper for matching
                     from .hungarian_helper import HungarianHelper
-                    
+
                     # For lists, we need to match them up properly using Hungarian matching
                     hungarian_helper = HungarianHelper()
                     hungarian_info = hungarian_helper.get_complete_matching_info(
@@ -383,19 +401,29 @@ class ComparisonEngine:
                             gt_item = gt_val[gt_idx]
                             pred_item = pred_val[pred_idx]
                             nested_engine = ComparisonEngine(gt_item)
-                            fa_count += nested_engine._count_extra_fields_as_false_alarms(pred_item)
+                            fa_count += (
+                                nested_engine._count_extra_fields_as_false_alarms(
+                                    pred_item
+                                )
+                            )
 
                     # For unmatched prediction items, count their extra fields too
-                    matched_pred_indices = {pred_idx for _, pred_idx, _ in matched_pairs}
+                    matched_pred_indices = {
+                        pred_idx for _, pred_idx, _ in matched_pairs
+                    }
                     for pred_idx, pred_item in enumerate(pred_val):
                         if pred_idx not in matched_pred_indices:
                             # Check if it's a StructuredModel
-                            if hasattr(pred_item, '__class__') and hasattr(pred_item.__class__, 'model_fields'):
+                            if hasattr(pred_item, "__class__") and hasattr(
+                                pred_item.__class__, "model_fields"
+                            ):
                                 # For unmatched items, we need a dummy GT to compare against
                                 if gt_val:  # Use first GT item as template
                                     dummy_gt = gt_val[0]
                                     nested_engine = ComparisonEngine(dummy_gt)
-                                    fa_count += nested_engine._count_extra_fields_as_false_alarms(pred_item)
+                                    fa_count += nested_engine._count_extra_fields_as_false_alarms(
+                                        pred_item
+                                    )
                                 else:
                                     # If no GT items, count all extra fields in this pred item
                                     if hasattr(pred_item, "__pydantic_extra__"):
