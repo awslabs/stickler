@@ -2,15 +2,15 @@
 
 import pytest
 
+from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator.trees import (
-    ANLSTree,
     ANLSDict,
     ANLSLeaf,
     ANLSList,
     ANLSNone,
+    ANLSTree,
     ANLSTuple,
 )
-from stickler.comparators.levenshtein import LevenshteinComparator
 
 
 class TestANLSTree:
@@ -31,7 +31,7 @@ class TestANLSTree:
         # Test boolean
         tree = ANLSTree.make_tree(True, is_gt=True)
         assert isinstance(tree, ANLSLeaf)
-        assert tree.obj == True
+        assert tree.obj
 
         # Test None
         tree = ANLSTree.make_tree(None, is_gt=True)

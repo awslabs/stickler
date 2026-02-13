@@ -4,11 +4,13 @@ This module provides the StructuredModel class for defining structured data mode
 with comparison configuration and evaluation capabilities.
 """
 
+import inspect
 from typing import (
     Any,
     ClassVar,
     Dict,
     List,
+    Optional,
     Type,
     Union,
     get_args,
@@ -21,6 +23,7 @@ from stickler.comparators.base import BaseComparator
 
 from .comparable_field import ComparableField
 from .comparison_helper import ComparisonHelper
+from .confidence_helper import ConfidenceHelper
 from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
@@ -236,6 +239,11 @@ class StructuredModel(BaseModel):
                                     f"StructuredModel's individual field comparators instead."
                                 )
 
+    def model_post_init(self, __context):
+        """Initialize confidence storage after model creation."""
+        # Use object.__setattr__ to bypass Pydantic field detection
+        object.__setattr__(self, "field_confidences", {})
+
     @classmethod
     def _is_list_of_structured_model_type(cls, field_type) -> bool:
         """Check if a field type annotation represents List[StructuredModel].
@@ -263,8 +271,24 @@ class StructuredModel(BaseModel):
 
         return False
 
+    def get_field_confidence(self, field_name: str) -> Optional[float]:
+        """Get confidence for a field."""
+        # Don't create the attribute - just check if it exists
+        if not hasattr(self, "field_confidences"):
+            return None
+        return self.field_confidences.get(field_name)
+
+    def get_all_confidences(self) -> Dict[str, float]:
+        """Get all confidences."""
+        # Don't create the attribute - return empty dict if no confidence data
+        if not hasattr(self, "field_confidences"):
+            return {}
+        return self.field_confidences.copy()
+
     @classmethod
-    def from_json(cls, json_data: Dict[str, Any]) -> "StructuredModel":
+    def from_json(
+        cls, json_data: Dict[str, Any], process_confidence=True
+    ) -> "StructuredModel":
         """Create a StructuredModel instance from JSON data.
 
         This method handles missing fields gracefully and stores extra fields
@@ -276,7 +300,18 @@ class StructuredModel(BaseModel):
         Returns:
             StructuredModel instance created from the JSON data
         """
-        return ConfigurationHelper.from_json(cls, json_data)
+        if process_confidence:
+            # Only process confidence on the top-level call
+            processed_data, confidences = (
+                ConfidenceHelper.process_confidence_structures(json_data)
+            )
+            instance = ConfigurationHelper.from_json(cls, processed_data)
+            if confidences:  # Only set if we have confidence data
+                object.__setattr__(instance, "field_confidences", confidences)
+        else:
+            # Skip confidence processing for recursive calls
+            instance = ConfigurationHelper.from_json(cls, json_data)
+        return instance
 
     @classmethod
     def model_from_json(cls, config: Dict[str, Any]) -> Type["StructuredModel"]:
@@ -987,6 +1022,7 @@ class StructuredModel(BaseModel):
         recall_with_fd: bool = False,
         add_derived_metrics: bool = True,
         document_field_comparisons: bool = False,
+        add_confidence_metrics: bool = False,
     ) -> Dict[str, Any]:
         """Compare this model with another instance using SINGLE TRAVERSAL optimization.
 
@@ -1001,7 +1037,7 @@ class StructuredModel(BaseModel):
                             If False, use traditional recall (TP/(TP+FN))
             add_derived_metrics: Whether to add derived metrics to confusion matrix
             document_field_comparisons: Whether to document all matches and non matches made in the comparison
-
+            add_confidence_metrics: Whether to add AUROC confidence metric
 
         Returns:
             Dictionary with comparison results including:
@@ -1011,6 +1047,7 @@ class StructuredModel(BaseModel):
             - confusion_matrix: (optional) Confusion matrix data if requested
             - non_matches: (optional) Non-match documentation if requested
             - field_comparisons: (optional) Field level comparison information if requested
+            - auroc_confidence_metric: (optional) AUROC confidence metric if requested
         """
         from .comparison_engine import ComparisonEngine
 
@@ -1023,6 +1060,7 @@ class StructuredModel(BaseModel):
             recall_with_fd=recall_with_fd,
             add_derived_metrics=add_derived_metrics,
             document_field_comparisons=document_field_comparisons,
+            add_confidence_metrics=add_confidence_metrics,
         )
 
     def _convert_score_to_binary_metrics(

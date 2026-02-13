@@ -4,7 +4,6 @@ This module tests end-to-end workflows from JSON Schema to model creation,
 instantiation, and comparison with both default and custom configurations.
 """
 
-import pytest
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 

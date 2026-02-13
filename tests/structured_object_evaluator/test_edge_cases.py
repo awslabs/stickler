@@ -1,16 +1,15 @@
 """Tests for edge cases in the structured object evaluator."""
 
-import pytest
 from typing import Optional
 
 from pydantic import Field
 
+from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator import (
-    StructuredModel,
     ComparableField,
+    StructuredModel,
     anls_score,
 )
-from stickler.comparators.levenshtein import LevenshteinComparator
 
 
 class Person(StructuredModel):

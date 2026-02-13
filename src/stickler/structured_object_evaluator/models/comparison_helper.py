@@ -5,8 +5,8 @@ within StructuredModel instances.
 """
 
 from typing import Any, Dict, List
+
 from stickler.comparators.base import BaseComparator
-from stickler.comparators.levenshtein import LevenshteinComparator
 
 from .hungarian_helper import HungarianHelper
 from .threshold_helper import ThresholdHelper

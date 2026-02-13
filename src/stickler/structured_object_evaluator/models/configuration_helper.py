@@ -4,11 +4,17 @@ This module provides utilities for handling field configuration, type checking,
 JSON processing, and schema generation for StructuredModel instances.
 """
 
-from typing import Any, Dict, Union, get_origin, get_args
 import inspect
+from typing import TYPE_CHECKING, Any, Dict, Union, get_args, get_origin
 
 from stickler.comparators.levenshtein import LevenshteinComparator
+
+if TYPE_CHECKING:
+    from stickler.structured_object_evaluator.models.comparison_info import (
+        ComparableFieldConfig,
+    )
 from stickler.comparators.structured import StructuredModelComparator
+
 
 class ConfigurationHelper:
     """Helper class for StructuredModel configuration and schema operations."""
@@ -529,6 +535,6 @@ class ConfigurationHelper:
             Dictionary with processed nested data
         """
         # Recursively call from_json to handle missing fields in nested object
-        nested_instance = structured_class.from_json(nested_data)
+        nested_instance = structured_class.from_json(nested_data, process_confidence=False)
         # Return the model_dump to get properly processed data
         return nested_instance.model_dump()

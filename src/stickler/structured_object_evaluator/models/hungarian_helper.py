@@ -1,6 +1,7 @@
 """Hungarian matching helper for StructuredModel comparisons."""
 
-from typing import List, Any, Dict
+from typing import Any, Dict, List
+
 from stickler.algorithms.hungarian import HungarianMatcher
 from stickler.comparators.structured import StructuredModelComparator
 

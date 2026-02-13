@@ -2,8 +2,8 @@
 Tests for DataExtractor utility class.
 """
 
-import pytest
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
+
 from stickler.reporting.html.utils.data_extractors import DataExtractor
 from stickler.utils.process_evaluation import ProcessEvaluation
 

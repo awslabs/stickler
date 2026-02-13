@@ -5,15 +5,16 @@ Pytest verification tests for BulkStructuredModelEvaluator functionality.
 Converted from cline/simple_verification.py
 """
 
-import pytest
 from typing import List, Optional
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+import pytest
+
 from stickler.comparators.exact import ExactComparator
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
 )
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
 # Test models

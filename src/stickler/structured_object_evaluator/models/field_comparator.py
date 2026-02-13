@@ -4,7 +4,7 @@ This module provides the FieldComparator class that handles comparison of
 primitive and structured fields during structured object comparison.
 """
 
-from typing import Any, Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
