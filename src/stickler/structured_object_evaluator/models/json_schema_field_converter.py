@@ -122,7 +122,6 @@ class JsonSchemaFieldConverter:
         threshold = extensions.get("threshold", 0.5)
         weight = extensions.get("weight", 1.0)
         clip_under_threshold = extensions.get("clip_under_threshold", True)
-        aggregate = extensions.get("aggregate", False)
         
         # Get Pydantic field parameters
         default = property_schema.get("default", ... if is_required else None)
@@ -135,7 +134,6 @@ class JsonSchemaFieldConverter:
             threshold=threshold,
             weight=weight,
             clip_under_threshold=clip_under_threshold,
-            aggregate=aggregate,
             default=default,
             description=description,
             examples=examples
@@ -339,7 +337,6 @@ class JsonSchemaFieldConverter:
         extensions = self._extract_stickler_extensions(property_schema, field_path)
         weight = extensions.get("weight", 1.0)
         clip_under_threshold = extensions.get("clip_under_threshold", True)
-        aggregate = extensions.get("aggregate", False)
         
         # Get default value
         default = property_schema.get("default", ... if is_required else None)
@@ -352,7 +349,6 @@ class JsonSchemaFieldConverter:
             threshold=0.7,  # Use model's match_threshold instead
             weight=weight,
             clip_under_threshold=clip_under_threshold,
-            aggregate=aggregate,
             default=default,
             description=description
         )
@@ -412,7 +408,6 @@ class JsonSchemaFieldConverter:
         threshold = extensions.get("threshold", 0.5)
         weight = extensions.get("weight", 1.0)
         clip_under_threshold = extensions.get("clip_under_threshold", True)
-        aggregate = extensions.get("aggregate", False)
         
         # Get default
         default = property_schema.get("default", ... if is_required else None)
@@ -424,7 +419,6 @@ class JsonSchemaFieldConverter:
             threshold=threshold,
             weight=weight,
             clip_under_threshold=clip_under_threshold,
-            aggregate=aggregate,
             default=default,
             description=description
         )
