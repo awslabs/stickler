@@ -266,26 +266,6 @@ class JsonSchemaFieldConverter:
         
         return extensions
 
-    def _create_comparator_from_name(self, comparator_name: str):
-        """Create a comparator instance from its class name.
-        
-        Args:
-            comparator_name: Name of the comparator class
-            
-        Returns:
-            Comparator instance
-            
-        Raises:
-            ValueError: If comparator name is not registered
-        """
-        # Use existing comparator_registry
-        try:
-            return create_comparator(comparator_name, {})
-        except KeyError as e:
-            # The KeyError message from the registry already contains the list of valid comparators
-            # Re-raise as ValueError with the same information
-            raise ValueError(str(e)) from e
-
     def _resolve_ref(self, ref: str) -> Dict[str, Any]:
         """Resolve a $ref reference within the schema.
         
@@ -471,7 +451,7 @@ class JsonSchemaFieldConverter:
         
         # Extract metadata and build extensions using consolidated helper
         metadata = self._extract_field_metadata(field_info)
-        extensions = self._build_comparison_extensions(metadata, format="json_schema")
+        extensions = self._build_comparison_extensions(metadata, output_format="json_schema")
         property_schema.update(extensions)
         
         # Add Pydantic field params
@@ -502,7 +482,7 @@ class JsonSchemaFieldConverter:
         
         # Extract metadata and build extensions using consolidated helper
         metadata = self._extract_field_metadata(field_info)
-        extensions = self._build_comparison_extensions(metadata, format="stickler_config")
+        extensions = self._build_comparison_extensions(metadata, output_format="stickler_config")
         field_config.update(extensions)
         
         # Add Pydantic field params
@@ -521,7 +501,7 @@ class JsonSchemaFieldConverter:
     def _build_comparison_extensions(
         self, 
         metadata: Dict[str, Any], 
-        format: str = "json_schema"
+        output_format: str = "json_schema"
     ) -> Dict[str, Any]:
         """Build comparison extensions in specified format.
         
@@ -529,15 +509,15 @@ class JsonSchemaFieldConverter:
         
         Args:
             metadata: Extracted field metadata from _extract_field_metadata()
-            format: Output format - "json_schema" or "stickler_config"
+            output_format: Output format - "json_schema" or "stickler_config"
         
         Returns:
             Dictionary with comparison extensions in the specified format
         """
         extensions = {}
-        if format not in ("json_schema", "stickler_config"):
-            raise ValueError(f"Unsupported format: {format!r}. Use 'json_schema' or 'stickler_config'.")
-        prefix = "x-aws-stickler-" if format == "json_schema" else ""
+        if output_format not in ("json_schema", "stickler_config"):
+            raise ValueError(f"Unsupported format: {output_format!r}. Use 'json_schema' or 'stickler_config'.")
+        prefix = "x-aws-stickler-" if output_format == "json_schema" else ""
         
         # Export comparator class name and configuration
         if metadata.get("comparator"):
@@ -546,7 +526,7 @@ class JsonSchemaFieldConverter:
             
             # Export comparator configuration (e.g., tolerance, case_sensitive)
             if hasattr(comparator, "config") and comparator.config:
-                config_key = f"{prefix}comparator-config" if format == "json_schema" else "comparator_config"
+                config_key = f"{prefix}comparator-config" if output_format == "json_schema" else "comparator_config"
                 extensions[config_key] = comparator.config
         
         # Export comparison parameters
@@ -555,7 +535,7 @@ class JsonSchemaFieldConverter:
         if "weight" in metadata:
             extensions[f"{prefix}weight"] = metadata["weight"]
         if metadata.get("clip_under_threshold") is not None:
-            clip_key = f"{prefix}clip-under-threshold" if format == "json_schema" else "clip_under_threshold"
+            clip_key = f"{prefix}clip-under-threshold" if output_format == "json_schema" else "clip_under_threshold"
             extensions[clip_key] = metadata["clip_under_threshold"]
         if metadata.get("aggregate") is not None:
             extensions[f"{prefix}aggregate"] = metadata["aggregate"]

@@ -1248,7 +1248,7 @@ class StructuredModel(BaseModel):
                     # Extract and add stickler extensions from field metadata
                     metadata = converter._extract_field_metadata(field_info)
                     extensions = converter._build_comparison_extensions(
-                        metadata, format="json_schema"
+                        metadata, output_format="json_schema"
                     )
                     property_schema.update(extensions)
             else:
@@ -1377,10 +1377,11 @@ class StructuredModel(BaseModel):
                     if nested_config.get("match_threshold") is not None:
                         field_config["match_threshold"] = nested_config["match_threshold"]
                 else:
-                    # Primitive list - use converter
+                    # Primitive list - pass element type, then fix up type string
                     field_config = converter.field_to_stickler_config(
-                        field_type, field_info
+                        element_type, field_info
                     )
+                    field_config["type"] = f"List[{element_type.__name__}]"
             else:
                 # Primitive type - use converter for consistent formatting
                 field_config = converter.field_to_stickler_config(

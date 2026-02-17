@@ -40,6 +40,12 @@ class ListModel(StructuredModel):
     products: List[SimpleProduct] = ComparableField()
 
 
+class PrimitiveListModel(StructuredModel):
+    """Model with List[primitive] for testing primitive list export."""
+    tags: List[str] = ComparableField(threshold=0.8)
+    scores: List[int] = ComparableField(threshold=0.9)
+
+
 def test_to_json_schema_basic():
     """Test exporting simple model to JSON Schema format."""
     schema = SimpleProduct.to_json_schema()
@@ -165,6 +171,36 @@ def test_to_stickler_config_list():
     assert "fields" in products_field
     assert "name" in products_field["fields"]
     assert "price" in products_field["fields"]
+
+
+def test_to_json_schema_primitive_list():
+    """Test exporting model with List[str] and List[int] to JSON Schema."""
+    schema = PrimitiveListModel.to_json_schema()
+
+    # List[str] should export as array with string items
+    tags_prop = schema["properties"]["tags"]
+    assert tags_prop["type"] == "array"
+    assert tags_prop["items"]["type"] == "string"
+
+    # List[int] should export as array with integer items
+    scores_prop = schema["properties"]["scores"]
+    assert scores_prop["type"] == "array"
+    assert scores_prop["items"]["type"] == "integer"
+
+
+def test_to_stickler_config_primitive_list():
+    """Test exporting model with List[str] and List[int] to Stickler config."""
+    config = PrimitiveListModel.to_stickler_config()
+
+    # List[str] should export with list-aware type, not plain "str"
+    tags_field = config["fields"]["tags"]
+    assert tags_field["type"] == "List[str]"
+    assert tags_field["threshold"] == 0.8
+
+    # List[int] should export with list-aware type, not plain "int"
+    scores_field = config["fields"]["scores"]
+    assert scores_field["type"] == "List[int]"
+    assert scores_field["threshold"] == 0.9
 
 
 def test_export_preserves_metadata():
