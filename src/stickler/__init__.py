@@ -16,7 +16,7 @@ from .structured_object_evaluator import (
     compare_structured_models,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.5"
 
 __all__ = [
     "StructuredModel",
