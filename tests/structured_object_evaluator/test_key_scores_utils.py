@@ -1,6 +1,7 @@
 """Tests for the key_scores utilities in the structured_object_evaluator module."""
 
 import pytest
+
 from stickler.structured_object_evaluator.utils.key_scores import (
     ScoreNode,
     construct_nested_dict,

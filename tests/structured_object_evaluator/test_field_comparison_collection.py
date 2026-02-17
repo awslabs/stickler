@@ -9,17 +9,14 @@ which provides detailed field-level comparison information including:
 - Integration with other flags (include_confusion_matrix, document_non_matches)
 """
 
-import pytest
 from typing import List, Optional
 
-from pydantic import Field
-
+from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.numeric import NumericComparator
-from stickler.comparators.exact import ExactComparator
 from stickler.structured_object_evaluator import (
-    StructuredModel,
     ComparableField,
+    StructuredModel,
 )
 
 
@@ -408,7 +405,7 @@ class TestFieldComparisonCollection:
         
         # Should have comparisons for the items in model2 (false alarms)
         tag_comparisons = [fc for fc in field_comparisons if fc["expected_key"].startswith("tags[")]
-        score_comparisons = [fc for fc in field_comparisons if fc["expected_key"].startswith("scores[")]
+        [fc for fc in field_comparisons if fc["expected_key"].startswith("scores[")]
         
         # Should have false alarm entries
         if tag_comparisons:
@@ -433,7 +430,7 @@ class TestFieldComparisonCollection:
         
         # Should have comparisons for all items
         tag_comparisons = [fc for fc in field_comparisons if fc["expected_key"].startswith("tags[")]
-        score_comparisons = [fc for fc in field_comparisons if fc["expected_key"].startswith("scores[")]
+        [fc for fc in field_comparisons if fc["expected_key"].startswith("scores[")]
         
         # Should have matches and non-matches
         tag_matches = [fc for fc in tag_comparisons if fc["match"]]

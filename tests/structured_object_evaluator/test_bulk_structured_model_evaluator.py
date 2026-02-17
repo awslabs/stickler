@@ -8,17 +8,18 @@ memory efficiency, error handling, state management, and distributed processing
 capabilities of the new BulkStructuredModelEvaluator.
 """
 
-import pytest
 import json
-import pandas as pd
 from typing import List, Optional
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+import pandas as pd
+import pytest
+
 from stickler.comparators.exact import ExactComparator
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
 )
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.utils.process_evaluation import ProcessEvaluation
 
 
@@ -682,3 +683,112 @@ class TestPerformance:
         time_ratio = large_scale_time / small_scale_time
         assert time_ratio < 15, f"Scaling poorly: {time_ratio}x time for 10x documents"
 
+
+class TestUpdateFromComparisonResult:
+    """Test update_from_comparison_result() and aggregate_from_comparisons()."""
+
+    @pytest.fixture
+    def sample_comparison_results(self):
+        """Generate pre-computed comparison results using compare_with()."""
+        sample_data = {
+            "accountNumber": "1234567890",
+            "contact": {"phone": "555-123-4567", "email": "test@example.com"},
+            "transactions": [
+                {"date": "2023-01-01", "description": "Test", "amount": 100.0}
+            ],
+        }
+        different_data = {
+            "accountNumber": "DIFFERENT",
+            "contact": {"phone": "555-999-9999", "email": "test@example.com"},
+            "transactions": [
+                {"date": "2023-01-01", "description": "Test", "amount": 100.0}
+            ],
+        }
+
+        gt_model = BankStatement(**sample_data)
+        perfect_pred = BankStatement(**sample_data)
+        partial_pred = BankStatement(**different_data)
+
+        perfect_result = gt_model.compare_with(
+            perfect_pred, include_confusion_matrix=True
+        )
+        partial_result = gt_model.compare_with(
+            partial_pred, include_confusion_matrix=True
+        )
+
+        return [perfect_result, partial_result]
+
+    def test_aggregate_from_comparisons(self, sample_comparison_results):
+        """Test the standalone aggregate_from_comparisons function."""
+        from stickler import aggregate_from_comparisons
+
+        result = aggregate_from_comparisons(sample_comparison_results)
+
+        assert isinstance(result, ProcessEvaluation)
+        assert result.document_count == 2
+        assert "tp" in result.metrics
+        assert "cm_precision" in result.metrics
+        assert "cm_recall" in result.metrics
+        assert "cm_f1" in result.metrics
+        assert len(result.field_metrics) > 0
+
+    def test_aggregate_from_comparisons_empty_list(self):
+        """Test aggregate_from_comparisons with empty input."""
+        from stickler import aggregate_from_comparisons
+
+        result = aggregate_from_comparisons([])
+
+        assert isinstance(result, ProcessEvaluation)
+        assert result.document_count == 0
+
+    def test_aggregate_from_comparisons_matches_bulk_evaluator(
+        self, sample_comparison_results
+    ):
+        """Verify standalone function matches using BulkStructuredModelEvaluator directly."""
+        from stickler import aggregate_from_comparisons
+
+        # Standalone function
+        standalone_result = aggregate_from_comparisons(sample_comparison_results)
+
+        # Manual evaluator
+        evaluator = BulkStructuredModelEvaluator()
+        for r in sample_comparison_results:
+            evaluator.update_from_comparison_result(r)
+        evaluator_result = evaluator.compute()
+
+        assert standalone_result.metrics == evaluator_result.metrics
+        assert standalone_result.field_metrics == evaluator_result.field_metrics
+
+    def test_update_from_comparison_result_missing_confusion_matrix(self):
+        """Test error handling when confusion_matrix key is missing."""
+        evaluator = BulkStructuredModelEvaluator(elide_errors=False)
+        evaluator.update_from_comparison_result({"overall_score": 0.5}, "bad_doc")
+
+        assert len(evaluator._errors) == 1
+        assert evaluator._errors[0]["doc_id"] == "bad_doc"
+        assert evaluator._errors[0]["error_type"] == "ValueError"
+
+    def test_update_from_comparison_result_accumulates(self):
+        """Test that multiple calls accumulate correctly."""
+        sample_data = {
+            "accountNumber": "1234567890",
+            "contact": {"phone": "555-123-4567"},
+            "transactions": [],
+        }
+
+        gt_model = BankStatement(**sample_data)
+        pred_model = BankStatement(**sample_data)
+
+        comparison_result = gt_model.compare_with(
+            pred_model, include_confusion_matrix=True
+        )
+
+        evaluator = BulkStructuredModelEvaluator()
+        evaluator.update_from_comparison_result(comparison_result, "doc1")
+        first_tp = evaluator._confusion_matrix["overall"]["tp"]
+
+        evaluator.update_from_comparison_result(comparison_result, "doc2")
+        second_tp = evaluator._confusion_matrix["overall"]["tp"]
+
+        assert second_tp == first_tp * 2
+        assert evaluator._processed_count == 2

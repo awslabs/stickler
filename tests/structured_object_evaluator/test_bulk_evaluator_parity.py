@@ -9,18 +9,18 @@ to individual StructuredModel.compare_with() calls, ensuring the bulk evaluator 
 a faithful aggregation mechanism.
 """
 
-from typing import List, Optional, Dict, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
 from pydantic import Field
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.fuzzy import FuzzyComparator
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
 )
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.utils.process_evaluation import ProcessEvaluation
-
 
 # Test Model Definitions - Progressive Complexity
 

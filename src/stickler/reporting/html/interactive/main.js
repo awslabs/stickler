@@ -404,21 +404,42 @@ const updateDocumentFiles = (data) => {
             const pdfItem = createElement('div', 'pdf-item');
             pdfItem.setAttribute('data-doc-id', docId);
             pdfItem.setAttribute('data-pdf-path', filePath);
-            pdfItem.innerHTML = `
-                <div class="pdf-container">
-                    <canvas id="pdf-canvas-${escapeHtml(docId)}" class="pdf-canvas"></canvas>
-                    <div class="pdf-loading" id="pdf-loading-${escpeHtml(docId)}">Loading PDF...</div>
-                    <div class="pdf-error" id="pdf-error-${escapeHtml(docId)}" style="display: none;">Error loading PDF</div>
-                </div>
-                <p><strong>${escapeHtml(docId)}</strong></p>
-            `;
+
+            const pdfContainer = createElement('div', 'pdf-container');
+            const canvas = document.createElement('canvas');
+            canvas.id = `pdf-canvas-${escapeHtml(docId)}`;
+            canvas.className = 'pdf-canvas';
+            const loading = createElement('div', 'pdf-loading');
+            loading.id = `pdf-loading-${escapeHtml(docId)}`;
+            loading.textContent = 'Loading PDF...';
+            const error = createElement('div', 'pdf-error');
+            error.id = `pdf-error-${escapeHtml(docId)}`;
+            error.textContent = 'Error loading PDF';
+            error.style.display = 'none';
+            pdfContainer.appendChild(canvas);
+            pdfContainer.appendChild(loading);
+            pdfContainer.appendChild(error);
+
+            const label = document.createElement('p');
+            const strong = document.createElement('strong');
+            strong.textContent = docId;
+            label.appendChild(strong);
+
+            pdfItem.appendChild(pdfContainer);
+            pdfItem.appendChild(label);
             documentGallery.appendChild(pdfItem);
             setTimeout(() => loadPDF(filePath, `pdf-canvas-${docId}`, `pdf-loading-${docId}`, `pdf-error-${docId}`), 0);
         } else {
-            const imageItem = createElement('div', 'image-item', `
-                <img src="${filePath}" alt="${docId}">
-                <p><strong>${docId}</strong></p>
-            `);
+            const imageItem = createElement('div', 'image-item');
+            const img = document.createElement('img');
+            img.src = filePath;
+            img.alt = docId;
+            const label = document.createElement('p');
+            const strong = document.createElement('strong');
+            strong.textContent = docId;
+            label.appendChild(strong);
+            imageItem.appendChild(img);
+            imageItem.appendChild(label);
             documentGallery.appendChild(imageItem);
         }
     });

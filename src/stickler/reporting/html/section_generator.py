@@ -1,9 +1,11 @@
-from typing import Dict, Any, Union
-from stickler.utils.process_evaluation import ProcessEvaluation
-from stickler.reporting.html.visualization_engine import VisualizationEngine
+import html
+from typing import Dict, Union
+
 from stickler.reporting.html.report_config import ReportConfig
 from stickler.reporting.html.utils import ColorUtils, DataExtractor
-import html
+from stickler.reporting.html.visualization_engine import VisualizationEngine
+from stickler.utils.process_evaluation import ProcessEvaluation
+
 
 class SectionGenerator:
     def __init__(self, results, viz_engine):
@@ -15,7 +17,7 @@ class SectionGenerator:
         metrics = DataExtractor.extract_overall_metrics(self.results)
         doc_count =  getattr(self.results, 'document_count', 1)
 
-        html_string = f"""
+        html_string = """
         <div class="section">
             <h2>Executive Summary</h2>
         """

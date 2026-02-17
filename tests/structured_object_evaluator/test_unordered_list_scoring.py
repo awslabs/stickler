@@ -8,8 +8,8 @@ is maintained during the refactor.
 
 from typing import List, Optional
 
-from stickler.structured_object_evaluator import StructuredModel, ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator import ComparableField, StructuredModel
 
 
 class SimpleItem(StructuredModel):

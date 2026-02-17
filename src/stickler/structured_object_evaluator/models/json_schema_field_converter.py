@@ -4,12 +4,10 @@ This module provides utilities for converting JSON Schema properties to
 Pydantic Field instances with ComparableField functionality.
 """
 
-from typing import Dict, Any, Tuple, Type, List, Optional
-from pydantic import Field
+from typing import Any, Dict, List, Tuple, Type
 
 from .comparable_field import ComparableField
 from .comparator_registry import create_comparator
-
 
 # Type mapping from JSON Schema types to Python types
 JSON_TYPE_TO_PYTHON_TYPE = {
@@ -124,7 +122,6 @@ class JsonSchemaFieldConverter:
         threshold = extensions.get("threshold", 0.5)
         weight = extensions.get("weight", 1.0)
         clip_under_threshold = extensions.get("clip_under_threshold", True)
-        aggregate = extensions.get("aggregate", False)
         
         # Get Pydantic field parameters
         default = property_schema.get("default", ... if is_required else None)
@@ -137,7 +134,6 @@ class JsonSchemaFieldConverter:
             threshold=threshold,
             weight=weight,
             clip_under_threshold=clip_under_threshold,
-            aggregate=aggregate,
             default=default,
             description=description,
             examples=examples
@@ -318,7 +314,6 @@ class JsonSchemaFieldConverter:
         """
         if field_path is None:
             field_path = field_name
-        from typing import List
         
         # Recursively create nested model from the nested schema
         # Import here to avoid circular dependency
@@ -334,7 +329,7 @@ class JsonSchemaFieldConverter:
         
         try:
             NestedModel = StructuredModel._from_json_schema_internal(enriched_schema, field_path=field_path)
-        except ValueError as e:
+        except ValueError:
             # Nested errors already have field path context
             raise
         
@@ -342,7 +337,6 @@ class JsonSchemaFieldConverter:
         extensions = self._extract_stickler_extensions(property_schema, field_path)
         weight = extensions.get("weight", 1.0)
         clip_under_threshold = extensions.get("clip_under_threshold", True)
-        aggregate = extensions.get("aggregate", False)
         
         # Get default value
         default = property_schema.get("default", ... if is_required else None)
@@ -355,7 +349,6 @@ class JsonSchemaFieldConverter:
             threshold=0.7,  # Use model's match_threshold instead
             weight=weight,
             clip_under_threshold=clip_under_threshold,
-            aggregate=aggregate,
             default=default,
             description=description
         )
@@ -393,7 +386,7 @@ class JsonSchemaFieldConverter:
             from .structured_model import StructuredModel
             try:
                 ElementModel = StructuredModel._from_json_schema_internal(items_schema, field_path=f"{field_path}[]")
-            except ValueError as e:
+            except ValueError:
                 # Nested errors already have field path context
                 raise
             field_type = List[ElementModel]
@@ -415,7 +408,6 @@ class JsonSchemaFieldConverter:
         threshold = extensions.get("threshold", 0.5)
         weight = extensions.get("weight", 1.0)
         clip_under_threshold = extensions.get("clip_under_threshold", True)
-        aggregate = extensions.get("aggregate", False)
         
         # Get default
         default = property_schema.get("default", ... if is_required else None)
@@ -427,7 +419,6 @@ class JsonSchemaFieldConverter:
             threshold=threshold,
             weight=weight,
             clip_under_threshold=clip_under_threshold,
-            aggregate=aggregate,
             default=default,
             description=description
         )

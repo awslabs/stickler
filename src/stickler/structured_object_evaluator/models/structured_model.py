@@ -4,28 +4,30 @@ This module provides the StructuredModel class for defining structured data mode
 with comparison configuration and evaluation capabilities.
 """
 
-from pydantic import BaseModel, Field
+import inspect
 from typing import (
     Any,
+    ClassVar,
     Dict,
     List,
+    Optional,
     Type,
     Union,
-    ClassVar,
-    get_origin,
     get_args,
+    get_origin,
 )
-import inspect
+
+from pydantic import BaseModel, Field
 
 from stickler.comparators.base import BaseComparator
 
 from .comparable_field import ComparableField
-from .non_match_field import NonMatchField
+from .comparison_helper import ComparisonHelper
+from .confidence_helper import ConfidenceHelper
+from .configuration_helper import ConfigurationHelper
+from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
-from .configuration_helper import ConfigurationHelper
-from .comparison_helper import ComparisonHelper
-from .evaluator_format_helper import EvaluatorFormatHelper
 
 
 class StructuredModel(BaseModel):
@@ -33,84 +35,84 @@ class StructuredModel(BaseModel):
 
     This class extends Pydantic's BaseModel with the ability to compare
     instances using configurable comparison metrics for each field.
-    
+
     Architecture - Delegation Pattern:
     ----------------------------------
     StructuredModel uses a delegation pattern where comparison logic is
     distributed across specialized helper classes. This refactoring reduced
     the class from 2584 lines to ~500 lines while maintaining all functionality.
-    
+
     The delegation pattern works as follows:
     1. StructuredModel maintains the public API (compare, compare_with, compare_field)
     2. All implementation details are delegated to specialized helper classes
     3. Each helper class has a single, well-defined responsibility
     4. Helpers receive the StructuredModel instance as a parameter (composition)
     5. This avoids circular dependencies and keeps the architecture clean
-    
+
     Helper Classes and Their Responsibilities:
     ------------------------------------------
-    
+
     **Model Creation:**
     - ModelFactory: Creates dynamic StructuredModel subclasses from JSON configuration
       - Validates configuration structure
       - Converts field definitions to Pydantic fields
       - Creates model classes using Pydantic's create_model()
-    
+
     **Comparison Orchestration:**
     - ComparisonEngine: Main orchestrator for the comparison process
       - Coordinates between dispatcher, collectors, and calculators
       - Implements single-traversal optimization
       - Manages compare_recursive and compare_with methods
-    
+
     **Field Comparison Routing:**
     - ComparisonDispatcher: Routes field comparisons to appropriate handlers
       - Uses match-statement based dispatch for clarity
       - Handles null cases and type mismatches
       - Delegates to specialized comparators based on field type
-    
+
     **Field-Level Comparison:**
     - FieldComparator: Compares primitive and structured fields
       - Handles string, int, float comparisons
       - Handles nested StructuredModel comparisons
       - Applies threshold-based binary classification
-    
+
     - PrimitiveListComparator: Compares lists of primitive values
       - Uses Hungarian matching for optimal pairing
       - Returns hierarchical structure for API consistency
       - Handles empty list cases
-    
+
     - StructuredListComparator: Compares lists of StructuredModels
       - Uses Hungarian matching with object-level similarity
       - Performs threshold-gated recursive analysis
       - Calculates nested field metrics
-    
+
     **Metrics Calculation:**
     - ConfusionMatrixCalculator: Calculates confusion matrix metrics
       - Computes TP, FP, TN, FN, FD, FA counts
       - Handles list-level and field-level metrics
       - Calculates nested field metrics for structured lists
-    
+
     - AggregateMetricsCalculator: Rolls up child metrics to parent nodes
       - Performs recursive traversal of result tree
       - Sums child aggregate metrics to parent
       - Provides universal field-level granularity
-    
+
     - DerivedMetricsCalculator: Calculates derived metrics
       - Computes precision, recall, F1, accuracy
       - Supports both traditional and FD-inclusive recall
       - Delegates to MetricsHelper for calculations
-    
+
     - ConfusionMatrixBuilder: Orchestrates all metrics calculation
       - Coordinates between the three calculator classes
       - Ensures correct calculation order
       - Builds complete confusion matrices
-    
+
     **Non-Match Documentation:**
     - NonMatchCollector: Documents non-matching fields
       - Collects object-level non-matches for lists
       - Collects field-level non-matches (legacy format)
       - Handles nested StructuredModel recursion
-    
+
     **Existing Helpers (Pre-Refactoring):**
     - HungarianHelper: Hungarian algorithm for list matching
     - MetricsHelper: Derived metrics calculation formulas
@@ -119,7 +121,7 @@ class StructuredModel(BaseModel):
     - EvaluatorFormatHelper: Output formatting for evaluators
     - NonMatchesHelper: Non-match collection utilities
     - FieldHelper: Field type and null checking utilities
-    
+
     Benefits of Delegation Pattern:
     --------------------------------
     1. **Maintainability**: Each class has a single responsibility
@@ -127,14 +129,14 @@ class StructuredModel(BaseModel):
     3. **Extensibility**: Easy to add new field types or metrics
     4. **Readability**: Clear separation of concerns
     5. **Performance**: No overhead - delegation is just function calls
-    
+
     Migration Notes:
     ----------------
     - All public APIs remain unchanged (complete backward compatibility)
     - All tests pass without modification (80+ test files)
     - Performance characteristics maintained (single-traversal optimization)
     - No breaking changes for existing users
-    
+
     Features:
     ---------
     - Field-level comparison configuration via ComparableField
@@ -147,13 +149,13 @@ class StructuredModel(BaseModel):
     - Retention of extra fields not defined in the model
     - Dynamic model creation from JSON configuration
     - Threshold-gated recursive analysis for performance
-    
+
     Example Usage:
     --------------
     >>> from stickler.structured_object_evaluator.models import StructuredModel
     >>> from stickler.structured_object_evaluator.models import ComparableField
     >>> from stickler.comparators import LevenshteinComparator
-    >>> 
+    >>>
     >>> class Product(StructuredModel):
     ...     name: str = ComparableField(
     ...         comparator=LevenshteinComparator(),
@@ -164,14 +166,14 @@ class StructuredModel(BaseModel):
     ...         comparator=NumericComparator(),
     ...         threshold=0.9
     ...     )
-    >>> 
+    >>>
     >>> gt = Product(name="Widget", price=29.99)
     >>> pred = Product(name="Widgit", price=29.99)  # Typo in name
-    >>> 
+    >>>
     >>> # Simple comparison (returns overall similarity score)
     >>> score = gt.compare(pred)
     >>> print(f"Similarity: {score:.2f}")
-    >>> 
+    >>>
     >>> # Detailed comparison with confusion matrix
     >>> result = gt.compare_with(pred, include_confusion_matrix=True)
     >>> print(f"TP: {result['overall']['tp']}, FD: {result['overall']['fd']}")
@@ -237,6 +239,11 @@ class StructuredModel(BaseModel):
                                     f"StructuredModel's individual field comparators instead."
                                 )
 
+    def model_post_init(self, __context):
+        """Initialize confidence storage after model creation."""
+        # Use object.__setattr__ to bypass Pydantic field detection
+        object.__setattr__(self, "field_confidences", {})
+
     @classmethod
     def _is_list_of_structured_model_type(cls, field_type) -> bool:
         """Check if a field type annotation represents List[StructuredModel].
@@ -270,8 +277,24 @@ class StructuredModel(BaseModel):
 
         return False
 
+    def get_field_confidence(self, field_name: str) -> Optional[float]:
+        """Get confidence for a field."""
+        # Don't create the attribute - just check if it exists
+        if not hasattr(self, "field_confidences"):
+            return None
+        return self.field_confidences.get(field_name)
+
+    def get_all_confidences(self) -> Dict[str, float]:
+        """Get all confidences."""
+        # Don't create the attribute - return empty dict if no confidence data
+        if not hasattr(self, "field_confidences"):
+            return {}
+        return self.field_confidences.copy()
+
     @classmethod
-    def from_json(cls, json_data: Dict[str, Any]) -> "StructuredModel":
+    def from_json(
+        cls, json_data: Dict[str, Any], process_confidence=True
+    ) -> "StructuredModel":
         """Create a StructuredModel instance from JSON data.
 
         This method handles missing fields gracefully and stores extra fields
@@ -283,7 +306,18 @@ class StructuredModel(BaseModel):
         Returns:
             StructuredModel instance created from the JSON data
         """
-        return ConfigurationHelper.from_json(cls, json_data)
+        if process_confidence:
+            # Only process confidence on the top-level call
+            processed_data, confidences = (
+                ConfidenceHelper.process_confidence_structures(json_data)
+            )
+            instance = ConfigurationHelper.from_json(cls, processed_data)
+            if confidences:  # Only set if we have confidence data
+                object.__setattr__(instance, "field_confidences", confidences)
+        else:
+            # Skip confidence processing for recursive calls
+            instance = ConfigurationHelper.from_json(cls, json_data)
+        return instance
 
     @classmethod
     def model_from_json(cls, config: Dict[str, Any]) -> Type["StructuredModel"]:
@@ -359,7 +393,7 @@ class StructuredModel(BaseModel):
         """
         # Delegate to ModelFactory for dynamic model creation
         from .model_factory import ModelFactory
-        
+
         return ModelFactory.create_model_from_json(config, base_class=cls)
 
     @classmethod
@@ -425,7 +459,7 @@ class StructuredModel(BaseModel):
             >>> person2 = PersonModel(name="Alicia", age=30, email="alice@example.com")
             >>> result = person1.compare_with(person2)
             >>> # name field uses LevenshteinComparator, age uses NumericComparator
-            
+
             Advanced usage with x-aws-stickler-* extensions:
             >>> schema = {
             ...     "type": "object",
@@ -451,23 +485,23 @@ class StructuredModel(BaseModel):
             >>> ProductModel = StructuredModel.from_json_schema(schema)
             >>> result = product1.compare_with(product2)
             >>> # name field has weight=2.0, price field clips scores below 0.95
-            """
+        """
 
         return cls._from_json_schema_internal(schema, field_path="")
-    
+
     @classmethod
     def _from_json_schema_internal(
         cls, schema: Dict[str, Any], field_path: str
     ) -> Type["StructuredModel"]:
         """Internal method for creating StructuredModel from JSON Schema with field path tracking.
-        
+
         This is used internally for recursive calls to track field paths for error messages.
         External callers should use from_json_schema() instead.
-        
+
         Args:
             schema: JSON Schema document as a dictionary
             field_path: Current field path for error messages (e.g., "address.street")
-            
+
         Returns:
             StructuredModel subclass created from the schema
         """
@@ -475,7 +509,7 @@ class StructuredModel(BaseModel):
         from ..utils.json_schema_validator import validate_json_schema
         from .json_schema_field_converter import JsonSchemaFieldConverter
         from .model_factory import ModelFactory
-        
+
         # Subtask 4.2: Validate JSON Schema
         try:
             validate_json_schema(schema)
@@ -484,51 +518,51 @@ class StructuredModel(BaseModel):
                 f"Invalid JSON Schema: {e}. "
                 f"Please ensure the schema conforms to JSON Schema draft-07 specification."
             )
-        
+
         # Subtask 4.3: Extract model-level configuration
         model_name = schema.get("x-aws-stickler-model-name", "DynamicModel")
         match_threshold = schema.get("x-aws-stickler-match-threshold", 0.7)
-        
+
         # Validate model name
         if not isinstance(model_name, str) or not model_name.isidentifier():
             raise ValueError(
                 f"x-aws-stickler-model-name must be a valid Python identifier, "
                 f"got: {model_name}"
             )
-        
+
         # Validate match threshold
         if not isinstance(match_threshold, (int, float)):
             raise ValueError(
                 f"x-aws-stickler-match-threshold must be a number, "
                 f"got: {type(match_threshold).__name__}"
             )
-        
+
         if not (0.0 <= match_threshold <= 1.0):
             raise ValueError(
                 f"x-aws-stickler-match-threshold must be between 0.0 and 1.0, "
                 f"got: {match_threshold}"
             )
-        
+
         # Subtask 4.4: Convert fields and create model
         # Ensure schema has properties
         if "properties" not in schema:
             raise ValueError(
                 "JSON Schema must contain 'properties' key for object type"
             )
-        
+
         properties = schema.get("properties", {})
         required = schema.get("required", [])
-        
+
         # Create converter and convert properties to field definitions
         converter = JsonSchemaFieldConverter(schema, field_path=field_path)
         field_definitions = converter.convert_properties_to_fields(properties, required)
-        
+
         # Create the model using ModelFactory
         return ModelFactory.create_model_from_fields(
             model_name=model_name,
             field_definitions=field_definitions,
             match_threshold=match_threshold,
-            base_class=cls
+            base_class=cls,
         )
 
     @classmethod
@@ -619,7 +653,7 @@ class StructuredModel(BaseModel):
         self, gt_val: Any, pred_val: Any, weight: float
     ) -> dict:
         """Handle list field comparison using match statements.
-        
+
         DEPRECATED: This method now delegates to ComparisonDispatcher.
         Kept for backward compatibility with any external callers.
 
@@ -632,6 +666,7 @@ class StructuredModel(BaseModel):
             Comparison result dictionary
         """
         from .comparison_dispatcher import ComparisonDispatcher
+
         dispatcher = ComparisonDispatcher(self)
         return dispatcher.handle_list_field_dispatch(gt_val, pred_val, weight)
 
@@ -755,7 +790,7 @@ class StructuredModel(BaseModel):
 
         Enhanced to capture BOTH confusion matrix metrics AND similarity scores
         in a single traversal to eliminate double traversal inefficiency.
-        
+
         PHASE 2: Delegates to ComparisonEngine while maintaining identical behavior.
 
         Args:
@@ -768,6 +803,7 @@ class StructuredModel(BaseModel):
             - non_matches: List of non-matching items
         """
         from .comparison_engine import ComparisonEngine
+
         engine = ComparisonEngine(self)
         return engine.compare_recursive(other)
 
@@ -775,17 +811,20 @@ class StructuredModel(BaseModel):
         self, field_name: str, gt_val: Any, pred_val: Any
     ) -> dict:
         """Enhanced case-based dispatch using match statements for clean logic flow.
-        
+
         DEPRECATED: This method now delegates to ComparisonDispatcher.
         Kept for backward compatibility with any external callers.
         """
         from .comparison_dispatcher import ComparisonDispatcher
+
         dispatcher = ComparisonDispatcher(self)
         return dispatcher.dispatch_field_comparison(field_name, gt_val, pred_val)
 
-    def _add_derived_metrics_to_result(self, result: dict, recall_with_fd: bool = False) -> dict:
+    def _add_derived_metrics_to_result(
+        self, result: dict, recall_with_fd: bool = False
+    ) -> dict:
         """Walk through result and add 'derived' fields with F1, precision, recall, accuracy.
-        
+
         This method delegates to DerivedMetricsCalculator for the actual implementation.
 
         Args:
@@ -797,6 +836,7 @@ class StructuredModel(BaseModel):
             Modified result with 'derived' fields added at each level
         """
         from .derived_metrics_calculator import DerivedMetricsCalculator
+
         calculator = DerivedMetricsCalculator()
         return calculator.add_derived_metrics_to_result(result, recall_with_fd)
 
@@ -816,7 +856,7 @@ class StructuredModel(BaseModel):
         self, field_name: str, other_value: Any, threshold: float = None
     ) -> Dict[str, Any]:
         """Classify a field comparison according to the confusion matrix rules.
-        
+
         This method delegates to ConfusionMatrixCalculator for the actual implementation.
 
         Args:
@@ -828,14 +868,17 @@ class StructuredModel(BaseModel):
             Dictionary with TP, FP, TN, FN, FD counts and derived metrics
         """
         from .confusion_matrix_calculator import ConfusionMatrixCalculator
+
         calculator = ConfusionMatrixCalculator(self)
-        return calculator.classify_field_for_confusion_matrix(field_name, other_value, threshold)
+        return calculator.classify_field_for_confusion_matrix(
+            field_name, other_value, threshold
+        )
 
     def _calculate_list_confusion_matrix(
         self, field_name: str, other_list: List[Any]
     ) -> Dict[str, Any]:
         """Calculate confusion matrix for a list field, including nested field metrics.
-        
+
         This method delegates to ConfusionMatrixCalculator for the actual implementation.
 
         Args:
@@ -849,6 +892,7 @@ class StructuredModel(BaseModel):
             - non_matches: List of individual object-level non-matches for detailed analysis
         """
         from .confusion_matrix_calculator import ConfusionMatrixCalculator
+
         calculator = ConfusionMatrixCalculator(self)
         return calculator.calculate_list_confusion_matrix(field_name, other_list)
 
@@ -860,7 +904,7 @@ class StructuredModel(BaseModel):
         threshold: float,
     ) -> Dict[str, Dict[str, Any]]:
         """Calculate confusion matrix metrics for individual fields within list items.
-        
+
         This method delegates to ConfusionMatrixCalculator for the actual implementation.
 
         THRESHOLD-GATED RECURSION: Only perform recursive field analysis for object pairs
@@ -878,8 +922,11 @@ class StructuredModel(BaseModel):
             E.g., {"transactions.date": {...}, "transactions.description": {...}}
         """
         from .confusion_matrix_calculator import ConfusionMatrixCalculator
+
         calculator = ConfusionMatrixCalculator(self)
-        return calculator.calculate_nested_field_metrics(list_field_name, gt_list, pred_list, threshold)
+        return calculator.calculate_nested_field_metrics(
+            list_field_name, gt_list, pred_list, threshold
+        )
 
     def _calculate_single_nested_field_metrics(
         self,
@@ -889,7 +936,7 @@ class StructuredModel(BaseModel):
         parent_is_aggregate: bool = False,
     ) -> Dict[str, Dict[str, Any]]:
         """Calculate confusion matrix metrics for fields within a single nested StructuredModel.
-        
+
         This method delegates to ConfusionMatrixCalculator for the actual implementation.
 
         Args:
@@ -903,6 +950,7 @@ class StructuredModel(BaseModel):
             E.g., {"address.street": {...}, "address.city": {...}}
         """
         from .confusion_matrix_calculator import ConfusionMatrixCalculator
+
         calculator = ConfusionMatrixCalculator(self)
         return calculator.calculate_single_nested_field_metrics(
             parent_field_name, gt_nested, pred_nested, parent_is_aggregate
@@ -912,7 +960,7 @@ class StructuredModel(BaseModel):
         self, recursive_result: dict, other: "StructuredModel"
     ) -> List[Dict[str, Any]]:
         """Collect enhanced non-matches with object-level granularity.
-        
+
         This method delegates to NonMatchCollector for the actual implementation.
 
         Args:
@@ -923,6 +971,7 @@ class StructuredModel(BaseModel):
             List of non-match dictionaries with enhanced object-level information
         """
         from .non_match_collector import NonMatchCollector
+
         collector = NonMatchCollector(self)
         return collector.collect_enhanced_non_matches(recursive_result, other)
 
@@ -979,9 +1028,10 @@ class StructuredModel(BaseModel):
         recall_with_fd: bool = False,
         add_derived_metrics: bool = True,
         document_field_comparisons: bool = False,
+        add_confidence_metrics: bool = False,
     ) -> Dict[str, Any]:
         """Compare this model with another instance using SINGLE TRAVERSAL optimization.
-        
+
         PHASE 2: Delegates to ComparisonEngine while maintaining identical behavior.
 
         Args:
@@ -993,7 +1043,7 @@ class StructuredModel(BaseModel):
                             If False, use traditional recall (TP/(TP+FN))
             add_derived_metrics: Whether to add derived metrics to confusion matrix
             document_field_comparisons: Whether to document all matches and non matches made in the comparison
-
+            add_confidence_metrics: Whether to add AUROC confidence metric
 
         Returns:
             Dictionary with comparison results including:
@@ -1003,8 +1053,10 @@ class StructuredModel(BaseModel):
             - confusion_matrix: (optional) Confusion matrix data if requested
             - non_matches: (optional) Non-match documentation if requested
             - field_comparisons: (optional) Field level comparison information if requested
+            - auroc_confidence_metric: (optional) AUROC confidence metric if requested
         """
         from .comparison_engine import ComparisonEngine
+
         engine = ComparisonEngine(self)
         return engine.compare_with(
             other,
@@ -1014,6 +1066,7 @@ class StructuredModel(BaseModel):
             recall_with_fd=recall_with_fd,
             add_derived_metrics=add_derived_metrics,
             document_field_comparisons=document_field_comparisons,
+            add_confidence_metrics=add_confidence_metrics,
         )
 
     def _convert_score_to_binary_metrics(

@@ -7,10 +7,10 @@ defining StructuredModel classes entirely through JSON configuration.
 import pytest
 from pydantic import ValidationError
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.exact import ExactComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.numeric import NumericComparator
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
 class TestBasicModelFromJson:

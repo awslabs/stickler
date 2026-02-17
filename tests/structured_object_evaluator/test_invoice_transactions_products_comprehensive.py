@@ -7,16 +7,15 @@ This test validates both confusion matrix entities and non-match entities for co
 nested structures with multiple list fields and various error types.
 """
 
-import pytest
 from typing import List, Optional
 
-from stickler.structured_object_evaluator import (
-    StructuredModel,
-    ComparableField,
-)
+from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.numeric import NumericComparator
-from stickler.comparators.exact import ExactComparator
+from stickler.structured_object_evaluator import (
+    ComparableField,
+    StructuredModel,
+)
 
 
 # Model Definitions for 3-Level Nested Structure

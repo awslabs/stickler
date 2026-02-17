@@ -9,11 +9,11 @@ memory-efficient processing of large datasets through accumulation-based evaluat
 """
 
 import gc
-import time
 import json
-from collections import defaultdict
-from typing import List, Dict, Any, Optional, Type, Tuple, Union
 import logging
+import time
+from collections import defaultdict
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.utils.process_evaluation import ProcessEvaluation
@@ -41,7 +41,7 @@ class BulkStructuredModelEvaluator:
 
     def __init__(
         self,
-        target_schema: Type[StructuredModel],
+        target_schema: Optional[Type[StructuredModel]] = None,
         verbose: bool = False,
         document_non_matches: bool = True,
         elide_errors: bool = False,
@@ -51,7 +51,9 @@ class BulkStructuredModelEvaluator:
         Initialize the stateful bulk evaluator.
 
         Args:
-            target_schema: StructuredModel class for validation and processing
+            target_schema: Optional StructuredModel class for validation and processing.
+                Required for update() and evaluate_dataframe(). Not required when using
+                update_from_comparison_result() with pre-computed results.
             verbose: Whether to print detailed progress information
             document_non_matches: Whether to document detailed non-match information
             elide_errors: If True, skip documents with errors; if False, accumulate error metrics
@@ -66,10 +68,10 @@ class BulkStructuredModelEvaluator:
         # Initialize state
         self.reset()
 
+        self._schema_name = target_schema.__name__ if target_schema else "unknown"
+
         if self.verbose:
-            print(
-                f"Initialized BulkStructuredModelEvaluator for {target_schema.__name__}"
-            )
+            print(f"Initialized BulkStructuredModelEvaluator for {self._schema_name}")
             if self.individual_results_jsonl:
                 print(
                     f"Individual results will be appended to: {self.individual_results_jsonl}"
@@ -111,9 +113,8 @@ class BulkStructuredModelEvaluator:
         """
         Process a single document pair and accumulate the results in internal state.
 
-        This is the core method for stateful evaluation, inspired by PyTorch Lightning's
-        training_step pattern. Each call processes one document pair and updates
-        the internal confusion matrix counters.
+        Runs compare_with() on the model pair, optionally writes the raw result
+        to JSONL, then delegates accumulation to update_from_comparison_result().
 
         Args:
             gt_model: Ground truth StructuredModel instance
@@ -124,29 +125,70 @@ class BulkStructuredModelEvaluator:
             doc_id = f"doc_{self._processed_count}"
 
         try:
-            # Use compare_with method directly on the StructuredModel
-            # Pass document_non_matches to achieve parity with compare_with method
             comparison_result = gt_model.compare_with(
                 pred_model,
                 include_confusion_matrix=True,
                 document_non_matches=self.document_non_matches,
             )
 
-            # Collect non-matches if enabled
-            if self.document_non_matches and "non_matches" in comparison_result:
-                # Add doc_id to each non-match for bulk tracking
-                for non_match in comparison_result["non_matches"]:
-                    non_match_with_doc = non_match.copy()
-                    non_match_with_doc["doc_id"] = doc_id
-                    self._non_matches.append(non_match_with_doc)
-
-            # Simple JSONL append of raw comparison result (before any processing)
+            # JSONL append of raw comparison result before accumulation
             if self.individual_results_jsonl:
                 record = {"doc_id": doc_id, "comparison_result": comparison_result}
                 with open(self.individual_results_jsonl, "a", encoding="utf-8") as f:
                     f.write(json.dumps(record) + "\n")
 
-            # Accumulate the results into our state (this flattens for aggregation)
+            self.update_from_comparison_result(comparison_result, doc_id)
+
+        except Exception as e:
+            error_record = {
+                "doc_id": doc_id,
+                "error": str(e),
+                "error_type": type(e).__name__,
+            }
+
+            if not self.elide_errors:
+                self._errors.append(error_record)
+                self._confusion_matrix["overall"]["fn"] += 1
+
+            if self.verbose:
+                print(f"Error processing document {doc_id}: {str(e)}")
+
+    def update_from_comparison_result(
+        self,
+        comparison_result: Dict[str, Any],
+        doc_id: Optional[str] = None,
+    ) -> None:
+        """
+        Accumulate a pre-computed compare_with() result into internal state.
+
+        Unlike update(), this method does not require StructuredModel instances
+        or re-run comparisons. It accepts the raw dictionary output of
+        StructuredModel.compare_with(include_confusion_matrix=True) and
+        accumulates its confusion matrix.
+
+        Args:
+            comparison_result: Dictionary returned by StructuredModel.compare_with()
+                with include_confusion_matrix=True. Must contain a "confusion_matrix" key.
+            doc_id: Optional document identifier for error tracking
+        """
+        if doc_id is None:
+            doc_id = f"doc_{self._processed_count}"
+
+        try:
+            if "confusion_matrix" not in comparison_result:
+                raise ValueError(
+                    "comparison_result must contain a 'confusion_matrix' key. "
+                    "Ensure compare_with() was called with include_confusion_matrix=True."
+                )
+
+            # Collect non-matches if enabled and present
+            if self.document_non_matches and "non_matches" in comparison_result:
+                for non_match in comparison_result["non_matches"]:
+                    non_match_with_doc = non_match.copy()
+                    non_match_with_doc["doc_id"] = doc_id
+                    self._non_matches.append(non_match_with_doc)
+
+            # Accumulate the confusion matrix
             self._accumulate_confusion_matrix(comparison_result["confusion_matrix"])
 
             self._processed_count += 1
@@ -164,9 +206,6 @@ class BulkStructuredModelEvaluator:
 
             if not self.elide_errors:
                 self._errors.append(error_record)
-
-                # For errors, add a "failed" classification to overall metrics
-                # This represents complete failure to process the document
                 self._confusion_matrix["overall"]["fn"] += 1
 
             if self.verbose:
@@ -454,7 +493,7 @@ class BulkStructuredModelEvaluator:
                 "error_rate": len(process_eval.errors) / self._processed_count
                 if self._processed_count > 0
                 else 0,
-                "target_schema": self.target_schema.__name__,
+                "target_schema": self._schema_name,
             },
             "errors": process_eval.errors,
             "metadata": {
@@ -491,7 +530,7 @@ class BulkStructuredModelEvaluator:
 
         # Header
         print("\n" + "=" * 80)
-        print(f"BULK EVALUATION RESULTS - {self.target_schema.__name__}")
+        print(f"BULK EVALUATION RESULTS - {self._schema_name}")
         print("=" * 80)
 
         # Overall metrics
@@ -575,7 +614,7 @@ class BulkStructuredModelEvaluator:
         # Configuration info
         print("\nCONFIGURATION:")
         print("-" * 40)
-        print(f"Target Schema: {self.target_schema.__name__}")
+        print(f"Target Schema: {self._schema_name}")
         print(f"Document Non-matches: {'Yes' if self.document_non_matches else 'No'}")
         print(f"Elide Errors: {'Yes' if self.elide_errors else 'No'}")
         if self.individual_results_jsonl:
@@ -606,7 +645,7 @@ class BulkStructuredModelEvaluator:
             "processed_count": self._processed_count,
             "start_time": self._start_time,
             # Configuration
-            "target_schema": self.target_schema.__name__,
+            "target_schema": self._schema_name,
             "elide_errors": self.elide_errors,
         }
 
@@ -621,9 +660,9 @@ class BulkStructuredModelEvaluator:
             state: State dictionary from get_state()
         """
         # Validate state compatibility
-        if state.get("target_schema") != self.target_schema.__name__:
+        if state.get("target_schema") != self._schema_name:
             raise ValueError(
-                f"State schema {state.get('target_schema')} doesn't match evaluator schema {self.target_schema.__name__}"
+                f"State schema {state.get('target_schema')} doesn't match evaluator schema {self._schema_name}"
             )
 
         # Restore confusion matrix state
@@ -658,9 +697,9 @@ class BulkStructuredModelEvaluator:
             other_state: State dictionary from another evaluator instance
         """
         # Validate compatibility
-        if other_state.get("target_schema") != self.target_schema.__name__:
+        if other_state.get("target_schema") != self._schema_name:
             raise ValueError(
-                f"Cannot merge incompatible schemas: {other_state.get('target_schema')} vs {self.target_schema.__name__}"
+                f"Cannot merge incompatible schemas: {other_state.get('target_schema')} vs {self._schema_name}"
             )
 
         # Merge overall metrics
@@ -722,3 +761,27 @@ class BulkStructuredModelEvaluator:
                 continue
 
         return self.compute()
+
+
+def aggregate_from_comparisons(
+    comparison_results: List[Dict[str, Any]],
+) -> ProcessEvaluation:
+    """
+    Aggregate a list of pre-computed compare_with() results into field-level metrics.
+
+    This is a convenience function for aggregating stored comparison results
+    without needing the original StructuredModel instances. It accepts the raw
+    dictionary outputs of StructuredModel.compare_with(include_confusion_matrix=True).
+
+    Args:
+        comparison_results: List of dictionaries, each returned by
+            StructuredModel.compare_with(include_confusion_matrix=True).
+
+    Returns:
+        ProcessEvaluation with aggregated metrics including overall and
+        per-field precision, recall, F1, and accuracy.
+    """
+    evaluator = BulkStructuredModelEvaluator()
+    for result in comparison_results:
+        evaluator.update_from_comparison_result(result)
+    return evaluator.compute()

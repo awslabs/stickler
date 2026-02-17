@@ -1,16 +1,14 @@
 """Integration tests for JsonSchemaFieldConverter.convert_properties_to_fields()."""
 
-import pytest
-from typing import List
-from pydantic import Field
-from pydantic_core import PydanticUndefined
 
+import pytest
+
+from stickler.comparators.exact import ExactComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.comparators.numeric import NumericComparator
 from stickler.structured_object_evaluator.models.json_schema_field_converter import (
     JsonSchemaFieldConverter,
 )
-from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.comparators.numeric import NumericComparator
-from stickler.comparators.exact import ExactComparator
 
 
 class TestConvertPropertiesToFields:
@@ -41,10 +39,10 @@ class TestConvertPropertiesToFields:
         assert "active" in field_definitions
 
         # Check types
-        assert field_definitions["name"][0] == str
-        assert field_definitions["age"][0] == int
-        assert field_definitions["price"][0] == float
-        assert field_definitions["active"][0] == bool
+        assert field_definitions["name"][0] is str
+        assert field_definitions["age"][0] is int
+        assert field_definitions["price"][0] is float
+        assert field_definitions["active"][0] is bool
 
         # Check required vs optional (via is_required)
         name_field = field_definitions["name"][1]
@@ -127,7 +125,7 @@ class TestConvertPropertiesToFields:
         assert name_field.json_schema_extra._threshold == 0.9
         assert name_field.json_schema_extra._weight == 2.0
         assert name_field.json_schema_extra._clip_under_threshold is False
-        assert name_field.json_schema_extra._aggregate is True
+        assert name_field.json_schema_extra._aggregate is False  # aggregate param is deprecated; auto-aggregation is used
 
         # Check age field extensions
         age_field = field_definitions["age"][1]
@@ -197,12 +195,12 @@ class TestConvertPropertiesToFields:
 
         # Verify they are List types
         assert hasattr(tags_type, "__origin__")
-        assert tags_type.__origin__ == list
-        assert tags_type.__args__[0] == str
+        assert tags_type.__origin__ is list
+        assert tags_type.__args__[0] is str
 
         assert hasattr(scores_type, "__origin__")
-        assert scores_type.__origin__ == list
-        assert scores_type.__args__[0] == float
+        assert scores_type.__origin__ is list
+        assert scores_type.__args__[0] is float
 
     def test_convert_empty_properties(self):
         """Test converting empty properties dictionary."""
@@ -358,7 +356,9 @@ class TestRefResolution:
         home_type = field_definitions["home"][0]
         
         # Verify it's a StructuredModel subclass
-        from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+        from stickler.structured_object_evaluator.models.structured_model import (
+            StructuredModel,
+        )
         assert issubclass(home_type, StructuredModel)
 
     def test_resolve_ref_from_defs(self):
@@ -390,7 +390,9 @@ class TestRefResolution:
         contact_type = field_definitions["contact"][0]
         
         # Verify it's a StructuredModel subclass
-        from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+        from stickler.structured_object_evaluator.models.structured_model import (
+            StructuredModel,
+        )
         assert issubclass(contact_type, StructuredModel)
 
     def test_resolve_ref_not_found_in_definitions(self):
@@ -472,10 +474,12 @@ class TestRefResolution:
         
         # Verify it's a List type
         assert hasattr(items_type, "__origin__")
-        assert items_type.__origin__ == list
+        assert items_type.__origin__ is list
         
         # Verify element is a StructuredModel subclass
-        from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+        from stickler.structured_object_evaluator.models.structured_model import (
+            StructuredModel,
+        )
         assert issubclass(items_type.__args__[0], StructuredModel)
 
 
@@ -509,7 +513,9 @@ class TestNestedObjectHandling:
         person_type = field_definitions["person"][0]
         
         # Verify it's a StructuredModel subclass
-        from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+        from stickler.structured_object_evaluator.models.structured_model import (
+            StructuredModel,
+        )
         assert issubclass(person_type, StructuredModel)
         
         # Verify nested model has correct fields
@@ -542,7 +548,7 @@ class TestNestedObjectHandling:
         # Check extensions are applied to the field
         address_field = field_definitions["address"][1]
         assert address_field.json_schema_extra._weight == 2.0
-        assert address_field.json_schema_extra._aggregate is True
+        assert address_field.json_schema_extra._aggregate is False  # aggregate param is deprecated; auto-aggregation is used
 
     def test_deeply_nested_objects(self):
         """Test deeply nested object structures."""
@@ -581,7 +587,9 @@ class TestNestedObjectHandling:
         assert "company" in field_definitions
         company_type = field_definitions["company"][0]
         
-        from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+        from stickler.structured_object_evaluator.models.structured_model import (
+            StructuredModel,
+        )
         assert issubclass(company_type, StructuredModel)
         
         # Verify nested fields exist
@@ -622,10 +630,12 @@ class TestArrayHandling:
         
         # Verify it's a List type
         assert hasattr(employees_type, "__origin__")
-        assert employees_type.__origin__ == list
+        assert employees_type.__origin__ is list
         
         # Verify element is a StructuredModel subclass
-        from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+        from stickler.structured_object_evaluator.models.structured_model import (
+            StructuredModel,
+        )
         element_type = employees_type.__args__[0]
         assert issubclass(element_type, StructuredModel)
         
@@ -683,10 +693,10 @@ class TestArrayHandling:
         )
 
         # Check all array types
-        assert field_definitions["strings"][0].__args__[0] == str
-        assert field_definitions["integers"][0].__args__[0] == int
-        assert field_definitions["numbers"][0].__args__[0] == float
-        assert field_definitions["booleans"][0].__args__[0] == bool
+        assert field_definitions["strings"][0].__args__[0] is str
+        assert field_definitions["integers"][0].__args__[0] is int
+        assert field_definitions["numbers"][0].__args__[0] is float
+        assert field_definitions["booleans"][0].__args__[0] is bool
 
 
 class TestErrorHandling:

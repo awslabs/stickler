@@ -1,5 +1,7 @@
 # Stickler: Structured Object Evaluation for GenAI
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/awslabs/stickler)
+
 When in the course of human events, it becomes necessary to evaluate structured outputs from generative AI systems, we must acknowledge that traditional evaluation treats all fields equally. But **not all fields are created equal**.
 
 **Stickler is a Python library that enables complex structured JSON comparison and evaluation** that lets you focus on the fields your customer actually cares about, to answer the question: "Is it doing a good job?" 
@@ -115,6 +117,28 @@ class Invoice(StructuredModel):
 result = ground_truth.compare_with(prediction, evaluator_format=True)
 
 print(f"Overall Score: {result['overall']['anls_score']:.3f}")
+```
+
+### Confidence Evaluation
+
+Evaluate prediction confidence calibration with AUROC metrics:
+
+```python
+# Prediction with confidence scores
+prediction = Invoice.from_json({
+    "invoice_number": {"value": "INV-2024-001", "confidence": 0.95},
+    "total": {"value": 1247.50, "confidence": 0.8}
+})
+
+# Enable confidence metrics
+result = ground_truth.compare_with(
+    prediction,
+    add_confidence_metrics=True,
+    document_field_comparisons=True
+)
+
+print(f"Overall Score: {result['overall_score']:.3f}")
+print(f"Confidence AUROC: {result['auroc_confidence_metric']:.3f}")
 ```
 
 ### Dynamic Model Creation (New!)
@@ -654,3 +678,8 @@ print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # ~1.0 - match
 ## Examples
 
 Check out the `examples/` directory for more detailed usage examples and notebooks.
+
+# A note for AI assisted coding agents
+- The project uses coding assistant agnostic context files, like README.md and AGENTS.md
+- When working in a directory, always look for a README.md and/or AGENTS.md file for important context about the directory/code contained within.
+- Read this [AGENTS.md](./AGENTS.md) file for more information

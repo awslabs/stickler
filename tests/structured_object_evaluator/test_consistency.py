@@ -1,16 +1,16 @@
 """Tests for consistency between different evaluation methods."""
 
 import pytest
-
-from stickler.structured_object_evaluator import (
-    StructuredModel,
-    ComparableField,
-    anls_score,
-    compare_structured_models,
-    compare_json,
-)
-from stickler.comparators.levenshtein import LevenshteinComparator
 from pydantic import Field
+
+from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator import (
+    ComparableField,
+    StructuredModel,
+    anls_score,
+    compare_json,
+    compare_structured_models,
+)
 
 
 class Person(StructuredModel):

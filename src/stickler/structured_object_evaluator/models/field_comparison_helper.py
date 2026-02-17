@@ -1,7 +1,9 @@
 """Field comparison helper for StructuredModel comparisons."""
 
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 from .comparison_helper_base import ComparisonHelperBase
+
 
 class FieldComparisonHelper(ComparisonHelperBase):
     """Helper class for collecting and formatting field comparisons in StructuredModel comparisons."""

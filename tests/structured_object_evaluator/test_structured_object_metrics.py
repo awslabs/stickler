@@ -5,12 +5,14 @@ at the field level and object level for both parent objects and nested child obj
 using the structured_object_evaluator.
 """
 
-import pytest
 from typing import List
 
-from stickler.structured_object_evaluator import StructuredModel, ComparableField
 from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.structured_object_evaluator import anls_score
+from stickler.structured_object_evaluator import (
+    ComparableField,
+    StructuredModel,
+    anls_score,
+)
 
 
 # Define the models for the test
@@ -294,7 +296,7 @@ class TestStructuredObjectMetrics:
         ), "Expected line_items in confusion matrix fields"
 
         # Get line_items confusion matrix metrics
-        line_items_cm = get_base_metrics(cm, "line_items")
+        get_base_metrics(cm, "line_items")
 
         # Verify that we have hierarchical structure for fields within line items
         expected_field_entries = ["description", "quantity", "unit_price", "total"]

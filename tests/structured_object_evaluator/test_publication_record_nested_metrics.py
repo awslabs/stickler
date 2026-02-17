@@ -6,12 +6,13 @@ This test verifies that we can calculate precision, recall, F1, and accuracy met
 at the field level and object level for nested structures in publication record models.
 """
 
-import pytest
-from typing import Optional, List
+from typing import List, Optional
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+import pytest
+
 from stickler.comparators.exact import ExactComparator
+from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
 # Define the models for the test
