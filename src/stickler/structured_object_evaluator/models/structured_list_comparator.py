@@ -464,15 +464,51 @@ class StructuredListComparator:
         matched_gt_indices: set,
         matched_pred_indices: set,
     ) -> Dict[str, Any]:
-        """Handle primitive fields with simple aggregation across matched pairs.
+        """Handle non-hierarchical fields with aggregation across matched pairs.
 
-        PHASE 3 FIX: Now only processes good matched pairs (similarity >= match_threshold).
+        Handles both true primitive fields (str, int, etc.) and simple list fields
+        (List[str], List[int], etc.). Simple list fields are dispatched through
+        _dispatch_field_comparison to use PrimitiveListComparator for element-level
+        comparison, rather than being treated as atomic primitive values.
+
+        See: https://github.com/awslabs/stickler/issues/33
         """
 
-        # Initialize collection for primitive fields across all objects
+        # Check if this field is a simple list type (e.g., List[str]) by inspecting
+        # the first available GT item's model definition.
+        is_simple_list = False
+        if gt_list:
+            is_simple_list = gt_list[0]._is_list_field(sub_field_name)
+
+        if is_simple_list:
+            # Simple list fields (List[str], List[int], etc.) need element-level
+            # comparison via _dispatch_field_comparison → PrimitiveListComparator.
+            # Use the same aggregation pattern as _handle_hierarchical_field.
+            pair_results = []
+
+            for gt_idx, pred_idx, similarity in matched_pairs:
+                if gt_idx < len(gt_list) and pred_idx < len(pred_list):
+                    gt_item = gt_list[gt_idx]
+                    pred_item = pred_list[pred_idx]
+                    gt_sub_value = getattr(gt_item, sub_field_name)
+                    pred_sub_value = getattr(pred_item, sub_field_name)
+
+                    pair_result = gt_item._dispatch_field_comparison(
+                        sub_field_name, gt_sub_value, pred_sub_value
+                    )
+                    pair_results.append(pair_result)
+
+            aggregated_result = self._recursive_aggregate_metrics(pair_results)
+            self._add_derived_metrics_recursively(aggregated_result)
+            return (
+                aggregated_result
+                if pair_results
+                else {"overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}}
+            )
+
+        # True primitive fields — use flat classification
         sub_field_metrics = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
 
-        # PHASE 3 FIX: Now only processes pairs that passed the threshold filter
         for gt_idx, pred_idx, similarity in matched_pairs:
             if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                 gt_item = gt_list[gt_idx]
@@ -480,33 +516,27 @@ class StructuredListComparator:
                 gt_sub_value = getattr(gt_item, sub_field_name)
                 pred_sub_value = getattr(pred_item, sub_field_name)
 
-                # Regular field - use flat classification
                 field_classification = gt_item._classify_field_for_confusion_matrix(
                     sub_field_name, pred_sub_value
                 )
 
-                # Aggregate field metrics across all objects
                 for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
                     sub_field_metrics[metric] += field_classification.get(metric, 0)
 
         # Handle unmatched objects for primitive fields
-        # Handle unmatched GT objects (contribute FN to field-level)
         for gt_idx, gt_item in enumerate(gt_list):
             if gt_idx not in matched_gt_indices:
                 gt_sub_value = getattr(gt_item, sub_field_name)
-                if gt_sub_value is not None:  # Only count non-null values as FN
+                if gt_sub_value is not None:
                     sub_field_metrics["fn"] += 1
 
-        # Handle unmatched pred objects (contribute FA to field-level)
         for pred_idx, pred_item in enumerate(pred_list):
             if pred_idx not in matched_pred_indices:
                 pred_sub_value = getattr(pred_item, sub_field_name)
-                if pred_sub_value is not None:  # Only count non-null values as FA
+                if pred_sub_value is not None:
                     sub_field_metrics["fa"] += 1
                     sub_field_metrics["fp"] += 1
 
-        # UNIFIED STRUCTURE: Wrap primitive field metrics in 'overall' for consistency
-        # This ensures all fields use the same access pattern: field_data['overall']
         return {"overall": sub_field_metrics}
 
 
