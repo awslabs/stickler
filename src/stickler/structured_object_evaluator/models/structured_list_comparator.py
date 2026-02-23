@@ -278,7 +278,7 @@ class StructuredListComparator:
                         )
                     else:
                         # Handle primitive fields with simple aggregation - ONLY for good matches
-                        field_details[sub_field_name] = self._handle_primitive_field(
+                        field_details[sub_field_name] = self._handle_non_hierarchical_field(
                             sub_field_name,
                             gt_list,
                             pred_list,
@@ -455,7 +455,7 @@ class StructuredListComparator:
                     )
                 # If neither "overall" nor "tp" is present, it might be an empty structure - skip
 
-    def _handle_primitive_field(
+    def _handle_non_hierarchical_field(
         self,
         sub_field_name: str,
         gt_list: List["StructuredModel"],
@@ -499,12 +499,28 @@ class StructuredListComparator:
                     pair_results.append(pair_result)
 
             aggregated_result = self._recursive_aggregate_metrics(pair_results)
+
+            # Handle unmatched objects — count each list element as FN or FA
+            for gt_idx, gt_item in enumerate(gt_list):
+                if gt_idx not in matched_gt_indices:
+                    gt_sub_value = getattr(gt_item, sub_field_name)
+                    if isinstance(gt_sub_value, list) and gt_sub_value:
+                        aggregated_result["overall"]["fn"] += len(gt_sub_value)
+                    elif gt_sub_value is not None:
+                        aggregated_result["overall"]["fn"] += 1
+
+            for pred_idx, pred_item in enumerate(pred_list):
+                if pred_idx not in matched_pred_indices:
+                    pred_sub_value = getattr(pred_item, sub_field_name)
+                    if isinstance(pred_sub_value, list) and pred_sub_value:
+                        aggregated_result["overall"]["fa"] += len(pred_sub_value)
+                        aggregated_result["overall"]["fp"] += len(pred_sub_value)
+                    elif pred_sub_value is not None:
+                        aggregated_result["overall"]["fa"] += 1
+                        aggregated_result["overall"]["fp"] += 1
+
             self._add_derived_metrics_recursively(aggregated_result)
-            return (
-                aggregated_result
-                if pair_results
-                else {"overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}}
-            )
+            return aggregated_result
 
         # True primitive fields — use flat classification
         sub_field_metrics = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}

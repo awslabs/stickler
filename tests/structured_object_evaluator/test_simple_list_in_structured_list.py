@@ -12,8 +12,12 @@ from typing import Any, List, Optional
 
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+from stickler.structured_object_evaluator.models.comparable_field import (
+    ComparableField,
+)
+from stickler.structured_object_evaluator.models.structured_model import (
+    StructuredModel,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -145,19 +149,22 @@ def test_simple_list_extra_elements():
 
 
 def test_simple_list_no_match():
-    """Completely different elements — objects don't match, classified at object level."""
+    """Completely different elements — objects don't match, classified at object level.
+
+    With match_threshold=0.3 and completely different single-character tags,
+    the object similarity is ~0 which is below even 0.3. The objects get
+    paired by Hungarian but classified as unmatched (FN + FA) because the
+    similarity is effectively zero.
+    """
     gt = TaggedContainer(items=[TaggedItem(tags=["X", "Y"])])
     pred = TaggedContainer(items=[TaggedItem(tags=["A", "B"])])
 
     result = gt.compare_with(pred, include_confusion_matrix=True)
     obj_metrics = _overall(result["confusion_matrix"], "items")
 
-    # Object similarity is ~0 (completely different tags), so Hungarian pairs them
-    # but they fall below match_threshold → object-level FD or FN/FA.
-    # Either way, no field-level recursion happens for the tags.
-    total_classified = (obj_metrics["tp"] + obj_metrics["fd"]
-                        + obj_metrics["fn"] + obj_metrics["fa"])
-    assert total_classified >= 1
+    # Objects are so different they end up unmatched: 1 FN (GT) + 1 FA (pred)
+    assert obj_metrics["fn"] == 1
+    assert obj_metrics["fa"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -227,3 +234,64 @@ def test_empty_simple_list_within_structured_list():
 
     # Objects with only empty-list fields get similarity 0 → unmatched
     assert obj_metrics["fn"] + obj_metrics["fa"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# Tests — unmatched structured objects with simple list fields
+# Exercises the unmatched-object path for simple lists (PR #83 feedback)
+# ---------------------------------------------------------------------------
+
+def test_unmatched_gt_object_simple_list_contributes_fn():
+    """When GT has more structured items than pred, the unmatched GT item's
+    simple list elements should contribute FN at the field level.
+
+    GT: 2 TaskItems, Pred: 1 TaskItem (matching the first).
+    The unmatched GT item has tags=["X", "Y", "Z"] → should add 3 FN.
+    """
+    gt = TaskList(tasks=[
+        TaskItem(tags=["A", "B"], priority="high"),
+        TaskItem(tags=["X", "Y", "Z"], priority="low"),
+    ])
+    pred = TaskList(tasks=[
+        TaskItem(tags=["A", "B"], priority="high"),
+    ])
+
+    result = gt.compare_with(pred, include_confusion_matrix=True)
+    tags_metrics = _overall(result["confusion_matrix"], "tasks", "tags")
+    priority_metrics = _overall(result["confusion_matrix"], "tasks", "priority")
+
+    # Matched pair: tags TP=2, priority TP=1
+    # Unmatched GT: priority gets FN=1 (primitive path handles this)
+    #               tags should get FN=3 (one per list element)
+    assert tags_metrics["tp"] == 2
+    assert tags_metrics["fn"] == 3
+    assert priority_metrics["tp"] == 1
+    assert priority_metrics["fn"] == 1
+
+
+def test_unmatched_pred_object_simple_list_contributes_fa():
+    """When pred has more structured items than GT, the unmatched pred item's
+    simple list elements should contribute FA/FP at the field level.
+
+    GT: 1 TaskItem, Pred: 2 TaskItems (first matches GT).
+    The unmatched pred item has tags=["X", "Y", "Z"] → should add 3 FA.
+    """
+    gt = TaskList(tasks=[
+        TaskItem(tags=["A", "B"], priority="high"),
+    ])
+    pred = TaskList(tasks=[
+        TaskItem(tags=["A", "B"], priority="high"),
+        TaskItem(tags=["X", "Y", "Z"], priority="low"),
+    ])
+
+    result = gt.compare_with(pred, include_confusion_matrix=True)
+    tags_metrics = _overall(result["confusion_matrix"], "tasks", "tags")
+    priority_metrics = _overall(result["confusion_matrix"], "tasks", "priority")
+
+    # Matched pair: tags TP=2, priority TP=1
+    # Unmatched pred: priority gets FA=1, FP=1 (primitive path handles this)
+    #                 tags should get FA=3, FP=3 (one per list element)
+    assert tags_metrics["tp"] == 2
+    assert tags_metrics["fa"] == 3
+    assert priority_metrics["tp"] == 1
+    assert priority_metrics["fa"] == 1
