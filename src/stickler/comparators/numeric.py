@@ -2,7 +2,7 @@
 
 import re
 from decimal import Decimal, InvalidOperation
-from typing import Any, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from stickler.comparators.base import BaseComparator
 
@@ -54,6 +54,16 @@ class NumericComparator(BaseComparator):
             self.absolute_tolerance = tolerance
         else:
             self.absolute_tolerance = absolute_tolerance
+
+    @property
+    def config(self) -> Optional[Dict[str, Any]]:
+        """Return configuration parameters for serialization."""
+        config = {}
+        if self.relative_tolerance != 0.0:
+            config["relative_tolerance"] = self.relative_tolerance
+        if self.absolute_tolerance != 0.0:
+            config["absolute_tolerance"] = self.absolute_tolerance
+        return config or None
 
     def compare(self, str1: Any, str2: Any) -> float:
         """Compare two values numerically.
