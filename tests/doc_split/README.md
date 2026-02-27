@@ -4,14 +4,24 @@ Tests for `src/stickler/doc_split/` — document packet splitting metrics.
 
 ## test_doc_split_classification_metrics.py
 
-Tests `DocSplitClassificationMetrics` across:
+Tests `DocSplitClassificationMetrics` (classical metrics) across:
 
-- Perfect match scenarios
-- Paper edge cases (Table 3, Appendix A of arXiv:2602.15958): misclassification, wrong grouping, wrong ordering, split/merged groups, partial misclassification
-- Input format variations: flat dicts, nested accelerator format, mixed formats, auto-generated section IDs
-- Edge cases: empty inputs, single-page docs, empty page indices, string indices, non-sequential indices
+- Perfect match, paper edge cases (Table 3/5, Appendix A of arXiv:2602.15958)
+- Input format variations (flat, nested, mixed, auto-generated IDs)
+- Edge cases (empty inputs, single-page, non-sequential indices)
 - Markdown report generation
-- Realistic multi-document lending packet scenarios
+- Realistic lending packet scenarios
+
+## test_packet_evaluation_metrics.py
+
+Tests `evaluate_packet` (proposed metrics) across:
+
+- All 10 edge cases from the paper (Table 4, Appendix A) with strict clustering
+- Expected values verified against notebook outputs
+- Individual functions: clustering score, ordering score, final score
+- Input format flexibility: list-of-dicts, CSV path, DataFrame
+- Strict vs non-strict clustering mode
+- Validation (missing columns, bad weights)
 
 ```bash
 pytest tests/doc_split/ -v

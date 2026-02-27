@@ -5,3 +5,4 @@ nav:
   - Universal_Aggregate_Field_Feature.md
   - ['*']
   - Confidence_Evaluation_Guide.md
+  - Document_Packet_Splitting.md
