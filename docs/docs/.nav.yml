@@ -1,5 +1,6 @@
 nav:
-  - index.md
+  - Home:
+    - index.md
   - Getting-Started/
   - Comparators/
   - Evaluation/
