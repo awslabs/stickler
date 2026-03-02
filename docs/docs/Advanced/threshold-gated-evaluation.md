@@ -53,9 +53,7 @@ class Order(StructuredModel):
     order_id: str = ComparableField(
         comparator=ExactComparator(), threshold=1.0, weight=2.0
     )
-    products: List[Product] = ComparableField(
-        aggregate=True, threshold=0.6, weight=3.0
-    )
+    products: List[Product] = ComparableField(weight=3.0)
 ```
 
 ## Worked Scenarios

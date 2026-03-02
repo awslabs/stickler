@@ -50,6 +50,7 @@ Stickler's core comparators (Exact, Levenshtein, Numeric, Fuzzy) work out of the
 
 Uses AWS Bedrock Titan embeddings for cosine similarity.
 
+- `boto3` AWS SDK for Python (`pip install boto3`)
 - AWS credentials configured (`aws configure` or environment variables)
 - Access to Amazon Bedrock with Titan embedding models enabled
 
@@ -57,7 +58,10 @@ Uses AWS Bedrock Titan embeddings for cosine similarity.
 
 Uses BERTScore for contextual similarity. Runs locally -- no cloud services needed.
 
-- `torch` and `bert-score` packages (installed automatically with stickler-eval)
+- Additional Python packages required:
+  ```bash
+  pip install evaluate torch bert-score
+  ```
 - GPU recommended for performance, but CPU works
 
 ### LLMComparator

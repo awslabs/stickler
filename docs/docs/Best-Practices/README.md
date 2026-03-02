@@ -123,7 +123,7 @@ Stickler provides several flags to expose what is happening during evaluation:
 
 - **`document_non_matches=True`** -- Shows which objects in a list could not be matched. Essential for diagnosing why list-level scores are low.
 - **`document_field_comparisons=True`** -- Shows individual field comparison results for each pair. Reveals which specific fields are dragging scores down.
-- **`include_confusion_matrix=True`** (or `add_confusion_matrix=True`) -- Produces TP/FP/FN/TN counts for classification analysis.
+- **`include_confusion_matrix=True`** -- Produces TP/FP/FN/TN counts for classification analysis.
 
 ```python
 result = ground_truth.compare_with(
@@ -174,11 +174,10 @@ When data is genuinely hierarchical (e.g., an invoice with line items, an order 
 
 ```python
 class LineItem(StructuredModel):
+    match_threshold = 0.7  # Minimum similarity for Hungarian pairing
+
     description: str = ComparableField(comparator=FuzzyComparator(), weight=1.0)
     amount: float = ComparableField(comparator=NumericComparator(tolerance=0.01), weight=1.5)
-
-    class Config:
-        match_threshold = 0.7  # Minimum similarity for Hungarian pairing
 
 class Invoice(StructuredModel):
     invoice_id: str = ComparableField(comparator=ExactComparator(), weight=3.0)
