@@ -49,7 +49,7 @@ This generates the static site in `site/` and validates all internal links and r
 
 ## Deployment
 
-The site is deployed to GitHub Pages automatically via GitHub Actions on pushes to the main branch. To deploy manually:
+The site is deployed to GitHub Pages automatically via GitHub Actions (`.github/workflows/docs.yml`) on pushes to `main` that modify files in `src/` or `docs/`. This ensures API reference docs stay current when Python source code changes. To deploy manually:
 
 ```bash
 mkdocs gh-deploy --force
@@ -57,53 +57,13 @@ mkdocs gh-deploy --force
 
 This builds the site and pushes it to the `gh-pages` branch using MkDocs' built-in deployment command.
 
-### Future TODO: GitHub Actions Automation
+### GitHub Actions Automation
 
-To set up automatic deployment on push to main, create `.github/workflows/docs.yml`:
-
-```yaml
-name: Deploy Documentation
-
-on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'docs/**'
-      - '.github/workflows/docs.yml'
-
-permissions:
-  contents: write
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      
-      - name: Install dependencies
-        run: |
-          cd docs
-          pip install -r requirements.txt
-      
-      - name: Deploy to GitHub Pages
-        run: |
-          cd docs
-          git config user.name github-actions
-          git config user.email github-actions@github.com
-          mkdocs gh-deploy --force
-```
-
-This workflow:
-- Triggers on pushes to main that modify docs files
-- Requires `contents: write` permission for gh-pages deployment
-- Installs Python 3.12 and documentation dependencies
-- Deploys using `mkdocs gh-deploy`
+Automatic deployment is configured in `.github/workflows/docs.yml`. The workflow:
+- Triggers on pushes to `main` that modify files in `src/`, `docs/`, or the workflow itself
+- Installs the stickler package (`pip install -e .`) so mkdocstrings can import modules and read docstrings
+- Installs documentation dependencies from `docs/requirements.txt`
+- Deploys to GitHub Pages using `mkdocs gh-deploy --force`
 
 ---
 
