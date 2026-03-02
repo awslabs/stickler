@@ -5,23 +5,8 @@
       heading_level: 1
       members: false
 
-::: stickler.structured_object_evaluator.models.structured_model.StructuredModel
-    options:
-      heading_level: 2
-
-::: stickler.structured_object_evaluator.models.comparable_field.ComparableField
-    options:
-      heading_level: 2
-
-::: stickler.structured_object_evaluator.models.non_match_field.NonMatchField
-    options:
-      heading_level: 2
-
-::: stickler.structured_object_evaluator.models.non_match_field.NonMatchType
-    options:
-      heading_level: 2
-
-
+!!! tip "Model Classes"
+    For documentation on `StructuredModel`, `ComparableField`, `NonMatchField`, and `NonMatchType`, see the [Models](models.md) page.
 
 ::: stickler.structured_object_evaluator.utils.anls_score.compare_structured_models
     options:

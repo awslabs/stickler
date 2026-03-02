@@ -1,6 +1,10 @@
 nav:
+  - index.md
   - Getting-Started/
-  - Core-Concepts/
-  - Guides/
-  - Contributing/
+  - Comparators/
+  - Evaluation/
+  - Use-Cases/
+  - Best-Practices/
+  - Advanced/
   - SDK-Docs/
+  - Contributing/

@@ -1,25 +1,14 @@
 ---
-title: Quick Start
+title: Getting Started
 ---
 
-# Stickler: Structured Object Evaluation for GenAI
+# Getting Started
 
-When in the course of human events, it becomes necessary to evaluate structured outputs from generative AI systems, we must acknowledge that traditional evaluation treats all fields equally. But **not all fields are created equal**.
+## What is Stickler?
 
-**Stickler is a Python library for structured object comparison and evaluation** that lets you focus on the fields your customer actually cares about, to answer the question: "Is it doing a good job?" 
+Stickler is a Python library for structured JSON comparison and evaluation, designed for generative AI workflows. It lets you assign business weights to fields so that critical identifiers count more than cosmetic text, and it uses specialized comparators (exact, numeric, fuzzy, semantic) tailored to each data type. The Hungarian algorithm optimally matches list elements regardless of order, while the recursive evaluation engine handles arbitrarily nested structures. The result is a single weighted score that reflects real operational impact, not just raw accuracy.
 
-Stickler uses specialized comparators for different data types: exact matching for critical identifiers, numeric tolerance for currency amounts, semantic similarity for text fields, and fuzzy matching for names and addresses. You can build custom comparators for domain-specific logic. The Hungarian algorithm ensures optimal list matching regardless of order, while the recursive evaluation engine handles unlimited nesting depth. Business-weighted scoring reflects actual operational impact, not just technical accuracy.
-
-Consider an invoice extraction agent that perfectly captures shipment numbers—which must be exact or packages get routed to the wrong warehouse—but sometimes garbles driver notes like "delivered to front door" vs "left at entrance." Those note variations don't affect logistics operations at all. Traditional evaluation treats both error types identically and reports your agent as "95% accurate" without telling you if that 5% error rate matters. Stickler tells you exactly where the errors are and whether they're actually problems.
-
-Whether you're extracting data from documents, performing ETL transformations, evaluating ML model outputs, or simply trying to diff complex JSON structures, Stickler transforms evaluation from a technical afterthought into a business-aligned decision tool.
-
-## Installation
-```bash
-pip install stickler-eval
-```
-
-## Get Started in 30 Seconds
+## Your First Evaluation in 30 Seconds
 
 ```python
 # pip install stickler-eval
@@ -67,130 +56,17 @@ print(f"Shipment ID: {result['field_scores']['shipment_id']:.3f}")  # 1.000 - ex
 print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # 0.926 - Hungarian optimal matching
 ```
 
-### Requirements
-- Python 3.12+
-- conda (recommended)
+## What You Just Did
 
-### Quick Install
-```bash
-# Create conda environment
-conda create -n stickler python=3.12 -y
-conda activate stickler
+- **Defined models with `ComparableField`**: Each field declares its own comparator and weight, turning a plain data class into an evaluation-aware structure.
+- **Chose specialized comparators**: `ExactComparator` for the shipment ID that must match perfectly, `NumericComparator` with a tolerance for currency amounts, and `LevenshteinComparator` for product names that may have minor variations.
+- **Applied business-weighted scoring**: The shipment ID carries a weight of 3.0 because a wrong ID routes packages to the wrong warehouse. Lower-priority fields have smaller weights. The overall score is a weighted average that reflects operational impact.
+- **Used Hungarian matching for lists**: The `line_items` field contains a list of `LineItem` objects. Stickler uses the Hungarian algorithm to find the optimal one-to-one pairing between ground truth and prediction items, regardless of order.
+- **Compared and got results**: `compare_with` returns a dictionary with an `overall_score` and per-field `field_scores`, so you can see exactly where the differences are and how much they matter.
 
-# Install the library
-pip install -e .
-```
+## Next Steps
 
-### Development Install
-```bash
-# Install with testing dependencies
-pip install -e ".[dev]"
-```
-
-## Quick Test
-
-Run the example to verify installation:
-```bash
-python examples/scripts/quick_start.py
-```
-
-Run tests:
-```bash
-pytest tests/
-```
-
-## Basic Usage
-
-### Static Model Definition
-
-```python
-from stickler import StructuredModel, ComparableField
-from stickler.comparators.levenshtein import LevenshteinComparator
-
-# Define your data structure
-class Invoice(StructuredModel):
-    invoice_number: str = ComparableField(
-        comparator=LevenshteinComparator(),
-        threshold=0.9
-    )
-    total: float = ComparableField(threshold=0.95)
-
-# Compare objects
-result = ground_truth.compare_with(prediction, evaluator_format=True)
-
-print(f"Overall Score: {result['overall']['anls_score']:.3f}")
-```
-
-### Dynamic Model Creation (New!)
-
-Create models from JSON configuration for maximum flexibility:
-
-```python
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-
-# Define model configuration
-config = {
-    "model_name": "Product",
-    "match_threshold": 0.8,
-    "fields": {
-        "name": {
-            "type": "str",
-            "comparator": "LevenshteinComparator",
-            "threshold": 0.8,
-            "weight": 2.0
-        },
-        "price": {
-            "type": "float",
-            "comparator": "NumericComparator",
-            "default": 0.0
-        }
-    }
-}
-
-# Create dynamic model class
-Product = StructuredModel.model_from_json(config)
-
-# Use like any Pydantic model
-product1 = Product(name="Widget", price=29.99)
-product2 = Product(name="Gadget", price=29.99)
-
-# Full comparison capabilities
-result = product1.compare_with(product2)
-print(f"Similarity: {result['overall_score']:.2f}")
-```
-
-### Complete JSON-to-Evaluation Workflow (New!)
-
-For maximum flexibility, load both configuration AND data from JSON:
-
-```python
-# Load model config from JSON
-with open('model_config.json') as f:
-    config = json.load(f)
-
-# Load test data from JSON  
-with open('test_data.json') as f:
-    data = json.load(f)
-
-# Create model and instances from JSON
-Model = StructuredModel.model_from_json(config)
-ground_truth = Model(**data['ground_truth'])
-prediction = Model(**data['prediction'])
-
-# Evaluate - no Python object construction needed!
-result = ground_truth.compare_with(prediction)
-```
-
-**Benefits of JSON-Driven Approach:**
-- Zero Python object construction required
-- Configuration-driven model creation
-- A/B testing different field configurations
-- Runtime model generation from external schemas
-- Production-ready JSON-based evaluation pipeline
-- Full Pydantic compatibility with comparison capabilities
-
-See [`examples/scripts/json_to_evaluation_demo.py`](examples/scripts/json_to_evaluation_demo.py) for a complete working example and [`docs/StructuredModel_Dynamic_Creation.md`](docs/StructuredModel_Dynamic_Creation.md) for comprehensive documentation.
-
-## Examples
-
-Check out the `examples/` directory for more detailed usage examples and notebooks.
+- [Installation](installation.md) -- detailed setup instructions, conda environment, and optional dependencies.
+- [Comparators](../Comparators/README.md) -- understand the full set of comparison algorithms and when to use each one.
+- [Evaluation](../Evaluation/README.md) -- customize thresholds, clipping, aggregation, and the evaluation engine.
+- [Use Cases](../Use-Cases/README.md) -- real-world patterns for document extraction, OCR, ML evaluation, and more.
