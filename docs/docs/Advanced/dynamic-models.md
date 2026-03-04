@@ -115,7 +115,7 @@ Default comparators are assigned by JSON Schema type when no extension is specif
 | `array` (objects) | Hungarian matching | 0.7 |
 | `object` | Recursive comparison | 0.7 |
 
-For the complete reference, see the [Evaluation](../Evaluation/README.md) page.
+For the complete reference, see the [Evaluation](../Guides/Evaluation/README.md) page.
 
 ---
 

@@ -4,7 +4,7 @@ title: Engine Architecture
 
 # Comparison Engine Architecture
 
-Internal architecture reference for contributors and maintainers working on the Stickler comparison engine. For user-facing feature documentation, see [Advanced](../Advanced/README.md).
+Internal architecture reference for contributors and maintainers working on the Stickler comparison engine. For user-facing feature documentation, see [Advanced](../../Advanced/README.md).
 
 ## Overview
 
@@ -184,7 +184,7 @@ Compares `List[str]`, `List[int]`, etc. using Hungarian matching for optimal ele
 
 **Universal hierarchical structure:** Returns `{"overall": {...}, "fields": {...}}` even for primitive lists. This ensures all list fields use the same access pattern (`result["fields"][name]["overall"]`), which simplifies consumers and test assertions.
 
-For details on Hungarian matching mechanics, see [Advanced > Hungarian Matching](../Advanced/hungarian-matching.md).
+For details on Hungarian matching mechanics, see [Advanced > Hungarian Matching](../../Advanced/hungarian-matching.md).
 
 ### StructuredListComparator
 
@@ -221,7 +221,7 @@ good_matched_pairs = [
 ]
 ```
 
-For user-facing threshold-gated evaluation documentation, see [Advanced > Threshold-Gated Evaluation](../Advanced/threshold-gated-evaluation.md).
+For user-facing threshold-gated evaluation documentation, see [Advanced > Threshold-Gated Evaluation](../../Advanced/threshold-gated-evaluation.md).
 
 ## Score Aggregation
 

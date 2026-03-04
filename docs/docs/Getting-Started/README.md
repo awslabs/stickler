@@ -67,6 +67,6 @@ print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # 0.926 - Hung
 ## Next Steps
 
 - [Installation](installation.md) -- detailed setup instructions, conda environment, and optional dependencies.
-- [Comparators](../Comparators/README.md) -- understand the full set of comparison algorithms and when to use each one.
-- [Evaluation](../Evaluation/README.md) -- customize thresholds, clipping, aggregation, and the evaluation engine.
-- [Use Cases](../Use-Cases/README.md) -- real-world patterns for document extraction, OCR, ML evaluation, and more.
+- [Comparators](../Guides/Comparators/README.md) -- understand the full set of comparison algorithms and when to use each one.
+- [Evaluation](../Guides/Evaluation/README.md) -- customize thresholds, clipping, aggregation, and the evaluation engine.
+- [Use Cases](../Guides/Use-Cases/README.md) -- real-world patterns for document extraction, OCR, ML evaluation, and more.

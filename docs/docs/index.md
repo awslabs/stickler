@@ -18,25 +18,25 @@ Installation, quick start example, and your first evaluation.
 
 Choose the right comparison algorithm for each field type: exact matching, numeric tolerance, fuzzy text, semantic similarity, and more.
 
-[Go to Comparators](Comparators/README.md){ .md-button }
+[Go to Comparators](Guides/Comparators/README.md){ .md-button }
 
 ## Evaluation
 
 Customize evaluation behavior with thresholds, clipping, aggregation, and the evaluator engine.
 
-[Go to Evaluation](Evaluation/README.md){ .md-button }
+[Go to Evaluation](Guides/Evaluation/README.md){ .md-button }
 
 ## Use Cases
 
 Real-world patterns for document extraction, OCR evaluation, ML model output comparison, and ETL validation.
 
-[Go to Use Cases](Use-Cases/README.md){ .md-button }
+[Go to Use Cases](Guides/Use-Cases/README.md){ .md-button }
 
 ## Best Practices
 
 Tips, tricks, and optimization strategies for getting the most out of Stickler in production.
 
-[Go to Best Practices](Best-Practices/README.md){ .md-button }
+[Go to Best Practices](Guides/Best-Practices/README.md){ .md-button }
 
 ## Advanced
 
@@ -44,14 +44,14 @@ Deep dives into the Hungarian algorithm, recursive evaluation engine, custom com
 
 [Go to Advanced](Advanced/README.md){ .md-button }
 
-## SDK Reference
+## API Reference
 
 Complete API documentation for all classes, methods, and configuration options.
 
-[Go to SDK Reference](SDK-Docs/README.md){ .md-button }
+[Go to API Reference](API-Reference/README.md){ .md-button }
 
 ## Contributing
 
 How to report issues, submit pull requests, and help improve Stickler.
 
-[Go to Contributing](Contributing/README.md){ .md-button }
+[Go to Contributing](Getting-Started/Contributing/README.md){ .md-button }

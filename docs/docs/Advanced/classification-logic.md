@@ -117,5 +117,5 @@ From the base counts:
 
 ## See Also
 
-- [Understanding Results](../Evaluation/understanding-results.md) -- interpreting the full result dictionary
+- [Understanding Results](../Guides/Evaluation/understanding-results.md) -- interpreting the full result dictionary
 - [Hungarian Matching](hungarian-matching.md) -- details on the list-pairing algorithm

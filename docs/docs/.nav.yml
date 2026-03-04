@@ -2,10 +2,6 @@ nav:
   - Home:
     - index.md
   - Getting-Started/
-  - Comparators/
-  - Evaluation/
-  - Use-Cases/
-  - Best-Practices/
+  - Guides/
   - Advanced/
-  - SDK-Docs/
-  - Contributing/
+  - API-Reference/
