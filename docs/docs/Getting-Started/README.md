@@ -6,7 +6,9 @@ title: Getting Started
 
 ## What is Stickler?
 
-Stickler is a Python library for structured JSON comparison and evaluation, designed for generative AI workflows. It lets you assign business weights to fields so that critical identifiers count more than cosmetic text, and it uses specialized comparators (exact, numeric, fuzzy, semantic) tailored to each data type. The Hungarian algorithm optimally matches list elements regardless of order, while the recursive evaluation engine handles arbitrarily nested structures. The result is a single weighted score that reflects real operational impact, not just raw accuracy.
+You're building an invoice extraction pipeline. Your AI reads scanned documents and produces structured JSON — invoice IDs, amounts, line items. How accurate is it? Do the errors matter? A wrong total is a billing error. A wrong ID routes a package to the wrong warehouse. A minor typo in a vendor name is cosmetic.
+
+Stickler answers these questions. It compares structured AI output against ground truth using specialized comparators tailored to each data type (exact, numeric, fuzzy, semantic), business-weighted scoring so critical fields count more than cosmetic ones, and Hungarian algorithm matching for lists regardless of order. The result is a single weighted score that reflects real operational impact, not just raw accuracy.
 
 ## Your First Evaluation in 30 Seconds
 
@@ -56,6 +58,30 @@ print(f"Shipment ID: {result['field_scores']['shipment_id']:.3f}")  # 1.000 - ex
 print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # 0.926 - Hungarian optimal matching
 ```
 
+??? example "Sample Output"
+
+    **Console output:**
+    ```
+    Overall Score: 0.693
+    Shipment ID: 1.000
+    Line Items: 0.926
+    ```
+
+    **Full result dictionary:**
+    ```json
+    {
+      "field_scores": {
+        "shipment_id": 1.0,
+        "amount": 0.0,
+        "line_items": 0.926
+      },
+      "overall_score": 0.693,
+      "all_fields_matched": false
+    }
+    ```
+
+    The `amount` field scores 0.0 because the default `clip_under_threshold` behavior zeros out the score — the difference between 1247.50 and 1247.48 exceeds the `NumericComparator`'s default absolute tolerance of 0.01, and the resulting score falls below the default threshold.
+
 ## What You Just Did
 
 - **Defined models with `ComparableField`**: Each field declares its own comparator and weight, turning a plain data class into an evaluation-aware structure.
@@ -64,9 +90,23 @@ print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # 0.926 - Hung
 - **Used Hungarian matching for lists**: The `line_items` field contains a list of `LineItem` objects. Stickler uses the Hungarian algorithm to find the optimal one-to-one pairing between ground truth and prediction items, regardless of order.
 - **Compared and got results**: `compare_with` returns a dictionary with an `overall_score` and per-field `field_scores`, so you can see exactly where the differences are and how much they matter.
 
-## Next Steps
+## Evaluate a Test Set
 
-- [Installation](installation.md) -- detailed setup instructions, conda environment, and optional dependencies.
-- [Comparators](../Guides/Comparators/README.md) -- understand the full set of comparison algorithms and when to use each one.
-- [Evaluation](../Guides/Evaluation/README.md) -- customize thresholds, clipping, aggregation, and the evaluation engine.
-- [Use Cases](../Guides/Use-Cases/README.md) -- real-world patterns for document extraction, OCR, ML evaluation, and more.
+In production, you'll compare many document pairs at once. `BulkStructuredModelEvaluator` handles this with streaming aggregation and progress reporting:
+
+```python
+from stickler.structured_object_evaluator.bulk_structured_model_evaluator import BulkStructuredModelEvaluator
+
+evaluator = BulkStructuredModelEvaluator(target_schema=Invoice, verbose=True)
+
+for gt_json, pred_json, doc_id in your_test_set:
+    gt = Invoice(**gt_json)
+    pred = Invoice(**pred_json)
+    evaluator.update(gt, pred, doc_id)
+
+result = evaluator.compute()
+print(f"Aggregate F1: {result.overall_metrics['f1']:.3f}")
+```
+
+See [Bulk Evaluation](../Guides/Evaluation/bulk-evaluation.md) for the full guide.
+

@@ -8,13 +8,13 @@ Comparators are the algorithms that determine how similar two field values are. 
 
 | Comparator | Best For | Speed | Needs AWS? | Score Type |
 |---|---|---|---|---|
-| **ExactComparator** | IDs, codes, booleans | Instant | No | Binary (0.0 or 1.0) |
-| **LevenshteinComparator** | Names, addresses, text with typos | Instant | No | Continuous (0.0--1.0) |
-| **NumericComparator** | Prices, quantities, measurements | Instant | No | Binary (0.0 or 1.0) |
-| **FuzzyComparator** | Flexible text, descriptions, reordered tokens | Fast | No | Continuous (0.0--1.0) |
-| **SemanticComparator** | Meaning-based text similarity | Moderate | Yes (Bedrock) | Continuous (0.0--1.0) |
-| **BERTComparator** | Contextual semantic similarity | Moderate | No (runs locally) | Continuous (0.0--1.0) |
-| **LLMComparator** | Complex semantic evaluation with reasoning | Slow | Yes (Bedrock) | Binary (0.0 or 1.0) |
+| [**ExactComparator**](#exactcomparator) | IDs, codes, booleans | Instant | No | Binary (0.0 or 1.0) |
+| [**LevenshteinComparator**](#levenshteincomparator) | Names, addresses, text with typos | Instant | No | Continuous (0.0--1.0) |
+| [**NumericComparator**](#numericcomparator) | Prices, quantities, measurements | Instant | No | Binary (0.0 or 1.0) |
+| [**FuzzyComparator**](#fuzzycomparator) | Flexible text, descriptions, reordered tokens | Fast | No | Continuous (0.0--1.0) |
+| [**SemanticComparator**](#semanticcomparator) | Meaning-based text similarity | Moderate | Yes (Bedrock) | Continuous (0.0--1.0) |
+| [**BERTComparator**](#bertcomparator) | Contextual semantic similarity | Moderate | No (runs locally) | Continuous (0.0--1.0) |
+| [**LLMComparator**](#llmcomparator) | Complex semantic evaluation with reasoning | Slow | Yes (Bedrock) | Binary (0.0 or 1.0) |
 
 ---
 

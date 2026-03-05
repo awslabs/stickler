@@ -6,52 +6,113 @@ title: Stickler Documentation
 
 Stickler is a Python library for structured JSON comparison and evaluation, built for generative AI workflows. It uses specialized comparators, business-weighted scoring, and the Hungarian algorithm to tell you not just whether your AI output is accurate, but whether the errors actually matter.
 
+### Key Use Case: Key Information Extraction (KIE)
+
+Generative AI models extract structured data from documents — invoices, forms, receipts, medical records. But how accurate is the extraction? And do the errors actually matter? Stickler answers both questions by comparing AI output against ground truth with field-level precision, business-weighted scoring, and optimal list matching.
+
+```python
+from stickler import StructuredModel, ComparableField
+from stickler.comparators import ExactComparator, NumericComparator
+
+# 1. Define what "correct" looks like — each field gets its own comparator and weight
+class Invoice(StructuredModel):
+    invoice_id: str = ComparableField(comparator=ExactComparator(), weight=3.0)   # Must match perfectly, high weight
+    total: float = ComparableField(comparator=NumericComparator(tolerance=0.01), weight=2.0)  # Allow rounding
+    vendor: str = ComparableField(weight=1.0)  # Fuzzy text match by default
+
+# 2. Compare ground truth vs AI prediction
+gt = Invoice(invoice_id="INV-001", total=1250.00, vendor="Acme Corp")
+pred = Invoice(invoice_id="INV-001", total=1250.00, vendor="ACME Corporation")
+result = gt.compare_with(pred)
+
+# 3. Get a single weighted score + per-field breakdown
+print(f"Score: {result['overall_score']:.3f}")  # 0.786
+print(result['field_scores'])
+# {'invoice_id': 1.0, 'total': 1.0, 'vendor': 0.786}
+```
+
 ---
 
-## Getting Started
+## How Stickler Works
 
-Installation, quick start example, and your first evaluation.
+Stickler uses a layered architecture where each layer builds on the one below it. **Comparators** handle primitive value comparison (exact, numeric, fuzzy, semantic). **ComparableFields** attach a comparator, threshold, and weight to each field. **StructuredModels** compose fields into nested, evaluation-aware data structures with Hungarian list matching. **BulkStructuredModelEvaluator** aggregates results across an entire test set.
 
-[Go to Getting Started](Getting-Started/README.md){ .md-button }
+```mermaid
+graph TD
+    A[BulkStructuredModelEvaluator] -->|iterates over document pairs| B[StructuredModel]
+    B -->|contains weighted| C[ComparableField]
+    C -->|delegates to| D[Comparator]
+    D -->|returns 0.0 – 1.0| C
+    C -->|threshold + clip| B
+    B -->|weighted average + Hungarian matching| A
+```
 
-## Comparators
+---
 
-Choose the right comparison algorithm for each field type: exact matching, numeric tolerance, fuzzy text, semantic similarity, and more.
+<div class="grid cards" markdown>
 
-[Go to Comparators](Guides/Comparators/README.md){ .md-button }
+-   **Getting Started**
 
-## Evaluation
+    ---
 
-Customize evaluation behavior with thresholds, clipping, aggregation, and the evaluator engine.
+    Installation, quick start, and your first evaluation in 30 seconds.
 
-[Go to Evaluation](Guides/Evaluation/README.md){ .md-button }
+    [:octicons-arrow-right-24: Get started](Getting-Started/README.md)
 
-## Use Cases
+-   **Comparators**
 
-Real-world patterns for document extraction, OCR evaluation, ML model output comparison, and ETL validation.
+    ---
 
-[Go to Use Cases](Guides/Use-Cases/README.md){ .md-button }
+    Exact, numeric, fuzzy, semantic, and LLM-based comparison algorithms.
 
-## Best Practices
+    [:octicons-arrow-right-24: Choose a comparator](Guides/Comparators/README.md)
 
-Tips, tricks, and optimization strategies for getting the most out of Stickler in production.
+-   **Evaluation**
 
-[Go to Best Practices](Guides/Best-Practices/README.md){ .md-button }
+    ---
 
-## Advanced
+    Thresholds, weights, clipping, JSON Schema config, and bulk evaluation.
 
-Deep dives into the Hungarian algorithm, recursive evaluation engine, custom comparator development, and internals.
+    [:octicons-arrow-right-24: Customize evaluation](Guides/Evaluation/README.md)
 
-[Go to Advanced](Advanced/README.md){ .md-button }
+-   **Use Cases**
 
-## API Reference
+    ---
 
-Complete API documentation for all classes, methods, and configuration options.
+    Document extraction, OCR, entity extraction, ML evaluation, and ETL validation.
 
-[Go to API Reference](API-Reference/README.md){ .md-button }
+    [:octicons-arrow-right-24: See patterns](Guides/Use-Cases/README.md)
 
-## Contributing
+-   **Best Practices**
 
-How to report issues, submit pull requests, and help improve Stickler.
+    ---
 
-[Go to Contributing](Getting-Started/Contributing/README.md){ .md-button }
+    Threshold tuning, SME calibration, weight assignment, and performance.
+
+    [:octicons-arrow-right-24: Learn more](Guides/Best-Practices/README.md)
+
+-   **Advanced**
+
+    ---
+
+    Hungarian algorithm internals, recursive engine, and custom comparators.
+
+    [:octicons-arrow-right-24: Go deeper](Advanced/README.md)
+
+-   **API Reference**
+
+    ---
+
+    Complete documentation for all classes, methods, and configuration.
+
+    [:octicons-arrow-right-24: Browse API](API-Reference/README.md)
+
+-   **Contributing**
+
+    ---
+
+    Report issues, submit pull requests, and development setup.
+
+    [:octicons-arrow-right-24: Contribute](Getting-Started/Contributing/README.md)
+
+</div>

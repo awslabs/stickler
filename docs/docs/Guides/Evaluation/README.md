@@ -12,6 +12,23 @@ This guide covers three ways to configure evaluation behavior:
 2. **The `compare_with()` method** for running comparisons
 3. **JSON Schema extensions** for configuration-driven evaluation
 
+!!! tip "Evaluating a test set?"
+    If you need to evaluate many document pairs (not just one), use **`BulkStructuredModelEvaluator`** — it handles streaming aggregation, progress reporting, and metrics export. See the [Bulk Evaluation](bulk-evaluation.md) guide.
+
+---
+
+## How Evaluation Works
+
+Stickler evaluates structured data from the inside out. At the innermost layer, **Comparators** compute a raw similarity score (0.0–1.0) between two primitive values. Each **ComparableField** wraps a comparator with a threshold and weight — scores below the threshold are clipped to zero, and weights control how much the field matters. **StructuredModels** aggregate field scores into a weighted average. For list fields, the **Hungarian algorithm** finds the optimal one-to-one pairing between ground truth and prediction items before scoring.
+
+```mermaid
+graph LR
+    A["Comparator<br/>(raw score 0.0–1.0)"] --> B["ComparableField<br/>(threshold + clip + weight)"]
+    B --> C["StructuredModel<br/>(weighted average)"]
+    C --> D["List matching<br/>(Hungarian algorithm)"]
+    D --> E["Overall Score"]
+```
+
 ---
 
 ## ComparableField Parameters
@@ -64,32 +81,30 @@ from stickler.structured_object_evaluator.models.structured_model import Structu
 
 class Invoice(StructuredModel):
     invoice_id: str = ComparableField(
-        comparator=ExactComparator(),
+        comparator=ExactComparator(),  # Must match exactly
         threshold=1.0,
-        weight=3.0,
+        weight=3.0,                    # Highest weight — wrong ID = wrong customer
         clip_under_threshold=True,
     )
 
     customer_name: str = ComparableField(
-        comparator=LevenshteinComparator(),
+        comparator=LevenshteinComparator(),  # Tolerates typos
         threshold=0.8,
         weight=1.5,
     )
 
     total_amount: float = ComparableField(
-        comparator=NumericComparator(),
+        comparator=NumericComparator(),  # Tolerance-based numeric comparison
         threshold=0.95,
         weight=2.5,
     )
 
     notes: str = ComparableField(
-        comparator=FuzzyComparator(),
+        comparator=FuzzyComparator(),  # Low threshold, minimal weight — cosmetic field
         threshold=0.6,
         weight=0.3,
     )
 ```
-
-In this model, `invoice_id` must match exactly and has the highest weight, while `notes` uses fuzzy matching with a low threshold and minimal weight.
 
 ---
 
@@ -218,6 +233,22 @@ prediction = Invoice(**{"invoice_id": "INV-001", "customer_name": "ACME Corporat
 result = ground_truth.compare_with(prediction)
 print(f"Overall Score: {result['overall_score']:.3f}")
 ```
+
+??? example "Sample Output"
+
+    ```json
+    {
+      "field_scores": {
+        "invoice_id": 1.0,
+        "customer_name": 0.0,
+        "total_amount": 1.0
+      },
+      "overall_score": 0.786,
+      "all_fields_matched": false
+    }
+    ```
+
+    Note that `customer_name` scores 0.0: "Acme Corp" vs "ACME Corporation" produces a Levenshtein similarity below the 0.8 threshold, so `clip_under_threshold` zeros it out.
 
 For the complete reference on all extensions, default comparators by type, and a full production example, see the [JSON Schema Extensions](https://github.com/awslabs/stickler#json-schema-extensions-x-aws-stickler--complete-reference) section in the project README.
 

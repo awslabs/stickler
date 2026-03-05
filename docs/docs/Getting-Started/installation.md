@@ -44,13 +44,16 @@ pip install -e ".[dev]"
 
 ## Optional Dependencies
 
-Stickler's core comparators (Exact, Levenshtein, Numeric, Fuzzy) work out of the box. The AI-powered comparators require additional setup:
+Stickler's core comparators (Exact, Levenshtein, Numeric, Fuzzy) work out of the box. The AI-powered comparators require additional packages, installable via extras:
 
 ### SemanticComparator
 
 Uses AWS Bedrock Titan embeddings for cosine similarity.
 
-- `boto3` AWS SDK for Python (`pip install boto3`)
+```bash
+pip install stickler-eval[semantic]
+```
+
 - AWS credentials configured (`aws configure` or environment variables)
 - Access to Amazon Bedrock with Titan embedding models enabled
 
@@ -58,19 +61,30 @@ Uses AWS Bedrock Titan embeddings for cosine similarity.
 
 Uses BERTScore for contextual similarity. Runs locally -- no cloud services needed.
 
-- Additional Python packages required:
-  ```bash
-  pip install evaluate torch bert-score
-  ```
+```bash
+pip install stickler-eval[bert]
+```
+
 - GPU recommended for performance, but CPU works
 
 ### LLMComparator
 
 Uses AWS Bedrock via strands-agents for LLM-powered comparison.
 
+```bash
+pip install stickler-eval[llm]
+```
+
 - AWS credentials configured
 - Access to Amazon Bedrock with your chosen model enabled
-- `strands-agents` and `strands-agents-tools` packages
+
+### All optional dependencies
+
+Install everything at once:
+
+```bash
+pip install stickler-eval[bert,semantic,llm]
+```
 
 ## Verify Installation
 

@@ -40,6 +40,9 @@ class Invoice(StructuredModel):
 
 See the [Comparators](../Comparators/README.md) documentation for details on each comparator.
 
+!!! tip "Evaluate your full test set"
+    Use **`BulkStructuredModelEvaluator`** to evaluate all your document pairs at once with streaming aggregation and metrics export. See [Bulk Evaluation](../Evaluation/bulk-evaluation.md).
+
 ---
 
 ## OCR Evaluation
@@ -195,4 +198,4 @@ Combine with `BulkStructuredModelEvaluator` and `save_metrics()` to produce eval
 | ETL Validation | Exact, Numeric | Tight tolerances for deterministic pipelines |
 | Data Quality Monitoring | Exact, Numeric, Levenshtein | Track scores over time to detect drift |
 
-For all use cases, define your `StructuredModel`, choose comparators based on field semantics, set thresholds and weights based on business impact, and call `compare_with()` or use `BulkStructuredModelEvaluator` for batch processing. See [Best Practices](../Best-Practices/README.md) for guidance on threshold tuning and weight assignment.
+For all use cases, **`BulkStructuredModelEvaluator` is the recommended way to evaluate a test set.** Define your `StructuredModel`, choose comparators based on field semantics, set thresholds and weights based on business impact, and use `BulkStructuredModelEvaluator` for production evaluation. See [Bulk Evaluation](../Evaluation/bulk-evaluation.md) for the full guide and [Best Practices](../Best-Practices/README.md) for guidance on threshold tuning and weight assignment.

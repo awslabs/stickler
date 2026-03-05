@@ -41,6 +41,39 @@ class Order(StructuredModel):
 
 ---
 
+## Calibrating Comparators with SMEs
+
+Before deploying, calibrate your comparator thresholds with subject matter experts (SMEs). The process:
+
+1. **Assemble calibration pairs.** Collect 30–50 pairs of (ground truth, prediction) values for each field type.
+2. **Get SME labels.** Have an SME label each pair as "match" or "non-match" based on business rules.
+3. **Run the comparator.** Compute similarity scores for each pair.
+4. **Find the optimal threshold.** Choose the threshold that best separates SME-labeled matches from non-matches (maximize F1 or use ROC analysis).
+
+Once you have calibrated thresholds, encode them as pytest unit tests so they don't regress:
+
+```python
+import pytest
+from stickler.comparators import LevenshteinComparator
+
+comparator = LevenshteinComparator()
+
+@pytest.mark.parametrize("gt,pred,expected_match", [
+    ("Acme Corporation", "Acme Corp", True),
+    ("Acme Corporation", "Beta Industries", False),
+    ("123 Main St", "123 Main Street", True),
+    ("123 Main St", "456 Oak Ave", False),
+])
+def test_levenshtein_calibration(gt, pred, expected_match):
+    score = comparator.compare(gt, pred)
+    threshold = 0.75  # Calibrated with SME labels
+    assert (score >= threshold) == expected_match
+```
+
+This ensures that future changes to comparators or normalization logic don't silently break your calibrated thresholds.
+
+---
+
 ## Weight Assignment
 
 Weights reflect **business importance**, not data complexity. A simple string field that drives logistics routing should be weighted higher than a complex nested object that serves as supplementary metadata.
@@ -106,6 +139,9 @@ result = evaluator.compute()
 ```
 
 For very large datasets, use `update_batch()` to process groups of document pairs at once.
+
+!!! tip "Recommended for production"
+    **`BulkStructuredModelEvaluator` is the recommended default for evaluating test sets in production.** It handles streaming aggregation, progress reporting, and metrics export. See the [Bulk Evaluation](../Evaluation/bulk-evaluation.md) guide for the full reference.
 
 ### General tips
 
