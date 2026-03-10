@@ -182,7 +182,8 @@ def calculate_final_score(
     """
     Combined packet score: S_packet = α * S_clustering + β * S_ordering.
 
-    With α + β = 1, range is [-0.5, 1.0] (1.0 = perfect).
+    The documented range [-0.5, 1.0] assumes α + β = 1. If α + β ≠ 1,
+    the result may fall outside that range.
 
     Args:
         clustering_score: Weighted V-measure + Rand Index.
@@ -194,6 +195,11 @@ def calculate_final_score(
     Returns:
         Combined packet score.
     """
+    if not np.isclose(alpha + beta, 1.0):
+        logger.warning(
+            f"alpha ({alpha}) + beta ({beta}) = {alpha + beta:.4f}, "
+            f"expected 1.0. Score range may differ from documented [-0.5, 1.0]."
+        )
     return alpha * clustering_score + beta * ordering_score
 
 
@@ -232,6 +238,17 @@ def evaluate_packet(
         avg_ordering_score, group_ordering_scores, strict_clustering.
     """
     df = _to_dataframe(data)
+
+    if df.empty:
+        return {
+            "final_score": 0.0,
+            "clustering_score": 0.0,
+            "v_measure": 0.0,
+            "rand_index": 0.0,
+            "avg_ordering_score": 0.0,
+            "group_ordering_scores": {},
+            "strict_clustering": strict_clustering,
+        }
 
     clustering_score, v_measure, ri = calculate_clustering_score(
         df, v_measure_weight, strict_clustering

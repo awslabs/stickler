@@ -197,7 +197,7 @@ Full column reference:
 
 - One row per page in the packet.
 - `group_id` values do not need to match `group_id_predicted` values — clustering metrics compare the partition structure, not the labels.
-- `page_number` is the ordinal position within the document, not the global page index.
+- `page_number` represents page ordering within a document. Both within-document numbering (1, 2, 3 per document) and global-sequential numbering (e.g., form-01 uses 4, 5 if it starts at the 4th page) are valid — Kendall's Tau only compares relative ordering.
 - Single-page groups are excluded from ordering score (Kendall's Tau is undefined for n=1).
 - `strict_clustering=True` breaks clustering credit for misclassified pages by assigning them unique error IDs internally.
 
