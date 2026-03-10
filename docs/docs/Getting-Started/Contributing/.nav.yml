@@ -1,5 +1,6 @@
 nav:
   - README.md
+  - architecture.md
   - development-setup.md
   - testing-guide.md
   - code-style.md

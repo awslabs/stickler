@@ -1,25 +1,25 @@
 ---
-title: Overview
+title: Guides
 ---
 
 # Guides
 
-This section provides practical guides for working with Stickler's StructuredModel comparison system. These guides cover common use cases and advanced features with working examples.
+Practical guides for using Stickler effectively, from choosing comparators to running evaluations at scale.
 
-## What's Covered
+---
 
-**StructuredModel compare_with Method** walks through how the core comparison method works, from basic usage to understanding the internal flow. It explains the recursive traversal process, field-by-field analysis, and how results are assembled.
+## [Comparators](Comparators/README.md)
 
-**Confidence Evaluation Guide** shows how to use confidence scores in Stickler evaluations to measure prediction calibration quality using AUROC metrics. Covers JSON confidence structures, confidence access APIs, and practical evaluation workflows.
+Choose the right comparison algorithm for each field type: exact matching, numeric tolerance, fuzzy text, semantic similarity, and more.
 
-**Universal Aggregate Field Feature** describes the automatic aggregation of confusion matrix metrics at every level of the comparison tree. This feature provides field-level granularity without requiring manual configuration.
+## [Evaluation](Evaluation/README.md)
 
-**StructuredModel Advanced Functionality** provides a technical deep-dive into the internal comparison engine. It covers the recursive logic, field dispatch system, Hungarian matching integration, and score aggregation mechanisms for developers who need to extend or debug the system.
+Customize evaluation behavior with thresholds, clipping, aggregation, and the evaluator engine.
 
-**StructuredModel Dynamic Creation** explains how to create StructuredModel classes from JSON configuration. This enables configuration-driven model definitions with full comparison capabilities, including nested models and custom comparators.
+## [Use Cases](Use-Cases/README.md)
 
-## How to Use These Guides
+Real-world patterns for document extraction, OCR evaluation, ML model output comparison, and ETL validation.
 
-Start with the compare_with guide to understand basic usage and the comparison flow. The Universal Aggregate Field guide explains how to access aggregated metrics in your results. For advanced scenarios or customization, consult the Advanced Functionality guide. If you need to generate models programmatically, the Dynamic Creation guide shows how to define models using JSON configuration.
+## [Best Practices](Best-Practices/README.md)
 
-Each guide includes code examples and practical scenarios to help you apply the concepts to your own use cases.
+Tips, tricks, and optimization strategies for getting the most out of Stickler in production.

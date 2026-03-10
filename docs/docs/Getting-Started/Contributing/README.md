@@ -7,13 +7,15 @@ Welcome to the Stickler contributor documentation. This section provides everyth
 Before contributing, set up your development environment:
 
 1. **[Development Setup](development-setup.md)** - Configure your local environment
-2. Review the [Testing Guide](testing-guide.md) to understand testing conventions
-3. Read the [Code Style Guide](code-style.md) for coding standards
+2. **[Engine Architecture](architecture.md)** - Understand the comparison engine internals
+3. Review the [Testing Guide](testing-guide.md) to understand testing conventions
+4. Read the [Code Style Guide](code-style.md) for coding standards
 
 ## Guides
 
 | Guide | Description |
 |-------|-------------|
+| [Engine Architecture](architecture.md) | Internal architecture of the comparison engine |
 | [Testing Guide](testing-guide.md) | Test patterns, coverage, and best practices |
 | [Code Style](code-style.md) | Naming conventions, linting, type hints |
 | [Pull Request Guide](pull-request-guide.md) | Branch workflow, commit messages, PR process |
