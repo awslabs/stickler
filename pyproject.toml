@@ -35,6 +35,14 @@ dev = [
 llm = [
     "strands-agents>=1.0.0,<=1.16.0"
 ]
+bert = [
+    "evaluate>=0.4.0",
+    "torch>=2.0.0",
+    "bert-score>=0.3.0",
+]
+semantic = [
+    "boto3>=1.28.0",
+]
 
 
 [tool.setuptools]
