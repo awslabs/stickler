@@ -11,3 +11,5 @@ uv.lock
 .kiro/*
 .kiro/**/*
 
+build/
+.temp/

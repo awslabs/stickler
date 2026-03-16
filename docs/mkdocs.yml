@@ -1,9 +1,23 @@
 site_name: Stickler
+site_url: https://awslabs.github.io/stickler/
 repo_url: https://github.com/awslabs/stickler
 repo_name: awslabs/stickler
 
 theme:
   name: material
+  palette:
+    # Light mode (auto-selected when system prefers light)
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode (auto-selected when system prefers dark)
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
   features:
     - content.code.copy
     - content.code.select
@@ -15,15 +29,18 @@ theme:
     - navigation.sections
     - navigation.top
     - search.highlight
-    - content.code.copy
 
 markdown_extensions:
   - admonition
+  - attr_list
+  - md_in_html
   - codehilite
   - pymdownx.highlight
   - pymdownx.tabbed
   - pymdownx.details
-  - pymdownx.emoji
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - tables
   - toc:
       title: On this page
@@ -36,8 +53,7 @@ markdown_extensions:
 
 plugins:
    - search
-   - awesome-nav:
-        index_page: Getting-Started/README.md  
+   - awesome-nav
    - mkdocstrings:
         handlers:
           python:
@@ -51,4 +67,3 @@ extra_javascript:
   # Workaround for site_url breaking mermaid rendering; see the following for more info:
   # https://github.com/squidfunk/mkdocs-material/issues/3742#issuecomment-1076068038
   - https://unpkg.com/mermaid@11/dist/mermaid.min.js
-  - assets/auto-redirect.js

@@ -299,7 +299,7 @@ pytest tests/
 
 If you encounter issues not covered here:
 
-1. Check [Known Issues](../Getting-Started/known-issues.md)
+1. Check [Known Issues](../known-issues.md)
 2. Search existing [GitHub Issues](https://github.com/awslabs/stickler/issues)
 3. Open a new issue with:
    - Your OS and Python version
@@ -310,6 +310,6 @@ If you encounter issues not covered here:
 
 Once your environment is set up:
 
-1. Read the [Testing Guide](../Contributing/testing-guide.md) to understand testing conventions
-2. Review the [Code Style Guide](../Contributing/code-style.md) for coding standards
-3. Check the [Pull Request Guide](../Contributing/pull-request-guide.md) when ready to contribute
+1. Read the [Testing Guide](testing-guide.md) to understand testing conventions
+2. Review the [Code Style Guide](code-style.md) for coding standards
+3. Check the [Pull Request Guide](pull-request-guide.md) when ready to contribute
