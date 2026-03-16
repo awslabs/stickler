@@ -15,7 +15,6 @@ from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
-
 # ---------------------------------------------------------------------------
 # Models — match_threshold=1.0 (strict, used in the original issue)
 # ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@ with a FieldInfo object instead of remaining None.
 See: https://github.com/awslabs/stickler/issues/17
 """
 
-from typing import Any, Optional
+from typing import Optional
 
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
