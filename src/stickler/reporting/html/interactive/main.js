@@ -29,7 +29,7 @@ const setStyle = (selector, styles) => { const el = getElement(selector); if (el
 const createElement = (tag, className, innerHTML) => {
     const el = document.createElement(tag);
     if (className) el.className = className;
-    if (innerHTML) el.textContent = innerHTML;
+    if (innerHTML) el.innerHTML = innerHTML;
     return el;
 };
 
