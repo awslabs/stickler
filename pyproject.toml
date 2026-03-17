@@ -51,6 +51,9 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+stickler = ["reporting/html/styling/*.css", "reporting/html/interactive/*.js"]
+
 [tool.bandit]
 exclude_dirs = ["tests"]
 
