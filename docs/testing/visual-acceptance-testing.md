@@ -388,3 +388,280 @@ dataset/
 | Error: bad schema file | ✅ | Pass |
 | LLM Inference mode | ⬜ | Pending |
 | HITL mode | ⬜ | Pending |
+
+---
+
+## Session 2 — 2026-03-18 (continued)
+
+**Tool:** Playwright MCP (Chromium)
+**App:** `streamlit run src/stickler/annotator/app.py` on port 8501
+**Tester:** Kiro (automated)
+
+---
+
+### Flow 24: Progress Counter Bug — 0/16 After Start Fresh
+
+**Steps:**
+1. Navigate via deep link with schema file param (new session)
+2. Click "Start Fresh" on existing annotation
+3. Fill all 15 scalar fields via batch fill + mark 5 as N/A
+4. Add 2 line item rows with all sub-fields
+
+**Bug found (Issue 10):** Progress counter showed **0 / 16** and all status dots showed ⬜ even though all fields had values in the textboxes and data was correctly saved to disk. Root cause: `_resume_or_fresh_state` with `choice == "fresh"` always returned a blank `AnnotationState` on every Streamlit rerun, discarding the in-memory state that `_update_field` had populated.
+
+**Fix applied (`app.py`):** `_resume_or_fresh_state` now caches the `AnnotationState` in `st.session_state` keyed by `annotation_state_{pdf_path}`. The cached state survives reruns triggered by field saves, keeping progress counter and status dots accurate. Cache is cleared when switching documents or clicking Resume/Start Fresh.
+
+**Result after fix:** ✅ Progress counter and status dots update correctly in real time.
+
+---
+
+### Flow 25: Complete Full Document Annotation — 16/16
+
+**Steps:**
+1. Resume session via deep link `?dataset=./files&session=<guid>`
+2. Click "▶ Resume"
+3. Verify all 15 scalar fields show ✅ with correct values
+4. Verify `line_items` shows ✅ with 2 rows
+5. Verify progress bar shows 100%
+
+**Result:** ✅ PASS
+- **16 / 16 fields annotated** — progress bar at 100%
+- 🎉 "All fields annotated! Move to the next document." banner shown
+- All scalar fields: ✅ with values (COX MEDIA - WEST, INV-2016-0042, etc.)
+- N/A fields (campaign_id, estimate_id, po_number, agency_commission, rep_firm_commission): ✅ with checkbox checked
+- `line_items`: ✅ with 2 rows (Evening News :30, Morning Show :60)
+- Document queue shows 🟢
+
+---
+
+### Flow 26: Multi-Document Workflow
+
+**Steps:**
+1. Switch to doc 2 (🔴 not started)
+2. Verify blank state (0/16, all ⬜)
+3. Type `station_name` = "WJLA-TV", press Enter
+4. Switch back to doc 1
+5. Verify doc 1 still shows 16/16 with all values intact
+
+**Result:** ✅ PASS
+- Doc 2 shows 0/16 on switch — no state bleed from doc 1
+- Save toast fires on doc 2 field entry
+- Doc 2 status updates to 🟡 in queue
+- Doc 1 on return: 16/16, all ✅, both line items intact
+- No spurious saves on document switch
+
+---
+
+### Flow 27: Stickler Integration — Model Instantiation + Round-Trip
+
+**Steps:**
+1. Load annotation JSON from session subdir
+2. Instantiate `DynamicModel(**data)` via `SchemaLoader.from_json_schema_file`
+3. Verify `model_dump()` round-trip matches original data
+4. Verify manifest schema embedding and session progress counts
+
+**Bug found (Issue 11):** `DynamicModel(**data)` raised `ValidationError` for 5 fields with `None` values (campaign_id, estimate_id, po_number, agency_commission, rep_firm_commission). Root cause: `JsonSchemaFieldConverter.convert_property_to_field` used `str` type for non-required fields instead of `Optional[str]`. Pydantic v2 rejects `None` for `str` fields even when `default=None`.
+
+**Fix applied (`json_schema_field_converter.py`):**
+- Added `Optional` import
+- Non-required primitive fields wrapped: `field_type = Optional[field_type]`
+- Non-required nested objects wrapped: `NestedModel = Optional[NestedModel]`
+- Non-required arrays wrapped: `field_type = Optional[field_type]`
+
+**Result after fix:** ✅
+```
+Model instantiation: SUCCESS
+  station_name: COX MEDIA - WEST
+  line_items count: 2
+  line_items[0]: air_date='02/01/2016' program='Evening News' spot_length=':30' gross_rate='$750.00' net_rate='$554.55'
+Round-trip dict comparison: PASS
+Manifest sessions: 5
+  doc_count: 2, completed_count: 1
+Manifest integrity: PASS
+```
+
+---
+
+### Flow 28: Test Suite — All Passing
+
+**Steps:**
+1. Updated `test_dataset.py` — `TestGetStatus` tests now write to `.annotations/` subfolder (matching current storage layout)
+2. Updated `test_serializer.py` — `TestAnnotationPathFor`, `TestSave`, `TestLoad` tests updated for `.annotations/` layout
+
+**Result:** ✅ 76/76 tests passing
+
+---
+
+## Known Issues / Backlog (updated)
+
+| # | Description | Severity | Status |
+|---|---|---|---|
+| 1 | Schema Builder visible after Finalize click | Medium | ✅ Fixed |
+| 2 | No save feedback after field annotation | Medium | ✅ Fixed |
+| 3 | Spurious save toast on document switch | Medium | ✅ Fixed |
+| 4 | "Configure the tool" alert shows alongside Schema Builder | Low | Open |
+| 5 | Deep link hardcoded wrong port | Medium | ✅ Fixed |
+| 6 | Status tracking used old flat path, not session subdir | High | ✅ Fixed |
+| 7 | Annotator name not shown/editable in config | Low | Open |
+| 8 | No session picker UI for multiple sessions | Medium | Open |
+| 9 | Schema file path empty in dialog when resumed by GUID | Low | Open |
+| 10 | Progress counter shows 0/N after Start Fresh (state cache bug) | High | ✅ Fixed |
+| 11 | `DynamicModel` rejects None for non-required fields (Optional missing) | High | ✅ Fixed |
+
+---
+
+## Test Coverage Checklist (updated)
+
+| Area | Tested | Result |
+|---|---|---|
+| Initial page load | ✅ | Pass |
+| Schema Builder flow | ✅ | Pass |
+| JSON Schema file flow | ✅ | Pass |
+| Pydantic import flow | ⬜ | Pending |
+| Zero Start annotation | ✅ | Pass |
+| Mark field as None | ✅ | Pass |
+| Save indicator (toast) | ✅ | Pass |
+| Progress counter accuracy | ✅ | Pass |
+| Progress counter after Start Fresh | ✅ | Pass |
+| Document queue switching | ✅ | Pass |
+| PDF page navigation | ✅ | Pass |
+| Document status (🔴🟡🟢) | ✅ | Pass |
+| Spurious save on doc switch | ✅ | Pass |
+| Annotations in session subdir | ✅ | Pass |
+| Manifest schema embedding | ✅ | Pass |
+| Resume existing annotation | ✅ | Pass |
+| Start Fresh | ✅ | Pass |
+| Array field rendering | ✅ | Pass |
+| Array field — add nested object items | ✅ | Pass |
+| Array field — remove items | ✅ | Pass |
+| Array field — multiple items | ✅ | Pass |
+| Deep link — new session | ✅ | Pass |
+| Deep link — resume by GUID | ✅ | Pass |
+| Deep link — invalid GUID | ✅ | Pass |
+| Config dialog — reconfigure | ✅ | Pass |
+| Edit Schema button | ⬜ | Pending |
+| Error: bad dataset dir | ✅ | Pass |
+| Error: bad schema file | ✅ | Pass |
+| Complete full document (16/16) | ✅ | Pass |
+| Multi-document workflow | ✅ | Pass |
+| Stickler model instantiation | ✅ | Pass |
+| Round-trip annotation integrity | ✅ | Pass |
+| Manifest session progress tracking | ✅ | Pass |
+| Unit test suite (76 tests) | ✅ | Pass |
+| LLM Inference mode | ⬜ | Pending |
+| HITL mode | ⬜ | Pending |
+
+---
+
+## Session 3 — 2026-03-18 (Pydantic import flow)
+
+**Tool:** Playwright MCP (Chromium)
+**App:** `streamlit run src/stickler/annotator/app.py` on port 8501
+
+---
+
+### Flow 29: Pydantic Import Path — Valid Model
+
+**Steps:**
+1. Open ⚙️ config dialog
+2. Select "Pydantic import path" radio
+3. Enter dataset: `./files`, import path: `stickler.annotator.models_example.FccInvoiceModel`
+4. Click "Apply Configuration"
+
+**Setup:** Created `src/stickler/annotator/models_example.py` with `FccInvoiceModel` and `LineItemModel` as `StructuredModel` subclasses — demonstrates the Pydantic import path for users who prefer defining schemas as Python classes.
+
+**Result:** ✅ PASS
+- Config applied immediately
+- All 16 fields rendered (same layout as JSON Schema path)
+- `line_items` array section present with "＋ Add row"
+- Save toast fires on field entry
+- Session GUID created and shown in deep link
+
+---
+
+### Flow 30: Pydantic Import Path — Error Handling
+
+**Steps:**
+1. Enter `stickler.annotator.models_example.NonExistentModel` → Apply
+2. Enter `totally.fake.module.SomeModel` → Apply
+
+**Result:** ✅ PASS
+- Bad class name: `"Invalid Pydantic import: Module 'stickler.annotator.models_example' has no attribute 'NonExistentModel'"`
+- Bad module: `"Invalid Pydantic import: Could not import module 'totally.fake.module': No module named 'totally'"`
+- Config not applied in either case, dialog stays open
+
+---
+
+## Test Coverage Checklist (final update)
+
+| Area | Tested | Result |
+|---|---|---|
+| Pydantic import flow | ✅ | Pass |
+| Pydantic import — error: bad class | ✅ | Pass |
+| Pydantic import — error: bad module | ✅ | Pass |
+
+---
+
+## Session 4 — 2026-03-18 (LLM Inference mode)
+
+**Tool:** Playwright MCP (Chromium) + Strands Agent + Bedrock Haiku 4.5
+
+---
+
+### Flow 31: LLM Inference — Pre-fill via Image Modality + Strands Agent
+
+**Architecture:**
+- PDF pages rasterised to PNG at 150dpi via `pdf2image`
+- Pages sent as `image` ContentBlocks (image modality only — no base64 document)
+- Strands `Agent` with `extract_fields` tool enforces JSON Schema
+- Tool validates required fields, coerces types, raises `ValueError` on bad JSON so agent self-corrects
+- Successful `toolResult` extracted from agent message history
+
+**Steps:**
+1. Navigate to `?dataset=./files&schema=./files/fcc_invoice_schema.json&mode=llm_inference`
+2. Click "🤖 Pre-fill with LLM"
+3. Wait for spinner "Extracting fields with LLM…"
+4. Click "▶ Resume" on existing annotation prompt
+
+**Result:** ✅ PASS
+- **16 / 16 fields annotated** — 100% progress bar
+- All scalar fields prefilled with 🤖 prefix: COX MEDIA - WEST, $2,249.00, ($337.35), etc.
+- **54 line items** extracted and rendered in table (air_date, program, spot_length, gross_rate, net_rate)
+- ✅ Accept All / ❌ Reject All batch controls visible
+- Document queue shows 🟢
+- Schema enforcement: `extract_fields` tool validated all required fields on first call
+
+**Model:** `us.anthropic.claude-haiku-4-5-20251001-v1:0` (cross-region inference profile)
+
+---
+
+## Test Coverage Checklist (final)
+
+| Area | Tested | Result |
+|---|---|---|
+| LLM Inference mode — pre-fill | ✅ | Pass |
+| LLM Inference — image modality | ✅ | Pass |
+| LLM Inference — schema enforcement via tool | ✅ | Pass |
+| LLM Inference — line items array extraction | ✅ | Pass |
+| LLM Inference — Accept All / Reject All | ⬜ | Pending |
+| HITL mode | ⬜ | Pending |
+
+---
+
+## Session 5 — 2026-03-18 (Prev/Next document navigation)
+
+### Flow 32: Prev/Next Document Buttons
+
+**Change:** Added ◀ / ▶ buttons flanking the document dropdown for keyboard-free navigation.
+
+**Steps:**
+1. Load app — ◀ disabled (first doc), ▶ enabled
+2. Click ▶ — navigates to doc 2, PDF viewer updates (Page 1/9), ◀ becomes enabled
+3. Click ◀ — returns to doc 1 (Page 1/4), ◀ disabled again
+
+**Result:** ✅ PASS
+- Buttons render inline with dropdown in a single row
+- Correct disabled state at boundaries (first/last doc)
+- Tooltips: "Previous document" / "Next document"
+- No state bleed between documents
+- Dropdown still works independently and stays in sync

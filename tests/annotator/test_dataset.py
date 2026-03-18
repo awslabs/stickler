@@ -136,7 +136,9 @@ class TestGetStatus:
                 },
             },
         }
-        (tmp_path / "doc.json").write_text(json.dumps(annotation))
+        ann_dir = tmp_path / ".annotations"
+        ann_dir.mkdir()
+        (ann_dir / "doc.json").write_text(json.dumps(annotation))
         status = mgr.get_status(tmp_path / "doc.pdf", ["name", "amount"])
         assert status == DocumentStatus.COMPLETE
 
@@ -153,7 +155,9 @@ class TestGetStatus:
                 },
             },
         }
-        (tmp_path / "doc.json").write_text(json.dumps(annotation))
+        ann_dir = tmp_path / ".annotations"
+        ann_dir.mkdir()
+        (ann_dir / "doc.json").write_text(json.dumps(annotation))
         status = mgr.get_status(tmp_path / "doc.pdf", ["name", "amount"])
         assert status == DocumentStatus.IN_PROGRESS
 
@@ -169,13 +173,17 @@ class TestGetStatus:
                 "fields": {},
             },
         }
-        (tmp_path / "doc.json").write_text(json.dumps(annotation))
+        ann_dir = tmp_path / ".annotations"
+        ann_dir.mkdir()
+        (ann_dir / "doc.json").write_text(json.dumps(annotation))
         status = mgr.get_status(tmp_path / "doc.pdf", [])
         assert status == DocumentStatus.COMPLETE
 
     def test_corrupted_json_returns_not_started(self, tmp_path: Path):
         mgr = self._make_manager(tmp_path)
-        (tmp_path / "doc.json").write_text("not valid json{{{")
+        ann_dir = tmp_path / ".annotations"
+        ann_dir.mkdir()
+        (ann_dir / "doc.json").write_text("not valid json{{{")
         status = mgr.get_status(tmp_path / "doc.pdf", ["field_a"])
         assert status == DocumentStatus.NOT_STARTED
 
@@ -194,6 +202,8 @@ class TestGetStatus:
                 },
             },
         }
-        (tmp_path / "doc.json").write_text(json.dumps(annotation))
+        ann_dir = tmp_path / ".annotations"
+        ann_dir.mkdir()
+        (ann_dir / "doc.json").write_text(json.dumps(annotation))
         status = mgr.get_status(tmp_path / "doc.pdf", ["expected_field"])
         assert status == DocumentStatus.NOT_STARTED

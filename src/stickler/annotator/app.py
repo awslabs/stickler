@@ -120,25 +120,42 @@ def _load_or_create_state(
 def _resume_or_fresh_state(
     pdf_path: Path, schema: dict, session: AnnotationSession | None = None
 ) -> AnnotationState | None:
-    """Show Resume / Start Fresh prompt when an annotation already exists."""
+    """Show Resume / Start Fresh prompt when an annotation already exists.
+
+    The loaded/created state is cached in session_state so it survives
+    Streamlit reruns triggered by field saves — keeping the progress counter
+    and status dots accurate without re-reading disk on every interaction.
+    """
     choice_key = f"resume_choice_{pdf_path}"
+    state_key = f"annotation_state_{pdf_path}"
     choice = st.session_state.get(choice_key)
 
+    # Return cached in-memory state if available (survives reruns from saves)
+    cached = st.session_state.get(state_key)
+    if cached is not None and choice is not None:
+        return cached
+
     if not AnnotationSerializer.exists(pdf_path, session=session):
-        return _load_or_create_state(pdf_path, schema, session=session)
+        state = _load_or_create_state(pdf_path, schema, session=session)
+        st.session_state[state_key] = state
+        return state
 
     if choice == "resume":
         state = AnnotationSerializer.load(pdf_path, session=session)
-        return state if state is not None else _load_or_create_state(pdf_path, schema, session=session)
+        state = state if state is not None else _load_or_create_state(pdf_path, schema, session=session)
+        st.session_state[state_key] = state
+        return state
 
     if choice == "fresh":
         now = _now_iso()
-        return AnnotationState(
+        state = AnnotationState(
             schema_hash=_schema_hash(schema),
             fields={},
             created_at=now,
             updated_at=now,
         )
+        st.session_state[state_key] = state
+        return state
 
     # No choice yet — show the prompt
     existing = AnnotationSerializer.load(pdf_path, session=session)
@@ -147,10 +164,12 @@ def _resume_or_fresh_state(
     col_resume, col_fresh = st.columns(2)
     with col_resume:
         if st.button("▶ Resume", key=f"btn_resume_{pdf_path}", use_container_width=True):
+            st.session_state.pop(state_key, None)  # clear cache so fresh load happens
             st.session_state[choice_key] = "resume"
             st.rerun()
     with col_fresh:
         if st.button("🗑 Start Fresh", key=f"btn_fresh_{pdf_path}", use_container_width=True):
+            st.session_state.pop(state_key, None)  # clear cache for blank state
             st.session_state[choice_key] = "fresh"
             st.rerun()
     return None
@@ -193,7 +212,7 @@ def _handle_schema_builder(config: ConfigResult | None) -> ConfigResult | None:
 def _render_document_queue(
     manager: DatasetManager, schema_fields: list[str], session=None
 ) -> Path | None:
-    """Discover PDFs, show the document queue as a compact inline selector."""
+    """Discover PDFs, show the document queue with prev/next buttons and a dropdown."""
     try:
         documents = manager.discover()
     except (FileNotFoundError, ValueError) as exc:
@@ -212,13 +231,39 @@ def _render_document_queue(
         for doc in documents
     ]
 
-    selected_idx = st.selectbox(
-        "Document",
-        range(len(documents)),
-        format_func=lambda i: labels[i],
-        key="doc_queue_select",
-        label_visibility="collapsed",
-    )
+    n = len(documents)
+
+    # Use a separate nav key so prev/next can set it before the selectbox renders
+    nav_key = "_doc_nav_idx"
+    current = st.session_state.get(nav_key, 0)
+    current = max(0, min(current, n - 1))
+
+    col_prev, col_select, col_next = st.columns([1, 8, 1])
+
+    with col_prev:
+        st.markdown("<div style='padding-top:4px'></div>", unsafe_allow_html=True)
+        if st.button("◀", key="doc_prev", disabled=(current == 0), help="Previous document", use_container_width=True):
+            st.session_state[nav_key] = current - 1
+            st.rerun()
+
+    with col_next:
+        st.markdown("<div style='padding-top:4px'></div>", unsafe_allow_html=True)
+        if st.button("▶", key="doc_next", disabled=(current == n - 1), help="Next document", use_container_width=True):
+            st.session_state[nav_key] = current + 1
+            st.rerun()
+
+    with col_select:
+        selected_idx = st.selectbox(
+            "Document",
+            range(n),
+            index=current,
+            format_func=lambda i: labels[i],
+            key="doc_queue_select",
+            label_visibility="collapsed",
+        )
+        # Sync nav key when user picks from dropdown directly
+        if selected_idx != current:
+            st.session_state[nav_key] = selected_idx
 
     if selected_idx is not None:
         return documents[selected_idx].path
@@ -228,6 +273,13 @@ def _render_document_queue(
 def _app() -> None:
     """The Streamlit application — called when Streamlit runs this file."""
     st.set_page_config(page_title="KIE Annotation Tool", layout="wide")
+
+    # Load .env credentials if present (for local dev / LLM backend)
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
 
     # Auto-apply config from URL query params (one-click start)
     apply_config_from_query_params()
@@ -359,6 +411,10 @@ def _app() -> None:
 
         last_pdf_key = "last_selected_pdf"
         if st.session_state.get(last_pdf_key) != str(selected_pdf):
+            # Clear cached annotation state for the previous document
+            old_pdf = st.session_state.get(last_pdf_key)
+            if old_pdf:
+                st.session_state.pop(f"annotation_state_{old_pdf}", None)
             st.session_state[last_pdf_key] = str(selected_pdf)
 
         viewer = PDFViewer(selected_pdf)
@@ -370,7 +426,21 @@ def _app() -> None:
         state = _resume_or_fresh_state(selected_pdf, config.schema, session=session)
         if state is None:
             return
-        panel = AnnotationPanel(config.schema, config.mode, state, selected_pdf, session=session)
+
+        # Build prefill function — available in LLM Inference and Zero Start modes
+        prefill_fn = None
+        if config.mode in (AnnotationMode.LLM_INFERENCE, AnnotationMode.ZERO_START):
+            try:
+                from stickler.annotator.llm_backend import BedrockLLMBackend
+                _backend_key = "_llm_backend"
+                if _backend_key not in st.session_state:
+                    st.session_state[_backend_key] = BedrockLLMBackend()
+                backend = st.session_state[_backend_key]
+                prefill_fn = backend.prefill
+            except Exception as exc:
+                logger.debug("LLM backend unavailable: %s", exc)
+
+        panel = AnnotationPanel(config.schema, config.mode, state, selected_pdf, session=session, prefill_fn=prefill_fn)
         panel.render()
 
 

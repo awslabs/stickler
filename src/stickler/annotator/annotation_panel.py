@@ -46,12 +46,14 @@ class AnnotationPanel:
         annotation_state: AnnotationState,
         pdf_path: Path,
         session=None,
+        prefill_fn=None,
     ) -> None:
         self.schema = schema
         self.mode = mode
         self.state = annotation_state
         self.pdf_path = pdf_path
         self.session = session  # AnnotationSession | None
+        self.prefill_fn = prefill_fn  # callable(pdf_path, schema) -> dict | None
         self.fields = list(schema.get("properties", {}).keys())
         self._field_schemas = schema.get("properties", {})
         self._doc_key = hashlib.md5(str(pdf_path).encode()).hexdigest()[:8]
@@ -306,10 +308,38 @@ class AnnotationPanel:
         """Render all schema fields for manual annotation."""
         annotated, total = self._annotated_count()
 
-        # Header with progress
-        col_title, col_hint = st.columns([3, 1])
+        # Header with progress + optional auto-annotate button
+        col_title, col_btn, col_hint = st.columns([3, 1.5, 1])
         with col_title:
             st.subheader("Manual Annotation")
+        with col_btn:
+            if self.prefill_fn is not None:
+                st.markdown("<div style='padding-top:8px'></div>", unsafe_allow_html=True)
+                if st.button("🤖 Auto-annotate", key="zero_prefill_btn", use_container_width=True, help="Pre-fill all fields using LLM"):
+                    with st.spinner("Extracting fields with LLM…"):
+                        try:
+                            predictions = self.prefill_fn(self.pdf_path, self.schema)
+                        except Exception as exc:
+                            st.error(f"LLM pre-fill failed: {exc}")
+                            predictions = None
+                    if predictions:
+                        for field_name in self.fields:
+                            raw_val = predictions.get(field_name)
+                            is_none = raw_val is None
+                            field_schema = self._field_schemas.get(field_name, {})
+                            if field_schema.get("type") == "array":
+                                value = raw_val if isinstance(raw_val, list) else None
+                                is_none = value is None
+                                st.session_state[f"array_items_{self._doc_key}_{field_name}"] = value or []
+                            else:
+                                value = None if is_none else str(raw_val) if raw_val is not None else None
+                            self.state.fields[field_name] = FieldAnnotation(
+                                value=value,
+                                is_none=is_none,
+                                provenance=FieldProvenance(source="llm", checked=True),
+                            )
+                        self._auto_save()
+                        st.rerun()
         with col_hint:
             st.markdown(
                 "<div style='text-align:right;padding-top:12px;color:#888;font-size:12px'>Tab to move between fields</div>",
@@ -366,7 +396,36 @@ class AnnotationPanel:
         if not has_llm_fields:
             st.info("Click **Pre-fill** to send this document to the LLM for automatic field extraction.")
             if st.button("🤖 Pre-fill with LLM", key="llm_prefill_btn", type="primary"):
-                st.info("LLM pre-fill will be wired in app.py.")
+                if self.prefill_fn is None:
+                    st.error("LLM backend not configured.")
+                else:
+                    with st.spinner("Extracting fields with LLM…"):
+                        try:
+                            predictions = self.prefill_fn(self.pdf_path, self.schema)
+                        except Exception as exc:
+                            st.error(f"LLM pre-fill failed: {exc}")
+                            predictions = None
+                    if predictions:
+                        for field_name in self.fields:
+                            raw_val = predictions.get(field_name)
+                            is_none = raw_val is None
+                            # For array fields, store list directly
+                            field_schema = self._field_schemas.get(field_name, {})
+                            if field_schema.get("type") == "array":
+                                value = raw_val if isinstance(raw_val, list) else None
+                                is_none = value is None
+                                # Sync session_state array cache
+                                items_key = f"array_items_{self._doc_key}_{field_name}"
+                                st.session_state[items_key] = value or []
+                            else:
+                                value = None if is_none else str(raw_val) if raw_val is not None else None
+                            self.state.fields[field_name] = FieldAnnotation(
+                                value=value,
+                                is_none=is_none,
+                                provenance=FieldProvenance(source="llm", checked=False),
+                            )
+                        self._auto_save()
+                        st.rerun()
             st.markdown("---")
         else:
             col_accept, col_reject, col_spacer = st.columns([1, 1, 2])

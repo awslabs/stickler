@@ -17,18 +17,18 @@ class TestAnnotationPathFor:
     def test_replaces_pdf_extension_with_json(self):
         pdf = Path("/data/invoices/doc.pdf")
         assert AnnotationSerializer.annotation_path_for(pdf) == Path(
-            "/data/invoices/doc.json"
+            "/data/invoices/.annotations/doc.json"
         )
 
     def test_preserves_directory(self):
         pdf = Path("/some/deep/path/file.pdf")
         result = AnnotationSerializer.annotation_path_for(pdf)
-        assert result.parent == pdf.parent
+        assert result.parent == pdf.parent / ".annotations"
 
     def test_handles_uppercase_extension(self):
         pdf = Path("/data/DOC.PDF")
         result = AnnotationSerializer.annotation_path_for(pdf)
-        assert result == Path("/data/DOC.json")
+        assert result == Path("/data/.annotations/DOC.json")
 
     def test_bijective_distinct_pdfs_produce_distinct_paths(self):
         a = AnnotationSerializer.annotation_path_for(Path("/dir/a.pdf"))
@@ -61,14 +61,14 @@ class TestSave:
         pdf = tmp_path / "doc.pdf"
         pdf.write_bytes(b"%PDF")
         AnnotationSerializer.save(state, pdf)
-        assert (tmp_path / "doc.json").exists()
+        assert (tmp_path / ".annotations" / "doc.json").exists()
 
     def test_data_section_contains_raw_values(self, tmp_path: Path):
         state = self._make_state()
         pdf = tmp_path / "doc.pdf"
         pdf.write_bytes(b"%PDF")
         AnnotationSerializer.save(state, pdf)
-        loaded = json.loads((tmp_path / "doc.json").read_text())
+        loaded = json.loads((tmp_path / ".annotations" / "doc.json").read_text())
         assert loaded["data"]["vendor_name"] == "Acme Corp"
         assert loaded["data"]["amount"] == 42.5
 
@@ -77,7 +77,7 @@ class TestSave:
         pdf = tmp_path / "doc.pdf"
         pdf.write_bytes(b"%PDF")
         AnnotationSerializer.save(state, pdf)
-        loaded = json.loads((tmp_path / "doc.json").read_text())
+        loaded = json.loads((tmp_path / ".annotations" / "doc.json").read_text())
         meta = loaded["metadata"]
         assert meta["schema_hash"] == "hash123"
         assert meta["created_at"] == "2025-01-15T10:30:00Z"
@@ -95,7 +95,7 @@ class TestSave:
         pdf = tmp_path / "doc.pdf"
         pdf.write_bytes(b"%PDF")
         AnnotationSerializer.save(state, pdf)
-        text = (tmp_path / "doc.json").read_text()
+        text = (tmp_path / ".annotations" / "doc.json").read_text()
         # 4-space indentation check
         assert "    " in text
         # Should be parseable
@@ -117,7 +117,7 @@ class TestSave:
         pdf = tmp_path / "doc.pdf"
         pdf.write_bytes(b"%PDF")
         AnnotationSerializer.save(state, pdf)
-        loaded = json.loads((tmp_path / "doc.json").read_text())
+        loaded = json.loads((tmp_path / ".annotations" / "doc.json").read_text())
         assert loaded["data"]["missing"] is None
 
 
@@ -141,7 +141,9 @@ class TestLoad:
                 },
             },
         }
-        (tmp_path / "doc.json").write_text(json.dumps(annotation))
+        ann_dir = tmp_path / ".annotations"
+        ann_dir.mkdir()
+        (ann_dir / "doc.json").write_text(json.dumps(annotation))
         result = AnnotationSerializer.load(tmp_path / "doc.pdf")
         assert result is not None
         assert result.schema_hash == "abc"
@@ -150,12 +152,16 @@ class TestLoad:
         assert result.fields["amount"].provenance.checked is True
 
     def test_returns_none_for_corrupted_json(self, tmp_path: Path):
-        (tmp_path / "doc.json").write_text("{invalid json!!!")
+        ann_dir = tmp_path / ".annotations"
+        ann_dir.mkdir()
+        (ann_dir / "doc.json").write_text("{invalid json!!!")
         result = AnnotationSerializer.load(tmp_path / "doc.pdf")
         assert result is None
 
     def test_returns_none_for_missing_keys(self, tmp_path: Path):
-        (tmp_path / "doc.json").write_text(json.dumps({"unexpected": True}))
+        ann_dir = tmp_path / ".annotations"
+        ann_dir.mkdir()
+        (ann_dir / "doc.json").write_text(json.dumps({"unexpected": True}))
         result = AnnotationSerializer.load(tmp_path / "doc.pdf")
         assert result is None
 
@@ -170,7 +176,9 @@ class TestLoad:
                 "fields": {},
             },
         }
-        (tmp_path / "doc.json").write_text(json.dumps(annotation))
+        ann_dir = tmp_path / ".annotations"
+        ann_dir.mkdir()
+        (ann_dir / "doc.json").write_text(json.dumps(annotation))
         result = AnnotationSerializer.load(tmp_path / "doc.pdf")
         assert result is not None
         assert result.fields["name"].provenance.source == "human"
@@ -186,7 +194,9 @@ class TestLoad:
                 "fields": {"field": {"source": "human", "checked": False}},
             },
         }
-        (tmp_path / "doc.json").write_text(json.dumps(annotation))
+        ann_dir = tmp_path / ".annotations"
+        ann_dir.mkdir()
+        (ann_dir / "doc.json").write_text(json.dumps(annotation))
         result = AnnotationSerializer.load(tmp_path / "doc.pdf")
         assert result is not None
         assert result.fields["field"].is_none is True
