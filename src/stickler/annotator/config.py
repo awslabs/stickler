@@ -159,120 +159,114 @@ def render_config_sidebar() -> ConfigResult | None:
     """
     with st.sidebar:
         st.header("Configuration")
-
-        # --- Dataset directory ---
-        dataset_dir = st.text_input(
-            "Dataset directory",
-            value=st.session_state.get(_KEY_DATASET_DIR, ""),
-            help="Path to a directory containing PDF files to annotate.",
-            key="__config_dataset_dir_input",
-        )
-
-        # --- Schema source ---
-        current_source = st.session_state.get(_KEY_SCHEMA_SOURCE, SCHEMA_SOURCE_JSON)
-        source_index = SCHEMA_SOURCES.index(current_source) if current_source in SCHEMA_SOURCES else 0
-
-        schema_source = st.radio(
-            "Schema source",
-            SCHEMA_SOURCES,
-            index=source_index,
-            help="How to provide the annotation schema.",
-            key="__config_schema_source_input",
-        )
-
-        # Conditional inputs based on schema source
-        schema_path = ""
-        pydantic_import = ""
-
-        if schema_source == SCHEMA_SOURCE_JSON:
-            schema_path = st.text_input(
-                "Schema file path",
-                value=st.session_state.get(_KEY_SCHEMA_PATH, ""),
-                help="Path to a JSON Schema file (.json).",
-                key="__config_schema_path_input",
-            )
-        elif schema_source == SCHEMA_SOURCE_PYDANTIC:
-            pydantic_import = st.text_input(
-                "Pydantic import path",
-                value=st.session_state.get(_KEY_PYDANTIC_IMPORT, ""),
-                help="Dotted import path, e.g. mypackage.models.InvoiceModel",
-                key="__config_pydantic_import_input",
-            )
-        else:
-            st.info("Use the Schema Builder in the main panel to define fields.")
-
-        # --- Operating mode ---
-        mode_labels = list(_MODE_LABELS.keys())
-        current_mode = st.session_state.get(_KEY_MODE, AnnotationMode.ZERO_START)
-        # Find the label for the current mode
-        current_label = mode_labels[0]
-        for label, mode_val in _MODE_LABELS.items():
-            if mode_val == current_mode:
-                current_label = label
-                break
-        mode_index = mode_labels.index(current_label)
-
-        mode_label = st.selectbox(
-            "Operating mode",
-            mode_labels,
-            index=mode_index,
-            help="Zero Start: manual entry. LLM Inference: Bedrock pre-fills. HITL: field-by-field review.",
-            key="__config_mode_input",
-        )
-
-        # --- Apply button ---
-        st.markdown("---")
-        apply_clicked = st.button("Apply Configuration", key="__config_apply")
-
-        if apply_clicked:
-            # Validate dataset directory
-            validated_dir = _validate_dataset_dir(dataset_dir)
-            if validated_dir is None:
-                st.session_state[_KEY_VALIDATED] = False
-                return None
-
-            # Validate schema (unless using builder)
-            if schema_source != SCHEMA_SOURCE_BUILDER:
-                result = _validate_schema(schema_source, schema_path, pydantic_import)
-                if result is None:
-                    st.session_state[_KEY_VALIDATED] = False
-                    return None
-                schema, model_class = result
-            else:
-                # Builder mode — check if a schema was already built
-                schema = st.session_state.get(_KEY_SCHEMA)
-                model_class = st.session_state.get(_KEY_MODEL_CLASS)
-                if schema is None:
-                    st.warning(
-                        "Build and finalize a schema in the main panel first."
-                    )
-                    # Still store partial config so the builder can be shown
-                    st.session_state[_KEY_DATASET_DIR] = dataset_dir.strip()
-                    st.session_state[_KEY_SCHEMA_SOURCE] = schema_source
-                    st.session_state[_KEY_MODE] = _MODE_LABELS[mode_label]
-                    st.session_state[_KEY_VALIDATED] = False
-                    return None
-
-            # All valid — persist to session state
-            st.session_state[_KEY_DATASET_DIR] = dataset_dir.strip()
-            st.session_state[_KEY_SCHEMA_SOURCE] = schema_source
-            st.session_state[_KEY_SCHEMA_PATH] = schema_path.strip()
-            st.session_state[_KEY_PYDANTIC_IMPORT] = pydantic_import.strip()
-            st.session_state[_KEY_MODE] = _MODE_LABELS[mode_label]
-            st.session_state[_KEY_SCHEMA] = schema
-            st.session_state[_KEY_MODEL_CLASS] = model_class
-            st.session_state[_KEY_VALIDATED] = True
-
-            st.success("Configuration applied.")
-            return ConfigResult(
-                dataset_dir=validated_dir,
-                schema_source=schema_source,
-                mode=_MODE_LABELS[mode_label],
-                schema=schema,
-                model_class=model_class,
-            )
+        _render_config_widgets()
 
     # Return previously validated config if available
+    return _get_stored_config()
+
+
+def _render_config_widgets() -> None:
+    """Render the configuration form widgets (shared by sidebar and dialog)."""
+    # --- Dataset directory ---
+    dataset_dir = st.text_input(
+        "Dataset directory",
+        value=st.session_state.get(_KEY_DATASET_DIR, ""),
+        help="Path to a directory containing PDF files to annotate.",
+        key="__config_dataset_dir_input",
+    )
+
+    # --- Schema source ---
+    current_source = st.session_state.get(_KEY_SCHEMA_SOURCE, SCHEMA_SOURCE_JSON)
+    source_index = SCHEMA_SOURCES.index(current_source) if current_source in SCHEMA_SOURCES else 0
+
+    schema_source = st.radio(
+        "Schema source",
+        SCHEMA_SOURCES,
+        index=source_index,
+        help="How to provide the annotation schema.",
+        key="__config_schema_source_input",
+    )
+
+    # Conditional inputs based on schema source
+    schema_path = ""
+    pydantic_import = ""
+
+    if schema_source == SCHEMA_SOURCE_JSON:
+        schema_path = st.text_input(
+            "Schema file path",
+            value=st.session_state.get(_KEY_SCHEMA_PATH, ""),
+            help="Path to a JSON Schema file (.json).",
+            key="__config_schema_path_input",
+        )
+    elif schema_source == SCHEMA_SOURCE_PYDANTIC:
+        pydantic_import = st.text_input(
+            "Pydantic import path",
+            value=st.session_state.get(_KEY_PYDANTIC_IMPORT, ""),
+            help="Dotted import path, e.g. mypackage.models.InvoiceModel",
+            key="__config_pydantic_import_input",
+        )
+    else:
+        st.info("Use the Schema Builder in the main panel to define fields.")
+
+    # --- Operating mode ---
+    mode_labels = list(_MODE_LABELS.keys())
+    current_mode = st.session_state.get(_KEY_MODE, AnnotationMode.ZERO_START)
+    current_label = mode_labels[0]
+    for label, mode_val in _MODE_LABELS.items():
+        if mode_val == current_mode:
+            current_label = label
+            break
+    mode_index = mode_labels.index(current_label)
+
+    mode_label = st.selectbox(
+        "Operating mode",
+        mode_labels,
+        index=mode_index,
+        help="Zero Start: manual entry. LLM Inference: Bedrock pre-fills. HITL: field-by-field review.",
+        key="__config_mode_input",
+    )
+
+    # --- Apply button ---
+    st.markdown("---")
+    apply_clicked = st.button("Apply Configuration", key="__config_apply", type="primary", use_container_width=True)
+
+    if apply_clicked:
+        validated_dir = _validate_dataset_dir(dataset_dir)
+        if validated_dir is None:
+            st.session_state[_KEY_VALIDATED] = False
+            return
+
+        if schema_source != SCHEMA_SOURCE_BUILDER:
+            result = _validate_schema(schema_source, schema_path, pydantic_import)
+            if result is None:
+                st.session_state[_KEY_VALIDATED] = False
+                return
+            schema, model_class = result
+        else:
+            schema = st.session_state.get(_KEY_SCHEMA)
+            model_class = st.session_state.get(_KEY_MODEL_CLASS)
+            if schema is None:
+                st.warning("Build and finalize a schema in the main panel first.")
+                st.session_state[_KEY_DATASET_DIR] = dataset_dir.strip()
+                st.session_state[_KEY_SCHEMA_SOURCE] = schema_source
+                st.session_state[_KEY_MODE] = _MODE_LABELS[mode_label]
+                st.session_state[_KEY_VALIDATED] = False
+                return
+
+        st.session_state[_KEY_DATASET_DIR] = dataset_dir.strip()
+        st.session_state[_KEY_SCHEMA_SOURCE] = schema_source
+        st.session_state[_KEY_SCHEMA_PATH] = schema_path.strip()
+        st.session_state[_KEY_PYDANTIC_IMPORT] = pydantic_import.strip()
+        st.session_state[_KEY_MODE] = _MODE_LABELS[mode_label]
+        st.session_state[_KEY_SCHEMA] = schema
+        st.session_state[_KEY_MODEL_CLASS] = model_class
+        st.session_state[_KEY_VALIDATED] = True
+        st.success("✓ Configuration applied.")
+        st.rerun()
+
+
+def _get_stored_config() -> ConfigResult | None:
+    """Return the previously validated config from session state, or None."""
     if st.session_state.get(_KEY_VALIDATED):
         stored_dir = st.session_state.get(_KEY_DATASET_DIR, "")
         stored_schema = st.session_state.get(_KEY_SCHEMA)
@@ -288,5 +282,106 @@ def render_config_sidebar() -> ConfigResult | None:
                 schema=stored_schema,
                 model_class=stored_model,
             )
-
     return None
+
+
+@st.dialog("⚙️ Configuration", width="large")
+def render_config_dialog() -> None:
+    """Render configuration inside a modal dialog."""
+    _render_config_widgets()
+
+
+def apply_config_from_query_params() -> bool:
+    """Auto-apply configuration from URL query parameters.
+
+    Two supported URL patterns:
+
+    1. New session (schema file required):
+       ``?dataset=./files&schema=./files/schema.json&mode=zero_start``
+
+    2. Resume existing session (schema loaded from manifest):
+       ``?dataset=./files&session=<guid>``
+
+    Returns True if config was successfully applied, False otherwise.
+    """
+    if st.session_state.get("_query_params_applied"):
+        return False
+
+    params = st.query_params
+    dataset = params.get("dataset", "").strip()
+    if not dataset:
+        return False
+
+    from .schema_loader import SchemaLoader
+    from .serializer import AnnotationManifest
+
+    dataset_path = Path(dataset)
+    if not dataset_path.exists() or not dataset_path.is_dir():
+        logger.warning("Query param dataset dir not found: %s", dataset)
+        return False
+
+    session_id = params.get("session", "").strip()
+    schema_path = params.get("schema", "").strip()
+    mode_str = params.get("mode", "zero_start").strip().lower()
+
+    mode_map = {
+        "zero_start": AnnotationMode.ZERO_START,
+        "llm_inference": AnnotationMode.LLM_INFERENCE,
+        "hitl": AnnotationMode.HITL,
+    }
+    mode = mode_map.get(mode_str, AnnotationMode.ZERO_START)
+
+    # Pattern 2: resume by session GUID — load schema from manifest
+    if session_id:
+        manifest = AnnotationManifest(dataset_path)
+        session = manifest.get_session(session_id)
+        if session is None:
+            logger.warning("Session %s not found in manifest", session_id)
+            return False
+        schema = session.schema
+        if schema is None:
+            logger.warning("Session %s has no embedded schema", session_id)
+            return False
+        try:
+            _, model_class = SchemaLoader.from_builder_schema(schema)
+        except (ValueError, Exception) as exc:
+            logger.warning("Could not load schema from session manifest: %s", exc)
+            return False
+
+        st.session_state[_KEY_DATASET_DIR] = dataset
+        st.session_state[_KEY_SCHEMA_SOURCE] = SCHEMA_SOURCE_JSON
+        st.session_state[_KEY_SCHEMA_PATH] = ""  # schema came from manifest, not a file
+        st.session_state[_KEY_MODE] = mode
+        st.session_state[_KEY_SCHEMA] = schema
+        st.session_state[_KEY_MODEL_CLASS] = model_class
+        st.session_state[_KEY_VALIDATED] = True
+        st.session_state["_query_params_applied"] = True
+        st.session_state["_session_id"] = session_id
+        logger.info("Resumed session %s from query params", session_id)
+        return True
+
+    # Pattern 1: new session with schema file
+    if not schema_path:
+        return False
+
+    schema_file = Path(schema_path)
+    if not schema_file.exists() or not schema_file.is_file():
+        logger.warning("Query param schema file not found: %s", schema_path)
+        return False
+
+    try:
+        schema, model_class = SchemaLoader.from_json_schema_file(schema_file)
+    except (FileNotFoundError, ValueError) as exc:
+        logger.warning("Query param schema invalid: %s", exc)
+        return False
+
+    st.session_state[_KEY_DATASET_DIR] = dataset
+    st.session_state[_KEY_SCHEMA_SOURCE] = SCHEMA_SOURCE_JSON
+    st.session_state[_KEY_SCHEMA_PATH] = schema_path
+    st.session_state[_KEY_MODE] = mode
+    st.session_state[_KEY_SCHEMA] = schema
+    st.session_state[_KEY_MODEL_CLASS] = model_class
+    st.session_state[_KEY_VALIDATED] = True
+    st.session_state["_query_params_applied"] = True
+    logger.info("Config auto-applied from query params: dataset=%s schema=%s mode=%s", dataset, schema_path, mode_str)
+    return True

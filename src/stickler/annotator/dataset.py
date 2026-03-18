@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .models import DocumentStatus
+from .serializer import AnnotationManifest, AnnotationSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -91,25 +92,19 @@ class DatasetManager:
         return sorted(documents, key=lambda d: d.path)
 
     def get_status(
-        self, pdf_path: Path, schema_fields: list[str]
+        self, pdf_path: Path, schema_fields: list[str], session=None
     ) -> DocumentStatus:
         """Derive document status from the annotation file on disk.
-
-        Checks the co-located JSON annotation file for the given PDF.
-        Status logic:
-        - No annotation file → NOT_STARTED
-        - All schema fields have a value or are marked None → COMPLETE
-        - At least one field annotated but not all → IN_PROGRESS
-        - Annotation file exists but no fields annotated → NOT_STARTED
 
         Args:
             pdf_path: Path to the PDF file.
             schema_fields: List of field paths expected by the schema.
+            session: Optional AnnotationSession for session-scoped lookup.
 
         Returns:
             The derived DocumentStatus.
         """
-        annotation_path = pdf_path.with_suffix(".json")
+        annotation_path = AnnotationSerializer.annotation_path_for(pdf_path, session=session)
 
         if not annotation_path.exists():
             return DocumentStatus.NOT_STARTED
@@ -132,9 +127,6 @@ class DatasetManager:
 
         annotated_count = 0
         for field in schema_fields:
-            # A field is considered annotated if it has provenance metadata
-            # in the metadata section, OR if it has a non-None value in data
-            # and provenance info exists.
             if field in fields_metadata:
                 annotated_count += 1
             elif field in data and data[field] is not None:

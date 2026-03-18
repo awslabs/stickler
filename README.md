@@ -674,6 +674,7 @@ print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # ~1.0 - match
 - **Complete examples**: [`examples/scripts/json_schema_demo.py`](examples/scripts/json_schema_demo.py)
 - **Dynamic model creation**: [`docs/StructuredModel_Dynamic_Creation.md`](docs/StructuredModel_Dynamic_Creation.md)
 - **Comparator details**: [`src/stickler/comparators/Comparators.md`](src/stickler/comparators/Comparators.md)
+- **KIE Annotation Tool**: [`src/stickler/annotator/README.md`](src/stickler/annotator/README.md) — create golden datasets for KIE evaluation
 
 ## Examples
 

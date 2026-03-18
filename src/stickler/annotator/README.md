@@ -1,143 +1,268 @@
-# annotator — KIE Annotation Tool
+# KIE Annotation Tool
 
-Streamlit-based web app for annotating PDF documents with structured key-value data against a JSON Schema. Lives at `src/stickler/annotator/`.
+A Streamlit-based web app for annotating PDF documents with structured key-value data. The primary use case is creating **golden datasets** for evaluating KIE (Key Information Extraction) models using stickler.
 
-## Modules
+## Quick Start
 
-| Module | Purpose |
-|---|---|
-| `models.py` | Pydantic data models: `AnnotationMode`, `DocumentStatus`, `FieldProvenance`, `FieldAnnotation`, `AnnotationState` |
-| `app.py` | Streamlit entry point, layout orchestration, mode routing |
-| `config.py` | Session configuration: dataset path, schema source, mode selection |
-| `dataset.py` | Recursive PDF discovery, document status tracking, queue ordering |
-| `schema_loader.py` | Load schema from JSON Schema file or Pydantic import path |
-| `schema_builder.py` | In-app UI for building schemas without writing code |
-| `pdf_viewer.py` | PDF page rendering with lazy loading via `pdf2image` |
-| `annotation_panel.py` | Field entry/review UI, mode-specific workflows (Zero Start, LLM Inference, HITL) |
-| `serializer.py` | Annotation file I/O (JSON), auto-save, round-trip integrity |
-| `llm_backend.py` | AWS Bedrock integration for LLM pre-filling |
+```bash
+# Install with annotator dependencies
+pip install -e ".[annotator,dev]"
 
-## Data Models (`models.py`)
+# Launch
+streamlit run src/stickler/annotator/app.py --server.port 8501
 
-All models use Pydantic v2.
+# Or one-click via deep link (see below)
+```
 
-- **`AnnotationMode`** — `str` enum: `zero_start`, `llm_inference`, `hitl`
-- **`DocumentStatus`** — `str` enum: `not_started`, `in_progress`, `complete`. Derived from annotation file state, not stored separately.
-- **`FieldProvenance`** — Tracks `source` (`"human"` | `"llm"`) and `checked` (bool, whether an LLM value was reviewed).
-- **`FieldAnnotation`** — Single field: `value` (Any), `is_none` (bool, explicit None marker), `provenance` (FieldProvenance).
-- **`AnnotationState`** — Full document state: `schema_hash`, `fields` (dict of path → FieldAnnotation), `created_at`, `updated_at` (ISO 8601).
+Requires `poppler-utils` for PDF rendering: `brew install poppler` (macOS).
 
-## Configuration Sidebar (`config.py`)
+---
 
-`render_config_sidebar()` draws the sidebar and returns a `ConfigResult` (or `None` if not yet configured / validation failed).
+## Core Concepts
 
-Sidebar widgets:
-- `st.text_input` for dataset directory path.
-- `st.radio` for schema source: *JSON Schema file*, *Pydantic import path*, or *Schema Builder*. Conditional text inputs appear for the first two; Schema Builder shows an info message directing users to the main panel.
-- `st.selectbox` for operating mode: *Zero Start*, *LLM Inference*, *HITL*.
-- *Apply Configuration* button triggers validation.
+### Annotation Session
 
-Validation on apply:
-- Dataset directory must exist and be a directory (`st.error()` on failure).
-- JSON Schema file must exist and parse via `SchemaLoader.from_json_schema_file()`.
-- Pydantic import path must resolve via `SchemaLoader.from_pydantic_import()`.
-- Schema Builder defers validation — the builder UI in the main panel finalizes the schema.
+Every annotation run is a **session** — a UUID-identified subdirectory under `.annotations/` that belongs to one annotator working against one schema. Sessions are tracked in a top-level `manifest.json`.
 
-Session state keys: `config_dataset_dir`, `config_schema_source`, `config_schema_path`, `config_pydantic_import`, `config_mode`, `config_schema`, `config_model_class`, `config_validated`.
+```
+<dataset_dir>/
+  .annotations/
+    manifest.json              ← schema embedded + all session metadata
+    <session-guid>/
+      <pdf-stem>.json          ← per-doc annotation (data + provenance)
+```
 
-`ConfigResult` is a dataclass with `dataset_dir: Path`, `schema_source: str`, `mode: AnnotationMode`, `schema: dict`, `model_class: Type`.
+The manifest embeds the full JSON Schema so the dataset is self-contained — zip it up and share it, no external schema file needed.
 
-## Dataset Manager (`dataset.py`)
-
-`DatasetManager` discovers PDFs and derives their annotation status:
-
-- Constructor validates the directory exists and contains at least one PDF. Raises `FileNotFoundError`, `NotADirectoryError`, or `ValueError` with descriptive messages.
-- `discover()` recursively finds `*.pdf` files (case-insensitive extension) and returns sorted `PDFDocument` list.
-- `get_status(pdf_path, schema_fields)` reads the co-located `.json` annotation file and compares `metadata.fields` keys against `schema_fields` to derive `DocumentStatus`. No annotation file → `NOT_STARTED`; all fields present → `COMPLETE`; partial → `IN_PROGRESS`.
-
-`PDFDocument` is a dataclass with `path: Path` and `status: DocumentStatus`.
-
-## PDF Viewer (`pdf_viewer.py`)
-
-`PDFViewer` renders a single PDF with lazy per-page loading and prev/next navigation.
-
-- Constructor takes a `pdf_path: Path` and optional `pages_per_batch: int` (reserved for future batch loading; v1 renders one page at a time).
-- `total_pages` property lazily fetches the page count via `pdf2image.pdfinfo_from_path()` without rendering any pages.
-- `render_page(page_num)` converts a single 1-indexed page to a PIL Image using `pdf2image.convert_from_path()` with `first_page`/`last_page` params. Raises `RuntimeError` if poppler is missing, `ValueError` for out-of-range pages.
-- `render()` displays the current page via `st.image()` with prev/next navigation buttons. Page number is stored in `st.session_state` (keyed by PDF path) to persist across Streamlit reruns.
-- Gracefully handles missing `poppler-utils` — shows an `st.error()` instead of crashing.
-
-Requires `pdf2image` (MIT) and `poppler-utils` system package.
-
-## Annotation Panel (`annotation_panel.py`)
-
-`AnnotationPanel` renders schema fields with mode-specific workflows. Constructor takes `schema` (JSON Schema dict), `mode` (AnnotationMode), `annotation_state` (AnnotationState), and `pdf_path` (Path for auto-save).
-
-- `render()` dispatches to the mode-specific renderer.
-- `render_zero_start()` — All fields shown with text inputs and "Mark as None" checkboxes. Progress indicator shows "X of Y fields annotated". Provenance is always `source="human"`.
-- `render_llm_inference()` — Pre-fill button (wiring deferred to app.py), batch Accept All / Reject All, individual field editing. LLM values shown with 🤖 prefix. Editing an LLM value changes provenance to `source="human"`.
-- `render_hitl()` — Fields presented one at a time after pre-fill. Accept (keeps value, `checked=True`), Reject (clears value, manual entry), Edit (change value, `source="human"`). Review progress: "K of M fields reviewed".
-
-Auto-saves on every field change via `AnnotationSerializer.save()`. Fields extracted from `schema["properties"]` keys. Uses `st.session_state` for edit mode tracking in HITL.
-
-## Annotation Serializer (`serializer.py`)
-
-`AnnotationSerializer` handles reading/writing annotation JSON files:
-
-- `annotation_path_for(pdf_path)` replaces `.pdf` extension with `.json` (bijective mapping).
-- `save(annotation, pdf_path)` writes 4-space-indented JSON with `data` (raw field values) and `metadata` (schema_hash, timestamps, per-field provenance) sections. The `data` section is directly constructable via `Model(**loaded_json["data"])`.
-- `load(pdf_path)` reads the JSON file and reconstructs an `AnnotationState`. Returns `None` for missing or corrupted files (logs a warning). Fields without provenance metadata default to `source="human"`, `checked=False`.
-
-## LLM Backend (`llm_backend.py`)
-
-`BedrockLLMBackend` sends PDFs to AWS Bedrock (Claude) for annotation pre-filling.
-
-- Constructor takes `model_id` (default: `anthropic.claude-sonnet-4-20250514`) and `region` (default: `us-east-1`). The boto3 client is lazily created on first use.
-- `prefill(pdf_path, schema)` reads the PDF as base64, sends it with the JSON Schema as a structured prompt to Bedrock's `invoke_model` API, and parses the JSON response into field values. Returns a dict whose keys are a subset of the schema's properties. Partial results (missing keys) are OK.
-- `estimate_cost(pdf_path)` estimates USD cost based on file size using approximate token-per-byte ratios. The caller (`app.py`) should display a warning when the estimate exceeds `COST_WARNING_THRESHOLD` ($100).
-- `_parse_response()` strips markdown code fences if present, then parses JSON. Raises `ValueError` for invalid JSON.
-
-Error handling — all designed for caller-side fallback to manual annotation:
-- `RuntimeError` for Bedrock API errors (`ClientError`, `BotoCoreError`, `EndpointConnectionError`), unreachable service, or missing boto3.
-- `ValueError` for invalid JSON responses or non-object responses.
-- `FileNotFoundError` if the PDF path doesn't exist.
-
-Requires `boto3` (Apache 2.0) and valid AWS credentials with Bedrock access.
-
-## Annotation File Format
-
-One JSON file per PDF, co-located in the same directory with `.json` extension:
+### Manifest Structure
 
 ```json
 {
-  "data": { "field_name": "value", ... },
-  "metadata": {
-    "schema_hash": "abc123",
-    "created_at": "2025-01-15T10:30:00Z",
-    "updated_at": "2025-01-15T11:00:00Z",
-    "fields": {
-      "field_name": { "source": "human", "checked": true }
+  "schema": { ...full JSON Schema... },
+  "schema_hash": "dff112...",
+  "sessions": {
+    "42fac85a-...": {
+      "annotator": "sromo",
+      "created_at": "2026-03-18T...",
+      "updated_at": "2026-03-18T...",
+      "doc_count": 370,
+      "completed_count": 7
     }
   }
 }
 ```
 
-The `data` section is directly constructable via `Model(**loaded_json["data"])`. The `metadata` section stores provenance without polluting the data.
+### Per-Doc Annotation File
 
-## Three Operating Modes
-
-1. **Zero Start** — All fields empty, user types values or marks None.
-2. **LLM Inference** — Bedrock pre-fills all fields. Batch accept/reject + individual edit.
-3. **HITL** — Bedrock pre-fills, fields presented one at a time for accept/reject/edit.
-
-## Launch
-
-```bash
-stickler-annotate
-# or
-streamlit run src/stickler/annotator/app.py
+```json
+{
+  "data": {
+    "station_name": "COX MEDIA - WEST",
+    "invoice_id": "1277139",
+    "line_items": [
+      {"air_date": "02/29/2016", "program": "Evening News", "gross_rate": "$2,249.00"}
+    ]
+  },
+  "metadata": {
+    "schema_hash": "dff112...",
+    "created_at": "2026-03-18T...",
+    "updated_at": "2026-03-18T...",
+    "fields": {
+      "station_name": {"source": "human", "checked": false},
+      "invoice_id": {"source": "llm", "checked": true}
+    }
+  }
+}
 ```
+
+`data` is directly loadable: `Model(**annotation["data"])`. `metadata.fields` tracks provenance (human vs LLM, reviewed or not).
+
+---
+
+## Configuration
+
+Click the **⚙️** gear icon in the top-right to configure:
+
+| Setting | Description |
+|---|---|
+| Dataset directory | Path to folder containing PDFs |
+| Schema source | JSON Schema file, Pydantic import path, or Schema Builder |
+| Operating mode | Zero Start, LLM Inference, or HITL |
+
+Once applied, the gear shows a summary: `📁 dataset · 📋 schema · ⚡ mode`.
+
+---
+
+## Deep Links (One-Click Start)
+
+Share a URL that skips configuration entirely.
+
+**New session** (schema file required):
+```
+http://localhost:8501/?dataset=./files&schema=./files/invoice_schema.json&mode=zero_start
+```
+
+**Resume existing session** (schema loaded from manifest):
+```
+http://localhost:8501/?dataset=./files&session=42fac85a-e74c-4760-8cca-1e177bbf4886
+```
+
+The active deep link is always shown in the header. Copy it to share your session with another annotator.
+
+---
+
+## Annotation Modes
+
+### Zero Start
+Manual annotation from scratch. All fields shown with text inputs and N/A checkboxes. Progress bar tracks completion. Auto-saves on every field change (💾 toast confirms).
+
+### LLM Inference
+Send the PDF to AWS Bedrock (Claude) to pre-fill all fields. Review predictions in batch — Accept All, Reject All, or edit individual fields. LLM values shown with 🤖 prefix.
+
+### HITL (Human-in-the-Loop)
+Same as LLM Inference but field-by-field review. Each prediction shown one at a time with Accept / Reject / Edit controls. Review progress tracked separately from annotation progress.
+
+---
+
+## Schema Sources
+
+### JSON Schema File
+Point to a `.json` file. The schema is embedded in the manifest on first use — subsequent sessions don't need the file.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "invoice_id": {"type": "string"},
+    "line_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "air_date": {"type": "string"},
+          "gross_rate": {"type": "string"}
+        }
+      }
+    }
+  }
+}
+```
+
+Array fields render as inline tables — one row per item, add/remove rows with ＋/✕ buttons.
+
+### Schema Builder
+Build a schema in the UI without writing JSON. Add fields with name + type (string, number, integer, boolean, object, array). Export to file when done.
+
+### Pydantic Import
+Provide a dotted import path to a `StructuredModel` subclass: `mypackage.models.InvoiceModel`.
+
+---
+
+## Creating Golden Data for KIE Evaluation
+
+The annotation tool is designed to produce ground truth data for stickler evaluation. Here's the full workflow:
+
+### 1. Annotate
+
+Run the tool against your PDF dataset, annotate each document field by field. Use LLM Inference or HITL to speed up annotation — the provenance metadata tracks which values were human-verified.
+
+### 2. Load Annotations
+
+```python
+import json
+from pathlib import Path
+from stickler.annotator.serializer import AnnotationManifest, AnnotationSession
+
+# Load a session
+manifest = AnnotationManifest(Path("./files"))
+session = manifest.get_session("42fac85a-...")
+
+# Load one document's annotation
+annotation_path = session.annotation_path_for(Path("./files/invoice.pdf"))
+annotation = json.loads(annotation_path.read_text())
+
+# Construct a StructuredModel instance directly from the data section
+from stickler.annotator.schema_loader import SchemaLoader
+_, ModelClass = SchemaLoader.from_builder_schema(session.schema)
+ground_truth = ModelClass(**annotation["data"])
+```
+
+### 3. Evaluate Against Model Predictions
+
+```python
+# Your KIE model's output
+prediction_json = my_kie_model.extract(pdf_path)
+prediction = ModelClass(**prediction_json)
+
+# Compare using stickler
+result = ground_truth.compare_with(prediction)
+print(f"Overall score: {result['overall_score']:.3f}")
+print(f"Field scores: {result['field_scores']}")
+```
+
+### 4. Bulk Evaluation Across a Session
+
+```python
+from pathlib import Path
+import json
+
+manifest = AnnotationManifest(Path("./files"))
+session = manifest.get_session(session_id)
+_, ModelClass = SchemaLoader.from_builder_schema(session.schema)
+
+scores = []
+for pdf_path in Path("./files").glob("*.pdf"):
+    ann_path = session.annotation_path_for(pdf_path)
+    if not ann_path.exists():
+        continue
+    annotation = json.loads(ann_path.read_text())
+    ground_truth = ModelClass(**annotation["data"])
+    prediction = ModelClass(**my_model.extract(pdf_path))
+    result = ground_truth.compare_with(prediction)
+    scores.append(result["overall_score"])
+
+print(f"Mean score across {len(scores)} docs: {sum(scores)/len(scores):.3f}")
+```
+
+### Provenance Filtering
+
+Only use human-verified annotations for high-confidence evaluation:
+
+```python
+annotation = json.loads(ann_path.read_text())
+fields_meta = annotation["metadata"]["fields"]
+
+# Filter to only human-entered or LLM-checked fields
+verified_data = {
+    k: v for k, v in annotation["data"].items()
+    if fields_meta.get(k, {}).get("source") == "human"
+    or fields_meta.get(k, {}).get("checked") is True
+}
+```
+
+---
+
+## Module Reference
+
+| Module | Responsibility |
+|---|---|
+| `app.py` | Streamlit entry point, layout, deep link handling |
+| `config.py` | Config dialog, session state, query param auto-apply |
+| `dataset.py` | PDF discovery, session-aware document status |
+| `schema_loader.py` | Load schema from file, import path, or builder output |
+| `schema_builder.py` | In-app schema builder UI |
+| `pdf_viewer.py` | Lazy PDF page rendering via pdf2image |
+| `annotation_panel.py` | Field entry UI, type-aware rendering (scalar + array), all three modes |
+| `serializer.py` | `AnnotationManifest`, `AnnotationSession`, `AnnotationSerializer` |
+| `llm_backend.py` | AWS Bedrock (Claude) integration |
+| `models.py` | Pydantic models: `AnnotationState`, `FieldAnnotation`, `FieldProvenance` |
+
+---
 
 ## Tests
 
-Tests live in `tests/annotator/`. Property-based tests use Hypothesis.
+```bash
+pytest tests/annotator/ -v
+```
+
+Visual acceptance tests: [`docs/testing/visual-acceptance-testing.md`](../../../docs/testing/visual-acceptance-testing.md)
