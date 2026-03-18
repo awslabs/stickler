@@ -13,7 +13,6 @@ import pytest
 from stickler.annotator.schema_builder import SchemaBuilder, _build_field_schema
 from stickler.structured_object_evaluator import StructuredModel
 
-
 # ---------------------------------------------------------------------------
 # _build_field_schema — primitive types
 # ---------------------------------------------------------------------------

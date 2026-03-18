@@ -16,7 +16,6 @@ Usage in test files::
 
 from __future__ import annotations
 
-import os
 import string
 from pathlib import Path
 from typing import Any
@@ -371,7 +370,7 @@ def sample_schema() -> dict[str, Any]:
 def sample_annotation_state() -> AnnotationState:
     """A sample AnnotationState with mixed provenance for testing."""
     return AnnotationState(
-        schema_hash="abc123def456",
+        schema_hash="test-schema-hash",
         fields={
             "vendor_name": FieldAnnotation(
                 value="Acme Corp",

@@ -8,7 +8,6 @@ import pytest
 from stickler.annotator.schema_loader import SchemaLoader
 from stickler.structured_object_evaluator import StructuredModel
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

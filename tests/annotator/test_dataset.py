@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from stickler.annotator.dataset import DatasetManager, PDFDocument
+from stickler.annotator.dataset import DatasetManager
 from stickler.annotator.models import DocumentStatus
 
 
