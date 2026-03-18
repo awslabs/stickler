@@ -4,7 +4,7 @@ This module provides utilities for converting JSON Schema properties to
 Pydantic Field instances with ComparableField functionality.
 """
 
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from pydantic.fields import FieldInfo
 

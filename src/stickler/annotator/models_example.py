@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from typing import List, Optional
 
+from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator import StructuredModel
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.comparators.levenshtein import LevenshteinComparator
 
 
 class LineItemModel(StructuredModel):

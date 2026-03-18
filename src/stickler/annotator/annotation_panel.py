@@ -56,7 +56,7 @@ class AnnotationPanel:
         self.prefill_fn = prefill_fn  # callable(pdf_path, schema) -> dict | None
         self.fields = list(schema.get("properties", {}).keys())
         self._field_schemas = schema.get("properties", {})
-        self._doc_key = hashlib.md5(str(pdf_path).encode()).hexdigest()[:8]
+        self._doc_key = hashlib.md5(str(pdf_path).encode(), usedforsecurity=False).hexdigest()[:8]
 
     # ------------------------------------------------------------------
     # Core helpers
@@ -255,7 +255,7 @@ class AnnotationPanel:
                 self._update_field(field_name, items, False, source="human")
 
         # Add row button
-        if st.button(f"＋ Add row", key=f"arr_add_{self._doc_key}_{field_name}", type="secondary"):
+        if st.button("＋ Add row", key=f"arr_add_{self._doc_key}_{field_name}", type="secondary"):
             items.append({k: None for k in sub_fields})
             st.session_state[items_key] = items
             self._update_field(field_name, items, False, source="human")

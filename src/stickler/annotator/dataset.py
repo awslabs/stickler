@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .models import DocumentStatus
-from .serializer import AnnotationManifest, AnnotationSerializer
+from .serializer import AnnotationSerializer
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,6 @@ This module provides the StructuredModel class for defining structured data mode
 with comparison configuration and evaluation capabilities.
 """
 
-import inspect
 from typing import (
     Any,
     ClassVar,

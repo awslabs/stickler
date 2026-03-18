@@ -99,10 +99,19 @@ class SchemaLoader:
                 f"'package.module.ClassName', got: '{import_path}'"
             )
 
+        # Validate import path is a safe Python identifier chain before importing.
+        # This guards against path traversal or shell injection via the import string.
+        import re
+        if not re.match(r'^[A-Za-z_][A-Za-z0-9_.]*$', import_path):
+            raise ValueError(
+                f"Import path contains invalid characters: '{import_path}'. "
+                "Only alphanumeric characters, underscores, and dots are allowed."
+            )
+
         module_path, _, class_name = import_path.rpartition(".")
 
         try:
-            module = importlib.import_module(module_path)
+            module = importlib.import_module(module_path)  # nosemgrep: non-literal-import
         except ImportError as exc:
             raise ImportError(
                 f"Could not import module '{module_path}': {exc}"

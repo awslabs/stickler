@@ -29,14 +29,17 @@ from stickler.annotator.config import (
     _get_stored_config,
     apply_config_from_query_params,
     render_config_dialog,
-    render_config_sidebar,
 )
 from stickler.annotator.dataset import DatasetManager
 from stickler.annotator.models import AnnotationMode, AnnotationState, DocumentStatus
 from stickler.annotator.pdf_viewer import PDFViewer
 from stickler.annotator.schema_builder import SchemaBuilder
 from stickler.annotator.schema_loader import SchemaLoader
-from stickler.annotator.serializer import AnnotationManifest, AnnotationSerializer, AnnotationSession
+from stickler.annotator.serializer import (
+    AnnotationManifest,
+    AnnotationSerializer,
+    AnnotationSession,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +54,7 @@ _STATUS_ICONS: dict[DocumentStatus, str] = {
 def _schema_hash(schema: dict) -> str:
     """Compute a stable MD5 hash of a JSON Schema dict."""
     return hashlib.md5(
-        json.dumps(schema, sort_keys=True).encode()
+        json.dumps(schema, sort_keys=True).encode(), usedforsecurity=False
     ).hexdigest()
 
 
