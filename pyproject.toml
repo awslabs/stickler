@@ -46,9 +46,12 @@ semantic = [
 ]
 annotator = [
     "streamlit>=1.30.0",
+    "streamlit-pydantic>=0.6.0",
     "pdf2image>=1.16.0",
     "Pillow>=10.0.0",
     "boto3>=1.28.0",
+    "strands-agents>=1.0.0",
+    "python-dotenv>=1.0.0",
 ]
 
 
