@@ -273,6 +273,116 @@ def _render_document_queue(
     return None
 
 
+def _render_landing_page() -> bool:
+    """Show the landing page: dataset directory input + session discovery.
+
+    If the user picks a directory with existing sessions, auto-configures
+    and returns True. If the user starts a new annotation, opens the config
+    dialog and returns True after apply. Returns False if still waiting for
+    user input.
+    """
+    from stickler.annotator.config import (
+        SCHEMA_SOURCE_JSON,
+        _KEY_DATASET_DIR,
+        _KEY_MODE,
+        _KEY_SCHEMA,
+        _KEY_SCHEMA_PATH,
+        _KEY_SCHEMA_SOURCE,
+        _KEY_MODEL_CLASS,
+        _KEY_VALIDATED,
+    )
+
+    st.markdown(
+        "<div style='text-align:center;padding:20px 0 10px 0'>"
+        "<span style='font-size:28px;font-weight:700'>KIE Annotation Tool</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    col_l, col_c, col_r = st.columns([1, 3, 1])
+    with col_c:
+        dataset_dir = st.text_input(
+            "Dataset directory",
+            value=st.session_state.get(_KEY_DATASET_DIR, ""),
+            help="Path to a directory containing PDF files (and optionally .annotations/)",
+            placeholder="./files",
+            key="landing_dataset_dir",
+        )
+
+        if not dataset_dir.strip():
+            st.markdown(
+                "<div style='text-align:center;padding:30px 0;color:#888'>"
+                "Enter a dataset directory to get started."
+                "</div>",
+                unsafe_allow_html=True,
+            )
+            return False
+
+        dataset_path = Path(dataset_dir.strip())
+        if not dataset_path.exists() or not dataset_path.is_dir():
+            st.error(f"Directory not found: {dataset_path}")
+            return False
+
+        # Check for existing sessions
+        manifest = AnnotationManifest(dataset_path)
+        sessions = manifest.list_sessions()
+
+        if sessions:
+            st.markdown("##### Existing Sessions")
+            for sess in sessions:
+                sid = sess["session_id"]
+                annotator = sess.get("annotator", "unknown")
+                updated = sess.get("updated_at", "")[:19].replace("T", " ")
+                doc_count = sess.get("doc_count", 0)
+                completed = sess.get("completed_count", 0)
+                pct = int(100 * completed / doc_count) if doc_count else 0
+
+                col_info, col_btn = st.columns([4, 1])
+                with col_info:
+                    st.markdown(
+                        f"<div style='padding:8px 0'>"
+                        f"<span style='font-size:13px'>👤 {annotator}</span>"
+                        f"&nbsp;&nbsp;"
+                        f"<span style='color:#888;font-size:12px'>"
+                        f"📄 {completed}/{doc_count} docs ({pct}%)"
+                        f"&nbsp;·&nbsp;last updated {updated} UTC"
+                        f"</span>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                with col_btn:
+                    if st.button("▶ Resume", key=f"resume_session_{sid}", use_container_width=True):
+                        session_obj = manifest.get_session(sid)
+                        if session_obj and session_obj.schema:
+                            try:
+                                from stickler.annotator.schema_loader import SchemaLoader
+                                _, model_class = SchemaLoader.from_builder_schema(session_obj.schema)
+                                st.session_state[_KEY_DATASET_DIR] = dataset_dir.strip()
+                                st.session_state[_KEY_SCHEMA_SOURCE] = SCHEMA_SOURCE_JSON
+                                st.session_state[_KEY_SCHEMA_PATH] = ""
+                                st.session_state[_KEY_MODE] = AnnotationMode.ZERO_START
+                                st.session_state[_KEY_SCHEMA] = session_obj.schema
+                                st.session_state[_KEY_MODEL_CLASS] = model_class
+                                st.session_state[_KEY_VALIDATED] = True
+                                st.session_state["_session_id"] = sid
+                                st.rerun()
+                            except Exception as exc:
+                                st.error(f"Could not load session schema: {exc}")
+                        else:
+                            st.error("Session has no embedded schema.")
+
+            st.markdown("---")
+
+        # New annotation section
+        st.markdown("##### Start New Annotation")
+        with st.expander("Configure schema and mode", expanded=not bool(sessions)):
+            from stickler.annotator.config import _render_config_widgets
+            st.session_state[_KEY_DATASET_DIR] = dataset_dir.strip()
+            _render_config_widgets()
+
+    return False
+
+
 def _app() -> None:
     """The Streamlit application — called when Streamlit runs this file."""
     st.set_page_config(page_title="KIE Annotation Tool", layout="wide")
@@ -350,19 +460,9 @@ def _app() -> None:
 
     st.markdown("<hr style='margin:0 0 8px 0'>", unsafe_allow_html=True)
 
-    # Not yet configured — centered prompt
+    # Not yet configured — show landing page with session discovery
     if not is_configured:
-        st.markdown("---")
-        col_l, col_c, col_r = st.columns([1, 2, 1])
-        with col_c:
-            st.markdown(
-                "<div style='text-align:center;padding:40px 0'>"
-                "<div style='font-size:48px'>⚙️</div>"
-                "<h3>Get started</h3>"
-                "<p style='color:#888'>Click the gear icon above to configure your dataset directory, schema, and annotation mode.</p>"
-                "</div>",
-                unsafe_allow_html=True,
-            )
+        _render_landing_page()
         return
 
     # 2. Schema Builder — only shown when builder is selected AND schema not yet finalized
