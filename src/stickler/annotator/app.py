@@ -143,6 +143,14 @@ def _resume_or_fresh_state(
         st.session_state[state_key] = state
         return state
 
+    # If we're inside an active session, auto-resume — no prompt needed
+    if session is not None and st.session_state.get("_session_id"):
+        state = AnnotationSerializer.load(pdf_path, session=session)
+        state = state if state is not None else _load_or_create_state(pdf_path, schema, session=session)
+        st.session_state[state_key] = state
+        st.session_state[choice_key] = "resume"
+        return state
+
     if choice == "resume":
         state = AnnotationSerializer.load(pdf_path, session=session)
         state = state if state is not None else _load_or_create_state(pdf_path, schema, session=session)
@@ -235,42 +243,45 @@ def _render_document_queue(
     ]
 
     n = len(documents)
-
-    # Use a separate nav key so prev/next can set it before the selectbox renders
     nav_key = "_doc_nav_idx"
-    current = st.session_state.get(nav_key, 0)
-    current = max(0, min(current, n - 1))
 
-    col_prev, col_select, col_next = st.columns([1, 8, 1])
+    # Initialise nav index
+    if nav_key not in st.session_state:
+        st.session_state[nav_key] = 0
+    if "doc_queue_select" not in st.session_state:
+        st.session_state["doc_queue_select"] = 0
+    current = max(0, min(st.session_state[nav_key], n - 1))
+
+    def _on_dropdown_change():
+        """Sync nav key when user picks from dropdown."""
+        st.session_state[nav_key] = st.session_state["doc_queue_select"]
+
+    col_prev, col_select, col_next = st.columns([2, 6, 2])
 
     with col_prev:
-        st.markdown("<div style='padding-top:4px'></div>", unsafe_allow_html=True)
-        if st.button("◀", key="doc_prev", disabled=(current == 0), help="Previous document", use_container_width=True):
+        if st.button("◀ Prev Doc", key="doc_prev", disabled=(current == 0), help="Previous document", use_container_width=True):
             st.session_state[nav_key] = current - 1
+            st.session_state["doc_queue_select"] = current - 1
             st.rerun()
 
     with col_next:
         st.markdown("<div style='padding-top:4px'></div>", unsafe_allow_html=True)
-        if st.button("▶", key="doc_next", disabled=(current == n - 1), help="Next document", use_container_width=True):
+        if st.button("Next Doc ▶", key="doc_next", disabled=(current == n - 1), help="Next document", use_container_width=True):
             st.session_state[nav_key] = current + 1
+            st.session_state["doc_queue_select"] = current + 1
             st.rerun()
 
     with col_select:
-        selected_idx = st.selectbox(
+        st.selectbox(
             "Document",
             range(n),
-            index=current,
             format_func=lambda i: labels[i],
             key="doc_queue_select",
             label_visibility="collapsed",
+            on_change=_on_dropdown_change,
         )
-        # Sync nav key when user picks from dropdown directly
-        if selected_idx != current:
-            st.session_state[nav_key] = selected_idx
 
-    if selected_idx is not None:
-        return documents[selected_idx].path
-    return None
+    return documents[current].path
 
 
 def _render_landing_page() -> bool:
@@ -387,6 +398,75 @@ def _app() -> None:
     """The Streamlit application — called when Streamlit runs this file."""
     st.set_page_config(page_title="KIE Annotation Tool", layout="wide")
 
+    # Compact styling for annotation fields + hide deploy button
+    st.markdown("""
+    <style>
+    /* Hide Streamlit deploy button and sticky header toolbar */
+    [data-testid="stAppDeployButton"] { display: none; }
+    [data-testid="stHeader"] { display: none; }
+    /* Reduce top padding */
+    .block-container { padding-top: 0.5rem !important; }
+    /* Tighter field spacing in the annotation panel */
+    [data-testid="stTextInput"] { margin-bottom: -12px; }
+    [data-testid="stCheckbox"] { margin-bottom: -12px; }
+    /* Smaller field labels */
+    [data-testid="stTextInput"] label p { font-size: 13px !important; }
+    /* White background + subtle border on text inputs */
+    [data-testid="stTextInput"] input {
+        background-color: #ffffff !important;
+        border: 1px solid #ccc !important;
+        border-radius: 6px !important;
+        box-shadow: none !important;
+    }
+    [data-testid="stTextInput"] input:focus {
+        border-color: #2563eb !important;
+        box-shadow: 0 0 0 1px #2563eb !important;
+    }
+    /* Remove Streamlit's default input container border */
+    [data-testid="stTextInput"] > div > div {
+        border: none !important;
+        box-shadow: none !important;
+        background: transparent !important;
+    }
+    /* Blue primary buttons */
+    [data-testid="stBaseButton-primary"] {
+        background-color: #2563eb !important;
+        border-color: #2563eb !important;
+        color: #ffffff !important;
+    }
+    [data-testid="stBaseButton-primary"]:hover {
+        background-color: #1d4ed8 !important;
+        border-color: #1d4ed8 !important;
+    }
+    /* Blue secondary/default buttons */
+    [data-testid="stBaseButton-secondary"] {
+        background-color: #2563eb !important;
+        border-color: #2563eb !important;
+        color: #ffffff !important;
+    }
+    [data-testid="stBaseButton-secondary"]:hover {
+        background-color: #1d4ed8 !important;
+        border-color: #1d4ed8 !important;
+    }
+    [data-testid="stBaseButton-secondary"]:disabled {
+        background-color: #e5e7eb !important;
+        border-color: #d1d5db !important;
+        color: #9ca3af !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Skip N/A checkboxes when tabbing between input fields
+    import streamlit.components.v1 as components
+    components.html("""<script>
+    const observer = new MutationObserver(() => {
+        document.querySelectorAll('[data-testid="stCheckbox"] input').forEach(
+            el => el.setAttribute('tabindex', '-1')
+        );
+    });
+    observer.observe(document.body, {childList: true, subtree: true});
+    </script>""", height=0)
+
     # Load .env credentials if present (for local dev / LLM backend)
     try:
         from dotenv import load_dotenv
@@ -409,7 +489,6 @@ def _app() -> None:
         )
         mode_label = config.mode.value.replace("_", " ").title()
 
-        # Build deep link — session GUID added after session is created below
         session_id = st.session_state.get("_session_id", "")
         import urllib.parse
         if session_id:
@@ -425,40 +504,36 @@ def _app() -> None:
             })
         deep_link = f"http://localhost:8501/?{deep_link_params}"
 
-        _, link_col, gear_col = st.columns([8, 3, 1])
-        with link_col:
+        import streamlit.components.v1 as _comp
+        col_title, col_link, col_gear = st.columns([6, 5, 0.5])
+        with col_title:
             st.markdown(
-                f"<div style='padding-top:6px;text-align:right'>"
-                f"<span style='font-size:11px;color:#aaa'>🔗 </span>"
-                f"<code style='font-size:11px;color:#888;background:none'>{deep_link}</code>"
+                f"<div style='padding:2px 0;white-space:nowrap'>"
+                f"<span style='font-size:14px;font-weight:700'>KIE Annotation Tool</span>"
+                f"&nbsp;<span style='font-size:10px;color:#888'>"
+                f"&#128193; {dataset_name} &middot; &#128203; {schema_name} &middot; &#9889; {mode_label}</span>"
                 f"</div>",
                 unsafe_allow_html=True,
             )
-        with gear_col:
+        with col_link:
+            _comp.html(
+                f"""<div style="display:flex;align-items:center;justify-content:flex-end;gap:4px;padding-top:2px">
+                <code style="font-size:9px;color:#aaa;background:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px">{deep_link}</code>
+                <button onclick="navigator.clipboard.writeText('{deep_link}');this.textContent='✓';setTimeout(()=>this.textContent='Copy',600)"
+                    style="font-size:9px;padding:1px 6px;border:1px solid #ddd;border-radius:3px;background:#fafafa;cursor:pointer;color:#666">Copy</button>
+                </div>""",
+                height=24,
+            )
+        with col_gear:
             if st.button("⚙️", key="open_config", help="Configure dataset, schema, and mode"):
                 render_config_dialog()
-
-        st.markdown(
-            f"<div style='padding:4px 0 8px 0'>"
-            f"<span style='font-size:20px;font-weight:700'>KIE Annotation Tool</span>"
-            f"&nbsp;&nbsp;"
-            f"<span style='font-size:12px;color:#888'>📁 {dataset_name} &nbsp;·&nbsp; 📋 {schema_name} &nbsp;·&nbsp; ⚡ {mode_label}</span>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
     else:
         _, gear_col = st.columns([20, 1])
         with gear_col:
             if st.button("⚙️", key="open_config", help="Configure dataset, schema, and mode"):
                 render_config_dialog()
-        st.markdown(
-            "<div style='padding:4px 0 8px 0'>"
-            "<span style='font-size:20px;font-weight:700'>KIE Annotation Tool</span>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
 
-    st.markdown("<hr style='margin:0 0 8px 0'>", unsafe_allow_html=True)
+    st.markdown("<hr style='margin:0 0 2px 0'>", unsafe_allow_html=True)
 
     # Not yet configured — show landing page with session discovery
     if not is_configured:
@@ -504,8 +579,8 @@ def _app() -> None:
     })
     deep_link = f"http://localhost:8502/?{deep_link_params}"
 
-    # 4. Side-by-side layout: PDF viewer (left) + annotation panel (right)
-    left_col, right_col = st.columns([1, 1])
+    # 4. Side-by-side layout: PDF viewer (left, wider) + annotation panel (right, narrower)
+    left_col, right_col = st.columns([3, 2])
 
     with left_col:
         selected_pdf = _render_document_queue(manager, schema_fields, session=session)
@@ -518,7 +593,11 @@ def _app() -> None:
             old_pdf = st.session_state.get(last_pdf_key)
             if old_pdf:
                 st.session_state.pop(f"annotation_state_{old_pdf}", None)
+                # Reset page to 1 for the old document
+                st.session_state.pop(f"pdf_page_{old_pdf}", None)
             st.session_state[last_pdf_key] = str(selected_pdf)
+            # Ensure new document starts on page 1
+            st.session_state[f"pdf_page_{selected_pdf}"] = 1
 
         viewer = PDFViewer(selected_pdf)
         viewer.render()

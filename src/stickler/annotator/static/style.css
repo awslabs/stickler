@@ -1,0 +1,60 @@
+/* KIE Annotation Tool — global styles */
+
+/* Hide Streamlit chrome */
+[data-testid="stAppDeployButton"] { display: none; }
+[data-testid="stHeader"] { display: none; }
+
+/* Reduce top padding */
+.block-container { padding-top: 0.5rem !important; }
+
+/* Tighter field spacing */
+[data-testid="stTextInput"] { margin-bottom: -12px; }
+[data-testid="stCheckbox"] { margin-bottom: -12px; }
+
+/* Smaller field labels */
+[data-testid="stTextInput"] label p { font-size: 13px !important; }
+
+/* White background + subtle border on text inputs */
+[data-testid="stTextInput"] input {
+    background-color: #ffffff !important;
+    border: 1px solid #ccc !important;
+    border-radius: 6px !important;
+    box-shadow: none !important;
+}
+[data-testid="stTextInput"] input:focus {
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 1px #2563eb !important;
+}
+/* Remove Streamlit's default input container border */
+[data-testid="stTextInput"] > div > div {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+}
+
+/* Blue primary buttons */
+[data-testid="stBaseButton-primary"] {
+    background-color: #2563eb !important;
+    border-color: #2563eb !important;
+    color: #ffffff !important;
+}
+[data-testid="stBaseButton-primary"]:hover {
+    background-color: #1d4ed8 !important;
+    border-color: #1d4ed8 !important;
+}
+
+/* Blue secondary/default buttons */
+[data-testid="stBaseButton-secondary"] {
+    background-color: #2563eb !important;
+    border-color: #2563eb !important;
+    color: #ffffff !important;
+}
+[data-testid="stBaseButton-secondary"]:hover {
+    background-color: #1d4ed8 !important;
+    border-color: #1d4ed8 !important;
+}
+[data-testid="stBaseButton-secondary"]:disabled {
+    background-color: #e5e7eb !important;
+    border-color: #d1d5db !important;
+    color: #9ca3af !important;
+}

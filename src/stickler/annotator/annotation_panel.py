@@ -103,7 +103,7 @@ class AnnotationPanel:
     # ------------------------------------------------------------------
 
     def _render_scalar_field(self, field_name: str, label: str, source: str = "human") -> None:
-        """Render a scalar field with inline None toggle and status dot."""
+        """Render a scalar field with inline N/A toggle."""
         field_schema = self._field_schemas.get(field_name, {})
         description = field_schema.get("description", "")
 
@@ -113,14 +113,7 @@ class AnnotationPanel:
         if existing and not existing.is_none and existing.value is not None:
             current_value = str(existing.value)
 
-        # Status indicator
-        is_done = existing is not None and _field_is_annotated(existing)
-        status = "✅" if is_done else "⬜"
-
-        col_status, col_input, col_none = st.columns([0.08, 3, 0.7])
-
-        with col_status:
-            st.markdown(f"<div style='padding-top:32px;font-size:18px'>{status}</div>", unsafe_allow_html=True)
+        col_input, col_none = st.columns([4, 0.7])
 
         with col_none:
             st.markdown("<div style='padding-top:28px'></div>", unsafe_allow_html=True)
@@ -181,20 +174,13 @@ class AnnotationPanel:
         is_done = n > 0
 
         # Header row
-        col_status, col_header = st.columns([0.08, 4])
-        with col_status:
-            st.markdown(
-                f"<div style='padding-top:8px;font-size:18px'>{'✅' if is_done else '⬜'}</div>",
-                unsafe_allow_html=True,
-            )
-        with col_header:
-            help_text = description or None
-            st.markdown(
-                f"**{field_name}**  "
-                f"<span style='color:#888;font-size:13px'>array · {n} item{'s' if n != 1 else ''}</span>",
-                unsafe_allow_html=True,
-                help=help_text,
-            )
+        help_text = description or None
+        st.markdown(
+            f"**{field_name}**  "
+            f"<span style='color:#888;font-size:13px'>array &middot; {n} item{'s' if n != 1 else ''}</span>",
+            unsafe_allow_html=True,
+            help=help_text,
+        )
 
         if items_type == "object" and items_props:
             self._render_object_array(field_name, items, items_props, items_key)
@@ -306,16 +292,17 @@ class AnnotationPanel:
 
     def render_zero_start(self) -> None:
         """Render all schema fields for manual annotation."""
-        annotated, total = self._annotated_count()
-
-        # Header with progress + optional auto-annotate button
+        # Header with optional auto-annotate button
         col_title, col_btn, col_hint = st.columns([3, 1.5, 1])
         with col_title:
             st.subheader("Manual Annotation")
         with col_btn:
             if self.prefill_fn is not None:
                 st.markdown("<div style='padding-top:8px'></div>", unsafe_allow_html=True)
-                if st.button("🤖 Auto-annotate", key="zero_prefill_btn", use_container_width=True, help="Pre-fill all fields using LLM"):
+                if st.button("🤖 Auto-annotate", key="zero_prefill_btn", use_container_width=True,
+                             help="Pre-fill all fields using AWS Bedrock (Claude). "
+                                  "Sends PDF pages as images to the LLM and extracts field values. "
+                                  "Configure model and region in src/stickler/annotator/llm_backend.py"):
                     with st.spinner("Extracting fields with LLM…"):
                         try:
                             predictions = self.prefill_fn(self.pdf_path, self.schema)
@@ -346,12 +333,9 @@ class AnnotationPanel:
                 unsafe_allow_html=True,
             )
 
-        self._render_progress()
-
-        # Completion state
-        if annotated == total and total > 0:
-            st.success("🎉 All fields annotated! Move to the next document.")
-            st.markdown("---")
+        # Reserve a slot for the progress bar — filled after fields render
+        progress_slot = st.empty()
+        completion_slot = st.empty()
 
         # Separate scalar fields from array fields for cleaner layout
         scalar_fields = [f for f in self.fields if self._field_schemas.get(f, {}).get("type") != "array"]
@@ -368,6 +352,13 @@ class AnnotationPanel:
             st.markdown("##### Line Items")
             for field_name in array_fields:
                 self._render_field(field_name, label=field_name)
+
+        # Now render progress with up-to-date counts (after fields have been processed)
+        annotated, total = self._annotated_count()
+        pct = annotated / total if total else 0
+        progress_slot.progress(pct, text=f"**{annotated} / {total}** fields annotated")
+        if annotated == total and total > 0:
+            completion_slot.success("🎉 All fields annotated! Move to the next document.")
 
     # ------------------------------------------------------------------
     # LLM Inference
@@ -395,7 +386,10 @@ class AnnotationPanel:
 
         if not has_llm_fields:
             st.info("Click **Pre-fill** to send this document to the LLM for automatic field extraction.")
-            if st.button("🤖 Pre-fill with LLM", key="llm_prefill_btn", type="primary"):
+            if st.button("🤖 Pre-fill with LLM", key="llm_prefill_btn", type="primary",
+                         help="Pre-fill all fields using AWS Bedrock (Claude). "
+                              "Sends PDF pages as images to the LLM and extracts field values. "
+                              "Configure model and region in src/stickler/annotator/llm_backend.py"):
                 if self.prefill_fn is None:
                     st.error("LLM backend not configured.")
                 else:

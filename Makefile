@@ -52,3 +52,10 @@ lint-cicd:
 		exit 1; \
 	fi
 	@echo -e "$(GREEN)All code quality checks passed!$(NC)"
+
+# Launch the KIE Annotation Tool (opens browser at http://localhost:8501)
+# Auto-reloads on code changes. Enter ./files for the FCC invoice test data.
+annotate:
+	streamlit run src/stickler/annotator/app.py --server.runOnSave true
+
+.PHONY: install install-dev test clean lint docs docs-build docs-install lint-cicd annotate

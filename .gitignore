@@ -24,4 +24,6 @@ files/.annotations/
 files/*.json
 .pytest_cache/
 .ruff_cache/
+.hypothesis/
 .ash/
+*.pdf

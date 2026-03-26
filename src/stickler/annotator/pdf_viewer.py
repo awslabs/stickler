@@ -164,10 +164,10 @@ class PDFViewer:
         current_page: int = st.session_state[state_key]
 
         # --- navigation controls ---
-        col_prev, col_info, col_next = st.columns([1, 2, 1])
+        col_prev, col_info, col_next, col_rotate = st.columns([1, 2, 1, 0.5])
 
         with col_prev:
-            if st.button("⬅ Prev", disabled=(current_page <= 1), key=f"prev_{self.pdf_path}"):
+            if st.button("⬅ Prev Page", disabled=(current_page <= 1), key=f"prev_{self.pdf_path}"):
                 st.session_state[state_key] = max(1, current_page - 1)
                 st.rerun()
 
@@ -178,13 +178,24 @@ class PDFViewer:
             )
 
         with col_next:
-            if st.button("Next ➡", disabled=(current_page >= total), key=f"next_{self.pdf_path}"):
+            if st.button("Next Page ➡", disabled=(current_page >= total), key=f"next_{self.pdf_path}"):
                 st.session_state[state_key] = min(total, current_page + 1)
+                st.rerun()
+
+        with col_rotate:
+            rot_key = f"pdf_rotation_{self.pdf_path}"
+            if rot_key not in st.session_state:
+                st.session_state[rot_key] = 0
+            if st.button("↻", key=f"rotate_{self.pdf_path}", help="Rotate 90° clockwise"):
+                st.session_state[rot_key] = (st.session_state[rot_key] + 90) % 360
                 st.rerun()
 
         # --- page image ---
         try:
             page_image = self.render_page(current_page)
+            rotation = st.session_state.get(f"pdf_rotation_{self.pdf_path}", 0)
+            if rotation:
+                page_image = page_image.rotate(-rotation, expand=True)
             st.image(page_image, use_container_width=True)
         except Exception as exc:
             st.error(f"Failed to render page {current_page}: {exc}")
