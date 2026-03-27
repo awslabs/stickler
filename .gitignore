@@ -14,16 +14,11 @@ uv.lock
 build/
 .temp/
 
-# Local credentials — never commit
-.env
-.env.*
-!.env.example
-
-# Annotation data and cache files (not source code)
-files/.annotations/
-files/*.json
-.pytest_cache/
-.ruff_cache/
+# Hypothesis test database
 .hypothesis/
-.ash/
+
+# PDF files (local test data)
 *.pdf
+
+# Ruff cache
+.ruff_cache/

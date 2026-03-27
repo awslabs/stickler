@@ -4,7 +4,7 @@ This module provides utilities for converting JSON Schema properties to
 Pydantic Field instances with ComparableField functionality.
 """
 
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Tuple, Type
 
 from pydantic.fields import FieldInfo
 
@@ -131,10 +131,6 @@ class JsonSchemaFieldConverter:
         
         # Handle primitive types
         field_type = self._map_json_type_to_python_type(json_type)
-
-        # Non-required fields accept None
-        if not is_required:
-            field_type = Optional[field_type]
         
         # Extract x-aws-stickler-* extensions
         extensions = self._extract_stickler_extensions(property_schema, field_path)
@@ -358,11 +354,8 @@ class JsonSchemaFieldConverter:
             description=description
         )
         
-        # Non-required nested objects accept None
-        if not is_required:
-            NestedModel = Optional[NestedModel]
-
         return NestedModel, field
+
     def _handle_array_type(
         self, field_name: str, property_schema: Dict[str, Any], is_required: bool, field_path: str = None
     ) -> Tuple[Type, Any]:
@@ -430,13 +423,10 @@ class JsonSchemaFieldConverter:
             default=default,
             description=description
         )
-
-        # Non-required arrays accept None
-        if not is_required:
-            field_type = Optional[field_type]
-
+        
         return field_type, field
 
+    
     def field_to_property(self, field_type: Type, field_info: FieldInfo) -> Dict[str, Any]:
         """Convert Pydantic field to JSON Schema property.
         

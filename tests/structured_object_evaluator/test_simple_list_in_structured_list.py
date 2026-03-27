@@ -19,6 +19,7 @@ from stickler.structured_object_evaluator.models.structured_model import (
     StructuredModel,
 )
 
+
 # ---------------------------------------------------------------------------
 # Models — match_threshold=1.0 (strict, used in the original issue)
 # ---------------------------------------------------------------------------
