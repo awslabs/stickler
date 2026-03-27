@@ -664,10 +664,29 @@ def _app() -> None:
         prefill_fn = None
         if config.mode in (AnnotationMode.LLM_INFERENCE, AnnotationMode.ZERO_START):
             try:
-                from stickler.annotator.llm_backend import BedrockLLMBackend
+                from stickler.annotator.llm_backend import (
+                    AVAILABLE_MODELS,
+                    DEFAULT_MODEL_LABEL,
+                    BedrockLLMBackend,
+                )
+
+                # Initialise model selection in session state
+                if "_llm_model_label" not in st.session_state:
+                    st.session_state["_llm_model_label"] = DEFAULT_MODEL_LABEL
+
+                selected_label = st.session_state["_llm_model_label"]
+                selected_model_id = AVAILABLE_MODELS.get(selected_label, AVAILABLE_MODELS[DEFAULT_MODEL_LABEL])
+
+                # (Re)create backend when model changes
                 _backend_key = "_llm_backend"
-                if _backend_key not in st.session_state:
-                    st.session_state[_backend_key] = BedrockLLMBackend()
+                _model_key = "_llm_backend_model_id"
+                if (
+                    _backend_key not in st.session_state
+                    or st.session_state.get(_model_key) != selected_model_id
+                ):
+                    st.session_state[_backend_key] = BedrockLLMBackend(model_id=selected_model_id)
+                    st.session_state[_model_key] = selected_model_id
+
                 backend = st.session_state[_backend_key]
                 prefill_fn = backend.prefill
             except Exception as exc:

@@ -18,6 +18,17 @@ _DEFAULT_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 _DEFAULT_REGION = "us-east-1"
 _MAX_PAGES = 8
 
+# Models available for auto-annotate. Keys are display labels, values are
+# cross-region model IDs (us. prefix for cross-region inference).
+AVAILABLE_MODELS: dict[str, str] = {
+    "Claude Haiku 4.5": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "Claude Sonnet 4.6": "us.anthropic.claude-sonnet-4-6",
+    "Claude Opus 4.6": "us.anthropic.claude-opus-4-6-v1",
+    "Nova 2 Lite": "us.amazon.nova-2-lite-v1:0",
+}
+
+DEFAULT_MODEL_LABEL = "Claude Haiku 4.5"
+
 
 def _pdf_to_image_bytes(pdf_path: Path, max_pages: int = _MAX_PAGES) -> list[bytes]:
     """Rasterise PDF pages to PNG bytes at 150 dpi."""

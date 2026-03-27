@@ -98,6 +98,46 @@ class AnnotationPanel:
         pct = annotated / total if total else 0
         st.progress(pct, text=f"**{annotated} / {total}** fields annotated")
 
+    def _render_model_selector(self) -> None:
+        """Render a compact model picker popover next to the auto-annotate button."""
+        try:
+            from .llm_backend import AVAILABLE_MODELS, DEFAULT_MODEL_LABEL
+        except ImportError:
+            return
+
+        current = st.session_state.get("_llm_model_label", DEFAULT_MODEL_LABEL)
+        labels = list(AVAILABLE_MODELS.keys())
+
+        st.markdown("<div style='padding-top:8px'></div>", unsafe_allow_html=True)
+        with st.popover("⚙", help="Select LLM model"):
+            choice = st.radio(
+                "Model",
+                labels,
+                index=labels.index(current) if current in labels else 0,
+                key="_model_selector_radio",
+            )
+            if choice != current:
+                st.session_state["_llm_model_label"] = choice
+                st.rerun()
+
+    @staticmethod
+    def _show_llm_error(exc: Exception) -> None:
+        """Display a user-friendly error with remediation steps."""
+        msg = str(exc)
+        if "UnrecognizedClientException" in msg or "security token" in msg.lower():
+            st.error(
+                "**AWS credentials expired or missing.**  \n"
+                "Set `AWS_PROFILE=<your-profile>` in your `.env` file and restart the app.  \n"
+                "Or export `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN`."
+            )
+        elif "AccessDeniedException" in msg:
+            st.error(
+                "**Access denied.** Your AWS role may not have Bedrock permissions.  \n"
+                "Ensure your credentials include `bedrock:InvokeModel` access."
+            )
+        else:
+            st.error(f"LLM pre-fill failed: {exc}")
+
     # ------------------------------------------------------------------
     # Scalar field rendering
     # ------------------------------------------------------------------
@@ -292,22 +332,21 @@ class AnnotationPanel:
 
     def render_zero_start(self) -> None:
         """Render all schema fields for manual annotation."""
-        # Header with optional auto-annotate button
-        col_title, col_btn, col_hint = st.columns([3, 1.5, 1])
+        # Header with optional auto-annotate button + model selector
+        col_title, col_btn, col_cfg = st.columns([3, 1.5, 0.4])
         with col_title:
             st.subheader("Annotation")
         with col_btn:
             if self.prefill_fn is not None:
                 st.markdown("<div style='padding-top:8px'></div>", unsafe_allow_html=True)
                 if st.button("🤖 Auto-annotate", key="zero_prefill_btn", use_container_width=True,
-                             help="Pre-fill all fields using AWS Bedrock (Claude). "
-                                  "Sends PDF pages as images to the LLM and extracts field values. "
-                                  "Configure model and region in src/stickler/annotator/llm_backend.py"):
+                             help="Pre-fill all fields using the selected Bedrock model. "
+                                  "Sends PDF pages as images to the LLM and extracts field values."):
                     with st.spinner("Extracting fields with LLM…"):
                         try:
                             predictions = self.prefill_fn(self.pdf_path, self.schema)
                         except Exception as exc:
-                            st.error(f"LLM pre-fill failed: {exc}")
+                            self._show_llm_error(exc)
                             predictions = None
                     if predictions:
                         for field_name in self.fields:
@@ -320,6 +359,11 @@ class AnnotationPanel:
                                 st.session_state[f"array_items_{self._doc_key}_{field_name}"] = value or []
                             else:
                                 value = None if is_none else str(raw_val) if raw_val is not None else None
+                                # Sync widget keys so text inputs reflect new values after rerun
+                                st.session_state[f"zero_val_{self._doc_key}_{field_name}"] = (
+                                    "" if is_none else (str(value) if value is not None else "")
+                                )
+                                st.session_state[f"zero_none_{self._doc_key}_{field_name}"] = is_none
                             self.state.fields[field_name] = FieldAnnotation(
                                 value=value,
                                 is_none=is_none,
@@ -327,11 +371,9 @@ class AnnotationPanel:
                             )
                         self._auto_save()
                         st.rerun()
-        with col_hint:
-            st.markdown(
-                "<div style='text-align:right;padding-top:12px;color:#888;font-size:12px'>Tab to move between fields</div>",
-                unsafe_allow_html=True,
-            )
+        with col_cfg:
+            if self.prefill_fn is not None:
+                self._render_model_selector()
 
         # Reserve a slot for the progress bar — filled after fields render
         progress_slot = st.empty()
@@ -397,7 +439,7 @@ class AnnotationPanel:
                         try:
                             predictions = self.prefill_fn(self.pdf_path, self.schema)
                         except Exception as exc:
-                            st.error(f"LLM pre-fill failed: {exc}")
+                            self._show_llm_error(exc)
                             predictions = None
                     if predictions:
                         for field_name in self.fields:
@@ -413,6 +455,11 @@ class AnnotationPanel:
                                 st.session_state[items_key] = value or []
                             else:
                                 value = None if is_none else str(raw_val) if raw_val is not None else None
+                                # Sync widget keys so inputs reflect values after rerun
+                                st.session_state[f"zero_val_{self._doc_key}_{field_name}"] = (
+                                    "" if is_none else (str(value) if value is not None else "")
+                                )
+                                st.session_state[f"zero_none_{self._doc_key}_{field_name}"] = is_none
                             self.state.fields[field_name] = FieldAnnotation(
                                 value=value,
                                 is_none=is_none,
