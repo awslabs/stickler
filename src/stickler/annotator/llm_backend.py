@@ -235,7 +235,6 @@ class BedrockLLMBackend:
 
         from strands import Agent
         from strands.models import BedrockModel
-        from strands.types.content import ContentBlock, ImageContent
 
         mid = model_id or self.model_id
         loc_tool = _make_converse_localize_tool(page_bytes, mid, self.region)

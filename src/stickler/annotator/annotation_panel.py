@@ -101,9 +101,9 @@ class AnnotationPanel:
         try:
             from .llm_backend import (
                 AVAILABLE_MODELS,
+                DEFAULT_LOCALIZATION_MODEL_LABEL,
                 DEFAULT_MODEL_LABEL,
                 LOCALIZATION_MODELS,
-                DEFAULT_LOCALIZATION_MODEL_LABEL,
             )
         except ImportError:
             return
@@ -230,7 +230,6 @@ class AnnotationPanel:
 
         items: list = st.session_state[items_key]
         n = len(items)
-        is_done = n > 0
 
         # Header row
         help_text = description or None

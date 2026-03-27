@@ -338,14 +338,14 @@ def _render_landing_page() -> bool:
     user input.
     """
     from stickler.annotator.config import (
-        SCHEMA_SOURCE_JSON,
         _KEY_DATASET_DIR,
         _KEY_MODE,
+        _KEY_MODEL_CLASS,
         _KEY_SCHEMA,
         _KEY_SCHEMA_PATH,
         _KEY_SCHEMA_SOURCE,
-        _KEY_MODEL_CLASS,
         _KEY_VALIDATED,
+        SCHEMA_SOURCE_JSON,
     )
 
     st.markdown(
@@ -435,7 +435,9 @@ def _render_landing_page() -> bool:
                         session_obj = manifest.get_session(sid)
                         if session_obj and session_obj.schema:
                             try:
-                                from stickler.annotator.schema_loader import SchemaLoader
+                                from stickler.annotator.schema_loader import (
+                                    SchemaLoader,
+                                )
                                 _, model_class = SchemaLoader.from_builder_schema(session_obj.schema)
                                 st.session_state[_KEY_DATASET_DIR] = dataset_dir.strip()
                                 st.session_state[_KEY_SCHEMA_SOURCE] = SCHEMA_SOURCE_JSON
@@ -723,8 +725,8 @@ def _app() -> None:
         localize_fn = None
         try:
             from stickler.annotator.llm_backend import (
-                LOCALIZATION_MODELS,
                 DEFAULT_LOCALIZATION_MODEL_LABEL,
+                LOCALIZATION_MODELS,
             )
 
             if "_loc_model_label" not in st.session_state:
@@ -736,7 +738,11 @@ def _app() -> None:
             # Reuse the extraction backend instance but pass localization model_id
             if "_llm_backend" in st.session_state:
                 _be = st.session_state["_llm_backend"]
-                localize_fn = lambda pdf, fv, _be=_be, _mid=loc_model_id: _be.localize(pdf, fv, model_id=_mid)
+
+                def _localize_with_model(pdf, fv, _be=_be, _mid=loc_model_id):
+                    return _be.localize(pdf, fv, model_id=_mid)
+
+                localize_fn = _localize_with_model
         except Exception as exc:
             logger.debug("Localization backend unavailable: %s", exc)
 
