@@ -202,6 +202,7 @@ class SchemaBuilder:
         *Finalize Schema*, or ``None`` while still editing.
         """
         st.subheader("Schema Builder")
+        st.caption("🧪 Beta — for production use, bring a JSON Schema file.")
         _ensure_session_state()
         fields = _get_fields()
 

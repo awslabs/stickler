@@ -206,7 +206,22 @@ def _render_config_widgets() -> None:
             key="__config_pydantic_import_input",
         )
     else:
-        st.info("Use the Schema Builder in the main panel to define fields.")
+        # Inline schema builder
+        from .schema_builder import SchemaBuilder
+        from .schema_loader import SchemaLoader
+
+        builder = SchemaBuilder()
+        built_schema = builder.render()
+        if built_schema is not None:
+            try:
+                validated_schema, model_class = SchemaLoader.from_builder_schema(built_schema)
+                st.session_state[_KEY_SCHEMA] = validated_schema
+                st.session_state[_KEY_MODEL_CLASS] = model_class
+                st.success("✓ Schema finalized. Click **Apply Configuration** to start.")
+            except ValueError as exc:
+                st.error(f"Schema validation failed: {exc}")
+        elif st.session_state.get(_KEY_SCHEMA) is not None:
+            st.success("✓ Schema ready. Click **Apply Configuration** to start.")
 
     # --- Operating mode ---
     mode_labels = list(_MODE_LABELS.keys())
@@ -246,11 +261,7 @@ def _render_config_widgets() -> None:
             schema = st.session_state.get(_KEY_SCHEMA)
             model_class = st.session_state.get(_KEY_MODEL_CLASS)
             if schema is None:
-                st.warning("Build and finalize a schema in the main panel first.")
-                st.session_state[_KEY_DATASET_DIR] = dataset_dir.strip()
-                st.session_state[_KEY_SCHEMA_SOURCE] = schema_source
-                st.session_state[_KEY_MODE] = _MODE_LABELS[mode_label]
-                st.session_state[_KEY_VALIDATED] = False
+                st.warning("Build and finalize a schema below first.")
                 return
 
         st.session_state[_KEY_DATASET_DIR] = dataset_dir.strip()
