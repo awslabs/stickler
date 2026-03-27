@@ -1,12 +1,11 @@
-"""Annotation panel — mode-specific field entry and review UI.
+"""Annotation panel — field entry and review UI.
 
-Renders schema fields in the right-side panel with mode-specific workflows:
+Renders schema fields in the right-side panel using the Zero Start workflow:
 
-- **Zero Start**: All fields shown with empty inputs. User types values or
-  marks None. Provenance is always ``source="human"``.
-- **LLM Inference**: Pre-fill button, batch accept/reject, individual edit.
-  LLM values visually distinguished with 🤖 prefix.
-- **HITL**: Fields presented one at a time for accept/reject/edit review.
+- All fields shown with empty inputs. User types values or marks None.
+  Provenance is always ``source="human"`` for manual entry.
+- Optional Auto-annotate button pre-fills fields via LLM.
+- Optional Locate button finds field values in the PDF.
 
 Auto-saves on every field change via :class:`AnnotationSerializer`.
 """
@@ -20,7 +19,6 @@ from pathlib import Path
 import streamlit as st
 
 from .models import (
-    AnnotationMode,
     AnnotationState,
     FieldAnnotation,
     FieldProvenance,
@@ -42,7 +40,6 @@ class AnnotationPanel:
     def __init__(
         self,
         schema: dict,
-        mode: AnnotationMode,
         annotation_state: AnnotationState,
         pdf_path: Path,
         session=None,
@@ -50,7 +47,6 @@ class AnnotationPanel:
         localize_fn=None,
     ) -> None:
         self.schema = schema
-        self.mode = mode
         self.state = annotation_state
         self.pdf_path = pdf_path
         self.session = session  # AnnotationSession | None
@@ -460,201 +456,9 @@ class AnnotationPanel:
             completion_slot.success("🎉 All fields annotated! Move to the next document.")
 
     # ------------------------------------------------------------------
-    # LLM Inference
-    # ------------------------------------------------------------------
-
-    def render_llm_inference(self) -> None:
-        """Render LLM inference mode with pre-fill, batch ops, and editing."""
-        annotated, total = self._annotated_count()
-
-        col_title, col_hint = st.columns([3, 1])
-        with col_title:
-            st.subheader("LLM Inference")
-        with col_hint:
-            st.markdown(
-                "<div style='text-align:right;padding-top:12px;color:#888;font-size:12px'>Tab to move between fields</div>",
-                unsafe_allow_html=True,
-            )
-
-        self._render_progress()
-
-        has_llm_fields = any(
-            f in self.state.fields and self.state.fields[f].provenance.source == "llm"
-            for f in self.fields
-        )
-
-        if not has_llm_fields:
-            st.info("Click **Pre-fill** to send this document to the LLM for automatic field extraction.")
-            if st.button("🤖 Pre-fill with LLM", key="llm_prefill_btn", type="primary",
-                         help="Pre-fill all fields using AWS Bedrock (Claude). "
-                              "Sends PDF pages as images to the LLM and extracts field values. "
-                              "Configure model and region in src/stickler/annotator/llm_backend.py"):
-                if self.prefill_fn is None:
-                    st.error("LLM backend not configured.")
-                else:
-                    with st.spinner("Extracting fields with LLM…"):
-                        try:
-                            predictions = self.prefill_fn(self.pdf_path, self.schema)
-                        except Exception as exc:
-                            self._show_llm_error(exc)
-                            predictions = None
-                    if predictions:
-                        for field_name in self.fields:
-                            raw_val = predictions.get(field_name)
-                            is_none = raw_val is None
-                            # For array fields, store list directly
-                            field_schema = self._field_schemas.get(field_name, {})
-                            if field_schema.get("type") == "array":
-                                value = raw_val if isinstance(raw_val, list) else None
-                                is_none = value is None
-                                # Sync session_state array cache
-                                items_key = f"array_items_{self._doc_key}_{field_name}"
-                                st.session_state[items_key] = value or []
-                            else:
-                                value = None if is_none else str(raw_val) if raw_val is not None else None
-                                # Sync widget keys so inputs reflect values after rerun
-                                st.session_state[f"zero_val_{self._doc_key}_{field_name}"] = (
-                                    "" if is_none else (str(value) if value is not None else "")
-                                )
-                                st.session_state[f"zero_none_{self._doc_key}_{field_name}"] = is_none
-                            self.state.fields[field_name] = FieldAnnotation(
-                                value=value,
-                                is_none=is_none,
-                                provenance=FieldProvenance(source="llm", checked=False),
-                            )
-                        self._auto_save()
-                        st.rerun()
-            st.markdown("---")
-        else:
-            col_accept, col_reject, col_spacer = st.columns([1, 1, 2])
-            with col_accept:
-                if st.button("✅ Accept All", key="llm_accept_all", use_container_width=True):
-                    for f in self.fields:
-                        if f in self.state.fields and self.state.fields[f].provenance.source == "llm":
-                            self.state.fields[f].provenance.checked = True
-                    self._auto_save()
-                    st.rerun()
-            with col_reject:
-                if st.button("❌ Reject All", key="llm_reject_all", use_container_width=True):
-                    for f in self.fields:
-                        if f in self.state.fields and self.state.fields[f].provenance.source == "llm":
-                            self.state.fields[f] = FieldAnnotation(
-                                value=None, is_none=False,
-                                provenance=FieldProvenance(source="human", checked=False),
-                            )
-                    self._auto_save()
-                    st.rerun()
-            st.markdown("---")
-
-        for field_name in self.fields:
-            existing = self.state.fields.get(field_name)
-            is_llm = existing is not None and existing.provenance.source == "llm"
-            label = f"🤖 {field_name}" if is_llm else field_name
-            self._render_field(field_name, label=label, source="human")
-
-    # ------------------------------------------------------------------
-    # HITL
-    # ------------------------------------------------------------------
-
-    def render_hitl(self) -> None:
-        """Render HITL mode — one field at a time for accept/reject/edit."""
-        st.subheader("Human-in-the-Loop Review")
-
-        has_llm_fields = any(
-            f in self.state.fields and self.state.fields[f].provenance.source == "llm"
-            for f in self.fields
-        )
-
-        if not has_llm_fields:
-            st.info("Click **Pre-fill** to send this document to the LLM, then review each prediction.")
-            if st.button("🤖 Pre-fill with LLM", key="hitl_prefill_btn", type="primary"):
-                st.info("LLM pre-fill will be wired in app.py.")
-            self._render_progress()
-            return
-
-        llm_fields = [
-            f for f in self.fields
-            if f in self.state.fields and self.state.fields[f].provenance.source == "llm"
-        ]
-        reviewed = sum(1 for f in llm_fields if self.state.fields[f].provenance.checked)
-        pct = reviewed / len(llm_fields) if llm_fields else 0
-        st.progress(pct, text=f"**{reviewed} / {len(llm_fields)}** predictions reviewed")
-
-        unreviewed = [f for f in llm_fields if not self.state.fields[f].provenance.checked]
-
-        if not unreviewed:
-            st.success("🎉 All predictions reviewed!")
-            self._render_progress()
-            st.markdown("---")
-            for field_name in self.fields:
-                existing = self.state.fields.get(field_name)
-                if existing:
-                    icon = "🤖" if existing.provenance.source == "llm" else "👤"
-                    val = "—" if existing.is_none else str(existing.value or "")
-                    st.markdown(f"{icon} **{field_name}:** {val}")
-            return
-
-        current_field = unreviewed[0]
-        fa = self.state.fields[current_field]
-
-        # Card-style review UI
-        st.markdown(f"#### Reviewing field `{current_field}`")
-        st.markdown(
-            f"<div style='background:#f0f4ff;border-left:4px solid #4a90e2;padding:12px 16px;border-radius:4px;font-size:16px'>"
-            f"🤖 <strong>LLM prediction:</strong> {fa.value or '—'}"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-        st.markdown("")
-
-        col_accept, col_reject, col_edit = st.columns(3)
-        with col_accept:
-            if st.button("✅ Accept", key=f"hitl_accept_{self._doc_key}_{current_field}", use_container_width=True, type="primary"):
-                fa.provenance.checked = True
-                self._auto_save()
-                st.rerun()
-        with col_reject:
-            if st.button("❌ Reject", key=f"hitl_reject_{self._doc_key}_{current_field}", use_container_width=True):
-                self.state.fields[current_field] = FieldAnnotation(
-                    value=None, is_none=False,
-                    provenance=FieldProvenance(source="human", checked=False),
-                )
-                self._auto_save()
-                st.rerun()
-        with col_edit:
-            edit_key = f"hitl_editing_{self._doc_key}_{current_field}"
-            if st.button("✏️ Edit", key=f"hitl_edit_btn_{self._doc_key}_{current_field}", use_container_width=True):
-                st.session_state[edit_key] = True
-
-        if st.session_state.get(f"hitl_editing_{self._doc_key}_{current_field}", False):
-            st.markdown("---")
-            col_input, col_none = st.columns([3, 1])
-            with col_none:
-                is_none = st.checkbox("N/A", value=False, key=f"hitl_none_{self._doc_key}_{current_field}")
-            with col_input:
-                new_val = st.text_input(
-                    f"New value for {current_field}",
-                    value=str(fa.value or ""),
-                    disabled=is_none,
-                    key=f"hitl_val_{self._doc_key}_{current_field}",
-                )
-            if st.button("Save", key=f"hitl_save_{self._doc_key}_{current_field}", type="primary"):
-                final_value = None if is_none else (new_val if new_val != "" else None)
-                self._update_field(current_field, final_value, is_none, source="human", checked=False)
-                st.session_state[f"hitl_editing_{self._doc_key}_{current_field}"] = False
-                st.rerun()
-
-    # ------------------------------------------------------------------
     # Dispatch
     # ------------------------------------------------------------------
 
     def render(self) -> None:
-        """Dispatch to the mode-specific renderer."""
-        if self.mode == AnnotationMode.ZERO_START:
-            self.render_zero_start()
-        elif self.mode == AnnotationMode.LLM_INFERENCE:
-            self.render_llm_inference()
-        elif self.mode == AnnotationMode.HITL:
-            self.render_hitl()
-        else:
-            st.error(f"Unknown annotation mode: {self.mode}")
+        """Render the annotation panel (always Zero Start workflow)."""
+        self.render_zero_start()

@@ -5,7 +5,9 @@ Renders a Streamlit sidebar where users configure:
 - **Dataset directory path** — validated to exist on disk.
 - **Schema source** — one of: JSON Schema file, Pydantic import path,
   or the in-app Schema Builder.
-- **Operating mode** — Zero Start, LLM Inference, or HITL.
+
+The tool always operates in Zero Start mode (manual annotation with
+optional Auto-annotate and Locate buttons).
 
 All configuration is stored in ``st.session_state`` and validated on
 apply. Invalid paths or schemas surface via ``st.error()`` with
@@ -52,12 +54,7 @@ SCHEMA_SOURCE_BUILDER = "Schema Builder"
 
 SCHEMA_SOURCES = (SCHEMA_SOURCE_JSON, SCHEMA_SOURCE_PYDANTIC, SCHEMA_SOURCE_BUILDER)
 
-# Mode display labels mapped to enum values
-_MODE_LABELS: dict[str, AnnotationMode] = {
-    "Zero Start": AnnotationMode.ZERO_START,
-    "LLM Inference": AnnotationMode.LLM_INFERENCE,
-    "HITL": AnnotationMode.HITL,
-}
+
 
 
 @dataclass
@@ -223,24 +220,6 @@ def _render_config_widgets() -> None:
         elif st.session_state.get(_KEY_SCHEMA) is not None:
             st.success("✓ Schema ready. Click **Apply Configuration** to start.")
 
-    # --- Operating mode ---
-    mode_labels = list(_MODE_LABELS.keys())
-    current_mode = st.session_state.get(_KEY_MODE, AnnotationMode.ZERO_START)
-    current_label = mode_labels[0]
-    for label, mode_val in _MODE_LABELS.items():
-        if mode_val == current_mode:
-            current_label = label
-            break
-    mode_index = mode_labels.index(current_label)
-
-    mode_label = st.selectbox(
-        "Operating mode",
-        mode_labels,
-        index=mode_index,
-        help="Zero Start: manual entry. LLM Inference: Bedrock pre-fills. HITL: field-by-field review.",
-        key="__config_mode_input",
-    )
-
     # --- Apply button ---
     st.markdown("---")
     apply_clicked = st.button("Apply Configuration", key="__config_apply", type="primary", use_container_width=True)
@@ -268,7 +247,7 @@ def _render_config_widgets() -> None:
         st.session_state[_KEY_SCHEMA_SOURCE] = schema_source
         st.session_state[_KEY_SCHEMA_PATH] = schema_path.strip()
         st.session_state[_KEY_PYDANTIC_IMPORT] = pydantic_import.strip()
-        st.session_state[_KEY_MODE] = _MODE_LABELS[mode_label]
+        st.session_state[_KEY_MODE] = AnnotationMode.ZERO_START
         st.session_state[_KEY_SCHEMA] = schema
         st.session_state[_KEY_MODEL_CLASS] = model_class
         st.session_state[_KEY_VALIDATED] = True
@@ -320,7 +299,7 @@ def apply_config_from_query_params() -> bool:
     Two supported URL patterns:
 
     1. New session (schema file required):
-       ``?dataset=./files&schema=./files/schema.json&mode=zero_start``
+       ``?dataset=./files&schema=./files/schema.json``
 
     2. Resume existing session (schema loaded from manifest):
        ``?dataset=./files&session=<guid>``
@@ -345,14 +324,6 @@ def apply_config_from_query_params() -> bool:
 
     session_id = params.get("session", "").strip()
     schema_path = params.get("schema", "").strip()
-    mode_str = params.get("mode", "zero_start").strip().lower()
-
-    mode_map = {
-        "zero_start": AnnotationMode.ZERO_START,
-        "llm_inference": AnnotationMode.LLM_INFERENCE,
-        "hitl": AnnotationMode.HITL,
-    }
-    mode = mode_map.get(mode_str, AnnotationMode.ZERO_START)
 
     # Pattern 2: resume by session GUID — load schema from manifest
     if session_id:
@@ -374,7 +345,7 @@ def apply_config_from_query_params() -> bool:
         st.session_state[_KEY_DATASET_DIR] = dataset
         st.session_state[_KEY_SCHEMA_SOURCE] = SCHEMA_SOURCE_JSON
         st.session_state[_KEY_SCHEMA_PATH] = ""  # schema came from manifest, not a file
-        st.session_state[_KEY_MODE] = mode
+        st.session_state[_KEY_MODE] = AnnotationMode.ZERO_START
         st.session_state[_KEY_SCHEMA] = schema
         st.session_state[_KEY_MODEL_CLASS] = model_class
         st.session_state[_KEY_VALIDATED] = True
@@ -401,10 +372,10 @@ def apply_config_from_query_params() -> bool:
     st.session_state[_KEY_DATASET_DIR] = dataset
     st.session_state[_KEY_SCHEMA_SOURCE] = SCHEMA_SOURCE_JSON
     st.session_state[_KEY_SCHEMA_PATH] = schema_path
-    st.session_state[_KEY_MODE] = mode
+    st.session_state[_KEY_MODE] = AnnotationMode.ZERO_START
     st.session_state[_KEY_SCHEMA] = schema
     st.session_state[_KEY_MODEL_CLASS] = model_class
     st.session_state[_KEY_VALIDATED] = True
     st.session_state["_query_params_applied"] = True
-    logger.info("Config auto-applied from query params: dataset=%s schema=%s mode=%s", dataset, schema_path, mode_str)
+    logger.info("Config auto-applied from query params: dataset=%s schema=%s", dataset, schema_path)
     return True

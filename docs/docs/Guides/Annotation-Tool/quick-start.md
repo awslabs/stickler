@@ -1,5 +1,7 @@
 # Quick Start
 
+Point the tool at a folder of PDFs, pick a schema, and start annotating. LLM features are optional — you can annotate entirely by hand.
+
 ## Prerequisites
 
 - Python 3.12+
@@ -28,13 +30,11 @@ make annotate
 
 1. Enter a dataset directory path (folder containing PDFs)
 2. Choose a schema source — JSON Schema file, Pydantic import, or the built-in Schema Builder
-3. Select an operating mode:
-    - **Zero Start** — manual annotation from scratch
-    - **LLM Inference** — Bedrock pre-fills all fields for batch review
-    - **HITL** — field-by-field review of LLM predictions
-4. Navigate documents with Prev/Next or the document picker
-5. Fill in field values or mark fields as N/A
-6. Annotations auto-save on every change
+3. Navigate documents with Prev/Next or the document picker
+4. Fill in field values or mark fields as N/A
+5. Use **Auto-annotate** to pre-fill fields via LLM (optional, requires AWS credentials)
+6. Use **Locate** to find where field values appear in the PDF (optional)
+7. Annotations auto-save on every change
 
 ## Deep Links
 
@@ -42,7 +42,7 @@ Share a URL that skips configuration:
 
 ```
 # New session
-http://localhost:8501/?dataset=./files&schema=./files/schema.json&mode=zero_start
+http://localhost:8501/?dataset=./files&schema=./files/schema.json
 
 # Resume session (schema loaded from manifest)
 http://localhost:8501/?dataset=./files&session=<guid>&doc=invoice.pdf

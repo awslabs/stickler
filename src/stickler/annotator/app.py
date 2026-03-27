@@ -31,7 +31,7 @@ from stickler.annotator.config import (
     render_config_dialog,
 )
 from stickler.annotator.dataset import DatasetManager
-from stickler.annotator.models import AnnotationMode, AnnotationState, DocumentStatus
+from stickler.annotator.models import AnnotationState, DocumentStatus
 from stickler.annotator.pdf_viewer import PDFViewer
 from stickler.annotator.schema_builder import SchemaBuilder
 from stickler.annotator.schema_loader import SchemaLoader
@@ -440,7 +440,7 @@ def _render_landing_page() -> bool:
                                 st.session_state[_KEY_DATASET_DIR] = dataset_dir.strip()
                                 st.session_state[_KEY_SCHEMA_SOURCE] = SCHEMA_SOURCE_JSON
                                 st.session_state[_KEY_SCHEMA_PATH] = ""
-                                st.session_state[_KEY_MODE] = AnnotationMode.ZERO_START
+                                st.session_state[_KEY_MODE] = "zero_start"
                                 st.session_state[_KEY_SCHEMA] = session_obj.schema
                                 st.session_state[_KEY_MODEL_CLASS] = model_class
                                 st.session_state[_KEY_VALIDATED] = True
@@ -548,7 +548,6 @@ def _app() -> None:
         schema_name = schema_path_stored.split("/")[-1] if schema_path_stored else (
             config.schema.get("title", "schema")
         )
-        mode_label = config.mode.value.replace("_", " ").title()
 
         session_id = st.session_state.get("_session_id", "")
         import urllib.parse
@@ -561,7 +560,6 @@ def _app() -> None:
             deep_link_params = urllib.parse.urlencode({
                 "dataset": str(config.dataset_dir),
                 "schema": schema_path_stored,
-                "mode": config.mode.value,
             })
         deep_link = f"http://localhost:8501/?{deep_link_params}"
 
@@ -571,17 +569,12 @@ def _app() -> None:
             abs_dataset = str(config.dataset_dir.resolve())
             abs_annotations = str((config.dataset_dir / ".annotations").resolve())
             session_id_short = session_id[:8] + "…" if session_id else "—"
-            tooltip = (
-                f"Dataset: {abs_dataset}&#10;"
-                f"Annotations: {abs_annotations}&#10;"
-                f"Session: {session_id_short}"
-            )
             st.markdown(
                 f"<div style='padding:2px 0;white-space:nowrap'>"
                 f"<span style='font-size:14px;font-weight:700'>KIE Annotation Tool</span>"
                 f"&nbsp;<span style='font-size:10px;color:#888'>"
                 f"<span class='kie-tooltip' data-tip='{abs_dataset}&#10;Annotations: {abs_annotations}&#10;Session: {session_id_short}'>&#128193; {dataset_name}</span>"
-                f" &middot; &#128203; {schema_name} &middot; &#9889; {mode_label}</span>"
+                f" &middot; &#128203; {schema_name}</span>"
                 f"</div>",
                 unsafe_allow_html=True,
             )
@@ -695,61 +688,59 @@ def _app() -> None:
         if state is None:
             return
 
-        # Build prefill function — available in LLM Inference and Zero Start modes
+        # Build prefill function — always available for Auto-annotate
         prefill_fn = None
-        if config.mode in (AnnotationMode.LLM_INFERENCE, AnnotationMode.ZERO_START):
-            try:
-                from stickler.annotator.llm_backend import (
-                    AVAILABLE_MODELS,
-                    DEFAULT_MODEL_LABEL,
-                    BedrockLLMBackend,
-                )
+        try:
+            from stickler.annotator.llm_backend import (
+                AVAILABLE_MODELS,
+                DEFAULT_MODEL_LABEL,
+                BedrockLLMBackend,
+            )
 
-                # Initialise model selection in session state
-                if "_llm_model_label" not in st.session_state:
-                    st.session_state["_llm_model_label"] = DEFAULT_MODEL_LABEL
+            # Initialise model selection in session state
+            if "_llm_model_label" not in st.session_state:
+                st.session_state["_llm_model_label"] = DEFAULT_MODEL_LABEL
 
-                selected_label = st.session_state["_llm_model_label"]
-                selected_model_id = AVAILABLE_MODELS.get(selected_label, AVAILABLE_MODELS[DEFAULT_MODEL_LABEL])
+            selected_label = st.session_state["_llm_model_label"]
+            selected_model_id = AVAILABLE_MODELS.get(selected_label, AVAILABLE_MODELS[DEFAULT_MODEL_LABEL])
 
-                # (Re)create backend when model changes
-                _backend_key = "_llm_backend"
-                _model_key = "_llm_backend_model_id"
-                if (
-                    _backend_key not in st.session_state
-                    or st.session_state.get(_model_key) != selected_model_id
-                ):
-                    st.session_state[_backend_key] = BedrockLLMBackend(model_id=selected_model_id)
-                    st.session_state[_model_key] = selected_model_id
+            # (Re)create backend when model changes
+            _backend_key = "_llm_backend"
+            _model_key = "_llm_backend_model_id"
+            if (
+                _backend_key not in st.session_state
+                or st.session_state.get(_model_key) != selected_model_id
+            ):
+                st.session_state[_backend_key] = BedrockLLMBackend(model_id=selected_model_id)
+                st.session_state[_model_key] = selected_model_id
 
-                backend = st.session_state[_backend_key]
-                prefill_fn = backend.prefill
-            except Exception as exc:
-                logger.debug("LLM backend unavailable: %s", exc)
+            backend = st.session_state[_backend_key]
+            prefill_fn = backend.prefill
+        except Exception as exc:
+            logger.debug("LLM backend unavailable: %s", exc)
 
         # Build localize function
         localize_fn = None
-        if config.mode in (AnnotationMode.LLM_INFERENCE, AnnotationMode.ZERO_START):
-            try:
-                from stickler.annotator.llm_backend import (
-                    LOCALIZATION_MODELS,
-                    DEFAULT_LOCALIZATION_MODEL_LABEL,
-                )
+        try:
+            from stickler.annotator.llm_backend import (
+                LOCALIZATION_MODELS,
+                DEFAULT_LOCALIZATION_MODEL_LABEL,
+            )
 
-                if "_loc_model_label" not in st.session_state:
-                    st.session_state["_loc_model_label"] = DEFAULT_LOCALIZATION_MODEL_LABEL
+            if "_loc_model_label" not in st.session_state:
+                st.session_state["_loc_model_label"] = DEFAULT_LOCALIZATION_MODEL_LABEL
 
-                loc_label = st.session_state["_loc_model_label"]
-                loc_model_id = LOCALIZATION_MODELS.get(loc_label, LOCALIZATION_MODELS[DEFAULT_LOCALIZATION_MODEL_LABEL])
+            loc_label = st.session_state["_loc_model_label"]
+            loc_model_id = LOCALIZATION_MODELS.get(loc_label, LOCALIZATION_MODELS[DEFAULT_LOCALIZATION_MODEL_LABEL])
 
-                # Reuse the extraction backend instance but pass localization model_id
-                if "_llm_backend" in st.session_state:
-                    _be = st.session_state["_llm_backend"]
-                    localize_fn = lambda pdf, fv, _be=_be, _mid=loc_model_id: _be.localize(pdf, fv, model_id=_mid)
-            except Exception as exc:
-                logger.debug("Localization backend unavailable: %s", exc)
+            # Reuse the extraction backend instance but pass localization model_id
+            if "_llm_backend" in st.session_state:
+                _be = st.session_state["_llm_backend"]
+                localize_fn = lambda pdf, fv, _be=_be, _mid=loc_model_id: _be.localize(pdf, fv, model_id=_mid)
+        except Exception as exc:
+            logger.debug("Localization backend unavailable: %s", exc)
 
-        panel = AnnotationPanel(config.schema, config.mode, state, selected_pdf, session=session, prefill_fn=prefill_fn, localize_fn=localize_fn)
+        panel = AnnotationPanel(config.schema, state, selected_pdf, session=session, prefill_fn=prefill_fn, localize_fn=localize_fn)
         panel.render()
 
 

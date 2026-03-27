@@ -86,10 +86,7 @@ Click the **⚙️** gear icon in the top-right to configure:
 | Setting | Description |
 |---|---|
 | Dataset directory | Path to folder containing PDFs |
-| Schema source | JSON Schema file, Pydantic import path, or Schema Builder |
-| Operating mode | Zero Start, LLM Inference, or HITL |
-
-Once applied, the gear shows a summary: `📁 dataset · 📋 schema · ⚡ mode`.
+| Schema source | JSON Schema file, Pydantic import path, or Schema Builder (beta) |
 
 ---
 
@@ -111,19 +108,15 @@ The `doc` parameter preserves the selected document across page refreshes. The a
 
 ---
 
-## Annotation Modes
+## Annotation Workflow
 
-### Zero Start
-Manual annotation from scratch. All fields shown with text inputs and N/A checkboxes. Progress bar tracks completion. Auto-saves on every field change (💾 toast confirms).
+All fields are shown with text inputs and N/A checkboxes. Progress bar tracks completion. Auto-saves on every field change (💾 toast confirms).
 
-### LLM Inference
-Send the PDF to AWS Bedrock to pre-fill all fields. Model is selectable (Haiku 4.5, Sonnet 4.6, Opus 4.6, Nova 2 Lite) via the ⚙ popover. Review predictions in batch — Accept All, Reject All, or edit individual fields. LLM values shown with 🤖 prefix.
+### Auto-Annotate
+Click **🤖 Auto-annotate** to pre-fill all fields using AWS Bedrock. Model is selectable (Haiku 4.5, Sonnet 4.6, Opus 4.6, Nova 2 Lite) via the ⚙ popover.
 
 ### Field Localization
 After extraction, click **📍 Locate** to run a second-stage localization pass. A Haiku orchestrator dispatches per-field Converse API calls to the selected localization model (Nova Pro by default). Bounding boxes are drawn on the PDF viewer with colored overlays and pill labels. Localization model is selectable independently from the extraction model.
-
-### HITL (Human-in-the-Loop)
-Same as LLM Inference but field-by-field review. Each prediction shown one at a time with Accept / Reject / Edit controls. Review progress tracked separately from annotation progress.
 
 ---
 
@@ -167,7 +160,7 @@ The annotation tool is designed to produce ground truth data for stickler evalua
 
 ### 1. Annotate
 
-Run the tool against your PDF dataset, annotate each document field by field. Use LLM Inference or HITL to speed up annotation — the provenance metadata tracks which values were human-verified.
+Run the tool against your PDF dataset, annotate each document field by field. Use Auto-annotate to speed up annotation — the provenance metadata tracks which values were human-verified.
 
 ### 2. Load Annotations
 
@@ -255,7 +248,7 @@ verified_data = {
 | `schema_loader.py` | Load schema from file, import path, or builder output |
 | `schema_builder.py` | In-app schema builder UI |
 | `pdf_viewer.py` | Lazy PDF page rendering via pdf2image, bounding box overlay |
-| `annotation_panel.py` | Field entry UI, type-aware rendering (scalar + array), all three modes |
+| `annotation_panel.py` | Field entry UI, type-aware rendering (scalar + array) |
 | `serializer.py` | `AnnotationManifest`, `AnnotationSession`, `AnnotationSerializer` |
 | `llm_backend.py` | AWS Bedrock integration — extraction (Strands agent) + localization (raw Converse) |
 | `models.py` | Pydantic models: `AnnotationState`, `FieldAnnotation`, `FieldProvenance`, `FieldLocation` |
