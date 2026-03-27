@@ -342,7 +342,7 @@ class AnnotationPanel:
                 if st.button("🤖 Auto-annotate", key="zero_prefill_btn", use_container_width=True,
                              help="Pre-fill all fields using the selected Bedrock model. "
                                   "Sends PDF pages as images to the LLM and extracts field values."):
-                    with st.spinner("Extracting fields with LLM…"):
+                    with st.spinner(f"Extracting fields from {self.pdf_path.name}…"):
                         try:
                             predictions = self.prefill_fn(self.pdf_path, self.schema)
                         except Exception as exc:

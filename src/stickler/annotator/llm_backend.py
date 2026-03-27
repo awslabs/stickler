@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 _DEFAULT_REGION = "us-east-1"
-_MAX_PAGES = 8
+_MAX_PAGES = 100
 
 # Models available for auto-annotate. Keys are display labels, values are
 # cross-region model IDs (us. prefix for cross-region inference).

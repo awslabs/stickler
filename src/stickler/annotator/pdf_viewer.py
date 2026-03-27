@@ -196,6 +196,7 @@ class PDFViewer:
             rotation = st.session_state.get(f"pdf_rotation_{self.pdf_path}", 0)
             if rotation:
                 page_image = page_image.rotate(-rotation, expand=True)
+
             st.image(page_image, use_container_width=True)
         except Exception as exc:
             st.error(f"Failed to render page {current_page}: {exc}")

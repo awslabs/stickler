@@ -397,7 +397,7 @@ def _render_landing_page() -> bool:
                             if _vals and all(v is not None for v in _vals):
                                 _completed += 1
                         except Exception:
-                            pass
+                            logger.debug("Skipping unreadable annotation file: %s", _f)
                 pct = int(100 * _completed / doc_count) if doc_count else 0
 
                 col_info, col_btn = st.columns([4, 1])
@@ -471,13 +471,20 @@ def _render_dataset_progress(dataset_dir: Path, session_id: str) -> None:
         for f in session_dir.glob("*.json"):
             try:
                 data = _json.loads(f.read_text())
-                vals = list(data.get("data", {}).values())
-                if vals and all(v is not None for v in vals):
+                metadata = data.get("metadata", {})
+                fields_meta = metadata.get("fields", {})
+                data_fields = data.get("data", {})
+                # A field is annotated if it has provenance metadata
+                num_annotated = len(fields_meta)
+                num_total = len(data_fields)
+                if num_annotated == 0:
+                    pass  # not started
+                elif num_total > 0 and num_annotated >= num_total:
                     completed += 1
-                elif vals:
+                else:
                     in_progress += 1
             except Exception:
-                pass
+                logger.debug("Skipping unreadable annotation file: %s", f)
 
     not_started = total - completed - in_progress
     pct = completed / total
