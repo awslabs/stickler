@@ -287,8 +287,19 @@ def _render_document_queue(
     nav_key = "_doc_nav_idx"
 
     if nav_key not in st.session_state:
-        st.session_state[nav_key] = 0
+        # Check for doc query param to restore position on reload
+        doc_param = st.query_params.get("doc", "").strip()
+        initial_idx = 0
+        if doc_param:
+            for i, doc in enumerate(documents):
+                if doc.path.name == doc_param:
+                    initial_idx = i
+                    break
+        st.session_state[nav_key] = initial_idx
     current = max(0, min(st.session_state[nav_key], n - 1))
+
+    # Keep doc query param in sync so reload preserves position
+    st.query_params["doc"] = documents[current].path.name
 
     col_prev, col_next, col_label, col_pick = st.columns([1.2, 1.2, 4, 1.2])
 
@@ -392,9 +403,13 @@ def _render_landing_page() -> bool:
                     for _f in _sess_dir.glob("*.json"):
                         try:
                             _data = _json.loads(_f.read_text())
-                            _vals = list(_data.get("data", {}).values())
+                            _metadata = _data.get("metadata", {})
+                            _fields_meta = _metadata.get("fields", {})
+                            _data_fields = _data.get("data", {})
+                            _num_annotated = len(_fields_meta)
+                            _num_total = len(_data_fields)
                             _annotated += 1
-                            if _vals and all(v is not None for v in _vals):
+                            if _num_total > 0 and _num_annotated >= _num_total:
                                 _completed += 1
                         except Exception:
                             logger.debug("Skipping unreadable annotation file: %s", _f)
@@ -638,6 +653,7 @@ def _app() -> None:
     deep_link = f"http://localhost:8502/?{deep_link_params}"
 
     # 4. Side-by-side layout: PDF viewer (left, wider) + annotation panel (right, narrower)
+    # Pre-load annotation state to make field locations available for the viewer
     left_col, right_col = st.columns([3, 2])
 
     with left_col:
@@ -647,23 +663,35 @@ def _app() -> None:
 
         last_pdf_key = "last_selected_pdf"
         if st.session_state.get(last_pdf_key) != str(selected_pdf):
-            # Clear cached annotation state for the previous document
             old_pdf = st.session_state.get(last_pdf_key)
             if old_pdf:
                 st.session_state.pop(f"annotation_state_{old_pdf}", None)
-                # Reset page to 1 for the old document
                 st.session_state.pop(f"pdf_page_{old_pdf}", None)
+                st.session_state.pop(f"_field_locations_{old_pdf}", None)
             st.session_state[last_pdf_key] = str(selected_pdf)
-            # Ensure new document starts on page 1
             st.session_state[f"pdf_page_{selected_pdf}"] = 1
 
+        # Pre-load annotation state so field locations are available for the viewer
+        state = _resume_or_fresh_state(selected_pdf, config.schema, session=session)
+
+        # Populate field locations from loaded state for bbox overlay
+        _loc_key = f"_field_locations_{selected_pdf}"
+        if state is not None:
+            locs = {
+                name: fa.location
+                for name, fa in state.fields.items()
+                if fa.location is not None
+            }
+            if locs:
+                st.session_state[_loc_key] = locs
+
         viewer = PDFViewer(selected_pdf)
-        viewer.render()
+        field_locations = st.session_state.get(_loc_key, {})
+        viewer.render(field_locations=field_locations if field_locations else None)
 
     with right_col:
         if selected_pdf is None:
             return
-        state = _resume_or_fresh_state(selected_pdf, config.schema, session=session)
         if state is None:
             return
 
@@ -699,7 +727,29 @@ def _app() -> None:
             except Exception as exc:
                 logger.debug("LLM backend unavailable: %s", exc)
 
-        panel = AnnotationPanel(config.schema, config.mode, state, selected_pdf, session=session, prefill_fn=prefill_fn)
+        # Build localize function
+        localize_fn = None
+        if config.mode in (AnnotationMode.LLM_INFERENCE, AnnotationMode.ZERO_START):
+            try:
+                from stickler.annotator.llm_backend import (
+                    LOCALIZATION_MODELS,
+                    DEFAULT_LOCALIZATION_MODEL_LABEL,
+                )
+
+                if "_loc_model_label" not in st.session_state:
+                    st.session_state["_loc_model_label"] = DEFAULT_LOCALIZATION_MODEL_LABEL
+
+                loc_label = st.session_state["_loc_model_label"]
+                loc_model_id = LOCALIZATION_MODELS.get(loc_label, LOCALIZATION_MODELS[DEFAULT_LOCALIZATION_MODEL_LABEL])
+
+                # Reuse the extraction backend instance but pass localization model_id
+                if "_llm_backend" in st.session_state:
+                    _be = st.session_state["_llm_backend"]
+                    localize_fn = lambda pdf, fv, _be=_be, _mid=loc_model_id: _be.localize(pdf, fv, model_id=_mid)
+            except Exception as exc:
+                logger.debug("Localization backend unavailable: %s", exc)
+
+        panel = AnnotationPanel(config.schema, config.mode, state, selected_pdf, session=session, prefill_fn=prefill_fn, localize_fn=localize_fn)
         panel.render()
 
 

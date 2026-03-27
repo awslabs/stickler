@@ -24,6 +24,7 @@ from .models import (
     AnnotationState,
     DocumentStatus,
     FieldAnnotation,
+    FieldLocation,
     FieldProvenance,
 )
 from .pdf_viewer import PDFViewer
@@ -41,6 +42,7 @@ __all__ = [
     "DatasetManager",
     "DocumentStatus",
     "FieldAnnotation",
+    "FieldLocation",
     "FieldProvenance",
     "PDFDocument",
     "PDFViewer",

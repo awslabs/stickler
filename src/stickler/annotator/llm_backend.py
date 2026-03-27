@@ -29,6 +29,17 @@ AVAILABLE_MODELS: dict[str, str] = {
 
 DEFAULT_MODEL_LABEL = "Claude Haiku 4.5"
 
+# Models available for localization (bbox detection).
+# All options use Haiku as orchestrator + the selected model via raw Converse.
+LOCALIZATION_MODELS: dict[str, str] = {
+    "Haiku → Nova Pro": "us.amazon.nova-pro-v1:0",
+    "Haiku → Nova 2 Lite": "us.amazon.nova-2-lite-v1:0",
+    "Haiku → Sonnet 4.6": "us.anthropic.claude-sonnet-4-6",
+    "Haiku → Haiku 4.5": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+}
+
+DEFAULT_LOCALIZATION_MODEL_LABEL = "Haiku → Nova Pro"
+
 
 def _pdf_to_image_bytes(pdf_path: Path, max_pages: int = _MAX_PAGES) -> list[bytes]:
     """Rasterise PDF pages to PNG bytes at 150 dpi."""
@@ -197,3 +208,155 @@ class BedrockLLMBackend:
         except Exception:
             pages = _MAX_PAGES
         return (pages * 1600 / 1000) * 0.00025
+
+    def localize(
+        self,
+        pdf_path: Path,
+        field_values: dict[str, object],
+        model_id: str | None = None,
+    ) -> dict[str, dict]:
+        """Stage 2: locate extracted field values in the PDF pages.
+
+        Uses a Claude agent that calls a `localize_single_field` tool for each
+        field. The tool makes a raw Converse API call to the localization model
+        (e.g. Nova Pro) — no tool use required on the localization model side.
+        This allows using models that don't support tool use for bbox detection.
+        """
+        if not pdf_path.exists():
+            raise FileNotFoundError(f"PDF not found: {pdf_path}")
+
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except ImportError:
+            pass
+
+        page_bytes = _pdf_to_image_bytes(pdf_path)
+
+        from strands import Agent
+        from strands.models import BedrockModel
+        from strands.types.content import ContentBlock, ImageContent
+
+        mid = model_id or self.model_id
+        loc_tool = _make_converse_localize_tool(page_bytes, mid, self.region)
+
+        # Use a cheap/fast model for orchestration (it just calls the tool)
+        orchestrator_model = BedrockModel(
+            model_id="us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            region_name=self.region,
+        )
+        agent = Agent(model=orchestrator_model, tools=[loc_tool])
+
+        fields_desc = "\n".join(
+            f'- {name}: "{value}"'
+            for name, value in field_values.items()
+            if value is not None
+        )
+
+        prompt = (
+            f"Localize these document fields by calling `localize_single_field` for each one:\n"
+            f"{fields_desc}\n\n"
+            "Call the tool once per field. After all calls complete, summarize the results."
+        )
+
+        try:
+            agent(prompt)
+        except Exception as exc:
+            raise RuntimeError(f"Localization agent error: {exc}") from exc
+
+        # Collect results from all tool calls
+        validated: dict[str, dict] = {}
+        for msg in agent.messages:
+            if msg.get("role") != "user":
+                continue
+            for block in msg.get("content", []):
+                tr = block.get("toolResult")
+                if tr and tr.get("status") == "success":
+                    for cb in tr.get("content", []):
+                        text = cb.get("text", "")
+                        if text:
+                            try:
+                                data = json.loads(text)
+                                fname = data.get("field_name")
+                                if fname and "page" in data and "bbox" in data:
+                                    coords = [float(c) for c in data["bbox"]]
+                                    logger.info(
+                                        "Localized %s → page=%d bbox=[%.3f, %.3f, %.3f, %.3f]",
+                                        fname, data["page"], *coords,
+                                    )
+                                    validated[fname] = {
+                                        "page": data["page"],
+                                        "bbox": coords,
+                                    }
+                            except (json.JSONDecodeError, TypeError, ValueError):
+                                continue
+        return validated
+
+
+def _make_converse_localize_tool(page_bytes: list[bytes], model_id: str, region: str):
+    """Return a strands @tool that calls Converse API directly for single-field localization."""
+    import boto3
+    from botocore.config import Config as BotoConfig
+    from strands import tool
+
+    bedrock = boto3.client(
+        "bedrock-runtime",
+        region_name=region,
+        config=BotoConfig(read_timeout=120, retries={"max_attempts": 3, "mode": "adaptive"}),
+    )
+
+    # Pre-build image content blocks for the Converse API
+    image_blocks = []
+    for idx, pb in enumerate(page_bytes, 1):
+        image_blocks.append({"image": {"format": "png", "source": {"bytes": pb}}})
+        image_blocks.append({"text": f"[Page {idx}]"})
+
+    @tool
+    def localize_single_field(field_name: str, field_value: str) -> str:
+        """Locate a single field value in the document pages and return its bounding box.
+
+        Args:
+            field_name: The name of the field to locate.
+            field_value: The text value to find in the document.
+        """
+        content = list(image_blocks)
+        content.append({"text": (
+            f"Locate the text \"{field_value}\" (field: {field_name}) in the document.\n\n"
+            "Return ONLY a JSON object with this exact format:\n"
+            '{"field_name": "' + field_name + '", "page": <page_number>, '
+            '"bbox": [x1, y1, x2, y2]}\n\n'
+            "Coordinates must be scaled between 0 and 1000 where "
+            "(0, 0) is top-left and (1000, 1000) is bottom-right.\n"
+            "Fit the bounding box tightly around the exact text. Return ONLY the JSON, nothing else."
+        )})
+
+        response = bedrock.converse(
+            modelId=model_id,
+            messages=[{"role": "user", "content": content}],
+        )
+
+        # Extract text from response
+        resp_text = ""
+        for block in response.get("output", {}).get("message", {}).get("content", []):
+            if "text" in block:
+                resp_text += block["text"]
+
+        # Parse JSON from response (may be wrapped in markdown)
+        resp_text = resp_text.strip()
+        if resp_text.startswith("```"):
+            resp_text = resp_text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+
+        try:
+            data = json.loads(resp_text)
+            # Validate
+            if "bbox" in data and "page" in data:
+                data["field_name"] = field_name
+                return json.dumps(data)
+        except json.JSONDecodeError:
+            pass
+
+        return json.dumps({"field_name": field_name, "error": "Could not parse location"})
+
+    return localize_single_field
+
+

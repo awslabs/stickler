@@ -47,6 +47,7 @@ class AnnotationPanel:
         pdf_path: Path,
         session=None,
         prefill_fn=None,
+        localize_fn=None,
     ) -> None:
         self.schema = schema
         self.mode = mode
@@ -54,6 +55,7 @@ class AnnotationPanel:
         self.pdf_path = pdf_path
         self.session = session  # AnnotationSession | None
         self.prefill_fn = prefill_fn  # callable(pdf_path, schema) -> dict | None
+        self.localize_fn = localize_fn  # callable(pdf_path, field_values) -> dict | None
         self.fields = list(schema.get("properties", {}).keys())
         self._field_schemas = schema.get("properties", {})
         self._doc_key = hashlib.md5(str(pdf_path).encode(), usedforsecurity=False).hexdigest()[:8]
@@ -99,25 +101,46 @@ class AnnotationPanel:
         st.progress(pct, text=f"**{annotated} / {total}** fields annotated")
 
     def _render_model_selector(self) -> None:
-        """Render a compact model picker popover next to the auto-annotate button."""
+        """Render a compact model picker popover for extraction and localization."""
         try:
-            from .llm_backend import AVAILABLE_MODELS, DEFAULT_MODEL_LABEL
+            from .llm_backend import (
+                AVAILABLE_MODELS,
+                DEFAULT_MODEL_LABEL,
+                LOCALIZATION_MODELS,
+                DEFAULT_LOCALIZATION_MODEL_LABEL,
+            )
         except ImportError:
             return
 
-        current = st.session_state.get("_llm_model_label", DEFAULT_MODEL_LABEL)
-        labels = list(AVAILABLE_MODELS.keys())
+        current_ext = st.session_state.get("_llm_model_label", DEFAULT_MODEL_LABEL)
+        current_loc = st.session_state.get("_loc_model_label", DEFAULT_LOCALIZATION_MODEL_LABEL)
+        ext_labels = list(AVAILABLE_MODELS.keys())
+        loc_labels = list(LOCALIZATION_MODELS.keys())
 
         st.markdown("<div style='padding-top:8px'></div>", unsafe_allow_html=True)
-        with st.popover("⚙", help="Select LLM model"):
-            choice = st.radio(
-                "Model",
-                labels,
-                index=labels.index(current) if current in labels else 0,
+        with st.popover("⚙", help="Model settings"):
+            st.markdown("**Extraction**")
+            ext_choice = st.radio(
+                "Extraction model",
+                ext_labels,
+                index=ext_labels.index(current_ext) if current_ext in ext_labels else 0,
                 key="_model_selector_radio",
+                label_visibility="collapsed",
             )
-            if choice != current:
-                st.session_state["_llm_model_label"] = choice
+            if ext_choice != current_ext:
+                st.session_state["_llm_model_label"] = ext_choice
+                st.rerun()
+
+            st.markdown("**Localization**")
+            loc_choice = st.radio(
+                "Localization model",
+                loc_labels,
+                index=loc_labels.index(current_loc) if current_loc in loc_labels else 0,
+                key="_loc_model_selector_radio",
+                label_visibility="collapsed",
+            )
+            if loc_choice != current_loc:
+                st.session_state["_loc_model_label"] = loc_choice
                 st.rerun()
 
     @staticmethod
@@ -333,7 +356,7 @@ class AnnotationPanel:
     def render_zero_start(self) -> None:
         """Render all schema fields for manual annotation."""
         # Header with optional auto-annotate button + model selector
-        col_title, col_btn, col_cfg = st.columns([3, 1.5, 0.4])
+        col_title, col_btn, col_loc, col_cfg = st.columns([2.5, 1.3, 1, 0.4])
         with col_title:
             st.subheader("Annotation")
         with col_btn:
@@ -370,6 +393,40 @@ class AnnotationPanel:
                                 provenance=FieldProvenance(source="llm", checked=True),
                             )
                         self._auto_save()
+                        st.rerun()
+        with col_loc:
+            annotated_count, _ = self._annotated_count()
+            if self.localize_fn is not None and annotated_count > 0:
+                has_locations = any(f.location is not None for f in self.state.fields.values())
+                loc_label = "🔄 Re-locate" if has_locations else "📍 Locate"
+                st.markdown("<div style='padding-top:8px'></div>", unsafe_allow_html=True)
+                if st.button(loc_label, key="localize_btn", use_container_width=True,
+                             help="Find where each field value appears in the PDF and draw bounding boxes."):
+                    field_values = {
+                        name: fa.value
+                        for name, fa in self.state.fields.items()
+                        if fa.value is not None and not fa.is_none
+                    }
+                    with st.spinner(f"Localizing {len(field_values)} fields…"):
+                        try:
+                            locations = self.localize_fn(self.pdf_path, field_values)
+                        except Exception as exc:
+                            self._show_llm_error(exc)
+                            locations = None
+                    if locations:
+                        from .models import FieldLocation
+                        for field_name, loc_data in locations.items():
+                            if field_name in self.state.fields:
+                                self.state.fields[field_name].location = FieldLocation(
+                                    page=loc_data["page"], bbox=loc_data["bbox"],
+                                )
+                        self._auto_save()
+                        loc_key = f"_field_locations_{self.pdf_path}"
+                        st.session_state[loc_key] = {
+                            name: fa.location
+                            for name, fa in self.state.fields.items()
+                            if fa.location is not None
+                        }
                         st.rerun()
         with col_cfg:
             if self.prefill_fn is not None:

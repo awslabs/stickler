@@ -55,6 +55,22 @@ class FieldProvenance(BaseModel):
     checked: bool = False
 
 
+class FieldLocation(BaseModel):
+    """Spatial location of a field value within a PDF page.
+
+    Coordinates use [x1, y1, x2, y2] format scaled 0–1000 where
+    (0,0) is top-left and (1000,1000) is bottom-right. Matches the
+    format used by the AWS document localization reference implementation.
+
+    Attributes:
+        page: 1-indexed page number where the field was found.
+        bbox: Bounding box as [x1, y1, x2, y2] scaled 0–1000.
+    """
+
+    page: int
+    bbox: list[float]
+
+
 class FieldAnnotation(BaseModel):
     """A single annotated field value with provenance metadata.
 
@@ -64,11 +80,13 @@ class FieldAnnotation(BaseModel):
         is_none: True when the user explicitly marks the field as having no
                  value (distinct from an unannotated field).
         provenance: Origin and review metadata for this value.
+        location: Optional spatial location of the field in the PDF.
     """
 
     value: Any = None
     is_none: bool = False
     provenance: FieldProvenance
+    location: FieldLocation | None = None
 
 
 class AnnotationState(BaseModel):

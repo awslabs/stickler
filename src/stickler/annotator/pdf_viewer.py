@@ -136,11 +136,124 @@ class PDFViewer:
         return images[0]
 
     # ------------------------------------------------------------------
+    # Bounding box overlay
+    # ------------------------------------------------------------------
+
+    # Color palette for field boxes (cycling through for distinct fields)
+    _BOX_COLORS = [
+        "#e63946", "#457b9d", "#2a9d8f", "#e9c46a", "#f4a261",
+        "#264653", "#a8dadc", "#6a4c93", "#1982c4", "#8ac926",
+    ]
+
+    def _draw_field_boxes(
+        self, image: Image.Image, page_num: int, field_locations: dict
+    ) -> Image.Image:
+        """Draw labeled bounding boxes on the page image.
+
+        Args:
+            image: The rendered page as a PIL Image.
+            page_num: 1-indexed current page number.
+            field_locations: {field_name: FieldLocation} dict.
+
+        Returns:
+            A copy of the image with boxes drawn.
+        """
+        from PIL import ImageDraw, ImageFont
+
+        # Filter for fields on this page
+        page_fields = {
+            name: loc for name, loc in field_locations.items()
+            if loc.page == page_num
+        }
+        if not page_fields:
+            return image
+
+        # Work on a copy with alpha channel for semi-transparent fills
+        img = image.convert("RGBA")
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+        w, h = img.size
+
+        font_size = max(11, h // 100)
+        try:
+            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", size=font_size)
+        except (OSError, IOError):
+            font = ImageFont.load_default()
+
+        used_label_rects: list[tuple[int, int, int, int]] = []
+
+        for idx, (field_name, loc) in enumerate(page_fields.items()):
+            color_hex = self._BOX_COLORS[idx % len(self._BOX_COLORS)]
+            # Parse hex to RGB tuple
+            r = int(color_hex[1:3], 16)
+            g = int(color_hex[3:5], 16)
+            b = int(color_hex[5:7], 16)
+            color_rgb = (r, g, b)
+            color_fill = (r, g, b, 18)  # very light fill so text remains readable
+
+            # Convert 0-1000 scaled coords to pixel coords
+            # bbox format: [x1, y1, x2, y2]
+            x1 = int(loc.bbox[0] / 1000 * w)
+            y1 = int(loc.bbox[1] / 1000 * h)
+            x2 = int(loc.bbox[2] / 1000 * w)
+            y2 = int(loc.bbox[3] / 1000 * h)
+
+            # Draw semi-transparent fill + solid border
+            draw.rectangle([x1, y1, x2, y2], fill=color_fill, outline=color_rgb, width=2)
+
+            # Label with pill background — find a non-overlapping position
+            label = field_name
+            bbox_text = font.getbbox(label)
+            tw = bbox_text[2] - bbox_text[0] + 8
+            th = bbox_text[3] - bbox_text[1] + 4
+
+            # Try positions: above box, below box, inside top-left
+            candidates = [
+                (x1, y1 - th - 2),   # above
+                (x1, y2 + 2),        # below
+                (x1 + 2, y1 + 2),    # inside top-left
+            ]
+
+            lx, ly = candidates[0]  # default
+            for cx, cy in candidates:
+                # Clamp to image bounds
+                cx = max(0, min(cx, w - tw))
+                cy = max(0, min(cy, h - th))
+                label_rect = (cx, cy, cx + tw, cy + th)
+                # Check overlap with existing labels
+                overlaps = any(
+                    not (label_rect[2] < er[0] or label_rect[0] > er[2] or
+                         label_rect[3] < er[1] or label_rect[1] > er[3])
+                    for er in used_label_rects
+                )
+                if not overlaps:
+                    lx, ly = cx, cy
+                    break
+            else:
+                lx = max(0, min(lx, w - tw))
+                ly = max(0, min(ly, h - th))
+
+            label_rect = (lx, ly, lx + tw, ly + th)
+            used_label_rects.append(label_rect)
+
+            # Draw pill background
+            draw.rounded_rectangle(label_rect, radius=3, fill=(r, g, b, 200))
+            draw.text((lx + 4, ly + 1), label, fill=(255, 255, 255, 255), font=font)
+
+        img = Image.alpha_composite(img, overlay)
+        return img.convert("RGB")
+
+    # ------------------------------------------------------------------
     # Streamlit UI
     # ------------------------------------------------------------------
 
-    def render(self) -> None:
-        """Render the PDF viewer with page navigation in Streamlit."""
+    def render(self, field_locations: dict | None = None) -> None:
+        """Render the PDF viewer with page navigation in Streamlit.
+
+        Args:
+            field_locations: Optional dict of {field_name: FieldLocation} to
+                draw bounding box overlays on the rendered page.
+        """
         import streamlit as st
 
         if not _check_pdf2image():
@@ -196,6 +309,10 @@ class PDFViewer:
             rotation = st.session_state.get(f"pdf_rotation_{self.pdf_path}", 0)
             if rotation:
                 page_image = page_image.rotate(-rotation, expand=True)
+
+            # Draw bounding box overlays for fields on this page
+            if field_locations:
+                page_image = self._draw_field_boxes(page_image, current_page, field_locations)
 
             st.image(page_image, use_container_width=True)
         except Exception as exc:

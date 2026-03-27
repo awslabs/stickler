@@ -69,7 +69,7 @@ The manifest embeds the full JSON Schema so the dataset is self-contained — zi
     "updated_at": "2026-03-18T...",
     "fields": {
       "station_name": {"source": "human", "checked": false},
-      "invoice_id": {"source": "llm", "checked": true}
+      "invoice_id": {"source": "llm", "checked": true, "location": {"page": 1, "bbox": [780, 55, 950, 80]}}
     }
   }
 }
@@ -104,10 +104,10 @@ http://localhost:8501/?dataset=./files&schema=./files/invoice_schema.json&mode=z
 
 **Resume existing session** (schema loaded from manifest):
 ```
-http://localhost:8501/?dataset=./files&session=42fac85a-e74c-4760-8cca-1e177bbf4886
+http://localhost:8501/?dataset=./files&session=42fac85a-e74c-4760-8cca-1e177bbf4886&doc=invoice_001.pdf
 ```
 
-The active deep link is always shown in the header. Copy it to share your session with another annotator.
+The `doc` parameter preserves the selected document across page refreshes. The active deep link is always shown in the header.
 
 ---
 
@@ -117,7 +117,10 @@ The active deep link is always shown in the header. Copy it to share your sessio
 Manual annotation from scratch. All fields shown with text inputs and N/A checkboxes. Progress bar tracks completion. Auto-saves on every field change (💾 toast confirms).
 
 ### LLM Inference
-Send the PDF to AWS Bedrock (Claude) to pre-fill all fields. Review predictions in batch — Accept All, Reject All, or edit individual fields. LLM values shown with 🤖 prefix.
+Send the PDF to AWS Bedrock to pre-fill all fields. Model is selectable (Haiku 4.5, Sonnet 4.6, Opus 4.6, Nova 2 Lite) via the ⚙ popover. Review predictions in batch — Accept All, Reject All, or edit individual fields. LLM values shown with 🤖 prefix.
+
+### Field Localization
+After extraction, click **📍 Locate** to run a second-stage localization pass. A Haiku orchestrator dispatches per-field Converse API calls to the selected localization model (Nova Pro by default). Bounding boxes are drawn on the PDF viewer with colored overlays and pill labels. Localization model is selectable independently from the extraction model.
 
 ### HITL (Human-in-the-Loop)
 Same as LLM Inference but field-by-field review. Each prediction shown one at a time with Accept / Reject / Edit controls. Review progress tracked separately from annotation progress.
@@ -251,11 +254,11 @@ verified_data = {
 | `dataset.py` | PDF discovery, session-aware document status |
 | `schema_loader.py` | Load schema from file, import path, or builder output |
 | `schema_builder.py` | In-app schema builder UI |
-| `pdf_viewer.py` | Lazy PDF page rendering via pdf2image |
+| `pdf_viewer.py` | Lazy PDF page rendering via pdf2image, bounding box overlay |
 | `annotation_panel.py` | Field entry UI, type-aware rendering (scalar + array), all three modes |
 | `serializer.py` | `AnnotationManifest`, `AnnotationSession`, `AnnotationSerializer` |
-| `llm_backend.py` | AWS Bedrock (Claude) integration |
-| `models.py` | Pydantic models: `AnnotationState`, `FieldAnnotation`, `FieldProvenance` |
+| `llm_backend.py` | AWS Bedrock integration — extraction (Strands agent) + localization (raw Converse) |
+| `models.py` | Pydantic models: `AnnotationState`, `FieldAnnotation`, `FieldProvenance`, `FieldLocation` |
 
 ---
 

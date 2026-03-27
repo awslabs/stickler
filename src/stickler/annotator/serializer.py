@@ -85,10 +85,16 @@ class AnnotationSession:
 
         for field_path, field_annotation in annotation.fields.items():
             data[field_path] = field_annotation.value
-            fields_metadata[field_path] = {
+            field_meta: dict[str, Any] = {
                 "source": field_annotation.provenance.source,
                 "checked": field_annotation.provenance.checked,
             }
+            if field_annotation.location is not None:
+                field_meta["location"] = {
+                    "page": field_annotation.location.page,
+                    "bbox": field_annotation.location.bbox,
+                }
+            fields_metadata[field_path] = field_meta
 
         output = {
             "data": data,
@@ -134,10 +140,16 @@ class AnnotationSession:
                     source=prov_info.get("source", "human"),
                     checked=prov_info.get("checked", False),
                 )
+                location = None
+                loc_info = prov_info.get("location")
+                if isinstance(loc_info, dict) and "page" in loc_info and "bbox" in loc_info:
+                    from .models import FieldLocation
+                    location = FieldLocation(page=loc_info["page"], bbox=loc_info["bbox"])
                 fields[field_path] = FieldAnnotation(
                     value=value,
                     is_none=value is None,
                     provenance=provenance,
+                    location=location,
                 )
 
             return AnnotationState(
@@ -274,12 +286,13 @@ class AnnotationManifest:
             doc_count += 1
             try:
                 raw = json.loads(json_file.read_text(encoding="utf-8"))
-                # A doc is complete if all data fields have non-null values
-                data = raw.get("data", {})
-                if data and all(v is not None for v in data.values()):
+                metadata = raw.get("metadata", {})
+                fields_meta = metadata.get("fields", {})
+                data_fields = raw.get("data", {})
+                if data_fields and len(fields_meta) >= len(data_fields):
                     completed += 1
             except (json.JSONDecodeError, OSError):
-                pass
+                logger.debug("Skipping unreadable annotation file: %s", json_file)
 
         manifest["sessions"][session_id]["doc_count"] = doc_count
         manifest["sessions"][session_id]["completed_count"] = completed
@@ -323,10 +336,16 @@ class AnnotationSerializer:
         fields_metadata: dict[str, dict[str, Any]] = {}
         for field_path, field_annotation in annotation.fields.items():
             data[field_path] = field_annotation.value
-            fields_metadata[field_path] = {
+            field_meta: dict[str, Any] = {
                 "source": field_annotation.provenance.source,
                 "checked": field_annotation.provenance.checked,
             }
+            if field_annotation.location is not None:
+                field_meta["location"] = {
+                    "page": field_annotation.location.page,
+                    "bbox": field_annotation.location.bbox,
+                }
+            fields_metadata[field_path] = field_meta
         output = {
             "data": data,
             "metadata": {
@@ -367,10 +386,16 @@ class AnnotationSerializer:
                     source=prov_info.get("source", "human"),
                     checked=prov_info.get("checked", False),
                 )
+                location = None
+                loc_info = prov_info.get("location")
+                if isinstance(loc_info, dict) and "page" in loc_info and "bbox" in loc_info:
+                    from .models import FieldLocation
+                    location = FieldLocation(page=loc_info["page"], bbox=loc_info["bbox"])
                 fields[field_path] = FieldAnnotation(
                     value=value,
                     is_none=value is None,
                     provenance=provenance,
+                    location=location,
                 )
             return AnnotationState(
                 schema_hash=metadata["schema_hash"],
