@@ -220,10 +220,50 @@ def _handle_schema_builder(config: ConfigResult | None) -> ConfigResult | None:
     return config
 
 
+@st.dialog("Select Document", width="large")
+def _show_document_picker(documents, labels, status_list):
+    """Dialog with search, sort, and status filter for document selection."""
+    col_search, col_sort, col_filter = st.columns([3, 2, 2])
+    with col_search:
+        search = st.text_input("Search", placeholder="Type to filter…", key="_doc_search", label_visibility="collapsed")
+    with col_sort:
+        sort_by = st.selectbox("Sort", ["Name", "Status"], key="_doc_sort", label_visibility="collapsed")
+    with col_filter:
+        status_filter = st.selectbox("Filter", ["All", "Not Started", "In Progress", "Complete"], key="_doc_filter", label_visibility="collapsed")
+
+    # Build filtered + sorted list
+    status_map = {"Not Started": DocumentStatus.NOT_STARTED, "In Progress": DocumentStatus.IN_PROGRESS, "Complete": DocumentStatus.COMPLETE}
+    filtered = []
+    for i, doc in enumerate(documents):
+        name = doc.path.name
+        if search and search.lower() not in name.lower():
+            continue
+        if status_filter != "All" and doc.status != status_map.get(status_filter):
+            continue
+        filtered.append((i, doc, labels[i]))
+
+    if sort_by == "Status":
+        order = {DocumentStatus.NOT_STARTED: 0, DocumentStatus.IN_PROGRESS: 1, DocumentStatus.COMPLETE: 2}
+        filtered.sort(key=lambda x: (order.get(x[1].status, 9), x[1].path.name))
+    else:
+        filtered.sort(key=lambda x: x[1].path.name)
+
+    st.markdown(f"<div style='color:#888;font-size:11px;padding:2px 0'>{len(filtered)} of {len(documents)} documents</div>", unsafe_allow_html=True)
+
+    for idx, doc, label in filtered:
+        col_name, col_btn = st.columns([5, 1])
+        with col_name:
+            st.markdown(f"<div style='padding:4px 0;font-size:13px'>{label}</div>", unsafe_allow_html=True)
+        with col_btn:
+            if st.button("Select", key=f"_pick_doc_{idx}", use_container_width=True):
+                st.session_state["_doc_nav_idx"] = idx
+                st.rerun()
+
+
 def _render_document_queue(
     manager: DatasetManager, schema_fields: list[str], session=None
 ) -> Path | None:
-    """Discover PDFs, show the document queue with prev/next buttons and a dropdown."""
+    """Discover PDFs, show prev/next + current doc label + picker button."""
     try:
         documents = manager.discover()
     except (FileNotFoundError, ValueError) as exc:
@@ -241,45 +281,39 @@ def _render_document_queue(
         f"{_STATUS_ICONS.get(doc.status, '⚪')} {doc.path.name}"
         for doc in documents
     ]
+    status_list = [doc.status for doc in documents]
 
     n = len(documents)
     nav_key = "_doc_nav_idx"
 
-    # Initialise nav index
     if nav_key not in st.session_state:
         st.session_state[nav_key] = 0
-    if "doc_queue_select" not in st.session_state:
-        st.session_state["doc_queue_select"] = 0
     current = max(0, min(st.session_state[nav_key], n - 1))
 
-    def _on_dropdown_change():
-        """Sync nav key when user picks from dropdown."""
-        st.session_state[nav_key] = st.session_state["doc_queue_select"]
-
-    col_prev, col_select, col_next = st.columns([2, 6, 2])
+    col_prev, col_next, col_label, col_pick = st.columns([1.2, 1.2, 4, 1.2])
 
     with col_prev:
         if st.button("◀ Prev Doc", key="doc_prev", disabled=(current == 0), help="Previous document", use_container_width=True):
             st.session_state[nav_key] = current - 1
-            st.session_state["doc_queue_select"] = current - 1
             st.rerun()
 
     with col_next:
-        st.markdown("<div style='padding-top:4px'></div>", unsafe_allow_html=True)
         if st.button("Next Doc ▶", key="doc_next", disabled=(current == n - 1), help="Next document", use_container_width=True):
             st.session_state[nav_key] = current + 1
-            st.session_state["doc_queue_select"] = current + 1
             st.rerun()
 
-    with col_select:
-        st.selectbox(
-            "Document",
-            range(n),
-            format_func=lambda i: labels[i],
-            key="doc_queue_select",
-            label_visibility="collapsed",
-            on_change=_on_dropdown_change,
+    with col_label:
+        st.markdown(
+            f"<div style='padding:8px 0;font-size:13px;text-align:center'>"
+            f"{labels[current]}"
+            f"<span style='color:#aaa;font-size:11px'> &nbsp;({current + 1}/{n})</span>"
+            f"</div>",
+            unsafe_allow_html=True,
         )
+
+    with col_pick:
+        if st.button("📋 Select", key="doc_picker_btn", help="Browse all documents", use_container_width=True):
+            _show_document_picker(documents, labels, status_list)
 
     return documents[current].path
 
@@ -340,23 +374,43 @@ def _render_landing_page() -> bool:
 
         if sessions:
             st.markdown("##### Existing Sessions")
+            # Count actual PDFs for accurate totals
+            actual_pdf_count = len([p for p in dataset_path.rglob("*") if p.is_file() and p.suffix.lower() == ".pdf"])
             for sess in sessions:
                 sid = sess["session_id"]
+                sid_short = sid[:8]
                 annotator = sess.get("annotator", "unknown")
                 updated = sess.get("updated_at", "")[:19].replace("T", " ")
-                doc_count = sess.get("doc_count", 0)
-                completed = sess.get("completed_count", 0)
-                pct = int(100 * completed / doc_count) if doc_count else 0
+                doc_count = actual_pdf_count
+
+                # Count completed/in-progress from actual annotation files
+                import json as _json
+                _sess_dir = dataset_path / ".annotations" / sid
+                _completed = 0
+                _annotated = 0
+                if _sess_dir.exists():
+                    for _f in _sess_dir.glob("*.json"):
+                        try:
+                            _data = _json.loads(_f.read_text())
+                            _vals = list(_data.get("data", {}).values())
+                            _annotated += 1
+                            if _vals and all(v is not None for v in _vals):
+                                _completed += 1
+                        except Exception:
+                            pass
+                pct = int(100 * _completed / doc_count) if doc_count else 0
 
                 col_info, col_btn = st.columns([4, 1])
                 with col_info:
                     st.markdown(
                         f"<div style='padding:8px 0'>"
+                        f"<code style='font-size:10px;color:#999;background:#f1f5f9;padding:1px 4px;border-radius:3px'>{sid_short}</code>"
+                        f"&nbsp;&nbsp;"
                         f"<span style='font-size:13px'>👤 {annotator}</span>"
                         f"&nbsp;&nbsp;"
                         f"<span style='color:#888;font-size:12px'>"
-                        f"📄 {completed}/{doc_count} docs ({pct}%)"
-                        f"&nbsp;·&nbsp;last updated {updated} UTC"
+                        f"📄 {_completed}/{doc_count} docs ({pct}%)"
+                        f"&nbsp;·&nbsp;{updated} UTC"
                         f"</span>"
                         f"</div>",
                         unsafe_allow_html=True,
@@ -376,6 +430,10 @@ def _render_landing_page() -> bool:
                                 st.session_state[_KEY_MODEL_CLASS] = model_class
                                 st.session_state[_KEY_VALIDATED] = True
                                 st.session_state["_session_id"] = sid
+                                st.session_state["_query_params_applied"] = True
+                                # Set URL query params so refresh preserves the session
+                                st.query_params["dataset"] = dataset_dir.strip()
+                                st.query_params["session"] = sid
                                 st.rerun()
                             except Exception as exc:
                                 st.error(f"Could not load session schema: {exc}")
@@ -394,78 +452,59 @@ def _render_landing_page() -> bool:
     return False
 
 
+def _render_dataset_progress(dataset_dir: Path, session_id: str) -> None:
+    """Render a compact document-set progress bar in the header."""
+    if not session_id:
+        return
+
+    # Count actual PDFs in the dataset directory (source of truth)
+    total = len([p for p in dataset_dir.rglob("*") if p.is_file() and p.suffix.lower() == ".pdf"])
+    if total == 0:
+        return
+
+    # Count completed and in-progress from session annotation files
+    session_dir = dataset_dir / ".annotations" / session_id
+    completed = 0
+    in_progress = 0
+    if session_dir.exists():
+        import json as _json
+        for f in session_dir.glob("*.json"):
+            try:
+                data = _json.loads(f.read_text())
+                vals = list(data.get("data", {}).values())
+                if vals and all(v is not None for v in vals):
+                    completed += 1
+                elif vals:
+                    in_progress += 1
+            except Exception:
+                pass
+
+    not_started = total - completed - in_progress
+    pct = completed / total
+
+    st.markdown(
+        f"<div style='display:flex;align-items:center;gap:8px;padding:2px 0 4px 0'>"
+        f"<div style='flex:1;background:#e5e7eb;border-radius:4px;height:6px;overflow:hidden'>"
+        f"<div style='width:{pct*100:.1f}%;background:#22c55e;height:100%'></div>"
+        f"</div>"
+        f"<span style='font-size:10px;color:#888;white-space:nowrap'>"
+        f"<span class='kie-tooltip' data-tip='Completed'>&#9989;</span> {completed}"
+        f" &nbsp;<span class='kie-tooltip' data-tip='In progress'>&#128992;</span> {in_progress}"
+        f" &nbsp;<span class='kie-tooltip' data-tip='Not started'>&#9898;</span> {not_started}"
+        f" &nbsp;/ {total} docs"
+        f"</span>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def _app() -> None:
     """The Streamlit application — called when Streamlit runs this file."""
     st.set_page_config(page_title="KIE Annotation Tool", layout="wide")
 
-    # Compact styling for annotation fields + hide deploy button
-    st.markdown("""
-    <style>
-    /* Hide Streamlit deploy button and sticky header toolbar */
-    [data-testid="stAppDeployButton"] { display: none; }
-    [data-testid="stHeader"] { display: none; }
-    /* Reduce top padding */
-    .block-container { padding-top: 0.5rem !important; }
-    /* Tighter field spacing in the annotation panel */
-    [data-testid="stTextInput"] { margin-bottom: -12px; }
-    [data-testid="stCheckbox"] { margin-bottom: -12px; }
-    /* Smaller field labels */
-    [data-testid="stTextInput"] label p { font-size: 13px !important; }
-    /* White background + subtle border on text inputs */
-    [data-testid="stTextInput"] input {
-        background-color: #ffffff !important;
-        border: 1px solid #ccc !important;
-        border-radius: 6px !important;
-        box-shadow: none !important;
-    }
-    [data-testid="stTextInput"] input:focus {
-        border-color: #2563eb !important;
-        box-shadow: 0 0 0 1px #2563eb !important;
-    }
-    /* Remove Streamlit's default input container border */
-    [data-testid="stTextInput"] > div > div {
-        border: none !important;
-        box-shadow: none !important;
-        background: transparent !important;
-    }
-    /* Blue primary buttons */
-    [data-testid="stBaseButton-primary"] {
-        background-color: #2563eb !important;
-        border-color: #2563eb !important;
-        color: #ffffff !important;
-    }
-    [data-testid="stBaseButton-primary"]:hover {
-        background-color: #1d4ed8 !important;
-        border-color: #1d4ed8 !important;
-    }
-    /* Blue secondary/default buttons */
-    [data-testid="stBaseButton-secondary"] {
-        background-color: #2563eb !important;
-        border-color: #2563eb !important;
-        color: #ffffff !important;
-    }
-    [data-testid="stBaseButton-secondary"]:hover {
-        background-color: #1d4ed8 !important;
-        border-color: #1d4ed8 !important;
-    }
-    [data-testid="stBaseButton-secondary"]:disabled {
-        background-color: #e5e7eb !important;
-        border-color: #d1d5db !important;
-        color: #9ca3af !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-    # Skip N/A checkboxes when tabbing between input fields
-    import streamlit.components.v1 as components
-    components.html("""<script>
-    const observer = new MutationObserver(() => {
-        document.querySelectorAll('[data-testid="stCheckbox"] input').forEach(
-            el => el.setAttribute('tabindex', '-1')
-        );
-    });
-    observer.observe(document.body, {childList: true, subtree: true});
-    </script>""", height=0)
+    # Inject CSS + JS from static files
+    from stickler.annotator.styles import inject_styles
+    inject_styles()
 
     # Load .env credentials if present (for local dev / LLM backend)
     try:
@@ -505,20 +544,29 @@ def _app() -> None:
         deep_link = f"http://localhost:8501/?{deep_link_params}"
 
         import streamlit.components.v1 as _comp
-        col_title, col_link, col_gear = st.columns([6, 5, 0.5])
+        col_title, col_link, col_gear = st.columns([4, 7, 0.5])
         with col_title:
+            abs_dataset = str(config.dataset_dir.resolve())
+            abs_annotations = str((config.dataset_dir / ".annotations").resolve())
+            session_id_short = session_id[:8] + "…" if session_id else "—"
+            tooltip = (
+                f"Dataset: {abs_dataset}&#10;"
+                f"Annotations: {abs_annotations}&#10;"
+                f"Session: {session_id_short}"
+            )
             st.markdown(
                 f"<div style='padding:2px 0;white-space:nowrap'>"
                 f"<span style='font-size:14px;font-weight:700'>KIE Annotation Tool</span>"
                 f"&nbsp;<span style='font-size:10px;color:#888'>"
-                f"&#128193; {dataset_name} &middot; &#128203; {schema_name} &middot; &#9889; {mode_label}</span>"
+                f"<span class='kie-tooltip' data-tip='{abs_dataset}&#10;Annotations: {abs_annotations}&#10;Session: {session_id_short}'>&#128193; {dataset_name}</span>"
+                f" &middot; &#128203; {schema_name} &middot; &#9889; {mode_label}</span>"
                 f"</div>",
                 unsafe_allow_html=True,
             )
         with col_link:
             _comp.html(
                 f"""<div style="display:flex;align-items:center;justify-content:flex-end;gap:4px;padding-top:2px">
-                <code style="font-size:9px;color:#aaa;background:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px">{deep_link}</code>
+                <code style="font-size:9px;color:#aaa;background:none;white-space:nowrap">{deep_link}</code>
                 <button onclick="navigator.clipboard.writeText('{deep_link}');this.textContent='✓';setTimeout(()=>this.textContent='Copy',600)"
                     style="font-size:9px;padding:1px 6px;border:1px solid #ddd;border-radius:3px;background:#fafafa;cursor:pointer;color:#666">Copy</button>
                 </div>""",
@@ -527,6 +575,9 @@ def _app() -> None:
         with col_gear:
             if st.button("⚙️", key="open_config", help="Configure dataset, schema, and mode"):
                 render_config_dialog()
+
+        # Document set progress bar
+        _render_dataset_progress(config.dataset_dir, session_id)
     else:
         _, gear_col = st.columns([20, 1])
         with gear_col:

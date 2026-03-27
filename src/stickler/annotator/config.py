@@ -288,6 +288,18 @@ def _get_stored_config() -> ConfigResult | None:
 @st.dialog("⚙️ Configuration", width="large")
 def render_config_dialog() -> None:
     """Render configuration inside a modal dialog."""
+    # Show current session info if active
+    session_id = st.session_state.get("_session_id", "")
+    schema = st.session_state.get(_KEY_SCHEMA)
+    if session_id:
+        schema_title = schema.get("title", "—") if isinstance(schema, dict) else "—"
+        st.markdown(
+            f"<div style='padding:4px 8px;background:#f0f9ff;border-radius:4px;margin-bottom:8px;font-size:12px;color:#555'>"
+            f"Active session: <code>{session_id[:8]}…</code>"
+            f" &nbsp;·&nbsp; Schema: {schema_title}"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
     _render_config_widgets()
 
 

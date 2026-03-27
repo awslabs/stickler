@@ -295,7 +295,7 @@ class AnnotationPanel:
         # Header with optional auto-annotate button
         col_title, col_btn, col_hint = st.columns([3, 1.5, 1])
         with col_title:
-            st.subheader("Manual Annotation")
+            st.subheader("Annotation")
         with col_btn:
             if self.prefill_fn is not None:
                 st.markdown("<div style='padding-top:8px'></div>", unsafe_allow_html=True)
