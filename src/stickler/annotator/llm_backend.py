@@ -152,13 +152,6 @@ class BedrockLLMBackend:
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF not found: {pdf_path}")
 
-        try:
-            from dotenv import load_dotenv
-
-            load_dotenv()
-        except ImportError:
-            pass
-
         logger.info("Rasterising %s...", pdf_path.name)
         page_bytes = _pdf_to_image_bytes(pdf_path)
         logger.info("%d page(s) converted to PNG", len(page_bytes))
@@ -231,13 +224,6 @@ class BedrockLLMBackend:
         """
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF not found: {pdf_path}")
-
-        try:
-            from dotenv import load_dotenv
-
-            load_dotenv()
-        except ImportError:
-            pass
 
         page_bytes = _pdf_to_image_bytes(pdf_path)
 

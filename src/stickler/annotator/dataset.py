@@ -148,5 +148,9 @@ class DatasetManager:
         return [
             p
             for p in self.dataset_dir.rglob("*")
-            if p.is_file() and p.suffix.lower() == ".pdf"
+            if p.is_file()
+            and p.suffix.lower() == ".pdf"
+            and not any(
+                part.startswith(".") for part in p.relative_to(self.dataset_dir).parts
+            )
         ]

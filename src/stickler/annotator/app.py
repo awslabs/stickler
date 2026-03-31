@@ -71,7 +71,7 @@ def _get_or_create_session(config: ConfigResult) -> AnnotationSession:
     2. ``session_id`` already in st.session_state → reuse current session
     3. Otherwise → create a new session and store its GUID
     """
-    import os
+    import getpass
 
     manifest = AnnotationManifest(config.dataset_dir)
     schema_hash = _schema_hash(config.schema)
@@ -93,7 +93,7 @@ def _get_or_create_session(config: ConfigResult) -> AnnotationSession:
             return existing
 
     # Create a new session
-    annotator = st.session_state.get("config_annotator") or os.getlogin()
+    annotator = st.session_state.get("config_annotator") or getpass.getuser()
     doc_count = len(list(config.dataset_dir.rglob("*.pdf")))
     session = manifest.create_session(
         schema=config.schema,
@@ -185,16 +185,12 @@ def _resume_or_fresh_state(
     )
     col_resume, col_fresh = st.columns(2)
     with col_resume:
-        if st.button(
-            "▶ Resume", key=f"btn_resume_{pdf_path}", use_container_width=True
-        ):
+        if st.button("▶ Resume", key=f"btn_resume_{pdf_path}", width="stretch"):
             st.session_state.pop(state_key, None)  # clear cache so fresh load happens
             st.session_state[choice_key] = "resume"
             st.rerun()
     with col_fresh:
-        if st.button(
-            "🗑 Start Fresh", key=f"btn_fresh_{pdf_path}", use_container_width=True
-        ):
+        if st.button("🗑 Start Fresh", key=f"btn_fresh_{pdf_path}", width="stretch"):
             st.session_state.pop(state_key, None)  # clear cache for blank state
             st.session_state[choice_key] = "fresh"
             st.rerun()
@@ -298,7 +294,7 @@ def _show_document_picker(documents, labels, status_list):
                 unsafe_allow_html=True,
             )
         with col_btn:
-            if st.button("Select", key=f"_pick_doc_{idx}", use_container_width=True):
+            if st.button("Select", key=f"_pick_doc_{idx}", width="stretch"):
                 st.session_state["_doc_nav_idx"] = idx
                 st.rerun()
 
@@ -351,7 +347,7 @@ def _render_document_queue(
             key="doc_prev",
             disabled=(current == 0),
             help="Previous document",
-            use_container_width=True,
+            width="stretch",
         ):
             st.session_state[nav_key] = current - 1
             st.rerun()
@@ -362,7 +358,7 @@ def _render_document_queue(
             key="doc_next",
             disabled=(current == n - 1),
             help="Next document",
-            use_container_width=True,
+            width="stretch",
         ):
             st.session_state[nav_key] = current + 1
             st.rerun()
@@ -381,7 +377,7 @@ def _render_document_queue(
             "📋 Select",
             key="doc_picker_btn",
             help="Browse all documents",
-            use_container_width=True,
+            width="stretch",
         ):
             _show_document_picker(documents, labels, status_list)
 
@@ -500,7 +496,7 @@ def _render_landing_page() -> bool:
                     if st.button(
                         "▶ Resume",
                         key=f"resume_session_{sid}",
-                        use_container_width=True,
+                        width="stretch",
                     ):
                         session_obj = manifest.get_session(sid)
                         if session_obj and session_obj.schema:
@@ -613,14 +609,6 @@ def _app() -> None:
     from stickler.annotator.styles import inject_styles
 
     inject_styles()
-
-    # Load .env credentials if present (for local dev / LLM backend)
-    try:
-        from dotenv import load_dotenv
-
-        load_dotenv()
-    except ImportError:
-        pass
 
     # Auto-apply config from URL query params (one-click start)
     apply_config_from_query_params()
@@ -745,7 +733,7 @@ def _app() -> None:
             "session": session.session_id,
         }
     )
-    deep_link = f"http://localhost:8502/?{deep_link_params}"
+    deep_link = f"http://localhost:8501/?{deep_link_params}"
 
     # 4. Side-by-side layout: PDF viewer (left, wider) + annotation panel (right, narrower)
     # Pre-load annotation state to make field locations available for the viewer

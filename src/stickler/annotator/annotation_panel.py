@@ -393,7 +393,7 @@ class AnnotationPanel:
                 if st.button(
                     "🤖 Auto-annotate",
                     key="zero_prefill_btn",
-                    use_container_width=True,
+                    width="stretch",
                     help="Pre-fill all fields using the selected Bedrock model. "
                     "Sends PDF pages as images to the LLM and extracts field values.",
                 ):
@@ -436,7 +436,7 @@ class AnnotationPanel:
                             self.state.fields[field_name] = FieldAnnotation(
                                 value=value,
                                 is_none=is_none,
-                                provenance=FieldProvenance(source="llm", checked=True),
+                                provenance=FieldProvenance(source="llm", checked=False),
                             )
                         self._auto_save()
                         st.rerun()
@@ -453,7 +453,7 @@ class AnnotationPanel:
                 if st.button(
                     loc_label,
                     key="localize_btn",
-                    use_container_width=True,
+                    width="stretch",
                     help="Find where each field value appears in the PDF and draw bounding boxes.",
                 ):
                     field_values = {
@@ -512,7 +512,6 @@ class AnnotationPanel:
         # Array fields in their own section
         if array_fields:
             st.markdown("---")
-            st.markdown("##### Line Items")
             for field_name in array_fields:
                 self._render_field(field_name, label=field_name)
 

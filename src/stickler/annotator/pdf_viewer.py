@@ -339,6 +339,6 @@ class PDFViewer:
                     page_image, current_page, field_locations
                 )
 
-            st.image(page_image, use_container_width=True)
+            st.image(page_image, width="stretch")
         except Exception as exc:
             st.error(f"Failed to render page {current_page}: {exc}")

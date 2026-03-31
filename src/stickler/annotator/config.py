@@ -240,7 +240,7 @@ def _render_config_widgets() -> None:
         "Apply Configuration",
         key="__config_apply",
         type="primary",
-        use_container_width=True,
+        width="stretch",
     )
 
     if apply_clicked:
