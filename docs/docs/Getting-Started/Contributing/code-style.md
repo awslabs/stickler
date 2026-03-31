@@ -12,7 +12,7 @@ Stickler follows Python best practices with **Ruff** for linting. The project us
 
 ### Ruff
 
-Ruff is the primary linter for the project. The project uses Ruff's default configuration (no custom `ruff.toml` or `[tool.ruff]` section in `pyproject.toml`).
+Ruff is the primary linter for the project, configured via the repository's `ruff.toml` file. Refer to that file for the active rules and settings.
 
 ```bash
 # Ruff is included in dev dependencies — install via `uv sync`

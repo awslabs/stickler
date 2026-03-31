@@ -22,6 +22,7 @@ clean:
 # Run linting checks and automatically fix issues
 lint:
 	uv run ruff check --fix
+	uv run ruff format
 
 .PHONY: docs docs-build docs-install
 

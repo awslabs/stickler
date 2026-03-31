@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 # pip-compatible extras (for `pip install -e ".[dev]"`)
-# Keep in sync with [dependency-groups] below
+# Note: the `dev` extra must be kept in sync with [dependency-groups] below
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
