@@ -6,6 +6,8 @@ This guide covers coding conventions and standards for the Stickler project.
 
 Stickler follows Python best practices with **Ruff** for linting. The project uses modern Python features (3.12+) including type hints and Pydantic for data validation.
 
+> **Using pip + venv?** All commands below use `uv run`. If you installed with `pip install -e ".[dev]"`, run tools directly (e.g., `ruff` instead of `uv run ruff`).
+
 ## Linting
 
 ### Ruff
@@ -13,17 +15,16 @@ Stickler follows Python best practices with **Ruff** for linting. The project us
 Ruff is the primary linter for the project. The project uses Ruff's default configuration (no custom `ruff.toml` or `[tool.ruff]` section in `pyproject.toml`).
 
 ```bash
-# Install Ruff (if not already installed)
-pip install ruff
+# Ruff is included in dev dependencies — install via `uv sync`
 
 # Check code for style issues
-ruff check .
+uv run ruff check .
 
 # Auto-fix issues where possible
-ruff check --fix .
+uv run ruff check --fix .
 
 # Check specific file or directory
-ruff check src/stickler/comparators/
+uv run ruff check src/stickler/comparators/
 ```
 
 ### Automatic Formatting in VS Code

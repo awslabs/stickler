@@ -67,6 +67,8 @@ After installation, verify everything is working:
 
 ```bash
 # Run tests
+uv run pytest tests/ -v --tb=short
+# or, if using pip + venv:
 pytest tests/ -v --tb=short
 
 # Check a quick example
@@ -137,25 +139,27 @@ stickler/
 
 ### Running Tests
 
+> **Tip:** If you set up with pip + venv (Option B), drop the `uv run` prefix and run tools directly (e.g., `pytest tests/`).
+
 ```bash
 # Run all tests
-pytest tests/
+uv run pytest tests/
 
 # Run with verbose output
-pytest tests/ -v
+uv run pytest tests/ -v
 
 # Run specific module
-pytest tests/structured_object_evaluator/
+uv run pytest tests/structured_object_evaluator/
 
 # Run specific test file
-pytest tests/structured_object_evaluator/test_comparators.py
+uv run pytest tests/structured_object_evaluator/test_comparators.py
 
 # Run tests matching pattern
-pytest tests/ -k "levenshtein"
+uv run pytest tests/ -k "levenshtein"
 
 # Run with coverage
-coverage run -m pytest tests/
-coverage report -m
+uv run coverage run -m pytest tests/
+uv run coverage report -m
 ```
 
 ### Linting
@@ -287,7 +291,7 @@ no tests ran
 **Solution:** Run from project root:
 ```bash
 cd /path/to/stickler
-pytest tests/
+uv run pytest tests/
 ```
 
 ## Getting Help

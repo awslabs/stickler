@@ -94,6 +94,8 @@ python examples/scripts/quick_start.py
 Run the test suite:
 
 ```bash
+uv run pytest tests/
+# or, if using pip + venv:
 pytest tests/
 ```
 

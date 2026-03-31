@@ -89,6 +89,8 @@ python examples/scripts/quick_start.py
 
 Run tests:
 ```bash
+uv run pytest tests/
+# or, if using pip + venv:
 pytest tests/
 ```
 
