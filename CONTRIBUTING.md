@@ -11,7 +11,7 @@ information to effectively respond to your bug report or contribution.
 ### Prerequisites
 
 - Python 3.12+
-- [conda](https://github.com/conda/conda?tab=readme-ov-file#installation) (recommended) or venv
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (recommended) or pip
 - Git
 
 ### Setup
@@ -20,12 +20,10 @@ information to effectively respond to your bug report or contribution.
 # Clone and setup
 git clone https://github.com/awslabs/stickler.git
 cd stickler
-conda create -n stickler python=3.12 -y
-conda activate stickler
-pip install -e ".[dev]"
+uv sync
 
 # Verify installation
-pytest tests/ -v --tb=short
+uv run pytest tests/ -v --tb=short
 ```
 
 ### Development Workflow

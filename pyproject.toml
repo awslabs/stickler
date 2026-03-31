@@ -58,6 +58,32 @@ exclude_dirs = ["tests"]
 requires = ["setuptools >= 61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[dependency-groups]
+dev = [
+    {include-group = "test"},
+    {include-group = "lint"},
+    {include-group = "docs"},
+]
+test = [
+    "pytest>=7.0.0",
+    "pytest-xdist>=3.0.0",
+    "coverage>=7.0.0",
+    "beautifulsoup4>=4.14.2",
+]
+lint = [
+    "ruff>=0.14.10",
+]
+docs = [
+    "mkdocs",
+    "mkdocs-material",
+    "mkdocs-awesome-nav",
+    "mkdocstrings-python",
+    "pymdown-extensions",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

@@ -13,18 +13,7 @@ pip install stickler-eval
 ## Requirements
 
 - Python 3.12+
-- conda (recommended)
-
-## Conda Setup
-
-```bash
-# Create a dedicated environment
-conda create -n stickler python=3.12 -y
-conda activate stickler
-
-# Install from PyPI
-pip install stickler-eval
-```
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (recommended)
 
 ## Development Install
 
@@ -34,11 +23,15 @@ If you want to contribute or run from source:
 git clone https://github.com/awslabs/stickler.git
 cd stickler
 
-# Create conda environment
-conda create -n stickler python=3.12 -y
-conda activate stickler
+# uv handles Python version, venv creation, and dependency installation
+uv sync
+```
 
-# Install with dev dependencies
+Or with pip (you manage your own Python + venv):
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 ```
 

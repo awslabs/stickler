@@ -11,7 +11,7 @@ This guide walks you through setting up a complete development environment for c
 
 ### Recommended
 
-- [**conda**](https://github.com/conda/conda?tab=readme-ov-file#installation) - For environment management
+- [**uv**](https://docs.astral.sh/uv/getting-started/installation/) - For environment and dependency management
 - **VS Code** - IDE with Python support
 
 ### Verify Prerequisites
@@ -26,26 +26,20 @@ git --version
 
 ## Quick Setup
 
-### Option A: Conda (Recommended)
+### Option A: uv (Recommended)
 
-Conda provides isolated environments with easy Python version management.
+[uv](https://docs.astral.sh/uv/getting-started/installation/) handles Python installation, virtual environment creation, and dependency installation in one step.
 
 ```bash
-# Create conda environment with Python 3.12
-conda create -n stickler python=3.12 -y
-
-# Activate the environment
-conda activate stickler
-
-# Clone the repository (if you haven't already)
+# Clone the repository
 git clone https://github.com/awslabs/stickler.git
 cd stickler
 
-# Install in development mode with dev dependencies
-pip install -e ".[dev]"
+# Install everything (Python, venv, dependencies)
+uv sync
 ```
 
-### Option B: venv
+### Option B: pip + venv
 
 Use Python's built-in virtual environment:
 
@@ -54,7 +48,7 @@ Use Python's built-in virtual environment:
 git clone https://github.com/awslabs/stickler.git
 cd stickler
 
-# Create virtual environment
+# Create virtual environment (requires Python 3.12+ already installed)
 python -m venv .venv
 
 # Activate the environment
@@ -167,14 +161,11 @@ coverage report -m
 ### Linting
 
 ```bash
-# Install Ruff (not included in dev dependencies)
-pip install ruff
-
 # Check for issues
-ruff check .
+uv run ruff check .
 
 # Auto-fix issues
-ruff check --fix .
+uv run ruff check --fix .
 ```
 
 ### Building Documentation
@@ -237,12 +228,14 @@ python examples/scripts/json_schema_demo.py
 ERROR: Package requires Python >=3.12
 ```
 
-**Solution:** Ensure you're using Python 3.12+:
+**Solution:** If using uv, it automatically installs the correct Python version:
+```bash
+uv sync
+```
+
+If using pip, ensure you have Python 3.12+:
 ```bash
 python --version
-# If wrong version, create new conda environment
-conda create -n stickler python=3.12 -y
-conda activate stickler
 ```
 
 #### Import Errors
@@ -264,11 +257,13 @@ On older systems, you may encounter compilation errors:
 ERROR: Failed building wheel for numpy
 ```
 
-**Solution:** Use conda which provides pre-built binaries:
+**Solution:** Pre-built wheels are available on PyPI. Ensure you're using a recent pip:
 ```bash
-conda install numpy scipy
+pip install --upgrade pip
 pip install -e ".[dev]"
 ```
+
+See [Known Issues](../known-issues.md) for platform-specific problems (e.g., NumPy/GCC compatibility on RHEL).
 
 #### Permission Denied
 
@@ -278,7 +273,7 @@ PermissionError: [Errno 13] Permission denied
 
 **Solution:** Don't use `sudo`. Use a virtual environment:
 ```bash
-conda activate stickler
+uv sync
 # or
 source .venv/bin/activate
 ```
