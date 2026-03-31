@@ -61,11 +61,13 @@ def st_primitive_type() -> st_hyp.SearchStrategy[str]:
 
 # Stickler extension keys and sample values
 _STICKLER_EXTENSIONS: dict[str, st_hyp.SearchStrategy[Any]] = {
-    "x-aws-stickler-comparator": st_hyp.sampled_from([
-        "LevenshteinComparator",
-        "ExactMatchComparator",
-        "NumericComparator",
-    ]),
+    "x-aws-stickler-comparator": st_hyp.sampled_from(
+        [
+            "LevenshteinComparator",
+            "ExactMatchComparator",
+            "NumericComparator",
+        ]
+    ),
     "x-aws-stickler-threshold": st_hyp.floats(min_value=0.0, max_value=1.0),
     "x-aws-stickler-weight": st_hyp.floats(min_value=0.1, max_value=10.0),
 }
@@ -247,17 +249,27 @@ def st_annotation_state(
     for name in schema_fields:
         fields[name] = draw(st_field_annotation())
 
-    schema_hash = draw(st_hyp.text(alphabet=string.hexdigits.lower(), min_size=8, max_size=16))
-    created = draw(st_hyp.sampled_from([
-        "2025-01-01T00:00:00Z",
-        "2025-03-15T10:30:00Z",
-        "2025-06-20T18:45:00Z",
-    ]))
-    updated = draw(st_hyp.sampled_from([
-        "2025-01-01T01:00:00Z",
-        "2025-03-15T12:00:00Z",
-        "2025-06-20T20:00:00Z",
-    ]))
+    schema_hash = draw(
+        st_hyp.text(alphabet=string.hexdigits.lower(), min_size=8, max_size=16)
+    )
+    created = draw(
+        st_hyp.sampled_from(
+            [
+                "2025-01-01T00:00:00Z",
+                "2025-03-15T10:30:00Z",
+                "2025-06-20T18:45:00Z",
+            ]
+        )
+    )
+    updated = draw(
+        st_hyp.sampled_from(
+            [
+                "2025-01-01T01:00:00Z",
+                "2025-03-15T12:00:00Z",
+                "2025-06-20T20:00:00Z",
+            ]
+        )
+    )
 
     return AnnotationState(
         schema_hash=schema_hash,

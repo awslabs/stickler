@@ -52,7 +52,7 @@ class DatasetManager:
             FileNotFoundError: If the directory does not exist.
             ValueError: If the directory contains no PDF files.
         """
-        self.dataset_dir = Path(dataset_dir)
+        self.dataset_dir = Path(dataset_dir).resolve()
 
         if not self.dataset_dir.exists():
             raise FileNotFoundError(
@@ -104,7 +104,9 @@ class DatasetManager:
         Returns:
             The derived DocumentStatus.
         """
-        annotation_path = AnnotationSerializer.annotation_path_for(pdf_path, session=session)
+        annotation_path = AnnotationSerializer.annotation_path_for(
+            pdf_path, session=session
+        )
 
         if not annotation_path.exists():
             return DocumentStatus.NOT_STARTED
@@ -113,9 +115,7 @@ class DatasetManager:
             with open(annotation_path, "r") as f:
                 annotation_data = json.load(f)
         except (json.JSONDecodeError, OSError) as e:
-            logger.warning(
-                "Could not read annotation file %s: %s", annotation_path, e
-            )
+            logger.warning("Could not read annotation file %s: %s", annotation_path, e)
             return DocumentStatus.NOT_STARTED
 
         if not schema_fields:

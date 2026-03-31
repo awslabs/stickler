@@ -44,6 +44,7 @@ DEFAULT_LOCALIZATION_MODEL_LABEL = "Haiku → Nova Pro"
 def _pdf_to_image_bytes(pdf_path: Path, max_pages: int = _MAX_PAGES) -> list[bytes]:
     """Rasterise PDF pages to PNG bytes at 150 dpi."""
     from pdf2image import convert_from_path
+
     pages = convert_from_path(str(pdf_path), dpi=150, first_page=1, last_page=max_pages)
     result = []
     for page in pages:
@@ -153,6 +154,7 @@ class BedrockLLMBackend:
 
         try:
             from dotenv import load_dotenv
+
             load_dotenv()
         except ImportError:
             pass
@@ -175,15 +177,19 @@ class BedrockLLMBackend:
             ContentBlock(image=ImageContent(format="png", source={"bytes": page}))
             for page in page_bytes
         ]
-        content.append(ContentBlock(text=(
-            "You are a document data extraction assistant. "
-            "The images above show pages of a document. "
-            f"Extract these fields: {', '.join(field_names)}.\n\n"
-            f"Schema:\n```json\n{schema_json}\n```\n\n"
-            "Call `extract_fields` with a JSON object containing every schema "
-            "property. Set fields not found in the document to null. "
-            "Extract only values clearly visible in the document - do not guess."
-        )))
+        content.append(
+            ContentBlock(
+                text=(
+                    "You are a document data extraction assistant. "
+                    "The images above show pages of a document. "
+                    f"Extract these fields: {', '.join(field_names)}.\n\n"
+                    f"Schema:\n```json\n{schema_json}\n```\n\n"
+                    "Call `extract_fields` with a JSON object containing every schema "
+                    "property. Set fields not found in the document to null. "
+                    "Extract only values clearly visible in the document - do not guess."
+                )
+            )
+        )
 
         try:
             agent(content)
@@ -203,6 +209,7 @@ class BedrockLLMBackend:
             return 0.0
         try:
             from pdf2image import pdfinfo_from_path
+
             info = pdfinfo_from_path(str(pdf_path))
             pages = min(info.get("Pages", 1), _MAX_PAGES)
         except Exception:
@@ -227,6 +234,7 @@ class BedrockLLMBackend:
 
         try:
             from dotenv import load_dotenv
+
             load_dotenv()
         except ImportError:
             pass
@@ -281,7 +289,9 @@ class BedrockLLMBackend:
                                     coords = [float(c) for c in data["bbox"]]
                                     logger.info(
                                         "Localized %s → page=%d bbox=[%.3f, %.3f, %.3f, %.3f]",
-                                        fname, data["page"], *coords,
+                                        fname,
+                                        data["page"],
+                                        *coords,
                                     )
                                     validated[fname] = {
                                         "page": data["page"],
@@ -301,7 +311,9 @@ def _make_converse_localize_tool(page_bytes: list[bytes], model_id: str, region:
     bedrock = boto3.client(
         "bedrock-runtime",
         region_name=region,
-        config=BotoConfig(read_timeout=120, retries={"max_attempts": 3, "mode": "adaptive"}),
+        config=BotoConfig(
+            read_timeout=120, retries={"max_attempts": 3, "mode": "adaptive"}
+        ),
     )
 
     # Pre-build image content blocks for the Converse API
@@ -319,15 +331,19 @@ def _make_converse_localize_tool(page_bytes: list[bytes], model_id: str, region:
             field_value: The text value to find in the document.
         """
         content = list(image_blocks)
-        content.append({"text": (
-            f"Locate the text \"{field_value}\" (field: {field_name}) in the document.\n\n"
-            "Return ONLY a JSON object with this exact format:\n"
-            '{"field_name": "' + field_name + '", "page": <page_number>, '
-            '"bbox": [x1, y1, x2, y2]}\n\n'
-            "Coordinates must be scaled between 0 and 1000 where "
-            "(0, 0) is top-left and (1000, 1000) is bottom-right.\n"
-            "Fit the bounding box tightly around the exact text. Return ONLY the JSON, nothing else."
-        )})
+        content.append(
+            {
+                "text": (
+                    f'Locate the text "{field_value}" (field: {field_name}) in the document.\n\n'
+                    "Return ONLY a JSON object with this exact format:\n"
+                    '{"field_name": "' + field_name + '", "page": <page_number>, '
+                    '"bbox": [x1, y1, x2, y2]}\n\n'
+                    "Coordinates must be scaled between 0 and 1000 where "
+                    "(0, 0) is top-left and (1000, 1000) is bottom-right.\n"
+                    "Fit the bounding box tightly around the exact text. Return ONLY the JSON, nothing else."
+                )
+            }
+        )
 
         response = bedrock.converse(
             modelId=model_id,
@@ -354,8 +370,8 @@ def _make_converse_localize_tool(page_bytes: list[bytes], model_id: str, region:
         except json.JSONDecodeError:
             pass
 
-        return json.dumps({"field_name": field_name, "error": "Could not parse location"})
+        return json.dumps(
+            {"field_name": field_name, "error": "Could not parse location"}
+        )
 
     return localize_single_field
-
-

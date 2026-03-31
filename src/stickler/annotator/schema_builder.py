@@ -167,12 +167,8 @@ def _render_field_list(
 
         # Array with object items
         if field["type"] == "array" and field.get("items_type") == "object":
-            with st.expander(
-                f"Item properties of '{field['name']}'", expanded=False
-            ):
-                _render_field_list(
-                    field["items_properties"], f"{fkey}_arr", depth + 1
-                )
+            with st.expander(f"Item properties of '{field['name']}'", expanded=False):
+                _render_field_list(field["items_properties"], f"{fkey}_arr", depth + 1)
                 _render_field_adder(
                     label_prefix=f"{field['name']} item",
                     key_prefix=f"{fkey}_arr_add",
@@ -240,7 +236,7 @@ class SchemaBuilder:
             schema: A JSON Schema dict (typically from :meth:`render`).
             path: Destination file path.
         """
-        path = Path(path)
+        path = Path(path).resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(schema, indent=4, sort_keys=False) + "\n",

@@ -36,7 +36,9 @@ class TestBuildFieldSchemaObject:
     """Nested object fields produce correct JSON Schema."""
 
     def test_empty_object(self):
-        result = _build_field_schema({"name": "addr", "type": "object", "properties": []})
+        result = _build_field_schema(
+            {"name": "addr", "type": "object", "properties": []}
+        )
         assert result == {"type": "object", "properties": {}}
 
     def test_object_with_sub_fields(self):
@@ -221,7 +223,11 @@ class TestExportToFile:
     """export_to_file writes valid, indented JSON."""
 
     def test_writes_json_file(self, tmp_path: Path):
-        schema = {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]}
+        schema = {
+            "type": "object",
+            "properties": {"x": {"type": "string"}},
+            "required": ["x"],
+        }
         out = tmp_path / "schema.json"
         SchemaBuilder().export_to_file(schema, out)
 
@@ -230,7 +236,11 @@ class TestExportToFile:
         assert loaded == schema
 
     def test_uses_4_space_indent(self, tmp_path: Path):
-        schema = {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]}
+        schema = {
+            "type": "object",
+            "properties": {"x": {"type": "string"}},
+            "required": ["x"],
+        }
         out = tmp_path / "schema.json"
         SchemaBuilder().export_to_file(schema, out)
 
@@ -239,7 +249,11 @@ class TestExportToFile:
         assert '    "type"' in text
 
     def test_trailing_newline(self, tmp_path: Path):
-        schema = {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]}
+        schema = {
+            "type": "object",
+            "properties": {"x": {"type": "string"}},
+            "required": ["x"],
+        }
         out = tmp_path / "schema.json"
         SchemaBuilder().export_to_file(schema, out)
 
@@ -248,16 +262,22 @@ class TestExportToFile:
 
     def test_creates_parent_directories(self, tmp_path: Path):
         out = tmp_path / "sub" / "dir" / "schema.json"
-        schema = {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]}
+        schema = {
+            "type": "object",
+            "properties": {"x": {"type": "string"}},
+            "required": ["x"],
+        }
         SchemaBuilder().export_to_file(schema, out)
         assert out.exists()
 
     def test_round_trip_byte_identical(self, tmp_path: Path):
         """Export then read back produces identical JSON."""
-        schema = SchemaBuilder._fields_to_schema([
-            {"name": "name", "type": "string"},
-            {"name": "count", "type": "integer"},
-        ])
+        schema = SchemaBuilder._fields_to_schema(
+            [
+                {"name": "name", "type": "string"},
+                {"name": "count", "type": "integer"},
+            ]
+        )
         out = tmp_path / "schema.json"
         SchemaBuilder().export_to_file(schema, out)
 
@@ -266,7 +286,11 @@ class TestExportToFile:
         assert text == expected
 
     def test_accepts_string_path(self, tmp_path: Path):
-        schema = {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]}
+        schema = {
+            "type": "object",
+            "properties": {"x": {"type": "string"}},
+            "required": ["x"],
+        }
         out = str(tmp_path / "schema.json")
         SchemaBuilder().export_to_file(schema, out)
         assert Path(out).exists()

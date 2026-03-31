@@ -61,7 +61,7 @@ class AnnotationSession:
         schema: dict,
         schema_hash: str,
     ) -> None:
-        self.dataset_dir = Path(dataset_dir)
+        self.dataset_dir = Path(dataset_dir).resolve()
         self.session_id = session_id
         self.annotator = annotator
         self.schema = schema
@@ -72,8 +72,13 @@ class AnnotationSession:
         return self.dataset_dir / ".annotations" / self.session_id
 
     def annotation_path_for(self, pdf_path: Path) -> Path:
-        """Return the per-doc JSON path within this session."""
-        return self.session_dir / pdf_path.with_suffix(".json").name
+        """Return the per-doc JSON path within this session.
+
+        Only the filename stem is used — parent directories in *pdf_path*
+        are stripped to prevent directory-traversal via crafted filenames.
+        """
+        safe_name = Path(pdf_path.name).with_suffix(".json")
+        return self.session_dir / safe_name.name
 
     def exists(self, pdf_path: Path) -> bool:
         return self.annotation_path_for(pdf_path).exists()
@@ -125,7 +130,9 @@ class AnnotationSession:
         try:
             raw = json.loads(annotation_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Could not read annotation file %s: %s", annotation_path, exc)
+            logger.warning(
+                "Could not read annotation file %s: %s", annotation_path, exc
+            )
             return None
 
         try:
@@ -142,9 +149,16 @@ class AnnotationSession:
                 )
                 location = None
                 loc_info = prov_info.get("location")
-                if isinstance(loc_info, dict) and "page" in loc_info and "bbox" in loc_info:
+                if (
+                    isinstance(loc_info, dict)
+                    and "page" in loc_info
+                    and "bbox" in loc_info
+                ):
                     from .models import FieldLocation
-                    location = FieldLocation(page=loc_info["page"], bbox=loc_info["bbox"])
+
+                    location = FieldLocation(
+                        page=loc_info["page"], bbox=loc_info["bbox"]
+                    )
                 fields[field_path] = FieldAnnotation(
                     value=value,
                     is_none=value is None,
@@ -178,7 +192,7 @@ class AnnotationManifest:
     """
 
     def __init__(self, dataset_dir: Path) -> None:
-        self.dataset_dir = Path(dataset_dir)
+        self.dataset_dir = Path(dataset_dir).resolve()
         self.manifest_path = self.dataset_dir / ".annotations" / _MANIFEST_FILENAME
 
     # ------------------------------------------------------------------
@@ -260,7 +274,9 @@ class AnnotationManifest:
         }
 
         self._save(manifest)
-        logger.info("Created annotation session %s for annotator %s", session_id, annotator)
+        logger.info(
+            "Created annotation session %s for annotator %s", session_id, annotator
+        )
 
         return AnnotationSession(
             dataset_dir=self.dataset_dir,
@@ -305,6 +321,7 @@ class AnnotationManifest:
 # new session-based API is wired in.  Will be removed once app.py is updated.
 # ---------------------------------------------------------------------------
 
+
 class AnnotationSerializer:
     """Thin shim that delegates to AnnotationSession.
 
@@ -314,11 +331,14 @@ class AnnotationSerializer:
     """
 
     @staticmethod
-    def annotation_path_for(pdf_path: Path, session: "AnnotationSession | None" = None) -> Path:
+    def annotation_path_for(
+        pdf_path: Path, session: "AnnotationSession | None" = None
+    ) -> Path:
         if session is not None:
             return session.annotation_path_for(pdf_path)
-        # Legacy flat layout
-        return pdf_path.parent / ".annotations" / pdf_path.with_suffix(".json").name
+        # Legacy flat layout — use only the filename to prevent traversal
+        safe_name = Path(pdf_path.name).with_suffix(".json").name
+        return pdf_path.resolve().parent / ".annotations" / safe_name
 
     @staticmethod
     def exists(pdf_path: Path, session: "AnnotationSession | None" = None) -> bool:
@@ -327,7 +347,11 @@ class AnnotationSerializer:
         return AnnotationSerializer.annotation_path_for(pdf_path).exists()
 
     @staticmethod
-    def save(annotation: AnnotationState, pdf_path: Path, session: "AnnotationSession | None" = None) -> None:
+    def save(
+        annotation: AnnotationState,
+        pdf_path: Path,
+        session: "AnnotationSession | None" = None,
+    ) -> None:
         if session is not None:
             session.save(annotation, pdf_path)
             return
@@ -363,7 +387,9 @@ class AnnotationSerializer:
         )
 
     @staticmethod
-    def load(pdf_path: Path, session: "AnnotationSession | None" = None) -> AnnotationState | None:
+    def load(
+        pdf_path: Path, session: "AnnotationSession | None" = None
+    ) -> AnnotationState | None:
         if session is not None:
             return session.load(pdf_path)
         # Legacy flat load
@@ -373,7 +399,9 @@ class AnnotationSerializer:
         try:
             raw = json.loads(annotation_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Could not read annotation file %s: %s", annotation_path, exc)
+            logger.warning(
+                "Could not read annotation file %s: %s", annotation_path, exc
+            )
             return None
         try:
             data: dict[str, Any] = raw["data"]
@@ -388,9 +416,16 @@ class AnnotationSerializer:
                 )
                 location = None
                 loc_info = prov_info.get("location")
-                if isinstance(loc_info, dict) and "page" in loc_info and "bbox" in loc_info:
+                if (
+                    isinstance(loc_info, dict)
+                    and "page" in loc_info
+                    and "bbox" in loc_info
+                ):
                     from .models import FieldLocation
-                    location = FieldLocation(page=loc_info["page"], bbox=loc_info["bbox"])
+
+                    location = FieldLocation(
+                        page=loc_info["page"], bbox=loc_info["bbox"]
+                    )
                 fields[field_path] = FieldAnnotation(
                     value=value,
                     is_none=value is None,

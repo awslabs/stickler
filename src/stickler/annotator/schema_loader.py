@@ -44,7 +44,7 @@ class SchemaLoader:
             FileNotFoundError: If *path* does not exist.
             ValueError: If the file contains invalid JSON or an invalid schema.
         """
-        path = Path(path)
+        path = Path(path).resolve()
 
         if not path.exists():
             raise FileNotFoundError(f"Schema file not found: {path}")
@@ -57,9 +57,7 @@ class SchemaLoader:
         try:
             schema = json.loads(raw_text)
         except json.JSONDecodeError as exc:
-            raise ValueError(
-                f"Invalid JSON in schema file {path}: {exc}"
-            ) from exc
+            raise ValueError(f"Invalid JSON in schema file {path}: {exc}") from exc
 
         if not isinstance(schema, dict):
             raise ValueError(
@@ -70,9 +68,7 @@ class SchemaLoader:
         try:
             model_class = StructuredModel.from_json_schema(schema)
         except (ValueError, Exception) as exc:
-            raise ValueError(
-                f"Invalid schema in {path}: {exc}"
-            ) from exc
+            raise ValueError(f"Invalid schema in {path}: {exc}") from exc
 
         return schema, model_class
 
@@ -102,7 +98,8 @@ class SchemaLoader:
         # Validate import path is a safe Python identifier chain before importing.
         # This guards against path traversal or shell injection via the import string.
         import re
-        if not re.match(r'^[A-Za-z_][A-Za-z0-9_.]*$', import_path):
+
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_.]*$", import_path):
             raise ValueError(
                 f"Import path contains invalid characters: '{import_path}'. "
                 "Only alphanumeric characters, underscores, and dots are allowed."
@@ -111,7 +108,9 @@ class SchemaLoader:
         module_path, _, class_name = import_path.rpartition(".")
 
         try:
-            module = importlib.import_module(module_path)  # nosemgrep: non-literal-import
+            module = importlib.import_module(
+                module_path
+            )  # nosemgrep: non-literal-import
         except ImportError as exc:
             raise ImportError(
                 f"Could not import module '{module_path}': {exc}"
@@ -148,15 +147,11 @@ class SchemaLoader:
             ValueError: If the schema is invalid or cannot be converted.
         """
         if not isinstance(schema, dict):
-            raise ValueError(
-                f"Schema must be a dict, got {type(schema).__name__}"
-            )
+            raise ValueError(f"Schema must be a dict, got {type(schema).__name__}")
 
         try:
             model_class = StructuredModel.from_json_schema(schema)
         except (ValueError, Exception) as exc:
-            raise ValueError(
-                f"Invalid schema from builder: {exc}"
-            ) from exc
+            raise ValueError(f"Invalid schema from builder: {exc}") from exc
 
         return schema, model_class

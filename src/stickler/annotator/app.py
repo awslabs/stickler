@@ -72,6 +72,7 @@ def _get_or_create_session(config: ConfigResult) -> AnnotationSession:
     3. Otherwise → create a new session and store its GUID
     """
     import os
+
     manifest = AnnotationManifest(config.dataset_dir)
     schema_hash = _schema_hash(config.schema)
 
@@ -146,14 +147,22 @@ def _resume_or_fresh_state(
     # If we're inside an active session, auto-resume — no prompt needed
     if session is not None and st.session_state.get("_session_id"):
         state = AnnotationSerializer.load(pdf_path, session=session)
-        state = state if state is not None else _load_or_create_state(pdf_path, schema, session=session)
+        state = (
+            state
+            if state is not None
+            else _load_or_create_state(pdf_path, schema, session=session)
+        )
         st.session_state[state_key] = state
         st.session_state[choice_key] = "resume"
         return state
 
     if choice == "resume":
         state = AnnotationSerializer.load(pdf_path, session=session)
-        state = state if state is not None else _load_or_create_state(pdf_path, schema, session=session)
+        state = (
+            state
+            if state is not None
+            else _load_or_create_state(pdf_path, schema, session=session)
+        )
         st.session_state[state_key] = state
         return state
 
@@ -171,15 +180,21 @@ def _resume_or_fresh_state(
     # No choice yet — show the prompt
     existing = AnnotationSerializer.load(pdf_path, session=session)
     updated = existing.updated_at[:19].replace("T", " ") if existing else ""
-    st.info(f"An existing annotation was found for **{pdf_path.name}** (last saved: {updated} UTC).")
+    st.info(
+        f"An existing annotation was found for **{pdf_path.name}** (last saved: {updated} UTC)."
+    )
     col_resume, col_fresh = st.columns(2)
     with col_resume:
-        if st.button("▶ Resume", key=f"btn_resume_{pdf_path}", use_container_width=True):
+        if st.button(
+            "▶ Resume", key=f"btn_resume_{pdf_path}", use_container_width=True
+        ):
             st.session_state.pop(state_key, None)  # clear cache so fresh load happens
             st.session_state[choice_key] = "resume"
             st.rerun()
     with col_fresh:
-        if st.button("🗑 Start Fresh", key=f"btn_fresh_{pdf_path}", use_container_width=True):
+        if st.button(
+            "🗑 Start Fresh", key=f"btn_fresh_{pdf_path}", use_container_width=True
+        ):
             st.session_state.pop(state_key, None)  # clear cache for blank state
             st.session_state[choice_key] = "fresh"
             st.rerun()
@@ -197,7 +212,9 @@ def _handle_schema_builder(config: ConfigResult | None) -> ConfigResult | None:
     """
     # If schema was just finalized this cycle, show only the success prompt
     if st.session_state.get("schema_just_finalized"):
-        st.success("Schema finalized! Click **Apply Configuration** in the sidebar to start annotating.")
+        st.success(
+            "Schema finalized! Click **Apply Configuration** in the sidebar to start annotating."
+        )
         return config
 
     builder = SchemaBuilder()
@@ -225,14 +242,30 @@ def _show_document_picker(documents, labels, status_list):
     """Dialog with search, sort, and status filter for document selection."""
     col_search, col_sort, col_filter = st.columns([3, 2, 2])
     with col_search:
-        search = st.text_input("Search", placeholder="Type to filter…", key="_doc_search", label_visibility="collapsed")
+        search = st.text_input(
+            "Search",
+            placeholder="Type to filter…",
+            key="_doc_search",
+            label_visibility="collapsed",
+        )
     with col_sort:
-        sort_by = st.selectbox("Sort", ["Name", "Status"], key="_doc_sort", label_visibility="collapsed")
+        sort_by = st.selectbox(
+            "Sort", ["Name", "Status"], key="_doc_sort", label_visibility="collapsed"
+        )
     with col_filter:
-        status_filter = st.selectbox("Filter", ["All", "Not Started", "In Progress", "Complete"], key="_doc_filter", label_visibility="collapsed")
+        status_filter = st.selectbox(
+            "Filter",
+            ["All", "Not Started", "In Progress", "Complete"],
+            key="_doc_filter",
+            label_visibility="collapsed",
+        )
 
     # Build filtered + sorted list
-    status_map = {"Not Started": DocumentStatus.NOT_STARTED, "In Progress": DocumentStatus.IN_PROGRESS, "Complete": DocumentStatus.COMPLETE}
+    status_map = {
+        "Not Started": DocumentStatus.NOT_STARTED,
+        "In Progress": DocumentStatus.IN_PROGRESS,
+        "Complete": DocumentStatus.COMPLETE,
+    }
     filtered = []
     for i, doc in enumerate(documents):
         name = doc.path.name
@@ -243,17 +276,27 @@ def _show_document_picker(documents, labels, status_list):
         filtered.append((i, doc, labels[i]))
 
     if sort_by == "Status":
-        order = {DocumentStatus.NOT_STARTED: 0, DocumentStatus.IN_PROGRESS: 1, DocumentStatus.COMPLETE: 2}
+        order = {
+            DocumentStatus.NOT_STARTED: 0,
+            DocumentStatus.IN_PROGRESS: 1,
+            DocumentStatus.COMPLETE: 2,
+        }
         filtered.sort(key=lambda x: (order.get(x[1].status, 9), x[1].path.name))
     else:
         filtered.sort(key=lambda x: x[1].path.name)
 
-    st.markdown(f"<div style='color:#888;font-size:11px;padding:2px 0'>{len(filtered)} of {len(documents)} documents</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='color:#888;font-size:11px;padding:2px 0'>{len(filtered)} of {len(documents)} documents</div>",
+        unsafe_allow_html=True,
+    )
 
     for idx, doc, label in filtered:
         col_name, col_btn = st.columns([5, 1])
         with col_name:
-            st.markdown(f"<div style='padding:4px 0;font-size:13px'>{label}</div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div style='padding:4px 0;font-size:13px'>{label}</div>",
+                unsafe_allow_html=True,
+            )
         with col_btn:
             if st.button("Select", key=f"_pick_doc_{idx}", use_container_width=True):
                 st.session_state["_doc_nav_idx"] = idx
@@ -278,8 +321,7 @@ def _render_document_queue(
         return None
 
     labels = [
-        f"{_STATUS_ICONS.get(doc.status, '⚪')} {doc.path.name}"
-        for doc in documents
+        f"{_STATUS_ICONS.get(doc.status, '⚪')} {doc.path.name}" for doc in documents
     ]
     status_list = [doc.status for doc in documents]
 
@@ -304,12 +346,24 @@ def _render_document_queue(
     col_prev, col_next, col_label, col_pick = st.columns([1.2, 1.2, 4, 1.2])
 
     with col_prev:
-        if st.button("◀ Prev Doc", key="doc_prev", disabled=(current == 0), help="Previous document", use_container_width=True):
+        if st.button(
+            "◀ Prev Doc",
+            key="doc_prev",
+            disabled=(current == 0),
+            help="Previous document",
+            use_container_width=True,
+        ):
             st.session_state[nav_key] = current - 1
             st.rerun()
 
     with col_next:
-        if st.button("Next Doc ▶", key="doc_next", disabled=(current == n - 1), help="Next document", use_container_width=True):
+        if st.button(
+            "Next Doc ▶",
+            key="doc_next",
+            disabled=(current == n - 1),
+            help="Next document",
+            use_container_width=True,
+        ):
             st.session_state[nav_key] = current + 1
             st.rerun()
 
@@ -323,7 +377,12 @@ def _render_document_queue(
         )
 
     with col_pick:
-        if st.button("📋 Select", key="doc_picker_btn", help="Browse all documents", use_container_width=True):
+        if st.button(
+            "📋 Select",
+            key="doc_picker_btn",
+            help="Browse all documents",
+            use_container_width=True,
+        ):
             _show_document_picker(documents, labels, status_list)
 
     return documents[current].path
@@ -374,7 +433,7 @@ def _render_landing_page() -> bool:
             )
             return False
 
-        dataset_path = Path(dataset_dir.strip())
+        dataset_path = Path(dataset_dir.strip()).resolve()
         if not dataset_path.exists() or not dataset_path.is_dir():
             st.error(f"Directory not found: {dataset_path}")
             return False
@@ -386,7 +445,13 @@ def _render_landing_page() -> bool:
         if sessions:
             st.markdown("##### Existing Sessions")
             # Count actual PDFs for accurate totals
-            actual_pdf_count = len([p for p in dataset_path.rglob("*") if p.is_file() and p.suffix.lower() == ".pdf"])
+            actual_pdf_count = len(
+                [
+                    p
+                    for p in dataset_path.rglob("*")
+                    if p.is_file() and p.suffix.lower() == ".pdf"
+                ]
+            )
             for sess in sessions:
                 sid = sess["session_id"]
                 sid_short = sid[:8]
@@ -396,6 +461,7 @@ def _render_landing_page() -> bool:
 
                 # Count completed/in-progress from actual annotation files
                 import json as _json
+
                 _sess_dir = dataset_path / ".annotations" / sid
                 _completed = 0
                 _annotated = 0
@@ -431,16 +497,25 @@ def _render_landing_page() -> bool:
                         unsafe_allow_html=True,
                     )
                 with col_btn:
-                    if st.button("▶ Resume", key=f"resume_session_{sid}", use_container_width=True):
+                    if st.button(
+                        "▶ Resume",
+                        key=f"resume_session_{sid}",
+                        use_container_width=True,
+                    ):
                         session_obj = manifest.get_session(sid)
                         if session_obj and session_obj.schema:
                             try:
                                 from stickler.annotator.schema_loader import (
                                     SchemaLoader,
                                 )
-                                _, model_class = SchemaLoader.from_builder_schema(session_obj.schema)
+
+                                _, model_class = SchemaLoader.from_builder_schema(
+                                    session_obj.schema
+                                )
                                 st.session_state[_KEY_DATASET_DIR] = dataset_dir.strip()
-                                st.session_state[_KEY_SCHEMA_SOURCE] = SCHEMA_SOURCE_JSON
+                                st.session_state[_KEY_SCHEMA_SOURCE] = (
+                                    SCHEMA_SOURCE_JSON
+                                )
                                 st.session_state[_KEY_SCHEMA_PATH] = ""
                                 st.session_state[_KEY_MODE] = "zero_start"
                                 st.session_state[_KEY_SCHEMA] = session_obj.schema
@@ -463,6 +538,7 @@ def _render_landing_page() -> bool:
         st.markdown("##### Start New Annotation")
         with st.expander("Configure schema and mode", expanded=not bool(sessions)):
             from stickler.annotator.config import _render_config_widgets
+
             st.session_state[_KEY_DATASET_DIR] = dataset_dir.strip()
             _render_config_widgets()
 
@@ -475,7 +551,13 @@ def _render_dataset_progress(dataset_dir: Path, session_id: str) -> None:
         return
 
     # Count actual PDFs in the dataset directory (source of truth)
-    total = len([p for p in dataset_dir.rglob("*") if p.is_file() and p.suffix.lower() == ".pdf"])
+    total = len(
+        [
+            p
+            for p in dataset_dir.rglob("*")
+            if p.is_file() and p.suffix.lower() == ".pdf"
+        ]
+    )
     if total == 0:
         return
 
@@ -485,6 +567,7 @@ def _render_dataset_progress(dataset_dir: Path, session_id: str) -> None:
     in_progress = 0
     if session_dir.exists():
         import json as _json
+
         for f in session_dir.glob("*.json"):
             try:
                 data = _json.loads(f.read_text())
@@ -509,7 +592,7 @@ def _render_dataset_progress(dataset_dir: Path, session_id: str) -> None:
     st.markdown(
         f"<div style='display:flex;align-items:center;gap:8px;padding:2px 0 4px 0'>"
         f"<div style='flex:1;background:#e5e7eb;border-radius:4px;height:6px;overflow:hidden'>"
-        f"<div style='width:{pct*100:.1f}%;background:#22c55e;height:100%'></div>"
+        f"<div style='width:{pct * 100:.1f}%;background:#22c55e;height:100%'></div>"
         f"</div>"
         f"<span style='font-size:10px;color:#888;white-space:nowrap'>"
         f"<span class='kie-tooltip' data-tip='Completed'>&#9989;</span> {completed}"
@@ -528,11 +611,13 @@ def _app() -> None:
 
     # Inject CSS + JS from static files
     from stickler.annotator.styles import inject_styles
+
     inject_styles()
 
     # Load .env credentials if present (for local dev / LLM backend)
     try:
         from dotenv import load_dotenv
+
         load_dotenv()
     except ImportError:
         pass
@@ -547,25 +632,33 @@ def _app() -> None:
     if is_configured:
         dataset_name = Path(config.dataset_dir).name
         schema_path_stored = st.session_state.get("config_schema_path", "")
-        schema_name = schema_path_stored.split("/")[-1] if schema_path_stored else (
-            config.schema.get("title", "schema")
+        schema_name = (
+            schema_path_stored.split("/")[-1]
+            if schema_path_stored
+            else (config.schema.get("title", "schema"))
         )
 
         session_id = st.session_state.get("_session_id", "")
         import urllib.parse
+
         if session_id:
-            deep_link_params = urllib.parse.urlencode({
-                "dataset": str(config.dataset_dir),
-                "session": session_id,
-            })
+            deep_link_params = urllib.parse.urlencode(
+                {
+                    "dataset": str(config.dataset_dir),
+                    "session": session_id,
+                }
+            )
         else:
-            deep_link_params = urllib.parse.urlencode({
-                "dataset": str(config.dataset_dir),
-                "schema": schema_path_stored,
-            })
+            deep_link_params = urllib.parse.urlencode(
+                {
+                    "dataset": str(config.dataset_dir),
+                    "schema": schema_path_stored,
+                }
+            )
         deep_link = f"http://localhost:8501/?{deep_link_params}"
 
         import streamlit.components.v1 as _comp
+
         col_title, col_link, col_gear = st.columns([4, 7, 0.5])
         with col_title:
             abs_dataset = str(config.dataset_dir.resolve())
@@ -590,7 +683,9 @@ def _app() -> None:
                 height=24,
             )
         with col_gear:
-            if st.button("⚙️", key="open_config", help="Configure dataset, schema, and mode"):
+            if st.button(
+                "⚙️", key="open_config", help="Configure dataset, schema, and mode"
+            ):
                 render_config_dialog()
 
         # Document set progress bar
@@ -598,7 +693,9 @@ def _app() -> None:
     else:
         _, gear_col = st.columns([20, 1])
         with gear_col:
-            if st.button("⚙️", key="open_config", help="Configure dataset, schema, and mode"):
+            if st.button(
+                "⚙️", key="open_config", help="Configure dataset, schema, and mode"
+            ):
                 render_config_dialog()
 
     st.markdown("<hr style='margin:0 0 2px 0'>", unsafe_allow_html=True)
@@ -641,10 +738,13 @@ def _app() -> None:
 
     # Update deep link to include session GUID
     import urllib.parse
-    deep_link_params = urllib.parse.urlencode({
-        "dataset": str(config.dataset_dir),
-        "session": session.session_id,
-    })
+
+    deep_link_params = urllib.parse.urlencode(
+        {
+            "dataset": str(config.dataset_dir),
+            "session": session.session_id,
+        }
+    )
     deep_link = f"http://localhost:8502/?{deep_link_params}"
 
     # 4. Side-by-side layout: PDF viewer (left, wider) + annotation panel (right, narrower)
@@ -704,7 +804,9 @@ def _app() -> None:
                 st.session_state["_llm_model_label"] = DEFAULT_MODEL_LABEL
 
             selected_label = st.session_state["_llm_model_label"]
-            selected_model_id = AVAILABLE_MODELS.get(selected_label, AVAILABLE_MODELS[DEFAULT_MODEL_LABEL])
+            selected_model_id = AVAILABLE_MODELS.get(
+                selected_label, AVAILABLE_MODELS[DEFAULT_MODEL_LABEL]
+            )
 
             # (Re)create backend when model changes
             _backend_key = "_llm_backend"
@@ -713,7 +815,9 @@ def _app() -> None:
                 _backend_key not in st.session_state
                 or st.session_state.get(_model_key) != selected_model_id
             ):
-                st.session_state[_backend_key] = BedrockLLMBackend(model_id=selected_model_id)
+                st.session_state[_backend_key] = BedrockLLMBackend(
+                    model_id=selected_model_id
+                )
                 st.session_state[_model_key] = selected_model_id
 
             backend = st.session_state[_backend_key]
@@ -733,7 +837,9 @@ def _app() -> None:
                 st.session_state["_loc_model_label"] = DEFAULT_LOCALIZATION_MODEL_LABEL
 
             loc_label = st.session_state["_loc_model_label"]
-            loc_model_id = LOCALIZATION_MODELS.get(loc_label, LOCALIZATION_MODELS[DEFAULT_LOCALIZATION_MODEL_LABEL])
+            loc_model_id = LOCALIZATION_MODELS.get(
+                loc_label, LOCALIZATION_MODELS[DEFAULT_LOCALIZATION_MODEL_LABEL]
+            )
 
             # Reuse the extraction backend instance but pass localization model_id
             if "_llm_backend" in st.session_state:
@@ -746,7 +852,14 @@ def _app() -> None:
         except Exception as exc:
             logger.debug("Localization backend unavailable: %s", exc)
 
-        panel = AnnotationPanel(config.schema, state, selected_pdf, session=session, prefill_fn=prefill_fn, localize_fn=localize_fn)
+        panel = AnnotationPanel(
+            config.schema,
+            state,
+            selected_pdf,
+            session=session,
+            prefill_fn=prefill_fn,
+            localize_fn=localize_fn,
+        )
         panel.render()
 
 

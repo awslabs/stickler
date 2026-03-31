@@ -55,8 +55,6 @@ SCHEMA_SOURCE_BUILDER = "Schema Builder"
 SCHEMA_SOURCES = (SCHEMA_SOURCE_JSON, SCHEMA_SOURCE_PYDANTIC, SCHEMA_SOURCE_BUILDER)
 
 
-
-
 @dataclass
 class ConfigResult:
     """Validated configuration returned by :func:`render_config_sidebar`.
@@ -76,6 +74,16 @@ class ConfigResult:
     model_class: Type
 
 
+def _safe_resolve(user_path: str) -> Path:
+    """Resolve a user-supplied path string to an absolute ``Path``.
+
+    Uses ``Path.resolve()`` to collapse ``..`` segments and symlinks,
+    preventing directory-traversal attacks from user-controlled input
+    (text inputs, URL query parameters).
+    """
+    return Path(user_path.strip()).resolve()
+
+
 def _validate_dataset_dir(dataset_dir: str) -> Path | None:
     """Validate the dataset directory path.
 
@@ -86,7 +94,7 @@ def _validate_dataset_dir(dataset_dir: str) -> Path | None:
         st.error("Dataset directory path cannot be empty.")
         return None
 
-    path = Path(dataset_dir.strip())
+    path = _safe_resolve(dataset_dir)
     if not path.exists():
         st.error(f"Dataset directory does not exist: {path}")
         return None
@@ -113,7 +121,7 @@ def _validate_schema(
         if not path_str:
             st.error("JSON Schema file path cannot be empty.")
             return None
-        schema_file = Path(path_str)
+        schema_file = _safe_resolve(path_str)
         if not schema_file.exists():
             st.error(f"Schema file not found: {schema_file}")
             return None
@@ -174,7 +182,9 @@ def _render_config_widgets() -> None:
 
     # --- Schema source ---
     current_source = st.session_state.get(_KEY_SCHEMA_SOURCE, SCHEMA_SOURCE_JSON)
-    source_index = SCHEMA_SOURCES.index(current_source) if current_source in SCHEMA_SOURCES else 0
+    source_index = (
+        SCHEMA_SOURCES.index(current_source) if current_source in SCHEMA_SOURCES else 0
+    )
 
     schema_source = st.radio(
         "Schema source",
@@ -211,10 +221,14 @@ def _render_config_widgets() -> None:
         built_schema = builder.render()
         if built_schema is not None:
             try:
-                validated_schema, model_class = SchemaLoader.from_builder_schema(built_schema)
+                validated_schema, model_class = SchemaLoader.from_builder_schema(
+                    built_schema
+                )
                 st.session_state[_KEY_SCHEMA] = validated_schema
                 st.session_state[_KEY_MODEL_CLASS] = model_class
-                st.success("✓ Schema finalized. Click **Apply Configuration** to start.")
+                st.success(
+                    "✓ Schema finalized. Click **Apply Configuration** to start."
+                )
             except ValueError as exc:
                 st.error(f"Schema validation failed: {exc}")
         elif st.session_state.get(_KEY_SCHEMA) is not None:
@@ -222,7 +236,12 @@ def _render_config_widgets() -> None:
 
     # --- Apply button ---
     st.markdown("---")
-    apply_clicked = st.button("Apply Configuration", key="__config_apply", type="primary", use_container_width=True)
+    apply_clicked = st.button(
+        "Apply Configuration",
+        key="__config_apply",
+        type="primary",
+        use_container_width=True,
+    )
 
     if apply_clicked:
         validated_dir = _validate_dataset_dir(dataset_dir)
@@ -317,7 +336,7 @@ def apply_config_from_query_params() -> bool:
     from .schema_loader import SchemaLoader
     from .serializer import AnnotationManifest
 
-    dataset_path = Path(dataset)
+    dataset_path = _safe_resolve(dataset)
     if not dataset_path.exists() or not dataset_path.is_dir():
         logger.warning("Query param dataset dir not found: %s", dataset)
         return False
@@ -358,7 +377,7 @@ def apply_config_from_query_params() -> bool:
     if not schema_path:
         return False
 
-    schema_file = Path(schema_path)
+    schema_file = _safe_resolve(schema_path)
     if not schema_file.exists() or not schema_file.is_file():
         logger.warning("Query param schema file not found: %s", schema_path)
         return False
@@ -377,5 +396,9 @@ def apply_config_from_query_params() -> bool:
     st.session_state[_KEY_MODEL_CLASS] = model_class
     st.session_state[_KEY_VALIDATED] = True
     st.session_state["_query_params_applied"] = True
-    logger.info("Config auto-applied from query params: dataset=%s schema=%s", dataset, schema_path)
+    logger.info(
+        "Config auto-applied from query params: dataset=%s schema=%s",
+        dataset,
+        schema_path,
+    )
     return True

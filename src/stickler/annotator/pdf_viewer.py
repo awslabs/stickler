@@ -56,7 +56,7 @@ class PDFViewer:
     """
 
     def __init__(self, pdf_path: Path, pages_per_batch: int = 5) -> None:
-        self.pdf_path = Path(pdf_path)
+        self.pdf_path = Path(pdf_path).resolve()
         self.pages_per_batch = pages_per_batch
         self._total_pages: int | None = None
 
@@ -141,8 +141,16 @@ class PDFViewer:
 
     # Color palette for field boxes (cycling through for distinct fields)
     _BOX_COLORS = [
-        "#e63946", "#457b9d", "#2a9d8f", "#e9c46a", "#f4a261",
-        "#264653", "#a8dadc", "#6a4c93", "#1982c4", "#8ac926",
+        "#e63946",
+        "#457b9d",
+        "#2a9d8f",
+        "#e9c46a",
+        "#f4a261",
+        "#264653",
+        "#a8dadc",
+        "#6a4c93",
+        "#1982c4",
+        "#8ac926",
     ]
 
     def _draw_field_boxes(
@@ -162,8 +170,7 @@ class PDFViewer:
 
         # Filter for fields on this page
         page_fields = {
-            name: loc for name, loc in field_locations.items()
-            if loc.page == page_num
+            name: loc for name, loc in field_locations.items() if loc.page == page_num
         }
         if not page_fields:
             return image
@@ -176,7 +183,9 @@ class PDFViewer:
 
         font_size = max(11, h // 100)
         try:
-            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", size=font_size)
+            font = ImageFont.truetype(
+                "/System/Library/Fonts/Helvetica.ttc", size=font_size
+            )
         except (OSError, IOError):
             font = ImageFont.load_default()
 
@@ -199,7 +208,9 @@ class PDFViewer:
             y2 = int(loc.bbox[3] / 1000 * h)
 
             # Draw semi-transparent fill + solid border
-            draw.rectangle([x1, y1, x2, y2], fill=color_fill, outline=color_rgb, width=2)
+            draw.rectangle(
+                [x1, y1, x2, y2], fill=color_fill, outline=color_rgb, width=2
+            )
 
             # Label with pill background — find a non-overlapping position
             label = field_name
@@ -209,9 +220,9 @@ class PDFViewer:
 
             # Try positions: above box, below box, inside top-left
             candidates = [
-                (x1, y1 - th - 2),   # above
-                (x1, y2 + 2),        # below
-                (x1 + 2, y1 + 2),    # inside top-left
+                (x1, y1 - th - 2),  # above
+                (x1, y2 + 2),  # below
+                (x1 + 2, y1 + 2),  # inside top-left
             ]
 
             lx, ly = candidates[0]  # default
@@ -222,8 +233,12 @@ class PDFViewer:
                 label_rect = (cx, cy, cx + tw, cy + th)
                 # Check overlap with existing labels
                 overlaps = any(
-                    not (label_rect[2] < er[0] or label_rect[0] > er[2] or
-                         label_rect[3] < er[1] or label_rect[1] > er[3])
+                    not (
+                        label_rect[2] < er[0]
+                        or label_rect[0] > er[2]
+                        or label_rect[3] < er[1]
+                        or label_rect[1] > er[3]
+                    )
                     for er in used_label_rects
                 )
                 if not overlaps:
@@ -280,7 +295,9 @@ class PDFViewer:
         col_prev, col_info, col_next, col_rotate = st.columns([1, 2, 1, 0.5])
 
         with col_prev:
-            if st.button("⬅ Prev Page", disabled=(current_page <= 1), key=f"prev_{self.pdf_path}"):
+            if st.button(
+                "⬅ Prev Page", disabled=(current_page <= 1), key=f"prev_{self.pdf_path}"
+            ):
                 st.session_state[state_key] = max(1, current_page - 1)
                 st.rerun()
 
@@ -291,7 +308,11 @@ class PDFViewer:
             )
 
         with col_next:
-            if st.button("Next Page ➡", disabled=(current_page >= total), key=f"next_{self.pdf_path}"):
+            if st.button(
+                "Next Page ➡",
+                disabled=(current_page >= total),
+                key=f"next_{self.pdf_path}",
+            ):
                 st.session_state[state_key] = min(total, current_page + 1)
                 st.rerun()
 
@@ -299,7 +320,9 @@ class PDFViewer:
             rot_key = f"pdf_rotation_{self.pdf_path}"
             if rot_key not in st.session_state:
                 st.session_state[rot_key] = 0
-            if st.button("↻", key=f"rotate_{self.pdf_path}", help="Rotate 90° clockwise"):
+            if st.button(
+                "↻", key=f"rotate_{self.pdf_path}", help="Rotate 90° clockwise"
+            ):
                 st.session_state[rot_key] = (st.session_state[rot_key] + 90) % 360
                 st.rerun()
 
@@ -312,7 +335,9 @@ class PDFViewer:
 
             # Draw bounding box overlays for fields on this page
             if field_locations:
-                page_image = self._draw_field_boxes(page_image, current_page, field_locations)
+                page_image = self._draw_field_boxes(
+                    page_image, current_page, field_locations
+                )
 
             st.image(page_image, use_container_width=True)
         except Exception as exc:

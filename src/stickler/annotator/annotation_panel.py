@@ -31,7 +31,9 @@ def _now_iso() -> str:
 
 
 def _field_is_annotated(field: FieldAnnotation) -> bool:
-    return field.is_none or (field.value is not None and field.value != "" and field.value != [])
+    return field.is_none or (
+        field.value is not None and field.value != "" and field.value != []
+    )
 
 
 class AnnotationPanel:
@@ -51,10 +53,14 @@ class AnnotationPanel:
         self.pdf_path = pdf_path
         self.session = session  # AnnotationSession | None
         self.prefill_fn = prefill_fn  # callable(pdf_path, schema) -> dict | None
-        self.localize_fn = localize_fn  # callable(pdf_path, field_values) -> dict | None
+        self.localize_fn = (
+            localize_fn  # callable(pdf_path, field_values) -> dict | None
+        )
         self.fields = list(schema.get("properties", {}).keys())
         self._field_schemas = schema.get("properties", {})
-        self._doc_key = hashlib.md5(str(pdf_path).encode(), usedforsecurity=False).hexdigest()[:8]
+        self._doc_key = hashlib.md5(
+            str(pdf_path).encode(), usedforsecurity=False
+        ).hexdigest()[:8]
 
     # ------------------------------------------------------------------
     # Core helpers
@@ -109,7 +115,9 @@ class AnnotationPanel:
             return
 
         current_ext = st.session_state.get("_llm_model_label", DEFAULT_MODEL_LABEL)
-        current_loc = st.session_state.get("_loc_model_label", DEFAULT_LOCALIZATION_MODEL_LABEL)
+        current_loc = st.session_state.get(
+            "_loc_model_label", DEFAULT_LOCALIZATION_MODEL_LABEL
+        )
         ext_labels = list(AVAILABLE_MODELS.keys())
         loc_labels = list(LOCALIZATION_MODELS.keys())
 
@@ -161,7 +169,9 @@ class AnnotationPanel:
     # Scalar field rendering
     # ------------------------------------------------------------------
 
-    def _render_scalar_field(self, field_name: str, label: str, source: str = "human") -> None:
+    def _render_scalar_field(
+        self, field_name: str, label: str, source: str = "human"
+    ) -> None:
         """Render a scalar field with inline N/A toggle."""
         field_schema = self._field_schemas.get(field_name, {})
         description = field_schema.get("description", "")
@@ -256,16 +266,25 @@ class AnnotationPanel:
             header_cols = st.columns([*[3] * len(sub_fields), 1])
             for i, sf in enumerate(sub_fields):
                 with header_cols[i]:
-                    st.markdown(f"<small style='color:#888'>{sf}</small>", unsafe_allow_html=True)
+                    st.markdown(
+                        f"<small style='color:#888'>{sf}</small>",
+                        unsafe_allow_html=True,
+                    )
             with header_cols[-1]:
-                st.markdown("<small style='color:#888'>remove</small>", unsafe_allow_html=True)
+                st.markdown(
+                    "<small style='color:#888'>remove</small>", unsafe_allow_html=True
+                )
 
             # Table rows
             indices_to_remove = []
             changed = False
             for idx, item in enumerate(items):
                 row_cols = st.columns([*[3] * len(sub_fields), 1])
-                updated_item = dict(item) if isinstance(item, dict) else {k: None for k in sub_fields}
+                updated_item = (
+                    dict(item)
+                    if isinstance(item, dict)
+                    else {k: None for k in sub_fields}
+                )
                 for i, sf in enumerate(sub_fields):
                     with row_cols[i]:
                         sub_key = f"arr_{self._doc_key}_{field_name}_{idx}_{sf}"
@@ -282,8 +301,14 @@ class AnnotationPanel:
                         elif sf not in updated_item:
                             updated_item[sf] = current_sub
                 with row_cols[-1]:
-                    st.markdown("<div style='padding-top:4px'></div>", unsafe_allow_html=True)
-                    if st.button("✕", key=f"arr_rm_{self._doc_key}_{field_name}_{idx}", help="Remove this item"):
+                    st.markdown(
+                        "<div style='padding-top:4px'></div>", unsafe_allow_html=True
+                    )
+                    if st.button(
+                        "✕",
+                        key=f"arr_rm_{self._doc_key}_{field_name}_{idx}",
+                        help="Remove this item",
+                    ):
                         indices_to_remove.append(idx)
                 items[idx] = updated_item
 
@@ -299,13 +324,17 @@ class AnnotationPanel:
                 self._update_field(field_name, items, False, source="human")
 
         # Add row button
-        if st.button("＋ Add row", key=f"arr_add_{self._doc_key}_{field_name}", type="secondary"):
+        if st.button(
+            "＋ Add row", key=f"arr_add_{self._doc_key}_{field_name}", type="secondary"
+        ):
             items.append({k: None for k in sub_fields})
             st.session_state[items_key] = items
             self._update_field(field_name, items, False, source="human")
             st.rerun()
 
-    def _render_primitive_array(self, field_name: str, items: list, items_key: str) -> None:
+    def _render_primitive_array(
+        self, field_name: str, items: list, items_key: str
+    ) -> None:
         """Render array of primitives as a vertical list."""
         indices_to_remove = []
         for idx, item in enumerate(items):
@@ -330,7 +359,9 @@ class AnnotationPanel:
             self._update_field(field_name, items or None, not items, source="human")
             st.rerun()
 
-        if st.button("＋ Add item", key=f"arr_add_{self._doc_key}_{field_name}", type="secondary"):
+        if st.button(
+            "＋ Add item", key=f"arr_add_{self._doc_key}_{field_name}", type="secondary"
+        ):
             items.append("")
             st.session_state[items_key] = items
             self._update_field(field_name, items, False, source="human")
@@ -356,10 +387,16 @@ class AnnotationPanel:
             st.subheader("Annotation")
         with col_btn:
             if self.prefill_fn is not None:
-                st.markdown("<div style='padding-top:8px'></div>", unsafe_allow_html=True)
-                if st.button("🤖 Auto-annotate", key="zero_prefill_btn", use_container_width=True,
-                             help="Pre-fill all fields using the selected Bedrock model. "
-                                  "Sends PDF pages as images to the LLM and extracts field values."):
+                st.markdown(
+                    "<div style='padding-top:8px'></div>", unsafe_allow_html=True
+                )
+                if st.button(
+                    "🤖 Auto-annotate",
+                    key="zero_prefill_btn",
+                    use_container_width=True,
+                    help="Pre-fill all fields using the selected Bedrock model. "
+                    "Sends PDF pages as images to the LLM and extracts field values.",
+                ):
                     with st.spinner(f"Extracting fields from {self.pdf_path.name}…"):
                         try:
                             predictions = self.prefill_fn(self.pdf_path, self.schema)
@@ -374,14 +411,28 @@ class AnnotationPanel:
                             if field_schema.get("type") == "array":
                                 value = raw_val if isinstance(raw_val, list) else None
                                 is_none = value is None
-                                st.session_state[f"array_items_{self._doc_key}_{field_name}"] = value or []
+                                st.session_state[
+                                    f"array_items_{self._doc_key}_{field_name}"
+                                ] = value or []
                             else:
-                                value = None if is_none else str(raw_val) if raw_val is not None else None
-                                # Sync widget keys so text inputs reflect new values after rerun
-                                st.session_state[f"zero_val_{self._doc_key}_{field_name}"] = (
-                                    "" if is_none else (str(value) if value is not None else "")
+                                value = (
+                                    None
+                                    if is_none
+                                    else str(raw_val)
+                                    if raw_val is not None
+                                    else None
                                 )
-                                st.session_state[f"zero_none_{self._doc_key}_{field_name}"] = is_none
+                                # Sync widget keys so text inputs reflect new values after rerun
+                                st.session_state[
+                                    f"zero_val_{self._doc_key}_{field_name}"
+                                ] = (
+                                    ""
+                                    if is_none
+                                    else (str(value) if value is not None else "")
+                                )
+                                st.session_state[
+                                    f"zero_none_{self._doc_key}_{field_name}"
+                                ] = is_none
                             self.state.fields[field_name] = FieldAnnotation(
                                 value=value,
                                 is_none=is_none,
@@ -392,11 +443,19 @@ class AnnotationPanel:
         with col_loc:
             annotated_count, _ = self._annotated_count()
             if self.localize_fn is not None and annotated_count > 0:
-                has_locations = any(f.location is not None for f in self.state.fields.values())
+                has_locations = any(
+                    f.location is not None for f in self.state.fields.values()
+                )
                 loc_label = "🔄 Re-locate" if has_locations else "📍 Locate"
-                st.markdown("<div style='padding-top:8px'></div>", unsafe_allow_html=True)
-                if st.button(loc_label, key="localize_btn", use_container_width=True,
-                             help="Find where each field value appears in the PDF and draw bounding boxes."):
+                st.markdown(
+                    "<div style='padding-top:8px'></div>", unsafe_allow_html=True
+                )
+                if st.button(
+                    loc_label,
+                    key="localize_btn",
+                    use_container_width=True,
+                    help="Find where each field value appears in the PDF and draw bounding boxes.",
+                ):
                     field_values = {
                         name: fa.value
                         for name, fa in self.state.fields.items()
@@ -410,10 +469,12 @@ class AnnotationPanel:
                             locations = None
                     if locations:
                         from .models import FieldLocation
+
                         for field_name, loc_data in locations.items():
                             if field_name in self.state.fields:
                                 self.state.fields[field_name].location = FieldLocation(
-                                    page=loc_data["page"], bbox=loc_data["bbox"],
+                                    page=loc_data["page"],
+                                    bbox=loc_data["bbox"],
                                 )
                         self._auto_save()
                         loc_key = f"_field_locations_{self.pdf_path}"
@@ -432,8 +493,16 @@ class AnnotationPanel:
         completion_slot = st.empty()
 
         # Separate scalar fields from array fields for cleaner layout
-        scalar_fields = [f for f in self.fields if self._field_schemas.get(f, {}).get("type") != "array"]
-        array_fields = [f for f in self.fields if self._field_schemas.get(f, {}).get("type") == "array"]
+        scalar_fields = [
+            f
+            for f in self.fields
+            if self._field_schemas.get(f, {}).get("type") != "array"
+        ]
+        array_fields = [
+            f
+            for f in self.fields
+            if self._field_schemas.get(f, {}).get("type") == "array"
+        ]
 
         # Scalar fields
         if scalar_fields:
@@ -452,7 +521,9 @@ class AnnotationPanel:
         pct = annotated / total if total else 0
         progress_slot.progress(pct, text=f"**{annotated} / {total}** fields annotated")
         if annotated == total and total > 0:
-            completion_slot.success("🎉 All fields annotated! Move to the next document.")
+            completion_slot.success(
+                "🎉 All fields annotated! Move to the next document."
+            )
 
     # ------------------------------------------------------------------
     # Dispatch
