@@ -8,6 +8,9 @@ title: Installation
 
 ```bash
 pip install stickler-eval
+
+# Using uv? Works the same way:
+uv pip install stickler-eval
 ```
 
 ## Requirements
