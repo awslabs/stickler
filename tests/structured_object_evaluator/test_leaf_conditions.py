@@ -125,7 +125,7 @@ def test_nested_structured_model():
 
     # Check that exact matches get perfect score
     assert results["fields"]["name"]["anls_score"] == 1.0
-    assert results["fields"]["address"]["anls_score"] == 1.0  # Nested model comparison
+    assert results["fields"]["address"]["overall"]["anls_score"] == 1.0  # Nested model comparison
     assert results["overall"]["anls_score"] == 1.0
 
     # Test with differences in the nested model
@@ -140,7 +140,7 @@ def test_nested_structured_model():
     assert results_diff["fields"]["name"]["anls_score"] == 1.0
 
     # The address field should have a lower score due to the city difference
-    assert results_diff["fields"]["address"]["anls_score"] < 1.0
+    assert results_diff["fields"]["address"]["overall"]["anls_score"] < 1.0
 
     # Overall score should be between the two field scores
     assert results_diff["overall"]["anls_score"] < 1.0

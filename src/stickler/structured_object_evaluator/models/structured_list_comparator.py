@@ -316,7 +316,10 @@ class StructuredListComparator:
                 pred_sub_value = getattr(pred_item, sub_field_name)
 
                 # Get hierarchical comparison for this pair
-                pair_result = gt_item._dispatch_field_comparison(
+                from .comparison_dispatcher import ComparisonDispatcher
+
+                dispatcher = ComparisonDispatcher(gt_item)
+                pair_result = dispatcher.dispatch_field_comparison(
                     sub_field_name, gt_sub_value, pred_sub_value
                 )
                 pair_results.append(pair_result)
@@ -481,7 +484,10 @@ class StructuredListComparator:
                 pred_sub_value = getattr(pred_item, sub_field_name)
 
                 # Regular field - use flat classification
-                field_classification = gt_item._classify_field_for_confusion_matrix(
+                from .confusion_matrix_calculator import ConfusionMatrixCalculator
+
+                calculator = ConfusionMatrixCalculator(gt_item)
+                field_classification = calculator.classify_field_for_confusion_matrix(
                     sub_field_name, pred_sub_value
                 )
 

@@ -61,12 +61,17 @@ class EvaluatorFormatHelper:
         # Calculate field metrics with proper nested structure for list fields
         field_metrics = {}
 
-        # Determine which fields are list fields by checking the actual field types
+        # Determine which fields are list or nested-object fields
+        from .structured_model import StructuredModel as _SM
+
         list_fields = set()
+        nested_fields = set()
         for field_name in field_scores.keys():
             field_value = getattr(structured_model_instance, field_name)
             if isinstance(field_value, list):
                 list_fields.add(field_name)
+            elif isinstance(field_value, _SM):
+                nested_fields.add(field_name)
 
         for field_name, score in field_scores.items():
             if field_name in list_fields:
@@ -88,6 +93,22 @@ class EvaluatorFormatHelper:
                     "overall": overall_metrics_for_list,
                     "items": items_metrics,
                 }
+            elif field_name in nested_fields:
+                # Nested StructuredModel — recurse to get sub-field breakdown
+                gt_nested = getattr(structured_model_instance, field_name)
+                pred_nested = getattr(other, field_name, None)
+                if pred_nested is not None and isinstance(pred_nested, _SM):
+                    nested_result = gt_nested.compare_with(
+                        pred_nested,
+                        evaluator_format=True,
+                        recall_with_fd=recall_with_fd,
+                    )
+                    field_metrics[field_name] = nested_result
+                else:
+                    metrics_helper = MetricsHelper()
+                    field_metrics[field_name] = (
+                        metrics_helper.convert_score_to_binary_metrics(score)
+                    )
             else:
                 # Regular field
                 metrics_helper = MetricsHelper()

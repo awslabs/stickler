@@ -23,6 +23,8 @@ Trade-offs:
 
 from typing import TYPE_CHECKING, Any, List
 
+from .comparison_helper import ComparisonHelper
+
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
 
@@ -92,10 +94,10 @@ class PrimitiveListComparator:
 
         # All code paths already check if the lists are empty
 
-        # For primitive lists, use the comparison logic from _compare_unordered_lists
+        # For primitive lists, use the comparison logic from ComparisonHelper
         # which properly handles the threshold-based matching
         comparator = info.comparator
-        match_result = self.parent_model._compare_unordered_lists(
+        match_result = ComparisonHelper.compare_unordered_lists(
             gt_list, pred_list, comparator, threshold
         )
 

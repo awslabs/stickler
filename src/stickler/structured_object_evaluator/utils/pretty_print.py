@@ -276,6 +276,76 @@ def _normalize_results_format(
 
     # Handle regular single document results
     elif isinstance(results, dict) and "confusion_matrix" in results:
+        cm = results["confusion_matrix"]
+        # If confusion_matrix has the expected 'overall' key, use as-is
+        if isinstance(cm, dict) and "overall" in cm:
+            return results
+        # Evaluator format: top-level 'overall' has precision/recall/f1 but
+        # confusion_matrix is empty.  Synthesise the expected structure from
+        # the evaluator metrics so the pretty-printer can display them.
+        if (
+            isinstance(cm, dict)
+            and "overall" not in cm
+            and "overall" in results
+            and isinstance(results["overall"], dict)
+            and "precision" in results["overall"]
+        ):
+            overall = results["overall"]
+            # Build per-field entries from results["fields"]
+            normalized_fields = {}
+            for field_name, field_data in results.get("fields", {}).items():
+                if isinstance(field_data, dict) and "precision" in field_data:
+                    normalized_fields[field_name] = {
+                        "tp": 0,
+                        "fp": 0,
+                        "tn": 0,
+                        "fn": 0,
+                        "fd": 0,
+                        "fa": 0,
+                        "derived": {
+                            "cm_precision": field_data.get("precision", 0.0),
+                            "cm_recall": field_data.get("recall", 0.0),
+                            "cm_f1": field_data.get("f1", 0.0),
+                            "cm_accuracy": field_data.get("accuracy", 0.0),
+                        },
+                    }
+                elif isinstance(field_data, dict) and "overall" in field_data:
+                    # List field with overall + items
+                    list_overall = field_data["overall"]
+                    normalized_fields[field_name] = {
+                        "tp": 0,
+                        "fp": 0,
+                        "tn": 0,
+                        "fn": 0,
+                        "fd": 0,
+                        "fa": 0,
+                        "derived": {
+                            "cm_precision": list_overall.get("precision", 0.0),
+                            "cm_recall": list_overall.get("recall", 0.0),
+                            "cm_f1": list_overall.get("f1", 0.0),
+                            "cm_accuracy": list_overall.get("accuracy", 0.0),
+                        },
+                    }
+            return {
+                "confusion_matrix": {
+                    "overall": {
+                        "tp": 0,
+                        "fp": 0,
+                        "tn": 0,
+                        "fn": 0,
+                        "fd": 0,
+                        "fa": 0,
+                        "derived": {
+                            "cm_precision": overall.get("precision", 0.0),
+                            "cm_recall": overall.get("recall", 0.0),
+                            "cm_f1": overall.get("f1", 0.0),
+                            "cm_accuracy": overall.get("accuracy", 0.0),
+                        },
+                    },
+                    "fields": normalized_fields,
+                },
+            }
+        # Fallback — return as-is and hope for the best
         return results
 
     # Handle direct metrics dict (fallback)

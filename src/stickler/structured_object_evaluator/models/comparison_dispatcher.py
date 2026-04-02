@@ -6,6 +6,7 @@ to appropriate handlers based on field type and null states.
 
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from .field_helper import FieldHelper
 from .null_helper import NullHelper
 from .result_helper import ResultHelper
 
@@ -115,14 +116,14 @@ class ComparisonDispatcher:
         # Check if this field is ANY list type (including Optional[List[str]], 
         # Optional[List[StructuredModel]], etc.). This determines which dispatch
         # path to take.
-        is_list_field = self.model._is_list_field(field_name)
+        is_list_field = FieldHelper.is_list_field(self.model.__class__, field_name)
 
         # Get hierarchical needs for both ground truth and prediction.
         # These flags control whether we need to maintain hierarchical structure
         # for list fields (e.g., List[StructuredModel] vs List[str]).
-        gt_needs_hierarchy = self.model._should_use_hierarchical_structure(gt_val, field_name)
-        pred_needs_hierarchy = self.model._should_use_hierarchical_structure(
-            pred_val, field_name
+        gt_needs_hierarchy = FieldHelper.should_use_hierarchical_structure(self.model.__class__, gt_val, field_name)
+        pred_needs_hierarchy = FieldHelper.should_use_hierarchical_structure(
+            self.model.__class__, pred_val, field_name
         )
 
         # ============================================================================

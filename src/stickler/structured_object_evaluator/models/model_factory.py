@@ -285,6 +285,73 @@ class ModelFactory:
         return DynamicClass
 
     @staticmethod
+    def create_model_from_json_schema(
+        schema: Dict[str, Any], field_path: str, base_class: Type
+    ) -> Type:
+        """Create a StructuredModel subclass from a JSON Schema document.
+
+        Validates the schema, extracts model-level config (name, threshold),
+        converts properties to field definitions, and creates the model.
+
+        Args:
+            schema: JSON Schema document as a dictionary.
+            field_path: Current field path for error messages in recursive calls.
+            base_class: The StructuredModel class to use as base.
+
+        Returns:
+            A StructuredModel subclass.
+        """
+        from ..utils.json_schema_validator import validate_json_schema
+        from .json_schema_field_converter import JsonSchemaFieldConverter
+
+        try:
+            validate_json_schema(schema)
+        except Exception as e:
+            raise ValueError(
+                f"Invalid JSON Schema: {e}. "
+                f"Please ensure the schema conforms to JSON Schema draft-07 specification."
+            )
+
+        model_name = schema.get("x-aws-stickler-model-name", "DynamicModel")
+        match_threshold = schema.get("x-aws-stickler-match-threshold", 0.7)
+
+        if not isinstance(model_name, str) or not model_name.isidentifier():
+            raise ValueError(
+                f"x-aws-stickler-model-name must be a valid Python identifier, "
+                f"got: {model_name}"
+            )
+
+        if not isinstance(match_threshold, (int, float)):
+            raise ValueError(
+                f"x-aws-stickler-match-threshold must be a number, "
+                f"got: {type(match_threshold).__name__}"
+            )
+
+        if not (0.0 <= match_threshold <= 1.0):
+            raise ValueError(
+                f"x-aws-stickler-match-threshold must be between 0.0 and 1.0, "
+                f"got: {match_threshold}"
+            )
+
+        if "properties" not in schema:
+            raise ValueError(
+                "JSON Schema must contain 'properties' key for object type"
+            )
+
+        properties = schema.get("properties", {})
+        required = schema.get("required", [])
+
+        converter = JsonSchemaFieldConverter(schema, field_path=field_path)
+        field_definitions = converter.convert_properties_to_fields(properties, required)
+
+        return ModelFactory.create_model_from_fields(
+            model_name=model_name,
+            field_definitions=field_definitions,
+            match_threshold=match_threshold,
+            base_class=base_class,
+        )
+
+    @staticmethod
     def validate_config(config: Dict[str, Any]) -> None:
         """Validate model configuration before creation.
         

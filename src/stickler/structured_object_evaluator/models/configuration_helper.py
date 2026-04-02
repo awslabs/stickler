@@ -121,6 +121,56 @@ class ConfigurationHelper:
         return instance
 
     @staticmethod
+    def validate_subclass_fields(cls) -> None:
+        """Validate field configurations when a StructuredModel subclass is defined.
+
+        Checks that List[StructuredModel] fields don't have custom threshold or
+        comparator set via ComparableField (those should be set on the element class).
+        """
+        if not hasattr(cls, "__annotations__"):
+            return
+
+        for field_name, field_type in cls.__annotations__.items():
+            if field_name == "extra_fields":
+                continue
+
+            field_default = getattr(cls, field_name, None)
+            if not (
+                hasattr(field_default, "json_schema_extra")
+                and callable(field_default.json_schema_extra)
+            ):
+                continue
+
+            temp_schema = {}
+            field_default.json_schema_extra(temp_schema)
+            if "x-comparison" not in temp_schema:
+                continue
+
+            if not cls._is_list_of_structured_model_type(field_type):
+                continue
+
+            comparison_config = temp_schema["x-comparison"]
+
+            threshold = comparison_config.get("threshold", 0.5)
+            if threshold != 0.5:
+                raise ValueError(
+                    f"Field '{field_name}' is a List[StructuredModel] and cannot have a "
+                    f"'threshold' parameter in ComparableField. Hungarian matching uses each "
+                    f"StructuredModel's 'match_threshold' class attribute instead. "
+                    f"Set 'match_threshold = {threshold}' on the list element class."
+                )
+
+            comparator_type = comparison_config.get(
+                "comparator_type", "LevenshteinComparator"
+            )
+            if comparator_type != "LevenshteinComparator":
+                raise ValueError(
+                    f"Field '{field_name}' is a List[StructuredModel] and cannot have a "
+                    f"'comparator' parameter in ComparableField. Object comparison uses each "
+                    f"StructuredModel's individual field comparators instead."
+                )
+
+    @staticmethod
     def is_structured_field_type(field_info) -> bool:
         """Check if a field represents a structured type that needs special handling.
 

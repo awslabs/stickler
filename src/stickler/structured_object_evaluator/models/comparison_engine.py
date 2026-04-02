@@ -7,6 +7,8 @@ dispatcher, collectors, and calculators.
 
 from typing import TYPE_CHECKING, Any, Dict
 
+from .evaluator_format_helper import EvaluatorFormatHelper
+
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
 
@@ -307,7 +309,7 @@ class ComparisonEngine:
 
         # If evaluator_format is requested, transform the result
         if evaluator_format:
-            return self.model._format_for_evaluator(result, other, recall_with_fd)
+            return EvaluatorFormatHelper.format_for_evaluator(self.model, result, other, recall_with_fd)
         
 
         return result

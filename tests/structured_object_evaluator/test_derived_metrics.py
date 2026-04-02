@@ -10,6 +10,7 @@ from typing import List, Optional
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+from stickler.structured_object_evaluator.models.derived_metrics_calculator import DerivedMetricsCalculator
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
@@ -66,7 +67,7 @@ class TestDerivedMetrics:
         clean_result = gt.compare_recursive(pred)
 
         # Add derived metrics
-        result_with_derived = gt._add_derived_metrics_to_result(clean_result)
+        result_with_derived = DerivedMetricsCalculator().add_derived_metrics_to_result(clean_result)
 
         # Validate structure
         assert "overall" in result_with_derived
@@ -131,7 +132,7 @@ class TestDerivedMetrics:
         clean_result = gt_order.compare_recursive(pred_order)
 
         # Add derived metrics
-        result_with_derived = gt_order._add_derived_metrics_to_result(clean_result)
+        result_with_derived = DerivedMetricsCalculator().add_derived_metrics_to_result(clean_result)
 
         # Validate overall structure
         assert "overall" in result_with_derived
@@ -175,7 +176,7 @@ class TestDerivedMetrics:
 
         # Get clean recursive result
         clean_result = gt.compare_recursive(pred)
-        result_with_derived = gt._add_derived_metrics_to_result(clean_result)
+        result_with_derived = DerivedMetricsCalculator().add_derived_metrics_to_result(clean_result)
 
         # Check the name field should have FD (false discovery) due to mismatch
         name_field = result_with_derived["fields"]["name"]

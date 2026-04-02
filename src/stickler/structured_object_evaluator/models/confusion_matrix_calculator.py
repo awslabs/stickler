@@ -112,7 +112,9 @@ class ConfusionMatrixCalculator:
             threshold = info.threshold
 
             # Reuse existing Hungarian matching logic
-            match_result = self.model._compare_unordered_lists(
+            from .comparison_helper import ComparisonHelper
+
+            match_result = ComparisonHelper.compare_unordered_lists(
                 gt_list, pred_list, comparator, threshold
             )
 

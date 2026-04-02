@@ -161,3 +161,52 @@ class FieldHelper:
             Field value or default if field doesn't exist
         """
         return getattr(obj, field_name, default)
+
+    @staticmethod
+    def is_list_field(model_class, field_name: str) -> bool:
+        """Check if a field is ANY list type.
+
+        Args:
+            model_class: The StructuredModel class
+            field_name: Name of the field to check
+
+        Returns:
+            True if the field is a list type (List[str], List[StructuredModel], etc.)
+        """
+        from typing import Union
+
+        field_info = model_class.model_fields.get(field_name)
+        if not field_info:
+            return False
+
+        field_type = field_info.annotation
+        if hasattr(field_type, "__origin__"):
+            origin = field_type.__origin__
+            if origin is list or origin is List:
+                return True
+            elif origin is Union:
+                args = field_type.__args__
+                for arg in args:
+                    if hasattr(arg, "__origin__") and (
+                        arg.__origin__ is list or arg.__origin__ is List
+                    ):
+                        return True
+        return False
+
+    @staticmethod
+    def should_use_hierarchical_structure(model_class, val: Any, field_name: str) -> bool:
+        """Check if a list value should maintain hierarchical structure.
+
+        Args:
+            model_class: The StructuredModel class
+            val: Value to check (typically a list)
+            field_name: Name of the field being evaluated
+
+        Returns:
+            True if the value should use hierarchical structure, False otherwise
+        """
+        if isinstance(val, list):
+            field_info = model_class.model_fields.get(field_name)
+            if field_info and FieldHelper.is_structured_field_type(field_info):
+                return True
+        return False
