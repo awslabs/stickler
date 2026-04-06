@@ -1,0 +1,104 @@
+/* KIE Annotation Tool — global styles */
+
+/* Hide Streamlit chrome */
+[data-testid="stAppDeployButton"] { display: none; }
+[data-testid="stHeader"] { display: none; }
+
+/* Reduce top padding */
+.block-container { padding-top: 0.5rem !important; }
+
+/* Tighter field spacing */
+[data-testid="stTextInput"] { margin-bottom: -16px; }
+[data-testid="stCheckbox"] { margin-bottom: -16px; }
+
+/* Collapse label-to-input gap */
+[data-testid="stTextInput"] label { margin-bottom: -4px !important; }
+[data-testid="stTextInput"] label p { font-size: 13px !important; }
+
+/* Compact vertical blocks — reduce Streamlit's default element gap */
+[data-testid="stVerticalBlock"] > [data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stVerticalBlock"] > [data-testid="element-container"] {
+    margin-bottom: -8px;
+}
+
+/* Shrink text input height */
+[data-testid="stTextInput"] input {
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+    height: auto !important;
+    min-height: 0 !important;
+}
+
+/* White background + subtle border on text inputs */
+[data-testid="stTextInput"] input {
+    background-color: #ffffff !important;
+    border: 1px solid #ccc !important;
+    border-radius: 6px !important;
+    box-shadow: none !important;
+}
+[data-testid="stTextInput"] input:focus {
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 1px #2563eb !important;
+}
+/* Remove Streamlit's default input container border */
+[data-testid="stTextInput"] > div > div {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+}
+
+/* Blue primary buttons */
+[data-testid="stBaseButton-primary"] {
+    background-color: #2563eb !important;
+    border-color: #2563eb !important;
+    color: #ffffff !important;
+}
+[data-testid="stBaseButton-primary"]:hover {
+    background-color: #1d4ed8 !important;
+    border-color: #1d4ed8 !important;
+}
+
+/* Blue secondary/default buttons */
+[data-testid="stBaseButton-secondary"] {
+    background-color: #2563eb !important;
+    border-color: #2563eb !important;
+    color: #ffffff !important;
+}
+[data-testid="stBaseButton-secondary"]:hover {
+    background-color: #1d4ed8 !important;
+    border-color: #1d4ed8 !important;
+}
+[data-testid="stBaseButton-secondary"]:disabled {
+    background-color: #e5e7eb !important;
+    border-color: #d1d5db !important;
+    color: #9ca3af !important;
+}
+
+/* Custom tooltip for header metadata */
+.kie-tooltip {
+    position: relative;
+    cursor: help;
+    border-bottom: 1px dotted #aaa;
+}
+.kie-tooltip::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 0;
+    top: 1.4em;
+    background: #1e293b;
+    color: #f8fafc;
+    font-size: 11px;
+    font-family: monospace;
+    white-space: pre;
+    padding: 6px 10px;
+    border-radius: 6px;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    min-width: 280px;
+    line-height: 1.6;
+}
+.kie-tooltip:hover::after {
+    opacity: 1;
+}

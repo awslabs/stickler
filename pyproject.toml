@@ -31,6 +31,7 @@ dev = [
     "coverage>=7.0.0",
     "beautifulsoup4>=4.14.2",
     "ruff>=0.14.10",
+    "hypothesis>=6.0.0",
 ]
 llm = [
     "strands-agents>=1.0.0,<=1.16.0"
@@ -42,6 +43,13 @@ bert = [
 ]
 semantic = [
     "boto3>=1.28.0",
+]
+annotator = [
+    "streamlit>=1.30.0",
+    "pdf2image>=1.16.0",
+    "python-dotenv>=1.0.0",
+    "strands-agents>=0.1.0",
+    "strands-agents-tools>=0.1.0",
 ]
 
 

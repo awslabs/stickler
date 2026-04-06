@@ -13,3 +13,12 @@ uv.lock
 
 build/
 .temp/
+
+# Hypothesis test database
+.hypothesis/
+
+# PDF files (local test data)
+*.pdf
+
+# Ruff cache
+.ruff_cache/
