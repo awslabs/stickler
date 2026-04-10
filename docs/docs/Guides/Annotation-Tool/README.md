@@ -1,10 +1,10 @@
 # Annotation Tool
 
-The KIE Annotation Tool is a Streamlit web app for creating golden annotation datasets from PDF documents. It supports manual annotation, LLM-assisted pre-filling, and field localization with bounding box overlays.
+The KIE Annotation Tool is a Streamlit web app for creating golden annotation datasets from PDF documents. Use it to build ground truth for evaluating KIE (Key Information Extraction) models with Stickler.
 
 ## Pages
 
-- [Quick Start](quick-start.md) — Install, launch, annotate your first document
-- [LLM Auto-Annotate](llm-auto-annotate.md) — Configure Bedrock models for extraction and localization
-- [Field Localization](field-localization.md) — Bounding box detection and PDF overlay rendering
+- [User Guide](user-guide.md) — End-to-end walkthrough: prepare documents, launch, annotate, export, share
+- [Schema Configuration](schema-configuration.md) — JSON Schema files, Pydantic imports, and the Schema Builder
+- [LLM Auto-Annotate](llm-auto-annotate.md) — AWS Bedrock models for extraction and localization
 - [Sessions & Storage](sessions-and-storage.md) — Manifest structure, annotation files, deep links

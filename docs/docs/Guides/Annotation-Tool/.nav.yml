@@ -1,0 +1,6 @@
+nav:
+  - README.md
+  - user-guide.md
+  - schema-configuration.md
+  - llm-auto-annotate.md
+  - sessions-and-storage.md
