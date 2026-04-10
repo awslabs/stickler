@@ -8,7 +8,7 @@ When in the course of human events, it becomes necessary to evaluate structured 
 
 Stickler uses specialized comparators for different data types: exact matching for critical identifiers, numeric tolerance for currency amounts, semantic similarity for text fields, and fuzzy matching for names and addresses. You can build custom comparators for domain-specific logic. The Hungarian algorithm ensures optimal list matching regardless of order, while the recursive evaluation engine handles unlimited nesting depth. Business-weighted scoring reflects actual operational impact, not just technical accuracy.
 
-Consider an invoice extraction agent that perfectly captures shipment numbers—which must be exact or packages get routed to the wrong warehouse—but sometimes garbles driver notes like "delivered to front door" vs "left at entrance." Those note variations don't affect logistics operations at all. Traditional evaluation treats both error types identically and reports your agent as "95% accurate" without telling you if that 5% error rate matters. Stickler tells you exactly where the errors are and whether they're actually problems.
+Consider an invoice extraction agent that perfectly captures shipment numbers (which must be exact or packages get routed to the wrong warehouse) but sometimes garbles driver notes like "delivered to front door" vs "left at entrance." Those note variations don't affect logistics operations at all. Traditional evaluation treats both error types identically and reports your agent as "95% accurate" without telling you if that 5% error rate matters. Stickler tells you exactly where the errors are and whether they're actually problems.
 
 Whether you're extracting data from documents, performing ETL transformations, evaluating ML model outputs, or simply trying to diff complex JSON structures, Stickler transforms evaluation from a technical afterthought into a business-aligned decision tool.
 
@@ -121,7 +121,7 @@ print(f"Overall Score: {result['overall']['anls_score']:.3f}")
 
 ### Confidence Evaluation
 
-Evaluate prediction confidence calibration with AUROC metrics:
+Evaluate prediction confidence calibration with pluggable metrics:
 
 ```python
 # Prediction with confidence scores
@@ -130,15 +130,27 @@ prediction = Invoice.from_json({
     "total": {"value": 1247.50, "confidence": 0.8}
 })
 
-# Enable confidence metrics
+# Single-document confidence metrics
 result = ground_truth.compare_with(
     prediction,
     add_confidence_metrics=True,
     document_field_comparisons=True
 )
+print(result["confidence_metrics"]["overall"])   # {"auroc": {"value": ...}}
+print(result["confidence_metrics"]["coverage"])  # {"fields_with_confidence": 2, "fields_total": 3, "ratio": 0.67}
 
-print(f"Overall Score: {result['overall_score']:.3f}")
-print(f"Confidence AUROC: {result['auroc_confidence_metric']:.3f}")
+# Bulk evaluation (recommended, dataset-level AUROC is statistically meaningful)
+from stickler.structured_object_evaluator.bulk_structured_model_evaluator import BulkStructuredModelEvaluator
+from stickler.structured_object_evaluator.models.confidence import AUROCMetric, BrierScoreMetric, ECEMetric
+
+evaluator = BulkStructuredModelEvaluator(
+    target_schema=Invoice,
+    confidence_metrics=[AUROCMetric(), BrierScoreMetric(), ECEMetric(n_bins=10)]
+)
+for gt, pred in dataset:
+    evaluator.update(gt, pred)
+results = evaluator.compute()
+print(results.confidence_metrics["overall"]["auroc"]["value"])
 ```
 
 ### Dynamic Model Creation (New!)

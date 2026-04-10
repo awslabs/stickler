@@ -14,7 +14,7 @@ VALIDATED AGAINST ACTUAL OUTPUT - This documentation has been validated against 
 | `include_confusion_matrix=True` | + `confusion_matrix` | Detailed metrics and analysis |
 | `document_non_matches=True` | + `non_matches` | Debugging field failures |
 | `document_field_comparisons=True` | + `field_comparisons` | Comprehensive field-level analysis |
-| `add_confidence_metrics=True` | + `auroc_confidence_metric` | Confidence calibration evaluation |
+| `add_confidence_metrics=True` | + `confidence_metrics` | Confidence calibration evaluation |
 | `evaluator_format=True` | `overall`, `fields`, `confusion_matrix`, `non_matches` | Evaluation tool integration |
 
 ## Table of Contents
@@ -363,7 +363,7 @@ result = model1.compare_with(
     include_confusion_matrix=True,   # Include detailed metrics
     document_non_matches=True,       # Document what didn't match
     document_field_comparisons=True, # Document all field-level comparisons
-    add_confidence_metrics=True,     # Add AUROC confidence calibration metric
+    add_confidence_metrics=True,     # Add confidence calibration metrics (overall, per-field, coverage)
     evaluator_format=False,          # Format for evaluation tools
     recall_with_fd=False,           # Include FD in recall calculation
     add_derived_metrics=True        # Add precision/recall/F1 metrics

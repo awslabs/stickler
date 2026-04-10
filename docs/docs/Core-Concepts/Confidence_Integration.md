@@ -4,7 +4,7 @@ title: Confidence Integration
 
 # Confidence Integration
 
-Stickler supports confidence scores alongside field values to evaluate how well prediction confidence correlates with actual accuracy.
+Stickler supports confidence scores alongside field values using the **Rich Value Pattern**. A rich value is any JSON dict with a `"value"` key; additional keys like `"confidence"` are treated as metadata. This page covers the theoretical foundation for confidence evaluation and the JSON conventions used.
 
 ## AUROC for Confidence Calibration: Theoretical Foundation
 
@@ -110,7 +110,9 @@ AUROC measures the probability that a randomly chosen correct prediction has hig
 **Additional Resources:**
 - Scikit-learn ROC AUC documentation: [sklearn.metrics.roc_auc_score](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html)
 
-## JSON Structure
+## Rich Value Pattern
+
+Stickler uses the **Rich Value Pattern** for fields that carry metadata alongside their values. A rich value is any JSON dict with a `"value"` key. Everything else in the dict is metadata.
 
 ### Standard Format
 ```json
@@ -120,11 +122,19 @@ AUROC measures the probability that a randomly chosen correct prediction has hig
 }
 ```
 
-### Confidence Format
+### Rich Value with Confidence
 ```json
 {
   "name": {"value": "Widget", "confidence": 0.95},
   "price": {"value": 29.99, "confidence": 0.8}
+}
+```
+
+### Rich Value without Confidence (e.g., bounding box only)
+```json
+{
+  "name": {"value": "Widget", "bbox": [0.1, 0.2, 0.3, 0.4]},
+  "price": {"value": 29.99}
 }
 ```
 
@@ -133,15 +143,18 @@ AUROC measures the probability that a randomly chosen correct prediction has hig
 {
   "name": {"value": "Widget", "confidence": 0.95},
   "price": 29.99,
-  "sku": {"value": "ABC123", "confidence": 0.7}
+  "sku": {"value": "ABC123", "bbox": [0.1, 0.2, 0.3, 0.4]}
 }
 ```
 
-## Confidence Structure Rules
+## Rich Value Rules
 
-A valid confidence structure must have exactly two keys:
-- `"value"`: The actual field value
-- `"confidence"`: Float between 0.0 and 1.0
+A rich value is any dict containing a `"value"` key. All other keys are treated as metadata:
+- `"value"` (required): The actual field value, unwrapped into the model field
+- `"confidence"` (optional): Float, used by the confidence evaluation module
+- Other keys (optional): Preserved for future use (bounding boxes, source spans, etc.)
+
+Confidence is not required. A rich value can carry any combination of metadata, or none at all beyond the value itself.
 
 ## Nested Structures
 

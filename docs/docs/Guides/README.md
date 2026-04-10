@@ -10,7 +10,7 @@ This section provides practical guides for working with Stickler's StructuredMod
 
 **StructuredModel compare_with Method** walks through how the core comparison method works, from basic usage to understanding the internal flow. It explains the recursive traversal process, field-by-field analysis, and how results are assembled.
 
-**Confidence Evaluation Guide** shows how to use confidence scores in Stickler evaluations to measure prediction calibration quality using AUROC metrics. Covers JSON confidence structures, confidence access APIs, and practical evaluation workflows.
+**Confidence Evaluation Guide** covers the pluggable confidence metrics system for measuring prediction calibration quality. Explains the `ConfidencePair` model, AUROC/Brier/ECE metrics, single-doc vs. bulk evaluation, per-field breakdowns, coverage tracking, distributed evaluation, and how to add custom metrics.
 
 **Universal Aggregate Field Feature** describes the automatic aggregation of confusion matrix metrics at every level of the comparison tree. This feature provides field-level granularity without requiring manual configuration.
 

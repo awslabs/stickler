@@ -17,6 +17,7 @@ class ProcessEvaluation(BaseModel):
     matrix: Optional[Any] = None
     total_time: Optional[float] = None
     non_matches: Optional[List[Dict[str, Any]]] = None
+    confidence_metrics: Optional[Dict[str, Any]] = None
 
     def to_md(self) -> str:
         """
@@ -51,6 +52,30 @@ class ProcessEvaluation(BaseModel):
             sections.append("## Processing Time")
             sections.append(f"Total processing time: {self.total_time:.2f} seconds")
             sections.append("")
+
+        # Add structured confidence metrics if available
+        if self.confidence_metrics:
+            overall = self.confidence_metrics.get("overall", {})
+            if overall:
+                sections.append("## Confidence Metrics (Overall)")
+                for metric_name, metric_result in overall.items():
+                    val = metric_result.get("value")
+                    if val is not None:
+                        sections.append(f"- {metric_name}: {val:.4f}")
+                    else:
+                        sections.append(f"- {metric_name}: N/A")
+                sections.append("")
+
+            fields = self.confidence_metrics.get("fields", {})
+            if fields:
+                sections.append("## Confidence Metrics (Per-Field)")
+                for field_path, field_metrics in fields.items():
+                    parts = []
+                    for metric_name, metric_result in field_metrics.items():
+                        val = metric_result.get("value")
+                        parts.append(f"{metric_name}={val:.4f}" if val is not None else f"{metric_name}=N/A")
+                    sections.append(f"- {field_path}: {', '.join(parts)}")
+                sections.append("")
 
         # Add matrix section if available
         # Note: Matrix handling depends on its structure, this is a simple example

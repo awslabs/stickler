@@ -236,7 +236,7 @@ class ComparisonEngine:
                 "confusion_matrix": {...},  # If include_confusion_matrix=True
                 "non_matches": [...],  # If document_non_matches=True
                 "field_comparisons": [...] # If field_comparisons=True
-                "auroc_confidence_metric": float # If add_confidence_metrics=True
+                "confidence_metrics": {...} # If add_confidence_metrics=True
             }
             
         Example:
@@ -300,10 +300,14 @@ class ComparisonEngine:
 
         # If add_confidence_metrics is requested, add confidence metrics
         if add_confidence_metrics:
-            from .confidence_calculator import ConfidenceCalculator
+            from .confidence import ConfidenceCalculator
             calculator = ConfidenceCalculator()
-            auroc = calculator.calculate_overall_auroc(result, other)
-            result['auroc_confidence_metric'] = auroc
+            extraction = calculator.extract(result, other)
+            result['confidence_metrics'] = calculator.compute_metrics(
+                extraction.keyed_pairs,
+                fields_with_confidence=extraction.fields_with_confidence,
+                fields_total=extraction.fields_total,
+            )
 
         # If evaluator_format is requested, transform the result
         if evaluator_format:
