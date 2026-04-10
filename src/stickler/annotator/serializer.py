@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -242,11 +243,28 @@ class AnnotationManifest:
     # ------------------------------------------------------------------
 
     def _save(self, manifest: dict) -> None:
+        """Atomically write the manifest to disk (write-to-tmp + rename).
+
+        This prevents corruption when multiple tabs or concurrent annotators
+        write to the same manifest file simultaneously.
+        """
+        import tempfile
+
         self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        self.manifest_path.write_text(
-            json.dumps(manifest, indent=4, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        content = json.dumps(manifest, indent=4, ensure_ascii=False) + "\n"
+        # Write to a temp file in the same directory, then atomically rename.
+        fd, tmp_path = tempfile.mkstemp(dir=self.manifest_path.parent, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(content)
+            os.replace(tmp_path, self.manifest_path)
+        except BaseException:
+            # Clean up the temp file on any failure
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     def create_session(
         self,

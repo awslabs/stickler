@@ -63,6 +63,26 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _base_url() -> str:
+    """Derive the Streamlit app base URL from the runtime context.
+
+    Falls back to ``http://localhost:8501`` when the server config is
+    unavailable (e.g. during tests).
+    """
+    try:
+        from streamlit.web.server.server_util import get_url
+
+        return get_url("")
+    except Exception:
+        pass
+    # Fallback: read the port from Streamlit config
+    try:
+        port = st.get_option("server.port") or 8501
+    except Exception:
+        port = 8501
+    return f"http://localhost:{port}"
+
+
 def _get_or_create_session(config: ConfigResult) -> AnnotationSession:
     """Get the active session from session state, or create/resume one.
 
@@ -643,7 +663,7 @@ def _app() -> None:
                     "schema": schema_path_stored,
                 }
             )
-        deep_link = f"http://localhost:8501/?{deep_link_params}"
+        deep_link = f"{_base_url()}/?{deep_link_params}"
 
         import streamlit.components.v1 as _comp
 
@@ -733,7 +753,7 @@ def _app() -> None:
             "session": session.session_id,
         }
     )
-    deep_link = f"http://localhost:8501/?{deep_link_params}"
+    deep_link = f"{_base_url()}/?{deep_link_params}"
 
     # 4. Side-by-side layout: PDF viewer (left, wider) + annotation panel (right, narrower)
     # Pre-load annotation state to make field locations available for the viewer
