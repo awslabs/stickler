@@ -15,6 +15,12 @@ import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
+from stickler.structured_object_evaluator.models.confidence import (
+    ConfidenceCalculator,
+    ConfidenceMetric,
+    ConfidencePair,
+    KeyedConfidencePairs,
+)
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.utils.process_evaluation import ProcessEvaluation
 
@@ -46,6 +52,7 @@ class BulkStructuredModelEvaluator:
         document_non_matches: bool = True,
         elide_errors: bool = False,
         individual_results_jsonl: Optional[str] = None,
+        confidence_metrics: Optional[List[ConfidenceMetric]] = None,
     ):
         """
         Initialize the stateful bulk evaluator.
@@ -58,12 +65,15 @@ class BulkStructuredModelEvaluator:
             document_non_matches: Whether to document detailed non-match information
             elide_errors: If True, skip documents with errors; if False, accumulate error metrics
             individual_results_jsonl: Optional path to JSONL file for appending individual comparison results
+            confidence_metrics: Optional list of ConfidenceMetric instances to compute.
+                Defaults to [AUROCMetric()]. Pass an explicit list to add Brier, ECE, etc.
         """
         self.target_schema = target_schema
         self.verbose = verbose
         self.document_non_matches = document_non_matches
         self.elide_errors = elide_errors
         self.individual_results_jsonl = individual_results_jsonl
+        self._confidence_calculator = ConfidenceCalculator(metrics=confidence_metrics)
 
         # Initialize state
         self.reset()
@@ -101,6 +111,11 @@ class BulkStructuredModelEvaluator:
         self._processed_count = 0
         self._start_time = time.time()
 
+        # Confidence pairs for bulk metric computation
+        self._keyed_confidence_pairs: KeyedConfidencePairs = {}
+        self._confidence_fields_with: int = 0
+        self._confidence_fields_total: int = 0
+
         if self.verbose:
             print("Reset evaluator state")
 
@@ -129,6 +144,7 @@ class BulkStructuredModelEvaluator:
                 pred_model,
                 include_confusion_matrix=True,
                 document_non_matches=self.document_non_matches,
+                document_field_comparisons=True,
             )
 
             # JSONL append of raw comparison result before accumulation
@@ -136,6 +152,18 @@ class BulkStructuredModelEvaluator:
                 record = {"doc_id": doc_id, "comparison_result": comparison_result}
                 with open(self.individual_results_jsonl, "a", encoding="utf-8") as f:
                     f.write(json.dumps(record) + "\n")
+
+            # Extract confidence pairs if the prediction has confidence data
+            if pred_model.get_all_confidences():
+                calculator = self._confidence_calculator
+                try:
+                    extraction = calculator.extract(comparison_result, pred_model)
+                    for field_path, pairs in extraction.keyed_pairs.items():
+                        self._keyed_confidence_pairs.setdefault(field_path, []).extend(pairs)
+                    self._confidence_fields_with += extraction.fields_with_confidence
+                    self._confidence_fields_total += extraction.fields_total
+                except ValueError:
+                    pass  # No field comparisons — skip confidence accumulation
 
             self.update_from_comparison_result(comparison_result, doc_id)
 
@@ -461,6 +489,15 @@ class BulkStructuredModelEvaluator:
 
         total_time = time.time() - self._start_time
 
+        # Compute confidence metrics from accumulated keyed pairs
+        confidence_metrics = None
+        if self._keyed_confidence_pairs:
+            confidence_metrics = self._confidence_calculator.compute_metrics(
+                self._keyed_confidence_pairs,
+                fields_with_confidence=self._confidence_fields_with,
+                fields_total=self._confidence_fields_total,
+            )
+
         return ProcessEvaluation(
             document_count=self._processed_count,
             metrics=overall_metrics,
@@ -468,6 +505,7 @@ class BulkStructuredModelEvaluator:
             errors=list(self._errors),  # Copy to avoid external modification
             total_time=total_time,
             non_matches=list(self._non_matches) if self.document_non_matches else None,
+            confidence_metrics=confidence_metrics,
         )
 
     def save_metrics(self, filepath: str) -> None:
@@ -644,6 +682,13 @@ class BulkStructuredModelEvaluator:
             "errors": list(self._errors),
             "processed_count": self._processed_count,
             "start_time": self._start_time,
+            # Confidence pairs for bulk metrics (serialized as dicts)
+            "keyed_confidence_pairs": {
+                field_path: [p.model_dump() for p in pairs]
+                for field_path, pairs in self._keyed_confidence_pairs.items()
+            },
+            "confidence_fields_with": self._confidence_fields_with,
+            "confidence_fields_total": self._confidence_fields_total,
             # Configuration
             "target_schema": self._schema_name,
             "elide_errors": self.elide_errors,
@@ -682,6 +727,14 @@ class BulkStructuredModelEvaluator:
         self._processed_count = state["processed_count"]
         self._start_time = state["start_time"]
 
+        # Restore confidence pairs
+        self._keyed_confidence_pairs = {
+            field_path: [ConfidencePair(**p) for p in pairs]
+            for field_path, pairs in state.get("keyed_confidence_pairs", {}).items()
+        }
+        self._confidence_fields_with = state.get("confidence_fields_with", 0)
+        self._confidence_fields_total = state.get("confidence_fields_total", 0)
+
         if self.verbose:
             print(f"Loaded state: {self._processed_count} documents processed")
 
@@ -715,6 +768,14 @@ class BulkStructuredModelEvaluator:
         # Merge errors and counts
         self._errors.extend(other_state["errors"])
         self._processed_count += other_state["processed_count"]
+
+        # Merge confidence pairs
+        for field_path, pairs in other_state.get("keyed_confidence_pairs", {}).items():
+            self._keyed_confidence_pairs.setdefault(field_path, []).extend([
+                ConfidencePair(**p) for p in pairs
+            ])
+        self._confidence_fields_with += other_state.get("confidence_fields_with", 0)
+        self._confidence_fields_total += other_state.get("confidence_fields_total", 0)
 
         if self.verbose:
             print(
