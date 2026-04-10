@@ -308,16 +308,17 @@ class TestCalculateOrderingScore:
         avg = calculate_average_ordering_score(scores)
         assert avg == pytest.approx(-1.0, abs=1e-4)
 
-    def test_single_page_groups_excluded(self):
-        """Groups with only 1 page should not appear in ordering scores."""
+    def test_single_page_groups_score_perfect(self):
+        """Single-page groups should receive a perfect ordering score of 1.0."""
         data = [
             _page("invoice", "inv-01", 1, "invoice", "inv-01", 1),
             _page("form", "form-01", 2, "form", "form-01", 2),
         ]
         df = pd.DataFrame(data)
         scores = calculate_ordering_score_per_group(df)
-        assert len(scores) == 0
-        assert calculate_average_ordering_score(scores) == 0
+        assert len(scores) == 2
+        assert all(v == 1.0 for v in scores.values())
+        assert calculate_average_ordering_score(scores) == 1.0
 
     def test_missing_columns_raises(self):
         df = pd.DataFrame([{"foo": 1}])

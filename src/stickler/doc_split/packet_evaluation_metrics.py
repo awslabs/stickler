@@ -134,7 +134,7 @@ def calculate_ordering_score_per_group(
     """
     Calculate Kendall's Tau for each document group.
 
-    Single-page groups are excluded (ordering undefined).
+    Single-page groups are assigned a perfect score of 1.0 (trivially in correct order).
 
     Args:
         data: DataFrame with group_id, page_number, page_number_predicted.
@@ -151,6 +151,7 @@ def calculate_ordering_score_per_group(
 
     for group_id, group_data in data.groupby("group_id"):
         if len(group_data) <= 1:
+            group_scores[group_id] = 1.0
             continue
 
         tau, _p_value = kendalltau(
@@ -163,9 +164,9 @@ def calculate_ordering_score_per_group(
 
 def calculate_average_ordering_score(group_scores: Dict[Any, float]) -> float:
     """
-    Mean Kendall's Tau across all multi-page groups.
+    Mean Kendall's Tau across all groups (single-page groups score 1.0).
 
-    Returns 0 if no multi-page groups exist.
+    Returns 0 if no groups exist.
     """
     if not group_scores:
         return 0
