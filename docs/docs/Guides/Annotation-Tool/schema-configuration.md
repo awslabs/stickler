@@ -51,7 +51,9 @@ Good for quick experiments or when you don't have a schema file yet. You can exp
 Provide a dotted import path to a `StructuredModel` subclass:
 
 ```
-mypackage.models.InvoiceModel
+stickler.annotator.models_example.FccInvoiceModel
 ```
 
 The tool imports the class and derives the JSON Schema from its Pydantic model definition. The class must be importable from the current Python environment.
+
+To create your own `StructuredModel`, see the [Getting Started guide](../../Getting-Started/index.md). A model shipped with the annotator (`stickler.annotator.models_example.FccInvoiceModel`) works as a ready-made example for FCC political advertising invoices.

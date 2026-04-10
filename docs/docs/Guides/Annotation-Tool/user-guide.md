@@ -27,6 +27,38 @@ my-dataset/
 
 That's it — no special structure required.
 
+### Try It with Real Data
+
+The [RealKIE-FCC-Verified](https://huggingface.co/datasets/amazon-agi/RealKIE-FCC-Verified) dataset on Hugging Face contains 370 FCC political advertising invoices with verified annotations. Download a handful of PDFs to try the tool:
+
+```bash
+pip install huggingface_hub
+```
+
+Then download 10 sample invoices:
+
+```python
+from huggingface_hub import hf_hub_download
+
+repo = "amazon-agi/RealKIE-FCC-Verified"
+pdfs = [
+    "pdfs/033f718b16cb597c065930410752c294.pdf",
+    "pdfs/03f65053aea282ad8d5e759a9f18bdbb.pdf",
+    "pdfs/08e2649c3291ee569a116260d46e9866.pdf",
+    "pdfs/0d0fc87f34a2263cdd4b96cdac891240.pdf",
+    "pdfs/1220d048d2a75d910c52e7f290e32ca0.pdf",
+    "pdfs/1449e9c1e67662cb3c806eea0b1771e1.pdf",
+    "pdfs/1b238269de30dec67297e7ad8630116e.pdf",
+    "pdfs/1b26192b674944e82347df9cfa3288ff.pdf",
+    "pdfs/21762bcc61029b7a5020647d7ced6aa5.pdf",
+    "pdfs/26372a567adab41e404cab267067d73f.pdf",
+]
+for f in pdfs:
+    hf_hub_download(repo, f, repo_type="dataset", local_dir="./fcc-invoices")
+```
+
+Then point the annotator at `./fcc-invoices/pdfs` and use the built-in Pydantic import `stickler.annotator.models_example.FccInvoiceModel` as your schema — it's designed for this exact dataset.
+
 ## Step 2: Launch the Tool
 
 ```bash
@@ -82,7 +114,7 @@ Build a schema in the UI without writing JSON. Add fields, set types, and click 
 
 ### Option C: Pydantic Import
 
-Provide a dotted import path to a `StructuredModel` subclass: `mypackage.models.InvoiceModel`. The schema is derived from the model class.
+Provide a dotted import path to a `StructuredModel` subclass, e.g. `stickler.annotator.models_example.FccInvoiceModel`. See the [Getting Started guide](../../Getting-Started/index.md) for how to create your own.
 
 See [Schema Configuration](schema-configuration.md) for details on each option.
 
