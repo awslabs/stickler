@@ -259,14 +259,8 @@ class StructuredModel(BaseModel):
         if origin is list or origin is List:
             args = get_args(field_type)
             if args:
-                element_type = args[0]
-                # Check if element type is a StructuredModel subclass
-                try:
-                    return inspect.isclass(element_type) and issubclass(
-                        element_type, StructuredModel
-                    )
-                except (TypeError, AttributeError):
-                    return False
+                # Use consolidated method for element type check
+                return cls._is_structured_model_type(args[0])
 
         # Handle Union types (like Optional[List[StructuredModel]])
         elif origin is Union:
@@ -1169,3 +1163,235 @@ class StructuredModel(BaseModel):
                     field_props["x-comparison"] = temp_schema["x-comparison"]
 
         return schema
+
+    @classmethod
+    def to_json_schema(cls) -> Dict[str, Any]:
+        """Export model as JSON Schema with x-aws-stickler-* extensions.
+
+        Creates a JSON Schema document compatible with from_json_schema() for
+        round-trip serialization. Extracts comparison metadata from fields and
+        formats them as x-aws-stickler-* extensions.
+
+        Returns:
+            JSON Schema dict with x-aws-stickler-* extensions
+
+        Example:
+            >>> class Product(StructuredModel):
+            ...     name: str = ComparableField(threshold=0.8, weight=2.0)
+            ...     price: float = ComparableField(threshold=0.95)
+            >>> schema = Product.to_json_schema()
+            >>> ReconstructedProduct = StructuredModel.from_json_schema(schema)
+            >>> # ReconstructedProduct has identical comparison behavior
+        """
+        from .json_schema_field_converter import (
+            PYTHON_TYPE_TO_JSON_TYPE,
+            JsonSchemaFieldConverter,
+        )
+
+        # schema/field_path unused for export operations - only needed for import
+        converter = JsonSchemaFieldConverter(schema={}, field_path="")
+
+        schema = {
+            "type": "object",
+            "x-aws-stickler-model-name": cls.__name__,
+            "properties": {},
+            "required": [],
+        }
+
+        # Add match_threshold if available (check both attribute names for compatibility)
+        threshold = getattr(cls, "match_threshold", None)
+        if threshold is None:
+            threshold = getattr(cls, "_match_threshold", None)
+        if threshold is not None:
+            schema["x-aws-stickler-match-threshold"] = threshold
+
+        for field_name, field_info in cls.model_fields.items():
+            # Skip extra_fields to avoid circular serialization issues
+            if field_name == "extra_fields":
+                continue
+
+            field_type = field_info.annotation
+
+            # Validate field has type annotation
+            if field_type is None:
+                # Defensive: unreachable through normal Pydantic model construction
+                raise ValueError(f"Field '{field_name}' has no type annotation")
+
+            # Unwrap Optional before type checking
+            field_type, _ = cls._unwrap_optional(field_type)
+
+            # Check if nested StructuredModel - recursively export to maintain full configuration
+            if cls._is_structured_model_type(field_type):
+                property_schema = field_type.to_json_schema()
+            elif get_origin(field_type) is list:
+                # Handle List[StructuredModel] or List[primitive]
+                args = get_args(field_type)
+                if not args:
+                    # Defensive: unreachable through normal Pydantic model construction
+                    raise ValueError(
+                        f"Field '{field_name}' has unparameterized list type. "
+                        f"Use List[str], List[int], etc."
+                    )
+                element_type = args[0]
+
+                if cls._is_structured_model_type(element_type):
+                    # List of StructuredModels - recursively export element schema
+                    property_schema = {
+                        "type": "array",
+                        "items": element_type.to_json_schema(),
+                    }
+                else:
+                    # Primitive list - build array schema manually
+                    json_element_type = PYTHON_TYPE_TO_JSON_TYPE.get(
+                        element_type, "string"
+                    )
+                    property_schema = {
+                        "type": "array",
+                        "items": {"type": json_element_type},
+                    }
+                    # Extract and add stickler extensions from field metadata
+                    metadata = converter._extract_field_metadata(field_info)
+                    extensions = converter._build_comparison_extensions(
+                        metadata, output_format="json_schema"
+                    )
+                    property_schema.update(extensions)
+            else:
+                # Primitive type - use converter for consistent formatting
+                property_schema = converter.field_to_property(field_type, field_info)
+
+            schema["properties"][field_name] = property_schema
+
+            # Add to required if field is required (Pydantic uses is_required())
+            if field_info.is_required():
+                schema["required"].append(field_name)
+
+        return schema
+
+    @staticmethod
+    def _unwrap_optional(field_type: Type) -> tuple:
+        """Unwrap Optional[T] to (T, True) or return (T, False) if not Optional.
+
+        Args:
+            field_type: Type annotation to unwrap
+
+        Returns:
+            Tuple of (unwrapped_type, is_optional)
+        """
+        if get_origin(field_type) is Union:
+            args = get_args(field_type)
+            non_none_args = [arg for arg in args if arg is not type(None)]
+            if len(non_none_args) == 1 and type(None) in args:
+                return non_none_args[0], True
+        return field_type, False
+
+    @staticmethod
+    def _is_structured_model_type(field_type: Type) -> bool:
+        """Check if type is a StructuredModel subclass.
+
+        Handles Union/Optional types by unwrapping them first.
+
+        Args:
+            field_type: Type annotation to check
+
+        Returns:
+            True if field_type is a StructuredModel subclass
+        """
+        # Unwrap Optional/Union types
+        unwrapped_type, _ = StructuredModel._unwrap_optional(field_type)
+
+        try:
+            return isinstance(unwrapped_type, type) and issubclass(
+                unwrapped_type, StructuredModel
+            )
+        except TypeError:
+            return False
+
+    @classmethod
+    def to_stickler_config(cls) -> Dict[str, Any]:
+        """Export model as custom Stickler JSON configuration.
+
+        Creates a configuration dict compatible with model_from_json() for
+        round-trip serialization. Extracts comparison metadata and formats
+        them in the custom Stickler configuration format.
+
+        Returns:
+            Stickler config dict with model_name and fields
+
+        Example:
+            >>> class Product(StructuredModel):
+            ...     name: str = ComparableField(threshold=0.8, weight=2.0)
+            ...     price: float = ComparableField(threshold=0.95)
+            >>> config = Product.to_stickler_config()
+            >>> ReconstructedProduct = StructuredModel.model_from_json(config)
+            >>> # ReconstructedProduct has identical comparison behavior
+        """
+        from .json_schema_field_converter import JsonSchemaFieldConverter
+
+        # schema/field_path unused for export operations - only needed for import
+        converter = JsonSchemaFieldConverter(schema={}, field_path="")
+
+        config = {"model_name": cls.__name__, "fields": {}}
+
+        # Add match_threshold if available (check both attribute names for compatibility)
+        threshold = getattr(cls, "match_threshold", None)
+        if threshold is None:
+            threshold = getattr(cls, "_match_threshold", None)
+        if threshold is not None:
+            config["match_threshold"] = threshold
+
+        for field_name, field_info in cls.model_fields.items():
+            # Skip extra_fields to avoid circular serialization issues
+            if field_name == "extra_fields":
+                continue
+
+            field_type = field_info.annotation
+
+            # Validate field has type annotation
+            if field_type is None:
+                # Defensive: unreachable through normal Pydantic model construction
+                raise ValueError(f"Field '{field_name}' has no type annotation")
+
+            # Unwrap Optional before type checking
+            field_type, _ = cls._unwrap_optional(field_type)
+
+            # Check if nested StructuredModel - use "structured_model" type
+            if cls._is_structured_model_type(field_type):
+                nested_config = field_type.to_stickler_config()
+                field_config = {"type": "structured_model", "fields": nested_config["fields"]}
+                if nested_config.get("model_name"):
+                    field_config["model_name"] = nested_config["model_name"]
+                if nested_config.get("match_threshold") is not None:
+                    field_config["match_threshold"] = nested_config["match_threshold"]
+            elif get_origin(field_type) is list:
+                # Handle List[StructuredModel] or List[primitive]
+                args = get_args(field_type)
+                if not args:
+                    # Defensive: unreachable through normal Pydantic model construction
+                    raise ValueError(
+                        f"Field '{field_name}' has unparameterized list type. "
+                        f"Use List[str], List[int], etc."
+                    )
+                element_type = args[0]
+
+                if cls._is_structured_model_type(element_type):
+                    nested_config = element_type.to_stickler_config()
+                    field_config = {"type": "list_structured_model", "fields": nested_config["fields"]}
+                    if nested_config.get("model_name"):
+                        field_config["model_name"] = nested_config["model_name"]
+                    if nested_config.get("match_threshold") is not None:
+                        field_config["match_threshold"] = nested_config["match_threshold"]
+                else:
+                    # Primitive list - pass element type, then fix up type string
+                    field_config = converter.field_to_stickler_config(
+                        element_type, field_info
+                    )
+                    field_config["type"] = f"List[{element_type.__name__}]"
+            else:
+                # Primitive type - use converter for consistent formatting
+                field_config = converter.field_to_stickler_config(
+                    field_type, field_info
+                )
+
+            config["fields"][field_name] = field_config
+
+        return config
