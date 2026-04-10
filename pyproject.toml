@@ -24,6 +24,8 @@ dependencies = [
     "jinja2>=3.1.6,<3.2.0"
 ]
 
+# pip-compatible extras (for `pip install -e ".[dev]"`)
+# Note: the `dev` extra must be kept in sync with [dependency-groups] below
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
@@ -31,6 +33,11 @@ dev = [
     "coverage>=7.0.0",
     "beautifulsoup4>=4.14.2",
     "ruff>=0.14.10",
+    "mkdocs",
+    "mkdocs-material",
+    "mkdocs-awesome-nav",
+    "mkdocstrings-python",
+    "pymdown-extensions",
 ]
 llm = [
     "strands-agents>=1.0.0,<=1.16.0"
@@ -57,6 +64,34 @@ exclude_dirs = ["tests"]
 [build-system]
 requires = ["setuptools >= 61.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+# uv-native dependency groups (for `uv sync`)
+# Keep in sync with [project.optional-dependencies] above
+[dependency-groups]
+dev = [
+    {include-group = "test"},
+    {include-group = "lint"},
+    {include-group = "docs"},
+]
+test = [
+    "pytest>=7.0.0",
+    "pytest-xdist>=3.0.0",
+    "coverage>=7.0.0",
+    "beautifulsoup4>=4.14.2",
+]
+lint = [
+    "ruff>=0.14.10",
+]
+docs = [
+    "mkdocs",
+    "mkdocs-material",
+    "mkdocs-awesome-nav",
+    "mkdocstrings-python",
+    "pymdown-extensions",
+]
+
+[tool.uv]
+default-groups = ["dev"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

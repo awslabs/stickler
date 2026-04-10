@@ -6,6 +6,8 @@ This guide covers testing conventions, patterns, and best practices for contribu
 
 Stickler uses **pytest** as its testing framework with **coverage** for code coverage reporting. Tests run automatically on every push and pull request via GitHub Actions.
 
+> **Using pip + venv?** All commands below use `uv run`. If you installed with `pip install -e ".[dev]"`, run tools directly (e.g., `pytest` instead of `uv run pytest`).
+
 ## Test Organization
 
 ### Directory Structure
@@ -308,74 +310,74 @@ def test_aggregate_contact_issue():
 
 ```bash
 # Run all tests
-pytest tests/
+uv run pytest tests/
 
 # Run with verbose output
-pytest tests/ -v
+uv run pytest tests/ -v
 
 # Run with print statements shown
-pytest tests/ -v -s
+uv run pytest tests/ -v -s
 
 # Run specific module
-pytest tests/structured_object_evaluator/
+uv run pytest tests/structured_object_evaluator/
 
 # Run specific test file
-pytest tests/structured_object_evaluator/test_comparators.py
+uv run pytest tests/structured_object_evaluator/test_comparators.py
 
 # Run specific test class
-pytest tests/structured_object_evaluator/test_comparators.py::TestLevenshteinComparator
+uv run pytest tests/structured_object_evaluator/test_comparators.py::TestLevenshteinComparator
 
 # Run specific test method
-pytest tests/structured_object_evaluator/test_comparators.py::TestLevenshteinComparator::test_exact_match
+uv run pytest tests/structured_object_evaluator/test_comparators.py::TestLevenshteinComparator::test_exact_match
 
 # Run tests matching pattern
-pytest tests/ -k "levenshtein"
+uv run pytest tests/ -k "levenshtein"
 
 # Run tests excluding pattern
-pytest tests/ -k "not slow"
+uv run pytest tests/ -k "not slow"
 ```
 
 ### Coverage Commands
 
 ```bash
 # Run with coverage
-coverage run -m pytest tests/
+uv run coverage run -m pytest tests/
 
 # Generate terminal report
-coverage report -m
+uv run coverage report -m
 
 # Generate HTML report
-coverage html
+uv run coverage html
 open htmlcov/index.html
 
 # Combined command
-coverage run -m pytest tests/ && coverage report -m
+uv run coverage run -m pytest tests/ && uv run coverage report -m
 ```
 
 ### Parallel Execution
 
 ```bash
 # Run tests in parallel (requires pytest-xdist)
-pytest tests/ -n auto
+uv run pytest tests/ -n auto
 
 # Specify number of workers
-pytest tests/ -n 4
+uv run pytest tests/ -n 4
 ```
 
 ### Debugging
 
 ```bash
 # Stop on first failure
-pytest tests/ -x
+uv run pytest tests/ -x
 
 # Enter debugger on failure
-pytest tests/ --pdb
+uv run pytest tests/ --pdb
 
 # Show local variables in traceback
-pytest tests/ -l
+uv run pytest tests/ -l
 
 # More detailed traceback
-pytest tests/ --tb=long
+uv run pytest tests/ --tb=long
 ```
 
 ## CI Integration
@@ -401,9 +403,9 @@ Tests run automatically on every push and pull request via GitHub Actions.
 
 Before submitting a PR, ensure:
 
-- [ ] All tests pass locally (`pytest tests/`)
+- [ ] All tests pass locally (`uv run pytest tests/`)
 - [ ] New code has corresponding tests
-- [ ] Coverage report generated (`coverage run -m pytest tests/`)
+- [ ] Coverage report generated (`uv run coverage run -m pytest tests/`)
 
 ## Best Practices
 
@@ -488,6 +490,8 @@ ls tests/  # Should see test_*.py files
 **Import errors:**
 ```bash
 # Ensure package is installed in development mode
+uv sync
+# or, if using pip + venv:
 pip install -e ".[dev]"
 ```
 
@@ -495,7 +499,7 @@ pip install -e ".[dev]"
 ```bash
 # Run from project root
 cd /path/to/stickler
-coverage run -m pytest tests/
+uv run coverage run -m pytest tests/
 ```
 
 ### Getting Help

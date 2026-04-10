@@ -18,19 +18,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install dependencies
-        run: |
-          pip install -e .
-          pip install -r docs/requirements.txt
+        run: uv sync --group docs --frozen
 
       - name: Deploy to GitHub Pages
         run: |
           cd docs
           git config user.name github-actions
           git config user.email github-actions@github.com
-          mkdocs gh-deploy --force
+          uv run mkdocs gh-deploy --force

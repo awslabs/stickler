@@ -11,7 +11,7 @@ information to effectively respond to your bug report or contribution.
 ### Prerequisites
 
 - Python 3.12+
-- [conda](https://github.com/conda/conda?tab=readme-ov-file#installation) (recommended) or venv
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (recommended) or pip
 - Git
 
 ### Setup
@@ -20,20 +20,20 @@ information to effectively respond to your bug report or contribution.
 # Clone and setup
 git clone https://github.com/awslabs/stickler.git
 cd stickler
-conda create -n stickler python=3.12 -y
-conda activate stickler
-pip install -e ".[dev]"
+uv sync
 
 # Verify installation
-pytest tests/ -v --tb=short
+uv run pytest tests/ -v --tb=short
 ```
+
+> **Using pip + venv?** All commands below use `uv run`. If you installed with `pip install -e ".[dev]"`, run tools directly (e.g., `pytest` instead of `uv run pytest`).
 
 ### Development Workflow
 
 1. Create a branch from `dev`: `git checkout -b feature/your-feature dev`
 2. Make your changes
-3. Run tests: `pytest tests/`
-4. Run linting: `ruff check .`
+3. Run tests: `uv run pytest tests/`
+4. Run linting: `uv run ruff check .`
 5. Commit with conventional format: `feat: add new feature`
 6. Submit PR to `dev` branch
 
@@ -54,11 +54,11 @@ For comprehensive documentation, see:
 
 | Task | Command |
 |------|---------|
-| Run all tests | `pytest tests/` |
-| Run with coverage | `coverage run -m pytest tests/ && coverage report` |
-| Run specific tests | `pytest tests/ -k "pattern"` |
-| Lint check | `ruff check .` |
-| Lint fix | `ruff check --fix .` |
+| Run all tests | `uv run pytest tests/` |
+| Run with coverage | `uv run coverage run -m pytest tests/ && uv run coverage report` |
+| Run specific tests | `uv run pytest tests/ -k "pattern"` |
+| Lint check | `uv run ruff check .` |
+| Lint fix | `uv run ruff check --fix .` |
 
 ### Commit Message Format
 

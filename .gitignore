@@ -6,7 +6,6 @@
 .coverage
 .ash/
 .temp/
-uv.lock
 
 .kiro/*
 .kiro/**/*
