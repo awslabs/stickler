@@ -752,3 +752,115 @@ class TestCoverage:
         cov = result.confidence_metrics["coverage"]
         assert cov["fields_with_confidence"] == 5
         assert cov["fields_total"] == 6
+
+
+# -- 14. Error Capture at Review Budget --
+
+
+class TestErrorCaptureAtBudget:
+    def test_basic_computation(self):
+        """Well-separated confidence: low-conf fields are errors, high-conf are correct."""
+        from stickler.structured_object_evaluator.models.confidence import ErrorCaptureAtBudgetMetric
+
+        # 10 pairs: 3 errors with low confidence, 7 correct with high confidence
+        pairs = [
+            cp(False, 0.10), cp(False, 0.15), cp(False, 0.20),  # errors
+            cp(True, 0.60), cp(True, 0.65), cp(True, 0.70),
+            cp(True, 0.75), cp(True, 0.80), cp(True, 0.85), cp(True, 0.90),
+        ]
+
+        metric = ErrorCaptureAtBudgetMetric(budgets=[0.10, 0.30, 0.50])
+        result = metric.compute(pairs)
+
+        assert result["value"] is not None
+        assert "budgets" in result
+
+        # At 30% budget (3 fields), all 3 errors should be found
+        b30 = result["budgets"][0.30]
+        assert b30["fields_reviewed"] == 3
+        assert b30["errors_found"] == 3
+        assert b30["pct_errors_caught"] == 1.0
+        assert b30["gain"] > 1.0
+
+    def test_random_confidence_gain_near_one(self):
+        """Random confidence should produce gain near 1.0."""
+        from stickler.structured_object_evaluator.models.confidence import ErrorCaptureAtBudgetMetric
+        import random as rng
+        rng.seed(99)
+
+        pairs = [
+            cp(rng.random() < 0.3, rng.random())
+            for _ in range(500)
+        ]
+
+        metric = ErrorCaptureAtBudgetMetric(budgets=[0.30])
+        result = metric.compute(pairs)
+
+        # Gain should be close to 1.0 for random confidence
+        assert 0.7 < result["budgets"][0.30]["gain"] < 1.5
+
+    def test_empty_pairs(self):
+        from stickler.structured_object_evaluator.models.confidence import ErrorCaptureAtBudgetMetric
+        result = ErrorCaptureAtBudgetMetric().compute([])
+        assert result["value"] is None
+        assert result["budgets"] == {}
+
+    def test_no_errors(self):
+        """All correct: no errors to find."""
+        from stickler.structured_object_evaluator.models.confidence import ErrorCaptureAtBudgetMetric
+        pairs = [cp(True, 0.5), cp(True, 0.6), cp(True, 0.7)]
+        result = ErrorCaptureAtBudgetMetric().compute(pairs)
+        assert result["value"] is None
+
+    def test_custom_budgets(self):
+        from stickler.structured_object_evaluator.models.confidence import ErrorCaptureAtBudgetMetric
+        pairs = [
+            cp(False, 0.1), cp(False, 0.2),
+            cp(True, 0.8), cp(True, 0.9),
+        ]
+        metric = ErrorCaptureAtBudgetMetric(budgets=[0.25, 0.50, 0.75])
+        result = metric.compute(pairs)
+        assert set(result["budgets"].keys()) == {0.25, 0.50, 0.75}
+
+    def test_headline_is_middle_budget(self):
+        """Headline value should be the gain at the middle budget level."""
+        from stickler.structured_object_evaluator.models.confidence import ErrorCaptureAtBudgetMetric
+        pairs = [
+            cp(False, 0.1), cp(False, 0.2), cp(False, 0.3),
+            cp(True, 0.7), cp(True, 0.8), cp(True, 0.9),
+            cp(True, 0.91), cp(True, 0.92), cp(True, 0.93), cp(True, 0.94),
+        ]
+        metric = ErrorCaptureAtBudgetMetric(budgets=[0.10, 0.30, 0.50])
+        result = metric.compute(pairs)
+        # Middle budget is 0.30
+        assert result["value"] == result["budgets"][0.30]["gain"]
+
+    def test_bulk_evaluator_integration(self):
+        """ErrorCaptureAtBudgetMetric works through the bulk evaluator."""
+        from stickler.structured_object_evaluator.models.confidence import ErrorCaptureAtBudgetMetric
+
+        evaluator = BulkStructuredModelEvaluator(
+            target_schema=Product,
+            confidence_metrics=[ErrorCaptureAtBudgetMetric(budgets=[0.30, 0.50])],
+        )
+
+        gt = Product(name="Widget", price=29.99, sku="ABC")
+        pred_good = Product.from_json({
+            "name": {"value": "Widget", "confidence": 0.9},
+            "price": {"value": 29.99, "confidence": 0.8},
+            "sku": {"value": "ABC", "confidence": 0.7},
+        })
+        pred_bad = Product.from_json({
+            "name": {"value": "Wrong", "confidence": 0.2},
+            "price": {"value": 99.99, "confidence": 0.15},
+            "sku": {"value": "XYZ", "confidence": 0.1},
+        })
+
+        evaluator.update(gt, pred_good)
+        evaluator.update(gt, pred_bad)
+        result = evaluator.compute()
+
+        ecab = result.confidence_metrics["overall"]["error_capture_at_budget"]
+        assert "budgets" in ecab
+        assert 0.30 in ecab["budgets"]
+        assert 0.50 in ecab["budgets"]

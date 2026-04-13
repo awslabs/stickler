@@ -173,6 +173,42 @@ AUROC treats confidence evaluation as a binary classification problem:
 
 AUROC returns `None` when all predictions match (no negative class) or all fail (no positive class).
 
+## Error Capture at Review Budget
+
+AUROC tells you confidence is useful. Error Capture at Review Budget tells you *how* useful in practical terms.
+
+The question: "If I review X% of my data (lowest confidence first), what percentage of errors do I catch?"
+
+```python
+from stickler.structured_object_evaluator.models.confidence import (
+    AUROCMetric, ErrorCaptureAtBudgetMetric,
+)
+
+evaluator = BulkStructuredModelEvaluator(
+    target_schema=Product,
+    confidence_metrics=[AUROCMetric(), ErrorCaptureAtBudgetMetric(budgets=[0.10, 0.30, 0.50])]
+)
+
+for gt, pred in dataset:
+    evaluator.update(gt, pred)
+
+results = evaluator.compute()
+ecab = results.confidence_metrics["overall"]["error_capture_at_budget"]
+
+for budget, data in ecab["budgets"].items():
+    print(f"Review {budget:.0%} of data: catch {data['pct_errors_caught']:.0%} of errors "
+          f"({data['gain']:.1f}x vs random)")
+```
+
+Example output:
+```
+Review 10% of data: catch 55% of errors (5.5x vs random)
+Review 30% of data: catch 89% of errors (3.0x vs random)
+Review 50% of data: catch 97% of errors (1.9x vs random)
+```
+
+The `gain` at each budget level is the ratio of errors caught by confidence-guided review vs. random sampling at the same review effort. A gain of 5.5x at 10% budget means reviewing the bottom 10% by confidence finds 5.5 times more errors than reviewing a random 10%.
+
 ## Coverage
 
 Not every field has a confidence score. Coverage tells you how much of your data is being evaluated:

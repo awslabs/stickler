@@ -27,6 +27,7 @@ from stickler.structured_object_evaluator.models.confidence.metrics import (
     ConfidencePair,
     ConfidencePairs,
     ECEMetric,
+    ErrorCaptureAtBudgetMetric,
 )
 
 __all__ = [
@@ -37,6 +38,7 @@ __all__ = [
     "AUROCMetric",
     "BrierScoreMetric",
     "ECEMetric",
+    "ErrorCaptureAtBudgetMetric",
     "ConfidencePairs",
     "KeyedConfidencePairs",
     "DEFAULT_METRICS",

@@ -6,13 +6,24 @@ result dict with at least {"value": float | None}. Metrics may include
 additional structured data (e.g., bins for ECE).
 
 ConfidencePair fields:
-    is_match:   bool  — whether the field crossed its ComparableField threshold
-    confidence: float — the model's self-reported confidence (from JSON)
-    similarity: float — the raw comparator similarity score (0.0–1.0)
+    is_match:   bool  - whether the field crossed its ComparableField threshold
+    confidence: float - the model's self-reported confidence (from JSON)
+    similarity: float - the raw comparator similarity score (0.0 to 1.0)
 
 Existing metrics use is_match and confidence. The similarity score is
 available for future metrics that correlate confidence with *how right*
 the prediction is, not just whether it crossed a threshold.
+
+TODO: The similarity field enables several future metric directions:
+  - Parameterized AUROC: re-threshold using similarity >= custom_threshold
+    instead of the pre-baked is_match, allowing AUROC computation at
+    different correctness standards without re-running comparisons.
+  - Confidence-similarity correlation (Spearman/Pearson): does higher
+    confidence correspond to higher similarity? Pure continuous metric,
+    no binary label needed.
+  - Review Efficiency Metric: sort by confidence ascending, measure how
+    quickly you discover errors. Could use similarity to define error
+    severity instead of binary match. See docs/proposals/review_efficiency_metric.md.
 
 To add a new metric:
     1. Subclass ConfidenceMetric
@@ -21,7 +32,7 @@ To add a new metric:
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 from sklearn.metrics import roc_auc_score
@@ -142,6 +153,59 @@ class ECEMetric(ConfidenceMetric):
             for b in bins if b["count"] > 0
         )
         return {"value": ece, "bins": bins}
+
+
+class ErrorCaptureAtBudgetMetric(ConfidenceMetric):
+    """Error Capture at Review Budget.
+
+    Answers: "If I review X% of my data (lowest confidence first),
+    what percentage of errors do I catch?"
+
+    Sort fields by confidence ascending. At each budget level, count
+    what fraction of total errors fall in the bottom X% of fields.
+    Random sampling would catch X% of errors by reviewing X% of data.
+
+    Args:
+        budgets: List of review budget levels as fractions (default: [0.1, 0.3, 0.5]).
+    """
+
+    def __init__(self, budgets: Optional[List[float]] = None):
+        self.budgets = budgets if budgets is not None else [0.10, 0.30, 0.50]
+
+    @property
+    def name(self) -> str:
+        return "error_capture_at_budget"
+
+    def compute(self, pairs: ConfidencePairs) -> Dict[str, Any]:
+        if not pairs:
+            return {"value": None, "budgets": {}}
+
+        total_errors = sum(1 for p in pairs if not p.is_match)
+        if total_errors == 0:
+            return {"value": None, "budgets": {}}
+
+        # Sort by confidence ascending (lowest first)
+        sorted_pairs = sorted(pairs, key=lambda p: p.confidence)
+        n = len(sorted_pairs)
+
+        budgets_result = {}
+        for budget in self.budgets:
+            k = max(1, int(n * budget))
+            errors_found = sum(1 for p in sorted_pairs[:k] if not p.is_match)
+            pct_errors_caught = errors_found / total_errors
+            budgets_result[budget] = {
+                "fields_reviewed": k,
+                "errors_found": errors_found,
+                "pct_errors_caught": pct_errors_caught,
+                "pct_errors_random": budget,
+                "gain": pct_errors_caught / budget if budget > 0 else 0.0,
+            }
+
+        # Headline value: gain at the middle budget level
+        middle = self.budgets[len(self.budgets) // 2]
+        headline = budgets_result[middle]["gain"]
+
+        return {"value": headline, "budgets": budgets_result}
 
 
 DEFAULT_METRICS: List[ConfidenceMetric] = [AUROCMetric()]
