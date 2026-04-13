@@ -67,22 +67,17 @@ print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # 0.926 - Hung
 
 ### Requirements
 - Python 3.12+
-- conda (recommended)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (recommended)
 
 ### Quick Install
 ```bash
-# Create conda environment
-conda create -n stickler python=3.12 -y
-conda activate stickler
+# Install from PyPI
+pip install stickler-eval
 
-# Install the library
-pip install -e .
-```
-
-### Development Install
-```bash
-# Install with testing dependencies
-pip install -e ".[dev]"
+# Or clone and install for development (uv handles Python + venv automatically)
+git clone https://github.com/awslabs/stickler.git
+cd stickler
+uv sync
 ```
 
 ## Quick Test
@@ -94,6 +89,8 @@ python examples/scripts/quick_start.py
 
 Run tests:
 ```bash
+uv run pytest tests/
+# or, if using pip + venv:
 pytest tests/
 ```
 

@@ -2,6 +2,8 @@
 
 This guide covers the branch strategy, commit conventions, and pull request process for contributing to Stickler.
 
+> **Using pip + venv?** All commands below use `uv run`. If you installed with `pip install -e ".[dev]"`, run tools directly (e.g., `pytest` instead of `uv run pytest`).
+
 ## Branch Strategy
 
 ### Main Branches
@@ -127,17 +129,17 @@ Related to #42
 
 2. **Run tests locally:**
    ```bash
-   pytest tests/ -v
+   uv run pytest tests/ -v
    ```
 
 3. **Run linting:**
    ```bash
-   ruff check .
+   uv run ruff check .
    ```
 
 4. **Check coverage (optional):**
    ```bash
-   coverage run -m pytest tests/ && coverage report
+   uv run coverage run -m pytest tests/ && uv run coverage report
    ```
 
 ### Creating the PR
@@ -217,19 +219,19 @@ Every PR triggers these GitHub Actions:
 **Test failures:**
 ```bash
 # Run tests locally to reproduce
-pytest tests/ -v
+uv run pytest tests/ -v
 
 # Run specific failing test
-pytest tests/path/test_file.py::test_name -v
+uv run pytest tests/path/test_file.py::test_name -v
 ```
 
 **Linting issues:**
 ```bash
 # Check issues
-ruff check .
+uv run ruff check .
 
 # Auto-fix where possible
-ruff check --fix .
+uv run ruff check --fix .
 ```
 
 **Security issues:**

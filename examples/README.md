@@ -160,8 +160,8 @@ For comprehensive documentation, see:
 ## 🔧 Troubleshooting
 
 If examples don't run:
-1. Install dependencies: `pip install -r requirements.txt`
-2. Check Python version: Requires Python 3.8+
+1. Install dependencies: `uv sync` (if developing) or `pip install stickler-eval` (if using from PyPI)
+2. Check Python version: Requires Python 3.12+
 3. Verify installation: `python -c "import stickler; print('Success!')"`
 
 ## 🎉 Key Insight

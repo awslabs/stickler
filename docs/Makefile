@@ -17,7 +17,7 @@
 #
 # Usage: make install
 install:
-	pip install -r requirements.txt
+	uv sync --group docs --frozen
 
 # docs: Start local development server with live reload
 #
@@ -31,7 +31,7 @@ install:
 #
 # Usage: make docs
 docs:
-	mkdocs serve --livereload
+	uv run mkdocs serve --livereload
 
 # build: Build static site for production
 #
@@ -45,7 +45,7 @@ docs:
 #
 # Usage: make build
 build:
-	mkdocs build
+	uv run mkdocs build
 
 # deploy: Deploy site to GitHub Pages
 #
@@ -61,7 +61,7 @@ build:
 # Usage: make deploy
 deploy:
 	@echo "Building and deploying to GitHub Pages..."
-	mkdocs gh-deploy --force
+	uv run mkdocs gh-deploy --force
 
 # clean: Remove generated site files
 #
