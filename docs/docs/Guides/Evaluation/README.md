@@ -15,6 +15,9 @@ This guide covers three ways to configure evaluation behavior:
 !!! tip "Evaluating a test set?"
     If you need to evaluate many document pairs (not just one), use **`BulkStructuredModelEvaluator`** — it handles streaming aggregation, progress reporting, and metrics export. See the [Bulk Evaluation](bulk-evaluation.md) guide.
 
+!!! tip "Evaluating confidence scores?"
+    If your model produces confidence scores alongside predictions, see the [Confidence Evaluation](confidence-evaluation.md) guide for AUROC, Brier Score, ECE, and Error Capture at Review Budget metrics.
+
 ---
 
 ## How Evaluation Works
