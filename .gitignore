@@ -11,4 +11,5 @@
 .kiro/**/*
 
 build/
+dist/
 .temp/
