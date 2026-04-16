@@ -276,6 +276,9 @@ def _normalize_results_format(
 
     # Handle regular single document results
     elif isinstance(results, dict) and "confusion_matrix" in results:
+        cm = results["confusion_matrix"]
+        if not cm or "overall" not in cm:
+            return None
         return results
 
     # Handle direct metrics dict (fallback)
