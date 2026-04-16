@@ -1218,6 +1218,10 @@ class StructuredModel(BaseModel):
             # Check if nested StructuredModel - recursively export to maintain full configuration
             if cls._is_structured_model_type(field_type):
                 property_schema = field_type.to_json_schema()
+                metadata = converter._extract_field_metadata(field_info)
+                metadata.pop("comparator", None)
+                extensions = converter._build_comparison_extensions(metadata, output_format="json_schema")
+                property_schema.update(extensions)
             elif get_origin(field_type) is list:
                 # Handle List[StructuredModel] or List[primitive]
                 args = get_args(field_type)
@@ -1235,6 +1239,10 @@ class StructuredModel(BaseModel):
                         "type": "array",
                         "items": element_type.to_json_schema(),
                     }
+                    metadata = converter._extract_field_metadata(field_info)
+                    metadata.pop("comparator", None)
+                    extensions = converter._build_comparison_extensions(metadata, output_format="json_schema")
+                    property_schema.update(extensions)
                 else:
                     # Primitive list - build array schema manually
                     json_element_type = PYTHON_TYPE_TO_JSON_TYPE.get(
@@ -1357,6 +1365,10 @@ class StructuredModel(BaseModel):
                     field_config["model_name"] = nested_config["model_name"]
                 if nested_config.get("match_threshold") is not None:
                     field_config["match_threshold"] = nested_config["match_threshold"]
+                metadata = converter._extract_field_metadata(field_info)
+                metadata.pop("comparator", None)
+                extensions = converter._build_comparison_extensions(metadata, output_format="stickler_config")
+                field_config.update(extensions)
             elif get_origin(field_type) is list:
                 # Handle List[StructuredModel] or List[primitive]
                 args = get_args(field_type)
@@ -1375,6 +1387,10 @@ class StructuredModel(BaseModel):
                         field_config["model_name"] = nested_config["model_name"]
                     if nested_config.get("match_threshold") is not None:
                         field_config["match_threshold"] = nested_config["match_threshold"]
+                    metadata = converter._extract_field_metadata(field_info)
+                    metadata.pop("comparator", None)
+                    extensions = converter._build_comparison_extensions(metadata, output_format="stickler_config")
+                    field_config.update(extensions)
                 else:
                     # Primitive list - pass element type, then fix up type string
                     field_config = converter.field_to_stickler_config(

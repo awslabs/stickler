@@ -242,6 +242,82 @@ def test_optional_field_roundtrip():
     assert result_recon["overall_score"] == 1.0
 
 
+def test_nested_model_custom_weight_json_schema_roundtrip():
+    """Test that non-default weight on a nested StructuredModel field survives JSON Schema round-trip."""
+
+    class Order(StructuredModel):
+        order_id: str = ComparableField(threshold=1.0, default=...)
+        product: Product = ComparableField(weight=3.0, clip_under_threshold=False, default=...)
+
+    schema = Order.to_json_schema()
+
+    assert schema["properties"]["product"].get("x-aws-stickler-weight") == 3.0
+    assert schema["properties"]["product"].get("x-aws-stickler-clip-under-threshold") is False
+
+    ReconstructedOrder = StructuredModel.from_json_schema(schema)
+
+    product_field = ReconstructedOrder.model_fields["product"]
+    assert product_field.json_schema_extra._weight == 3.0
+    assert product_field.json_schema_extra._clip_under_threshold is False
+
+
+def test_nested_model_custom_weight_stickler_config_roundtrip():
+    """Test that non-default weight on a nested StructuredModel field survives Stickler config round-trip."""
+
+    class Order(StructuredModel):
+        order_id: str = ComparableField(threshold=1.0, default=...)
+        product: Product = ComparableField(weight=3.0, clip_under_threshold=False, default=...)
+
+    config = Order.to_stickler_config()
+
+    assert config["fields"]["product"]["weight"] == 3.0
+    assert config["fields"]["product"]["clip_under_threshold"] is False
+
+    ReconstructedOrder = StructuredModel.model_from_json(config)
+
+    product_field = ReconstructedOrder.model_fields["product"]
+    assert product_field.json_schema_extra._weight == 3.0
+    assert product_field.json_schema_extra._clip_under_threshold is False
+
+
+def test_list_model_custom_weight_json_schema_roundtrip():
+    """Test that non-default weight on a List[StructuredModel] field survives JSON Schema round-trip."""
+
+    class Cart(StructuredModel):
+        cart_id: str = ComparableField(threshold=1.0, default=...)
+        products: List[Product] = ComparableField(weight=5.0, clip_under_threshold=False, default=...)
+
+    schema = Cart.to_json_schema()
+
+    assert schema["properties"]["products"].get("x-aws-stickler-weight") == 5.0
+    assert schema["properties"]["products"].get("x-aws-stickler-clip-under-threshold") is False
+
+    ReconstructedCart = StructuredModel.from_json_schema(schema)
+
+    products_field = ReconstructedCart.model_fields["products"]
+    assert products_field.json_schema_extra._weight == 5.0
+    assert products_field.json_schema_extra._clip_under_threshold is False
+
+
+def test_list_model_custom_weight_stickler_config_roundtrip():
+    """Test that non-default weight on a List[StructuredModel] field survives Stickler config round-trip."""
+
+    class Cart(StructuredModel):
+        cart_id: str = ComparableField(threshold=1.0, default=...)
+        products: List[Product] = ComparableField(weight=5.0, clip_under_threshold=False, default=...)
+
+    config = Cart.to_stickler_config()
+
+    assert config["fields"]["products"]["weight"] == 5.0
+    assert config["fields"]["products"]["clip_under_threshold"] is False
+
+    ReconstructedCart = StructuredModel.model_from_json(config)
+
+    products_field = ReconstructedCart.model_fields["products"]
+    assert products_field.json_schema_extra._weight == 5.0
+    assert products_field.json_schema_extra._clip_under_threshold is False
+
+
 def test_numeric_comparator_tolerance_roundtrip():
     """Test that NumericComparator tolerance is preserved after round-trip."""
 
