@@ -38,6 +38,20 @@ docs:
 docs-build:
 	$(MAKE) -C docs build
 
+.PHONY: docs docs-build docs-install
+
+# Install docs dependencies (mkdocs, material theme, etc.)
+docs-install:
+	pip install -r docs/requirements.txt
+
+# Start local docs site with live reload (http://127.0.0.1:8000)
+docs:
+	$(MAKE) -C docs docs
+
+# Build docs site (validates links and generates static site)
+docs-build:
+	$(MAKE) -C docs build
+
 # CI/CD version of lint that only checks but doesn't modify files
 # Used in CI pipelines to verify code quality without making changes
 lint-cicd:
