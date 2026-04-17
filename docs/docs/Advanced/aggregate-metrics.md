@@ -13,9 +13,12 @@ Stickler automatically includes an `aggregate` field at every node in the confus
 - **Consistent** -- The same access pattern works at every level: `result['confusion_matrix']['aggregate']` or `result['confusion_matrix']['fields']['contact']['aggregate']`.
 - **Derived metrics included** -- Each aggregate contains precision, recall, F1, and accuracy.
 
-## Usage
+## Example 1: Primitive + List of Primitives + Nested Structure
+
+This example covers three node types in one model: a primitive field (`name`), a list of primitives (`tags`), and a nested `StructuredModel` (`contact`).
 
 ```python
+from typing import List
 from stickler import StructuredModel, ComparableField
 from stickler.comparators.exact import ExactComparator
 
@@ -25,10 +28,13 @@ class Contact(StructuredModel):
 
 class Person(StructuredModel):
     name: str = ComparableField(comparator=ExactComparator(), threshold=1.0)
+    tags: List[str] = ComparableField(comparator=ExactComparator(), threshold=1.0)
     contact: Contact = ComparableField(comparator=ExactComparator(), threshold=1.0)
 
-gt = Person(name="John", contact=Contact(phone="123", email="john@test.com"))
-pred = Person(name="John", contact=Contact(phone="456", email="john@test.com"))
+gt = Person(name="John", tags=["vip", "active", "premium"],
+            contact=Contact(phone="123", email="john@test.com"))
+pred = Person(name="John", tags=["vip", "premium"],
+              contact=Contact(phone="456", email="john@test.com"))
 
 result = gt.compare_with(pred, include_confusion_matrix=True)
 cm = result['confusion_matrix']
@@ -36,27 +42,35 @@ cm = result['confusion_matrix']
 # Top-level aggregate (all primitive fields across the entire model)
 print(cm['aggregate'])
 
+# Tags aggregate (list-of-primitives -- aggregate equals overall)
+print(cm['fields']['tags']['aggregate'])
+
 # Contact-level aggregate (phone + email)
 print(cm['fields']['contact']['aggregate'])
 ```
 
-## Output Structure
+### Output Structure
 
 ```json
 {
   "confusion_matrix": {
     "overall": {
-      "tp": 1, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0,
-      "derived": { "cm_precision": 0.5, "cm_recall": 1.0, "cm_f1": 0.67 }
+      "tp": 3, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 1,
+      "derived": { "cm_precision": 0.75, "cm_recall": 0.75, "cm_f1": 0.75 }
     },
     "aggregate": {
-      "tp": 2, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0,
-      "derived": { "cm_precision": 0.67, "cm_recall": 1.0, "cm_f1": 0.8 }
+      "tp": 4, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 1,
+      "derived": { "cm_precision": 0.8, "cm_recall": 0.8, "cm_f1": 0.8 }
     },
     "fields": {
       "name": {
         "overall":   { "tp": 1, "fd": 0, "fa": 0, "fn": 0, "tn": 0 },
         "aggregate": { "tp": 1, "fd": 0, "fa": 0, "fn": 0, "tn": 0 }
+      },
+      "tags": {
+        "overall":   { "tp": 2, "fd": 0, "fa": 0, "fn": 1, "tn": 0 },
+        "aggregate": { "tp": 2, "fd": 0, "fa": 0, "fn": 1, "tn": 0 },
+        "fields": {}
       },
       "contact": {
         "overall":   { "tp": 0, "fd": 1, "fa": 0, "fn": 0, "tn": 0 },
@@ -77,10 +91,118 @@ print(cm['fields']['contact']['aggregate'])
 }
 ```
 
+Key observations:
+
+- `name` is a primitive leaf -- `aggregate` equals `overall`.
+- `tags` is a `List[str]` -- Hungarian matching produces 2 TP ("vip", "premium") and 1 FN ("active" has no pred counterpart). `aggregate` equals `overall` because it's a leaf.
+- `contact` is a nested structure -- `overall` is FD (phone mismatch), but `aggregate` sums the child fields (1 TP from email + 1 FD from phone).
+- The top-level `aggregate` sums all four leaf-level counts: name(1 TP) + tags(2 TP, 1 FN) + phone(1 FD) + email(1 TP) = 4 TP, 1 FD, 1 FN.
+
 Note the difference between `overall` and `aggregate`:
 
 - **`overall`** reflects this node's own direct classification (e.g., was this object a TP or FD?).
 - **`aggregate`** sums all leaf-level classifications beneath this node (including itself if it is a leaf).
+
+## Example 2: List of StructuredModel -- FD Recursion and Unmatched Items
+
+This example illustrates two important behaviors:
+
+1. An object pair classified as FD (below `match_threshold`) still has its fields recursed for aggregate metrics.
+2. An unmatched GT item (FN) contributes its populated fields to the aggregate.
+
+```python
+from typing import List
+from stickler import StructuredModel, ComparableField
+from stickler.comparators.exact import ExactComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
+
+class LineItem(StructuredModel):
+    match_threshold = 0.6
+    sku: str = ComparableField(comparator=ExactComparator(), threshold=1.0, weight=2.0)
+    description: str = ComparableField(
+        comparator=LevenshteinComparator(), threshold=0.7, weight=1.0
+    )
+    qty: int = ComparableField(comparator=ExactComparator(), threshold=1.0, weight=1.0)
+
+class Invoice(StructuredModel):
+    invoice_id: str = ComparableField(comparator=ExactComparator(), threshold=1.0)
+    items: List[LineItem] = ComparableField(weight=1.0)
+
+gt = Invoice(
+    invoice_id="INV-001",
+    items=[
+        LineItem(sku="AAA", description="Widget", qty=10),
+        LineItem(sku="BBB", description="Gadget", qty=5),
+        LineItem(sku="CCC", description="Cable", qty=2),   # no pred counterpart
+    ],
+)
+pred = Invoice(
+    invoice_id="INV-001",
+    items=[
+        LineItem(sku="AAA", description="Widget", qty=10),            # TP (similarity 1.0)
+        LineItem(sku="BBB", description="Completely Wrong", qty=99),  # FD (similarity 0.53)
+    ],
+)
+
+result = gt.compare_with(pred, include_confusion_matrix=True)
+cm = result['confusion_matrix']
+
+# Object-level: 1 TP, 1 FD, 1 FN
+print(cm['fields']['items']['overall'])
+
+# Aggregate still recurses into FD and FN fields
+print(cm['fields']['items']['aggregate'])
+```
+
+### Output Structure
+
+```json
+{
+  "confusion_matrix": {
+    "overall": {
+      "tp": 2, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 1,
+      "derived": { "cm_precision": 0.67, "cm_recall": 0.67, "cm_f1": 0.67 }
+    },
+    "aggregate": {
+      "tp": 5, "fa": 0, "fd": 2, "fp": 2, "tn": 0, "fn": 3,
+      "derived": { "cm_precision": 0.71, "cm_recall": 0.63, "cm_f1": 0.67 }
+    },
+    "fields": {
+      "invoice_id": {
+        "overall":   { "tp": 1, "fd": 0, "fa": 0, "fn": 0, "tn": 0 },
+        "aggregate": { "tp": 1, "fd": 0, "fa": 0, "fn": 0, "tn": 0 }
+      },
+      "items": {
+        "overall": {
+          "tp": 1, "fd": 1, "fa": 0, "fn": 1,
+          "derived": { "cm_precision": 0.5, "cm_recall": 0.5, "cm_f1": 0.5 }
+        },
+        "aggregate": {
+          "tp": 4, "fd": 2, "fa": 0, "fn": 3,
+          "derived": { "cm_precision": 0.67, "cm_recall": 0.57, "cm_f1": 0.62 }
+        },
+        "fields": {
+          "sku":         { "overall": { "tp": 2, "fd": 0, "fn": 1 },
+                           "aggregate": { "tp": 2, "fd": 0, "fn": 1 } },
+          "description": { "overall": { "tp": 1, "fd": 1, "fn": 1 },
+                           "aggregate": { "tp": 1, "fd": 1, "fn": 1 } },
+          "qty":         { "overall": { "tp": 1, "fd": 1, "fn": 1 },
+                           "aggregate": { "tp": 1, "fd": 1, "fn": 1 } }
+        }
+      }
+    }
+  }
+}
+```
+
+Key observations:
+
+- `items.overall` has 1 TP (AAA pair, similarity 1.0 >= 0.6), 1 FD (BBB pair, similarity 0.53 < 0.6), and 1 FN (CCC, unmatched in pred). These are object-level counts.
+- `items.aggregate` recurses into all three items' fields regardless of the threshold outcome:
+    - AAA pair (TP): sku TP, description TP, qty TP → 3 TP
+    - BBB pair (FD): sku TP, description FD, qty FD → 1 TP + 2 FD
+    - CCC (FN, unmatched): each populated field counts as FN → 3 FN
+- The threshold gates only the object-level classification. Aggregate metrics always drill down to the leaf fields.
 
 ## Node Types and Aggregation Behavior
 
