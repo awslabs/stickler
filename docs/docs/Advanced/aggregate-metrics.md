@@ -55,20 +55,20 @@ print(cm['fields']['contact']['aggregate'])
     },
     "fields": {
       "name": {
-        "overall":   { "tp": 1, "fd": 0, "fa": 0, "fn": 0 },
-        "aggregate": { "tp": 1, "fd": 0, "fa": 0, "fn": 0 }
+        "overall":   { "tp": 1, "fd": 0, "fa": 0, "fn": 0, "tn": 0 },
+        "aggregate": { "tp": 1, "fd": 0, "fa": 0, "fn": 0, "tn": 0 }
       },
       "contact": {
-        "overall":   { "tp": 0, "fd": 1, "fa": 0, "fn": 0 },
-        "aggregate": { "tp": 1, "fd": 1, "fa": 0, "fn": 0 },
+        "overall":   { "tp": 0, "fd": 1, "fa": 0, "fn": 0, "tn": 0 },
+        "aggregate": { "tp": 1, "fd": 1, "fa": 0, "fn": 0, "tn": 0 },
         "fields": {
           "phone": {
-            "overall":   { "tp": 0, "fd": 1 },
-            "aggregate": { "tp": 0, "fd": 1 }
+            "overall":   { "tp": 0, "fd": 1, "fa": 0, "fn": 0, "tn": 0 },
+            "aggregate": { "tp": 0, "fd": 1, "fa": 0, "fn": 0, "tn": 0 }
           },
           "email": {
-            "overall":   { "tp": 1, "fd": 0 },
-            "aggregate": { "tp": 1, "fd": 0 }
+            "overall":   { "tp": 1, "fd": 0, "fa": 0, "fn": 0, "tn": 0 },
+            "aggregate": { "tp": 1, "fd": 0, "fa": 0, "fn": 0, "tn": 0 }
           }
         }
       }
@@ -79,13 +79,41 @@ print(cm['fields']['contact']['aggregate'])
 
 Note the difference between `overall` and `aggregate`:
 
-- **`overall`** reflects this node's own direct classification.
-- **`aggregate`** sums all primitive-field classifications beneath this node (including itself if it is a leaf).
+- **`overall`** reflects this node's own direct classification (e.g., was this object a TP or FD?).
+- **`aggregate`** sums all leaf-level classifications beneath this node (including itself if it is a leaf).
 
-## Calculation Logic
+## Node Types and Aggregation Behavior
 
-1. **Leaf nodes** (primitive fields): `aggregate` equals `overall`.
-2. **Parent nodes**: `aggregate` is the sum of all child `aggregate` values.
+Stickler's comparison tree is built from four distinct node types. The node type determines how metrics are computed and how `overall` and `aggregate` relate at each level.
+
+### 1. Primitive (`str`, `int`, `float`)
+
+Leaf node. `aggregate` equals `overall`. The field is compared directly and classified as TP, FD, FA, FN, or TN.
+
+### 2. List of Primitives (`List[str]`, `List[int]`)
+
+Also a leaf from the aggregate tree's perspective. Elements are matched via the [Hungarian algorithm](hungarian-matching.md) and each element-level classification (TP/FD/FA/FN) rolls into `overall`. The result has an empty `fields` dict, so `aggregate` equals `overall`.
+
+### 3. Nested StructuredModel (e.g., `contact: Contact`)
+
+Parent node. The `overall` reflects the object-level classification of the nested model as a whole. `aggregate` is the sum of all child field aggregates within the nested model — it recurses into the child model's fields.
+
+### 4. List of StructuredModel (`List[Product]`)
+
+Also a parent node and the most complex case. [Threshold-gating](threshold-gated-evaluation.md) controls the object-level classification, but aggregate metrics always recurse through nested fields to the leaf nodes regardless of the threshold outcome.
+
+- **`overall`**: Object-level counts — one TP/FD/FA/FN per list item, determined by Hungarian matching against `match_threshold`. The threshold gates this classification only.
+- **`fields`**: Per-sub-field metrics aggregated across all matched and unmatched items. Every pair (TP, FD) and every unmatched item (FN, FA) is recursed into for aggregate purposes — this recursion does not affect object-level metrics.
+- **`aggregate`**: Sum of child field aggregates from the `fields` dict.
+
+Within each pair, sub-fields are dispatched by their own type — primitives are classified directly, nested `List[StructuredModel]` fields recurse again with the inner model's `match_threshold`, and so on to arbitrary depth.
+
+Matched and unmatched items contribute to aggregate metrics differently. For matched pairs (TP or FD), every child field is fully evaluated whether populated or not — both-null fields produce a TN, mismatches produce FD, etc. For unmatched items (FN or FA), only populated fields are counted: each non-null field on an unmatched GT item counts as FN, each non-null field on an unmatched Pred item counts as FA. Null fields on unmatched items are skipped entirely and do not produce a TN. This avoids inflating the TN count when a long predicted list contains mostly-empty objects.
+
+## Calculation Summary
+
+1. **Leaf nodes** (primitives and primitive lists): `aggregate` equals `overall`.
+2. **Parent nodes** (nested models and structured lists): `aggregate` is the sum of all child `aggregate` values.
 3. **Derived metrics**: Precision, recall, F1, and accuracy are recomputed at each level from the summed counts.
 
 ## Hierarchical Reporting Example

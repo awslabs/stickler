@@ -22,13 +22,13 @@ Use the [Hungarian algorithm](hungarian-matching.md) to find optimal pairings be
 
 For each matched pair, compare the similarity score against `StructuredModel.match_threshold`:
 
-- **similarity >= threshold** -- **TP**: recurse into nested fields
-- **similarity < threshold** -- **FD**: stop recursion, treat as atomic
+- **similarity >= threshold** -- **TP**: recurse into nested fields for aggregate metric only (this recursion does not affect object level metrics)
+- **similarity < threshold** -- **FD**: recurse into nested fields for aggregate metric only (this recursion does not affect object level metrics)
 
 ### 3. Unmatched Items
 
-- **GT extras** -- **FN**: stop recursion
-- **Pred extras** -- **FA**: stop recursion
+- **GT extras** -- **FN**: recurse into nested fields for aggregate metric only (this recursion does not affect object level metrics)
+- **Pred extras** -- **FA**: recurse into nested fields for aggregate metric only (this recursion does not affect object level metrics)
 
 ## Code Example
 
