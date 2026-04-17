@@ -29,7 +29,7 @@ const setStyle = (selector, styles) => { const el = getElement(selector); if (el
 const createElement = (tag, className, innerHTML) => {
     const el = document.createElement(tag);
     if (className) el.className = className;
-    if (innerHTML) el.textContent = innerHTML;
+    if (innerHTML) el.innerHTML = innerHTML;
     return el;
 };
 
@@ -377,11 +377,11 @@ const updateNonMatchesTable = (data) => {
     tableBody.innerHTML = '';
     data.forEach(row => {
         const tr = createElement('tr', '', `
-            <td>${row.doc_id}</td>
-            <td>${row.field_path}</td>
-            <td>${row.non_match_type}</td>
-            <td>${row.ground_truth_value}</td>
-            <td>${row.prediction_value}</td>
+            <td>${escapeHtml(row.doc_id)}</td>
+            <td>${escapeHtml(row.field_path)}</td>
+            <td>${escapeHtml(row.non_match_type)}</td>
+            <td>${escapeHtml(row.ground_truth_value)}</td>
+            <td>${escapeHtml(row.prediction_value)}</td>
         `);
         tableBody.appendChild(tr);
     });
@@ -538,10 +538,11 @@ const loadPDF = (url, canvasId, loadingId, errorId) => {
     
     pdfjsLib.getDocument(url).promise.then(pdf => {
         const pdfContainer = canvas.parentElement;
+        const safeDocId = escapeHtml(docId);
         const navControls = createElement('div', 'pdf-navigation', `
-            <button class="btn btn-primary pdf-nav-btn" id="prev-${docId}" onclick="navigatePDF('${docId}', -1)">← Previous</button>
-            <span class="pdf-page-info" id="page-info-${docId}">Page 1 of ${pdf.numPages}</span>
-            <button class="btn btn-primary pdf-nav-btn" id="next-${docId}" onclick="navigatePDF('${docId}', 1)">Next →</button>
+            <button class="btn btn-primary pdf-nav-btn" id="prev-${safeDocId}" onclick="navigatePDF('${safeDocId}', -1)">← Previous</button>
+            <span class="pdf-page-info" id="page-info-${safeDocId}">Page 1 of ${pdf.numPages}</span>
+            <button class="btn btn-primary pdf-nav-btn" id="next-${safeDocId}" onclick="navigatePDF('${safeDocId}', 1)">Next →</button>
         `);
         pdfContainer.appendChild(navControls);
         
