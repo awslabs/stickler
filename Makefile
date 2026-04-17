@@ -7,13 +7,13 @@ YELLOW := \033[1;33m
 NC := \033[0m  # No Color
 
 install:
-	pip install -e .
+	uv sync --no-dev --frozen
 
 install-dev:
-	pip install -e ".[dev]"
+	uv sync --frozen
 
 test:
-	pytest tests/
+	uv run pytest tests/
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
@@ -21,13 +21,14 @@ clean:
 
 # Run linting checks and automatically fix issues
 lint:
-	ruff check --fix
+	uv run ruff check --fix
+	uv run ruff format
 
 .PHONY: docs docs-build docs-install
 
 # Install docs dependencies (mkdocs, material theme, etc.)
 docs-install:
-	pip install -r docs/requirements.txt
+	uv sync --group docs --frozen
 
 # Start local docs site with live reload (http://127.0.0.1:8000)
 docs:
@@ -41,14 +42,14 @@ docs-build:
 # Used in CI pipelines to verify code quality without making changes
 lint-cicd:
 	@echo "Running code quality checks..."
-	@if ! ruff check; then \
+	@if ! uv run ruff check; then \
 		echo -e "$(RED)ERROR: Ruff linting failed!$(NC)"; \
-		echo -e "$(YELLOW)Please run 'make ruff-lint' locally to fix these issues.$(NC)"; \
+		echo -e "$(YELLOW)Please run 'make lint' locally to fix these issues.$(NC)"; \
 		exit 1; \
 	fi
-	@if ! ruff format --check; then \
+	@if ! uv run ruff format --check; then \
 		echo -e "$(RED)ERROR: Code formatting check failed!$(NC)"; \
-		echo -e "$(YELLOW)Please run 'make format' locally to fix these issues.$(NC)"; \
+		echo -e "$(YELLOW)Please run 'make lint' locally to fix these issues.$(NC)"; \
 		exit 1; \
 	fi
 	@echo -e "$(GREEN)All code quality checks passed!$(NC)"

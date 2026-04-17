@@ -18,27 +18,24 @@ jobs:
         python-version: ["3.12"]
 
     steps:
-      - uses: actions/checkout@v3
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv sync --frozen
       - name: Run Bandit Security Scan
         run: |
-          pip install bandit[toml]
-          bandit -r src/ -f json -o bandit-report.json || true
-          bandit -r src/ -f txt
+          uv run --with "bandit[toml]" bandit -r src/ -f json -o bandit-report.json || true
+          uv run --with "bandit[toml]" bandit -r src/ -f txt
       - name: Install ASH
         run: |
-          pip install git+https://github.com/awslabs/automated-security-helper.git@v3.1.2
+          uv tool install git+https://github.com/awslabs/automated-security-helper.git@v3.1.2
       - name: Run ASH Security Scan
         continue-on-error: true
         run: |
-          ash --mode local 
+          ash --mode local
       - name: Upload Security Reports
         uses: actions/upload-artifact@v4
         if: always()
@@ -55,15 +52,15 @@ jobs:
           script: |
             const fs = require('fs');
             const reportPath = '.ash/ash_output/reports/ash.summary.md';
-            
+
             if (fs.existsSync(reportPath)) {
               const reportContent = fs.readFileSync(reportPath, 'utf8');
-              
+
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: '## 🔒 Security Scan Results\n\n' + reportContent
+                body: '## Security Scan Results\n\n' + reportContent
               });
             } else {
               console.log('ASH summary report not found');

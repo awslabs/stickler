@@ -105,7 +105,7 @@ for gt_json, pred_json, doc_id in your_test_set:
     evaluator.update(gt, pred, doc_id)
 
 result = evaluator.compute()
-print(f"Aggregate F1: {result.overall_metrics['f1']:.3f}")
+print(f"Aggregate F1: {result.metrics['cm_f1']:.3f}")
 ```
 
 See [Bulk Evaluation](../Guides/Evaluation/bulk-evaluation.md) for the full guide.

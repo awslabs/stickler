@@ -1,12 +1,12 @@
-name: Publish Python 🐍 distribution 📦 to PyPI and TestPyPI
+name: Publish Python distribution to PyPI and TestPyPI
 
-on: 
+on:
   release:
     types: [published]
 
 jobs:
   build:
-    name: Build distribution 📦
+    name: Build distribution
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -15,33 +15,26 @@ jobs:
     - uses: actions/checkout@v4
       with:
         persist-credentials: false
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v5
       with:
         python-version: "3.12"
-    - name: Install pypa/build
-      run: >-
-        python3 -m
-        pip install
-        build
-        --user
     - name: Build a binary wheel and a source tarball
-      run: python3 -m build
+      run: uv build
     - name: Store the distribution packages
       uses: actions/upload-artifact@v4
       with:
         name: python-package-distributions
         path: dist/
-      
+
   publish-to-pypi:
-    name: >-
-      Publish Python 🐍 distribution 📦 to PyPI
+    name: Publish Python distribution to PyPI
     needs:
     - build
     runs-on: ubuntu-24.04
     environment:
       name: release
-      url: https://pypi.org/p/stickler-eval 
+      url: https://pypi.org/p/stickler-eval
     permissions:
       id-token: write
     steps:
@@ -50,29 +43,26 @@ jobs:
       with:
         name: python-package-distributions
         path: dist/
-    - name: Publish distribution 📦 to PyPI
+    - name: Publish distribution to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
 
   publish-to-testpypi:
-    name: Publish Python 🐍 distribution 📦 to TestPyPI
+    name: Publish Python distribution to TestPyPI
     needs:
     - build
     runs-on: ubuntu-24.04
-
     environment:
       name: testpypi
       url: https://test.pypi.org/p/stickler-eval
-
     permissions:
       id-token: write
-
     steps:
     - name: Download all the dists
       uses: actions/download-artifact@v4
       with:
         name: python-package-distributions
         path: dist/
-    - name: Publish distribution 📦 to TestPyPI
+    - name: Publish distribution to TestPyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         repository-url: https://test.pypi.org/legacy/

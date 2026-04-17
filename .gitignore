@@ -6,10 +6,9 @@
 .coverage
 .ash/
 .temp/
-uv.lock
 
 .kiro/*
 .kiro/**/*
 
 build/
-.temp/
+dist/
