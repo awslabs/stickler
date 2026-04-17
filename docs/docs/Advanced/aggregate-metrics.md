@@ -13,6 +13,34 @@ Stickler automatically includes an `aggregate` field at every node in the confus
 - **Consistent** -- The same access pattern works at every level: `result['confusion_matrix']['aggregate']` or `result['confusion_matrix']['fields']['contact']['aggregate']`.
 - **Derived metrics included** -- Each aggregate contains precision, recall, F1, and accuracy.
 
+## Node Types and Aggregation Behavior
+
+Stickler's comparison tree is built from four distinct node types. The node type determines how metrics are computed and how `overall` and `aggregate` relate at each level.
+
+### 1. Primitive (`str`, `int`, `float`)
+
+Leaf node. `aggregate` equals `overall`. The field is compared directly and classified as TP, FD, FA, FN, or TN.
+
+### 2. List of Primitives (`List[str]`, `List[int]`)
+
+Also a leaf from the aggregate tree's perspective. Elements are matched via the [Hungarian algorithm](hungarian-matching.md) and each element-level classification (TP/FD/FA/FN) rolls into `overall`. The result has an empty `fields` dict, so `aggregate` equals `overall`.
+
+### 3. Nested StructuredModel (e.g., `contact: Contact`)
+
+Parent node. The `overall` reflects the object-level classification of the nested model as a whole. `aggregate` is the sum of all child field aggregates within the nested model — it recurses into the child model's fields.
+
+### 4. List of StructuredModel (`List[Product]`)
+
+Also a parent node and the most complex case. [Threshold-gating](threshold-gated-evaluation.md) controls the object-level classification, but aggregate metrics always recurse through nested fields to the leaf nodes regardless of the threshold outcome.
+
+- **`overall`**: Object-level counts — one TP/FD/FA/FN per list item, determined by Hungarian matching against `match_threshold`. The threshold gates this classification only.
+- **`fields`**: Per-sub-field metrics aggregated across all matched and unmatched items. Every pair (TP, FD) and every unmatched item (FN, FA) is recursed into for aggregate purposes — this recursion does not affect object-level metrics.
+- **`aggregate`**: Sum of child field aggregates from the `fields` dict.
+
+Within each pair, sub-fields are dispatched by their own type — primitives are classified directly, nested `List[StructuredModel]` fields recurse again with the inner model's `match_threshold`, and so on to arbitrary depth.
+
+Matched and unmatched items contribute to aggregate metrics differently. For matched pairs (TP or FD), every child field is fully evaluated whether populated or not — both-null fields produce a TN, mismatches produce FD, etc. For unmatched items (FN or FA), only populated fields are counted: each non-null field on an unmatched GT item counts as FN, each non-null field on an unmatched Pred item counts as FA. Null fields on unmatched items are skipped entirely and do not produce a TN. This avoids inflating the TN count when a long predicted list contains mostly-empty objects.
+
 ## Example 1: Primitive + List of Primitives + Nested Structure
 
 This example covers three node types in one model: a primitive field (`name`), a list of primitives (`tags`), and a nested `StructuredModel` (`contact`).
@@ -197,40 +225,17 @@ print(cm['fields']['items']['aggregate'])
 
 Key observations:
 
-- `items.overall` has 1 TP (AAA pair, similarity 1.0 >= 0.6), 1 FD (BBB pair, similarity 0.53 < 0.6), and 1 FN (CCC, unmatched in pred). These are object-level counts.
-- `items.aggregate` recurses into all three items' fields regardless of the threshold outcome:
-    - AAA pair (TP): sku TP, description TP, qty TP → 3 TP
-    - BBB pair (FD): sku TP, description FD, qty FD → 1 TP + 2 FD
-    - CCC (FN, unmatched): each populated field counts as FN → 3 FN
+- `items.overall` has 1 TP (AAA, similarity 1.0 >= 0.6), 1 FD (BBB, similarity 0.53 < 0.6), and 1 FN (CCC, unmatched). These are object-level counts.
+- Even though BBB is classified as FD at the object level, its fields are still recursed for aggregate purposes. The table below shows how each item's fields contribute to `items.aggregate`:
+
+| Item | Object classification | `sku` | `description` | `qty` |
+|------|----------------------|-------|---------------|-------|
+| AAA pair | TP (sim 1.0 >= 0.6) | TP (exact match) | TP (exact match) | TP (exact match) |
+| BBB pair | FD (sim 0.53 < 0.6) | TP (exact match) | FD (low similarity) | FD (5 ≠ 99) |
+| CCC | FN (unmatched) | FN | FN | FN |
+
+- Summing the columns: `sku` = 2 TP + 1 FN, `description` = 1 TP + 1 FD + 1 FN, `qty` = 1 TP + 1 FD + 1 FN. Grand total across all sub-fields: 4 TP, 2 FD, 3 FN — which is exactly what `items.aggregate` reports.
 - The threshold gates only the object-level classification. Aggregate metrics always drill down to the leaf fields.
-
-## Node Types and Aggregation Behavior
-
-Stickler's comparison tree is built from four distinct node types. The node type determines how metrics are computed and how `overall` and `aggregate` relate at each level.
-
-### 1. Primitive (`str`, `int`, `float`)
-
-Leaf node. `aggregate` equals `overall`. The field is compared directly and classified as TP, FD, FA, FN, or TN.
-
-### 2. List of Primitives (`List[str]`, `List[int]`)
-
-Also a leaf from the aggregate tree's perspective. Elements are matched via the [Hungarian algorithm](hungarian-matching.md) and each element-level classification (TP/FD/FA/FN) rolls into `overall`. The result has an empty `fields` dict, so `aggregate` equals `overall`.
-
-### 3. Nested StructuredModel (e.g., `contact: Contact`)
-
-Parent node. The `overall` reflects the object-level classification of the nested model as a whole. `aggregate` is the sum of all child field aggregates within the nested model — it recurses into the child model's fields.
-
-### 4. List of StructuredModel (`List[Product]`)
-
-Also a parent node and the most complex case. [Threshold-gating](threshold-gated-evaluation.md) controls the object-level classification, but aggregate metrics always recurse through nested fields to the leaf nodes regardless of the threshold outcome.
-
-- **`overall`**: Object-level counts — one TP/FD/FA/FN per list item, determined by Hungarian matching against `match_threshold`. The threshold gates this classification only.
-- **`fields`**: Per-sub-field metrics aggregated across all matched and unmatched items. Every pair (TP, FD) and every unmatched item (FN, FA) is recursed into for aggregate purposes — this recursion does not affect object-level metrics.
-- **`aggregate`**: Sum of child field aggregates from the `fields` dict.
-
-Within each pair, sub-fields are dispatched by their own type — primitives are classified directly, nested `List[StructuredModel]` fields recurse again with the inner model's `match_threshold`, and so on to arbitrary depth.
-
-Matched and unmatched items contribute to aggregate metrics differently. For matched pairs (TP or FD), every child field is fully evaluated whether populated or not — both-null fields produce a TN, mismatches produce FD, etc. For unmatched items (FN or FA), only populated fields are counted: each non-null field on an unmatched GT item counts as FN, each non-null field on an unmatched Pred item counts as FA. Null fields on unmatched items are skipped entirely and do not produce a TN. This avoids inflating the TN count when a long predicted list contains mostly-empty objects.
 
 ## Calculation Summary
 
