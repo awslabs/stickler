@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Example script demonstrating confidence structure handling in StructuredModel.
+Example script demonstrating the Rich Value Pattern in StructuredModel.
 
 This script shows how to:
 1. Define a StructuredModel with various field types
-2. Create instances from JSON data with confidence structures
-3. Access field values directly (unwrapped from confidence structures)
+2. Create instances from JSON data with rich values (value + metadata)
+3. Access field values directly (unwrapped from rich values)
 4. Access confidence scores via the API
 """
 
@@ -45,7 +45,7 @@ class Customer(StructuredModel):
 
 
 def main():
-    print("Confidence Structure Handling Demo\n")
+    print("Rich Value Pattern Demo\n")
 
     # Example 1: Simple Product with mixed confidence/plain values
     print("1. Simple Product Example:")
