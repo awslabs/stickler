@@ -1,0 +1,2952 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://awslabs.github.io/stickler/Guides/Evaluation/understanding-results/">
+      
+      
+        <link rel="prev" href="../bulk-evaluation/">
+      
+      
+        <link rel="next" href="../../Use-Cases/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Understanding Results - Stickler</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#understanding-results" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Stickler" class="md-header__button md-logo" aria-label="Stickler" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Stickler
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Understanding Results
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/awslabs/stickler" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    awslabs/stickler
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../.." class="md-tabs__link">
+          
+  
+  
+  Home
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../Getting-Started/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../Advanced/" class="md-tabs__link">
+          
+  
+  
+  Advanced
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../API-Reference/" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Stickler" class="md-nav__button md-logo" aria-label="Stickler" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Stickler
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/awslabs/stickler" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    awslabs/stickler
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Home
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stickler Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Getting-Started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Getting-Started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Getting-Started/known-issues/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Known Issues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_4" id="__nav_2_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Getting-Started/Contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing to Stickler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Getting-Started/Contributing/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Engine Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Getting-Started/Contributing/development-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development Environment Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Getting-Started/Contributing/testing-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Getting-Started/Contributing/code-style/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Style Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Getting-Started/Contributing/pull-request-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pull Request Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparators
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Comparators
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Comparators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Comparators/llm-as-a-judge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM-as-a-Judge Comparators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Evaluation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Customizing Your Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bulk-evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bulk Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Understanding Results
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Understanding Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+  
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#result-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Result Structure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Result Structure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#overall_score-float" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        overall_score (float)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#field_scores-dict" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        field_scores (dict)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#all_fields_matched-bool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        all_fields_matched (bool)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#confusion-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confusion Matrix
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Confusion Matrix">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#classification-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Classification Categories
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#confusion-matrix-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confusion Matrix Structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#overall-vs-aggregate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        overall vs aggregate
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#derived-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Derived Metrics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Derived Metrics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#precision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Precision
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recall
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f1-score" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F1 Score
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#accuracy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accuracy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#accessing-derived-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accessing Derived Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#non-match-analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-Match Analysis
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Non-Match Analysis">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#non-match-entry-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-Match Entry Structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#non-match-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-Match Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#debugging-with-non-matches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Debugging with Non-Matches
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#field-comparisons" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Field Comparisons
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#html-reports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HTML Reports
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pretty-printing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pretty Printing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#field-level-aggregate-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Field-Level Aggregate Metrics
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use Cases
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Use Cases
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Use-Cases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use Cases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Use-Cases/idp-accelerator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IDP Accelerator Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Best Practices
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Best Practices
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Best-Practices/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Best Practices
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Best-Practices/agentic-development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentic Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Advanced
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Advanced/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced Topics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Advanced/classification-logic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Classification Logic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Advanced/hungarian-matching/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hungarian Matching
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Advanced/threshold-gated-evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Threshold-Gated Recursive Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Advanced/dynamic-models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dynamic Model Creation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Advanced/confidence-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Confidence Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Advanced/aggregate-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Aggregate Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Advanced/model-export/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Export
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../API-Reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SDK Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../API-Reference/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../API-Reference/comparators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../API-Reference/evaluator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../API-Reference/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../API-Reference/utils/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Utils
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+  
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#result-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Result Structure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Result Structure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#overall_score-float" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        overall_score (float)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#field_scores-dict" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        field_scores (dict)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#all_fields_matched-bool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        all_fields_matched (bool)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#confusion-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confusion Matrix
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Confusion Matrix">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#classification-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Classification Categories
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#confusion-matrix-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confusion Matrix Structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#overall-vs-aggregate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        overall vs aggregate
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#derived-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Derived Metrics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Derived Metrics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#precision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Precision
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recall
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f1-score" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F1 Score
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#accuracy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accuracy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#accessing-derived-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accessing Derived Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#non-match-analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-Match Analysis
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Non-Match Analysis">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#non-match-entry-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-Match Entry Structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#non-match-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-Match Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#debugging-with-non-matches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Debugging with Non-Matches
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#field-comparisons" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Field Comparisons
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#html-reports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HTML Reports
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pretty-printing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pretty Printing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#field-level-aggregate-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Field-Level Aggregate Metrics
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="understanding-results">Understanding Results</h1>
+<p>This guide explains how to read and interpret the output of Stickler evaluations -- from single-document comparisons to bulk evaluation aggregates.</p>
+<hr />
+<h2 id="result-structure">Result Structure</h2>
+<p>A default call to <code>compare_with()</code> returns a dictionary with three keys:</p>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="n">ground_truth</span><span class="o">.</span><span class="n">compare_with</span><span class="p">(</span><span class="n">prediction</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;field_scores&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;invoice_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;customer_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.85</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;total_amount&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;notes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.62</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;overall_score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.92</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;all_fields_matched&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="p">}</span>
+</code></pre></div>
+<h3 id="overall_score-float"><code>overall_score</code> (float)</h3>
+<p>A weighted average of all field scores, ranging from 0.0 to 1.0. Calculated as:</p>
+<div class="highlight"><pre><span></span><code>overall_score = sum(field_score * field_weight) / sum(field_weights)
+</code></pre></div>
+<p>Fields with <code>clip_under_threshold=True</code> (the default) contribute 0.0 if they score below their threshold, rather than their partial similarity.</p>
+<h3 id="field_scores-dict"><code>field_scores</code> (dict)</h3>
+<p>Maps each field name to its similarity score (0.0 to 1.0). For nested objects, the value is the weighted average of the sub-fields. For lists, it reflects the Hungarian-matched aggregate.</p>
+<h3 id="all_fields_matched-bool"><code>all_fields_matched</code> (bool)</h3>
+<p><code>True</code> only when every field's raw similarity score meets or exceeds its configured threshold. A single field below threshold makes this <code>False</code>.</p>
+<hr />
+<h2 id="confusion-matrix">Confusion Matrix</h2>
+<p>When you pass <code>include_confusion_matrix=True</code>, the result gains a <code>confusion_matrix</code> key with detailed classification counts.</p>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="n">ground_truth</span><span class="o">.</span><span class="n">compare_with</span><span class="p">(</span><span class="n">prediction</span><span class="p">,</span> <span class="n">include_confusion_matrix</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">cm</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="s1">&#39;confusion_matrix&#39;</span><span class="p">]</span>
+</code></pre></div>
+<h3 id="classification-categories">Classification Categories</h3>
+<p>Stickler uses five categories -- not the standard four. The False Positive category is split into two subcategories to distinguish between fundamentally different error types:</p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Abbreviation</th>
+<th>When It Applies</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>True Positive</td>
+<td>TP</td>
+<td>Ground truth has a value, prediction has a value, and they match (similarity &gt;= threshold).</td>
+</tr>
+<tr>
+<td>False Alarm</td>
+<td>FA</td>
+<td>Ground truth is null/empty, but prediction has a value. The model hallucinated a field.</td>
+</tr>
+<tr>
+<td>False Discovery</td>
+<td>FD</td>
+<td>Both ground truth and prediction have values, but they do not match (similarity &lt; threshold). The model found the field but got the value wrong.</td>
+</tr>
+<tr>
+<td>False Negative</td>
+<td>FN</td>
+<td>Ground truth has a value, but prediction is null/empty. The model missed the field entirely.</td>
+</tr>
+<tr>
+<td>True Negative</td>
+<td>TN</td>
+<td>Both ground truth and prediction are null/empty. Correctly identified absence.</td>
+</tr>
+</tbody>
+</table>
+<p>False Positive (FP) is computed as the sum of FA and FD:</p>
+<div class="highlight"><pre><span></span><code>FP = FA + FD
+</code></pre></div>
+<p>The distinction between FA and FD is important for debugging:</p>
+<ul>
+<li><strong>FA (False Alarm)</strong> points to hallucination problems -- the model is producing values where none should exist.</li>
+<li><strong>FD (False Discovery)</strong> points to accuracy problems -- the model found the right field but extracted the wrong value.</li>
+</ul>
+<h3 id="confusion-matrix-structure">Confusion Matrix Structure</h3>
+<p>The <code>confusion_matrix</code> object has four keys:</p>
+<ul>
+<li><strong><code>overall</code></strong> -- Object-level metrics for the current hierarchical level.</li>
+<li><strong><code>fields</code></strong> -- Field-by-field breakdown, with nested structure for objects and lists.</li>
+<li><strong><code>non_matches</code></strong> -- Populated when <code>document_non_matches=True</code> (empty otherwise).</li>
+<li><strong><code>aggregate</code></strong> -- Sum of all primitive field metrics recursively below this node.</li>
+</ul>
+<h3 id="overall-vs-aggregate"><code>overall</code> vs <code>aggregate</code></h3>
+<p>These serve different purposes:</p>
+<ul>
+<li><strong><code>overall</code></strong>: Counts at the current level only. For a list of 2 line items that both matched, <code>tp = 2</code>.</li>
+<li><strong><code>aggregate</code></strong>: Sums all primitive fields recursively below. For 2 line items with 3 fields each, all matching: <code>tp = 6</code>.</li>
+</ul>
+<p>The <code>aggregate</code> field exists at every node in the confusion matrix hierarchy, making it easy to get field-level granularity at any depth.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Total primitive field metrics across the entire comparison</span>
+<span class="n">total</span> <span class="o">=</span> <span class="n">cm</span><span class="p">[</span><span class="s1">&#39;aggregate&#39;</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Total TP: </span><span class="si">{</span><span class="n">total</span><span class="p">[</span><span class="s1">&#39;tp&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">, Total FP: </span><span class="si">{</span><span class="n">total</span><span class="p">[</span><span class="s1">&#39;fp&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="c1"># Metrics for a specific section</span>
+<span class="n">contact</span> <span class="o">=</span> <span class="n">cm</span><span class="p">[</span><span class="s1">&#39;fields&#39;</span><span class="p">][</span><span class="s1">&#39;contact&#39;</span><span class="p">][</span><span class="s1">&#39;aggregate&#39;</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Contact section F1: </span><span class="si">{</span><span class="n">contact</span><span class="p">[</span><span class="s1">&#39;derived&#39;</span><span class="p">][</span><span class="s1">&#39;cm_f1&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+<hr />
+<h2 id="derived-metrics">Derived Metrics</h2>
+<p>When the confusion matrix is included, each node automatically contains a <code>derived</code> object with four computed metrics:</p>
+<h3 id="precision">Precision</h3>
+<div class="highlight"><pre><span></span><code>Precision = TP / (TP + FP)
+</code></pre></div>
+<p>Of all the values the model predicted, what fraction were correct? High precision means few false alarms and false discoveries.</p>
+<h3 id="recall">Recall</h3>
+<div class="highlight"><pre><span></span><code>Recall = TP / (TP + FN)
+</code></pre></div>
+<p>Of all the values that should have been found, what fraction did the model find correctly? High recall means few missed fields.</p>
+<p>Note: When <code>recall_with_fd=True</code> is passed to <code>compare_with()</code>, the formula changes to <code>TP / (TP + FN + FD)</code>, penalizing incorrect values in addition to missing ones.</p>
+<h3 id="f1-score">F1 Score</h3>
+<div class="highlight"><pre><span></span><code>F1 = 2 * (Precision * Recall) / (Precision + Recall)
+</code></pre></div>
+<p>The harmonic mean of precision and recall. This is typically the single best metric for overall extraction quality.</p>
+<h3 id="accuracy">Accuracy</h3>
+<div class="highlight"><pre><span></span><code>Accuracy = (TP + TN) / (TP + TN + FP + FN)
+</code></pre></div>
+<p>Overall correctness, including correct identification of absent fields.</p>
+<h3 id="accessing-derived-metrics">Accessing Derived Metrics</h3>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="n">ground_truth</span><span class="o">.</span><span class="n">compare_with</span><span class="p">(</span><span class="n">prediction</span><span class="p">,</span> <span class="n">include_confusion_matrix</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="c1"># Overall derived metrics</span>
+<span class="n">overall</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="s1">&#39;confusion_matrix&#39;</span><span class="p">][</span><span class="s1">&#39;aggregate&#39;</span><span class="p">][</span><span class="s1">&#39;derived&#39;</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Precision: </span><span class="si">{</span><span class="n">overall</span><span class="p">[</span><span class="s1">&#39;cm_precision&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Recall:    </span><span class="si">{</span><span class="n">overall</span><span class="p">[</span><span class="s1">&#39;cm_recall&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;F1:        </span><span class="si">{</span><span class="n">overall</span><span class="p">[</span><span class="s1">&#39;cm_f1&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Accuracy:  </span><span class="si">{</span><span class="n">overall</span><span class="p">[</span><span class="s1">&#39;cm_accuracy&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="c1"># Field-level derived metrics</span>
+<span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field_data</span> <span class="ow">in</span> <span class="n">result</span><span class="p">[</span><span class="s1">&#39;confusion_matrix&#39;</span><span class="p">][</span><span class="s1">&#39;fields&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="k">if</span> <span class="s1">&#39;aggregate&#39;</span> <span class="ow">in</span> <span class="n">field_data</span> <span class="ow">and</span> <span class="s1">&#39;derived&#39;</span> <span class="ow">in</span> <span class="n">field_data</span><span class="p">[</span><span class="s1">&#39;aggregate&#39;</span><span class="p">]:</span>
+        <span class="n">f1</span> <span class="o">=</span> <span class="n">field_data</span><span class="p">[</span><span class="s1">&#39;aggregate&#39;</span><span class="p">][</span><span class="s1">&#39;derived&#39;</span><span class="p">][</span><span class="s1">&#39;cm_f1&#39;</span><span class="p">]</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: F1 = </span><span class="si">{</span><span class="n">f1</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+<hr />
+<h2 id="non-match-analysis">Non-Match Analysis</h2>
+<p>When you pass <code>document_non_matches=True</code>, the result includes a <code>non_matches</code> list containing detailed information about every field that failed to match. This is the primary tool for debugging extraction errors.</p>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="n">ground_truth</span><span class="o">.</span><span class="n">compare_with</span><span class="p">(</span><span class="n">prediction</span><span class="p">,</span> <span class="n">document_non_matches</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="non-match-entry-structure">Non-Match Entry Structure</h3>
+<p>Each entry in the <code>non_matches</code> list contains:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>field_path</code></td>
+<td>string</td>
+<td>Dot-notation path to the field (e.g., <code>"contact.phone"</code>, <code>"products[0].name"</code>).</td>
+</tr>
+<tr>
+<td><code>non_match_type</code></td>
+<td>string</td>
+<td>One of <code>"false_discovery"</code>, <code>"false_alarm"</code>, or <code>"false_negative"</code>.</td>
+</tr>
+<tr>
+<td><code>ground_truth_value</code></td>
+<td>any</td>
+<td>The expected value (null for false alarms).</td>
+</tr>
+<tr>
+<td><code>prediction_value</code></td>
+<td>any</td>
+<td>The predicted value (null for false negatives).</td>
+</tr>
+<tr>
+<td><code>similarity_score</code></td>
+<td>float</td>
+<td>The raw similarity score between the two values.</td>
+</tr>
+<tr>
+<td><code>details</code></td>
+<td>dict</td>
+<td>Additional context, including a <code>"reason"</code> string (e.g., <code>"below threshold (0.300 &lt; 1.0)"</code>).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="non-match-types">Non-Match Types</h3>
+<ul>
+<li><strong><code>false_discovery</code></strong> -- Both values exist but the similarity is below threshold. The most common type; indicates the model found something but got the value wrong.</li>
+<li><strong><code>false_alarm</code></strong> -- The prediction has a value but the ground truth is null. Indicates hallucination.</li>
+<li><strong><code>false_negative</code></strong> -- The ground truth has a value but the prediction is null. Indicates the model missed the field.</li>
+</ul>
+<h3 id="debugging-with-non-matches">Debugging with Non-Matches</h3>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="n">ground_truth</span><span class="o">.</span><span class="n">compare_with</span><span class="p">(</span><span class="n">prediction</span><span class="p">,</span> <span class="n">document_non_matches</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="n">non_matches</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;non_matches&#39;</span><span class="p">,</span> <span class="p">[])</span>
+
+<span class="c1"># Group by type</span>
+<span class="n">false_discoveries</span> <span class="o">=</span> <span class="p">[</span><span class="n">nm</span> <span class="k">for</span> <span class="n">nm</span> <span class="ow">in</span> <span class="n">non_matches</span> <span class="k">if</span> <span class="n">nm</span><span class="p">[</span><span class="s1">&#39;non_match_type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;false_discovery&#39;</span><span class="p">]</span>
+<span class="n">false_alarms</span> <span class="o">=</span> <span class="p">[</span><span class="n">nm</span> <span class="k">for</span> <span class="n">nm</span> <span class="ow">in</span> <span class="n">non_matches</span> <span class="k">if</span> <span class="n">nm</span><span class="p">[</span><span class="s1">&#39;non_match_type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;false_alarm&#39;</span><span class="p">]</span>
+<span class="n">false_negatives</span> <span class="o">=</span> <span class="p">[</span><span class="n">nm</span> <span class="k">for</span> <span class="n">nm</span> <span class="ow">in</span> <span class="n">non_matches</span> <span class="k">if</span> <span class="n">nm</span><span class="p">[</span><span class="s1">&#39;non_match_type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;false_negative&#39;</span><span class="p">]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;False Discoveries: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">false_discoveries</span><span class="p">)</span><span class="si">}</span><span class="s2"> (wrong values)&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;False Alarms:      </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">false_alarms</span><span class="p">)</span><span class="si">}</span><span class="s2"> (hallucinated fields)&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;False Negatives:   </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">false_negatives</span><span class="p">)</span><span class="si">}</span><span class="s2"> (missed fields)&quot;</span><span class="p">)</span>
+
+<span class="c1"># Inspect the worst false discoveries</span>
+<span class="k">for</span> <span class="n">nm</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">false_discoveries</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="s1">&#39;similarity_score&#39;</span><span class="p">]):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  </span><span class="si">{</span><span class="n">nm</span><span class="p">[</span><span class="s1">&#39;field_path&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">: &quot;</span>
+          <span class="sa">f</span><span class="s2">&quot;expected=</span><span class="si">{</span><span class="n">nm</span><span class="p">[</span><span class="s1">&#39;ground_truth_value&#39;</span><span class="p">]</span><span class="si">!r}</span><span class="s2">, &quot;</span>
+          <span class="sa">f</span><span class="s2">&quot;got=</span><span class="si">{</span><span class="n">nm</span><span class="p">[</span><span class="s1">&#39;prediction_value&#39;</span><span class="p">]</span><span class="si">!r}</span><span class="s2">, &quot;</span>
+          <span class="sa">f</span><span class="s2">&quot;similarity=</span><span class="si">{</span><span class="n">nm</span><span class="p">[</span><span class="s1">&#39;similarity_score&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>For list fields (e.g., products, line items), non-match entries can be at the object level. The <code>ground_truth_value</code> and <code>prediction_value</code> will be dictionaries representing the full object, allowing you to inspect which specific sub-fields caused the mismatch.</p>
+<hr />
+<h2 id="field-comparisons">Field Comparisons</h2>
+<p>When you pass <code>document_field_comparisons=True</code>, the result includes a <code>field_comparisons</code> list documenting every individual field comparison -- both matches and non-matches.</p>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="n">ground_truth</span><span class="o">.</span><span class="n">compare_with</span><span class="p">(</span><span class="n">prediction</span><span class="p">,</span> <span class="n">document_field_comparisons</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">fc</span> <span class="ow">in</span> <span class="n">result</span><span class="p">[</span><span class="s1">&#39;field_comparisons&#39;</span><span class="p">]:</span>
+    <span class="n">status</span> <span class="o">=</span> <span class="s2">&quot;MATCH&quot;</span> <span class="k">if</span> <span class="n">fc</span><span class="p">[</span><span class="s1">&#39;match&#39;</span><span class="p">]</span> <span class="k">else</span> <span class="s2">&quot;MISS&quot;</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  [</span><span class="si">{</span><span class="n">status</span><span class="si">}</span><span class="s2">] </span><span class="si">{</span><span class="n">fc</span><span class="p">[</span><span class="s1">&#39;expected_key&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">fc</span><span class="p">[</span><span class="s1">&#39;score&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">fc</span><span class="p">[</span><span class="s1">&#39;reason&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>Each entry contains:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>expected_key</code></td>
+<td>string</td>
+<td>Field path in ground truth.</td>
+</tr>
+<tr>
+<td><code>expected_value</code></td>
+<td>any</td>
+<td>The ground truth value.</td>
+</tr>
+<tr>
+<td><code>actual_key</code></td>
+<td>string</td>
+<td>Field path in prediction (may differ for list items due to Hungarian matching).</td>
+</tr>
+<tr>
+<td><code>actual_value</code></td>
+<td>any</td>
+<td>The predicted value.</td>
+</tr>
+<tr>
+<td><code>match</code></td>
+<td>bool</td>
+<td>Whether the score met the threshold.</td>
+</tr>
+<tr>
+<td><code>score</code></td>
+<td>float</td>
+<td>Raw similarity score.</td>
+</tr>
+<tr>
+<td><code>weighted_score</code></td>
+<td>float</td>
+<td>Score multiplied by the field's weight.</td>
+</tr>
+<tr>
+<td><code>reason</code></td>
+<td>string</td>
+<td>Human-readable explanation.</td>
+</tr>
+</tbody>
+</table>
+<p>This is useful for comprehensive auditing of all comparisons, not just failures.</p>
+<hr />
+<h2 id="html-reports">HTML Reports</h2>
+<p>Stickler includes an <code>EvaluationHTMLReporter</code> that generates interactive HTML reports from evaluation results. The reporter supports both individual comparison results and <code>ProcessEvaluation</code> objects from <code>BulkStructuredModelEvaluator</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">stickler.reporting.html.html_reporter</span><span class="w"> </span><span class="kn">import</span> <span class="n">EvaluationHTMLReporter</span>
+
+<span class="n">reporter</span> <span class="o">=</span> <span class="n">EvaluationHTMLReporter</span><span class="p">()</span>
+<span class="n">reporter</span><span class="o">.</span><span class="n">generate_report</span><span class="p">(</span>
+    <span class="n">evaluation_results</span><span class="o">=</span><span class="n">result</span><span class="p">,</span>
+    <span class="n">output_path</span><span class="o">=</span><span class="s2">&quot;report.html&quot;</span><span class="p">,</span>
+    <span class="n">title</span><span class="o">=</span><span class="s2">&quot;Invoice Extraction Evaluation&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<p>The reporter accepts <code>ProcessEvaluation</code> objects from bulk evaluation, individual comparison result dictionaries, optional document file mappings for linking source documents, a <code>model_schema</code> parameter for extracting field thresholds, and a path to a JSONL file of individual results for per-document drill-down.</p>
+<hr />
+<h2 id="pretty-printing">Pretty Printing</h2>
+<p>For quick terminal output, Stickler provides <code>print_confusion_matrix()</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">stickler.structured_object_evaluator.utils.pretty_print</span><span class="w"> </span><span class="kn">import</span> <span class="n">print_confusion_matrix</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">ground_truth</span><span class="o">.</span><span class="n">compare_with</span><span class="p">(</span><span class="n">prediction</span><span class="p">,</span> <span class="n">include_confusion_matrix</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">print_confusion_matrix</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">show_details</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+<p>This function works with any result format -- standard <code>compare_with()</code> output, evaluator format, or <code>ProcessEvaluation</code> from the bulk evaluator. It supports color output, visual progress bars, field filtering with regex patterns, and sorting by name, precision, recall, or F1.</p>
+<p>For bulk evaluator results specifically, you can also use:</p>
+<div class="highlight"><pre><span></span><code><span class="n">evaluator</span><span class="o">.</span><span class="n">pretty_print_metrics</span><span class="p">()</span>
+</code></pre></div>
+<p>This displays processing statistics (document count, throughput), overall confusion matrix counts and derived metrics, and field-level performance sorted by F1 score.</p>
+<hr />
+<h2 id="field-level-aggregate-metrics">Field-Level Aggregate Metrics</h2>
+<p>Every node in the confusion matrix automatically includes an <code>aggregate</code> field that sums all primitive field metrics recursively below that node. This gives you hierarchical analysis without any configuration:</p>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="n">ground_truth</span><span class="o">.</span><span class="n">compare_with</span><span class="p">(</span><span class="n">prediction</span><span class="p">,</span> <span class="n">include_confusion_matrix</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">cm</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="s1">&#39;confusion_matrix&#39;</span><span class="p">]</span>
+
+<span class="c1"># Top-level aggregate: all primitive fields in the entire document</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Total F1: </span><span class="si">{</span><span class="n">cm</span><span class="p">[</span><span class="s1">&#39;aggregate&#39;</span><span class="p">][</span><span class="s1">&#39;derived&#39;</span><span class="p">][</span><span class="s1">&#39;cm_f1&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="c1"># Section-level aggregate: all primitive fields within a section</span>
+<span class="k">for</span> <span class="n">section</span><span class="p">,</span> <span class="n">data</span> <span class="ow">in</span> <span class="n">cm</span><span class="p">[</span><span class="s1">&#39;fields&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="k">if</span> <span class="s1">&#39;aggregate&#39;</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+        <span class="n">f1</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;aggregate&#39;</span><span class="p">][</span><span class="s1">&#39;derived&#39;</span><span class="p">][</span><span class="s1">&#39;cm_f1&#39;</span><span class="p">]</span>
+        <span class="n">errors</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;aggregate&#39;</span><span class="p">][</span><span class="s1">&#39;fd&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;aggregate&#39;</span><span class="p">][</span><span class="s1">&#39;fa&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;aggregate&#39;</span><span class="p">][</span><span class="s1">&#39;fn&#39;</span><span class="p">]</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  </span><span class="si">{</span><span class="n">section</span><span class="si">}</span><span class="s2">: F1=</span><span class="si">{</span><span class="n">f1</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">, Errors=</span><span class="si">{</span><span class="n">errors</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>This is especially useful for identifying which sections of your data have the most extraction issues, without needing to manually aggregate individual field metrics.</p>
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["content.code.copy", "content.code.select", "navigation.instant", "navigation.instant.prefetch", "navigation.instant.progress", "navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "search.highlight"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="https://unpkg.com/mermaid@11/dist/mermaid.min.js"></script>
+      
+    
+  </body>
+</html>
