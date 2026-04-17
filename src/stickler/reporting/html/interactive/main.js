@@ -32,6 +32,11 @@ const createElement = (tag, className, innerHTML) => {
     if (innerHTML) el.innerHTML = innerHTML;
     return el;
 };
+const escapeHtml = (text) => {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+};
 
 // Utility functions
 const getPerformanceColor = (value) => value >= 0.8 ? '#28a745' : value >= 0.6 ? '#ffc107' : '#dc3545';
@@ -390,12 +395,6 @@ const updateNonMatchesTable = (data) => {
 const updateDocumentFiles = (data) => {
     const documentGallery = getElement('.document-gallery');
     if (!documentGallery || !data) return;
-
-    const escapeHtml = (text) => {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    };
 
     documentGallery.innerHTML = '';
     Object.entries(data).forEach(([docId, filePath]) => {
