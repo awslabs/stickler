@@ -16,7 +16,7 @@ via the rich value pattern:
     {"value": "John Doe", "bbox": [[x1, y1], [x2, y2]], "confidence": 0.9}
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
@@ -158,9 +158,7 @@ class MAPCalculator:
             fields_total=fields_total,
         )
 
-    def compute_metrics(
-        self, extraction: MAPExtractionResult
-    ) -> Dict[str, Any]:
+    def compute_metrics(self, extraction: MAPExtractionResult) -> Dict[str, Any]:
         """Compute aggregate mAP metrics from extraction results.
 
         Args:

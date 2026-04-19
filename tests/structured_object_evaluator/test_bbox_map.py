@@ -10,17 +10,10 @@ Tests cover:
 
 from typing import Optional
 
-import pytest
-
+from stickler.comparators import LevenshteinComparator, NumericComparator
 from stickler.comparators.bbox import BBoxIoUComparator
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.structured_object_evaluator.models.map_calculator import (
-    MAPCalculator,
-    MAPExtractionResult,
-)
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.comparators import LevenshteinComparator, NumericComparator
-
 
 # ── Test models ──
 
@@ -163,16 +156,20 @@ class TestMAPCalculator:
 
     def test_perfect_bbox_match(self):
         """All bboxes match perfectly — mAP should be 1.0."""
-        gt = DocumentField.from_json({
-            "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 20]]},
-            "invoice_number": {"value": "INV-001", "bbox": [[0, 25], [100, 45]]},
-            "total_amount": {"value": 1500.00, "bbox": [[0, 50], [100, 70]]},
-        })
-        pred = DocumentField.from_json({
-            "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 20]]},
-            "invoice_number": {"value": "INV-001", "bbox": [[0, 25], [100, 45]]},
-            "total_amount": {"value": 1500.00, "bbox": [[0, 50], [100, 70]]},
-        })
+        gt = DocumentField.from_json(
+            {
+                "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 20]]},
+                "invoice_number": {"value": "INV-001", "bbox": [[0, 25], [100, 45]]},
+                "total_amount": {"value": 1500.00, "bbox": [[0, 50], [100, 70]]},
+            }
+        )
+        pred = DocumentField.from_json(
+            {
+                "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 20]]},
+                "invoice_number": {"value": "INV-001", "bbox": [[0, 25], [100, 45]]},
+                "total_amount": {"value": 1500.00, "bbox": [[0, 50], [100, 70]]},
+            }
+        )
 
         result = gt.compare_with(
             pred, add_bbox_metrics=True, document_field_comparisons=True
@@ -189,14 +186,21 @@ class TestMAPCalculator:
 
     def test_no_bbox_overlap(self):
         """Bboxes don't overlap at all — mAP should be 0.0."""
-        gt = DocumentField.from_json({
-            "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [50, 20]]},
-            "invoice_number": {"value": "INV-001", "bbox": [[0, 25], [50, 45]]},
-        })
-        pred = DocumentField.from_json({
-            "vendor_name": {"value": "Acme Corp", "bbox": [[200, 200], [300, 220]]},
-            "invoice_number": {"value": "INV-001", "bbox": [[200, 225], [300, 245]]},
-        })
+        gt = DocumentField.from_json(
+            {
+                "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [50, 20]]},
+                "invoice_number": {"value": "INV-001", "bbox": [[0, 25], [50, 45]]},
+            }
+        )
+        pred = DocumentField.from_json(
+            {
+                "vendor_name": {"value": "Acme Corp", "bbox": [[200, 200], [300, 220]]},
+                "invoice_number": {
+                    "value": "INV-001",
+                    "bbox": [[200, 225], [300, 245]],
+                },
+            }
+        )
 
         result = gt.compare_with(
             pred, add_bbox_metrics=True, document_field_comparisons=True
@@ -210,20 +214,24 @@ class TestMAPCalculator:
 
     def test_partial_bbox_overlap(self):
         """Some bboxes match, some don't — mAP should be between 0 and 1."""
-        gt = DocumentField.from_json({
-            "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 20]]},
-            "invoice_number": {"value": "INV-001", "bbox": [[0, 25], [100, 45]]},
-        })
-        pred = DocumentField.from_json({
-            "vendor_name": {
-                "value": "Acme Corp",
-                "bbox": [[0, 0], [100, 20]],  # Perfect match
-            },
-            "invoice_number": {
-                "value": "INV-001",
-                "bbox": [[200, 200], [300, 220]],  # No overlap
-            },
-        })
+        gt = DocumentField.from_json(
+            {
+                "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 20]]},
+                "invoice_number": {"value": "INV-001", "bbox": [[0, 25], [100, 45]]},
+            }
+        )
+        pred = DocumentField.from_json(
+            {
+                "vendor_name": {
+                    "value": "Acme Corp",
+                    "bbox": [[0, 0], [100, 20]],  # Perfect match
+                },
+                "invoice_number": {
+                    "value": "INV-001",
+                    "bbox": [[200, 200], [300, 220]],  # No overlap
+                },
+            }
+        )
 
         result = gt.compare_with(
             pred, add_bbox_metrics=True, document_field_comparisons=True
@@ -234,17 +242,21 @@ class TestMAPCalculator:
 
     def test_missing_pred_bbox(self):
         """Prediction has no bbox for a field — treated as miss."""
-        gt = DocumentField.from_json({
-            "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 20]]},
-            "invoice_number": {"value": "INV-001", "bbox": [[0, 25], [100, 45]]},
-        })
-        pred = DocumentField.from_json({
-            "vendor_name": {
-                "value": "Acme Corp",
-                "bbox": [[0, 0], [100, 20]],
-            },
-            "invoice_number": {"value": "INV-001"},  # No bbox
-        })
+        gt = DocumentField.from_json(
+            {
+                "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 20]]},
+                "invoice_number": {"value": "INV-001", "bbox": [[0, 25], [100, 45]]},
+            }
+        )
+        pred = DocumentField.from_json(
+            {
+                "vendor_name": {
+                    "value": "Acme Corp",
+                    "bbox": [[0, 0], [100, 20]],
+                },
+                "invoice_number": {"value": "INV-001"},  # No bbox
+            }
+        )
 
         result = gt.compare_with(
             pred, add_bbox_metrics=True, document_field_comparisons=True
@@ -257,20 +269,24 @@ class TestMAPCalculator:
 
     def test_no_gt_bbox_fields_skipped(self):
         """Fields without GT bbox are not counted in mAP."""
-        gt = DocumentField.from_json({
-            "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 20]]},
-            "invoice_number": {"value": "INV-001"},  # No GT bbox
-        })
-        pred = DocumentField.from_json({
-            "vendor_name": {
-                "value": "Acme Corp",
-                "bbox": [[0, 0], [100, 20]],
-            },
-            "invoice_number": {
-                "value": "INV-001",
-                "bbox": [[0, 25], [100, 45]],  # Has pred bbox but no GT
-            },
-        })
+        gt = DocumentField.from_json(
+            {
+                "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 20]]},
+                "invoice_number": {"value": "INV-001"},  # No GT bbox
+            }
+        )
+        pred = DocumentField.from_json(
+            {
+                "vendor_name": {
+                    "value": "Acme Corp",
+                    "bbox": [[0, 0], [100, 20]],
+                },
+                "invoice_number": {
+                    "value": "INV-001",
+                    "bbox": [[0, 25], [100, 45]],  # Has pred bbox but no GT
+                },
+            }
+        )
 
         result = gt.compare_with(
             pred, add_bbox_metrics=True, document_field_comparisons=True
@@ -287,11 +303,13 @@ class TestMAPCalculator:
         gt = DocumentField(
             vendor_name="Acme Corp", invoice_number="INV-001", total_amount=1500.00
         )
-        pred = DocumentField.from_json({
-            "vendor_name": "Acme Corp",
-            "invoice_number": "INV-001",
-            "total_amount": 1500.00,
-        })
+        pred = DocumentField.from_json(
+            {
+                "vendor_name": "Acme Corp",
+                "invoice_number": "INV-001",
+                "total_amount": 1500.00,
+            }
+        )
 
         result = gt.compare_with(
             pred, add_bbox_metrics=True, document_field_comparisons=True
@@ -303,16 +321,20 @@ class TestMAPCalculator:
 
     def test_custom_iou_threshold(self):
         """Custom IoU threshold changes what counts as a match."""
-        gt = DocumentField.from_json({
-            "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 100]]},
-        })
-        pred = DocumentField.from_json({
-            "vendor_name": {
-                "value": "Acme Corp",
-                # Overlaps partially: intersection area / union area
-                "bbox": [[50, 0], [150, 100]],
-            },
-        })
+        gt = DocumentField.from_json(
+            {
+                "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 100]]},
+            }
+        )
+        pred = DocumentField.from_json(
+            {
+                "vendor_name": {
+                    "value": "Acme Corp",
+                    # Overlaps partially: intersection area / union area
+                    "bbox": [[50, 0], [150, 100]],
+                },
+            }
+        )
 
         # IoU = 50*100 / (100*100 + 100*100 - 50*100) = 5000/15000 ≈ 0.333
         # At threshold 0.5 → miss
@@ -322,7 +344,9 @@ class TestMAPCalculator:
             document_field_comparisons=True,
             bbox_iou_threshold=0.5,
         )
-        assert result_strict["bbox_metrics"]["field_results"]["vendor_name"]["ap"] == 0.0
+        assert (
+            result_strict["bbox_metrics"]["field_results"]["vendor_name"]["ap"] == 0.0
+        )
 
         # At threshold 0.3 → match
         result_lenient = gt.compare_with(
@@ -331,20 +355,26 @@ class TestMAPCalculator:
             document_field_comparisons=True,
             bbox_iou_threshold=0.3,
         )
-        assert result_lenient["bbox_metrics"]["field_results"]["vendor_name"]["ap"] == 1.0
+        assert (
+            result_lenient["bbox_metrics"]["field_results"]["vendor_name"]["ap"] == 1.0
+        )
 
     def test_coverage_tracking(self):
         """Coverage should report how many fields had bbox data."""
-        gt = DocumentField.from_json({
-            "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 20]]},
-            "invoice_number": {"value": "INV-001"},
-            "total_amount": {"value": 1500.00, "bbox": [[0, 50], [100, 70]]},
-        })
-        pred = DocumentField.from_json({
-            "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 20]]},
-            "invoice_number": {"value": "INV-001"},
-            "total_amount": {"value": 1500.00, "bbox": [[0, 50], [100, 70]]},
-        })
+        gt = DocumentField.from_json(
+            {
+                "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 20]]},
+                "invoice_number": {"value": "INV-001"},
+                "total_amount": {"value": 1500.00, "bbox": [[0, 50], [100, 70]]},
+            }
+        )
+        pred = DocumentField.from_json(
+            {
+                "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 20]]},
+                "invoice_number": {"value": "INV-001"},
+                "total_amount": {"value": 1500.00, "bbox": [[0, 50], [100, 70]]},
+            }
+        )
 
         result = gt.compare_with(
             pred, add_bbox_metrics=True, document_field_comparisons=True
@@ -356,30 +386,34 @@ class TestMAPCalculator:
 
     def test_bbox_with_confidence(self):
         """Bbox and confidence can coexist in the same rich value."""
-        gt = DocumentField.from_json({
-            "vendor_name": {
-                "value": "Acme Corp",
-                "bbox": [[0, 0], [100, 20]],
-                "confidence": 0.95,
-            },
-            "invoice_number": {
-                "value": "INV-001",
-                "bbox": [[0, 25], [100, 45]],
-                "confidence": 0.8,
-            },
-        })
-        pred = DocumentField.from_json({
-            "vendor_name": {
-                "value": "Acme Corp",
-                "bbox": [[0, 0], [100, 20]],
-                "confidence": 0.9,
-            },
-            "invoice_number": {
-                "value": "INV-001",
-                "bbox": [[0, 25], [100, 45]],
-                "confidence": 0.7,
-            },
-        })
+        gt = DocumentField.from_json(
+            {
+                "vendor_name": {
+                    "value": "Acme Corp",
+                    "bbox": [[0, 0], [100, 20]],
+                    "confidence": 0.95,
+                },
+                "invoice_number": {
+                    "value": "INV-001",
+                    "bbox": [[0, 25], [100, 45]],
+                    "confidence": 0.8,
+                },
+            }
+        )
+        pred = DocumentField.from_json(
+            {
+                "vendor_name": {
+                    "value": "Acme Corp",
+                    "bbox": [[0, 0], [100, 20]],
+                    "confidence": 0.9,
+                },
+                "invoice_number": {
+                    "value": "INV-001",
+                    "bbox": [[0, 25], [100, 45]],
+                    "confidence": 0.7,
+                },
+            }
+        )
 
         result = gt.compare_with(
             pred,
@@ -395,12 +429,16 @@ class TestMAPCalculator:
 
     def test_flat_bbox_format(self):
         """Flat [x1, y1, x2, y2] format works in rich values."""
-        gt = DocumentField.from_json({
-            "vendor_name": {"value": "Acme Corp", "bbox": [0, 0, 100, 20]},
-        })
-        pred = DocumentField.from_json({
-            "vendor_name": {"value": "Acme Corp", "bbox": [0, 0, 100, 20]},
-        })
+        gt = DocumentField.from_json(
+            {
+                "vendor_name": {"value": "Acme Corp", "bbox": [0, 0, 100, 20]},
+            }
+        )
+        pred = DocumentField.from_json(
+            {
+                "vendor_name": {"value": "Acme Corp", "bbox": [0, 0, 100, 20]},
+            }
+        )
 
         result = gt.compare_with(
             pred, add_bbox_metrics=True, document_field_comparisons=True
@@ -419,12 +457,16 @@ class TestAutoEnableFieldComparisons:
 
     def test_bbox_metrics_without_explicit_field_comparisons(self):
         """add_bbox_metrics=True should work without explicit document_field_comparisons."""
-        gt = DocumentField.from_json({
-            "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 20]]},
-        })
-        pred = DocumentField.from_json({
-            "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 20]]},
-        })
+        gt = DocumentField.from_json(
+            {
+                "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 20]]},
+            }
+        )
+        pred = DocumentField.from_json(
+            {
+                "vendor_name": {"value": "Acme Corp", "bbox": [[0, 0], [100, 20]]},
+            }
+        )
 
         # Should not raise — field_comparisons auto-enabled
         result = gt.compare_with(pred, add_bbox_metrics=True)

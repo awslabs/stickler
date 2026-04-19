@@ -12,7 +12,7 @@ extractors return line-level bounding boxes that are wider than the
 target field.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from stickler.comparators.base import BaseComparator
 
@@ -106,9 +106,7 @@ class BBoxIoUComparator(BaseComparator):
                 # Two-point format: [[x1, y1], [x2, y2]]
                 x1, y1 = float(bbox[0][0]), float(bbox[0][1])
                 x2, y2 = float(bbox[1][0]), float(bbox[1][1])
-            elif len(bbox) == 4 and all(
-                isinstance(v, (int, float)) for v in bbox
-            ):
+            elif len(bbox) == 4 and all(isinstance(v, (int, float)) for v in bbox):
                 # Flat format: [x1, y1, x2, y2]
                 x1, y1, x2, y2 = (float(v) for v in bbox)
             else:
