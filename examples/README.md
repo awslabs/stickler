@@ -55,6 +55,16 @@ This directory contains comprehensive examples demonstrating the core functional
   - Optional field handling
   - Complex error analysis
 
+- **`notebooks/Confidence_Estimation.ipynb`** - Single-document confidence evaluation
+  - Rich value pattern in JSON (confidence, bbox, or value-only)
+  - Per-field confidence metrics and coverage
+  - Nested object path handling
+
+- **`notebooks/Bulk_Confidence_AUROC.ipynb`** - Dataset-level confidence evaluation
+  - Bulk AUROC, Brier Score, ECE with bin data
+  - Per-field breakdowns and side-by-side model comparison
+  - State merge for distributed evaluation
+
 ## 🎯 What Each Example Demonstrates
 
 | Example | Individual Objects | List Comparison | Nested Structures | Error Analysis | Large Scale | Pretty Print |

@@ -22,11 +22,11 @@ from stickler.comparators.base import BaseComparator
 
 from .comparable_field import ComparableField
 from .comparison_helper import ComparisonHelper
-from .confidence_helper import ConfidenceHelper
 from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
+from .rich_value_helper import RichValueHelper
 
 
 class StructuredModel(BaseModel):
@@ -286,29 +286,33 @@ class StructuredModel(BaseModel):
 
     @classmethod
     def from_json(
-        cls, json_data: Dict[str, Any], process_confidence=True
+        cls, json_data: Dict[str, Any], process_rich_values=True
     ) -> "StructuredModel":
         """Create a StructuredModel instance from JSON data.
 
         This method handles missing fields gracefully and stores extra fields
-        in the extra_fields attribute.
+        in the extra_fields attribute. When process_rich_values is True,
+        rich value structures (e.g., {"value": "Widget", "confidence": 0.95})
+        are automatically unwrapped, with metadata stored separately.
 
         Args:
             json_data: Dictionary containing the JSON data
+            process_rich_values: Whether to unwrap rich values on this call.
+                Set to False for recursive calls where the parent already handled it.
 
         Returns:
             StructuredModel instance created from the JSON data
         """
-        if process_confidence:
-            # Only process confidence on the top-level call
+        if process_rich_values:
+            # Only process rich values on the top-level call
             processed_data, confidences = (
-                ConfidenceHelper.process_confidence_structures(json_data)
+                RichValueHelper.process_rich_values(json_data)
             )
             instance = ConfigurationHelper.from_json(cls, processed_data)
             if confidences:  # Only set if we have confidence data
                 object.__setattr__(instance, "field_confidences", confidences)
         else:
-            # Skip confidence processing for recursive calls
+            # Skip rich value processing for recursive calls
             instance = ConfigurationHelper.from_json(cls, json_data)
         return instance
 
@@ -1036,7 +1040,7 @@ class StructuredModel(BaseModel):
                             If False, use traditional recall (TP/(TP+FN))
             add_derived_metrics: Whether to add derived metrics to confusion matrix
             document_field_comparisons: Whether to document all matches and non matches made in the comparison
-            add_confidence_metrics: Whether to add AUROC confidence metric
+            add_confidence_metrics: Whether to add confidence calibration metrics
 
         Returns:
             Dictionary with comparison results including:
@@ -1046,7 +1050,7 @@ class StructuredModel(BaseModel):
             - confusion_matrix: (optional) Confusion matrix data if requested
             - non_matches: (optional) Non-match documentation if requested
             - field_comparisons: (optional) Field level comparison information if requested
-            - auroc_confidence_metric: (optional) AUROC confidence metric if requested
+            - confidence_metrics: (optional) Confidence calibration metrics if requested
         """
         from .comparison_engine import ComparisonEngine
 
