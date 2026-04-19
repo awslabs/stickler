@@ -1051,6 +1051,8 @@ class StructuredModel(BaseModel):
         add_derived_metrics: bool = True,
         document_field_comparisons: bool = False,
         add_confidence_metrics: bool = False,
+        add_bbox_metrics: bool = False,
+        bbox_iou_threshold: float = 0.5,
     ) -> Dict[str, Any]:
         """Compare this model with another instance using SINGLE TRAVERSAL optimization.
 
@@ -1066,6 +1068,8 @@ class StructuredModel(BaseModel):
             add_derived_metrics: Whether to add derived metrics to confusion matrix
             document_field_comparisons: Whether to document all matches and non matches made in the comparison
             add_confidence_metrics: Whether to add confidence calibration metrics
+            add_bbox_metrics: Whether to add bounding box mAP metrics
+            bbox_iou_threshold: IoU threshold for mAP calculation (default: 0.5)
 
         Returns:
             Dictionary with comparison results including:
@@ -1076,6 +1080,7 @@ class StructuredModel(BaseModel):
             - non_matches: (optional) Non-match documentation if requested
             - field_comparisons: (optional) Field level comparison information if requested
             - confidence_metrics: (optional) Confidence calibration metrics if requested
+            - bbox_metrics: (optional) Bounding box mAP metrics if requested
         """
         from .comparison_engine import ComparisonEngine
 
@@ -1089,6 +1094,8 @@ class StructuredModel(BaseModel):
             add_derived_metrics=add_derived_metrics,
             document_field_comparisons=document_field_comparisons,
             add_confidence_metrics=add_confidence_metrics,
+            add_bbox_metrics=add_bbox_metrics,
+            bbox_iou_threshold=bbox_iou_threshold,
         )
 
     def _convert_score_to_binary_metrics(

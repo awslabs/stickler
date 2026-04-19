@@ -200,7 +200,9 @@ class ComparisonEngine:
         recall_with_fd: bool = False,
         add_derived_metrics: bool = True,
         document_field_comparisons: bool = False,
-        add_confidence_metrics: bool = False
+        add_confidence_metrics: bool = False,
+        add_bbox_metrics: bool = False,
+        bbox_iou_threshold: float = 0.5,
     ) -> Dict[str, Any]:
         """Compare with another instance using single traversal.
         
@@ -226,6 +228,9 @@ class ComparisonEngine:
                             If False, use traditional recall (TP/(TP+FN))
             add_derived_metrics: Whether to add derived metrics to confusion matrix
             document_field_comparisons: Whether to document all matches and non matches made in the comparison
+            add_confidence_metrics: Whether to add confidence calibration metrics
+            add_bbox_metrics: Whether to add bounding box mAP metrics
+            bbox_iou_threshold: IoU threshold for mAP calculation (default: 0.5)
             
         Returns:
             Dictionary with comparison results:
@@ -237,6 +242,7 @@ class ComparisonEngine:
                 "non_matches": [...],  # If document_non_matches=True
                 "field_comparisons": [...] # If field_comparisons=True
                 "confidence_metrics": {...} # If add_confidence_metrics=True
+                "bbox_metrics": {...} # If add_bbox_metrics=True
             }
             
         Example:
@@ -251,6 +257,10 @@ class ComparisonEngine:
         """
         # SINGLE TRAVERSAL: Get everything in one pass
         recursive_result = self.compare_recursive(other)
+
+        # Auto-enable field comparisons when metrics that depend on them are requested
+        if (add_confidence_metrics or add_bbox_metrics) and not document_field_comparisons:
+            document_field_comparisons = True
 
         # Extract scoring information from recursive result
         field_scores = {}
@@ -308,6 +318,13 @@ class ComparisonEngine:
                 fields_with_confidence=extraction.fields_with_confidence,
                 fields_total=extraction.fields_total,
             )
+
+        # If add_bbox_metrics is requested, add bounding box mAP metrics
+        if add_bbox_metrics:
+            from .map_calculator import MAPCalculator
+            map_calculator = MAPCalculator(iou_threshold=bbox_iou_threshold)
+            map_extraction = map_calculator.extract(result, self.model, other)
+            result['bbox_metrics'] = map_calculator.compute_metrics(map_extraction)
 
         # If evaluator_format is requested, transform the result
         if evaluator_format:
