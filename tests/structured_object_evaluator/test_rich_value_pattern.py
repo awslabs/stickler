@@ -85,36 +85,41 @@ class TestRichValueDetection:
 class TestRichValueUnwrapping:
     def test_value_with_confidence_unwraps(self):
         data = {"name": {"value": "Widget", "confidence": 0.9}, "price": 29.99}
-        unwrapped, confidences = RichValueHelper.process_rich_values(data)
+        unwrapped, confidences, bboxes = RichValueHelper.process_rich_values(data)
         assert unwrapped == {"name": "Widget", "price": 29.99}
         assert confidences == {"name": 0.9}
+        assert bboxes == {}
 
     def test_value_only_unwraps_no_confidence(self):
         """Rich value with just 'value' unwraps but produces no confidence entry."""
         data = {"name": {"value": "Widget"}, "price": 29.99}
-        unwrapped, confidences = RichValueHelper.process_rich_values(data)
+        unwrapped, confidences, bboxes = RichValueHelper.process_rich_values(data)
         assert unwrapped == {"name": "Widget", "price": 29.99}
         assert confidences == {}
+        assert bboxes == {}
 
     def test_value_with_bbox_only_unwraps_no_confidence(self):
         """Rich value with bbox but no confidence produces no confidence entry."""
         data = {"name": {"value": "Widget", "bbox": [0.1, 0.2, 0.3, 0.4]}}
-        unwrapped, confidences = RichValueHelper.process_rich_values(data)
+        unwrapped, confidences, bboxes = RichValueHelper.process_rich_values(data)
         assert unwrapped == {"name": "Widget"}
         assert confidences == {}
+        assert bboxes == {"name": [0.1, 0.2, 0.3, 0.4]}
 
-    def test_value_with_confidence_and_bbox_extracts_confidence(self):
-        """When both confidence and bbox are present, confidence is extracted."""
+    def test_value_with_confidence_and_bbox_extracts_both(self):
+        """When both confidence and bbox are present, both are extracted."""
         data = {"name": {"value": "Widget", "confidence": 0.9, "bbox": [0.1, 0.2, 0.3, 0.4]}}
-        unwrapped, confidences = RichValueHelper.process_rich_values(data)
+        unwrapped, confidences, bboxes = RichValueHelper.process_rich_values(data)
         assert unwrapped == {"name": "Widget"}
         assert confidences == {"name": 0.9}
+        assert bboxes == {"name": [0.1, 0.2, 0.3, 0.4]}
 
     def test_plain_values_pass_through(self):
         data = {"name": "Widget", "price": 29.99}
-        unwrapped, confidences = RichValueHelper.process_rich_values(data)
+        unwrapped, confidences, bboxes = RichValueHelper.process_rich_values(data)
         assert unwrapped == data
         assert confidences == {}
+        assert bboxes == {}
 
     def test_nested_rich_values(self):
         data = {
@@ -124,9 +129,10 @@ class TestRichValueUnwrapping:
                 "city": "Boston",
             },
         }
-        unwrapped, confidences = RichValueHelper.process_rich_values(data)
+        unwrapped, confidences, bboxes = RichValueHelper.process_rich_values(data)
         assert unwrapped == {"name": "Jane", "address": {"street": "123 Main", "city": "Boston"}}
         assert confidences == {"name": 0.95, "address.street": 0.85}
+        assert bboxes == {}
 
     def test_list_rich_values(self):
         data = {
@@ -136,9 +142,10 @@ class TestRichValueUnwrapping:
                 "PlainItem",
             ]
         }
-        unwrapped, confidences = RichValueHelper.process_rich_values(data)
+        unwrapped, confidences, bboxes = RichValueHelper.process_rich_values(data)
         assert unwrapped == {"items": ["Widget", "Gadget", "PlainItem"]}
         assert confidences == {"items[0]": 0.9}
+        assert bboxes == {}
 
 
 # ── from_json integration tests ──
@@ -178,6 +185,8 @@ class TestFromJsonRichValues:
         })
         assert pred.name == "Widget"
         assert pred.get_field_confidence("name") is None
+        assert pred.get_field_bbox("name") == [0.1, 0.2, 0.3, 0.4]
+        assert pred.get_all_bboxes() == {"name": [0.1, 0.2, 0.3, 0.4]}
 
     def test_mixed_rich_and_plain(self):
         pred = Product.from_json({

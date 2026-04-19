@@ -284,6 +284,29 @@ class StructuredModel(BaseModel):
             return {}
         return self.field_confidences.copy()
 
+    def get_field_bbox(self, field_name: str) -> Optional[Any]:
+        """Get bounding box for a field.
+
+        Args:
+            field_name: Field path using dot/bracket notation (e.g., "name", "items[0].product").
+
+        Returns:
+            Bounding box data or None if not available.
+        """
+        if not hasattr(self, "field_bboxes"):
+            return None
+        return self.field_bboxes.get(field_name)
+
+    def get_all_bboxes(self) -> Dict[str, Any]:
+        """Get all bounding boxes.
+
+        Returns:
+            Dictionary mapping field paths to bounding box coordinates.
+        """
+        if not hasattr(self, "field_bboxes"):
+            return {}
+        return self.field_bboxes.copy()
+
     @classmethod
     def from_json(
         cls, json_data: Dict[str, Any], process_rich_values=True
@@ -305,12 +328,14 @@ class StructuredModel(BaseModel):
         """
         if process_rich_values:
             # Only process rich values on the top-level call
-            processed_data, confidences = (
+            processed_data, confidences, bboxes = (
                 RichValueHelper.process_rich_values(json_data)
             )
             instance = ConfigurationHelper.from_json(cls, processed_data)
             if confidences:  # Only set if we have confidence data
                 object.__setattr__(instance, "field_confidences", confidences)
+            if bboxes:  # Only set if we have bbox data
+                object.__setattr__(instance, "field_bboxes", bboxes)
         else:
             # Skip rich value processing for recursive calls
             instance = ConfigurationHelper.from_json(cls, json_data)
