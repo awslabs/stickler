@@ -153,17 +153,20 @@ class BulkStructuredModelEvaluator:
                 with open(self.individual_results_jsonl, "a", encoding="utf-8") as f:
                     f.write(json.dumps(record) + "\n")
 
-            # Extract confidence pairs if the prediction has confidence data
-            if pred_model.get_all_confidences():
-                calculator = self._confidence_calculator
-                try:
-                    extraction = calculator.extract(comparison_result, pred_model)
+            # Always extract confidence coverage so totals include every document.
+            # Only merge keyed confidence pairs when the prediction provides
+            # confidence values.
+            has_confidences = bool(pred_model.get_all_confidences())
+            calculator = self._confidence_calculator
+            try:
+                extraction = calculator.extract(comparison_result, pred_model)
+                if has_confidences:
                     for field_path, pairs in extraction.keyed_pairs.items():
                         self._keyed_confidence_pairs.setdefault(field_path, []).extend(pairs)
-                    self._confidence_fields_with += extraction.fields_with_confidence
-                    self._confidence_fields_total += extraction.fields_total
-                except ValueError:
-                    pass  # No field comparisons — skip confidence accumulation
+                self._confidence_fields_with += extraction.fields_with_confidence
+                self._confidence_fields_total += extraction.fields_total
+            except ValueError:
+                pass  # No field comparisons, skip confidence accumulation
 
             self.update_from_comparison_result(comparison_result, doc_id)
 

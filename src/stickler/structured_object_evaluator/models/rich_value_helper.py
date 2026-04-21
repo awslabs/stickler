@@ -27,6 +27,19 @@ class RichValueHelper(BaseModel):
         more metadata keys. The metadata keys are optional and can include
         "confidence", "bbox", "source_span", etc.
 
+        Known limitation: any dict with a "value" key is treated as a rich
+        value, even if it's a legitimate data structure. In practice this
+        is safe because StructuredModel fields are typed as primitives or
+        nested StructuredModels, not raw dicts. If this becomes an issue,
+        consider tightening detection to require at least one known metadata
+        key (confidence, bbox, etc.) or using a namespaced key convention.
+
+        TODO: Evaluate whether to tighten detection. Options include:
+          - Require "value" plus at least one known metadata key
+          - Use a prefixed key like "_value" or "$value"
+          - Add an explicit marker like "_rich": true
+          See the Rich Value Pattern proposal for design discussion.
+
         Args:
             data: The dict to check.
 
@@ -35,10 +48,6 @@ class RichValueHelper(BaseModel):
         """
         if not isinstance(data, dict) or "value" not in data:
             return False
-        # Must have at least one key besides "value" to be a rich value.
-        # A dict with only {"value": ...} is ambiguous, but we treat it
-        # as a rich value to support the case where the user wraps a value
-        # without any metadata yet.
         return True
 
     @classmethod

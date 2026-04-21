@@ -760,7 +760,9 @@ class TestCoverage:
 class TestErrorCaptureAtBudget:
     def test_basic_computation(self):
         """Well-separated confidence: low-conf fields are errors, high-conf are correct."""
-        from stickler.structured_object_evaluator.models.confidence import ErrorCaptureAtBudgetMetric
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
 
         # 10 pairs: 3 errors with low confidence, 7 correct with high confidence
         pairs = [
@@ -784,8 +786,11 @@ class TestErrorCaptureAtBudget:
 
     def test_random_confidence_gain_near_one(self):
         """Random confidence should produce gain near 1.0."""
-        from stickler.structured_object_evaluator.models.confidence import ErrorCaptureAtBudgetMetric
         import random as rng
+
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
         rng.seed(99)
 
         pairs = [
@@ -800,20 +805,26 @@ class TestErrorCaptureAtBudget:
         assert 0.7 < result["budgets"][0.30]["gain"] < 1.5
 
     def test_empty_pairs(self):
-        from stickler.structured_object_evaluator.models.confidence import ErrorCaptureAtBudgetMetric
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
         result = ErrorCaptureAtBudgetMetric().compute([])
         assert result["value"] is None
         assert result["budgets"] == {}
 
     def test_no_errors(self):
         """All correct: no errors to find."""
-        from stickler.structured_object_evaluator.models.confidence import ErrorCaptureAtBudgetMetric
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
         pairs = [cp(True, 0.5), cp(True, 0.6), cp(True, 0.7)]
         result = ErrorCaptureAtBudgetMetric().compute(pairs)
         assert result["value"] is None
 
     def test_custom_budgets(self):
-        from stickler.structured_object_evaluator.models.confidence import ErrorCaptureAtBudgetMetric
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
         pairs = [
             cp(False, 0.1), cp(False, 0.2),
             cp(True, 0.8), cp(True, 0.9),
@@ -824,7 +835,9 @@ class TestErrorCaptureAtBudget:
 
     def test_headline_is_middle_budget(self):
         """Headline value should be the gain at the middle budget level."""
-        from stickler.structured_object_evaluator.models.confidence import ErrorCaptureAtBudgetMetric
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
         pairs = [
             cp(False, 0.1), cp(False, 0.2), cp(False, 0.3),
             cp(True, 0.7), cp(True, 0.8), cp(True, 0.9),
@@ -837,7 +850,9 @@ class TestErrorCaptureAtBudget:
 
     def test_bulk_evaluator_integration(self):
         """ErrorCaptureAtBudgetMetric works through the bulk evaluator."""
-        from stickler.structured_object_evaluator.models.confidence import ErrorCaptureAtBudgetMetric
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
 
         evaluator = BulkStructuredModelEvaluator(
             target_schema=Product,
@@ -864,3 +879,76 @@ class TestErrorCaptureAtBudget:
         assert "budgets" in ecab
         assert 0.30 in ecab["budgets"]
         assert 0.50 in ecab["budgets"]
+
+
+# -- 15. Input validation (Copilot PR review fixes) --
+
+
+class TestInputValidation:
+    def test_ece_rejects_zero_bins(self):
+        from stickler.structured_object_evaluator.models.confidence import ECEMetric
+        with pytest.raises(ValueError, match="n_bins must be >= 1"):
+            ECEMetric(n_bins=0)
+
+    def test_ece_rejects_negative_bins(self):
+        from stickler.structured_object_evaluator.models.confidence import ECEMetric
+        with pytest.raises(ValueError, match="n_bins must be >= 1"):
+            ECEMetric(n_bins=-5)
+
+    def test_ecab_rejects_zero_budget(self):
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
+        with pytest.raises(ValueError, match="must be in the range"):
+            ErrorCaptureAtBudgetMetric(budgets=[0.0, 0.5])
+
+    def test_ecab_rejects_negative_budget(self):
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
+        with pytest.raises(ValueError, match="must be in the range"):
+            ErrorCaptureAtBudgetMetric(budgets=[-0.1])
+
+    def test_ecab_rejects_budget_over_one(self):
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
+        with pytest.raises(ValueError, match="must be in the range"):
+            ErrorCaptureAtBudgetMetric(budgets=[0.5, 1.5])
+
+    def test_ecab_accepts_budget_of_one(self):
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
+        metric = ErrorCaptureAtBudgetMetric(budgets=[1.0])
+        assert metric.budgets == [1.0]
+
+
+# -- 16. Coverage accounts for docs without confidence --
+
+
+class TestCoverageAccountsForAllDocs:
+    def test_coverage_includes_docs_without_confidence(self):
+        """Coverage totals should include fields from docs that have no confidence."""
+        evaluator = BulkStructuredModelEvaluator(target_schema=Product)
+
+        gt = Product(name="Widget", price=29.99, sku="ABC")
+
+        # Doc 1: has confidence (3 fields with, 3 total)
+        pred_with = Product.from_json({
+            "name": {"value": "Widget", "confidence": 0.9},
+            "price": {"value": 29.99, "confidence": 0.8},
+            "sku": {"value": "ABC", "confidence": 0.7},
+        })
+
+        # Doc 2: no confidence at all (0 fields with, 3 total)
+        pred_without = Product(name="Widget", price=29.99, sku="ABC")
+
+        evaluator.update(gt, pred_with)
+        evaluator.update(gt, pred_without)
+        result = evaluator.compute()
+
+        cov = result.confidence_metrics["coverage"]
+        assert cov["fields_with_confidence"] == 3  # only from doc 1
+        assert cov["fields_total"] == 6  # 3 from each doc
+        assert abs(cov["ratio"] - 0.5) < 0.01
