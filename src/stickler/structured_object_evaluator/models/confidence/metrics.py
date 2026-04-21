@@ -114,9 +114,18 @@ class ECEMetric(ConfidenceMetric):
 
     Returns {"value": float, "bins": [...]} where each bin has
     range, count, accuracy, and mean_confidence.
+
+    Args:
+        n_bins: Number of confidence bins to compute (default: 10).
+            Must be a positive integer.
+
+    Raises:
+        ValueError: If n_bins is less than 1.
     """
 
     def __init__(self, n_bins: int = 10):
+        if n_bins < 1:
+            raise ValueError(f"n_bins must be >= 1, got {n_bins}")
         self.n_bins = n_bins
 
     @property
@@ -167,10 +176,20 @@ class ErrorCaptureAtBudgetMetric(ConfidenceMetric):
 
     Args:
         budgets: List of review budget levels as fractions (default: [0.1, 0.3, 0.5]).
+            Each budget must be in the range (0.0, 1.0].
+
+    Raises:
+        ValueError: If any budget is outside (0.0, 1.0].
     """
 
     def __init__(self, budgets: Optional[List[float]] = None):
-        self.budgets = budgets if budgets is not None else [0.10, 0.30, 0.50]
+        budgets = budgets if budgets is not None else [0.10, 0.30, 0.50]
+        for b in budgets:
+            if not (0.0 < b <= 1.0):
+                raise ValueError(
+                    f"All budgets must be in the range (0.0, 1.0], got {b}"
+                )
+        self.budgets = budgets
 
     @property
     def name(self) -> str:
@@ -190,7 +209,8 @@ class ErrorCaptureAtBudgetMetric(ConfidenceMetric):
 
         budgets_result = {}
         for budget in self.budgets:
-            k = max(1, int(n * budget))
+            # Cap k at n so fields_reviewed never exceeds total fields
+            k = min(n, max(1, int(n * budget)))
             errors_found = sum(1 for p in sorted_pairs[:k] if not p.is_match)
             pct_errors_caught = errors_found / total_errors
             budgets_result[budget] = {
