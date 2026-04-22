@@ -1026,6 +1026,7 @@ class StructuredModel(BaseModel):
         add_derived_metrics: bool = True,
         document_field_comparisons: bool = False,
         add_confidence_metrics: bool = False,
+        confidence_metrics: Optional[List[Any]] = None,
     ) -> Dict[str, Any]:
         """Compare this model with another instance using SINGLE TRAVERSAL optimization.
 
@@ -1040,7 +1041,13 @@ class StructuredModel(BaseModel):
                             If False, use traditional recall (TP/(TP+FN))
             add_derived_metrics: Whether to add derived metrics to confusion matrix
             document_field_comparisons: Whether to document all matches and non matches made in the comparison
-            add_confidence_metrics: Whether to add confidence calibration metrics
+            add_confidence_metrics: Whether to add confidence calibration metrics.
+                Emits a UserWarning recommending BulkStructuredModelEvaluator for
+                statistically meaningful results.
+            confidence_metrics: Optional list of ConfidenceMetric instances to compute.
+                Defaults to [AUROCMetric()] if not provided. Only used when
+                add_confidence_metrics=True. For bulk evaluation, pass the metric
+                list to BulkStructuredModelEvaluator instead.
 
         Returns:
             Dictionary with comparison results including:
@@ -1064,6 +1071,7 @@ class StructuredModel(BaseModel):
             add_derived_metrics=add_derived_metrics,
             document_field_comparisons=document_field_comparisons,
             add_confidence_metrics=add_confidence_metrics,
+            confidence_metrics=confidence_metrics,
         )
 
     def _convert_score_to_binary_metrics(

@@ -189,7 +189,9 @@ class ErrorCaptureAtBudgetMetric(ConfidenceMetric):
                 raise ValueError(
                     f"All budgets must be in the range (0.0, 1.0], got {b}"
                 )
-        self.budgets = budgets
+        # Sort so the "middle" budget and iteration order are deterministic
+        # regardless of input order.
+        self.budgets = sorted(budgets)
 
     @property
     def name(self) -> str:
@@ -228,4 +230,12 @@ class ErrorCaptureAtBudgetMetric(ConfidenceMetric):
         return {"value": headline, "budgets": budgets_result}
 
 
-DEFAULT_METRICS: List[ConfidenceMetric] = [AUROCMetric()]
+def default_metrics() -> List[ConfidenceMetric]:
+    """Return a fresh list of the default metrics.
+
+    Using a factory ensures each calculator gets its own metric instances,
+    which matters if a metric holds state (cached thresholds, precomputed
+    values, etc.). Today AUROCMetric is stateless, but this keeps the
+    contract safe for future metrics.
+    """
+    return [AUROCMetric()]

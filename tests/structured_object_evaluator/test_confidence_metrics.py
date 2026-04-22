@@ -395,6 +395,10 @@ class TestECEBins:
 
 
 class TestSingleDocIntegration:
+    pytestmark = pytest.mark.filterwarnings(
+        "ignore:Single-document confidence metrics:UserWarning"
+    )
+
     def test_confidence_metrics_in_result(self):
         """compare_with with add_confidence_metrics populates confidence_metrics."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
@@ -521,12 +525,27 @@ class TestBulkAccumulation:
 
         assert bulk_result.confidence_metrics["overall"]["auroc"]["value"] == manual_result["overall"]["auroc"]["value"]
 
-    def test_no_confidence_data_returns_none(self):
+    def test_no_confidence_data_returns_coverage_only(self):
+        """When update() runs on docs without confidence, we still report
+        coverage (0/N) so users can see they have no confidence data."""
         evaluator = BulkStructuredModelEvaluator(target_schema=Product)
         gt = Product(name="Widget", price=29.99, sku="ABC")
         pred = Product(name="Widget", price=29.99, sku="ABC")
         evaluator.update(gt, pred)
-        assert evaluator.compute().confidence_metrics is None
+        result = evaluator.compute()
+        # confidence_metrics should be present with coverage showing zero
+        assert result.confidence_metrics is not None
+        assert result.confidence_metrics["coverage"]["fields_with_confidence"] == 0
+        assert result.confidence_metrics["coverage"]["fields_total"] > 0
+        assert result.confidence_metrics["coverage"]["ratio"] == 0.0
+        # Overall metrics are None (no pairs to compute from)
+        assert result.confidence_metrics["overall"]["auroc"]["value"] is None
+
+    def test_completely_unprocessed_returns_none(self):
+        """An evaluator that never ran update() returns confidence_metrics=None."""
+        evaluator = BulkStructuredModelEvaluator(target_schema=Product)
+        result = evaluator.compute()
+        assert result.confidence_metrics is None
 
 
 # ── 10. State serialization round-trip ──
@@ -648,6 +667,10 @@ class TestMultipleMetrics:
 
 
 class TestCoverage:
+    pytestmark = pytest.mark.filterwarnings(
+        "ignore:Single-document confidence metrics:UserWarning"
+    )
+
     def test_single_doc_coverage(self):
         """Single-doc result includes coverage stats."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
@@ -952,3 +975,92 @@ class TestCoverageAccountsForAllDocs:
         assert cov["fields_with_confidence"] == 3  # only from doc 1
         assert cov["fields_total"] == 6  # 3 from each doc
         assert abs(cov["ratio"] - 0.5) < 0.01
+
+
+# -- 17. Single-doc path: warning and configurable metrics --
+
+
+class TestSingleDocWarningAndConfig:
+    def test_add_confidence_metrics_emits_warning(self):
+        """Single-doc confidence should warn that bulk is recommended."""
+        gt = Product(name="Widget", price=29.99, sku="ABC123")
+        pred = Product.from_json({
+            "name": {"value": "Widget", "confidence": 0.9},
+            "price": {"value": 29.99, "confidence": 0.8},
+            "sku": {"value": "ABC123", "confidence": 0.7},
+        })
+        with pytest.warns(UserWarning, match="Single-document confidence metrics"):
+            gt.compare_with(
+                pred, add_confidence_metrics=True, document_field_comparisons=True,
+            )
+
+    def test_confidence_metrics_kwarg_configures_metrics(self):
+        """Passing confidence_metrics=[...] to compare_with threads through."""
+        from stickler.structured_object_evaluator.models.confidence import (
+            AUROCMetric,
+            BrierScoreMetric,
+        )
+
+        gt = Product(name="Widget", price=29.99, sku="ABC123")
+        pred = Product.from_json({
+            "name": {"value": "Widget", "confidence": 0.9},
+            "price": {"value": 99.99, "confidence": 0.3},
+            "sku": {"value": "ABC123", "confidence": 0.8},
+        })
+        with pytest.warns(UserWarning):
+            result = gt.compare_with(
+                pred,
+                add_confidence_metrics=True,
+                document_field_comparisons=True,
+                confidence_metrics=[AUROCMetric(), BrierScoreMetric()],
+            )
+
+        overall = result["confidence_metrics"]["overall"]
+        assert "auroc" in overall
+        assert "brier_score" in overall
+
+
+# -- 18. Deterministic ECAB headline regardless of budget order --
+
+
+class TestECABDeterministicHeadline:
+    def test_unsorted_budgets_still_deterministic(self):
+        """Headline gain should match regardless of input budget order."""
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
+
+        pairs = [
+            cp(False, 0.10), cp(False, 0.15), cp(False, 0.20),
+            cp(True, 0.60), cp(True, 0.70), cp(True, 0.80),
+            cp(True, 0.85), cp(True, 0.90), cp(True, 0.95), cp(True, 0.99),
+        ]
+
+        sorted_metric = ErrorCaptureAtBudgetMetric(budgets=[0.10, 0.30, 0.50])
+        unsorted_metric = ErrorCaptureAtBudgetMetric(budgets=[0.50, 0.10, 0.30])
+
+        r1 = sorted_metric.compute(pairs)
+        r2 = unsorted_metric.compute(pairs)
+
+        # Headline should be the same
+        assert r1["value"] == r2["value"]
+        # Both should have budgets dict keyed by the same floats
+        assert set(r1["budgets"].keys()) == set(r2["budgets"].keys())
+
+
+# -- 19. default_metrics returns fresh instances --
+
+
+class TestDefaultMetricsFactory:
+    def test_each_call_returns_new_list(self):
+        """default_metrics() must return independent instances so state doesn't leak."""
+        from stickler.structured_object_evaluator.models.confidence import (
+            default_metrics,
+        )
+
+        a = default_metrics()
+        b = default_metrics()
+        # Different list objects
+        assert a is not b
+        # Different metric instances inside (not shared references)
+        assert a[0] is not b[0]

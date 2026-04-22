@@ -5,9 +5,10 @@ comparison process for StructuredModel instances, coordinating between the
 dispatcher, collectors, and calculators.
 """
 
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
+    from .confidence import ConfidenceMetric
     from .structured_model import StructuredModel
 
 
@@ -200,7 +201,8 @@ class ComparisonEngine:
         recall_with_fd: bool = False,
         add_derived_metrics: bool = True,
         document_field_comparisons: bool = False,
-        add_confidence_metrics: bool = False
+        add_confidence_metrics: bool = False,
+        confidence_metrics: Optional[List["ConfidenceMetric"]] = None,
     ) -> Dict[str, Any]:
         """Compare with another instance using single traversal.
         
@@ -298,10 +300,24 @@ class ComparisonEngine:
             field_comparisons = self.field_comparison_collector.collect_field_comparisons(recursive_result, other)
             result["field_comparisons"] = field_comparisons
 
-        # If add_confidence_metrics is requested, add confidence metrics
+        # If add_confidence_metrics is requested, add confidence metrics.
+        # Warn that single-doc confidence is a sanity check; bulk evaluation is
+        # the recommended path for statistically meaningful results.
         if add_confidence_metrics:
+            import warnings as _warnings
+
             from .confidence import ConfidenceCalculator
-            calculator = ConfidenceCalculator()
+
+            _warnings.warn(
+                "Single-document confidence metrics are a quick sanity check. "
+                "For statistically meaningful results (especially non-AUROC metrics "
+                "like Brier Score and ECE), use BulkStructuredModelEvaluator with "
+                "confidence_metrics=[...]. Per-document metrics with few fields are "
+                "noisy and may return None (single-class) frequently.",
+                UserWarning,
+                stacklevel=2,
+            )
+            calculator = ConfidenceCalculator(metrics=confidence_metrics)
             extraction = calculator.extract(result, other)
             result['confidence_metrics'] = calculator.compute_metrics(
                 extraction.keyed_pairs,

@@ -12,10 +12,10 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 
 from stickler.structured_object_evaluator.models.confidence.metrics import (
-    DEFAULT_METRICS,
     ConfidenceMetric,
     ConfidencePair,
     ConfidencePairs,
+    default_metrics,
 )
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
@@ -38,7 +38,7 @@ class ConfidenceCalculator:
     """
 
     def __init__(self, metrics: Optional[List[ConfidenceMetric]] = None):
-        self.metrics = metrics if metrics is not None else list(DEFAULT_METRICS)
+        self.metrics = metrics if metrics is not None else default_metrics()
 
     def extract(
         self, comparison_result: Dict, pred_instance: StructuredModel

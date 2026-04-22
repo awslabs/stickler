@@ -18,6 +18,8 @@ These tests verify that:
 
 from typing import List
 
+import pytest
+
 from stickler.comparators import (
     ExactComparator,
     LevenshteinComparator,
@@ -235,6 +237,10 @@ class TestFromJsonRichValues:
 # ── Comparison still works with rich values ──
 
 class TestComparisonWithRichValues:
+    pytestmark = pytest.mark.filterwarnings(
+        "ignore:Single-document confidence metrics:UserWarning"
+    )
+
     def test_compare_with_value_only_rich_values(self):
         """Comparison works when predictions use value-only rich values."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")

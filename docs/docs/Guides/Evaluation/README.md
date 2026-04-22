@@ -140,7 +140,7 @@ The default output contains three keys:
 | `include_confusion_matrix` | `bool` | `False` | Adds a `confusion_matrix` key with TP/FP/TN/FN/FD/FA counts and derived precision, recall, F1, and accuracy metrics at both the overall and field levels. |
 | `document_non_matches` | `bool` | `False` | Adds a `non_matches` list with details about every field that failed to match, including the field path, non-match type, both values, and a human-readable reason. |
 | `document_field_comparisons` | `bool` | `False` | Adds a `field_comparisons` list documenting every field-level comparison (both matches and non-matches) with expected/actual keys and values, scores, and reasons. |
-| `add_confidence_metrics` | `bool` | `False` | Adds an `auroc_confidence_metric` for evaluating confidence calibration. |
+| `add_confidence_metrics` | `bool` | `False` | Adds a `confidence_metrics` dict with overall, per-field, and coverage confidence calibration data (AUROC by default). Requires `document_field_comparisons=True`. |
 | `evaluator_format` | `bool` | `False` | Restructures the output for bulk evaluation integration. See [Evaluator Format](#evaluator-format) below. |
 
 ### Example with Detailed Metrics

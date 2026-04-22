@@ -158,15 +158,12 @@ class BulkStructuredModelEvaluator:
             # confidence values.
             has_confidences = bool(pred_model.get_all_confidences())
             calculator = self._confidence_calculator
-            try:
-                extraction = calculator.extract(comparison_result, pred_model)
-                if has_confidences:
-                    for field_path, pairs in extraction.keyed_pairs.items():
-                        self._keyed_confidence_pairs.setdefault(field_path, []).extend(pairs)
-                self._confidence_fields_with += extraction.fields_with_confidence
-                self._confidence_fields_total += extraction.fields_total
-            except ValueError:
-                pass  # No field comparisons, skip confidence accumulation
+            extraction = calculator.extract(comparison_result, pred_model)
+            if has_confidences:
+                for field_path, pairs in extraction.keyed_pairs.items():
+                    self._keyed_confidence_pairs.setdefault(field_path, []).extend(pairs)
+            self._confidence_fields_with += extraction.fields_with_confidence
+            self._confidence_fields_total += extraction.fields_total
 
             self.update_from_comparison_result(comparison_result, doc_id)
 
@@ -196,6 +193,14 @@ class BulkStructuredModelEvaluator:
         or re-run comparisons. It accepts the raw dictionary output of
         StructuredModel.compare_with(include_confusion_matrix=True) and
         accumulates its confusion matrix.
+
+        Limitation: This path does NOT accumulate confidence metrics. The
+        prediction instance is required to access confidence values from
+        from_json(), and this method only receives a dict. If you need
+        confidence metrics from bulk evaluation (AUROC, ECE, etc.), use
+        update(gt_model, pred_model) instead. Confidence data written to
+        JSONL via individual_results_jsonl is also not round-trippable
+        through this method.
 
         Args:
             comparison_result: Dictionary returned by StructuredModel.compare_with()
@@ -492,9 +497,12 @@ class BulkStructuredModelEvaluator:
 
         total_time = time.time() - self._start_time
 
-        # Compute confidence metrics from accumulated keyed pairs
+        # Compute confidence metrics whenever we've tracked coverage, even if
+        # no fields had confidence values. This lets the user see "0/400 fields
+        # have confidence" rather than a bare None, matching the coverage fix
+        # that accumulates fields_total for every document.
         confidence_metrics = None
-        if self._keyed_confidence_pairs:
+        if self._confidence_fields_total > 0:
             confidence_metrics = self._confidence_calculator.compute_metrics(
                 self._keyed_confidence_pairs,
                 fields_with_confidence=self._confidence_fields_with,
@@ -837,13 +845,19 @@ def aggregate_from_comparisons(
     without needing the original StructuredModel instances. It accepts the raw
     dictionary outputs of StructuredModel.compare_with(include_confusion_matrix=True).
 
+    Limitation: This function does NOT aggregate confidence metrics. Confidence
+    values live on the prediction instance (accessed via get_all_confidences())
+    and are not preserved in the comparison result dict. For confidence metrics,
+    use BulkStructuredModelEvaluator.update(gt_model, pred_model) directly.
+
     Args:
         comparison_results: List of dictionaries, each returned by
             StructuredModel.compare_with(include_confusion_matrix=True).
 
     Returns:
         ProcessEvaluation with aggregated metrics including overall and
-        per-field precision, recall, F1, and accuracy.
+        per-field precision, recall, F1, and accuracy. confidence_metrics
+        will be None.
     """
     evaluator = BulkStructuredModelEvaluator()
     for result in comparison_results:

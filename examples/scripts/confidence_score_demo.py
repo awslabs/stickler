@@ -194,7 +194,7 @@ def test_auroc_functionality():
             document_field_comparisons=True,
         )
 
-        auroc = result_well_calibrated.get("auroc_confidence_metric", {})
+        auroc = result_well_calibrated["confidence_metrics"]["overall"]["auroc"]["value"]
         print(f"AUROC (well-calibrated): {auroc}")
 
     except Exception as e:
@@ -224,7 +224,7 @@ def test_auroc_functionality():
             document_field_comparisons=True,
         )
 
-        auroc = result_poor_calibrated.get("auroc_confidence_metric", {})
+        auroc = result_poor_calibrated["confidence_metrics"]["overall"]["auroc"]["value"]
         print(f"AUROC (poorly-calibrated): {auroc}")
 
     except Exception as e:
@@ -260,7 +260,7 @@ def test_auroc_functionality():
         result_nested = gt_nested.compare_with(
             pred_nested, add_confidence_metrics=True, document_field_comparisons=True
         )
-        auroc = result_nested.get("auroc_confidence_metric", {})
+        auroc = result_nested["confidence_metrics"]["overall"]["auroc"]["value"]
         print(f"AUROC (nested): {auroc}")
 
     except Exception as e:

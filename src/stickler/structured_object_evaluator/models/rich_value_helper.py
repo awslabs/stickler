@@ -15,10 +15,8 @@ See the Rich Value Pattern proposal for design rationale.
 
 from typing import Any, Dict
 
-from pydantic import BaseModel
 
-
-class RichValueHelper(BaseModel):
+class RichValueHelper:
     @staticmethod
     def _is_rich_value(data: Dict) -> bool:
         """Check if a dict is a rich value (has "value" key plus metadata).
