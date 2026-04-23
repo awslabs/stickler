@@ -65,6 +65,11 @@ This directory contains comprehensive examples demonstrating the core functional
   - Per-field breakdowns and side-by-side model comparison
   - State merge for distributed evaluation
 
+- **`notebooks/Map_Reduce_Evaluation.ipynb`** - Production map/reduce pattern
+  - Compare individual docs (map), save to JSONL
+  - Aggregate from JSONL (reduce) with full confidence metrics
+  - Verify direct bulk vs JSONL replay produce identical results
+
 ## 🎯 What Each Example Demonstrates
 
 | Example | Individual Objects | List Comparison | Nested Structures | Error Analysis | Large Scale | Pretty Print |

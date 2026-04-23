@@ -8,7 +8,7 @@ Stickler's confidence module measures how well a model's self-reported confidenc
 
 ## Rich Value Pattern
 
-A rich value is any JSON dict with a `"value"` key. Everything else is metadata. Confidence is one type of metadata, but it's optional. This pattern also supports bounding boxes, source spans, and other future metadata types.
+A rich value is any JSON dict with a `"_value"` key. Everything else is metadata. Confidence is one type of metadata, but it's optional. This pattern also supports bounding boxes, source spans, and other future metadata types.
 
 ### Standard Format (no metadata)
 
@@ -23,8 +23,8 @@ A rich value is any JSON dict with a `"value"` key. Everything else is metadata.
 
 ```json
 {
-  "name": {"value": "Widget", "confidence": 0.95},
-  "price": {"value": 29.99, "confidence": 0.8}
+  "name": {"_value": "Widget", "_confidence": 0.95},
+  "price": {"_value": 29.99, "_confidence": 0.8}
 }
 ```
 
@@ -32,8 +32,8 @@ A rich value is any JSON dict with a `"value"` key. Everything else is metadata.
 
 ```json
 {
-  "name": {"value": "Widget", "bbox": [0.1, 0.2, 0.3, 0.4]},
-  "price": {"value": 29.99}
+  "name": {"_value": "Widget", "_bbox": [0.1, 0.2, 0.3, 0.4]},
+  "price": {"_value": 29.99}
 }
 ```
 
@@ -43,9 +43,9 @@ Fields with and without rich values can coexist:
 
 ```json
 {
-  "name": {"value": "Widget", "confidence": 0.95},
+  "name": {"_value": "Widget", "_confidence": 0.95},
   "price": 29.99,
-  "sku": {"value": "ABC123", "bbox": [0.1, 0.2, 0.3, 0.4]}
+  "sku": {"value": "ABC123", "_bbox": [0.1, 0.2, 0.3, 0.4]}
 }
 ```
 
@@ -56,16 +56,16 @@ Rich values work with nested objects and arrays:
 ```json
 {
   "customer": {
-    "name": {"value": "John Doe", "confidence": 0.92},
+    "name": {"_value": "John Doe", "_confidence": 0.92},
     "address": {
-      "street": {"value": "123 Main St", "confidence": 0.85},
+      "street": {"_value": "123 Main St", "_confidence": 0.85},
       "city": "New York"
     }
   },
   "items": [
     {
-      "product": {"value": "Laptop", "confidence": 0.89},
-      "price": {"value": 1299.99, "confidence": 0.76}
+      "product": {"_value": "Laptop", "_confidence": 0.89},
+      "price": {"_value": 1299.99, "_confidence": 0.76}
     }
   ]
 }
@@ -86,9 +86,9 @@ class Product(StructuredModel):
 ground_truth = Product(name="Widget Pro", price=29.99, sku="ABC123")
 
 prediction = Product.from_json({
-    "name": {"value": "Widget Pro", "confidence": 0.95},
-    "price": {"value": 29.99, "confidence": 0.8},
-    "sku": {"value": "XYZ789", "confidence": 0.3}
+    "name": {"_value": "Widget Pro", "_confidence": 0.95},
+    "price": {"_value": 29.99, "_confidence": 0.8},
+    "sku": {"_value": "XYZ789", "_confidence": 0.3}
 })
 ```
 

@@ -79,9 +79,9 @@ class TestKeyedPairExtraction:
         """Verify exact field paths, match labels, confidence, and similarity."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
         pred = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
-            "price": {"value": 99.99, "confidence": 0.6},
-            "sku": {"value": "ABC123", "confidence": 0.8},
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 99.99, "_confidence": 0.6},
+            "sku": {"_value": "ABC123", "_confidence": 0.8},
         })
 
         result = gt.compare_with(pred, document_field_comparisons=True)
@@ -109,9 +109,9 @@ class TestKeyedPairExtraction:
         """The similarity field carries the raw comparator score."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
         pred = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
-            "price": {"value": 29.99, "confidence": 0.8},
-            "sku": {"value": "XYZ999", "confidence": 0.5},
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 29.99, "_confidence": 0.8},
+            "sku": {"_value": "XYZ999", "_confidence": 0.5},
         })
 
         result = gt.compare_with(pred, document_field_comparisons=True)
@@ -127,7 +127,7 @@ class TestKeyedPairExtraction:
         """extract_keyed_pairs requires field_comparisons in the result."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
         pred = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
+            "name": {"_value": "Widget", "_confidence": 0.9},
         })
         result = gt.compare_with(pred)
         calc = ConfidenceCalculator()
@@ -146,10 +146,10 @@ class TestNestedPaths:
             address=Address(street="123 Main St", city="Boston"),
         )
         pred = ContactInfo.from_json({
-            "email": {"value": "a@b.com", "confidence": 0.95},
+            "email": {"_value": "a@b.com", "_confidence": 0.95},
             "address": {
-                "street": {"value": "123 Main St", "confidence": 0.85},
-                "city": {"value": "Chicago", "confidence": 0.40},
+                "street": {"_value": "123 Main St", "_confidence": 0.85},
+                "city": {"_value": "Chicago", "_confidence": 0.40},
             },
         })
 
@@ -173,12 +173,12 @@ class TestNestedPaths:
             ),
         )
         pred = Customer.from_json({
-            "name": {"value": "Jane", "confidence": 0.96},
+            "name": {"_value": "Jane", "_confidence": 0.96},
             "contact": {
-                "email": {"value": "jane@test.com", "confidence": 0.90},
+                "email": {"_value": "jane@test.com", "_confidence": 0.90},
                 "address": {
-                    "street": {"value": "456 Oak Avenue", "confidence": 0.80},
-                    "city": {"value": "New York", "confidence": 0.35},
+                    "street": {"_value": "456 Oak Avenue", "_confidence": 0.80},
+                    "city": {"_value": "New York", "_confidence": 0.35},
                 },
             },
         })
@@ -210,17 +210,17 @@ class TestListPaths:
             ],
         )
         pred = Order.from_json({
-            "order_id": {"value": "ORD-1", "confidence": 0.99},
+            "order_id": {"_value": "ORD-1", "_confidence": 0.99},
             "items": [
                 {
-                    "name": {"value": "Keyboard", "confidence": 0.92},
-                    "price": {"value": 79.99, "confidence": 0.88},
-                    "sku": {"value": "KEY001", "confidence": 0.95},
+                    "name": {"_value": "Keyboard", "_confidence": 0.92},
+                    "price": {"_value": 79.99, "_confidence": 0.88},
+                    "sku": {"_value": "KEY001", "_confidence": 0.95},
                 },
                 {
-                    "name": {"value": "Mouse", "confidence": 0.90},
-                    "price": {"value": 29.99, "confidence": 0.85},
-                    "sku": {"value": "WRONG", "confidence": 0.30},
+                    "name": {"_value": "Mouse", "_confidence": 0.90},
+                    "price": {"_value": 29.99, "_confidence": 0.85},
+                    "sku": {"_value": "WRONG", "_confidence": 0.30},
                 },
             ],
         })
@@ -244,9 +244,9 @@ class TestPartialCoverage:
         """Fields without confidence are not in keyed pairs."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
         pred = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
+            "name": {"_value": "Widget", "_confidence": 0.9},
             "price": 29.99,  # no confidence
-            "sku": {"value": "ABC123", "confidence": 0.8},
+            "sku": {"_value": "ABC123", "_confidence": 0.8},
         })
 
         result = gt.compare_with(pred, document_field_comparisons=True)
@@ -403,9 +403,9 @@ class TestSingleDocIntegration:
         """compare_with with add_confidence_metrics populates confidence_metrics."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
         pred = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
-            "price": {"value": 99.99, "confidence": 0.3},
-            "sku": {"value": "ABC123", "confidence": 0.8},
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 99.99, "_confidence": 0.3},
+            "sku": {"_value": "ABC123", "_confidence": 0.8},
         })
 
         result = gt.compare_with(
@@ -423,7 +423,7 @@ class TestSingleDocIntegration:
 
     def test_confidence_metrics_absent_without_flag(self):
         gt = Product(name="Widget", price=29.99, sku="ABC123")
-        pred = Product.from_json({"name": {"value": "Widget", "confidence": 0.9}})
+        pred = Product.from_json({"name": {"_value": "Widget", "_confidence": 0.9}})
         result = gt.compare_with(pred, document_field_comparisons=True)
         assert "confidence_metrics" not in result
 
@@ -446,12 +446,12 @@ class TestSingleDocIntegration:
             ),
         )
         pred = Customer.from_json({
-            "name": {"value": "Jane", "confidence": 0.95},
+            "name": {"_value": "Jane", "_confidence": 0.95},
             "contact": {
-                "email": {"value": "j@t.com", "confidence": 0.90},
+                "email": {"_value": "j@t.com", "_confidence": 0.90},
                 "address": {
-                    "street": {"value": "123 Main", "confidence": 0.85},
-                    "city": {"value": "Wrong City", "confidence": 0.30},
+                    "street": {"_value": "123 Main", "_confidence": 0.85},
+                    "city": {"_value": "Wrong City", "_confidence": 0.30},
                 },
             },
         })
@@ -473,36 +473,36 @@ class TestBulkAccumulation:
 
         gt1 = Product(name="Widget", price=29.99, sku="ABC")
         pred1 = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
-            "price": {"value": 29.99, "confidence": 0.8},
-            "sku": {"value": "ABC", "confidence": 0.7},
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 29.99, "_confidence": 0.8},
+            "sku": {"_value": "ABC", "_confidence": 0.7},
         })
         gt2 = Product(name="Gadget", price=49.99, sku="DEF")
         pred2 = Product.from_json({
-            "name": {"value": "Gadget", "confidence": 0.85},
-            "price": {"value": 99.99, "confidence": 0.4},
-            "sku": {"value": "DEF", "confidence": 0.95},
+            "name": {"_value": "Gadget", "_confidence": 0.85},
+            "price": {"_value": 99.99, "_confidence": 0.4},
+            "sku": {"_value": "DEF", "_confidence": 0.95},
         })
 
         evaluator.update(gt1, pred1)
         evaluator.update(gt2, pred2)
 
         for field in ["name", "price", "sku"]:
-            assert len(evaluator._keyed_confidence_pairs[field]) == 2
-            assert all(isinstance(p, ConfidencePair) for p in evaluator._keyed_confidence_pairs[field])
+            assert len(evaluator._accumulators[0]._keyed_pairs[field]) == 2
+            assert all(isinstance(p, ConfidencePair) for p in evaluator._accumulators[0]._keyed_pairs[field])
 
     def test_bulk_metrics_match_manual_computation(self):
         gt1 = Product(name="Widget", price=29.99, sku="ABC")
         pred1 = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
-            "price": {"value": 99.99, "confidence": 0.3},
-            "sku": {"value": "ABC", "confidence": 0.8},
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 99.99, "_confidence": 0.3},
+            "sku": {"_value": "ABC", "_confidence": 0.8},
         })
         gt2 = Product(name="Gadget", price=49.99, sku="DEF")
         pred2 = Product.from_json({
-            "name": {"value": "Wrong", "confidence": 0.2},
-            "price": {"value": 49.99, "confidence": 0.85},
-            "sku": {"value": "DEF", "confidence": 0.95},
+            "name": {"_value": "Wrong", "_confidence": 0.2},
+            "price": {"_value": 49.99, "_confidence": 0.85},
+            "sku": {"_value": "DEF", "_confidence": 0.95},
         })
 
         evaluator = BulkStructuredModelEvaluator(target_schema=Product)
@@ -556,9 +556,9 @@ class TestStateSerialization:
         evaluator = BulkStructuredModelEvaluator(target_schema=Product)
         gt = Product(name="Widget", price=29.99, sku="ABC")
         pred = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
-            "price": {"value": 99.99, "confidence": 0.3},
-            "sku": {"value": "ABC", "confidence": 0.8},
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 99.99, "_confidence": 0.3},
+            "sku": {"_value": "ABC", "_confidence": 0.8},
         })
         evaluator.update(gt, pred)
         state = evaluator.get_state()
@@ -566,15 +566,15 @@ class TestStateSerialization:
         evaluator2 = BulkStructuredModelEvaluator(target_schema=Product)
         evaluator2.load_state(state)
 
-        assert evaluator2._keyed_confidence_pairs == evaluator._keyed_confidence_pairs
+        assert evaluator2._accumulators[0]._keyed_pairs == evaluator._accumulators[0]._keyed_pairs
 
     def test_compute_after_load_matches_original(self):
         evaluator = BulkStructuredModelEvaluator(target_schema=Product)
         gt = Product(name="Widget", price=29.99, sku="ABC")
         pred = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
-            "price": {"value": 99.99, "confidence": 0.3},
-            "sku": {"value": "ABC", "confidence": 0.8},
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 99.99, "_confidence": 0.3},
+            "sku": {"_value": "ABC", "_confidence": 0.8},
         })
         evaluator.update(gt, pred)
         original = evaluator.compute()
@@ -598,10 +598,10 @@ class TestMerge:
             Product(name="Thingamajig", price=99.99, sku="JKL"),
         ]
         preds = [
-            Product.from_json({"name": {"value": "Widget", "confidence": 0.9}, "price": {"value": 29.99, "confidence": 0.8}, "sku": {"value": "ABC", "confidence": 0.7}}),
-            Product.from_json({"name": {"value": "Wrong", "confidence": 0.2}, "price": {"value": 49.99, "confidence": 0.85}, "sku": {"value": "DEF", "confidence": 0.95}}),
-            Product.from_json({"name": {"value": "Doohickey", "confidence": 0.88}, "price": {"value": 9.99, "confidence": 0.92}, "sku": {"value": "WRONG", "confidence": 0.15}}),
-            Product.from_json({"name": {"value": "Thingamajig", "confidence": 0.91}, "price": {"value": 999.99, "confidence": 0.25}, "sku": {"value": "JKL", "confidence": 0.93}}),
+            Product.from_json({"name": {"_value": "Widget", "_confidence": 0.9}, "price": {"_value": 29.99, "_confidence": 0.8}, "sku": {"_value": "ABC", "_confidence": 0.7}}),
+            Product.from_json({"name": {"_value": "Wrong", "_confidence": 0.2}, "price": {"_value": 49.99, "_confidence": 0.85}, "sku": {"_value": "DEF", "_confidence": 0.95}}),
+            Product.from_json({"name": {"_value": "Doohickey", "_confidence": 0.88}, "price": {"_value": 9.99, "_confidence": 0.92}, "sku": {"_value": "WRONG", "_confidence": 0.15}}),
+            Product.from_json({"name": {"_value": "Thingamajig", "_confidence": 0.91}, "price": {"_value": 999.99, "_confidence": 0.25}, "sku": {"_value": "JKL", "_confidence": 0.93}}),
         ]
 
         single = BulkStructuredModelEvaluator(target_schema=Product)
@@ -624,9 +624,9 @@ class TestMerge:
 
         gt = Product(name="Widget", price=29.99, sku="ABC")
         pred = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
-            "price": {"value": 29.99, "confidence": 0.8},
-            "sku": {"value": "ABC", "confidence": 0.7},
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 29.99, "_confidence": 0.8},
+            "sku": {"_value": "ABC", "_confidence": 0.7},
         })
 
         wa.update(gt, pred)
@@ -634,7 +634,7 @@ class TestMerge:
         wa.merge_state(wb.get_state())
 
         for field in ["name", "price", "sku"]:
-            assert len(wa._keyed_confidence_pairs[field]) == 2
+            assert len(wa._accumulators[0]._keyed_pairs[field]) == 2
 
 
 # ── 12. Multiple metrics in bulk evaluator ──
@@ -648,9 +648,9 @@ class TestMultipleMetrics:
         )
         gt = Product(name="Widget", price=29.99, sku="ABC")
         pred = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
-            "price": {"value": 99.99, "confidence": 0.3},
-            "sku": {"value": "ABC", "confidence": 0.8},
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 99.99, "_confidence": 0.3},
+            "sku": {"_value": "ABC", "_confidence": 0.8},
         })
         evaluator.update(gt, pred)
         result = evaluator.compute()
@@ -675,9 +675,9 @@ class TestCoverage:
         """Single-doc result includes coverage stats."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
         pred = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
+            "name": {"_value": "Widget", "_confidence": 0.9},
             "price": 29.99,  # no confidence
-            "sku": {"value": "ABC123", "confidence": 0.8},
+            "sku": {"_value": "ABC123", "_confidence": 0.8},
         })
         result = gt.compare_with(
             pred, add_confidence_metrics=True, document_field_comparisons=True,
@@ -691,9 +691,9 @@ class TestCoverage:
         """All fields have confidence -> ratio 1.0."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
         pred = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
-            "price": {"value": 29.99, "confidence": 0.8},
-            "sku": {"value": "ABC123", "confidence": 0.7},
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 29.99, "_confidence": 0.8},
+            "sku": {"_value": "ABC123", "_confidence": 0.7},
         })
         result = gt.compare_with(
             pred, add_confidence_metrics=True, document_field_comparisons=True,
@@ -711,15 +711,15 @@ class TestCoverage:
 
         # Doc 1: 2 of 3 fields have confidence
         pred1 = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
+            "name": {"_value": "Widget", "_confidence": 0.9},
             "price": 29.99,
-            "sku": {"value": "ABC", "confidence": 0.8},
+            "sku": {"_value": "ABC", "_confidence": 0.8},
         })
         # Doc 2: 3 of 3 fields have confidence
         pred2 = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
-            "price": {"value": 29.99, "confidence": 0.8},
-            "sku": {"value": "ABC", "confidence": 0.7},
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 29.99, "_confidence": 0.8},
+            "sku": {"_value": "ABC", "_confidence": 0.7},
         })
 
         evaluator.update(gt, pred1)
@@ -736,9 +736,9 @@ class TestCoverage:
         evaluator = BulkStructuredModelEvaluator(target_schema=Product)
         gt = Product(name="Widget", price=29.99, sku="ABC")
         pred = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
+            "name": {"_value": "Widget", "_confidence": 0.9},
             "price": 29.99,
-            "sku": {"value": "ABC", "confidence": 0.8},
+            "sku": {"_value": "ABC", "_confidence": 0.8},
         })
         evaluator.update(gt, pred)
 
@@ -757,14 +757,14 @@ class TestCoverage:
 
         gt = Product(name="Widget", price=29.99, sku="ABC")
         pred_partial = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
+            "name": {"_value": "Widget", "_confidence": 0.9},
             "price": 29.99,
-            "sku": {"value": "ABC", "confidence": 0.8},
+            "sku": {"_value": "ABC", "_confidence": 0.8},
         })
         pred_full = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
-            "price": {"value": 29.99, "confidence": 0.8},
-            "sku": {"value": "ABC", "confidence": 0.7},
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 29.99, "_confidence": 0.8},
+            "sku": {"_value": "ABC", "_confidence": 0.7},
         })
 
         wa.update(gt, pred_partial)  # 2/3
@@ -884,14 +884,14 @@ class TestErrorCaptureAtBudget:
 
         gt = Product(name="Widget", price=29.99, sku="ABC")
         pred_good = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
-            "price": {"value": 29.99, "confidence": 0.8},
-            "sku": {"value": "ABC", "confidence": 0.7},
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 29.99, "_confidence": 0.8},
+            "sku": {"_value": "ABC", "_confidence": 0.7},
         })
         pred_bad = Product.from_json({
-            "name": {"value": "Wrong", "confidence": 0.2},
-            "price": {"value": 99.99, "confidence": 0.15},
-            "sku": {"value": "XYZ", "confidence": 0.1},
+            "name": {"_value": "Wrong", "_confidence": 0.2},
+            "price": {"_value": 99.99, "_confidence": 0.15},
+            "sku": {"_value": "XYZ", "_confidence": 0.1},
         })
 
         evaluator.update(gt, pred_good)
@@ -959,9 +959,9 @@ class TestCoverageAccountsForAllDocs:
 
         # Doc 1: has confidence (3 fields with, 3 total)
         pred_with = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
-            "price": {"value": 29.99, "confidence": 0.8},
-            "sku": {"value": "ABC", "confidence": 0.7},
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 29.99, "_confidence": 0.8},
+            "sku": {"_value": "ABC", "_confidence": 0.7},
         })
 
         # Doc 2: no confidence at all (0 fields with, 3 total)
@@ -985,9 +985,9 @@ class TestSingleDocWarningAndConfig:
         """Single-doc confidence should warn that bulk is recommended."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
         pred = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
-            "price": {"value": 29.99, "confidence": 0.8},
-            "sku": {"value": "ABC123", "confidence": 0.7},
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 29.99, "_confidence": 0.8},
+            "sku": {"_value": "ABC123", "_confidence": 0.7},
         })
         with pytest.warns(UserWarning, match="Single-document confidence metrics"):
             gt.compare_with(
@@ -1003,9 +1003,9 @@ class TestSingleDocWarningAndConfig:
 
         gt = Product(name="Widget", price=29.99, sku="ABC123")
         pred = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
-            "price": {"value": 99.99, "confidence": 0.3},
-            "sku": {"value": "ABC123", "confidence": 0.8},
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 99.99, "_confidence": 0.3},
+            "sku": {"_value": "ABC123", "_confidence": 0.8},
         })
         with pytest.warns(UserWarning):
             result = gt.compare_with(

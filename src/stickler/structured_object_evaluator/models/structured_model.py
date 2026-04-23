@@ -284,6 +284,18 @@ class StructuredModel(BaseModel):
             return {}
         return self.field_confidences.copy()
 
+    def get_field_extras(self, field_name: str) -> Optional[Dict[str, Any]]:
+        """Get user-provided extras for a field (non-system metadata from rich values)."""
+        if not hasattr(self, "field_extras"):
+            return None
+        return self.field_extras.get(field_name)
+
+    def get_all_extras(self) -> Dict[str, Dict[str, Any]]:
+        """Get all user-provided extras, keyed by field path."""
+        if not hasattr(self, "field_extras"):
+            return {}
+        return self.field_extras.copy()
+
     @classmethod
     def from_json(
         cls, json_data: Dict[str, Any], process_rich_values=True
@@ -292,7 +304,7 @@ class StructuredModel(BaseModel):
 
         This method handles missing fields gracefully and stores extra fields
         in the extra_fields attribute. When process_rich_values is True,
-        rich value structures (e.g., {"value": "Widget", "confidence": 0.95})
+        rich value structures (e.g., {"_value": "Widget", "_confidence": 0.95})
         are automatically unwrapped, with metadata stored separately.
 
         Args:
@@ -305,12 +317,19 @@ class StructuredModel(BaseModel):
         """
         if process_rich_values:
             # Only process rich values on the top-level call
-            processed_data, confidences = (
+            processed_data, confidences, extras = (
                 RichValueHelper.process_rich_values(json_data)
             )
             instance = ConfigurationHelper.from_json(cls, processed_data)
-            if confidences:  # Only set if we have confidence data
+            if confidences:
                 object.__setattr__(instance, "field_confidences", confidences)
+            if extras:
+                object.__setattr__(instance, "field_extras", extras)
+            # Store the original JSON for round-tripping through comparison
+            # results (needed by update_from_comparison_result for confidence
+            # and future bbox/MAP metrics).
+            if confidences or extras:
+                object.__setattr__(instance, "_raw_json", json_data)
         else:
             # Skip rich value processing for recursive calls
             instance = ConfigurationHelper.from_json(cls, json_data)

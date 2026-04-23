@@ -43,12 +43,12 @@ print(results.confidence_metrics["coverage"])
 
 ## Rich Value Pattern
 
-Predictions carry confidence via the Rich Value Pattern. Any JSON dict with a `"value"` key is a rich value. Confidence is optional metadata:
+Predictions carry confidence via the Rich Value Pattern. Any JSON dict with a `"_value"` key is a rich value. Confidence is optional metadata:
 
 ```json
 {
-  "invoice_id": {"value": "INV-001", "confidence": 0.97},
-  "vendor": {"value": "Acme Corp"},
+  "invoice_id": {"_value": "INV-001", "_confidence": 0.97},
+  "vendor": {"_value": "Acme Corp"},
   "total": 1247.50
 }
 ```
@@ -113,6 +113,16 @@ class MyMetric(ConfidenceMetric):
         # pairs: list of ConfidencePair(is_match, confidence, similarity)
         return {"value": ...}
 ```
+
+## JSONL Round-Trip (Map/Reduce Pattern)
+
+Confidence metrics work through the JSONL serialization path. When predictions are created via `from_json()` with rich values, the original prediction JSON is automatically included in the `compare_with()` result as `prediction_raw`. This means you can:
+
+1. Compare individual documents and save results to JSONL
+2. Later aggregate those results via `update_from_comparison_result()`
+3. Get identical confidence metrics as the direct `update()` path
+
+See [Bulk Evaluation: Map/Reduce](bulk-evaluation.md#mapreduce-single-doc-compare-bulk-aggregate) for the full pattern.
 
 ## Further Reading
 

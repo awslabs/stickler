@@ -325,6 +325,13 @@ class ComparisonEngine:
                 fields_total=extraction.fields_total,
             )
 
+        # Include raw prediction JSON for round-tripping through JSONL.
+        # This enables update_from_comparison_result() to reconstruct
+        # confidence pairs (and future bbox/MAP data) without needing
+        # the original model instance.
+        if hasattr(other, "_raw_json"):
+            result["prediction_raw"] = other._raw_json
+
         # If evaluator_format is requested, transform the result
         if evaluator_format:
             return self.model._format_for_evaluator(result, other, recall_with_fd)

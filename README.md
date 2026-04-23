@@ -123,8 +123,8 @@ Evaluate prediction confidence calibration with pluggable metrics:
 ```python
 # Prediction with confidence scores
 prediction = Invoice.from_json({
-    "invoice_number": {"value": "INV-2024-001", "confidence": 0.95},
-    "total": {"value": 1247.50, "confidence": 0.8}
+    "invoice_number": {"_value": "INV-2024-001", "_confidence": 0.95},
+    "total": {"_value": 1247.50, "_confidence": 0.8}
 })
 
 # Single-document confidence metrics

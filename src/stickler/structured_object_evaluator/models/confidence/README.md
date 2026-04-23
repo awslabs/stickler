@@ -2,7 +2,7 @@
 
 Measures how well a model's self-reported confidence scores correlate with actual prediction correctness.
 
-This module consumes confidence data extracted by the **Rich Value Pattern**. A rich value is any JSON dict with a `"value"` key (e.g., `{"value": "Widget", "confidence": 0.95}`). The `RichValueHelper` unwraps these during `from_json()`, and this module evaluates the confidence slice of that metadata. Confidence is optional in rich values; fields without it are silently skipped by this module.
+This module consumes confidence data extracted by the **Rich Value Pattern**. A rich value is any JSON dict with a `"_value"` key (e.g., `{"_value": "Widget", "_confidence": 0.95}`). The `RichValueHelper` unwraps these during `from_json()`, and this module evaluates the confidence slice of that metadata. Confidence is optional in rich values; fields without it are silently skipped by this module.
 
 ## Architecture
 

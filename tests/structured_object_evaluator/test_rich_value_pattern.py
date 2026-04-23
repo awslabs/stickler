@@ -1,15 +1,15 @@
 """
 Tests for the Rich Value Pattern.
 
-A rich value is a dict with a "value" key plus optional metadata keys
-(confidence, bbox, etc.). The RichValueHelper unwraps these during
+A rich value is a dict with a "_value" key plus optional metadata keys
+(_confidence, _bbox, etc.). The RichValueHelper unwraps these during
 from_json(), extracting the value for the model field and storing
 metadata separately.
 
 These tests verify that:
-- Rich values with only "value" (no metadata) are unwrapped correctly
-- Rich values with confidence are unwrapped and confidence is stored
-- Rich values with non-confidence metadata are unwrapped (future bbox etc.)
+- Rich values with only "_value" (no metadata) are unwrapped correctly
+- Rich values with _confidence are unwrapped and confidence is stored
+- Rich values with non-confidence metadata are unwrapped (future _bbox etc.)
 - Plain values still work unchanged
 - Mixed rich/plain values work in the same model
 - Nested and list structures handle rich values correctly
@@ -54,23 +54,23 @@ class Customer(StructuredModel):
 
 class TestRichValueDetection:
     def test_value_plus_confidence_is_rich(self):
-        assert RichValueHelper._is_rich_value({"value": "Widget", "confidence": 0.9})
+        assert RichValueHelper._is_rich_value({"_value": "Widget", "_confidence": 0.9})
 
     def test_value_only_is_rich(self):
-        """A dict with just 'value' is treated as a rich value."""
-        assert RichValueHelper._is_rich_value({"value": "Widget"})
+        """A dict with just '_value' is treated as a rich value."""
+        assert RichValueHelper._is_rich_value({"_value": "Widget"})
 
     def test_value_plus_bbox_is_rich(self):
         """Future metadata types are detected as rich values."""
-        assert RichValueHelper._is_rich_value({"value": "Widget", "bbox": [0.1, 0.2, 0.3, 0.4]})
+        assert RichValueHelper._is_rich_value({"_value": "Widget", "_bbox": [0.1, 0.2, 0.3, 0.4]})
 
     def test_value_plus_multiple_metadata_is_rich(self):
         assert RichValueHelper._is_rich_value({
-            "value": "Widget", "confidence": 0.9, "bbox": [0.1, 0.2, 0.3, 0.4]
+            "_value": "Widget", "_confidence": 0.9, "_bbox": [0.1, 0.2, 0.3, 0.4]
         })
 
     def test_no_value_key_is_not_rich(self):
-        assert not RichValueHelper._is_rich_value({"name": "Widget", "confidence": 0.9})
+        assert not RichValueHelper._is_rich_value({"name": "Widget", "_confidence": 0.9})
 
     def test_plain_string_is_not_rich(self):
         assert not RichValueHelper._is_rich_value("Widget")
@@ -86,59 +86,59 @@ class TestRichValueDetection:
 
 class TestRichValueUnwrapping:
     def test_value_with_confidence_unwraps(self):
-        data = {"name": {"value": "Widget", "confidence": 0.9}, "price": 29.99}
-        unwrapped, confidences = RichValueHelper.process_rich_values(data)
+        data = {"name": {"_value": "Widget", "_confidence": 0.9}, "price": 29.99}
+        unwrapped, confidences, _extras = RichValueHelper.process_rich_values(data)
         assert unwrapped == {"name": "Widget", "price": 29.99}
         assert confidences == {"name": 0.9}
 
     def test_value_only_unwraps_no_confidence(self):
-        """Rich value with just 'value' unwraps but produces no confidence entry."""
-        data = {"name": {"value": "Widget"}, "price": 29.99}
-        unwrapped, confidences = RichValueHelper.process_rich_values(data)
+        """Rich value with just '_value' unwraps but produces no confidence entry."""
+        data = {"name": {"_value": "Widget"}, "price": 29.99}
+        unwrapped, confidences, _extras = RichValueHelper.process_rich_values(data)
         assert unwrapped == {"name": "Widget", "price": 29.99}
         assert confidences == {}
 
     def test_value_with_bbox_only_unwraps_no_confidence(self):
-        """Rich value with bbox but no confidence produces no confidence entry."""
-        data = {"name": {"value": "Widget", "bbox": [0.1, 0.2, 0.3, 0.4]}}
-        unwrapped, confidences = RichValueHelper.process_rich_values(data)
+        """Rich value with _bbox but no _confidence produces no confidence entry."""
+        data = {"name": {"_value": "Widget", "_bbox": [0.1, 0.2, 0.3, 0.4]}}
+        unwrapped, confidences, _extras = RichValueHelper.process_rich_values(data)
         assert unwrapped == {"name": "Widget"}
         assert confidences == {}
 
     def test_value_with_confidence_and_bbox_extracts_confidence(self):
-        """When both confidence and bbox are present, confidence is extracted."""
-        data = {"name": {"value": "Widget", "confidence": 0.9, "bbox": [0.1, 0.2, 0.3, 0.4]}}
-        unwrapped, confidences = RichValueHelper.process_rich_values(data)
+        """When both _confidence and _bbox are present, confidence is extracted."""
+        data = {"name": {"_value": "Widget", "_confidence": 0.9, "_bbox": [0.1, 0.2, 0.3, 0.4]}}
+        unwrapped, confidences, _extras = RichValueHelper.process_rich_values(data)
         assert unwrapped == {"name": "Widget"}
         assert confidences == {"name": 0.9}
 
     def test_plain_values_pass_through(self):
         data = {"name": "Widget", "price": 29.99}
-        unwrapped, confidences = RichValueHelper.process_rich_values(data)
+        unwrapped, confidences, _extras = RichValueHelper.process_rich_values(data)
         assert unwrapped == data
         assert confidences == {}
 
     def test_nested_rich_values(self):
         data = {
-            "name": {"value": "Jane", "confidence": 0.95},
+            "name": {"_value": "Jane", "_confidence": 0.95},
             "address": {
-                "street": {"value": "123 Main", "confidence": 0.85},
+                "street": {"_value": "123 Main", "_confidence": 0.85},
                 "city": "Boston",
             },
         }
-        unwrapped, confidences = RichValueHelper.process_rich_values(data)
+        unwrapped, confidences, _extras = RichValueHelper.process_rich_values(data)
         assert unwrapped == {"name": "Jane", "address": {"street": "123 Main", "city": "Boston"}}
         assert confidences == {"name": 0.95, "address.street": 0.85}
 
     def test_list_rich_values(self):
         data = {
             "items": [
-                {"value": "Widget", "confidence": 0.9},
-                {"value": "Gadget"},
+                {"_value": "Widget", "_confidence": 0.9},
+                {"_value": "Gadget"},
                 "PlainItem",
             ]
         }
-        unwrapped, confidences = RichValueHelper.process_rich_values(data)
+        unwrapped, confidences, _extras = RichValueHelper.process_rich_values(data)
         assert unwrapped == {"items": ["Widget", "Gadget", "PlainItem"]}
         assert confidences == {"items[0]": 0.9}
 
@@ -148,9 +148,9 @@ class TestRichValueUnwrapping:
 class TestFromJsonRichValues:
     def test_confidence_rich_values(self):
         pred = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
-            "price": {"value": 29.99, "confidence": 0.8},
-            "sku": {"value": "ABC123", "confidence": 0.7},
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 29.99, "_confidence": 0.8},
+            "sku": {"_value": "ABC123", "_confidence": 0.7},
         })
         assert pred.name == "Widget"
         assert pred.price == 29.99
@@ -160,8 +160,8 @@ class TestFromJsonRichValues:
     def test_value_only_rich_values(self):
         """Rich values without confidence unwrap correctly, no confidence stored."""
         pred = Product.from_json({
-            "name": {"value": "Widget"},
-            "price": {"value": 29.99},
+            "name": {"_value": "Widget"},
+            "price": {"_value": 29.99},
             "sku": "ABC123",
         })
         assert pred.name == "Widget"
@@ -172,9 +172,9 @@ class TestFromJsonRichValues:
         assert pred.get_all_confidences() == {}
 
     def test_bbox_only_rich_values(self):
-        """Rich values with bbox but no confidence work correctly."""
+        """Rich values with _bbox but no _confidence work correctly."""
         pred = Product.from_json({
-            "name": {"value": "Widget", "bbox": [0.1, 0.2, 0.3, 0.4]},
+            "name": {"_value": "Widget", "_bbox": [0.1, 0.2, 0.3, 0.4]},
             "price": 29.99,
             "sku": "ABC123",
         })
@@ -183,9 +183,9 @@ class TestFromJsonRichValues:
 
     def test_mixed_rich_and_plain(self):
         pred = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
+            "name": {"_value": "Widget", "_confidence": 0.9},
             "price": 29.99,
-            "sku": {"value": "ABC123"},
+            "sku": {"_value": "ABC123"},
         })
         assert pred.name == "Widget"
         assert pred.price == 29.99
@@ -196,10 +196,10 @@ class TestFromJsonRichValues:
 
     def test_nested_model_rich_values_without_confidence(self):
         pred = Customer.from_json({
-            "name": {"value": "Jane"},
+            "name": {"_value": "Jane"},
             "address": {
-                "street": {"value": "123 Main"},
-                "city": {"value": "Boston", "confidence": 0.85},
+                "street": {"_value": "123 Main"},
+                "city": {"_value": "Boston", "_confidence": 0.85},
             },
             "orders": [],
         })
@@ -215,14 +215,14 @@ class TestFromJsonRichValues:
             "address": {"street": "123 Main", "city": "Boston"},
             "orders": [
                 {
-                    "name": {"value": "Widget", "confidence": 0.9},
-                    "price": {"value": 29.99},
+                    "name": {"_value": "Widget", "_confidence": 0.9},
+                    "price": {"_value": 29.99},
                     "sku": "ABC",
                 },
                 {
-                    "name": {"value": "Gadget", "bbox": [0.1, 0.2, 0.3, 0.4]},
+                    "name": {"_value": "Gadget", "_bbox": [0.1, 0.2, 0.3, 0.4]},
                     "price": 49.99,
-                    "sku": {"value": "DEF", "confidence": 0.7},
+                    "sku": {"_value": "DEF", "_confidence": 0.7},
                 },
             ],
         })
@@ -245,9 +245,9 @@ class TestComparisonWithRichValues:
         """Comparison works when predictions use value-only rich values."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
         pred = Product.from_json({
-            "name": {"value": "Widget"},
-            "price": {"value": 29.99},
-            "sku": {"value": "ABC123"},
+            "name": {"_value": "Widget"},
+            "price": {"_value": 29.99},
+            "sku": {"_value": "ABC123"},
         })
         result = gt.compare_with(pred)
         assert result["overall_score"] > 0.9
@@ -256,9 +256,9 @@ class TestComparisonWithRichValues:
         """Confidence metrics work when only some fields have confidence."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
         pred = Product.from_json({
-            "name": {"value": "Widget", "confidence": 0.9},
-            "price": {"value": 99.99},  # value-only, no confidence
-            "sku": {"value": "ABC123", "confidence": 0.8},
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 99.99},  # value-only, no confidence
+            "sku": {"_value": "ABC123", "_confidence": 0.8},
         })
         result = gt.compare_with(
             pred, add_confidence_metrics=True, document_field_comparisons=True,
@@ -275,9 +275,9 @@ class TestComparisonWithRichValues:
         """When no fields have confidence, metrics still work gracefully."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
         pred = Product.from_json({
-            "name": {"value": "Widget"},
-            "price": {"value": 29.99},
-            "sku": {"value": "ABC123"},
+            "name": {"_value": "Widget"},
+            "price": {"_value": 29.99},
+            "sku": {"_value": "ABC123"},
         })
         result = gt.compare_with(
             pred, add_confidence_metrics=True, document_field_comparisons=True,
@@ -287,3 +287,86 @@ class TestComparisonWithRichValues:
         if cm is not None:
             assert cm["overall"]["auroc"]["value"] is None
             assert cm["coverage"]["fields_with_confidence"] == 0
+
+
+# ── Old format rejection tests ──
+
+class TestOldFormatRejected:
+    def test_old_value_confidence_not_rich(self):
+        """The old {"value": ..., "confidence": ...} format is NOT a rich value."""
+        assert not RichValueHelper._is_rich_value({"value": "Widget", "confidence": 0.9})
+
+    def test_old_format_passes_through_as_dict(self):
+        """Old format dicts pass through untouched (not unwrapped)."""
+        data = {"name": {"value": "Widget", "confidence": 0.9}}
+        unwrapped, confidences, _extras = RichValueHelper.process_rich_values(data)
+        # Should NOT unwrap: the dict is treated as a nested object, not a rich value
+        assert unwrapped == {"name": {"value": "Widget", "confidence": 0.9}}
+        assert confidences == {}
+
+
+# ── Extras tests ──
+
+class TestExtras:
+    def test_extras_stored_on_instance(self):
+        """Underscore-prefixed metadata keys are stored as extras."""
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9, "_handwritten": True, "_source": "page 3"},
+            "price": 29.99,
+            "sku": "ABC123",
+        })
+        assert pred.name == "Widget"
+        assert pred.get_field_confidence("name") == 0.9
+        extras = pred.get_field_extras("name")
+        assert extras is not None
+        assert extras["_handwritten"] is True
+        assert extras["_source"] == "page 3"
+
+    def test_no_extras_returns_none(self):
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": 29.99,
+            "sku": "ABC123",
+        })
+        # name has confidence but no extras
+        assert pred.get_field_extras("name") is None
+        # price has no rich value at all
+        assert pred.get_field_extras("price") is None
+
+    def test_get_all_extras(self):
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_handwritten": True},
+            "price": {"_value": 29.99, "_ocr_engine": "tesseract"},
+            "sku": "ABC123",
+        })
+        all_extras = pred.get_all_extras()
+        assert "name" in all_extras
+        assert all_extras["name"]["_handwritten"] is True
+        assert "price" in all_extras
+        assert all_extras["price"]["_ocr_engine"] == "tesseract"
+        assert "sku" not in all_extras
+
+    def test_extras_with_underscore_prefixed_keys(self):
+        """Underscore-prefixed keys that aren't _value or _confidence go to extras."""
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9, "_bbox": [0.1, 0.2, 0.3, 0.4]},
+            "price": 29.99,
+            "sku": "ABC123",
+        })
+        extras = pred.get_field_extras("name")
+        assert extras is not None
+        assert extras["_bbox"] == [0.1, 0.2, 0.3, 0.4]
+
+    def test_no_extras_when_no_rich_values(self):
+        pred = Product(name="Widget", price=29.99, sku="ABC123")
+        assert pred.get_all_extras() == {}
+        assert pred.get_field_extras("name") is None
+
+    def test_non_prefixed_key_emits_warning(self):
+        """Non-underscore-prefixed keys inside a rich value emit a UserWarning."""
+        with pytest.warns(UserWarning, match="Non-prefixed key 'handwritten'"):
+            Product.from_json({
+                "name": {"_value": "Widget", "handwritten": True},
+                "price": 29.99,
+                "sku": "ABC123",
+            })

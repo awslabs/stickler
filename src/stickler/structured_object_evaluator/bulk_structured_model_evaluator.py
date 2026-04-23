@@ -16,10 +16,13 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 from stickler.structured_object_evaluator.models.confidence import (
-    ConfidenceCalculator,
     ConfidenceMetric,
-    ConfidencePair,
-    KeyedConfidencePairs,
+)
+from stickler.structured_object_evaluator.models.confidence.accumulator import (
+    ConfidenceAccumulator,
+)
+from stickler.structured_object_evaluator.models.post_comparison_accumulator import (
+    PostComparisonAccumulator,
 )
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.utils.process_evaluation import ProcessEvaluation
@@ -53,6 +56,7 @@ class BulkStructuredModelEvaluator:
         elide_errors: bool = False,
         individual_results_jsonl: Optional[str] = None,
         confidence_metrics: Optional[List[ConfidenceMetric]] = None,
+        accumulators: Optional[List[PostComparisonAccumulator]] = None,
     ):
         """
         Initialize the stateful bulk evaluator.
@@ -67,13 +71,22 @@ class BulkStructuredModelEvaluator:
             individual_results_jsonl: Optional path to JSONL file for appending individual comparison results
             confidence_metrics: Optional list of ConfidenceMetric instances to compute.
                 Defaults to [AUROCMetric()]. Pass an explicit list to add Brier, ECE, etc.
+                Ignored if accumulators is provided.
+            accumulators: Optional list of PostComparisonAccumulator instances.
+                Defaults to [ConfidenceAccumulator()]. Pass an explicit list to
+                add custom accumulators (e.g., BBoxMAPAccumulator).
         """
         self.target_schema = target_schema
         self.verbose = verbose
         self.document_non_matches = document_non_matches
         self.elide_errors = elide_errors
         self.individual_results_jsonl = individual_results_jsonl
-        self._confidence_calculator = ConfidenceCalculator(metrics=confidence_metrics)
+
+        # Build accumulators list
+        if accumulators is not None:
+            self._accumulators = accumulators
+        else:
+            self._accumulators = [ConfidenceAccumulator(metrics=confidence_metrics)]
 
         # Initialize state
         self.reset()
@@ -111,10 +124,9 @@ class BulkStructuredModelEvaluator:
         self._processed_count = 0
         self._start_time = time.time()
 
-        # Confidence pairs for bulk metric computation
-        self._keyed_confidence_pairs: KeyedConfidencePairs = {}
-        self._confidence_fields_with: int = 0
-        self._confidence_fields_total: int = 0
+        # Reset all post-comparison accumulators
+        for acc in self._accumulators:
+            acc.reset()
 
         if self.verbose:
             print("Reset evaluator state")
@@ -153,18 +165,9 @@ class BulkStructuredModelEvaluator:
                 with open(self.individual_results_jsonl, "a", encoding="utf-8") as f:
                     f.write(json.dumps(record) + "\n")
 
-            # Always extract confidence coverage so totals include every document.
-            # Only merge keyed confidence pairs when the prediction provides
-            # confidence values.
-            has_confidences = bool(pred_model.get_all_confidences())
-            calculator = self._confidence_calculator
-            extraction = calculator.extract(comparison_result, pred_model)
-            if has_confidences:
-                for field_path, pairs in extraction.keyed_pairs.items():
-                    self._keyed_confidence_pairs.setdefault(field_path, []).extend(pairs)
-            self._confidence_fields_with += extraction.fields_with_confidence
-            self._confidence_fields_total += extraction.fields_total
-
+            # Delegate to update_from_comparison_result which handles both
+            # confusion matrix accumulation and confidence extraction
+            # (via prediction_raw in the comparison result).
             self.update_from_comparison_result(comparison_result, doc_id)
 
         except Exception as e:
@@ -194,17 +197,17 @@ class BulkStructuredModelEvaluator:
         StructuredModel.compare_with(include_confusion_matrix=True) and
         accumulates its confusion matrix.
 
-        Limitation: This path does NOT accumulate confidence metrics. The
-        prediction instance is required to access confidence values from
-        from_json(), and this method only receives a dict. If you need
-        confidence metrics from bulk evaluation (AUROC, ECE, etc.), use
-        update(gt_model, pred_model) instead. Confidence data written to
-        JSONL via individual_results_jsonl is also not round-trippable
-        through this method.
+        When the comparison result includes "prediction_raw" (the original
+        prediction JSON before rich value unwrapping) and "field_comparisons",
+        this method also extracts and accumulates confidence pairs for bulk
+        confidence metrics. This makes the update_from_comparison_result path
+        produce identical confidence metrics to the update() path.
 
         Args:
             comparison_result: Dictionary returned by StructuredModel.compare_with()
                 with include_confusion_matrix=True. Must contain a "confusion_matrix" key.
+                Optionally contains "prediction_raw" and "field_comparisons" for
+                confidence metric accumulation.
             doc_id: Optional document identifier for error tracking
         """
         if doc_id is None:
@@ -226,6 +229,11 @@ class BulkStructuredModelEvaluator:
 
             # Accumulate the confusion matrix
             self._accumulate_confusion_matrix(comparison_result["confusion_matrix"])
+
+            # Delegate to post-comparison accumulators
+            prediction_raw = comparison_result.get("prediction_raw")
+            for acc in self._accumulators:
+                acc.accumulate(comparison_result, prediction_raw)
 
             self._processed_count += 1
 
@@ -497,23 +505,21 @@ class BulkStructuredModelEvaluator:
 
         total_time = time.time() - self._start_time
 
-        # Compute confidence metrics whenever we've tracked coverage, even if
-        # no fields had confidence values. This lets the user see "0/400 fields
-        # have confidence" rather than a bare None, matching the coverage fix
-        # that accumulates fields_total for every document.
-        confidence_metrics = None
-        if self._confidence_fields_total > 0:
-            confidence_metrics = self._confidence_calculator.compute_metrics(
-                self._keyed_confidence_pairs,
-                fields_with_confidence=self._confidence_fields_with,
-                fields_total=self._confidence_fields_total,
-            )
+        # Compute metrics from all post-comparison accumulators
+        accumulator_metrics = {}
+        for acc in self._accumulators:
+            computed = acc.compute()
+            if computed is not None:
+                accumulator_metrics[acc.name] = computed
+
+        # Extract confidence_metrics for backward compatibility
+        confidence_metrics = accumulator_metrics.get("confidence_metrics")
 
         return ProcessEvaluation(
             document_count=self._processed_count,
             metrics=overall_metrics,
             field_metrics=field_metrics,
-            errors=list(self._errors),  # Copy to avoid external modification
+            errors=list(self._errors),
             total_time=total_time,
             non_matches=list(self._non_matches) if self.document_non_matches else None,
             confidence_metrics=confidence_metrics,
@@ -693,13 +699,10 @@ class BulkStructuredModelEvaluator:
             "errors": list(self._errors),
             "processed_count": self._processed_count,
             "start_time": self._start_time,
-            # Confidence pairs for bulk metrics (serialized as dicts)
-            "keyed_confidence_pairs": {
-                field_path: [p.model_dump() for p in pairs]
-                for field_path, pairs in self._keyed_confidence_pairs.items()
+            # Post-comparison accumulator states
+            "accumulators": {
+                acc.name: acc.get_state() for acc in self._accumulators
             },
-            "confidence_fields_with": self._confidence_fields_with,
-            "confidence_fields_total": self._confidence_fields_total,
             # Configuration
             "target_schema": self._schema_name,
             "elide_errors": self.elide_errors,
@@ -738,13 +741,20 @@ class BulkStructuredModelEvaluator:
         self._processed_count = state["processed_count"]
         self._start_time = state["start_time"]
 
-        # Restore confidence pairs
-        self._keyed_confidence_pairs = {
-            field_path: [ConfidencePair(**p) for p in pairs]
-            for field_path, pairs in state.get("keyed_confidence_pairs", {}).items()
-        }
-        self._confidence_fields_with = state.get("confidence_fields_with", 0)
-        self._confidence_fields_total = state.get("confidence_fields_total", 0)
+        # Restore accumulator states
+        acc_states = state.get("accumulators", {})
+        # Backward compat: old state format had confidence keys at top level
+        if not acc_states and "keyed_confidence_pairs" in state:
+            acc_states = {
+                "confidence_metrics": {
+                    "keyed_confidence_pairs": state["keyed_confidence_pairs"],
+                    "confidence_fields_with": state.get("confidence_fields_with", 0),
+                    "confidence_fields_total": state.get("confidence_fields_total", 0),
+                }
+            }
+        for acc in self._accumulators:
+            if acc.name in acc_states:
+                acc.load_state(acc_states[acc.name])
 
         if self.verbose:
             print(f"Loaded state: {self._processed_count} documents processed")
@@ -780,13 +790,20 @@ class BulkStructuredModelEvaluator:
         self._errors.extend(other_state["errors"])
         self._processed_count += other_state["processed_count"]
 
-        # Merge confidence pairs
-        for field_path, pairs in other_state.get("keyed_confidence_pairs", {}).items():
-            self._keyed_confidence_pairs.setdefault(field_path, []).extend([
-                ConfidencePair(**p) for p in pairs
-            ])
-        self._confidence_fields_with += other_state.get("confidence_fields_with", 0)
-        self._confidence_fields_total += other_state.get("confidence_fields_total", 0)
+        # Merge accumulator states
+        acc_states = other_state.get("accumulators", {})
+        # Backward compat: old state format
+        if not acc_states and "keyed_confidence_pairs" in other_state:
+            acc_states = {
+                "confidence_metrics": {
+                    "keyed_confidence_pairs": other_state["keyed_confidence_pairs"],
+                    "confidence_fields_with": other_state.get("confidence_fields_with", 0),
+                    "confidence_fields_total": other_state.get("confidence_fields_total", 0),
+                }
+            }
+        for acc in self._accumulators:
+            if acc.name in acc_states:
+                acc.merge_state(acc_states[acc.name])
 
         if self.verbose:
             print(
@@ -845,10 +862,8 @@ def aggregate_from_comparisons(
     without needing the original StructuredModel instances. It accepts the raw
     dictionary outputs of StructuredModel.compare_with(include_confusion_matrix=True).
 
-    Limitation: This function does NOT aggregate confidence metrics. Confidence
-    values live on the prediction instance (accessed via get_all_confidences())
-    and are not preserved in the comparison result dict. For confidence metrics,
-    use BulkStructuredModelEvaluator.update(gt_model, pred_model) directly.
+    When comparison results include "prediction_raw" and "field_comparisons",
+    confidence metrics are also aggregated automatically.
 
     Args:
         comparison_results: List of dictionaries, each returned by
@@ -856,8 +871,8 @@ def aggregate_from_comparisons(
 
     Returns:
         ProcessEvaluation with aggregated metrics including overall and
-        per-field precision, recall, F1, and accuracy. confidence_metrics
-        will be None.
+        per-field precision, recall, F1, accuracy, and confidence metrics
+        (when prediction_raw is present in the comparison results).
     """
     evaluator = BulkStructuredModelEvaluator()
     for result in comparison_results:

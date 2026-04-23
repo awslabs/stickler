@@ -95,6 +95,48 @@ class ConfidenceCalculator:
         """
         return self.extract(comparison_result, pred_instance).keyed_pairs
 
+    def extract_from_dicts(
+        self,
+        field_comparisons: List[Dict],
+        confidences: Dict[str, float],
+    ) -> ExtractionResult:
+        """Extract ConfidencePair objects from raw dicts (no model instance needed).
+
+        This is the path used by update_from_comparison_result() when
+        reconstructing confidence pairs from a serialized comparison result
+        that includes prediction_raw.
+
+        Args:
+            field_comparisons: List of field comparison dicts (from compare_with).
+            confidences: Dict mapping field paths to confidence floats
+                (from RichValueHelper.process_rich_values).
+
+        Returns:
+            ExtractionResult with keyed_pairs and coverage counts.
+        """
+        keyed: KeyedConfidencePairs = {}
+        fields_with = 0
+        fields_total = 0
+
+        for fc in field_comparisons:
+            fields_total += 1
+            field_path = fc["actual_key"]
+            confidence = confidences.get(field_path)
+            if confidence is not None:
+                fields_with += 1
+                pair = ConfidencePair(
+                    is_match=bool(fc["match"]),
+                    confidence=confidence,
+                    similarity=fc.get("score", 0.0),
+                )
+                keyed.setdefault(field_path, []).append(pair)
+
+        return ExtractionResult(
+            keyed_pairs=keyed,
+            fields_with_confidence=fields_with,
+            fields_total=fields_total,
+        )
+
     def compute_metrics(
         self,
         keyed_pairs: KeyedConfidencePairs,

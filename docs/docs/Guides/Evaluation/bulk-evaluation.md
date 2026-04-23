@@ -202,6 +202,80 @@ final_result = combined.compute()
 
 ---
 
+## Map/Reduce: Single-Doc Compare, Bulk Aggregate
+
+In production pipelines (like the IDP Accelerator), documents are often compared individually in a map step, with results saved to JSONL. A separate reduce step aggregates those results into bulk metrics. This pattern works for both confusion matrix metrics and confidence metrics.
+
+### How It Works
+
+When predictions are created via `from_json()` with rich values (e.g., `{"_value": "Widget", "_confidence": 0.95}`), the original prediction JSON is automatically stored in the comparison result as `prediction_raw`. This enables the reduce step to reconstruct confidence pairs without needing the original model instances.
+
+### Map Step: Compare Individual Documents
+
+```python
+import json
+
+results_file = "comparison_results.jsonl"
+
+for doc_id, gt_json, pred_json in your_dataset:
+    gt = Invoice(**gt_json)
+    pred = Invoice.from_json(pred_json)  # from_json() preserves rich value metadata
+
+    result = gt.compare_with(
+        pred,
+        include_confusion_matrix=True,
+        document_field_comparisons=True,
+    )
+
+    # Save to JSONL. prediction_raw is included automatically.
+    with open(results_file, "a") as f:
+        record = {"doc_id": doc_id, "comparison_result": result}
+        f.write(json.dumps(record, default=str) + "\n")
+```
+
+### Reduce Step: Aggregate from JSONL
+
+```python
+evaluator = BulkStructuredModelEvaluator(target_schema=Invoice)
+
+with open(results_file) as f:
+    for line in f:
+        record = json.loads(line)
+        evaluator.update_from_comparison_result(
+            record["comparison_result"],
+            doc_id=record["doc_id"],
+        )
+
+result = evaluator.compute()
+print(f"F1: {result.metrics['cm_f1']:.3f}")
+print(f"AUROC: {result.confidence_metrics['overall']['auroc']['value']}")
+```
+
+### Requirements
+
+For confidence metrics to survive the JSONL round-trip:
+
+1. Predictions must be created via `from_json()` (not direct construction)
+2. Rich values must use the `_value`/`_confidence` convention
+3. `compare_with()` must be called with `document_field_comparisons=True`
+
+When these conditions are met, `update_from_comparison_result()` produces identical confidence metrics to the direct `update()` path.
+
+### Alternative: aggregate_from_comparisons()
+
+For simpler cases where you have a list of comparison results in memory:
+
+```python
+from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
+    aggregate_from_comparisons,
+)
+
+results = [comp1, comp2, comp3]  # list of compare_with() outputs
+evaluation = aggregate_from_comparisons(results)
+```
+
+---
+
 ## Pretty Printing
 
 For quick terminal output of accumulated metrics, use:
