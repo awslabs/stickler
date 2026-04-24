@@ -386,7 +386,7 @@ class TestVetRecordsMetricsCalculation:
             get_metric(cm["fields"]["pets"], "fn") == 0
         ), "Expected 0 false negative for pets field overall performance"
         assert (
-            get_metric(cm["fields"]["pets"], "tn") == 0, 
+            get_metric(cm["fields"]["pets"], "tn") == 0
         ), "Expected 0 true negatives for pets field overall performance"
 
     def test_overall_metrics(self):
