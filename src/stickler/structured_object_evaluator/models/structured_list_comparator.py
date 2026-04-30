@@ -176,21 +176,27 @@ class StructuredListComparator:
         matched_pairs = hungarian_info["matched_pairs"]
 
         # Count OBJECTS, not individual fields
+        # When similarity is exactly 0.0, the pairing is meaningless at object level —
+        # treat as unmatched (FN + FA) rather than as FD
         tp_objects = 0  # Objects with similarity >= match_threshold
-        fd_objects = 0  # Objects with similarity < match_threshold
+        fd_objects = 0  # Objects with similarity < match_threshold but > 0
         for gt_idx, pred_idx, similarity in matched_pairs:
             if similarity >= match_threshold:
                 tp_objects += 1
-            else:
+            elif similarity > 0.0:
                 fd_objects += 1
+            # else: similarity == 0.0 → effectively unmatched at object level
 
-        # Count unmatched objects
+        # For object-level counting, exclude zero-similarity pairs
+        matched_gt_for_counting = {idx for idx, _, sim in matched_pairs if sim > 0.0}
+        matched_pred_for_counting = {idx for _, idx, sim in matched_pairs if sim > 0.0}
+        fn_objects = len(gt_list) - len(matched_gt_for_counting)
+        fa_objects = len(pred_list) - len(matched_pred_for_counting)
+
+        # For field-level recursion, ALL Hungarian-paired items are still considered
+        # "matched" so their fields get compared (yielding FD at field level)
         matched_gt_indices = {idx for idx, _, _ in matched_pairs}
         matched_pred_indices = {idx for _, idx, _ in matched_pairs}
-        fn_objects = len(gt_list) - len(matched_gt_indices)  # Unmatched GT objects
-        fa_objects = len(pred_list) - len(
-            matched_pred_indices
-        )  # Unmatched pred objects
 
         # Build list-level metrics counting OBJECTS (not fields)
         object_level_metrics = {
