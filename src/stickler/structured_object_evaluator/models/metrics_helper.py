@@ -20,12 +20,12 @@ class MetricsHelper:
         Returns:
             Dictionary with precision, recall, F1, and accuracy
         """
-        tp = metrics["tp"]
-        fp = metrics["fp"]
-        tn = metrics["tn"]
-        fn = metrics["fn"]
-        fd = metrics["fd"]
-        fa = metrics["fa"]
+        tp = metrics.get("tp", 0)
+        fp = metrics.get("fp", 0)
+        tn = metrics.get("tn", 0)
+        fn = metrics.get("fn", 0)
+        fd = metrics.get("fd", 0)
+        fa = metrics.get("fa", 0)
 
         # Calculate precision: TP / (TP + FP) where FP includes both FA and FD
         # Note: fp field should already equal fa + fd from individual classifications
