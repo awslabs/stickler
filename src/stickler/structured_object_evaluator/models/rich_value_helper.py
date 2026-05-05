@@ -19,6 +19,13 @@ Convention:
     _source_text: Source text content (future)
     other keys:   User extras, stored verbatim in get_field_extras()
 
+Deprecation window:
+    The pre-rename ``{"value": ..., "confidence": ...}`` shape is still
+    accepted for one release. When encountered, a DeprecationWarning is
+    emitted naming the field path and the dict is unwrapped the same way
+    as the new ``_value``/``_confidence`` form. The legacy shape will be
+    removed in the next release.
+
 See the Rich Value Pattern proposal for design rationale.
 """
 
@@ -51,6 +58,21 @@ class RichValueHelper:
         """
         return isinstance(data, dict) and "_value" in data
 
+    @staticmethod
+    def _is_legacy_rich_value(data: Any) -> bool:
+        """Check if a dict uses the pre-underscore {"value", "confidence"} shape.
+
+        Supports a one-release deprecation window so existing JSONL corpora
+        continue to have their confidence scores extracted. Callers should
+        emit a DeprecationWarning before treating a legacy shape as rich.
+        """
+        return (
+            isinstance(data, dict)
+            and "_value" not in data
+            and "value" in data
+            and "confidence" in data
+        )
+
     @classmethod
     def process_rich_values(
         cls, data: Any, field_path: str = ""
@@ -61,6 +83,13 @@ class RichValueHelper:
         - "_value" into the model field
         - "_confidence" into the confidences dict
         - All other keys into the extras dict
+
+        Also recognizes the deprecated ``{"value", "confidence"}`` shape
+        for one release. When that shape is encountered a
+        ``DeprecationWarning`` is emitted naming the field path, and the
+        dict is unwrapped the same way as the underscore-prefixed form.
+        Only the ``value`` and ``confidence`` keys are honored in the
+        legacy path; no extras are collected.
 
         Args:
             data: The JSON data to process.
@@ -103,6 +132,20 @@ class RichValueHelper:
                     extras[field_path] = field_extras
 
                 return value, confidences, extras
+            elif cls._is_legacy_rich_value(data):
+                # Deprecation shim: treat {"value", "confidence"} as a rich
+                # value for one release so existing JSONL corpora still have
+                # their confidence extracted. Remove in the next major.
+                warnings.warn(
+                    f"Field '{field_path}' uses the legacy "
+                    f"{{'value', 'confidence'}} rich value shape. Rename "
+                    f"these keys to '_value' and '_confidence'. Support for "
+                    f"the legacy shape will be removed in the next release.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                confidences = {field_path: data["confidence"]}
+                return data["value"], confidences, {}
             else:
                 processed = {}
                 all_confidences: Dict[str, float] = {}

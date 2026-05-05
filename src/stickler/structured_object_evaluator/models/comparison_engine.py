@@ -308,6 +308,20 @@ class ComparisonEngine:
 
             from .confidence import ConfidenceCalculator
 
+            # Auto-enable field_comparisons when the caller asked for
+            # confidence. Previously forgetting document_field_comparisons=True
+            # raised `ValueError: No field comparisons found` from deep inside
+            # the calculator. The calculator is a lower-level API and still
+            # raises, but at the compare_with level we know the user wants
+            # confidence and can wire the data through themselves.
+            if "field_comparisons" not in result:
+                field_comparisons = (
+                    self.field_comparison_collector.collect_field_comparisons(
+                        recursive_result, other
+                    )
+                )
+                result["field_comparisons"] = field_comparisons
+
             _warnings.warn(
                 "Single-document confidence metrics are a quick sanity check. "
                 "For statistically meaningful results (especially non-AUROC metrics "
@@ -323,6 +337,27 @@ class ComparisonEngine:
                 extraction.keyed_pairs,
                 fields_with_confidence=extraction.fields_with_confidence,
                 fields_total=extraction.fields_total,
+            )
+            # Deprecation shim: populate the pre-rename
+            # `auroc_confidence_metric` key from the new structured result so
+            # callers doing `result["auroc_confidence_metric"]` keep working
+            # for one release. The legacy key carried a single AUROC float
+            # (or 0.5 sentinel). Accessing it via a proxy that emits the
+            # warning on read would be nicer, but we want the key to survive
+            # JSON serialization, so we populate the value eagerly and warn
+            # on the wrapping compare_with call.
+            overall = result["confidence_metrics"].get("overall") or {}
+            auroc_entry = overall.get("auroc") or {}
+            legacy_auroc = auroc_entry.get("value")
+            if legacy_auroc is None:
+                legacy_auroc = 0.5
+            result["auroc_confidence_metric"] = legacy_auroc
+            _warnings.warn(
+                "The 'auroc_confidence_metric' result key is deprecated; use "
+                "result['confidence_metrics']['overall']['auroc']['value'] "
+                "instead. The legacy key will be removed in the next release.",
+                DeprecationWarning,
+                stacklevel=2,
             )
 
         # Include raw prediction JSON for round-tripping through JSONL.

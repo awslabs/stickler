@@ -95,7 +95,7 @@ This also supports confidence metrics when the comparison results contain `predi
 
 ## Notebook
 
-See [`Map_Reduce_Evaluation.ipynb`](../../examples/notebooks/Map_Reduce_Evaluation.ipynb) for a runnable end-to-end example that demonstrates the full flow and verifies parity between direct and JSONL-replay paths.
+See [`Map_Reduce_Evaluation.ipynb`](../../../examples/notebooks/Map_Reduce_Evaluation.ipynb) for a runnable end-to-end example that demonstrates the full flow and verifies parity between direct and JSONL-replay paths.
 
 ## See Also
 

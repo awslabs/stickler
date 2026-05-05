@@ -18,6 +18,11 @@ class ProcessEvaluation(BaseModel):
     total_time: Optional[float] = None
     non_matches: Optional[List[Dict[str, Any]]] = None
     confidence_metrics: Optional[Dict[str, Any]] = None
+    # Full dict keyed by accumulator name. ``confidence_metrics`` above is a
+    # convenience alias for ``accumulator_metrics["confidence_metrics"]`` and
+    # stays populated for backwards compatibility. Future accumulators (e.g.
+    # a BBoxMAPAccumulator) land here without needing a dedicated field.
+    accumulator_metrics: Optional[Dict[str, Any]] = None
 
     def to_md(self) -> str:
         """

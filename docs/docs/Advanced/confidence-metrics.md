@@ -45,7 +45,7 @@ Fields with and without rich values can coexist:
 {
   "name": {"_value": "Widget", "_confidence": 0.95},
   "price": 29.99,
-  "sku": {"value": "ABC123", "_bbox": [0.1, 0.2, 0.3, 0.4]}
+  "sku": {"_value": "ABC123", "_bbox": [0.1, 0.2, 0.3, 0.4]}
 }
 ```
 

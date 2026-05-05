@@ -134,6 +134,8 @@ result = ground_truth.compare_with(
     document_field_comparisons=True
 )
 print(result["confidence_metrics"]["overall"])   # {"auroc": {"value": ...}}
+# Invoice has 3 comparable fields (invoice_number, vendor, total); only
+# two of them came in with _confidence, so coverage is 2/3:
 print(result["confidence_metrics"]["coverage"])  # {"fields_with_confidence": 2, "fields_total": 3, "ratio": 0.67}
 
 # Bulk evaluation (recommended, dataset-level AUROC is statistically meaningful)

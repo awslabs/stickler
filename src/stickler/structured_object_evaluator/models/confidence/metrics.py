@@ -23,7 +23,8 @@ TODO: The similarity field enables several future metric directions:
     no binary label needed.
   - Review Efficiency Metric: sort by confidence ascending, measure how
     quickly you discover errors. Could use similarity to define error
-    severity instead of binary match. See docs/proposals/review_efficiency_metric.md.
+    severity instead of binary match. See the Review_Efficiency_Exploration
+    notebook for a worked example.
 
 To add a new metric:
     1. Subclass ConfidenceMetric
@@ -32,18 +33,39 @@ To add a new metric:
 """
 
 from abc import ABC, abstractmethod
+from math import isfinite
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sklearn.metrics import roc_auc_score
 
 
 class ConfidencePair(BaseModel):
-    """A single observation pairing a match result with confidence and similarity."""
+    """A single observation pairing a match result with confidence and similarity.
+
+    Confidence and similarity are both expected to be finite floats in
+    [0.0, 1.0]. Out-of-range or non-finite inputs (NaN, inf) are rejected
+    at construction time so a single bad row can't silently corrupt
+    downstream metrics (Brier tolerates out-of-range values without
+    complaint; AUROC crashes on NaN mid-run).
+    """
 
     is_match: bool
     confidence: float
     similarity: float
+
+    @field_validator("confidence", "similarity")
+    @classmethod
+    def _finite_in_unit_interval(cls, v: float, info) -> float:
+        if not isfinite(v):
+            raise ValueError(
+                f"{info.field_name} must be a finite float in [0.0, 1.0], got {v!r}"
+            )
+        if not (0.0 <= v <= 1.0):
+            raise ValueError(
+                f"{info.field_name} must be in [0.0, 1.0], got {v!r}"
+            )
+        return v
 
 
 ConfidencePairs = List[ConfidencePair]
@@ -172,14 +194,37 @@ class ErrorCaptureAtBudgetMetric(ConfidenceMetric):
 
     Sort fields by confidence ascending. At each budget level, count
     what fraction of total errors fall in the bottom X% of fields.
-    Random sampling would catch X% of errors by reviewing X% of data.
+    Random sampling would catch ``k/n`` of errors in expectation when
+    ``k`` fields are reviewed, so gain is computed against the actual
+    reviewed fraction rather than the requested budget — otherwise
+    tight budgets and small datasets inflate the reported gain (e.g.
+    ``n=1, budget=0.1`` reviews 100% of the data but would report a
+    10x gain against a 10% baseline).
 
     Args:
         budgets: List of review budget levels as fractions (default: [0.1, 0.3, 0.5]).
-            Each budget must be in the range (0.0, 1.0].
+            Each budget must be in the range (0.0, 1.0]. Budgets are
+            sorted internally so the middle-budget headline and iteration
+            order are deterministic regardless of input order.
 
     Raises:
         ValueError: If any budget is outside (0.0, 1.0].
+
+    Result shape::
+
+        {
+            "value": float,              # headline gain at the middle budget
+            "budgets": {
+                <budget>: {
+                    "fields_reviewed": int,
+                    "errors_found": int,
+                    "pct_errors_caught": float,
+                    "pct_errors_random": float,   # actual reviewed fraction (k/n)
+                    "gain": float                 # pct_errors_caught / (k/n)
+                },
+                ...
+            }
+        }
     """
 
     def __init__(self, budgets: Optional[List[float]] = None):
@@ -211,16 +256,29 @@ class ErrorCaptureAtBudgetMetric(ConfidenceMetric):
 
         budgets_result = {}
         for budget in self.budgets:
-            # Cap k at n so fields_reviewed never exceeds total fields
+            # Cap k at n so fields_reviewed never exceeds total fields.
+            # max(1, ...) guarantees we review at least one row; this means
+            # the actual reviewed fraction (k/n) can exceed the requested
+            # budget at small n, so we compare gain against k/n rather
+            # than the requested budget to avoid spurious "10x gain"
+            # numbers when n=1 and budget=0.1.
             k = min(n, max(1, int(n * budget)))
+            reviewed_fraction = k / n
             errors_found = sum(1 for p in sorted_pairs[:k] if not p.is_match)
             pct_errors_caught = errors_found / total_errors
+            gain = (
+                pct_errors_caught / reviewed_fraction
+                if reviewed_fraction > 0
+                else 0.0
+            )
             budgets_result[budget] = {
                 "fields_reviewed": k,
                 "errors_found": errors_found,
                 "pct_errors_caught": pct_errors_caught,
-                "pct_errors_random": budget,
-                "gain": pct_errors_caught / budget if budget > 0 else 0.0,
+                # Report the actual reviewed fraction used as the random
+                # baseline so the gain calculation is transparent.
+                "pct_errors_random": reviewed_fraction,
+                "gain": gain,
             }
 
         # Headline value: gain at the middle budget level

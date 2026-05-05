@@ -235,6 +235,61 @@ class TestListPaths:
         for k in item_keys:
             assert "[0]." in k or "[1]." in k
 
+    def test_hungarian_reorder_preserves_confidence_match_pairing(self):
+        """After Hungarian matching, confidence must stay paired with the
+        prediction it came from, not the ground-truth slot it landed in.
+
+        gt[0]=Mouse, gt[1]=Keyboard. pred[0]=Keyboard (conf 0.92),
+        pred[1]=Mouse (conf 0.90). A bug that re-pairs pred[0]'s
+        confidence with gt[0]'s match outcome would be invisible in the
+        previous assertion style (both are matches). This test also
+        includes a wrong sku on pred[1] so is_match=False has to line up
+        with the 0.30 confidence, not Keyboard's 0.95.
+        """
+        gt = Order(
+            order_id="ORD-1",
+            items=[
+                Product(name="Mouse", price=29.99, sku="MOU001"),
+                Product(name="Keyboard", price=79.99, sku="KEY001"),
+            ],
+        )
+        pred = Order.from_json({
+            "order_id": {"_value": "ORD-1", "_confidence": 0.99},
+            "items": [
+                {
+                    "name": {"_value": "Keyboard", "_confidence": 0.92},
+                    "price": {"_value": 79.99, "_confidence": 0.88},
+                    "sku": {"_value": "KEY001", "_confidence": 0.95},
+                },
+                {
+                    "name": {"_value": "Mouse", "_confidence": 0.90},
+                    "price": {"_value": 29.99, "_confidence": 0.85},
+                    "sku": {"_value": "WRONG", "_confidence": 0.30},
+                },
+            ],
+        })
+
+        result = gt.compare_with(pred, document_field_comparisons=True)
+        calc = ConfidenceCalculator()
+        keyed = calc.extract_keyed_pairs(result, pred)
+
+        # pred[0] = Keyboard (matches gt[1]=Keyboard). Confidence 0.92
+        # must follow pred[0] into the items[0] slot.
+        assert keyed["items[0].name"][0].confidence == 0.92
+        assert keyed["items[0].name"][0].is_match is True
+        assert keyed["items[0].price"][0].confidence == 0.88
+        assert keyed["items[0].price"][0].is_match is True
+        assert keyed["items[0].sku"][0].confidence == 0.95
+        assert keyed["items[0].sku"][0].is_match is True
+
+        # pred[1] = Mouse (matches gt[0]=Mouse). The sku field is wrong
+        # (WRONG vs MOU001); is_match=False must pair with conf 0.30,
+        # not with Keyboard's sku conf of 0.95.
+        assert keyed["items[1].name"][0].confidence == 0.90
+        assert keyed["items[1].name"][0].is_match is True
+        assert keyed["items[1].sku"][0].confidence == 0.30
+        assert keyed["items[1].sku"][0].is_match is False
+
 
 # ── 4. Partial confidence coverage ──
 
@@ -1064,3 +1119,422 @@ class TestDefaultMetricsFactory:
         assert a is not b
         # Different metric instances inside (not shared references)
         assert a[0] is not b[0]
+
+
+# -- 20. Deprecation shim: legacy `auroc_confidence_metric` result key --
+
+
+class TestLegacyAurocKeyShim:
+    """The pre-rename ``auroc_confidence_metric`` result key is still
+    populated for one release so callers doing
+    ``result["auroc_confidence_metric"]`` keep working on upgrade."""
+
+    def test_legacy_key_present_with_deprecation(self):
+        gt = Product(name="Widget", price=29.99, sku="ABC123")
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 99.99, "_confidence": 0.3},
+            "sku": {"_value": "ABC123", "_confidence": 0.8},
+        })
+        with pytest.warns(DeprecationWarning, match="auroc_confidence_metric"):
+            result = gt.compare_with(
+                pred,
+                add_confidence_metrics=True,
+                document_field_comparisons=True,
+            )
+
+        assert "auroc_confidence_metric" in result
+        legacy = result["auroc_confidence_metric"]
+        nested = result["confidence_metrics"]["overall"]["auroc"]["value"]
+        # Legacy field mirrors the new structured value when present, and
+        # falls back to the pre-rename 0.5 sentinel when AUROC is undefined.
+        if nested is None:
+            assert legacy == 0.5
+        else:
+            assert legacy == nested
+
+    def test_legacy_key_falls_back_to_half_when_undefined(self):
+        """When all fields match (single class), AUROC is None; legacy key
+        uses the pre-rename 0.5 sentinel."""
+        gt = Product(name="Widget", price=29.99, sku="ABC123")
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 29.99, "_confidence": 0.8},
+            "sku": {"_value": "ABC123", "_confidence": 0.7},
+        })
+        with pytest.warns(DeprecationWarning):
+            result = gt.compare_with(
+                pred,
+                add_confidence_metrics=True,
+                document_field_comparisons=True,
+            )
+        assert result["auroc_confidence_metric"] == 0.5
+        assert result["confidence_metrics"]["overall"]["auroc"]["value"] is None
+
+    def test_legacy_key_absent_without_flag(self):
+        """Without add_confidence_metrics=True the legacy key is not added."""
+        gt = Product(name="Widget", price=29.99, sku="ABC123")
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+        })
+        result = gt.compare_with(pred, document_field_comparisons=True)
+        assert "auroc_confidence_metric" not in result
+        assert "confidence_metrics" not in result
+
+
+# -- 21. Boundary: ConfidencePair rejects invalid inputs --
+
+
+class TestConfidencePairValidation:
+    """ConfidencePair is the single producer of pair objects for every
+    metric, so validating at construction prevents NaN/out-of-range
+    inputs from corrupting downstream Brier/AUROC/ECE calculations."""
+
+    def test_nan_confidence_rejected(self):
+        import math
+
+        with pytest.raises(ValueError, match="confidence"):
+            ConfidencePair(is_match=True, confidence=math.nan, similarity=0.5)
+
+    def test_inf_confidence_rejected(self):
+        import math
+
+        with pytest.raises(ValueError, match="confidence"):
+            ConfidencePair(is_match=True, confidence=math.inf, similarity=0.5)
+
+    def test_confidence_above_one_rejected(self):
+        with pytest.raises(ValueError, match=r"\[0.0, 1.0\]"):
+            ConfidencePair(is_match=True, confidence=1.5, similarity=0.5)
+
+    def test_confidence_below_zero_rejected(self):
+        with pytest.raises(ValueError, match=r"\[0.0, 1.0\]"):
+            ConfidencePair(is_match=True, confidence=-0.1, similarity=0.5)
+
+    def test_similarity_out_of_range_rejected(self):
+        with pytest.raises(ValueError, match="similarity"):
+            ConfidencePair(is_match=False, confidence=0.5, similarity=1.1)
+
+    def test_boundaries_accepted(self):
+        """Both zero and one are valid."""
+        ConfidencePair(is_match=True, confidence=0.0, similarity=0.0)
+        ConfidencePair(is_match=False, confidence=1.0, similarity=1.0)
+
+
+# -- 22. Boundary: ECARB gain against actual reviewed fraction --
+
+
+class TestECARBGainBaseline:
+    """Gain is computed against the actual reviewed fraction (k/n) rather
+    than the requested budget, so tight budgets on small datasets don't
+    report spuriously inflated gains."""
+
+    def test_small_n_does_not_inflate_gain(self):
+        """n=1 with budget=0.1 forces k=1 (review 100% of data). Gain
+        should reflect the actual 100% review, not the 10% budget."""
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
+
+        pairs = [cp(False, 0.1)]  # 1 field, 1 error
+        metric = ErrorCaptureAtBudgetMetric(budgets=[0.10])
+        result = metric.compute(pairs)
+        budget_entry = result["budgets"][0.10]
+        # Reviewed 100% of data → caught 100% of errors → gain should be 1.0,
+        # not 10.0 (which is what comparing against the requested 0.10 budget
+        # would produce).
+        assert budget_entry["fields_reviewed"] == 1
+        assert budget_entry["pct_errors_caught"] == 1.0
+        assert budget_entry["pct_errors_random"] == 1.0
+        assert budget_entry["gain"] == 1.0
+
+    def test_k_exceeds_budget_uses_actual_fraction(self):
+        """n=9 with budget=0.1 forces k=1 (review ~11%). Gain reports
+        against the actual 1/9 fraction rather than the 10% budget."""
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
+
+        # 9 fields: 1 error at the lowest confidence, 8 correct at higher.
+        pairs = [cp(False, 0.05)] + [cp(True, 0.9) for _ in range(8)]
+        metric = ErrorCaptureAtBudgetMetric(budgets=[0.10])
+        result = metric.compute(pairs)
+        entry = result["budgets"][0.10]
+        assert entry["fields_reviewed"] == 1
+        # k=1 out of 9
+        assert entry["pct_errors_random"] == pytest.approx(1 / 9)
+        # Caught the single error
+        assert entry["pct_errors_caught"] == 1.0
+        # gain = 1.0 / (1/9) ≈ 9.0 — matches reality, not 10.0
+        assert entry["gain"] == pytest.approx(9.0)
+
+    def test_budget_one_reviews_everything(self):
+        """Budget=1.0 reviews 100%, catches 100% of errors, gain=1.0."""
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
+
+        pairs = [cp(False, 0.1), cp(True, 0.9), cp(False, 0.2)]
+        metric = ErrorCaptureAtBudgetMetric(budgets=[1.0])
+        result = metric.compute(pairs)
+        entry = result["budgets"][1.0]
+        assert entry["fields_reviewed"] == 3
+        assert entry["pct_errors_caught"] == 1.0
+        assert entry["pct_errors_random"] == 1.0
+        assert entry["gain"] == 1.0
+
+
+# -- 23. Boundary: calculator skips list FN entries without a key --
+
+
+class TestExtractSkipsNullKeyRows:
+    """Field comparisons with actual_key=None arrive when a prediction
+    has fewer list items than ground truth. They can't be joined to any
+    confidence score, so they must be skipped rather than inflating
+    fields_total."""
+
+    def test_list_fn_rows_do_not_inflate_coverage(self):
+        """Synthesize a field_comparisons list with a null-key row and
+        confirm extract_from_dicts skips it."""
+        calc = ConfidenceCalculator()
+        field_comparisons = [
+            {"actual_key": "name", "match": True, "score": 1.0},
+            # Simulated list FN: pred is missing an item for this gt row
+            {"actual_key": None, "match": False, "score": 0.0},
+            {"actual_key": "sku", "match": False, "score": 0.0},
+        ]
+        confidences = {"name": 0.9}  # sku has no confidence
+
+        extraction = calc.extract_from_dicts(field_comparisons, confidences)
+
+        # fields_total counts only the two keyed rows, not the FN entry
+        assert extraction.fields_total == 2
+        assert extraction.fields_with_confidence == 1
+        assert set(extraction.keyed_pairs.keys()) == {"name"}
+        # Sanity: the None key didn't leak into the dict
+        assert None not in extraction.keyed_pairs
+
+
+
+# -- 24. compare_with auto-enables field_comparisons for confidence --
+
+
+class TestConfidenceAutoEnablesFieldComparisons:
+    """``add_confidence_metrics=True`` should be usable without the caller
+    also remembering ``document_field_comparisons=True``; the underlying
+    field-level join data is wired in automatically so the common case
+    'just give me confidence metrics' no longer crashes."""
+
+    def test_confidence_without_field_comparisons_flag(self):
+        gt = Product(name="Widget", price=29.99, sku="ABC123")
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 99.99, "_confidence": 0.3},
+            "sku": {"_value": "ABC123", "_confidence": 0.8},
+        })
+
+        # No document_field_comparisons flag on purpose.
+        with pytest.warns(UserWarning, match="sanity check"):
+            result = gt.compare_with(pred, add_confidence_metrics=True)
+
+        assert "confidence_metrics" in result
+        # Auto-enabled field_comparisons should be populated since the
+        # calculator depends on them.
+        assert "field_comparisons" in result
+        coverage = result["confidence_metrics"]["coverage"]
+        assert coverage["fields_with_confidence"] == 3
+
+
+# -- 25. Bulk evaluator construction conflicts --
+
+
+class TestBulkEvaluatorConstructionConflicts:
+    """Passing both ``accumulators`` and ``confidence_metrics`` used to
+    silently drop ``confidence_metrics``. Now it raises so the conflict
+    shows up at construction time."""
+
+    def test_both_kwargs_raises(self):
+        from stickler.structured_object_evaluator.models.confidence.accumulator import (
+            ConfidenceAccumulator,
+        )
+
+        with pytest.raises(ValueError, match="not both"):
+            BulkStructuredModelEvaluator(
+                target_schema=Product,
+                confidence_metrics=[AUROCMetric()],
+                accumulators=[ConfidenceAccumulator()],
+            )
+
+    def test_accumulators_alone_ok(self):
+        from stickler.structured_object_evaluator.models.confidence.accumulator import (
+            ConfidenceAccumulator,
+        )
+
+        ev = BulkStructuredModelEvaluator(
+            target_schema=Product,
+            accumulators=[ConfidenceAccumulator(metrics=[AUROCMetric()])],
+        )
+        assert len(ev._accumulators) == 1
+
+    def test_confidence_metrics_alone_ok(self):
+        ev = BulkStructuredModelEvaluator(
+            target_schema=Product,
+            confidence_metrics=[AUROCMetric(), BrierScoreMetric()],
+        )
+        assert len(ev._accumulators) == 1
+
+
+# -- 26. Per-accumulator error isolation --
+
+
+class TestAccumulatorErrorIsolation:
+    """A bug in a single post-comparison accumulator must not corrupt the
+    confusion matrix of every doc it touches. Before the isolation fix
+    a failing accumulator flowed into the outer except, which rolled up
+    as ``fn += 1`` on the overall cm for that doc."""
+
+    def test_failing_accumulator_does_not_increment_fn(self):
+        from stickler.structured_object_evaluator.models.post_comparison_accumulator import (
+            PostComparisonAccumulator,
+        )
+
+        class BoomAccumulator(PostComparisonAccumulator):
+            @property
+            def name(self) -> str:
+                return "boom"
+
+            def reset(self):
+                pass
+
+            def accumulate(self, comparison_result, prediction_raw):
+                raise RuntimeError("synthetic accumulator failure")
+
+            def compute(self):
+                return None
+
+            def get_state(self):
+                return {}
+
+            def load_state(self, state):
+                pass
+
+            def merge_state(self, other_state):
+                pass
+
+        ev = BulkStructuredModelEvaluator(
+            target_schema=Product,
+            accumulators=[BoomAccumulator()],
+        )
+
+        gt = Product(name="Widget", price=29.99, sku="ABC123")
+        pred = Product(name="Widget", price=29.99, sku="ABC123")
+        ev.update(gt, pred)
+
+        # The comparison itself is a perfect match: all tp, no fn.
+        assert ev._confusion_matrix["overall"]["fn"] == 0
+        # The accumulator error was recorded with the offender named.
+        assert len(ev._errors) == 1
+        assert ev._errors[0]["accumulator"] == "boom"
+        assert ev._errors[0]["error_type"] == "RuntimeError"
+        # Processed count still advances so pipeline metrics are intact.
+        assert ev._processed_count == 1
+
+
+# -- 27. Accumulator warning on missing field_comparisons --
+
+
+class TestAccumulatorMissingFieldComparisonsWarning:
+    """When the caller supplies ``prediction_raw`` but forgets to enable
+    ``document_field_comparisons``, the confidence accumulator now warns
+    so the silent-zero-confidence failure mode is visible in logs."""
+
+    def test_warns_when_prediction_raw_but_no_field_comparisons(self):
+        from stickler.structured_object_evaluator.models.confidence.accumulator import (
+            ConfidenceAccumulator,
+        )
+
+        acc = ConfidenceAccumulator()
+        # Simulated comparison_result missing the field_comparisons key.
+        comparison_result = {
+            "overall_score": 1.0,
+            "confusion_matrix": {"overall": {"tp": 1}, "fields": {}},
+        }
+        prediction_raw = {"name": {"_value": "Widget", "_confidence": 0.9}}
+
+        with pytest.warns(UserWarning, match="document_field_comparisons"):
+            acc.accumulate(comparison_result, prediction_raw)
+
+    def test_no_warning_without_prediction_raw(self):
+        import warnings
+
+        from stickler.structured_object_evaluator.models.confidence.accumulator import (
+            ConfidenceAccumulator,
+        )
+
+        acc = ConfidenceAccumulator()
+        comparison_result = {"overall_score": 1.0}
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")  # turn warnings into errors
+            # Should not warn when confidence data isn't expected.
+            acc.accumulate(comparison_result, None)
+
+
+# -- 28. ProcessEvaluation surfaces accumulator_metrics --
+
+
+class TestProcessEvaluationAccumulatorMetrics:
+    """The bulk evaluator now exposes every accumulator's output on
+    ``ProcessEvaluation.accumulator_metrics`` so a future
+    BBoxMAPAccumulator's results don't get dropped on the floor."""
+
+    def test_accumulator_metrics_dict_populated(self):
+        ev = BulkStructuredModelEvaluator(
+            target_schema=Product,
+            confidence_metrics=[AUROCMetric()],
+        )
+        gt = Product(name="Widget", price=29.99, sku="ABC123")
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 29.99, "_confidence": 0.8},
+            "sku": {"_value": "ABC123", "_confidence": 0.7},
+        })
+        ev.update(gt, pred)
+        result = ev.compute()
+
+        assert result.accumulator_metrics is not None
+        assert "confidence_metrics" in result.accumulator_metrics
+        # Back-compat: the dedicated field mirrors the accumulator entry.
+        # Using equality rather than identity because ProcessEvaluation is
+        # a pydantic BaseModel and copies dict values on assignment.
+        assert (
+            result.confidence_metrics
+            == result.accumulator_metrics["confidence_metrics"]
+        )
+
+
+# -- 29. save_metrics includes confidence + accumulator data --
+
+
+class TestSaveMetricsIncludesAccumulatorData:
+    def test_save_metrics_json_includes_confidence(self, tmp_path):
+        import json as _json
+
+        ev = BulkStructuredModelEvaluator(
+            target_schema=Product,
+            confidence_metrics=[AUROCMetric()],
+        )
+        gt = Product(name="Widget", price=29.99, sku="ABC123")
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 99.99, "_confidence": 0.3},
+            "sku": {"_value": "ABC123", "_confidence": 0.8},
+        })
+        ev.update(gt, pred)
+
+        outfile = tmp_path / "metrics.json"
+        ev.save_metrics(str(outfile))
+
+        payload = _json.loads(outfile.read_text())
+        assert "confidence_metrics" in payload
+        assert "accumulator_metrics" in payload
+        assert payload["accumulator_metrics"]["confidence_metrics"] is not None

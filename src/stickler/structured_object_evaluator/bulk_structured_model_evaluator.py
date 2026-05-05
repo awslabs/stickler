@@ -71,11 +71,26 @@ class BulkStructuredModelEvaluator:
             individual_results_jsonl: Optional path to JSONL file for appending individual comparison results
             confidence_metrics: Optional list of ConfidenceMetric instances to compute.
                 Defaults to [AUROCMetric()]. Pass an explicit list to add Brier, ECE, etc.
-                Ignored if accumulators is provided.
+                Mutually exclusive with ``accumulators``; passing both raises
+                ``ValueError`` so the conflict is surfaced at construction time
+                rather than silently dropping one of them.
             accumulators: Optional list of PostComparisonAccumulator instances.
                 Defaults to [ConfidenceAccumulator()]. Pass an explicit list to
                 add custom accumulators (e.g., BBoxMAPAccumulator).
+
+        Raises:
+            ValueError: If both ``accumulators`` and ``confidence_metrics`` are
+                provided. Wire ``confidence_metrics`` through the
+                ``ConfidenceAccumulator`` you include in ``accumulators`` instead.
         """
+        if accumulators is not None and confidence_metrics is not None:
+            raise ValueError(
+                "Pass either `accumulators` or `confidence_metrics`, not both. "
+                "When supplying a custom `accumulators` list, configure the "
+                "confidence metrics on the ConfidenceAccumulator you include, "
+                "e.g. `ConfidenceAccumulator(metrics=[AUROCMetric(), ...])`."
+            )
+
         self.target_schema = target_schema
         self.verbose = verbose
         self.document_non_matches = document_non_matches
@@ -230,10 +245,31 @@ class BulkStructuredModelEvaluator:
             # Accumulate the confusion matrix
             self._accumulate_confusion_matrix(comparison_result["confusion_matrix"])
 
-            # Delegate to post-comparison accumulators
+            # Delegate to post-comparison accumulators. Each accumulator runs
+            # in its own try/except so a bug in a custom accumulator can't
+            # corrupt the overall confusion matrix (a single failure here
+            # would otherwise roll up as `fn += 1` for this doc on the outer
+            # except). Per-accumulator failures are recorded as separate
+            # error records and tagged with the accumulator name so they're
+            # distinguishable in error reports.
             prediction_raw = comparison_result.get("prediction_raw")
             for acc in self._accumulators:
-                acc.accumulate(comparison_result, prediction_raw)
+                try:
+                    acc.accumulate(comparison_result, prediction_raw)
+                except Exception as acc_err:
+                    acc_error_record = {
+                        "doc_id": doc_id,
+                        "error": str(acc_err),
+                        "error_type": type(acc_err).__name__,
+                        "accumulator": acc.name,
+                    }
+                    if not self.elide_errors:
+                        self._errors.append(acc_error_record)
+                    if self.verbose:
+                        print(
+                            f"Accumulator {acc.name!r} failed on {doc_id}: "
+                            f"{acc_err}"
+                        )
 
             self._processed_count += 1
 
@@ -506,7 +542,7 @@ class BulkStructuredModelEvaluator:
         total_time = time.time() - self._start_time
 
         # Compute metrics from all post-comparison accumulators
-        accumulator_metrics = {}
+        accumulator_metrics: Dict[str, Any] = {}
         for acc in self._accumulators:
             computed = acc.compute()
             if computed is not None:
@@ -523,6 +559,7 @@ class BulkStructuredModelEvaluator:
             total_time=total_time,
             non_matches=list(self._non_matches) if self.document_non_matches else None,
             confidence_metrics=confidence_metrics,
+            accumulator_metrics=accumulator_metrics or None,
         )
 
     def save_metrics(self, filepath: str) -> None:
@@ -538,6 +575,13 @@ class BulkStructuredModelEvaluator:
         metrics_data = {
             "overall_metrics": process_eval.metrics,
             "field_metrics": process_eval.field_metrics,
+            # Surface accumulator outputs (confidence_metrics today, future
+            # bbox mAP etc.) plus non-match details alongside the confusion
+            # matrix so `save_metrics()` is a complete snapshot of what
+            # `compute()` would return, not a confusion-matrix-only dump.
+            "confidence_metrics": process_eval.confidence_metrics,
+            "accumulator_metrics": process_eval.accumulator_metrics,
+            "non_matches": process_eval.non_matches,
             "evaluation_summary": {
                 "total_documents_processed": self._processed_count,
                 "total_evaluation_time": process_eval.total_time,

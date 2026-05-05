@@ -133,7 +133,18 @@ A dict is a rich value if and only if it contains a `_value` key. The underscore
 - It's extremely unlikely to appear as a real data key
 - It's visually distinct from user data keys
 
-Dicts without `_value` (including the old `{"value": ..., "confidence": ...}` format) are treated as regular nested data and passed through to pydantic unchanged.
+Dicts without `_value` are treated as regular nested data and passed through to pydantic unchanged.
+
+### Deprecated legacy shape
+
+The pre-rename `{"value": ..., "confidence": ...}` shape is still
+recognized for one release so existing JSONL corpora keep their
+confidence data on upgrade. Loading such a payload emits a
+`DeprecationWarning` naming the offending field path and still unwraps
+the value the same way as the new form. The legacy shape will be
+removed in the next release — migrate payloads to `_value`/`_confidence`
+as soon as you can. See the [CHANGELOG](../../../CHANGELOG.md) for the
+full migration guide.
 
 ## Integration with Confidence Evaluation
 

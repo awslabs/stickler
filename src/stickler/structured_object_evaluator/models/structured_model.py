@@ -298,7 +298,10 @@ class StructuredModel(BaseModel):
 
     @classmethod
     def from_json(
-        cls, json_data: Dict[str, Any], process_rich_values=True
+        cls,
+        json_data: Dict[str, Any],
+        process_rich_values: Optional[bool] = None,
+        **kwargs,
     ) -> "StructuredModel":
         """Create a StructuredModel instance from JSON data.
 
@@ -311,10 +314,37 @@ class StructuredModel(BaseModel):
             json_data: Dictionary containing the JSON data
             process_rich_values: Whether to unwrap rich values on this call.
                 Set to False for recursive calls where the parent already handled it.
+            **kwargs: Accepts the legacy ``process_confidence`` alias. Emits a
+                DeprecationWarning; support will be removed in the next release.
 
         Returns:
             StructuredModel instance created from the JSON data
         """
+        # Deprecation shim: accept the old `process_confidence` alias so that
+        # upgrading callers don't hit a TypeError.
+        if "process_confidence" in kwargs:
+            import warnings as _warnings
+
+            legacy_value = kwargs.pop("process_confidence")
+            _warnings.warn(
+                "StructuredModel.from_json(process_confidence=...) is deprecated; "
+                "use process_rich_values=... instead. Support for the legacy "
+                "kwarg will be removed in the next release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if process_rich_values is None:
+                process_rich_values = legacy_value
+
+        if kwargs:
+            raise TypeError(
+                f"from_json() got unexpected keyword argument(s): "
+                f"{sorted(kwargs)}"
+            )
+
+        if process_rich_values is None:
+            process_rich_values = True
+
         if process_rich_values:
             # Only process rich values on the top-level call
             processed_data, confidences, extras = (
@@ -325,11 +355,12 @@ class StructuredModel(BaseModel):
                 object.__setattr__(instance, "field_confidences", confidences)
             if extras:
                 object.__setattr__(instance, "field_extras", extras)
-            # Store the original JSON for round-tripping through comparison
-            # results (needed by update_from_comparison_result for confidence
-            # and future bbox/MAP metrics).
-            if confidences or extras:
-                object.__setattr__(instance, "_raw_json", json_data)
+            # Always store the original JSON for round-tripping through
+            # comparison results. Keeping this unconditional (not gated on
+            # confidences/extras) means map/reduce aggregation works even
+            # when a dataset gets confidence scores added later, and matches
+            # what the Rich Value Pattern doc promises about _raw_json.
+            object.__setattr__(instance, "_raw_json", json_data)
         else:
             # Skip rich value processing for recursive calls
             instance = ConfigurationHelper.from_json(cls, json_data)

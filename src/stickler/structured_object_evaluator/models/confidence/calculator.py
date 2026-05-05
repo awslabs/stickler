@@ -46,7 +46,13 @@ class ConfidenceCalculator:
         """Extract ConfidencePair objects keyed by field path, with coverage stats.
 
         Joins field_comparisons (from compare_with) with confidence data
-        (from from_json). Fields without confidence are skipped but counted.
+        (from from_json). Fields without confidence are skipped but still
+        counted toward ``fields_total`` so coverage reflects the model's
+        declared surface area. Unkeyed rows (e.g. list FN entries where
+        the prediction has fewer items than ground truth, which arrive
+        with ``actual_key=None``) are skipped entirely since they cannot
+        be joined to any confidence score and would otherwise inflate
+        ``fields_total``.
 
         Args:
             comparison_result: Must contain "field_comparisons".
@@ -68,8 +74,12 @@ class ConfidenceCalculator:
         fields_total = 0
 
         for fc in field_comparisons:
+            field_path = fc.get("actual_key")
+            # Skip rows without a join key; these are prediction-side misses
+            # (list FN entries) that can't carry a confidence score.
+            if not isinstance(field_path, str):
+                continue
             fields_total += 1
-            field_path = fc["actual_key"]
             confidence = pred_confidences.get(field_path)
             if confidence is not None:
                 fields_with += 1
@@ -106,6 +116,9 @@ class ConfidenceCalculator:
         reconstructing confidence pairs from a serialized comparison result
         that includes prediction_raw.
 
+        Rows without a string ``actual_key`` are skipped (see ``extract``
+        for rationale).
+
         Args:
             field_comparisons: List of field comparison dicts (from compare_with).
             confidences: Dict mapping field paths to confidence floats
@@ -119,8 +132,10 @@ class ConfidenceCalculator:
         fields_total = 0
 
         for fc in field_comparisons:
+            field_path = fc.get("actual_key")
+            if not isinstance(field_path, str):
+                continue
             fields_total += 1
-            field_path = fc["actual_key"]
             confidence = confidences.get(field_path)
             if confidence is not None:
                 fields_with += 1

@@ -291,18 +291,84 @@ class TestComparisonWithRichValues:
 
 # ── Old format rejection tests ──
 
-class TestOldFormatRejected:
-    def test_old_value_confidence_not_rich(self):
-        """The old {"value": ..., "confidence": ...} format is NOT a rich value."""
-        assert not RichValueHelper._is_rich_value({"value": "Widget", "confidence": 0.9})
+class TestLegacyRichValueShim:
+    """The pre-underscore {"value", "confidence"} shape still unwraps for one
+    release, with a DeprecationWarning emitted per occurrence."""
 
-    def test_old_format_passes_through_as_dict(self):
-        """Old format dicts pass through untouched (not unwrapped)."""
+    def test_legacy_value_confidence_detected(self):
+        assert RichValueHelper._is_legacy_rich_value(
+            {"value": "Widget", "confidence": 0.9}
+        )
+
+    def test_legacy_not_detected_when_new_shape_present(self):
+        """If _value is present, the new-shape detector wins."""
+        d = {"_value": "Widget", "_confidence": 0.9}
+        assert RichValueHelper._is_rich_value(d)
+        assert not RichValueHelper._is_legacy_rich_value(d)
+
+    def test_legacy_format_unwraps_with_deprecation_warning(self):
+        """Legacy dicts unwrap and emit a DeprecationWarning naming the field."""
         data = {"name": {"value": "Widget", "confidence": 0.9}}
-        unwrapped, confidences, _extras = RichValueHelper.process_rich_values(data)
-        # Should NOT unwrap: the dict is treated as a nested object, not a rich value
-        assert unwrapped == {"name": {"value": "Widget", "confidence": 0.9}}
-        assert confidences == {}
+        with pytest.warns(DeprecationWarning, match="name"):
+            unwrapped, confidences, extras = RichValueHelper.process_rich_values(
+                data
+            )
+        assert unwrapped == {"name": "Widget"}
+        assert confidences == {"name": 0.9}
+        assert extras == {}
+
+    def test_legacy_format_from_json_roundtrip(self):
+        """Legacy shape flows through from_json end-to-end."""
+        with pytest.warns(DeprecationWarning):
+            pred = Product.from_json({
+                "name": {"value": "Widget", "confidence": 0.9},
+                "price": 29.99,
+                "sku": "ABC123",
+            })
+        assert pred.name == "Widget"
+        assert pred.get_field_confidence("name") == 0.9
+
+
+class TestProcessConfidenceDeprecationShim:
+    """from_json(process_confidence=...) still works for one release."""
+
+    def test_process_confidence_alias_emits_deprecation(self):
+        """Passing the legacy kwarg emits DeprecationWarning and still works."""
+        with pytest.warns(DeprecationWarning, match="process_confidence"):
+            pred = Product.from_json(
+                {
+                    "name": {"_value": "Widget", "_confidence": 0.9},
+                    "price": 29.99,
+                    "sku": "ABC123",
+                },
+                process_confidence=True,
+            )
+        assert pred.name == "Widget"
+        assert pred.get_field_confidence("name") == 0.9
+
+    def test_process_confidence_false_skips_unwrapping(self):
+        """process_confidence=False behaves like process_rich_values=False.
+
+        With unwrapping off no rich-value metadata is collected. We verify
+        the alias is threaded through by confirming both the kwarg is
+        accepted and that get_all_confidences() reports no entries.
+        """
+        with pytest.warns(DeprecationWarning):
+            pred = Product.from_json(
+                {"name": "Widget", "price": 29.99, "sku": "ABC123"},
+                process_confidence=False,
+            )
+        assert pred.name == "Widget"
+        # No rich values in, no confidences extracted.
+        assert pred.get_all_confidences() == {}
+
+    def test_unknown_kwarg_still_raises(self):
+        """Unexpected kwargs are still rejected with TypeError."""
+        with pytest.raises(TypeError, match="unexpected keyword argument"):
+            Product.from_json(
+                {"name": "Widget", "price": 29.99, "sku": "ABC123"},
+                bogus_kwarg=True,
+            )
 
 
 # ── Extras tests ──

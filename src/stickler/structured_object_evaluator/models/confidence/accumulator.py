@@ -50,6 +50,26 @@ class ConfidenceAccumulator(PostComparisonAccumulator):
     ) -> None:
         field_comparisons = comparison_result.get("field_comparisons", [])
         if not field_comparisons:
+            # Align behavior with ConfidenceCalculator.extract: both paths
+            # used to diverge on this input (extract raised, accumulator
+            # silently returned), which meant a caller who forgot
+            # ``document_field_comparisons=True`` got zero confidence with
+            # no signal. When we have prediction_raw we clearly *expected*
+            # confidence, so a missing field_comparisons list is likely a
+            # misuse; surface it with a warning so it shows up in logs
+            # without killing the bulk run.
+            if prediction_raw is not None:
+                import warnings as _warnings
+
+                _warnings.warn(
+                    "ConfidenceAccumulator got a comparison_result with "
+                    "prediction_raw but no field_comparisons. Confidence "
+                    "cannot be accumulated for this document. Re-run "
+                    "compare_with(..., document_field_comparisons=True) "
+                    "so the field-level join data is available.",
+                    UserWarning,
+                    stacklevel=2,
+                )
             return
 
         # Extract confidences from prediction_raw if available
@@ -72,6 +92,12 @@ class ConfidenceAccumulator(PostComparisonAccumulator):
         self._fields_total += extraction.fields_total
 
     def compute(self) -> Optional[Dict[str, Any]]:
+        # Report coverage-only when we've seen fields but none had confidence.
+        # Previously the accumulator returned None when keyed_pairs was empty,
+        # which dropped the coverage signal entirely. After the coverage
+        # accounting fix, an evaluator that sees 400 fields without
+        # confidence should still publish ``{fields_with: 0, fields_total:
+        # 400}`` rather than ``confidence_metrics=None``.
         if self._fields_total == 0:
             return None
         return self._calculator.compute_metrics(
