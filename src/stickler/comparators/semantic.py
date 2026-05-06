@@ -1,5 +1,6 @@
 """Semantic comparator for embedding-based similarity."""
 
+import logging
 from functools import partial
 from typing import Callable, Optional
 
@@ -7,6 +8,8 @@ from scipy import spatial
 
 from stickler.comparators.base import BaseComparator
 from stickler.comparators.utils import generate_bedrock_embedding
+
+logger = logging.getLogger(__name__)
 
 
 class SemanticComparator(BaseComparator):
@@ -76,5 +79,18 @@ class SemanticComparator(BaseComparator):
             x, y = self.embedding_function(str1), self.embedding_function(str2)
             return self.similarity_function(x, y)
         except Exception:
+            logger.exception(
+                "Semantic embedding comparison failed; falling back to string equality",
+                extra={
+                    "embedding_function": getattr(
+                        self.embedding_function,
+                        "__name__",
+                        type(self.embedding_function).__name__,
+                    ),
+                    "input_1_length": len(str1),
+                    "input_2_length": len(str2),
+                    "similarity_function": self.sim_function,
+                },
+            )
             # Fallback to string equality if embedding fails
             return 1.0 if str1 == str2 else 0.0
