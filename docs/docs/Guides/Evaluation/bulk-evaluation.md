@@ -123,11 +123,23 @@ final = evaluator.compute()
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `document_count` | `int` | Total number of documents processed. |
-| `metrics` | `dict` | Overall confusion matrix counts (`tp`, `fp`, `tn`, `fn`, `fd`, `fa`) plus derived metrics (`cm_precision`, `cm_recall`, `cm_f1`, `cm_accuracy`). |
-| `field_metrics` | `dict` | Per-field metrics with the same structure as `metrics`, keyed by dotted field path (e.g., `"customer.name"`). |
+| `metrics` | `dict` | Overall confusion matrix counts (`tp`, `fp`, `tn`, `fn`, `fd`, `fa`), derived metrics (`cm_precision`, `cm_recall`, `cm_f1`, `cm_accuracy`), and the weight-aware `weighted_overall_score`. |
+| `field_metrics` | `dict` | Per-field metrics with the same confusion-matrix structure as `metrics`, plus `mean_score` (arithmetic mean of the per-document `threshold_applied_score` at that path). Keyed by dotted field path (e.g., `"customer.name"`). |
 | `errors` | `list` | Records for any documents that raised exceptions during processing. |
 | `total_time` | `float` | Wall-clock time in seconds since the evaluator was created or last reset. |
 | `non_matches` | `list` | Detailed non-match records (when `document_non_matches=True`), each tagged with `doc_id`. |
+
+---
+
+### Weighted Overall Score
+
+`metrics["weighted_overall_score"]` is the arithmetic mean of each document's weight-aware `overall_score` returned by `compare_with()`. Prefer it over `cm_f1` whenever your schema uses non-uniform `ComparableField(weight=...)` values -- `cm_f1` treats every field-match equally regardless of its declared weight, so a high-weight field being wrong can look identical to a low-weight field being wrong in the headline number. `weighted_overall_score` preserves that weighting across the dataset.
+
+Because each document's `overall_score = Σ_f(score × weight) / Σ_f(weight)` already divides by the schema-constant total weight, the mean-of-per-document-overalls equals the `(doc, field)`-weighted aggregate -- a single key suffices.
+
+Documents that raised an exception during `update()` are excluded from the denominator, matching how `document_count` treats the `_processed_count` for successful docs.
+
+Per-field `mean_score` follows the same pattern at every nested path (leaf and object/list aggregates), averaging over the documents where that path was actually scored.
 
 ---
 

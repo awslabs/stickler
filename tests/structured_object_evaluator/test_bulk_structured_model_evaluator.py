@@ -15,6 +15,8 @@ import pandas as pd
 import pytest
 
 from stickler.comparators.exact import ExactComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.comparators.numeric import NumericComparator
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
 )
@@ -792,3 +794,262 @@ class TestUpdateFromComparisonResult:
 
         assert second_tp == first_tp * 2
         assert evaluator._processed_count == 2
+
+
+# Issue #122 fixtures/models live at module scope so Pydantic can resolve
+# forward references inside the test class below.
+
+
+class _Issue122Invoice(StructuredModel):
+    """Exact repro model from issue #122."""
+
+    invoice_id: str = ComparableField(comparator=LevenshteinComparator(), weight=10.0)
+    note: str = ComparableField(comparator=LevenshteinComparator(), weight=0.1)
+    total: float = ComparableField(comparator=NumericComparator(), weight=5.0)
+
+
+class TestWeightedOverallScore:
+    """Issue #122 — weight-aware aggregate score in bulk evaluation."""
+
+    def _make_invoice_pair(self, gt_kwargs, pred_kwargs):
+        return (
+            _Issue122Invoice(**gt_kwargs),
+            _Issue122Invoice(**pred_kwargs),
+        )
+
+    def test_single_doc_weighted_overall_matches_compare_with(self):
+        gt, pred = self._make_invoice_pair(
+            {"invoice_id": "INV-1", "note": "hi", "total": 10.0},
+            {"invoice_id": "INV-9", "note": "hi", "total": 10.0},
+        )
+
+        expected = gt.compare_with(pred, include_confusion_matrix=True)["overall_score"]
+
+        evaluator = BulkStructuredModelEvaluator(target_schema=_Issue122Invoice)
+        evaluator.update(gt, pred)
+        result = evaluator.compute()
+
+        assert result.metrics["weighted_overall_score"] == pytest.approx(expected)
+
+    def test_multi_doc_weighted_overall_is_arithmetic_mean(self):
+        pairs = [
+            self._make_invoice_pair(
+                {"invoice_id": "INV-1", "note": "hi", "total": 10.0},
+                {"invoice_id": "INV-9", "note": "hi", "total": 10.0},
+            ),
+            self._make_invoice_pair(
+                {"invoice_id": "INV-2", "note": "hi", "total": 20.0},
+                {"invoice_id": "INV-2", "note": "hi", "total": 20.0},
+            ),
+            self._make_invoice_pair(
+                {"invoice_id": "INV-3", "note": "hi", "total": 30.0},
+                {"invoice_id": "INV-3", "note": "bye", "total": 30.0},
+            ),
+        ]
+
+        per_doc = [
+            gt.compare_with(pred, include_confusion_matrix=True)["overall_score"]
+            for gt, pred in pairs
+        ]
+        expected = sum(per_doc) / len(per_doc)
+
+        evaluator = BulkStructuredModelEvaluator(target_schema=_Issue122Invoice)
+        for gt, pred in pairs:
+            evaluator.update(gt, pred)
+        result = evaluator.compute()
+
+        assert result.metrics["weighted_overall_score"] == pytest.approx(expected)
+
+    def test_non_uniform_weights_issue_122_repro(self):
+        """Exact repro from the issue body."""
+        gt = _Issue122Invoice(invoice_id="INV-1", note="short", total=100.0)
+        pred = _Issue122Invoice(invoice_id="INV-9", note="short", total=100.0)
+
+        per_doc = gt.compare_with(pred, include_confusion_matrix=True)
+
+        evaluator = BulkStructuredModelEvaluator(target_schema=_Issue122Invoice)
+        evaluator.update(gt, pred)
+        result = evaluator.compute()
+
+        assert result.metrics["weighted_overall_score"] == pytest.approx(
+            per_doc["overall_score"]
+        )
+        # The two fields that matched exactly account for 5.1 / 15.1 of the
+        # weight; weighted score is ~0.337. cm_f1 sees 2/3 field matches
+        # equally and comes out higher, confirming the weighting gap.
+        assert result.metrics["weighted_overall_score"] != pytest.approx(
+            result.metrics["cm_f1"]
+        )
+
+    def test_state_roundtrip_preserves_weighted_score(self):
+        pairs = [
+            self._make_invoice_pair(
+                {"invoice_id": "INV-1", "note": "hi", "total": 10.0},
+                {"invoice_id": "INV-9", "note": "hi", "total": 10.0},
+            ),
+            self._make_invoice_pair(
+                {"invoice_id": "INV-2", "note": "hi", "total": 20.0},
+                {"invoice_id": "INV-2", "note": "hi", "total": 20.0},
+            ),
+            self._make_invoice_pair(
+                {"invoice_id": "INV-3", "note": "hi", "total": 30.0},
+                {"invoice_id": "INV-3", "note": "bye", "total": 30.0},
+            ),
+        ]
+
+        first = BulkStructuredModelEvaluator(target_schema=_Issue122Invoice)
+        for gt, pred in pairs[:2]:
+            first.update(gt, pred)
+        state = first.get_state()
+
+        resumed = BulkStructuredModelEvaluator(target_schema=_Issue122Invoice)
+        resumed.load_state(state)
+        resumed.update(*pairs[2])
+        resumed_result = resumed.compute()
+
+        direct = BulkStructuredModelEvaluator(target_schema=_Issue122Invoice)
+        for gt, pred in pairs:
+            direct.update(gt, pred)
+        direct_result = direct.compute()
+
+        assert resumed_result.metrics["weighted_overall_score"] == pytest.approx(
+            direct_result.metrics["weighted_overall_score"]
+        )
+
+    def test_load_state_tolerates_old_state_without_score_keys(self):
+        """Pre-#122 state dicts must load without error, score is 0.0."""
+        evaluator = BulkStructuredModelEvaluator(target_schema=_Issue122Invoice)
+        # Simulate an old state dict with no score_* keys.
+        old_state = {
+            "confusion_matrix": {"overall": {}, "fields": {}},
+            "errors": [],
+            "processed_count": 0,
+            "start_time": 0.0,
+            "target_schema": "_Issue122Invoice",
+            "elide_errors": False,
+        }
+
+        evaluator.load_state(old_state)
+        result = evaluator.compute()
+
+        assert result.metrics["weighted_overall_score"] == 0.0
+        assert evaluator._overall_score_count == 0
+
+    def test_per_field_mean_score_at_nested_paths(self):
+        """Nested paths like contact.phone should emit their own mean_score."""
+        matching = {
+            "accountNumber": "1234567890",
+            "contact": {"phone": "555-123-4567", "email": "test@example.com"},
+            "transactions": [{"date": "2023-01-01", "description": "x", "amount": 1.0}],
+        }
+        wrong_phone = dict(matching)
+        wrong_phone["contact"] = {
+            "phone": "555-999-9999",
+            "email": "test@example.com",
+        }
+
+        evaluator = BulkStructuredModelEvaluator(target_schema=BankStatement)
+        evaluator.update(BankStatement(**matching), BankStatement(**matching))
+        evaluator.update(BankStatement(**matching), BankStatement(**wrong_phone))
+        result = evaluator.compute()
+
+        # contact.phone: 1.0 (match) + 0.0 (mismatch) = mean 0.5.
+        assert "contact.phone" in result.field_metrics
+        assert result.field_metrics["contact.phone"]["mean_score"] == pytest.approx(0.5)
+
+        # accountNumber matched twice: mean 1.0.
+        assert result.field_metrics["accountNumber"]["mean_score"] == pytest.approx(1.0)
+
+    def test_update_from_comparison_result_tolerates_missing_score_keys(self):
+        """Minimal dict without overall_score / fields must not raise."""
+        evaluator = BulkStructuredModelEvaluator()
+        evaluator.update_from_comparison_result(
+            {"confusion_matrix": {"overall": {"tp": 1}, "fields": {}}}, "doc1"
+        )
+
+        assert evaluator._processed_count == 1
+        assert evaluator._overall_score_count == 0
+        result = evaluator.compute()
+        assert result.metrics["weighted_overall_score"] == 0.0
+
+    def test_zero_docs_weighted_overall_is_zero(self):
+        """Empty evaluator returns 0.0 (not NaN)."""
+        evaluator = BulkStructuredModelEvaluator(target_schema=_Issue122Invoice)
+        result = evaluator.compute()
+
+        score = result.metrics["weighted_overall_score"]
+        assert score == 0.0
+        assert not isinstance(score, float) or score == score  # not NaN
+
+    def test_merge_state_sums_weighted_score_accumulators(self):
+        a_pair = self._make_invoice_pair(
+            {"invoice_id": "INV-1", "note": "hi", "total": 10.0},
+            {"invoice_id": "INV-9", "note": "hi", "total": 10.0},
+        )
+        b_pair = self._make_invoice_pair(
+            {"invoice_id": "INV-2", "note": "hi", "total": 20.0},
+            {"invoice_id": "INV-2", "note": "hi", "total": 20.0},
+        )
+
+        a = BulkStructuredModelEvaluator(target_schema=_Issue122Invoice)
+        a.update(*a_pair)
+        b = BulkStructuredModelEvaluator(target_schema=_Issue122Invoice)
+        b.update(*b_pair)
+
+        a.merge_state(b.get_state())
+        merged_result = a.compute()
+
+        direct = BulkStructuredModelEvaluator(target_schema=_Issue122Invoice)
+        direct.update(*a_pair)
+        direct.update(*b_pair)
+        direct_result = direct.compute()
+
+        assert merged_result.metrics["weighted_overall_score"] == pytest.approx(
+            direct_result.metrics["weighted_overall_score"]
+        )
+
+    def test_merge_state_tolerates_old_peer_without_score_keys(self):
+        """Merging an old state dict (pre-#122) must not raise."""
+        pair = self._make_invoice_pair(
+            {"invoice_id": "INV-1", "note": "hi", "total": 10.0},
+            {"invoice_id": "INV-9", "note": "hi", "total": 10.0},
+        )
+
+        a = BulkStructuredModelEvaluator(target_schema=_Issue122Invoice)
+        a.update(*pair)
+
+        old_peer_state = {
+            "confusion_matrix": {"overall": {}, "fields": {}},
+            "errors": [],
+            "processed_count": 0,
+            "start_time": 0.0,
+            "target_schema": "_Issue122Invoice",
+            "elide_errors": False,
+        }
+
+        a.merge_state(old_peer_state)
+        result = a.compute()
+
+        assert result.metrics["weighted_overall_score"] > 0.0
+        assert a._overall_score_count == 1
+
+    def test_error_doc_excluded_from_weighted_score_mean(self):
+        """Docs that raise during compare_with are excluded from denominator."""
+        good_pair = self._make_invoice_pair(
+            {"invoice_id": "INV-1", "note": "hi", "total": 10.0},
+            {"invoice_id": "INV-9", "note": "hi", "total": 10.0},
+        )
+
+        evaluator = BulkStructuredModelEvaluator(target_schema=_Issue122Invoice)
+        evaluator.update(*good_pair, doc_id="good")
+
+        # Induce a comparison error via a malformed comparison_result dict.
+        evaluator.update_from_comparison_result({}, doc_id="bad")
+
+        good_score = good_pair[0].compare_with(
+            good_pair[1], include_confusion_matrix=True
+        )["overall_score"]
+
+        result = evaluator.compute()
+        assert evaluator._overall_score_count == 1
+        assert result.metrics["weighted_overall_score"] == pytest.approx(good_score)
