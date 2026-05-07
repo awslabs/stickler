@@ -443,7 +443,7 @@ class BulkStructuredModelEvaluator:
         if self._is_valid_score(overall_score):
             self._overall_score_sum += float(overall_score)
             self._overall_score_count += 1
-        elif self.verbose:
+        else:
             logger.debug(
                 "Skipping non-finite overall_score=%r from weighted aggregate",
                 overall_score,
@@ -460,10 +460,9 @@ class BulkStructuredModelEvaluator:
         Also descends through ``nested_fields`` on list-of-StructuredModel
         nodes, for parity with ``_accumulate_field_metrics``.
 
-        Note: leaves inside ``List[StructuredModel]`` never surface a
-        ``threshold_applied_score`` because ``compare_with()`` only emits
-        the score at the list parent node. Those leaves will have CM
-        counts but no ``mean_score`` in the final ``field_metrics``.
+        ``compare_with()`` emits ``threshold_applied_score`` at the list
+        parent for ``List[StructuredModel]`` but not at the nested leaves,
+        so those leaves end up with CM counts and no ``mean_score``.
         """
         for field_name, field_data in fields_dict.items():
             if not isinstance(field_data, dict):
@@ -476,7 +475,7 @@ class BulkStructuredModelEvaluator:
                 if self._is_valid_score(score):
                     self._field_score_sums[current_path] += float(score)
                     self._field_score_counts[current_path] += 1
-                elif self.verbose:
+                else:
                     logger.debug(
                         "Skipping non-finite threshold_applied_score=%r at %s",
                         score,
@@ -549,8 +548,8 @@ class BulkStructuredModelEvaluator:
             else 0.0
         )
 
-        # Union of cm paths and score paths surfaces fields seen via the
-        # minimal-input contract of update_from_comparison_result.
+        # Union covers score-only paths (e.g., List[StructuredModel] parents
+        # emitted by compare_with but not recorded in the cm fields tree).
         field_metrics = {}
         field_paths = set(self._confusion_matrix["fields"].keys())
         field_paths.update(self._field_score_sums.keys())
@@ -559,11 +558,9 @@ class BulkStructuredModelEvaluator:
             field_derived = self._calculate_derived_metrics(field_cm_dict)
             field_metrics[field_path] = {**field_cm_dict, **field_derived}
 
-            # .get() (not []) avoids resurrecting zero entries in the
-            # defaultdict on every compute() call. mean_score is only
-            # emitted when a finite threshold_applied_score was observed at
-            # this path in at least one document — omitting the key keeps
-            # "no data" distinguishable from "every observation was 0.0".
+            # .get() avoids resurrecting zero entries in the defaultdicts.
+            # Omitting mean_score (vs. reporting 0.0) preserves the
+            # "no data" vs. "observed zero" distinction downstream.
             count = self._field_score_counts.get(field_path, 0)
             if count > 0:
                 field_metrics[field_path]["mean_score"] = (
