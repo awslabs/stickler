@@ -1053,3 +1053,57 @@ class TestWeightedOverallScore:
         result = evaluator.compute()
         assert evaluator._overall_score_count == 1
         assert result.metrics["weighted_overall_score"] == pytest.approx(good_score)
+
+    def test_list_of_structured_model_mean_score_at_list_path(self):
+        """List[StructuredModel] fields emit mean_score at the list node."""
+        from typing import List as _List
+
+        class _Line(StructuredModel):
+            name: str = ComparableField(comparator=LevenshteinComparator(), weight=2.0)
+            qty: int = ComparableField(comparator=NumericComparator(), weight=1.0)
+
+        class _Order(StructuredModel):
+            order_id: str = ComparableField(
+                comparator=LevenshteinComparator(), weight=5.0
+            )
+            items: _List[_Line] = ComparableField(weight=3.0)
+
+        gt = _Order(
+            order_id="O-1",
+            items=[_Line(name="apple", qty=1), _Line(name="banana", qty=2)],
+        )
+        pred = _Order(
+            order_id="O-1",
+            items=[_Line(name="apple", qty=1), _Line(name="banana", qty=3)],
+        )
+
+        per_doc = gt.compare_with(pred, include_confusion_matrix=True)
+        expected_items_score = per_doc["confusion_matrix"]["fields"]["items"][
+            "threshold_applied_score"
+        ]
+
+        evaluator = BulkStructuredModelEvaluator(target_schema=_Order)
+        evaluator.update(gt, pred)
+        result = evaluator.compute()
+
+        assert "items" in result.field_metrics
+        assert result.field_metrics["items"]["mean_score"] == pytest.approx(
+            expected_items_score
+        )
+        assert result.field_metrics["order_id"]["mean_score"] == pytest.approx(1.0)
+
+    def test_build_process_evaluation_does_not_mutate_score_accumulators(self):
+        """Reading mean_score for cm-only paths must not create defaultdict entries."""
+        evaluator = BulkStructuredModelEvaluator()
+        # Seed a cm-only path via update_from_comparison_result (no score data).
+        evaluator.update_from_comparison_result(
+            {"confusion_matrix": {"overall": {"tp": 1}, "fields": {"foo": {"tp": 1}}}},
+            doc_id="doc1",
+        )
+
+        evaluator.compute()
+
+        # Sums/counts must still be empty — compute() should not have materialized
+        # a zero-sum entry just by reading it.
+        assert dict(evaluator._field_score_sums) == {}
+        assert dict(evaluator._field_score_counts) == {}

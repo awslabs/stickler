@@ -434,9 +434,13 @@ class BulkStructuredModelEvaluator:
     def _accumulate_overall_score(self, overall_score: Any) -> None:
         """Accumulate a per-document weight-aware overall score.
 
-        Non-numeric, NaN, or infinite values are silently skipped.
+        Non-numeric, bool, NaN, or infinite values are silently skipped.
         """
-        if isinstance(overall_score, (int, float)) and math.isfinite(overall_score):
+        if (
+            isinstance(overall_score, (int, float))
+            and not isinstance(overall_score, bool)
+            and math.isfinite(overall_score)
+        ):
             self._overall_score_sum += float(overall_score)
             self._overall_score_count += 1
 
@@ -448,7 +452,9 @@ class BulkStructuredModelEvaluator:
         Walks the nested ``comparison_result["fields"]`` tree, recording the
         score at every node that exposes ``threshold_applied_score`` (leaf
         fields and object/list aggregates). Nodes without the key (e.g.,
-        list-level ``overall``-only summaries) are skipped.
+        list-level ``overall``-only summaries) are skipped. Also descends
+        through ``nested_fields`` entries on list-of-StructuredModel nodes
+        when present, for parity with ``_accumulate_field_metrics``.
         """
         for field_name, field_data in fields_dict.items():
             if not isinstance(field_data, dict):
@@ -457,13 +463,24 @@ class BulkStructuredModelEvaluator:
             current_path = f"{path_prefix}.{field_name}" if path_prefix else field_name
 
             score = field_data.get("threshold_applied_score")
-            if isinstance(score, (int, float)) and math.isfinite(score):
+            if (
+                isinstance(score, (int, float))
+                and not isinstance(score, bool)
+                and math.isfinite(score)
+            ):
                 self._field_score_sums[current_path] += float(score)
                 self._field_score_counts[current_path] += 1
 
             if "fields" in field_data and isinstance(field_data["fields"], dict):
                 self._accumulate_field_scores_recursive(
                     field_data["fields"], current_path
+                )
+
+            if "nested_fields" in field_data and isinstance(
+                field_data["nested_fields"], dict
+            ):
+                self._accumulate_field_scores_recursive(
+                    field_data["nested_fields"], current_path
                 )
 
     def _calculate_derived_metrics(
@@ -532,7 +549,9 @@ class BulkStructuredModelEvaluator:
 
             count = self._field_score_counts.get(field_path, 0)
             field_metrics[field_path]["mean_score"] = (
-                self._field_score_sums[field_path] / count if count > 0 else 0.0
+                self._field_score_sums.get(field_path, 0.0) / count
+                if count > 0
+                else 0.0
             )
 
         # Defensive: emit mean_score for paths that have scores but no cm entry.
@@ -540,7 +559,9 @@ class BulkStructuredModelEvaluator:
             if field_path not in field_metrics:
                 field_metrics[field_path] = {
                     "mean_score": (
-                        self._field_score_sums[field_path] / count if count > 0 else 0.0
+                        self._field_score_sums.get(field_path, 0.0) / count
+                        if count > 0
+                        else 0.0
                     )
                 }
 
