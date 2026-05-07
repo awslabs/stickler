@@ -859,8 +859,13 @@ class TestWeightedOverallScore:
 
         assert result.metrics["weighted_overall_score"] == pytest.approx(expected)
 
-    def test_non_uniform_weights_issue_122_repro(self):
-        """Exact repro from the issue body."""
+    def test_non_uniform_weights_diverge_from_cm_f1(self):
+        """Weighted score reflects per-field weights; cm_f1 treats fields equally.
+
+        With invoice_id (w=10) near-matching, note (w=0.1) matching, and total
+        (w=5) matching, cm_f1 sees "3 true positives" uniformly while the
+        weighted score is dominated by the heavy invoice_id similarity.
+        """
         gt = _WeightedInvoice(invoice_id="INV-1", note="short", total=100.0)
         pred = _WeightedInvoice(invoice_id="INV-9", note="short", total=100.0)
 
@@ -873,12 +878,12 @@ class TestWeightedOverallScore:
         assert result.metrics["weighted_overall_score"] == pytest.approx(
             per_doc["overall_score"]
         )
-        # The two fields that matched exactly account for 5.1 / 15.1 of the
-        # weight; weighted score is ~0.337. cm_f1 sees 2/3 field matches
-        # equally and comes out higher, confirming the weighting gap.
-        assert result.metrics["weighted_overall_score"] != pytest.approx(
-            result.metrics["cm_f1"]
+        # Pin the exact value so a math regression (e.g., divisor swap)
+        # can't pass by just happening to stay different from cm_f1.
+        assert result.metrics["weighted_overall_score"] == pytest.approx(
+            0.8675, abs=1e-3
         )
+        assert result.metrics["cm_f1"] == pytest.approx(1.0)
 
     def test_state_roundtrip_preserves_weighted_score(self):
         pairs = [
@@ -1217,3 +1222,179 @@ class TestWeightedOverallScore:
             assert result.metrics["weighted_overall_score"] == pytest.approx(1.0)
             # Both docs counted toward _processed_count / CM.
             assert result.document_count == 2
+
+    def test_reset_clears_weighted_score_accumulators(self):
+        """reset() must zero weighted score and per-field score accumulators."""
+        gt, pred = self._make_invoice_pair(
+            {"invoice_id": "INV-1", "note": "hi", "total": 10.0},
+            {"invoice_id": "INV-9", "note": "hi", "total": 10.0},
+        )
+        evaluator = BulkStructuredModelEvaluator(target_schema=_WeightedInvoice)
+        evaluator.update(gt, pred)
+        assert evaluator._overall_score_count == 1
+        assert len(evaluator._field_score_sums) > 0
+
+        evaluator.reset()
+
+        assert evaluator._overall_score_sum == 0.0
+        assert evaluator._overall_score_count == 0
+        assert dict(evaluator._field_score_sums) == {}
+        assert dict(evaluator._field_score_counts) == {}
+
+        result = evaluator.compute()
+        assert result.metrics["weighted_overall_score"] == 0.0
+        assert result.field_metrics == {}
+
+    def test_get_current_metrics_reflects_partial_weighted_score(self):
+        """Mid-stream polling via get_current_metrics() sees partial aggregate."""
+        pairs = [
+            self._make_invoice_pair(
+                {"invoice_id": "INV-1", "note": "hi", "total": 10.0},
+                {"invoice_id": "INV-9", "note": "hi", "total": 10.0},
+            ),
+            self._make_invoice_pair(
+                {"invoice_id": "INV-2", "note": "hi", "total": 20.0},
+                {"invoice_id": "INV-2", "note": "hi", "total": 20.0},
+            ),
+        ]
+
+        evaluator = BulkStructuredModelEvaluator(target_schema=_WeightedInvoice)
+        evaluator.update(*pairs[0])
+
+        mid = evaluator.get_current_metrics()
+        first_doc_score = pairs[0][0].compare_with(
+            pairs[0][1], include_confusion_matrix=True
+        )["overall_score"]
+        assert mid.metrics["weighted_overall_score"] == pytest.approx(first_doc_score)
+        # State must not have been cleared by the polling call.
+        assert evaluator._overall_score_count == 1
+
+        evaluator.update(*pairs[1])
+        final = evaluator.compute()
+        expected_mean = (
+            first_doc_score
+            + pairs[1][0].compare_with(pairs[1][1], include_confusion_matrix=True)[
+                "overall_score"
+            ]
+        ) / 2
+        assert final.metrics["weighted_overall_score"] == pytest.approx(expected_mean)
+
+    def test_update_batch_accumulates_weighted_score(self):
+        """update_batch() must feed the weighted score path like update() does."""
+        pairs = [
+            self._make_invoice_pair(
+                {"invoice_id": "INV-1", "note": "hi", "total": 10.0},
+                {"invoice_id": "INV-9", "note": "hi", "total": 10.0},
+            ),
+            self._make_invoice_pair(
+                {"invoice_id": "INV-2", "note": "hi", "total": 20.0},
+                {"invoice_id": "INV-2", "note": "hi", "total": 20.0},
+            ),
+        ]
+        batch = [(gt, pred, f"doc_{i}") for i, (gt, pred) in enumerate(pairs)]
+
+        evaluator = BulkStructuredModelEvaluator(target_schema=_WeightedInvoice)
+        evaluator.update_batch(batch)
+        result = evaluator.compute()
+
+        expected = sum(
+            gt.compare_with(pred, include_confusion_matrix=True)["overall_score"]
+            for gt, pred in pairs
+        ) / len(pairs)
+        assert result.metrics["weighted_overall_score"] == pytest.approx(expected)
+        assert evaluator._overall_score_count == len(pairs)
+
+    def test_aggregate_from_comparisons_exposes_weighted_score(self):
+        """The module-level helper must surface weighted_overall_score."""
+        from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (  # noqa: E501
+            aggregate_from_comparisons,
+        )
+
+        gt, pred = self._make_invoice_pair(
+            {"invoice_id": "INV-1", "note": "hi", "total": 10.0},
+            {"invoice_id": "INV-9", "note": "hi", "total": 10.0},
+        )
+        comparison = gt.compare_with(pred, include_confusion_matrix=True)
+
+        result = aggregate_from_comparisons([comparison])
+
+        assert "weighted_overall_score" in result.metrics
+        assert result.metrics["weighted_overall_score"] == pytest.approx(
+            comparison["overall_score"]
+        )
+
+    def test_per_path_mean_score_averages_only_observing_docs(self):
+        """mean_score denominator at each path = docs that actually scored that path.
+
+        Doc A records scores at paths {foo, bar}; doc B only at {foo}. foo's
+        mean must average across 2 docs, bar's across 1.
+        """
+        evaluator = BulkStructuredModelEvaluator()
+        evaluator.update_from_comparison_result(
+            {
+                "confusion_matrix": {
+                    "overall": {"tp": 2},
+                    "fields": {
+                        "foo": {"tp": 1, "threshold_applied_score": 0.8},
+                        "bar": {"tp": 1, "threshold_applied_score": 0.4},
+                    },
+                }
+            },
+            doc_id="a",
+        )
+        evaluator.update_from_comparison_result(
+            {
+                "confusion_matrix": {
+                    "overall": {"tp": 1},
+                    "fields": {"foo": {"tp": 1, "threshold_applied_score": 0.2}},
+                }
+            },
+            doc_id="b",
+        )
+
+        result = evaluator.compute()
+
+        assert result.field_metrics["foo"]["mean_score"] == pytest.approx(0.5)
+        assert result.field_metrics["bar"]["mean_score"] == pytest.approx(0.4)
+        assert evaluator._field_score_counts["foo"] == 2
+        assert evaluator._field_score_counts["bar"] == 1
+
+    def test_merge_state_across_disjoint_worker_field_sets(self):
+        """Workers seeing different field subsets must merge into correct union.
+
+        Models the distributed case: one worker only scored path X, another
+        only path Y. After merge, both paths appear with their own per-path
+        denominators.
+        """
+        worker_a = BulkStructuredModelEvaluator()
+        worker_a.update_from_comparison_result(
+            {
+                "confusion_matrix": {
+                    "overall": {"tp": 1},
+                    "fields": {"only_a": {"tp": 1, "threshold_applied_score": 0.7}},
+                }
+            },
+            doc_id="a",
+        )
+
+        worker_b = BulkStructuredModelEvaluator()
+        worker_b.update_from_comparison_result(
+            {
+                "confusion_matrix": {
+                    "overall": {"tp": 1},
+                    "fields": {"only_b": {"tp": 1, "threshold_applied_score": 0.3}},
+                }
+            },
+            doc_id="b",
+        )
+
+        worker_a.merge_state(worker_b.get_state())
+        result = worker_a.compute()
+
+        assert "only_a" in result.field_metrics
+        assert result.field_metrics["only_a"]["mean_score"] == pytest.approx(0.7)
+        assert "only_b" in result.field_metrics
+        assert result.field_metrics["only_b"]["mean_score"] == pytest.approx(0.3)
+        # Overall aggregate spans both docs.
+        assert worker_a._overall_score_count == 0  # no top-level overall_score set
+        assert result.document_count == 2
