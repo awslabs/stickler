@@ -1,6 +1,7 @@
 """Semantic comparator for embedding-based similarity."""
 
 import logging
+import sys
 from functools import partial
 from typing import Callable, Optional
 
@@ -10,6 +11,25 @@ from stickler.comparators.base import BaseComparator
 from stickler.comparators.utils import generate_bedrock_embedding
 
 logger = logging.getLogger(__name__)
+
+
+def _embedding_function_name(embedding_function: Callable) -> str:
+    """Return a useful name for custom callables and functools.partial wrappers."""
+    if isinstance(embedding_function, partial):
+        return getattr(
+            embedding_function.func,
+            "__name__",
+            type(embedding_function.func).__name__,
+        )
+    return getattr(embedding_function, "__name__", type(embedding_function).__name__)
+
+
+def _input_length(value) -> int:
+    """Return a log-safe length for primitive values routed to semantic compare."""
+    try:
+        return len(value)
+    except TypeError:
+        return len(str(value))
 
 
 class SemanticComparator(BaseComparator):
@@ -51,10 +71,10 @@ class SemanticComparator(BaseComparator):
         """
         super().__init__(threshold=threshold)
 
+        self.model_id = model_id
         if embedding_function is not None:
             self.embedding_function = embedding_function
         else:
-            self.model_id = model_id
             self.embedding_function = partial(
                 generate_bedrock_embedding, model_id=model_id
             )
@@ -63,11 +83,15 @@ class SemanticComparator(BaseComparator):
         self.similarity_function = self.SIMILARITY_FUNCTIONS[self.sim_function]
 
     def compare(self, str1: str, str2: str) -> float:
-        """Compare two strings using semantic similarity.
+        """Compare two values using semantic similarity.
+
+        If embedding generation fails, this logs the model ID, embedding function,
+        input lengths, similarity function, and exception type before falling back
+        to raw equality.
 
         Args:
-            str1: First string
-            str2: Second string
+            str1: First value
+            str2: Second value
 
         Returns:
             Similarity score between 0.0 and 1.0
@@ -82,14 +106,14 @@ class SemanticComparator(BaseComparator):
             logger.exception(
                 "Semantic embedding comparison failed; falling back to string equality",
                 extra={
-                    "embedding_function": getattr(
-                        self.embedding_function,
-                        "__name__",
-                        type(self.embedding_function).__name__,
+                    "embedding_function": _embedding_function_name(
+                        self.embedding_function
                     ),
-                    "input_1_length": len(str1),
-                    "input_2_length": len(str2),
+                    "model_id": getattr(self, "model_id", None),
+                    "input_1_length": _input_length(str1),
+                    "input_2_length": _input_length(str2),
                     "similarity_function": self.sim_function,
+                    "exception_type": type(sys.exc_info()[1]).__name__,
                 },
             )
             # Fallback to string equality if embedding fails
