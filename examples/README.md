@@ -44,6 +44,12 @@ This directory contains comprehensive examples demonstrating the core functional
   - Complex nested structures and list matching
   - Production-ready JSON-driven evaluation
 
+- **`scripts/bert_comparator_demo.py`** - BERTComparator for document extraction eval
+  - Semantic similarity via BERTScore (token-level embedding matching)
+  - Threshold tuning for paraphrased LLM outputs
+  - StructuredModel integration with mixed comparators
+  - Requires `--extra bert` (torch, bert-score, evaluate)
+
 ### 3. Interactive Notebooks
 - **`notebooks/Quick_start.ipynb`** - Interactive introduction
   - Step-by-step guided examples  
