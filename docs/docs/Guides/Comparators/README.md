@@ -28,7 +28,7 @@ Checks for exact string matching after normalizing whitespace, punctuation, and 
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import ExactComparator
+from stickler import ExactComparator
 
 class Order(StructuredModel):
     order_id: str = ComparableField(
@@ -55,7 +55,7 @@ Calculates the Levenshtein edit distance between two strings and returns a norma
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import LevenshteinComparator
+from stickler import LevenshteinComparator
 
 class Contact(StructuredModel):
     name: str = ComparableField(
@@ -81,7 +81,7 @@ Extracts numeric values from strings or numbers and compares them with configura
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import NumericComparator
+from stickler import NumericComparator
 
 class Invoice(StructuredModel):
     amount: float = ComparableField(
@@ -109,7 +109,7 @@ Uses the [rapidfuzz](https://github.com/rapidfuzz/RapidFuzz) library for advance
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import FuzzyComparator
+from stickler import FuzzyComparator
 
 class Product(StructuredModel):
     description: str = ComparableField(
@@ -146,7 +146,7 @@ Uses AWS Bedrock Titan embeddings to generate vector representations of text, th
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import SemanticComparator
+from stickler import SemanticComparator
 
 class Review(StructuredModel):
     summary: str = ComparableField(
@@ -174,7 +174,7 @@ Uses the BERTScore metric (via the `evaluate` library) to calculate contextual s
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import BERTComparator
+from stickler import BERTComparator
 
 class Document(StructuredModel):
     summary: str = ComparableField(
@@ -201,7 +201,7 @@ Uses a Large Language Model (via AWS Bedrock and the `strands-agents` library) t
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import LLMComparator
+from stickler import LLMComparator
 
 class Address(StructuredModel):
     street: str = ComparableField(
@@ -248,7 +248,7 @@ You can create your own comparator by extending `BaseComparator`. The only requi
 ### The BaseComparator Interface
 
 ```python
-from stickler.comparators.base import BaseComparator
+from stickler import BaseComparator
 
 class BaseComparator(ABC):
     def __init__(self, threshold: float = 0.7):
@@ -278,7 +278,7 @@ class BaseComparator(ABC):
 ```python
 import re
 from typing import Any
-from stickler.comparators.base import BaseComparator
+from stickler import BaseComparator
 
 class RegexComparator(BaseComparator):
     """Comparator that checks if a value matches a reference regex pattern."""

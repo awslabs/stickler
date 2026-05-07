@@ -15,7 +15,7 @@ Note:
 
 Example:
     Integration with StructuredModel:
-        >>> from stickler.structured_object_evaluator.models.comparable_field import ComparableField
+        >>> from stickler import ComparableField
         >>>
         >>> class Address(StructuredModel):
         ...     street: str = ComparableField(

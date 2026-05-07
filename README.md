@@ -22,8 +22,7 @@ pip install stickler-eval
 ```python
 # pip install stickler-eval
 from typing import List
-from stickler import StructuredModel, ComparableField
-from stickler.comparators import ExactComparator, NumericComparator, LevenshteinComparator
+from stickler import StructuredModel, ComparableField, ExactComparator, NumericComparator, LevenshteinComparator
 
 # Define your models
 class LineItem(StructuredModel):
@@ -99,8 +98,7 @@ pytest tests/
 ### Static Model Definition
 
 ```python
-from stickler import StructuredModel, ComparableField
-from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler import StructuredModel, ComparableField, LevenshteinComparator
 
 # Define your data structure
 class Invoice(StructuredModel):
@@ -156,7 +154,7 @@ print(results.confidence_metrics["overall"]["auroc"]["value"])
 Create models from JSON configuration for maximum flexibility:
 
 ```python
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+from stickler import StructuredModel
 
 # Define model configuration
 config = {

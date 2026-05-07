@@ -13,12 +13,11 @@ import random
 import time
 from typing import List
 
-from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler import LevenshteinComparator
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
 )
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+from stickler import ComparableField, StructuredModel
 
 
 # Define a simple document model for demonstration

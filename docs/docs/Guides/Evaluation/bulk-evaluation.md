@@ -311,10 +311,7 @@ Stickler can generate interactive HTML reports from evaluation results. See [Und
 ## Complete Example
 
 ```python
-from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.comparators.exact import ExactComparator
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+from stickler import ComparableField, ExactComparator, LevenshteinComparator, StructuredModel
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
 )
