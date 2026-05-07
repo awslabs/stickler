@@ -929,18 +929,18 @@ class TestWeightedOverallScoreParity:
 
         import random
 
-        random.seed(42)
+        rng = random.Random(42)
         pairs = []
         for i in range(25):
             gt = WeightedInvoice(
                 invoice_id=f"INV-{i}",
-                note=random.choice(["a", "b", "c"]),
+                note=rng.choice(["a", "b", "c"]),
                 total=float(i * 10),
             )
             pred = WeightedInvoice(
-                invoice_id=f"INV-{i}" if random.random() < 0.6 else f"INV-X{i}",
-                note=random.choice(["a", "b", "c", "d"]),
-                total=float(i * 10) if random.random() < 0.7 else float(i * 10 + 1),
+                invoice_id=f"INV-{i}" if rng.random() < 0.6 else f"INV-X{i}",
+                note=rng.choice(["a", "b", "c", "d"]),
+                total=float(i * 10) if rng.random() < 0.7 else float(i * 10 + 1),
             )
             pairs.append((gt, pred))
 

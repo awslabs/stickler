@@ -175,9 +175,15 @@ class BulkStructuredModelEvaluator:
         When present, the top-level ``overall_score`` and any
         ``threshold_applied_score`` values inside the ``fields`` tree are also
         accumulated for ``weighted_overall_score`` and per-field
-        ``mean_score`` reporting. Missing keys are silently skipped. Documents
-        that raise during processing are excluded from the score denominator,
-        matching ``_processed_count``.
+        ``mean_score`` reporting. Missing keys are silently skipped.
+
+        Score-denominator semantics differ from ``_processed_count``:
+        ``weighted_overall_score`` only counts docs whose ``overall_score``
+        is a finite number, and a field's ``mean_score`` only counts docs
+        whose ``threshold_applied_score`` at that path is a finite number.
+        Docs that omit the key or carry a non-finite value still count
+        toward ``_processed_count`` and the confusion matrix. Docs that
+        raise during processing are excluded from every aggregate.
 
         Args:
             comparison_result: Dictionary returned by StructuredModel.compare_with()
@@ -443,11 +449,11 @@ class BulkStructuredModelEvaluator:
     ) -> None:
         """Recursively accumulate per-field ``threshold_applied_score`` values.
 
-        Walks the nested ``comparison_result["fields"]`` tree, recording the
-        score at every node that exposes ``threshold_applied_score`` (leaf
-        fields and object/list aggregates). Also descends through
-        ``nested_fields`` on list-of-StructuredModel nodes, for parity with
-        ``_accumulate_field_metrics``.
+        Walks the nested ``confusion_matrix["fields"]`` tree passed in as
+        ``fields_dict``, recording the score at every node that exposes
+        ``threshold_applied_score`` (leaf fields and object/list aggregates).
+        Also descends through ``nested_fields`` on list-of-StructuredModel
+        nodes, for parity with ``_accumulate_field_metrics``.
         """
         for field_name, field_data in fields_dict.items():
             if not isinstance(field_data, dict):
