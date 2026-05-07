@@ -124,7 +124,7 @@ final = evaluator.compute()
 |-----------|------|-------------|
 | `document_count` | `int` | Total number of documents processed. |
 | `metrics` | `dict` | Overall confusion matrix counts (`tp`, `fp`, `tn`, `fn`, `fd`, `fa`), derived metrics (`cm_precision`, `cm_recall`, `cm_f1`, `cm_accuracy`), and the weight-aware `weighted_overall_score`. |
-| `field_metrics` | `dict` | Per-field metrics with the same confusion-matrix structure as `metrics`, plus `mean_score` (arithmetic mean of the per-document `threshold_applied_score` at that path). Keyed by dotted field path (e.g., `"customer.name"`). |
+| `field_metrics` | `dict` | Per-field metrics with the same confusion-matrix structure as `metrics`, plus `mean_score` (arithmetic mean of the per-document `threshold_applied_score` at that path) when that path was actually scored. Keyed by dotted field path (e.g., `"customer.name"`). |
 | `errors` | `list` | Records for any documents that raised exceptions during processing. |
 | `total_time` | `float` | Wall-clock time in seconds since the evaluator was created or last reset. |
 | `non_matches` | `list` | Detailed non-match records (when `document_non_matches=True`), each tagged with `doc_id`. |
@@ -137,9 +137,9 @@ final = evaluator.compute()
 
 Because each document's `overall_score = Σ_f(score × weight) / Σ_f(weight)` already divides by the schema-constant total weight, the mean-of-per-document-overalls equals the `(doc, field)`-weighted aggregate -- a single key suffices.
 
-Documents that raised an exception during `update()` are excluded from the denominator, matching how `document_count` treats the `_processed_count` for successful docs.
+The denominator is the count of documents whose `overall_score` was a finite number: error docs (`update()` raised) and successful docs carrying a non-finite or missing `overall_score` are both excluded. With zero eligible documents the score is `0.0` — disambiguate via `document_count` when that matters.
 
-Per-field `mean_score` follows the same pattern at every nested path (leaf and object/list aggregates), averaging over the documents where that path was actually scored.
+Per-field `mean_score` is reported at every nested path (leaf and object/list aggregate) where `threshold_applied_score` was observed in at least one document, averaging over just those documents. Paths with confusion-matrix counts but no score data (e.g., leaves inside `List[StructuredModel]`, where `compare_with()` only emits the score at the list parent) are surfaced without a `mean_score` key rather than reported as `0.0`.
 
 ---
 

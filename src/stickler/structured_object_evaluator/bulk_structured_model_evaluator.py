@@ -443,6 +443,11 @@ class BulkStructuredModelEvaluator:
         if self._is_valid_score(overall_score):
             self._overall_score_sum += float(overall_score)
             self._overall_score_count += 1
+        elif self.verbose:
+            logger.debug(
+                "Skipping non-finite overall_score=%r from weighted aggregate",
+                overall_score,
+            )
 
     def _accumulate_field_scores_recursive(
         self, fields_dict: Dict[str, Any], path_prefix: str
@@ -454,6 +459,11 @@ class BulkStructuredModelEvaluator:
         ``threshold_applied_score`` (leaf fields and object/list aggregates).
         Also descends through ``nested_fields`` on list-of-StructuredModel
         nodes, for parity with ``_accumulate_field_metrics``.
+
+        Note: leaves inside ``List[StructuredModel]`` never surface a
+        ``threshold_applied_score`` because ``compare_with()`` only emits
+        the score at the list parent node. Those leaves will have CM
+        counts but no ``mean_score`` in the final ``field_metrics``.
         """
         for field_name, field_data in fields_dict.items():
             if not isinstance(field_data, dict):
@@ -461,10 +471,17 @@ class BulkStructuredModelEvaluator:
 
             current_path = f"{path_prefix}.{field_name}" if path_prefix else field_name
 
-            score = field_data.get("threshold_applied_score")
-            if self._is_valid_score(score):
-                self._field_score_sums[current_path] += float(score)
-                self._field_score_counts[current_path] += 1
+            if "threshold_applied_score" in field_data:
+                score = field_data["threshold_applied_score"]
+                if self._is_valid_score(score):
+                    self._field_score_sums[current_path] += float(score)
+                    self._field_score_counts[current_path] += 1
+                elif self.verbose:
+                    logger.debug(
+                        "Skipping non-finite threshold_applied_score=%r at %s",
+                        score,
+                        current_path,
+                    )
 
             if isinstance(field_data.get("fields"), dict):
                 self._accumulate_field_scores_recursive(
@@ -532,21 +549,26 @@ class BulkStructuredModelEvaluator:
             else 0.0
         )
 
-        # Calculate derived metrics for each field
+        # Union of cm paths and score paths surfaces fields seen via the
+        # minimal-input contract of update_from_comparison_result.
         field_metrics = {}
-        for field_path, field_cm in self._confusion_matrix["fields"].items():
-            field_cm_dict = dict(field_cm)
+        field_paths = set(self._confusion_matrix["fields"].keys())
+        field_paths.update(self._field_score_sums.keys())
+        for field_path in field_paths:
+            field_cm_dict = dict(self._confusion_matrix["fields"].get(field_path, {}))
             field_derived = self._calculate_derived_metrics(field_cm_dict)
             field_metrics[field_path] = {**field_cm_dict, **field_derived}
 
             # .get() (not []) avoids resurrecting zero entries in the
-            # defaultdict on every compute() call.
+            # defaultdict on every compute() call. mean_score is only
+            # emitted when a finite threshold_applied_score was observed at
+            # this path in at least one document — omitting the key keeps
+            # "no data" distinguishable from "every observation was 0.0".
             count = self._field_score_counts.get(field_path, 0)
-            field_metrics[field_path]["mean_score"] = (
-                self._field_score_sums.get(field_path, 0.0) / count
-                if count > 0
-                else 0.0
-            )
+            if count > 0:
+                field_metrics[field_path]["mean_score"] = (
+                    self._field_score_sums.get(field_path, 0.0) / count
+                )
 
         total_time = time.time() - self._start_time
 
@@ -673,12 +695,16 @@ class BulkStructuredModelEvaluator:
                 precision = field_metrics.get("cm_precision", 0.0)
                 recall = field_metrics.get("cm_recall", 0.0)
                 f1 = field_metrics.get("cm_f1", 0.0)
-                mean_score = field_metrics.get("mean_score", 0.0)
+                mean_score = field_metrics.get("mean_score")
+                mean_cell = f"{mean_score:.3f}" if mean_score is not None else "  n/a"
 
                 # Only show fields with some activity
                 if tp + fp + fn > 0:
+                    display_path = (
+                        field_path if len(field_path) <= 30 else field_path[:27] + "..."
+                    )
                     print(
-                        f"  {field_path:30} Mean: {mean_score:.3f} | P: {precision:.3f} | R: {recall:.3f} | F1: {f1:.3f} | TP: {tp:,} | FP: {fp:,} | FN: {fn:,}"
+                        f"  {display_path:30} Mean: {mean_cell} | P: {precision:.3f} | R: {recall:.3f} | F1: {f1:.3f} | TP: {tp:,} | FP: {fp:,} | FN: {fn:,}"
                     )
 
         # Error summary
