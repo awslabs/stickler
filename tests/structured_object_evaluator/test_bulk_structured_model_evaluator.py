@@ -9,6 +9,7 @@ capabilities of the new BulkStructuredModelEvaluator.
 """
 
 import json
+import math
 from typing import List, Optional
 
 import pandas as pd
@@ -796,20 +797,18 @@ class TestUpdateFromComparisonResult:
         assert evaluator._processed_count == 2
 
 
-# Issue #122 fixtures/models live at module scope so Pydantic can resolve
-# forward references inside the test class below.
+# Fixture model lives at module scope so Pydantic can resolve forward refs
+# inside the test class below.
 
 
 class _Issue122Invoice(StructuredModel):
-    """Exact repro model from issue #122."""
-
     invoice_id: str = ComparableField(comparator=LevenshteinComparator(), weight=10.0)
     note: str = ComparableField(comparator=LevenshteinComparator(), weight=0.1)
     total: float = ComparableField(comparator=NumericComparator(), weight=5.0)
 
 
 class TestWeightedOverallScore:
-    """Issue #122 — weight-aware aggregate score in bulk evaluation."""
+    """Weight-aware aggregate score in bulk evaluation."""
 
     def _make_invoice_pair(self, gt_kwargs, pred_kwargs):
         return (
@@ -917,7 +916,7 @@ class TestWeightedOverallScore:
         )
 
     def test_load_state_tolerates_old_state_without_score_keys(self):
-        """Pre-#122 state dicts must load without error, score is 0.0."""
+        """Old state dicts without score keys must load, score defaults to 0.0."""
         evaluator = BulkStructuredModelEvaluator(target_schema=_Issue122Invoice)
         # Simulate an old state dict with no score_* keys.
         old_state = {
@@ -979,7 +978,7 @@ class TestWeightedOverallScore:
 
         score = result.metrics["weighted_overall_score"]
         assert score == 0.0
-        assert not isinstance(score, float) or score == score  # not NaN
+        assert not math.isnan(score)
 
     def test_merge_state_sums_weighted_score_accumulators(self):
         a_pair = self._make_invoice_pair(
@@ -1009,7 +1008,7 @@ class TestWeightedOverallScore:
         )
 
     def test_merge_state_tolerates_old_peer_without_score_keys(self):
-        """Merging an old state dict (pre-#122) must not raise."""
+        """Merging an old state dict (no score keys) must not raise."""
         pair = self._make_invoice_pair(
             {"invoice_id": "INV-1", "note": "hi", "total": 10.0},
             {"invoice_id": "INV-9", "note": "hi", "total": 10.0},

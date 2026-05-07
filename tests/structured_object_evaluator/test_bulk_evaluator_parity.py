@@ -913,7 +913,7 @@ class TestMultiDocumentAggregation:
 
 
 class TestWeightedOverallScoreParity:
-    """Issue #122 — bulk weighted_overall_score matches per-doc mean."""
+    """Bulk weighted_overall_score matches per-doc mean."""
 
     def test_weighted_overall_score_parity_vs_compare_with_mean(self):
         """Bulk weighted_overall_score equals mean of compare_with overall_scores."""
