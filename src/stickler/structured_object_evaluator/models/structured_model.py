@@ -414,6 +414,7 @@ class StructuredModel(BaseModel):
         Supported Features:
         -------------------
         - Primitive types: string, number, integer, boolean
+        - Nullable list-form types, e.g. {"type": ["string", "null"]}
         - Nested objects and arrays (primitive/object items)
         - Required fields, defaults, descriptions
         - Schema references ($ref with #/definitions/ and #/$defs/)
@@ -1259,8 +1260,13 @@ class StructuredModel(BaseModel):
                     )
                     property_schema.update(extensions)
             else:
-                # Primitive type - use converter for consistent formatting
-                property_schema = converter.field_to_property(field_type, field_info)
+                # Primitive type - use converter for consistent formatting.
+                # field_type is already unwrapped above, so pass whether the
+                # original annotation was Optional so nullability round-trips.
+                _, field_is_nullable = cls._unwrap_optional(field_info.annotation)
+                property_schema = converter.field_to_property(
+                    field_type, field_info, is_nullable=field_is_nullable
+                )
 
             schema["properties"][field_name] = property_schema
 
