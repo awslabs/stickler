@@ -105,8 +105,9 @@ for gt_json, pred_json, doc_id in your_test_set:
     evaluator.update(gt, pred, doc_id)
 
 result = evaluator.compute()
-print(f"Aggregate F1: {result.overall_metrics['f1']:.3f}")
+print(f"Weighted Score: {result.metrics['weighted_overall_score']:.3f}")
+print(f"Aggregate F1:   {result.metrics['cm_f1']:.3f}")
 ```
 
-See [Bulk Evaluation](../Guides/Evaluation/bulk-evaluation.md) for the full guide.
+`metrics["weighted_overall_score"]` is the weight-aware dataset headline -- the mean of each document's per-field-weighted `overall_score`. Prefer it over `cm_f1` whenever your schema assigns non-uniform `weight=...` values, since `cm_f1` treats every field-match equally regardless of business importance. See [Bulk Evaluation](../Guides/Evaluation/bulk-evaluation.md#weighted-overall-score) for the full guide.
 

@@ -51,7 +51,7 @@ class SemanticComparator(BaseComparator):
         if embedding_function is not None:
             self.embedding_function = embedding_function
         else:
-            self.model_id = (model_id,)
+            self.model_id = model_id
             self.embedding_function = partial(
                 generate_bedrock_embedding, model_id=model_id
             )
