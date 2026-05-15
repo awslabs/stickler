@@ -25,6 +25,11 @@ if TYPE_CHECKING:
 class StructuredListComparator:
     """Handles comparison of List[StructuredModel] fields using Hungarian matching."""
 
+    # Class-level nesting depth tracker.
+    # Threshold-gating only applies at the outermost list level (_nesting_depth == 1).
+    # Inner list comparisons (called via compare_recursive) use ungated behavior.
+    _nesting_depth = 0
+
     def __init__(self, parent_model: "StructuredModel"):
         """Initialize the comparator with reference to parent model.
 
@@ -272,8 +277,9 @@ class StructuredListComparator:
         """Calculate field-level details for nested structure with threshold-gated recursion.
 
         PHASE 3 FIX: Implements proper threshold-gated recursion as documented.
-        Only generates nested field metrics for object pairs with similarity >= match_threshold.
-        Poor matches and unmatched items are treated as atomic units without field-level analysis.
+        Only generates nested field metrics in per-field 'overall' for object pairs
+        with similarity >= match_threshold. Below-threshold pairs still contribute to
+        'aggregate' metrics (which recurse into all leaf nodes regardless of threshold).
 
         Args:
             list_field_name: Name of the parent list field
@@ -287,45 +293,71 @@ class StructuredListComparator:
         Returns:
             Dictionary mapping field names to their metrics
         """
-        field_details = {}
-        field_details['fields'] = {}
+        # Track nesting depth: threshold-gating only applies at outermost list level
+        StructuredListComparator._nesting_depth += 1
+        is_outermost = StructuredListComparator._nesting_depth == 1
 
-        # FIX: Generate field details for all matched pairs AND unmatched objects
-        results =[]
+        try:
+            # Two result sets:
+            # - gated_results: only above-threshold pairs (for per-field "overall")
+            # - all_results: ALL pairs including below-threshold (for "aggregate" pre-seeding)
+            all_results = []
+            gated_results = [] if is_outermost else None  # Only needed at outermost level
 
-        # Handle matched pairs
-        for gt_idx, pred_idx, similarity in matched_pairs:
-            if gt_idx < len(gt_list) and pred_idx < len(pred_list):
-                gt_item = gt_list[gt_idx]
-                pred_item = pred_list[pred_idx]
-                field_details_tmp = gt_item.compare_recursive(pred_item)
-                results.append(field_details_tmp)
+            # Handle matched pairs - split by threshold at outermost level only
+            for gt_idx, pred_idx, similarity in matched_pairs:
+                if gt_idx < len(gt_list) and pred_idx < len(pred_list):
+                    gt_item = gt_list[gt_idx]
+                    pred_item = pred_list[pred_idx]
+                    field_details_tmp = gt_item.compare_recursive(pred_item)
+                    all_results.append(field_details_tmp)
+                    if is_outermost and similarity >= match_threshold:
+                        gated_results.append(field_details_tmp)
 
-        # Handle unmatched GT objects - count each element in the list
-        for gt_idx, gt_item in enumerate(gt_list):
-            if gt_idx not in matched_gt_indices:
-                #compare against itself to count all non-null values
-                field_details_tmp = gt_item.compare_recursive(gt_item)
+            # Handle unmatched GT objects - count each element in the list
+            for gt_idx, gt_item in enumerate(gt_list):
+                if gt_idx not in matched_gt_indices:
+                    #compare against itself to count all non-null values
+                    field_details_tmp = gt_item.compare_recursive(gt_item)
 
-                #take all the tp values and convert to fn
-                field_details_tmp["fields"] = self._switch_metrics(field_details_tmp["fields"] , source_metric='tp', target_metric='fn')
-                results.append(field_details_tmp)
+                    #take all the tp values and convert to fn
+                    field_details_tmp["fields"] = self._switch_metrics(field_details_tmp["fields"] , source_metric='tp', target_metric='fn')
+                    all_results.append(field_details_tmp)
+                    if is_outermost:
+                        gated_results.append(field_details_tmp)
 
-        # Handle unmatched pred objects - count each element in the list
-        for pred_idx, pred_item in enumerate(pred_list):
-            if pred_idx not in matched_pred_indices:
-                #compare against itself to count all non-null values
-                field_details_tmp = pred_item.compare_recursive(pred_item)
+            # Handle unmatched pred objects - count each element in the list
+            for pred_idx, pred_item in enumerate(pred_list):
+                if pred_idx not in matched_pred_indices:
+                    #compare against itself to count all non-null values
+                    field_details_tmp = pred_item.compare_recursive(pred_item)
 
-                #take all the tp values and convert to fa and fp
-                target_result = field_details_tmp.copy()
-                target_result["fields"]  = self._switch_metrics(field_details_tmp["fields"], source_metric='tp', target_metric='fa')
-                field_details_tmp["fields"] = self._switch_metrics(field_details_tmp["fields"], target_result["fields"], source_metric='tp', target_metric='fp')
-                results.append(field_details_tmp)
-                
-        field_details = self._recursive_aggregate_metrics(results)
+                    #take all the tp values and convert to fa and fp
+                    target_result = field_details_tmp.copy()
+                    target_result["fields"]  = self._switch_metrics(field_details_tmp["fields"], source_metric='tp', target_metric='fa')
+                    field_details_tmp["fields"] = self._switch_metrics(field_details_tmp["fields"], target_result["fields"], source_metric='tp', target_metric='fp')
+                    all_results.append(field_details_tmp)
+                    if is_outermost:
+                        gated_results.append(field_details_tmp)
 
-        return field_details['fields']
+            if is_outermost:
+                # Aggregate gated results for per-field "overall" values
+                gated_aggregated = self._recursive_aggregate_metrics(gated_results)
+
+                # Aggregate all results for pre-seeded "aggregate" values
+                all_aggregated = self._recursive_aggregate_metrics(all_results)
+
+                # Merge: use gated structure for "overall" but pre-seed "aggregate" from full results
+                merged = self._preseed_aggregate_from_full(gated_aggregated, all_aggregated)
+
+                return merged['fields']
+            else:
+                # Inner list: no gating, use all results directly (old behavior)
+                aggregated = self._recursive_aggregate_metrics(all_results)
+                return aggregated['fields']
+
+        finally:
+            StructuredListComparator._nesting_depth -= 1
 
     def _switch_metrics(self, source_result:dict, target_result: dict =None, source_metric: str ='tp', target_metric: str ='fp'):
         if not target_result:
@@ -354,6 +386,58 @@ class StructuredListComparator:
                                                                            target_result[field_name]["fields"],
                                                                            source_metric, target_metric)
         return target_result
+
+    def _preseed_aggregate_from_full(
+        self, gated: Dict[str, Any], full: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Pre-seed 'aggregate' keys into the gated structure using metrics from the full (ungated) structure.
+
+        Only pre-seeds at LEAF nodes (fields with no children or empty children).
+        Non-leaf nodes let the AggregateMetricsCalculator compute by summing child aggregates.
+
+        The gated structure has per-field 'overall' counts that only include above-threshold
+        entity pairs. The full structure includes ALL pairs. We copy the full structure's
+        'overall' values into 'aggregate' keys at leaf levels so that the
+        AggregateMetricsCalculator picks them up as pre-computed aggregates and sums them upward.
+
+        Args:
+            gated: Aggregated result from above-threshold pairs only (used for 'overall')
+            full: Aggregated result from ALL pairs (used for 'aggregate' pre-seeding)
+
+        Returns:
+            The gated structure with 'aggregate' keys pre-seeded at leaf nodes from full.
+        """
+        # Determine if this is a leaf node (no children or empty children)
+        full_has_children = "fields" in full and full["fields"] and len(full["fields"]) > 0
+
+        if not full_has_children:
+            # Leaf node: pre-seed aggregate from full's overall
+            if "overall" in full:
+                gated["aggregate"] = dict(full["overall"])
+        else:
+            # Non-leaf node: recurse into children but do NOT pre-seed aggregate here.
+            # The AggregateMetricsCalculator will compute it by summing child aggregates.
+            if "fields" not in gated:
+                gated["fields"] = {}
+
+            for field_name in full["fields"]:
+                if field_name in gated.get("fields", {}):
+                    gated["fields"][field_name] = self._preseed_aggregate_from_full(
+                        gated["fields"][field_name], full["fields"][field_name]
+                    )
+                else:
+                    # Field exists in full but not in gated (all from below-threshold pairs)
+                    # Create a shell with zeroed overall and recurse
+                    full_field = full["fields"][field_name]
+                    shell = {
+                        "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0},
+                        "fields": {},
+                    }
+                    # Recursively pre-seed into the shell
+                    shell = self._preseed_aggregate_from_full(shell, full_field)
+                    gated["fields"][field_name] = shell
+
+        return gated
 
     def _handle_hierarchical_field(
         self,

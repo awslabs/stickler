@@ -66,7 +66,7 @@ Given three GT products and three Pred products:
 **Pred:** `Product("PROD-001", "Laptop Computer", 999.99)`
 
 - Classification: **TP**
-- Nested field analysis is performed:
+- Nested field analysis contributes to both per-field `overall` and `aggregate`:
     - `product_id`: TP (exact match)
     - `name`: TP (similarity ~0.9)
     - `price`: TP (exact match)
@@ -77,14 +77,14 @@ Given three GT products and three Pred products:
 **Pred:** `Product("PROD-002", "Different Product", 99.99)`
 
 - Classification: **FD**
-- No nested field analysis -- the objects are too dissimilar for field-level breakdown to be useful.
+- Nested field analysis is performed for **aggregate** metrics only. The per-field `overall` does not include this pair's field-level breakdown, since the objects are too dissimilar for those counts to be meaningful alongside good matches.
 
 ### Unmatched Items
 
 **GT:** `Product("PROD-003", "Cable", 14.99)` -- **FN** (no counterpart in Pred)
 **Pred:** `Product("PROD-004", "New Product", 19.99)` -- **FA** (no counterpart in GT)
 
-No nested analysis for either.
+Nested field analysis is performed for **aggregate** metrics only (each non-null field on FN items counts as FN; each non-null field on FA items counts as FA). Per-field `overall` includes these contributions since the classification is unambiguous.
 
 ## Result Structure
 
@@ -95,10 +95,17 @@ No nested analysis for either.
       "tp": 1, "fd": 1, "fn": 1, "fa": 1,
       "derived": { "cm_precision": 0.5, "cm_recall": 0.5, "cm_f1": 0.5 }
     },
+    "aggregate": {
+      "tp": 4, "fd": 2, "fn": 3, "fa": 3,
+      "derived": { "cm_precision": 0.57, "cm_recall": 0.57, "cm_f1": 0.57 }
+    },
     "fields": {
-      "product_id": { "tp": 1 },
-      "name":       { "tp": 1 },
-      "price":      { "tp": 1 }
+      "product_id": { "overall": { "tp": 1 },
+                      "aggregate": { "tp": 2, "fn": 1, "fa": 1 } },
+      "name":       { "overall": { "tp": 1 },
+                      "aggregate": { "tp": 1, "fd": 1, "fn": 1, "fa": 1 } },
+      "price":      { "overall": { "tp": 1 },
+                      "aggregate": { "tp": 1, "fd": 1, "fn": 1, "fa": 1 } }
     },
     "non_matches": [
       {
@@ -114,7 +121,7 @@ No nested analysis for either.
 }
 ```
 
-Field-level metrics appear only for the single TP pair. The `non_matches` list documents every FD, FN, and FA for diagnostic purposes.
+Per-field `overall` metrics appear only for the single TP pair (and unmatched FN/FA items). The `aggregate` at each field includes contributions from all pairs -- good matches, poor matches, and unmatched items alike. The `non_matches` list documents every FD, FN, and FA for diagnostic purposes.
 
 ## Delegation Pattern
 

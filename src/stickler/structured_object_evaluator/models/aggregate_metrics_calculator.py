@@ -215,7 +215,14 @@ class AggregateMetricsCalculator:
                                 aggregate_metrics[metric] += field_result.get(metric, 0)
 
         # Add aggregate as a sibling of 'overall' and 'fields'
-        result_copy["aggregate"] = aggregate_metrics
+        # CRITICAL: If a pre-seeded 'aggregate' already exists (e.g. from threshold-gated
+        # recursion in StructuredListComparator), respect it rather than overwriting.
+        # Pre-seeded aggregates contain the full (ungated) metrics from ALL matched pairs.
+        if "aggregate" in result_copy and self._has_basic_metrics(result_copy["aggregate"]):
+            # Pre-seeded aggregate exists - use it as-is
+            pass
+        else:
+            result_copy["aggregate"] = aggregate_metrics
 
         return result_copy
     

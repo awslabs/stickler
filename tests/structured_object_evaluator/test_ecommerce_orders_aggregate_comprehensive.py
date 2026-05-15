@@ -419,7 +419,7 @@ class TestEcommerceOrdersAggregateComprehensive:
         # With threshold-gated recursion: below-threshold matches should have empty "overall" metrics
         assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["tp"] == 0, f'Expected Discount_Code overall TP=0, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["tp"]}'
         assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fa"] == 0, f'Expected Discount_Code overall FA=0, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fa"]}'
-        assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fd"] == 1, f'Expected Discount_Code overall FD=1, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fd"]}'
+        assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fd"] == 0, f'Expected Discount_Code overall FD=0, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fd"]}'
         assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["tn"] == 0, f'Expected Discount_Code overall TN=0, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["tn"]}'
         assert cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fn"] == 0, f'Expected Discount_Code overall FN=0, got {cm["fields"]["Discounts"]["fields"]["Discount_Code"]["overall"]["fn"]}'
 

@@ -245,7 +245,7 @@ def test_nested_field_aggregation():
     # Overall should have some metrics from poor matches at the leaf node level.
     name_metrics = items_fields["name"]
     if "overall" in name_metrics:
-        assert name_metrics["overall"]["tp"] == 2
+        assert name_metrics["overall"]["tp"] == 1
     else:
         assert name_metrics["tp"] == 1
     # Handle both old and new structure for remaining assertions
@@ -258,14 +258,14 @@ def test_nested_field_aggregation():
             name_metrics["fp"] + name_metrics["fd"] == 0
         )  # No false positives for names
 
-    # items.count should have 1 TP (only item1's count, item2's count did not pass comparison)
+    # items.count should have 1 TP (only item1's count, item2  was below threshold)
     count_metrics = items_fields["count"]
     if "overall" in count_metrics:
         assert count_metrics["overall"]["tp"] == 1  # item1 count matches
         assert (
-            count_metrics["overall"]["fp"] == 1
-        )  # 1 False positive since item2 matched but count should have been empty
-        assert count_metrics["overall"]["fa"] == 1  # 1 false alarm for count
+            count_metrics["overall"]["fp"] == 0
+        )  # No false positives since item2 not analyzed at field level
+        assert count_metrics["overall"]["fd"] == 0  # No false discoveries for count
     else:
         assert count_metrics["tp"] == 1  # item1 count matches
         assert (
@@ -273,14 +273,14 @@ def test_nested_field_aggregation():
         )  # No false positives since item2 not analyzed at field level
         assert count_metrics["fd"] == 0  # No false discoveries for count
 
-    # items.description should have 1 TP (only item1's description, item2's description did not pass comparison)
+    # items.description should have 1 TP (only item1's description, item2 was below threshold)
     desc_metrics = items_fields["description"]
     if "overall" in desc_metrics:
         assert desc_metrics["overall"]["tp"] == 1  # item1 description matches
         assert (
-            desc_metrics["overall"]["fd"] == 1
-        )  # 1 false discoveries since item2 matched but description not correct at field level
-        assert desc_metrics["overall"]["fp"] == 1  # 1 false positives for description
+            desc_metrics["overall"]["fd"] == 0
+        )  # No false discoveries since item2 not analyzed at field level
+        assert desc_metrics["overall"]["fp"] == 0  # No false positives for description
     else:
         assert desc_metrics["tp"] == 1  # item1 description matches
         assert (

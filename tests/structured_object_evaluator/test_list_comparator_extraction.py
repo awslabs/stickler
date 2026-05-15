@@ -347,8 +347,8 @@ class TestHungarianMatchingBaseline:
                 
                 # When the node is primitive or simple list, overall metrics will be same as aggregate metrics. 
                 # When the node is structured list, then overall can be different from aggregate due to threshold. 
-                assert overall_metrics["fd"] > 0, \
-                    f"Field {field_name} overall metric should have FD metrics from poor matches"
+                assert overall_metrics["fd"] == 0, \
+                    f"Field {field_name} overall should be 0 for below-threshold matches"
                 
                 # Aggregate metrics should contain the field-level analysis for poor matches
                 assert aggregate_metrics["fd"] > 0, \

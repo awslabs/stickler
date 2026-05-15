@@ -325,8 +325,8 @@ class TestVetRecordsMetricsCalculation:
 
         # petId metrics
         assert (
-            get_metric(cm["fields"]["pets"]["fields"]["petId"], "tp") == 2
-        ), "Expected 2 true positives"
+            get_metric(cm["fields"]["pets"]["fields"]["petId"], "tp") == 1
+        ), "Expected 1 true positive"
         assert (
             get_metric(cm["fields"]["pets"]["fields"]["petId"], "fd") == 0
         ), "Expected 0 false discovery"
@@ -342,8 +342,8 @@ class TestVetRecordsMetricsCalculation:
 
         # name metrics
         assert (
-            get_metric(cm["fields"]["pets"]["fields"]["name"], "tp") == 2
-        ), "Expected 2 true positives"
+            get_metric(cm["fields"]["pets"]["fields"]["name"], "tp") == 1
+        ), "Expected 1 true positive"
         assert (
             get_metric(cm["fields"]["pets"]["fields"]["name"], "fd") == 0
         ), "Expected 0 false discovery"
@@ -359,8 +359,8 @@ class TestVetRecordsMetricsCalculation:
 
         # species metrics
         assert (
-            get_metric(cm["fields"]["pets"]["fields"]["species"], "tp") == 1
-        ), "Expected 1 true positives"
+            get_metric(cm["fields"]["pets"]["fields"]["species"], "tp") == 0
+        ), "Expected 0 true positives"
         assert (
             get_metric(cm["fields"]["pets"]["fields"]["species"], "fd") == 0
         ), "Expected 0 false discovery"
