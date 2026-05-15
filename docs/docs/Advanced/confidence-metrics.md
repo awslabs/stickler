@@ -250,6 +250,101 @@ Each `ConfidencePair` has three fields:
 - `confidence` (float): the model's self-reported confidence from JSON
 - `similarity` (float): the raw comparator similarity score (0.0 to 1.0)
 
+## Custom Accumulators
+
+A `ConfidenceMetric` plugs into the existing confidence pipeline. If you need to evaluate something the confidence pipeline can't model — e.g. mean Average Precision over bounding boxes, source-span attribution quality, anything that consumes its own metadata key from the rich value pattern — implement a `PostComparisonAccumulator` instead.
+
+`BulkStructuredModelEvaluator` holds a list of accumulators. Each one sees every comparison result and the prediction's raw JSON, accumulates its own state, and produces its own block of aggregate metrics at `compute()` time. The built-in `ConfidenceAccumulator` is one of them; yours runs alongside it.
+
+```python
+from typing import Any, Dict, Optional
+from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
+    BulkStructuredModelEvaluator,
+)
+from stickler.structured_object_evaluator.models.confidence.accumulator import (
+    ConfidenceAccumulator,
+)
+from stickler.structured_object_evaluator.models.post_comparison_accumulator import (
+    PostComparisonAccumulator,
+)
+
+
+class FieldCountAccumulator(PostComparisonAccumulator):
+    """Toy accumulator: counts total fields seen across all documents."""
+
+    def __init__(self) -> None:
+        self.reset()
+
+    @property
+    def name(self) -> str:
+        # Keys this accumulator's block in compute().accumulator_metrics.
+        # Must be unique across the accumulator list.
+        return "field_count"
+
+    def reset(self) -> None:
+        self._total = 0
+
+    def accumulate(
+        self,
+        comparison_result: Dict[str, Any],
+        prediction_raw: Optional[Dict[str, Any]],
+    ) -> None:
+        self._total += len(comparison_result.get("field_comparisons", []))
+
+    def compute(self) -> Optional[Dict[str, Any]]:
+        return {"total_fields": self._total} if self._total else None
+
+    def get_state(self) -> Dict[str, Any]:
+        return {"total": self._total}
+
+    def load_state(self, state: Dict[str, Any]) -> None:
+        self._total = int(state.get("total", 0))
+
+    def merge_state(self, other_state: Dict[str, Any]) -> None:
+        self._total += int(other_state.get("total", 0))
+
+
+# Pass an explicit accumulators list. ConfidenceAccumulator only runs if
+# you include it — `accumulators=` and `confidence_metrics=` are mutually
+# exclusive.
+evaluator = BulkStructuredModelEvaluator(
+    target_schema=Product,
+    accumulators=[
+        ConfidenceAccumulator(),
+        FieldCountAccumulator(),
+    ],
+)
+
+for gt, pred in dataset:
+    evaluator.update(gt, pred)
+
+result = evaluator.compute()
+print(result.confidence_metrics["overall"])           # from ConfidenceAccumulator
+print(result.accumulator_metrics["field_count"])      # from FieldCountAccumulator
+```
+
+### Interface contract
+
+| Method | Purpose |
+|--------|---------|
+| `name` | Unique key in `compute().accumulator_metrics`. Two accumulators sharing a name raise `ValueError` at constructor time. |
+| `reset()` | Clear accumulated state. Called from `BulkStructuredModelEvaluator.reset()`. |
+| `accumulate(comparison_result, prediction_raw)` | Process one document. Called once per `update()` / `update_from_comparison_result()`. |
+| `compute()` | Return aggregate metrics, or `None` if no data was seen. |
+| `get_state()` / `load_state()` / `merge_state()` | Required for checkpointing and distributed evaluation. State must be JSON-serializable. |
+
+### What's in `comparison_result` and `prediction_raw`
+
+- `comparison_result["field_comparisons"]` — list of per-field rows with `actual_key`, `match`, `score`. Available when `compare_with()` was called with `document_field_comparisons=True` (which `BulkStructuredModelEvaluator` always does internally).
+- `comparison_result["confusion_matrix"]` — overall and per-field TP/FP/TN/FN counts.
+- `prediction_raw` — the prediction's original JSON tree before rich value unwrapping. `None` for predictions built without `from_json()` (no rich value data was ever supplied). This is where you reach for custom metadata like `_bbox` or `_source_span`.
+
+Use `RichValueHelper.process_rich_values(prediction_raw)` to walk `prediction_raw` and pick out your metadata key the same way `ConfidenceAccumulator` picks out `_confidence`.
+
+### Errors are isolated
+
+A bug in one accumulator can't corrupt another's state or the bulk confusion matrix. Each accumulator's `accumulate()` runs inside its own `try`/`except`; a failure is recorded as a separate error tagged with the accumulator's name and surfaced through `compute().errors`.
+
 ## Distributed Evaluation
 
 Confidence pairs are included in state serialization and merging:

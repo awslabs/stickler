@@ -521,3 +521,115 @@ class TestBulkVsJsonlReplay:
             result_a.confidence_metrics["coverage"]
             == result_b.confidence_metrics["coverage"]
         )
+
+
+# ── 8. Extras (_bbox, _source_span) survive the JSONL round-trip ──
+
+
+class TestExtrasRoundTrip:
+    """Future accumulators (BBoxMAPAccumulator, source-span attribution, ...)
+    are the design motivation for ``prediction_raw``. The data contract is
+    that arbitrary ``_*``-prefixed metadata round-trips through JSONL without
+    loss, so a downstream accumulator can consume it later. Confidence is the
+    only metric using extras today; these tests pin the contract for the
+    rest."""
+
+    def test_bbox_extras_survive_compare_with(self):
+        """compare_with preserves _bbox in prediction_raw alongside _confidence."""
+        gt = Product(name="Widget", price=29.99, sku="ABC123")
+        pred = Product.from_json({
+            "name": {
+                "_value": "Widget",
+                "_confidence": 0.9,
+                "_bbox": [0.1, 0.2, 0.3, 0.4],
+            },
+            "price": {
+                "_value": 29.99,
+                "_confidence": 0.8,
+                "_bbox": [0.5, 0.6, 0.7, 0.8],
+            },
+            "sku": {"_value": "ABC123", "_confidence": 0.7},
+        })
+        result = gt.compare_with(
+            pred,
+            include_confusion_matrix=True,
+            document_field_comparisons=True,
+        )
+
+        raw = result["prediction_raw"]
+        assert raw["name"]["_bbox"] == [0.1, 0.2, 0.3, 0.4]
+        assert raw["price"]["_bbox"] == [0.5, 0.6, 0.7, 0.8]
+        # _confidence still flows through as well
+        assert raw["name"]["_confidence"] == 0.9
+
+    def test_bbox_survives_jsonl_serialization(self):
+        """Serialize a comparison result containing _bbox to JSONL, read it
+        back, and confirm the metadata is still accessible. This is the
+        primary path a future BBoxMAPAccumulator would walk."""
+        gt = Product(name="Widget", price=29.99, sku="ABC123")
+        pred = Product.from_json({
+            "name": {
+                "_value": "Widget",
+                "_confidence": 0.9,
+                "_bbox": [0.1, 0.2, 0.3, 0.4],
+                "_source_span": [10, 16],
+            },
+            "price": 29.99,
+            "sku": {"_value": "ABC123", "_confidence": 0.7},
+        })
+        result = gt.compare_with(
+            pred,
+            include_confusion_matrix=True,
+            document_field_comparisons=True,
+        )
+
+        # JSONL is what production pipelines persist comparisons as
+        line = json.dumps({"doc_id": "doc1", "comparison_result": result}, default=str)
+        record = json.loads(line)
+
+        raw = record["comparison_result"]["prediction_raw"]
+        assert raw["name"]["_bbox"] == [0.1, 0.2, 0.3, 0.4]
+        assert raw["name"]["_source_span"] == [10, 16]
+        assert raw["price"] == 29.99
+        assert raw["sku"]["_confidence"] == 0.7
+
+    def test_bbox_does_not_break_update_from_comparison_result(self):
+        """A comparison result carrying _bbox alongside _confidence must
+        still aggregate cleanly through update_from_comparison_result —
+        the confidence accumulator ignores unknown metadata, and the
+        bulk evaluator must not fail on extras it doesn't yet consume."""
+        gt = Product(name="Widget", price=29.99, sku="ABC123")
+        pred = Product.from_json({
+            "name": {
+                "_value": "Widget",
+                "_confidence": 0.9,
+                "_bbox": [0.1, 0.2, 0.3, 0.4],
+            },
+            "price": {
+                "_value": 99.99,
+                "_confidence": 0.3,
+                "_bbox": [0.5, 0.6, 0.7, 0.8],
+            },
+            "sku": {"_value": "ABC123", "_confidence": 0.8},
+        })
+        comparison = gt.compare_with(
+            pred,
+            include_confusion_matrix=True,
+            document_field_comparisons=True,
+        )
+
+        # Round-trip through JSONL the way a real reduce step would
+        line = json.dumps({"doc_id": "doc1", "comparison_result": comparison}, default=str)
+        record = json.loads(line)
+
+        evaluator = BulkStructuredModelEvaluator(target_schema=Product)
+        evaluator.update_from_comparison_result(
+            record["comparison_result"], doc_id=record["doc_id"]
+        )
+        result = evaluator.compute()
+
+        # Confidence still flows
+        assert result.confidence_metrics is not None
+        assert result.confidence_metrics["coverage"]["fields_with_confidence"] == 3
+        # No errors — the extras are tolerated, not fatal
+        assert result.errors == []

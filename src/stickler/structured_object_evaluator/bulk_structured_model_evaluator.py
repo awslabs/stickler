@@ -83,6 +83,10 @@ class BulkStructuredModelEvaluator:
             ValueError: If both ``accumulators`` and ``confidence_metrics`` are
                 provided. Wire ``confidence_metrics`` through the
                 ``ConfidenceAccumulator`` you include in ``accumulators`` instead.
+            ValueError: If two accumulators in ``accumulators`` share the same
+                ``.name``. Names key the per-accumulator results in
+                ``compute().accumulator_metrics``, so duplicates would silently
+                overwrite each other.
         """
         if accumulators is not None and confidence_metrics is not None:
             raise ValueError(
@@ -103,6 +107,21 @@ class BulkStructuredModelEvaluator:
             self._accumulators = accumulators
         else:
             self._accumulators = [ConfidenceAccumulator(metrics=confidence_metrics)]
+
+        # accumulator_metrics is keyed by .name at compute() time, so two
+        # accumulators sharing a name silently overwrite each other's results.
+        # Surface the conflict at construction so the caller can rename one.
+        seen_names: Dict[str, int] = {}
+        for acc in self._accumulators:
+            seen_names[acc.name] = seen_names.get(acc.name, 0) + 1
+        duplicates = sorted(name for name, count in seen_names.items() if count > 1)
+        if duplicates:
+            raise ValueError(
+                f"PostComparisonAccumulator names must be unique; got duplicates: "
+                f"{duplicates}. Each accumulator's .name keys its entry in "
+                f"compute().accumulator_metrics — duplicates would silently "
+                f"overwrite each other."
+            )
 
         # Initialize state
         self.reset()

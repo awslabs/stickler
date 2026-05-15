@@ -1406,6 +1406,23 @@ class TestBulkEvaluatorConstructionConflicts:
         )
         assert len(ev._accumulators) == 1
 
+    def test_duplicate_accumulator_names_raise(self):
+        """Two accumulators with the same .name silently overwrite each
+        other in compute().accumulator_metrics; the constructor should
+        surface that conflict instead."""
+        from stickler.structured_object_evaluator.models.confidence.accumulator import (
+            ConfidenceAccumulator,
+        )
+
+        with pytest.raises(ValueError, match="confidence_metrics"):
+            BulkStructuredModelEvaluator(
+                target_schema=Product,
+                accumulators=[
+                    ConfidenceAccumulator(),
+                    ConfidenceAccumulator(metrics=[AUROCMetric()]),
+                ],
+            )
+
 
 # -- 26. Per-accumulator error isolation --
 

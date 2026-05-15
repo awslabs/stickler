@@ -146,8 +146,7 @@ confidence data on upgrade. Loading such a payload emits a
 `DeprecationWarning` naming the offending field path and still unwraps
 the value the same way as the new form. The legacy shape will be
 removed in the next release — migrate payloads to `_value`/`_confidence`
-as soon as you can. See the [CHANGELOG](../../../CHANGELOG.md) for the
-full migration guide.
+as soon as you can.
 
 ## Integration with Confidence Evaluation
 
