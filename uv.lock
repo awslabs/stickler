@@ -3080,6 +3080,7 @@ bert = [
 dev = [
     { name = "beautifulsoup4" },
     { name = "coverage" },
+    { name = "matplotlib" },
     { name = "mkdocs" },
     { name = "mkdocs-awesome-nav" },
     { name = "mkdocs-material" },
@@ -3100,6 +3101,7 @@ semantic = [
 dev = [
     { name = "beautifulsoup4" },
     { name = "coverage" },
+    { name = "matplotlib" },
     { name = "mkdocs" },
     { name = "mkdocs-awesome-nav" },
     { name = "mkdocs-material" },
@@ -3122,6 +3124,7 @@ lint = [
 test = [
     { name = "beautifulsoup4" },
     { name = "coverage" },
+    { name = "matplotlib" },
     { name = "pytest" },
     { name = "pytest-xdist" },
 ]
@@ -3135,6 +3138,7 @@ requires-dist = [
     { name = "evaluate", marker = "extra == 'bert'", specifier = ">=0.4.0" },
     { name = "jinja2", specifier = ">=3.1.6,<3.2.0" },
     { name = "jsonschema", specifier = ">=4.17.3,<5.0.0" },
+    { name = "matplotlib", marker = "extra == 'dev'", specifier = ">=3.8.0" },
     { name = "mkdocs", marker = "extra == 'dev'" },
     { name = "mkdocs-awesome-nav", marker = "extra == 'dev'" },
     { name = "mkdocs-material", marker = "extra == 'dev'" },
@@ -3160,6 +3164,7 @@ provides-extras = ["dev", "llm", "bert", "semantic"]
 dev = [
     { name = "beautifulsoup4", specifier = ">=4.14.2" },
     { name = "coverage", specifier = ">=7.0.0" },
+    { name = "matplotlib", specifier = ">=3.8.0" },
     { name = "mkdocs" },
     { name = "mkdocs-awesome-nav" },
     { name = "mkdocs-material" },
@@ -3180,6 +3185,7 @@ lint = [{ name = "ruff", specifier = ">=0.14.10" }]
 test = [
     { name = "beautifulsoup4", specifier = ">=4.14.2" },
     { name = "coverage", specifier = ">=7.0.0" },
+    { name = "matplotlib", specifier = ">=3.8.0" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-xdist", specifier = ">=3.0.0" },
 ]
