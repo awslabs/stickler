@@ -10,13 +10,12 @@ from .structured_object_evaluator import (
     NonMatchField,
     NonMatchType,
     StructuredModel,
-    aggregate_from_comparisons,
     anls_score,
     compare_json,
     compare_structured_models,
 )
 
-__version__ = "0.3.0"
+__version__ = "0.1.0"
 
 __all__ = [
     "StructuredModel",
@@ -26,5 +25,4 @@ __all__ = [
     "compare_structured_models",
     "anls_score",
     "compare_json",
-    "aggregate_from_comparisons",
 ]

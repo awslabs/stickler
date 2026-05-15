@@ -11,12 +11,10 @@ memory-efficient processing of large datasets through accumulation-based evaluat
 import gc
 import json
 import logging
-import math
 import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
-from stickler.structured_object_evaluator.models.metrics_helper import MetricsHelper
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.utils.process_evaluation import ProcessEvaluation
 
@@ -43,42 +41,35 @@ class BulkStructuredModelEvaluator:
 
     def __init__(
         self,
-        target_schema: Optional[Type[StructuredModel]] = None,
+        target_schema: Type[StructuredModel],
         verbose: bool = False,
         document_non_matches: bool = True,
         elide_errors: bool = False,
         individual_results_jsonl: Optional[str] = None,
-        include_aggregates: bool = False,
-        recall_with_fd: bool = False,
     ):
         """
         Initialize the stateful bulk evaluator.
 
         Args:
-            target_schema: Optional StructuredModel class for validation and processing.
-                Required for update() and evaluate_dataframe(). Not required when using
-                update_from_comparison_result() with pre-computed results.
+            target_schema: StructuredModel class for validation and processing
             verbose: Whether to print detailed progress information
             document_non_matches: Whether to document detailed non-match information
             elide_errors: If True, skip documents with errors; if False, accumulate error metrics
             individual_results_jsonl: Optional path to JSONL file for appending individual comparison results
-            include_aggregates: Whether to enable aggregate metrics accumulation for performance control
         """
         self.target_schema = target_schema
         self.verbose = verbose
         self.document_non_matches = document_non_matches
         self.elide_errors = elide_errors
         self.individual_results_jsonl = individual_results_jsonl
-        self.include_aggregates = include_aggregates
-        self.recall_with_fd = recall_with_fd
-        
+
         # Initialize state
         self.reset()
 
-        self._schema_name = target_schema.__name__ if target_schema else "unknown"
-
         if self.verbose:
-            print(f"Initialized BulkStructuredModelEvaluator for {self._schema_name}")
+            print(
+                f"Initialized BulkStructuredModelEvaluator for {target_schema.__name__}"
+            )
             if self.individual_results_jsonl:
                 print(
                     f"Individual results will be appended to: {self.individual_results_jsonl}"
@@ -95,19 +86,8 @@ class BulkStructuredModelEvaluator:
         # Accumulated confusion matrix state using nested defaultdicts
         self._confusion_matrix = {
             "overall": defaultdict(int),
-            "fields": defaultdict(lambda: defaultdict(int))
+            "fields": defaultdict(lambda: defaultdict(int)),
         }
-        
-        # Accumulated aggregate metrics state (when include_aggregates=True)
-        self._aggregate_metrics = {
-            "overall": defaultdict(int),
-            "fields": defaultdict(lambda: defaultdict(int))
-        }
-
-        self._overall_score_sum: float = 0.0
-        self._overall_score_count: int = 0
-        self._field_score_sums: Dict[str, float] = defaultdict(float)
-        self._field_score_counts: Dict[str, int] = defaultdict(int)
 
         # Non-match tracking (when document_non_matches=True)
         self._non_matches = []
@@ -131,8 +111,9 @@ class BulkStructuredModelEvaluator:
         """
         Process a single document pair and accumulate the results in internal state.
 
-        Runs compare_with() on the model pair, optionally writes the raw result
-        to JSONL, then delegates accumulation to update_from_comparison_result().
+        This is the core method for stateful evaluation, inspired by PyTorch Lightning's
+        training_step pattern. Each call processes one document pair and updates
+        the internal confusion matrix counters.
 
         Args:
             gt_model: Ground truth StructuredModel instance
@@ -145,93 +126,28 @@ class BulkStructuredModelEvaluator:
         try:
             # Use compare_with method directly on the StructuredModel
             # Pass document_non_matches to achieve parity with compare_with method
-            # Pass include_aggregates to enable aggregate metrics when requested
             comparison_result = gt_model.compare_with(
                 pred_model,
                 include_confusion_matrix=True,
                 document_non_matches=self.document_non_matches,
             )
 
-            # JSONL append of raw comparison result before accumulation
-            if self.individual_results_jsonl:
-                record = {"doc_id": doc_id, "comparison_result": comparison_result}
-                with open(self.individual_results_jsonl, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(record) + "\n")
-
-            self.update_from_comparison_result(comparison_result, doc_id)
-
-        except Exception as e:
-            error_record = {
-                "doc_id": doc_id,
-                "error": str(e),
-                "error_type": type(e).__name__,
-            }
-
-            if not self.elide_errors:
-                self._errors.append(error_record)
-                self._confusion_matrix["overall"]["fn"] += 1
-
-            if self.verbose:
-                print(f"Error processing document {doc_id}: {str(e)}")
-
-    def update_from_comparison_result(
-        self,
-        comparison_result: Dict[str, Any],
-        doc_id: Optional[str] = None,
-    ) -> None:
-        """
-        Accumulate a pre-computed compare_with() result into internal state.
-
-        Unlike update(), this method does not require StructuredModel instances
-        or re-run comparisons. It accepts the raw dictionary output of
-        StructuredModel.compare_with(include_confusion_matrix=True) and
-        accumulates its confusion matrix.
-
-        When present, the top-level ``overall_score`` and any
-        ``threshold_applied_score`` values inside the ``fields`` tree are also
-        accumulated for ``weighted_overall_score`` and per-field
-        ``mean_score`` reporting. Missing keys are silently skipped.
-
-        Score-denominator semantics differ from ``_processed_count``:
-        ``weighted_overall_score`` only counts docs whose ``overall_score``
-        is a finite number, and a field's ``mean_score`` only counts docs
-        whose ``threshold_applied_score`` at that path is a finite number.
-        Docs that omit the key or carry a non-finite value still count
-        toward ``_processed_count`` and the confusion matrix. Docs that
-        raise during processing are excluded from every aggregate.
-
-        Args:
-            comparison_result: Dictionary returned by StructuredModel.compare_with()
-                with include_confusion_matrix=True. Must contain a "confusion_matrix" key.
-            doc_id: Optional document identifier for error tracking
-        """
-        if doc_id is None:
-            doc_id = f"doc_{self._processed_count}"
-
-        try:
-            if "confusion_matrix" not in comparison_result:
-                raise ValueError(
-                    "comparison_result must contain a 'confusion_matrix' key. "
-                    "Ensure compare_with() was called with include_confusion_matrix=True."
-                )
-
-            # Collect non-matches if enabled and present
+            # Collect non-matches if enabled
             if self.document_non_matches and "non_matches" in comparison_result:
+                # Add doc_id to each non-match for bulk tracking
                 for non_match in comparison_result["non_matches"]:
                     non_match_with_doc = non_match.copy()
                     non_match_with_doc["doc_id"] = doc_id
                     self._non_matches.append(non_match_with_doc)
 
-            cm_result = comparison_result["confusion_matrix"]
-            self._accumulate_confusion_matrix(cm_result)
+            # Simple JSONL append of raw comparison result (before any processing)
+            if self.individual_results_jsonl:
+                record = {"doc_id": doc_id, "comparison_result": comparison_result}
+                with open(self.individual_results_jsonl, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(record) + "\n")
 
-            if "overall_score" in comparison_result:
-                self._accumulate_overall_score(comparison_result["overall_score"])
-
-            if isinstance(cm_result, dict) and isinstance(
-                cm_result.get("fields"), dict
-            ):
-                self._accumulate_field_scores_recursive(cm_result["fields"], "")
+            # Accumulate the results into our state (this flattens for aggregation)
+            self._accumulate_confusion_matrix(comparison_result["confusion_matrix"])
 
             self._processed_count += 1
 
@@ -248,6 +164,9 @@ class BulkStructuredModelEvaluator:
 
             if not self.elide_errors:
                 self._errors.append(error_record)
+
+                # For errors, add a "failed" classification to overall metrics
+                # This represents complete failure to process the document
                 self._confusion_matrix["overall"]["fn"] += 1
 
             if self.verbose:
@@ -446,67 +365,6 @@ class BulkStructuredModelEvaluator:
             ):
                 self._confusion_matrix["fields"][field_path][metric_name] += value
 
-    @staticmethod
-    def _is_valid_score(value: Any) -> bool:
-        return (
-            isinstance(value, (int, float))
-            and not isinstance(value, bool)
-            and math.isfinite(value)
-        )
-
-    def _accumulate_overall_score(self, overall_score: Any) -> None:
-        if self._is_valid_score(overall_score):
-            self._overall_score_sum += float(overall_score)
-            self._overall_score_count += 1
-        else:
-            logger.debug(
-                "Skipping non-finite overall_score=%r from weighted aggregate",
-                overall_score,
-            )
-
-    def _accumulate_field_scores_recursive(
-        self, fields_dict: Dict[str, Any], path_prefix: str
-    ) -> None:
-        """Recursively accumulate per-field ``threshold_applied_score`` values.
-
-        Walks the nested ``confusion_matrix["fields"]`` tree passed in as
-        ``fields_dict``, recording the score at every node that exposes
-        ``threshold_applied_score`` (leaf fields and object/list aggregates).
-        Also descends through ``nested_fields`` on list-of-StructuredModel
-        nodes, for parity with ``_accumulate_field_metrics``.
-
-        ``compare_with()`` emits ``threshold_applied_score`` at the list
-        parent for ``List[StructuredModel]`` but not at the nested leaves,
-        so those leaves end up with CM counts and no ``mean_score``.
-        """
-        for field_name, field_data in fields_dict.items():
-            if not isinstance(field_data, dict):
-                continue
-
-            current_path = f"{path_prefix}.{field_name}" if path_prefix else field_name
-
-            if "threshold_applied_score" in field_data:
-                score = field_data["threshold_applied_score"]
-                if self._is_valid_score(score):
-                    self._field_score_sums[current_path] += float(score)
-                    self._field_score_counts[current_path] += 1
-                else:
-                    logger.debug(
-                        "Skipping non-finite threshold_applied_score=%r at %s",
-                        score,
-                        current_path,
-                    )
-
-            if isinstance(field_data.get("fields"), dict):
-                self._accumulate_field_scores_recursive(
-                    field_data["fields"], current_path
-                )
-
-            if isinstance(field_data.get("nested_fields"), dict):
-                self._accumulate_field_scores_recursive(
-                    field_data["nested_fields"], current_path
-                )
-
     def _calculate_derived_metrics(
         self, cm_dict: Dict[str, Union[int, float]]
     ) -> Dict[str, float]:
@@ -516,45 +374,32 @@ class BulkStructuredModelEvaluator:
         This method replicates the derivation logic for confusion matrix metrics.
 
         Args:
-            cm_result: Confusion matrix result containing aggregate metrics
-        """
-        # Accumulate root-level aggregate metrics
-        if "aggregate" in cm_result and isinstance(cm_result["aggregate"], dict):
-            for metric_name, value in cm_result["aggregate"].items():
-                if isinstance(value, (int, float)) and metric_name in ["tp", "fp", "tn", "fn", "fd", "fa"]:
-                    self._aggregate_metrics["overall"][metric_name] += value
+            cm_dict: Dictionary with basic confusion matrix counts
 
-        # Accumulate field-level aggregate metrics with proper path handling
-        if "fields" in cm_result:
-            self._accumulate_field_aggregate_metrics(cm_result["fields"], "")
+        Returns:
+            Dictionary with derived metrics
+        """
+        tp = cm_dict.get("tp", 0)
+        fp = cm_dict.get("fp", 0)
+        tn = cm_dict.get("tn", 0)
+        fn = cm_dict.get("fn", 0)
 
-    def _accumulate_field_aggregate_metrics(
-        self, 
-        fields_dict: Dict[str, Any], 
-        path_prefix: str
-    ) -> None:
-        """
-        Recursively accumulate field-level aggregate metrics with proper nested path construction.
-        
-        Args:
-            fields_dict: Dictionary containing field aggregate metrics to accumulate
-            path_prefix: Current path prefix for building nested field paths
-        """
-        for field_name, field_data in fields_dict.items():
-            current_path = f"{path_prefix}.{field_name}" if path_prefix else field_name
-            
-            if not isinstance(field_data, dict):
-                continue
-            
-            # Handle field-level aggregate metrics
-            if "aggregate" in field_data and isinstance(field_data["aggregate"], dict):
-                for metric_name, value in field_data["aggregate"].items():
-                    if isinstance(value, (int, float)) and metric_name in ["tp", "fp", "tn", "fn", "fd", "fa"]:
-                        self._aggregate_metrics["fields"][current_path][metric_name] += value
-            
-            # Continue recursion if there are nested fields
-            if "fields" in field_data and isinstance(field_data["fields"], dict):
-                self._accumulate_field_aggregate_metrics(field_data["fields"], current_path)
+        # Calculate derived metrics with safe division
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = (
+            2 * (precision * recall) / (precision + recall)
+            if (precision + recall) > 0
+            else 0.0
+        )
+        accuracy = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0.0
+
+        return {
+            "cm_precision": precision,
+            "cm_recall": recall,
+            "cm_f1": f1,
+            "cm_accuracy": accuracy,
+        }
 
     def _build_process_evaluation(self) -> ProcessEvaluation:
         """
@@ -563,38 +408,17 @@ class BulkStructuredModelEvaluator:
         Returns:
             ProcessEvaluation with computed metrics from accumulated state
         """
-        metrics_helper = MetricsHelper()
         # Calculate derived metrics for overall results
         overall_cm = dict(self._confusion_matrix["overall"])
-        overall_derived = metrics_helper.calculate_derived_metrics(overall_cm, recall_with_fd=self.recall_with_fd)
+        overall_derived = self._calculate_derived_metrics(overall_cm)
         overall_metrics = {**overall_cm, **overall_derived}
 
-        # Error docs are excluded from the mean via the accumulator's count,
-        # which only increments on successful update_from_comparison_result.
-        overall_metrics["weighted_overall_score"] = (
-            self._overall_score_sum / self._overall_score_count
-            if self._overall_score_count > 0
-            else 0.0
-        )
-
-        # Union covers score-only paths (e.g., List[StructuredModel] parents
-        # emitted by compare_with but not recorded in the cm fields tree).
+        # Calculate derived metrics for each field
         field_metrics = {}
-        field_paths = set(self._confusion_matrix["fields"].keys())
-        field_paths.update(self._field_score_sums.keys())
-        for field_path in field_paths:
-            field_cm_dict = dict(self._confusion_matrix["fields"].get(field_path, {}))
+        for field_path, field_cm in self._confusion_matrix["fields"].items():
+            field_cm_dict = dict(field_cm)
             field_derived = self._calculate_derived_metrics(field_cm_dict)
             field_metrics[field_path] = {**field_cm_dict, **field_derived}
-
-            # .get() avoids resurrecting zero entries in the defaultdicts.
-            # Omitting mean_score (vs. reporting 0.0) preserves the
-            # "no data" vs. "observed zero" distinction downstream.
-            count = self._field_score_counts.get(field_path, 0)
-            if count > 0:
-                field_metrics[field_path]["mean_score"] = (
-                    self._field_score_sums.get(field_path, 0.0) / count
-                )
 
         total_time = time.time() - self._start_time
 
@@ -630,7 +454,7 @@ class BulkStructuredModelEvaluator:
                 "error_rate": len(process_eval.errors) / self._processed_count
                 if self._processed_count > 0
                 else 0,
-                "target_schema": self._schema_name,
+                "target_schema": self.target_schema.__name__,
             },
             "errors": process_eval.errors,
             "metadata": {
@@ -640,9 +464,8 @@ class BulkStructuredModelEvaluator:
                     "document_non_matches": self.document_non_matches,
                     "elide_errors": self.elide_errors,
                     "individual_results_jsonl": self.individual_results_jsonl,
-                    "include_aggregates": self.include_aggregates
-                }
-            }
+                },
+            },
         }
 
         # Ensure directory exists
@@ -668,7 +491,7 @@ class BulkStructuredModelEvaluator:
 
         # Header
         print("\n" + "=" * 80)
-        print(f"BULK EVALUATION RESULTS - {self._schema_name}")
+        print(f"BULK EVALUATION RESULTS - {self.target_schema.__name__}")
         print("=" * 80)
 
         # Overall metrics
@@ -698,10 +521,6 @@ class BulkStructuredModelEvaluator:
         print(f"  Recall:        {overall_metrics.get('cm_recall', 0.0):.4f}")
         print(f"  F1 Score:      {overall_metrics.get('cm_f1', 0.0):.4f}")
         print(f"  Accuracy:      {overall_metrics.get('cm_accuracy', 0.0):.4f}")
-        print(
-            f"  Weighted Overall Score: "
-            f"{overall_metrics.get('weighted_overall_score', 0.0):.4f}"
-        )
 
         # Field-level metrics
         if process_eval.field_metrics:
@@ -722,30 +541,13 @@ class BulkStructuredModelEvaluator:
                 precision = field_metrics.get("cm_precision", 0.0)
                 recall = field_metrics.get("cm_recall", 0.0)
                 f1 = field_metrics.get("cm_f1", 0.0)
-                mean_score = field_metrics.get("mean_score")
-                mean_cell = f"{mean_score:.3f}" if mean_score is not None else "  n/a"
 
                 # Only show fields with some activity
                 if tp + fp + fn > 0:
-                    display_path = (
-                        field_path if len(field_path) <= 30 else field_path[:27] + "..."
-                    )
                     print(
-                        f"  {display_path:30} Mean: {mean_cell} | P: {precision:.3f} | R: {recall:.3f} | F1: {f1:.3f} | TP: {tp:,} | FP: {fp:,} | FN: {fn:,}"
+                        f"  {field_path:30} P: {precision:.3f} | R: {recall:.3f} | F1: {f1:.3f} | TP: {tp:,} | FP: {fp:,} | FN: {fn:,}"
                     )
-                    # Show aggregate metrics for this field if available
-                    if self.include_aggregates and "aggregate" in field_metrics:
-                        agg = field_metrics["aggregate"]
-                        agg_tp = agg.get('tp', 0)
-                        agg_fp = agg.get('fp', 0)
-                        agg_fn = agg.get('fn', 0)
-                        agg_precision = agg.get('cm_precision', 0.0)
-                        agg_recall = agg.get('cm_recall', 0.0)
-                        agg_f1 = agg.get('cm_f1', 0.0)
-                        
-                        if agg_tp + agg_fp + agg_fn > 0:
-                            print(f"    └─ Aggregate:          P: {agg_precision:.3f} | R: {agg_recall:.3f} | F1: {agg_f1:.3f} | TP: {agg_tp:,} | FP: {agg_fp:,} | FN: {agg_fn:,}")
-        
+
         # Error summary
         if process_eval.errors:
             print("\nERROR SUMMARY:")
@@ -773,10 +575,9 @@ class BulkStructuredModelEvaluator:
         # Configuration info
         print("\nCONFIGURATION:")
         print("-" * 40)
-        print(f"Target Schema: {self._schema_name}")
+        print(f"Target Schema: {self.target_schema.__name__}")
         print(f"Document Non-matches: {'Yes' if self.document_non_matches else 'No'}")
         print(f"Elide Errors: {'Yes' if self.elide_errors else 'No'}")
-        print(f"Include Aggregates: {'Yes' if self.include_aggregates else 'No'}")
         if self.individual_results_jsonl:
             print(f"Individual Results JSONL: {self.individual_results_jsonl}")
 
@@ -793,7 +594,7 @@ class BulkStructuredModelEvaluator:
         Returns:
             Dictionary containing serializable evaluator state
         """
-        state = {
+        return {
             "confusion_matrix": {
                 "overall": dict(self._confusion_matrix["overall"]),
                 "fields": {
@@ -804,24 +605,10 @@ class BulkStructuredModelEvaluator:
             "errors": list(self._errors),
             "processed_count": self._processed_count,
             "start_time": self._start_time,
-            "overall_score_sum": self._overall_score_sum,
-            "overall_score_count": self._overall_score_count,
-            "field_score_sums": dict(self._field_score_sums),
-            "field_score_counts": dict(self._field_score_counts),
             # Configuration
-            "target_schema": self._schema_name,
+            "target_schema": self.target_schema.__name__,
             "elide_errors": self.elide_errors,
-            "include_aggregates": self.include_aggregates
         }
-        
-        # Include aggregate metrics if enabled
-        if self.include_aggregates:
-            state["aggregate_metrics"] = {
-                "overall": dict(self._aggregate_metrics["overall"]),
-                "fields": {path: dict(metrics) for path, metrics in self._aggregate_metrics["fields"].items()}
-            }
-        
-        return state
 
     def load_state(self, state: Dict[str, Any]) -> None:
         """
@@ -834,9 +621,9 @@ class BulkStructuredModelEvaluator:
             state: State dictionary from get_state()
         """
         # Validate state compatibility
-        if state.get("target_schema") != self._schema_name:
+        if state.get("target_schema") != self.target_schema.__name__:
             raise ValueError(
-                f"State schema {state.get('target_schema')} doesn't match evaluator schema {self._schema_name}"
+                f"State schema {state.get('target_schema')} doesn't match evaluator schema {self.target_schema.__name__}"
             )
 
         # Restore confusion matrix state
@@ -850,28 +637,11 @@ class BulkStructuredModelEvaluator:
             self._confusion_matrix["fields"][field_path] = defaultdict(
                 int, field_metrics
             )
-        
-        # Restore aggregate metrics state if available and enabled
-        if self.include_aggregates and "aggregate_metrics" in state:
-            agg_state = state["aggregate_metrics"]
-            self._aggregate_metrics = {
-                "overall": defaultdict(int, agg_state["overall"]),
-                "fields": defaultdict(lambda: defaultdict(int))
-            }
-            
-            for field_path, field_metrics in agg_state["fields"].items():
-                self._aggregate_metrics["fields"][field_path] = defaultdict(int, field_metrics)
-        
+
         # Restore other state
         self._errors = list(state["errors"])
         self._processed_count = state["processed_count"]
         self._start_time = state["start_time"]
-
-        # .get() keeps older state dicts (no score keys) loadable.
-        self._overall_score_sum = float(state.get("overall_score_sum", 0.0))
-        self._overall_score_count = int(state.get("overall_score_count", 0))
-        self._field_score_sums = defaultdict(float, state.get("field_score_sums", {}))
-        self._field_score_counts = defaultdict(int, state.get("field_score_counts", {}))
 
         if self.verbose:
             print(f"Loaded state: {self._processed_count} documents processed")
@@ -888,9 +658,9 @@ class BulkStructuredModelEvaluator:
             other_state: State dictionary from another evaluator instance
         """
         # Validate compatibility
-        if other_state.get("target_schema") != self._schema_name:
+        if other_state.get("target_schema") != self.target_schema.__name__:
             raise ValueError(
-                f"Cannot merge incompatible schemas: {other_state.get('target_schema')} vs {self._schema_name}"
+                f"Cannot merge incompatible schemas: {other_state.get('target_schema')} vs {self.target_schema.__name__}"
             )
 
         # Merge overall metrics
@@ -902,31 +672,10 @@ class BulkStructuredModelEvaluator:
         for field_path, field_metrics in other_cm["fields"].items():
             for metric, value in field_metrics.items():
                 self._confusion_matrix["fields"][field_path][metric] += value
-        
-        # Merge aggregate metrics if both evaluators have them enabled
-        if self.include_aggregates and "aggregate_metrics" in other_state:
-            other_agg = other_state["aggregate_metrics"]
-            
-            # Merge overall aggregate metrics
-            for metric, value in other_agg["overall"].items():
-                self._aggregate_metrics["overall"][metric] += value
-            
-            # Merge field-level aggregate metrics
-            for field_path, field_metrics in other_agg["fields"].items():
-                for metric, value in field_metrics.items():
-                    self._aggregate_metrics["fields"][field_path][metric] += value
-        
+
         # Merge errors and counts
         self._errors.extend(other_state["errors"])
         self._processed_count += other_state["processed_count"]
-
-        # .get() keeps older peer states (no score keys) mergeable.
-        self._overall_score_sum += float(other_state.get("overall_score_sum", 0.0))
-        self._overall_score_count += int(other_state.get("overall_score_count", 0))
-        for path, s in other_state.get("field_score_sums", {}).items():
-            self._field_score_sums[path] += float(s)
-        for path, c in other_state.get("field_score_counts", {}).items():
-            self._field_score_counts[path] += int(c)
 
         if self.verbose:
             print(
@@ -973,27 +722,3 @@ class BulkStructuredModelEvaluator:
                 continue
 
         return self.compute()
-
-
-def aggregate_from_comparisons(
-    comparison_results: List[Dict[str, Any]],
-) -> ProcessEvaluation:
-    """
-    Aggregate a list of pre-computed compare_with() results into field-level metrics.
-
-    This is a convenience function for aggregating stored comparison results
-    without needing the original StructuredModel instances. It accepts the raw
-    dictionary outputs of StructuredModel.compare_with(include_confusion_matrix=True).
-
-    Args:
-        comparison_results: List of dictionaries, each returned by
-            StructuredModel.compare_with(include_confusion_matrix=True).
-
-    Returns:
-        ProcessEvaluation with aggregated metrics including overall and
-        per-field precision, recall, F1, and accuracy.
-    """
-    evaluator = BulkStructuredModelEvaluator()
-    for result in comparison_results:
-        evaluator.update_from_comparison_result(result)
-    return evaluator.compute()
