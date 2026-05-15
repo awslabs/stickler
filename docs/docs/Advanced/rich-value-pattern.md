@@ -119,6 +119,9 @@ All three fields produce the same model values. The first two are unwrapped from
 
 **All keys inside a rich value wrapper must use an underscore prefix.** This is enforced with a warning at parse time. Non-prefixed keys will still be stored in extras, but a `UserWarning` is emitted to help you catch the issue early.
 
+!!! note "Reserved namespace"
+    Underscore-prefixed keys (`_*`) inside a rich value wrapper are a reserved namespace owned by stickler. Any dict containing a `_value` key is treated as a wrapper, and stickler may extract additional `_`-prefixed keys (`_confidence`, `_bbox`, `_source_span`, ...) into typed accessors as the schema grows. Don't ship `{"_value": x}` payloads where `_value` is meant to be user data — wrap once at the boundary, or use a different key name.
+
 | Key in rich value | Where it goes | How to access it |
 |---|---|---|
 | `_value` | Model field value | `pred.field_name` |

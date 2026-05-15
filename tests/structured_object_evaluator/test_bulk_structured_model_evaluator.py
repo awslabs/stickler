@@ -760,13 +760,16 @@ class TestUpdateFromComparisonResult:
         assert standalone_result.field_metrics == evaluator_result.field_metrics
 
     def test_update_from_comparison_result_missing_confusion_matrix(self):
-        """Test error handling when confusion_matrix key is missing."""
+        """Caller-misuse precondition re-raises rather than being silently
+        folded into the per-doc error counter; otherwise a malformed
+        comparison_result would just bump fn and look like a normal miss."""
         evaluator = BulkStructuredModelEvaluator(elide_errors=False)
-        evaluator.update_from_comparison_result({"overall_score": 0.5}, "bad_doc")
-
-        assert len(evaluator._errors) == 1
-        assert evaluator._errors[0]["doc_id"] == "bad_doc"
-        assert evaluator._errors[0]["error_type"] == "ValueError"
+        with pytest.raises(ValueError, match="confusion_matrix"):
+            evaluator.update_from_comparison_result(
+                {"overall_score": 0.5}, "bad_doc"
+            )
+        assert evaluator._errors == []
+        assert evaluator._confusion_matrix["overall"]["fn"] == 0
 
     def test_update_from_comparison_result_accumulates(self):
         """Test that multiple calls accumulate correctly."""

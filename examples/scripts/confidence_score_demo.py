@@ -297,11 +297,9 @@ def test_auroc_functionality():
                 )
 
         # Test confidence access
-        print(
-            f"\nConfidence data available: {hasattr(pred_simple, 'field_confidences')}"
-        )
-        if hasattr(pred_simple, "field_confidences"):
-            confidences = pred_simple.get_all_confidences()
+        confidences = pred_simple.get_all_confidences()
+        print(f"\nConfidence data available: {bool(confidences)}")
+        if confidences:
             print(f"Confidence keys: {list(confidences.keys())}")
 
     except Exception as e:

@@ -174,16 +174,18 @@ class BulkStructuredModelEvaluator:
                 document_field_comparisons=True,
             )
 
-            # JSONL append of raw comparison result before accumulation
-            if self.individual_results_jsonl:
-                record = {"doc_id": doc_id, "comparison_result": comparison_result}
-                with open(self.individual_results_jsonl, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(record) + "\n")
-
             # Delegate to update_from_comparison_result which handles both
             # confusion matrix accumulation and confidence extraction
             # (via prediction_raw in the comparison result).
             self.update_from_comparison_result(comparison_result, doc_id)
+
+            # JSONL append of raw comparison result after accumulation
+            # succeeds, so the file reflects "successfully accumulated"
+            # rather than "attempted".
+            if self.individual_results_jsonl:
+                record = {"doc_id": doc_id, "comparison_result": comparison_result}
+                with open(self.individual_results_jsonl, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(record) + "\n")
 
         except Exception as e:
             error_record = {
@@ -228,13 +230,17 @@ class BulkStructuredModelEvaluator:
         if doc_id is None:
             doc_id = f"doc_{self._processed_count}"
 
-        try:
-            if "confusion_matrix" not in comparison_result:
-                raise ValueError(
-                    "comparison_result must contain a 'confusion_matrix' key. "
-                    "Ensure compare_with() was called with include_confusion_matrix=True."
-                )
+        # Caller-misuse precondition - re-raise rather than fold into the
+        # generic per-doc accumulator failure path below, so a malformed
+        # comparison_result surfaces immediately instead of silently bumping
+        # the overall fn counter.
+        if "confusion_matrix" not in comparison_result:
+            raise ValueError(
+                "comparison_result must contain a 'confusion_matrix' key. "
+                "Ensure compare_with() was called with include_confusion_matrix=True."
+            )
 
+        try:
             # Collect non-matches if enabled and present
             if self.document_non_matches and "non_matches" in comparison_result:
                 for non_match in comparison_result["non_matches"]:

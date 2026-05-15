@@ -124,6 +124,22 @@ Confidence metrics work through the JSONL serialization path. When predictions a
 
 See [Bulk Evaluation: Map/Reduce](bulk-evaluation.md#mapreduce-single-doc-compare-bulk-aggregate) for the full pattern.
 
+## Silencing the legacy AUROC deprecation warning
+
+The legacy single-document `auroc_confidence_metric` result key emits a `DeprecationWarning` to point callers at the structured `confidence_metrics["overall"]["auroc"]["value"]` shape. If you've already migrated and want to silence the warning until it's removed, target it by module:
+
+```python
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    module="stickler.structured_object_evaluator.models.comparison_engine",
+)
+```
+
+This is scoped to the comparison engine, so unrelated `DeprecationWarning`s from other libraries (or other parts of stickler) still surface.
+
 ## Further Reading
 
 - [Confidence Metrics (Advanced)](../../Advanced/confidence-metrics.md): full technical reference

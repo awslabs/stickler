@@ -241,7 +241,7 @@ class StructuredModel(BaseModel):
     def model_post_init(self, __context):
         """Initialize confidence storage after model creation."""
         # Use object.__setattr__ to bypass Pydantic field detection
-        object.__setattr__(self, "field_confidences", {})
+        object.__setattr__(self, "__stickler_field_confidences__", {})
 
     @classmethod
     def _is_list_of_structured_model_type(cls, field_type) -> bool:
@@ -273,28 +273,28 @@ class StructuredModel(BaseModel):
     def get_field_confidence(self, field_name: str) -> Optional[float]:
         """Get confidence for a field."""
         # Don't create the attribute - just check if it exists
-        if not hasattr(self, "field_confidences"):
+        if not hasattr(self, "__stickler_field_confidences__"):
             return None
-        return self.field_confidences.get(field_name)
+        return self.__stickler_field_confidences__.get(field_name)
 
     def get_all_confidences(self) -> Dict[str, float]:
         """Get all confidences."""
         # Don't create the attribute - return empty dict if no confidence data
-        if not hasattr(self, "field_confidences"):
+        if not hasattr(self, "__stickler_field_confidences__"):
             return {}
-        return self.field_confidences.copy()
+        return self.__stickler_field_confidences__.copy()
 
     def get_field_extras(self, field_name: str) -> Optional[Dict[str, Any]]:
         """Get user-provided extras for a field (non-system metadata from rich values)."""
-        if not hasattr(self, "field_extras"):
+        if not hasattr(self, "__stickler_field_extras__"):
             return None
-        return self.field_extras.get(field_name)
+        return self.__stickler_field_extras__.get(field_name)
 
     def get_all_extras(self) -> Dict[str, Dict[str, Any]]:
         """Get all user-provided extras, keyed by field path."""
-        if not hasattr(self, "field_extras"):
+        if not hasattr(self, "__stickler_field_extras__"):
             return {}
-        return self.field_extras.copy()
+        return self.__stickler_field_extras__.copy()
 
     @classmethod
     def from_json(
@@ -352,15 +352,17 @@ class StructuredModel(BaseModel):
             )
             instance = ConfigurationHelper.from_json(cls, processed_data)
             if confidences:
-                object.__setattr__(instance, "field_confidences", confidences)
+                object.__setattr__(
+                    instance, "__stickler_field_confidences__", confidences
+                )
             if extras:
-                object.__setattr__(instance, "field_extras", extras)
+                object.__setattr__(instance, "__stickler_field_extras__", extras)
             # Always store the original JSON for round-tripping through
             # comparison results. Keeping this unconditional (not gated on
             # confidences/extras) means map/reduce aggregation works even
             # when a dataset gets confidence scores added later, and matches
-            # what the Rich Value Pattern doc promises about _raw_json.
-            object.__setattr__(instance, "_raw_json", json_data)
+            # what the Rich Value Pattern doc promises about __stickler_raw_json__.
+            object.__setattr__(instance, "__stickler_raw_json__", json_data)
         else:
             # Skip rich value processing for recursive calls
             instance = ConfigurationHelper.from_json(cls, json_data)

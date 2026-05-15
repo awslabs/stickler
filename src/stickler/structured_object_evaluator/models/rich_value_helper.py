@@ -60,17 +60,20 @@ class RichValueHelper:
 
     @staticmethod
     def _is_legacy_rich_value(data: Any) -> bool:
-        """Check if a dict uses the pre-underscore {"value", "confidence"} shape.
+        """Check if a dict uses the pre-underscore {"value", ...} shape.
 
         Supports a one-release deprecation window so existing JSONL corpora
         continue to have their confidence scores extracted. Callers should
         emit a DeprecationWarning before treating a legacy shape as rich.
+
+        ``confidence`` is optional in the deprecation shim — legacy JSONL
+        corpora that emit ``{"value": ...}`` without a confidence score
+        round-trip cleanly through this path.
         """
         return (
             isinstance(data, dict)
             and "_value" not in data
             and "value" in data
-            and "confidence" in data
         )
 
     @classmethod
@@ -144,7 +147,11 @@ class RichValueHelper:
                     DeprecationWarning,
                     stacklevel=2,
                 )
-                confidences = {field_path: data["confidence"]}
+                confidences = (
+                    {field_path: data["confidence"]}
+                    if "confidence" in data
+                    else {}
+                )
                 return data["value"], confidences, {}
             else:
                 processed = {}

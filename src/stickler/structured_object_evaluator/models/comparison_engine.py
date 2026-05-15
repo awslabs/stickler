@@ -364,8 +364,8 @@ class ComparisonEngine:
         # This enables update_from_comparison_result() to reconstruct
         # confidence pairs (and future bbox/MAP data) without needing
         # the original model instance.
-        if hasattr(other, "_raw_json"):
-            result["prediction_raw"] = other._raw_json
+        if hasattr(other, "__stickler_raw_json__"):
+            result["prediction_raw"] = other.__stickler_raw_json__
 
         # If evaluator_format is requested, transform the result
         if evaluator_format:

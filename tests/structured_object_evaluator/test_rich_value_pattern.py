@@ -328,6 +328,22 @@ class TestLegacyRichValueShim:
         assert pred.name == "Widget"
         assert pred.get_field_confidence("name") == 0.9
 
+    def test_legacy_value_only_unwraps_with_deprecation_warning(self):
+        """Legacy {"value": ...} (no confidence) still unwraps with a warning.
+
+        Existing JSONL corpora may persist the legacy shape without
+        confidence scores; the deprecation shim should round-trip them
+        cleanly rather than treating them as plain dict data.
+        """
+        data = {"name": {"value": "Widget"}}
+        with pytest.warns(DeprecationWarning, match="name"):
+            unwrapped, confidences, extras = RichValueHelper.process_rich_values(
+                data
+            )
+        assert unwrapped == {"name": "Widget"}
+        assert confidences == {}
+        assert extras == {}
+
 
 class TestProcessConfidenceDeprecationShim:
     """from_json(process_confidence=...) still works for one release."""

@@ -35,6 +35,12 @@ All notable changes to Stickler are documented here. This project follows
 - Single-doc confidence result key renamed from
   `auroc_confidence_metric` (a single float) to `confidence_metrics`
   (a nested dict with `overall`, `fields`, and `coverage`).
+- **Reserved namespace.** Underscore-prefixed keys (`_*`) inside a rich
+  value wrapper are now reserved for stickler. Any dict containing a
+  `_value` key is treated as a wrapper, and stickler may extract
+  additional `_`-prefixed keys (`_confidence`, `_bbox`, `_source_span`,
+  ...) into typed accessors as the schema grows. Don't ship
+  `{"_value": x}` payloads where `_value` is intended as user data.
 
 ### Deprecated
 One release of deprecation shims covers the Rich Value rename so
@@ -67,7 +73,8 @@ next release:
   items than ground truth). These rows previously inflated
   `fields_total` without contributing to `fields_with_confidence`,
   biasing the coverage ratio by the prediction miss rate.
-- `StructuredModel` instances always capture `_raw_json` when
+- `StructuredModel` instances always capture the raw input JSON
+  (internally on `__stickler_raw_json__`) when
   `process_rich_values=True`, so map/reduce aggregation works even on
   corpora that gain `_confidence` annotations after the fact.
 

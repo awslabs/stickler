@@ -379,6 +379,14 @@ class TestMetricResultStructure:
     def test_brier_empty_returns_none(self):
         assert BrierScoreMetric().compute([])["value"] is None
 
+    def test_brier_matches_closed_form(self):
+        # ((1 - 0.95)**2 + (0 - 0.10)**2) / 2 == 0.00625
+        pairs = [
+            ConfidencePair(is_match=True, confidence=0.95, similarity=1.0),
+            ConfidencePair(is_match=False, confidence=0.10, similarity=0.0),
+        ]
+        assert BrierScoreMetric().compute(pairs)["value"] == pytest.approx(0.00625)
+
     def test_ece_result_shape(self):
         result = ECEMetric(n_bins=5).compute([cp(True, 0.9), cp(False, 0.1)])
         assert "value" in result
@@ -560,12 +568,17 @@ class TestBulkAccumulation:
             "sku": {"_value": "DEF", "_confidence": 0.95},
         })
 
-        evaluator = BulkStructuredModelEvaluator(target_schema=Product)
+        metrics = [AUROCMetric(), BrierScoreMetric(), ECEMetric(n_bins=5)]
+        evaluator = BulkStructuredModelEvaluator(
+            target_schema=Product, confidence_metrics=metrics
+        )
         evaluator.update(gt1, pred1)
         evaluator.update(gt2, pred2)
         bulk_result = evaluator.compute()
 
-        calc = ConfidenceCalculator()
+        calc = ConfidenceCalculator(
+            metrics=[AUROCMetric(), BrierScoreMetric(), ECEMetric(n_bins=5)]
+        )
         r1 = gt1.compare_with(pred1, document_field_comparisons=True)
         r2 = gt2.compare_with(pred2, document_field_comparisons=True)
         keyed1 = calc.extract_keyed_pairs(r1, pred1)
@@ -578,7 +591,11 @@ class TestBulkAccumulation:
             merged_keyed.setdefault(k, []).extend(v)
         manual_result = calc.compute_metrics(merged_keyed)
 
-        assert bulk_result.confidence_metrics["overall"]["auroc"]["value"] == manual_result["overall"]["auroc"]["value"]
+        for metric_name in ("auroc", "brier_score", "ece"):
+            assert (
+                bulk_result.confidence_metrics["overall"][metric_name]["value"]
+                == manual_result["overall"][metric_name]["value"]
+            )
 
     def test_no_confidence_data_returns_coverage_only(self):
         """When update() runs on docs without confidence, we still report
@@ -979,6 +996,13 @@ class TestInputValidation:
         )
         with pytest.raises(ValueError, match="must be in the range"):
             ErrorCaptureAtBudgetMetric(budgets=[0.0, 0.5])
+
+    def test_ecab_rejects_empty_budgets(self):
+        from stickler.structured_object_evaluator.models.confidence import (
+            ErrorCaptureAtBudgetMetric,
+        )
+        with pytest.raises(ValueError, match="budgets must not be empty"):
+            ErrorCaptureAtBudgetMetric(budgets=[])
 
     def test_ecab_rejects_negative_budget(self):
         from stickler.structured_object_evaluator.models.confidence import (

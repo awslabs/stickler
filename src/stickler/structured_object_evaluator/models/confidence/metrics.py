@@ -229,6 +229,8 @@ class ErrorCaptureAtBudgetMetric(ConfidenceMetric):
 
     def __init__(self, budgets: Optional[List[float]] = None):
         budgets = budgets if budgets is not None else [0.10, 0.30, 0.50]
+        if not budgets:
+            raise ValueError("budgets must not be empty")
         for b in budgets:
             if not (0.0 < b <= 1.0):
                 raise ValueError(
