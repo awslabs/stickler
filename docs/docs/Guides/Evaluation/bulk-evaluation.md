@@ -153,6 +153,8 @@ Each line in `results.jsonl` contains:
 
 This is the raw output of `compare_with(include_confusion_matrix=True)` for that pair, making it easy to analyze individual results after the fact.
 
+Lines are appended only after the comparison has been successfully accumulated into the bulk evaluator's state, so the JSONL reflects "successfully accumulated" outcomes rather than "attempted" ones. Documents that error inside `update()` are recorded in the in-memory error list and do not produce a JSONL row.
+
 ---
 
 ## Saving and Loading Metrics

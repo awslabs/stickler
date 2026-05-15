@@ -63,7 +63,7 @@ For confidence metrics to survive the JSONL round-trip:
 
 1. **Predictions must use `from_json()`** with rich values (`_value`, `_confidence`). Direct construction (`Invoice(name="Widget")`) does not store raw JSON.
 2. **`compare_with()` must include `document_field_comparisons=True`**. This provides the field-level comparison data needed to reconstruct confidence pairs.
-3. **`compare_with()` must include `include_confusion_matrix=True`**. This is required by `update_from_comparison_result()`.
+3. **`compare_with()` must include `include_confusion_matrix=True`**. This is required by `update_from_comparison_result()` — passing a dict without a `confusion_matrix` key raises `ValueError` at the call site rather than being silently recorded as a per-doc error.
 
 When these conditions are met, `update_from_comparison_result()` produces identical metrics to the direct `update()` path.
 
