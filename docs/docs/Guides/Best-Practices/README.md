@@ -105,6 +105,9 @@ class Invoice(StructuredModel):
     internal_notes: str = ComparableField(weight=0.2) # No operational impact
 ```
 
+!!! tip "Dataset-level headline: use `weighted_overall_score`"
+    When evaluating a corpus with `BulkStructuredModelEvaluator`, read the headline number from `result.metrics["weighted_overall_score"]` -- it preserves your declared weights across the dataset. `cm_f1` ignores weights and treats every field-match equally, so a high-weight field being wrong can look identical to a low-weight field being wrong in that single number. See [Weighted Overall Score](../Evaluation/bulk-evaluation.md#weighted-overall-score).
+
 ---
 
 ## Performance Optimization

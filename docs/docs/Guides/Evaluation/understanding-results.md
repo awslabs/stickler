@@ -254,6 +254,36 @@ This is useful for comprehensive auditing of all comparisons, not just failures.
 
 ---
 
+## Dataset-Level Weighted Aggregate
+
+The per-document `overall_score` above is a weighted average of field scores. When you aggregate across many documents with `BulkStructuredModelEvaluator.compute()`, the weight information is preserved via two keys:
+
+- **`metrics["weighted_overall_score"]`** (float) -- Arithmetic mean of each document's `overall_score`. Prefer this over `cm_f1` whenever your schema uses non-uniform `ComparableField(weight=...)` values: `cm_f1` treats every field-match equally, while `weighted_overall_score` preserves the declared per-field weights across the dataset.
+- **`field_metrics[path]["mean_score"]`** (float, when present) -- Arithmetic mean of each document's `threshold_applied_score` at that path, reported at every nested node that was actually scored. Paths with confusion-matrix counts but no score data (e.g., leaves inside `List[StructuredModel]`, where `compare_with()` only emits the score at the list parent) are surfaced without a `mean_score` key rather than as `0.0`.
+
+```python
+from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
+    BulkStructuredModelEvaluator,
+)
+
+evaluator = BulkStructuredModelEvaluator(target_schema=Invoice)
+for gt, pred in dataset:
+    evaluator.update(gt, pred)
+result = evaluator.compute()
+
+print(f"Weighted Score: {result.metrics['weighted_overall_score']:.3f}")
+print(f"Aggregate F1:   {result.metrics['cm_f1']:.3f}")
+
+for field_path, fm in result.field_metrics.items():
+    mean = fm.get("mean_score")
+    mean_str = f"{mean:.3f}" if mean is not None else "n/a"
+    print(f"  {field_path}: mean={mean_str} | f1={fm.get('cm_f1', 0):.3f}")
+```
+
+Documents whose `overall_score` is missing or non-finite are excluded from the `weighted_overall_score` denominator (error docs are excluded from every aggregate). With zero eligible documents the score is `0.0`; disambiguate via `document_count` when that matters. See [Bulk Evaluation → Weighted Overall Score](bulk-evaluation.md#weighted-overall-score) for the full semantics.
+
+---
+
 ## HTML Reports
 
 Stickler includes an `EvaluationHTMLReporter` that generates interactive HTML reports from evaluation results. The reporter supports both individual comparison results and `ProcessEvaluation` objects from `BulkStructuredModelEvaluator`.

@@ -67,7 +67,7 @@ See the [Comparators](../Comparators/README.md) section for the complete list an
 overall_score = sum(field_score * weight) / sum(weights)
 ```
 
-Fields with higher weights pull the overall score toward their individual result.
+Fields with higher weights pull the overall score toward their individual result. At the dataset level, `BulkStructuredModelEvaluator.compute()` exposes this weight-aware aggregate as `metrics["weighted_overall_score"]` -- prefer it over `cm_f1` when weights are non-uniform, since `cm_f1` treats every field-match equally. See [Weighted Overall Score](bulk-evaluation.md#weighted-overall-score) in the bulk-evaluation guide.
 
 **`clip_under_threshold`** -- When enabled (the default), a field that scores below its threshold contributes 0.0 to the weighted average instead of its partial similarity. This prevents low-confidence matches from inflating the overall score.
 

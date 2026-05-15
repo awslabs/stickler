@@ -86,9 +86,14 @@ for doc_id, ground_truth_data, extracted_data in idp_results:
     evaluator.update(gt, pred, doc_id)
 
 result = evaluator.compute()
+print(f"Weighted Score: {result.metrics['weighted_overall_score']:.3f}")
+print(f"Aggregate F1:   {result.metrics['cm_f1']:.3f}")
+
 evaluator.save_metrics("idp_evaluation_metrics.json")
 evaluator.pretty_print_metrics()
 ```
+
+IDP schemas typically assign much higher `weight` to invoice numbers and totals than to descriptive fields. Read the headline from `weighted_overall_score` rather than `cm_f1` -- the weighted aggregate reflects the fact that a wrong invoice number is operationally worse than a wrong line-item description, where `cm_f1` would treat both as a single false discovery. See [Weighted Overall Score](../Evaluation/bulk-evaluation.md#weighted-overall-score) for the full semantics.
 
 ## Comparator Selection for Document Fields
 
