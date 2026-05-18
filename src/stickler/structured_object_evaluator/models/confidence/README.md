@@ -69,9 +69,9 @@ evaluator = BulkStructuredModelEvaluator(
         "error_capture_at_budget": {
             "value": 2.9,  # gain at middle budget level
             "budgets": {
-                0.10: {"fields_reviewed": 100, "errors_found": 55, "pct_errors_caught": 0.55, "gain": 5.5},
-                0.30: {"fields_reviewed": 300, "errors_found": 87, "pct_errors_caught": 0.87, "gain": 2.9},
-                0.50: {"fields_reviewed": 500, "errors_found": 97, "pct_errors_caught": 0.97, "gain": 1.9},
+                "0.10": {"fields_reviewed": 100, "errors_found": 55, "pct_errors_caught": 0.55, "gain": 5.5},
+                "0.30": {"fields_reviewed": 300, "errors_found": 87, "pct_errors_caught": 0.87, "gain": 2.9},
+                "0.50": {"fields_reviewed": 500, "errors_found": 97, "pct_errors_caught": 0.97, "gain": 1.9},
             }
         },
     },

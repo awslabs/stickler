@@ -160,6 +160,11 @@ class BulkStructuredModelEvaluator:
         # Error tracking
         self._errors = []
 
+        # Per-accumulator failure counts surfaced on
+        # ProcessEvaluation.accumulator_errors so silently-failing
+        # accumulators show up in compute() output, not just _errors.
+        self._accumulator_errors: Dict[str, int] = defaultdict(int)
+
         # Processing statistics
         self._processed_count = 0
         self._start_time = time.time()
@@ -210,7 +215,10 @@ class BulkStructuredModelEvaluator:
             if self.individual_results_jsonl:
                 record = {"doc_id": doc_id, "comparison_result": comparison_result}
                 with open(self.individual_results_jsonl, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(record) + "\n")
+                    # default=str for parity with save_metrics() — keeps
+                    # numpy scalars and similar non-JSON-native values
+                    # from crashing the writer.
+                    f.write(json.dumps(record, default=str) + "\n")
 
         except Exception as e:
             error_record = {
@@ -309,6 +317,7 @@ class BulkStructuredModelEvaluator:
                 try:
                     acc.accumulate(comparison_result, prediction_raw)
                 except Exception as acc_err:
+                    self._accumulator_errors[acc.name] += 1
                     acc_error_record = {
                         "doc_id": doc_id,
                         "error": str(acc_err),
@@ -684,6 +693,14 @@ class BulkStructuredModelEvaluator:
         # Extract confidence_metrics for backward compatibility
         confidence_metrics = accumulator_metrics.get("confidence_metrics")
 
+        # Surface per-accumulator failure counts only when at least one
+        # accumulator actually raised. Empty dict → None preserves the
+        # "additive optional field" contract used elsewhere on
+        # ProcessEvaluation.
+        accumulator_errors = (
+            dict(self._accumulator_errors) if self._accumulator_errors else None
+        )
+
         return ProcessEvaluation(
             document_count=self._processed_count,
             metrics=overall_metrics,
@@ -693,6 +710,7 @@ class BulkStructuredModelEvaluator:
             non_matches=list(self._non_matches) if self.document_non_matches else None,
             confidence_metrics=confidence_metrics,
             accumulator_metrics=accumulator_metrics or None,
+            accumulator_errors=accumulator_errors,
         )
 
     def save_metrics(self, filepath: str) -> None:
@@ -852,6 +870,19 @@ class BulkStructuredModelEvaluator:
                 ):
                     print(f"  {error_type}: {count:,}")
 
+        # Per-accumulator failure visibility — surfaced separately so a
+        # silently-failing accumulator (whose errors don't affect the
+        # confusion matrix) still shows up clearly.
+        if process_eval.accumulator_errors:
+            print("\nACCUMULATOR ERRORS:")
+            print("-" * 40)
+            for acc_name, count in sorted(
+                process_eval.accumulator_errors.items(),
+                key=lambda x: x[1],
+                reverse=True,
+            ):
+                print(f"  {acc_name}: {count:,}")
+
         # Configuration info
         print("\nCONFIGURATION:")
         print("-" * 40)
@@ -885,6 +916,7 @@ class BulkStructuredModelEvaluator:
             "errors": list(self._errors),
             "processed_count": self._processed_count,
             "start_time": self._start_time,
+            "accumulator_errors": dict(self._accumulator_errors),
             # Post-comparison accumulator states
             "accumulators": {
                 acc.name: acc.get_state() for acc in self._accumulators
@@ -930,6 +962,10 @@ class BulkStructuredModelEvaluator:
         self._errors = list(state["errors"])
         self._processed_count = state["processed_count"]
         self._start_time = state["start_time"]
+        # .get() keeps older state dicts (no key) loadable.
+        self._accumulator_errors = defaultdict(
+            int, state.get("accumulator_errors", {})
+        )
 
         # Restore accumulator states
         acc_states = state.get("accumulators", {})
@@ -985,6 +1021,8 @@ class BulkStructuredModelEvaluator:
         # Merge errors and counts
         self._errors.extend(other_state["errors"])
         self._processed_count += other_state["processed_count"]
+        for name, count in other_state.get("accumulator_errors", {}).items():
+            self._accumulator_errors[name] += int(count)
 
         # Merge accumulator states
         acc_states = other_state.get("accumulators", {})

@@ -19,6 +19,7 @@ from typing import (
 from pydantic import BaseModel, Field
 
 from stickler.comparators.base import BaseComparator
+from stickler.utils.deprecation import warn_once
 
 from .comparable_field import ComparableField
 from .comparison_helper import ComparisonHelper
@@ -296,6 +297,19 @@ class StructuredModel(BaseModel):
             return {}
         return self.__stickler_field_extras__.copy()
 
+    # Names the library writes onto instances via object.__setattr__. User
+    # JSON containing any of these at the top level would silently shadow
+    # the library's own metadata under ``extra: "allow"``, so from_json
+    # rejects them up front rather than letting confidence/extras get
+    # overwritten by user data.
+    _RESERVED_DUNDER_NAMES: ClassVar[frozenset] = frozenset(
+        {
+            "__stickler_raw_json__",
+            "__stickler_field_confidences__",
+            "__stickler_field_extras__",
+        }
+    )
+
     @classmethod
     def from_json(
         cls,
@@ -315,23 +329,39 @@ class StructuredModel(BaseModel):
             process_rich_values: Whether to unwrap rich values on this call.
                 Set to False for recursive calls where the parent already handled it.
             **kwargs: Accepts the legacy ``process_confidence`` alias. Emits a
-                DeprecationWarning; support will be removed in the next release.
+                DeprecationWarning; support will be removed in 0.4.0.
 
         Returns:
             StructuredModel instance created from the JSON data
+
+        Raises:
+            ValueError: If ``json_data`` contains any reserved
+                ``__stickler_*`` dunder name at the top level. Those names
+                are reserved for library metadata and would otherwise be
+                silently shadowed by ``extra: "allow"``.
         """
+        # Reject reserved dunder names before any processing — see
+        # ``_RESERVED_DUNDER_NAMES`` for context.
+        if isinstance(json_data, dict):
+            reserved_in_payload = cls._RESERVED_DUNDER_NAMES.intersection(json_data)
+            if reserved_in_payload:
+                raise ValueError(
+                    f"json_data contains reserved key(s): "
+                    f"{sorted(reserved_in_payload)}. The "
+                    f"'__stickler_*' namespace is reserved for library "
+                    f"metadata and cannot appear in user payloads."
+                )
+
         # Deprecation shim: accept the old `process_confidence` alias so that
         # upgrading callers don't hit a TypeError.
         if "process_confidence" in kwargs:
-            import warnings as _warnings
-
             legacy_value = kwargs.pop("process_confidence")
-            _warnings.warn(
-                "StructuredModel.from_json(process_confidence=...) is deprecated; "
-                "use process_rich_values=... instead. Support for the legacy "
-                "kwarg will be removed in the next release.",
-                DeprecationWarning,
-                stacklevel=2,
+            warn_once(
+                "process_confidence_kwarg",
+                "",
+                "StructuredModel.from_json(process_confidence=...) is "
+                "deprecated; use process_rich_values=... instead. Support "
+                "for the legacy kwarg will be removed in 0.4.0.",
             )
             if process_rich_values is None:
                 process_rich_values = legacy_value

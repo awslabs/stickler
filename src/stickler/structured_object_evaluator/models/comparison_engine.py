@@ -7,6 +7,8 @@ dispatcher, collectors, and calculators.
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from stickler.utils.deprecation import warn_once
+
 if TYPE_CHECKING:
     from .confidence import ConfidenceMetric
     from .structured_model import StructuredModel
@@ -352,12 +354,13 @@ class ComparisonEngine:
             if legacy_auroc is None:
                 legacy_auroc = 0.5
             result["auroc_confidence_metric"] = legacy_auroc
-            _warnings.warn(
-                "The 'auroc_confidence_metric' result key is deprecated; use "
+            warn_once(
+                "auroc_confidence_metric_result_key",
+                "",
+                "The 'auroc_confidence_metric' result key is deprecated; "
+                "use "
                 "result['confidence_metrics']['overall']['auroc']['value'] "
-                "instead. The legacy key will be removed in the next release.",
-                DeprecationWarning,
-                stacklevel=2,
+                "instead. The legacy key will be removed in 0.4.0.",
             )
 
         # Include raw prediction JSON for round-tripping through JSONL.

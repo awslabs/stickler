@@ -873,7 +873,7 @@ class TestErrorCaptureAtBudget:
         assert "budgets" in result
 
         # At 30% budget (3 fields), all 3 errors should be found
-        b30 = result["budgets"][0.30]
+        b30 = result["budgets"]["0.30"]
         assert b30["fields_reviewed"] == 3
         assert b30["errors_found"] == 3
         assert b30["pct_errors_caught"] == 1.0
@@ -897,7 +897,7 @@ class TestErrorCaptureAtBudget:
         result = metric.compute(pairs)
 
         # Gain should be close to 1.0 for random confidence
-        assert 0.7 < result["budgets"][0.30]["gain"] < 1.5
+        assert 0.7 < result["budgets"]["0.30"]["gain"] < 1.5
 
     def test_empty_pairs(self):
         from stickler.structured_object_evaluator.models.confidence import (
@@ -926,7 +926,7 @@ class TestErrorCaptureAtBudget:
         ]
         metric = ErrorCaptureAtBudgetMetric(budgets=[0.25, 0.50, 0.75])
         result = metric.compute(pairs)
-        assert set(result["budgets"].keys()) == {0.25, 0.50, 0.75}
+        assert set(result["budgets"].keys()) == {"0.25", "0.50", "0.75"}
 
     def test_headline_is_middle_budget(self):
         """Headline value should be the gain at the middle budget level."""
@@ -941,7 +941,7 @@ class TestErrorCaptureAtBudget:
         metric = ErrorCaptureAtBudgetMetric(budgets=[0.10, 0.30, 0.50])
         result = metric.compute(pairs)
         # Middle budget is 0.30
-        assert result["value"] == result["budgets"][0.30]["gain"]
+        assert result["value"] == result["budgets"]["0.30"]["gain"]
 
     def test_bulk_evaluator_integration(self):
         """ErrorCaptureAtBudgetMetric works through the bulk evaluator."""
@@ -972,8 +972,8 @@ class TestErrorCaptureAtBudget:
 
         ecab = result.confidence_metrics["overall"]["error_capture_at_budget"]
         assert "budgets" in ecab
-        assert 0.30 in ecab["budgets"]
-        assert 0.50 in ecab["budgets"]
+        assert "0.30" in ecab["budgets"]
+        assert "0.50" in ecab["budgets"]
 
 
 # -- 15. Input validation (Copilot PR review fixes) --
@@ -1123,7 +1123,7 @@ class TestECABDeterministicHeadline:
 
         # Headline should be the same
         assert r1["value"] == r2["value"]
-        # Both should have budgets dict keyed by the same floats
+        # Both should have budgets dict keyed by the same strings
         assert set(r1["budgets"].keys()) == set(r2["budgets"].keys())
 
 
@@ -1262,7 +1262,7 @@ class TestECARBGainBaseline:
         pairs = [cp(False, 0.1)]  # 1 field, 1 error
         metric = ErrorCaptureAtBudgetMetric(budgets=[0.10])
         result = metric.compute(pairs)
-        budget_entry = result["budgets"][0.10]
+        budget_entry = result["budgets"]["0.10"]
         # Reviewed 100% of data → caught 100% of errors → gain should be 1.0,
         # not 10.0 (which is what comparing against the requested 0.10 budget
         # would produce).
@@ -1282,7 +1282,7 @@ class TestECARBGainBaseline:
         pairs = [cp(False, 0.05)] + [cp(True, 0.9) for _ in range(8)]
         metric = ErrorCaptureAtBudgetMetric(budgets=[0.10])
         result = metric.compute(pairs)
-        entry = result["budgets"][0.10]
+        entry = result["budgets"]["0.10"]
         assert entry["fields_reviewed"] == 1
         # k=1 out of 9
         assert entry["pct_errors_random"] == pytest.approx(1 / 9)
@@ -1300,7 +1300,7 @@ class TestECARBGainBaseline:
         pairs = [cp(False, 0.1), cp(True, 0.9), cp(False, 0.2)]
         metric = ErrorCaptureAtBudgetMetric(budgets=[1.0])
         result = metric.compute(pairs)
-        entry = result["budgets"][1.0]
+        entry = result["budgets"]["1.00"]
         assert entry["fields_reviewed"] == 3
         assert entry["pct_errors_caught"] == 1.0
         assert entry["pct_errors_random"] == 1.0

@@ -1405,3 +1405,98 @@ class TestWeightedOverallScore:
         # Overall aggregate spans both docs.
         assert worker_a._overall_score_count == 0  # no top-level overall_score set
         assert result.document_count == 2
+
+
+class TestAccumulatorErrorVisibility:
+    """A custom accumulator that raises on every doc must surface its
+    failure count on ``compute().accumulator_errors`` so the user can
+    spot silently-broken metrics. The outer confusion matrix should be
+    unaffected because each accumulator runs in its own try/except."""
+
+    class _AlwaysFailingAccumulator:
+        """Minimal PostComparisonAccumulator that raises on every accumulate."""
+
+        @property
+        def name(self) -> str:
+            return "failing_one"
+
+        def reset(self) -> None:
+            return None
+
+        def accumulate(self, comparison_result, prediction_raw) -> None:
+            raise RuntimeError("intentional accumulator failure")
+
+        def compute(self):
+            return None
+
+        def get_state(self):
+            return {}
+
+        def load_state(self, state) -> None:
+            return None
+
+        def merge_state(self, other_state) -> None:
+            return None
+
+    def _baseline_comparison_result(self):
+        return {
+            "confusion_matrix": {
+                "overall": {"tp": 1, "fp": 0, "fn": 0, "tn": 0, "fa": 0, "fd": 0},
+                "fields": {},
+            }
+        }
+
+    def test_accumulator_errors_counted_per_name(self):
+        evaluator = BulkStructuredModelEvaluator(
+            accumulators=[self._AlwaysFailingAccumulator()],
+        )
+
+        for i in range(3):
+            evaluator.update_from_comparison_result(
+                self._baseline_comparison_result(), doc_id=f"doc_{i}"
+            )
+
+        result = evaluator.compute()
+
+        assert result.accumulator_errors == {"failing_one": 3}
+        # Confusion matrix is untouched — the outer try/except only fires
+        # when accumulation itself fails, not when an accumulator raises.
+        assert result.metrics["tp"] == 3
+        assert result.document_count == 3
+
+    def test_accumulator_errors_none_when_all_succeed(self):
+        """No failures → accumulator_errors stays None to preserve the
+        ``additive optional`` contract on ProcessEvaluation."""
+        evaluator = BulkStructuredModelEvaluator(
+            accumulators=[],
+        )
+        evaluator.update_from_comparison_result(
+            self._baseline_comparison_result(), doc_id="doc_0"
+        )
+        result = evaluator.compute()
+        assert result.accumulator_errors is None
+
+    def test_accumulator_errors_round_trip_through_state(self):
+        """Failures must survive get_state / load_state for checkpoint
+        recovery and merge across distributed workers."""
+        worker_a = BulkStructuredModelEvaluator(
+            accumulators=[self._AlwaysFailingAccumulator()],
+        )
+        worker_a.update_from_comparison_result(
+            self._baseline_comparison_result(), doc_id="a"
+        )
+
+        worker_b = BulkStructuredModelEvaluator(
+            accumulators=[self._AlwaysFailingAccumulator()],
+        )
+        worker_b.update_from_comparison_result(
+            self._baseline_comparison_result(), doc_id="b"
+        )
+        worker_b.update_from_comparison_result(
+            self._baseline_comparison_result(), doc_id="c"
+        )
+
+        worker_a.merge_state(worker_b.get_state())
+        merged = worker_a.compute()
+
+        assert merged.accumulator_errors == {"failing_one": 3}

@@ -54,6 +54,22 @@ class ConfidencePair(BaseModel):
     confidence: float
     similarity: float
 
+    @field_validator("confidence", "similarity", mode="before")
+    @classmethod
+    def _reject_non_numeric(cls, v: Any, info) -> Any:
+        # Reject before Pydantic's permissive coercion: bool is a subclass of
+        # int and would silently become 1.0/0.0; strings like "0.9" or "high"
+        # would either coerce or raise a generic Pydantic error far from the
+        # actual cause. Insisting on plain int/float here turns malformed
+        # upstream data (e.g. ``{"_confidence": True}``) into a loud failure
+        # at parse time.
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise ValueError(
+                f"{info.field_name} must be a numeric float in [0.0, 1.0], "
+                f"got {type(v).__name__}={v!r}"
+            )
+        return v
+
     @field_validator("confidence", "similarity")
     @classmethod
     def _finite_in_unit_interval(cls, v: float, info) -> float:
@@ -109,7 +125,8 @@ class AUROCMetric(ConfidenceMetric):
             return {"value": None}
         y_true = [1 if p.is_match else 0 for p in pairs]
         y_scores = [p.confidence for p in pairs]
-        return {"value": roc_auc_score(y_true, y_scores)}
+        # float() defends against numpy scalars from future ndarray callers.
+        return {"value": float(roc_auc_score(y_true, y_scores))}
 
 
 class BrierScoreMetric(ConfidenceMetric):
@@ -215,7 +232,10 @@ class ErrorCaptureAtBudgetMetric(ConfidenceMetric):
         {
             "value": float,              # headline gain at the middle budget
             "budgets": {
-                <budget>: {
+                # String keys (e.g. "0.10") so the dict round-trips
+                # through JSONL — json.dumps stringifies float keys but
+                # json.loads doesn't reverse it.
+                "<budget>": {
                     "fields_reviewed": int,
                     "errors_found": int,
                     "pct_errors_caught": float,
@@ -273,7 +293,7 @@ class ErrorCaptureAtBudgetMetric(ConfidenceMetric):
                 if reviewed_fraction > 0
                 else 0.0
             )
-            budgets_result[budget] = {
+            budgets_result[self._budget_key(budget)] = {
                 "fields_reviewed": k,
                 "errors_found": errors_found,
                 "pct_errors_caught": pct_errors_caught,
@@ -285,9 +305,13 @@ class ErrorCaptureAtBudgetMetric(ConfidenceMetric):
 
         # Headline value: gain at the middle budget level
         middle = self.budgets[len(self.budgets) // 2]
-        headline = budgets_result[middle]["gain"]
+        headline = budgets_result[self._budget_key(middle)]["gain"]
 
         return {"value": headline, "budgets": budgets_result}
+
+    @staticmethod
+    def _budget_key(budget: float) -> str:
+        return f"{budget:.2f}"
 
 
 def default_metrics() -> List[ConfidenceMetric]:

@@ -328,20 +328,56 @@ class TestLegacyRichValueShim:
         assert pred.name == "Widget"
         assert pred.get_field_confidence("name") == 0.9
 
-    def test_legacy_value_only_unwraps_with_deprecation_warning(self):
-        """Legacy {"value": ...} (no confidence) still unwraps with a warning.
+    def test_legacy_value_only_is_not_detected(self):
+        """A dict with ``value`` but no ``confidence`` is plain user data.
 
-        Existing JSONL corpora may persist the legacy shape without
-        confidence scores; the deprecation shim should round-trip them
-        cleanly rather than treating them as plain dict data.
+        The legacy shim used to treat this as a rich value and silently
+        unwrap it, which would discard sibling keys like ``currency`` in
+        ``{"currency": "USD", "value": 100}`` while emitting a misleading
+        DeprecationWarning. Both keys must be present for the shim to
+        fire.
         """
+        import warnings
+
         data = {"name": {"value": "Widget"}}
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")  # any warning becomes an exception
+            unwrapped, confidences, extras = RichValueHelper.process_rich_values(
+                data
+            )
+        # The dict survives intact — no unwrapping, no warning.
+        assert unwrapped == {"name": {"value": "Widget"}}
+        assert confidences == {}
+        assert extras == {}
+
+    def test_value_with_sibling_keys_is_not_detected(self):
+        """Plain user dicts with a ``value`` field plus siblings round-trip.
+
+        Regression guard: the loose detector previously dropped the
+        ``currency`` sibling on the floor while warning about deprecation.
+        """
+        import warnings
+
+        data = {"price": {"currency": "USD", "value": 100}}
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            unwrapped, confidences, extras = RichValueHelper.process_rich_values(
+                data
+            )
+        assert unwrapped == {"price": {"currency": "USD", "value": 100}}
+        assert confidences == {}
+        assert extras == {}
+
+    def test_legacy_value_and_confidence_still_unwraps(self):
+        """Regression guard: the legacy shim still fires when both keys are
+        present, so existing JSONL corpora continue to round-trip cleanly."""
+        data = {"name": {"value": "Widget", "confidence": 0.9}}
         with pytest.warns(DeprecationWarning, match="name"):
             unwrapped, confidences, extras = RichValueHelper.process_rich_values(
                 data
             )
         assert unwrapped == {"name": "Widget"}
-        assert confidences == {}
+        assert confidences == {"name": 0.9}
         assert extras == {}
 
 
@@ -384,6 +420,46 @@ class TestProcessConfidenceDeprecationShim:
             Product.from_json(
                 {"name": "Widget", "price": 29.99, "sku": "ABC123"},
                 bogus_kwarg=True,
+            )
+
+
+class TestReservedDunderNames:
+    """``from_json`` rejects payloads that try to inject library-managed
+    metadata via the ``__stickler_*`` namespace. Without this guard,
+    ``extra: "allow"`` would let user data silently shadow the library's
+    own state."""
+
+    def test_raw_json_key_rejected(self):
+        with pytest.raises(ValueError, match="__stickler_raw_json__"):
+            Product.from_json(
+                {
+                    "name": "Widget",
+                    "price": 29.99,
+                    "sku": "ABC",
+                    "__stickler_raw_json__": "injected",
+                }
+            )
+
+    def test_field_confidences_key_rejected(self):
+        with pytest.raises(ValueError, match="__stickler_field_confidences__"):
+            Product.from_json(
+                {
+                    "name": "Widget",
+                    "price": 29.99,
+                    "sku": "ABC",
+                    "__stickler_field_confidences__": {"name": 0.9},
+                }
+            )
+
+    def test_field_extras_key_rejected(self):
+        with pytest.raises(ValueError, match="__stickler_field_extras__"):
+            Product.from_json(
+                {
+                    "name": "Widget",
+                    "price": 29.99,
+                    "sku": "ABC",
+                    "__stickler_field_extras__": {},
+                }
             )
 
 

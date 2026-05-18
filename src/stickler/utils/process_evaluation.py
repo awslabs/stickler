@@ -23,6 +23,13 @@ class ProcessEvaluation(BaseModel):
     # stays populated for backwards compatibility. Future accumulators (e.g.
     # a BBoxMAPAccumulator) land here without needing a dedicated field.
     accumulator_metrics: Optional[Dict[str, Any]] = None
+    # Per-accumulator failure counts keyed by accumulator name. Populated
+    # only when at least one accumulator raised during update; ``None``
+    # means "no per-accumulator failures observed". Lets callers detect
+    # silent metric drift caused by a custom accumulator misbehaving on a
+    # subset of documents (the outer confusion matrix is unaffected, so
+    # otherwise the failures would only appear in the ``errors`` log).
+    accumulator_errors: Optional[Dict[str, int]] = None
 
     def to_md(self) -> str:
         """

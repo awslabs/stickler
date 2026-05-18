@@ -122,6 +122,15 @@ All three fields produce the same model values. The first two are unwrapped from
 !!! note "Reserved namespace"
     Underscore-prefixed keys (`_*`) inside a rich value wrapper are a reserved namespace owned by stickler. Any dict containing a `_value` key is treated as a wrapper, and stickler may extract additional `_`-prefixed keys (`_confidence`, `_bbox`, `_source_span`, ...) into typed accessors as the schema grows. Don't ship `{"_value": x}` payloads where `_value` is meant to be user data — wrap once at the boundary, or use a different key name.
 
+!!! note "Reserved top-level dunder names"
+    The following keys cannot appear at the top level of a payload passed to `StructuredModel.from_json()`:
+
+    - `__stickler_raw_json__`
+    - `__stickler_field_confidences__`
+    - `__stickler_field_extras__`
+
+    These names back library-managed metadata stores on the model instance. Allowing them through `extra: "allow"` would let user data silently shadow stickler's own state. `from_json()` raises `ValueError` if any of them appear in the input dict.
+
 | Key in rich value | Where it goes | How to access it |
 |---|---|---|
 | `_value` | Model field value | `pred.field_name` |
@@ -142,11 +151,13 @@ Dicts without `_value` are treated as regular nested data and passed through to 
 
 The pre-rename `{"value": ..., "confidence": ...}` shape is still
 recognized for one release so existing JSONL corpora keep their
-confidence data on upgrade. Loading such a payload emits a
-`DeprecationWarning` naming the offending field path and still unwraps
-the value the same way as the new form. The legacy shape will be
-removed in the next release — migrate payloads to `_value`/`_confidence`
-as soon as you can.
+confidence data on upgrade. Both `value` and `confidence` keys must be
+present for the shim to fire — a plain dict like
+`{"currency": "USD", "value": 100}` is treated as user data, not a rich
+value. When the shim does fire, a `DeprecationWarning` names the
+offending field path and the value is unwrapped the same way as the new
+form. The legacy shape will be removed in 0.4.0 — migrate payloads to
+`_value`/`_confidence` as soon as you can.
 
 ## Integration with Confidence Evaluation
 

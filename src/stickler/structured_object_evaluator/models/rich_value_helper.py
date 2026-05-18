@@ -21,16 +21,21 @@ Convention:
 
 Deprecation window:
     The pre-rename ``{"value": ..., "confidence": ...}`` shape is still
-    accepted for one release. When encountered, a DeprecationWarning is
-    emitted naming the field path and the dict is unwrapped the same way
-    as the new ``_value``/``_confidence`` form. The legacy shape will be
-    removed in the next release.
+    accepted for one release. Both ``"value"`` AND ``"confidence"`` keys
+    must be present (and ``"_value"`` absent) for the shim to fire — a
+    plain dict like ``{"currency": "USD", "value": 100}`` is user data,
+    not a rich value, and is passed through verbatim. When the shim does
+    fire, a DeprecationWarning is emitted naming the field path and the
+    dict is unwrapped the same way as the new ``_value``/``_confidence``
+    form. The legacy shape will be removed in 0.4.0.
 
 See the Rich Value Pattern proposal for design rationale.
 """
 
 import warnings
 from typing import Any, Dict, Tuple
+
+from stickler.utils.deprecation import warn_once
 
 
 class RichValueHelper:
@@ -60,25 +65,33 @@ class RichValueHelper:
 
     @staticmethod
     def _is_legacy_rich_value(data: Any) -> bool:
-        """Check if a dict uses the pre-underscore {"value", ...} shape.
+        """Check if a dict uses the pre-underscore {"value", "confidence"} shape.
 
         Supports a one-release deprecation window so existing JSONL corpora
         continue to have their confidence scores extracted. Callers should
         emit a DeprecationWarning before treating a legacy shape as rich.
 
-        ``confidence`` is optional in the deprecation shim — legacy JSONL
-        corpora that emit ``{"value": ...}`` without a confidence score
-        round-trip cleanly through this path.
+        Both ``"value"`` AND ``"confidence"`` are required for a dict to be
+        treated as a legacy rich value. A value-only dict like
+        ``{"currency": "USD", "value": 100}`` is ordinary user data and is
+        not unwrapped — auto-unwrapping such dicts would silently discard
+        every sibling key while emitting a misleading deprecation warning
+        accusing the user of using a deprecated shape.
         """
         return (
             isinstance(data, dict)
             and "_value" not in data
             and "value" in data
+            and "confidence" in data
         )
 
     @classmethod
     def process_rich_values(
-        cls, data: Any, field_path: str = ""
+        cls,
+        data: Any,
+        field_path: str = "",
+        max_depth: int = 64,
+        _depth: int = 0,
     ) -> Tuple[Any, Dict[str, float], Dict[str, Dict[str, Any]]]:
         """Recursively unwrap rich values, extracting values, confidence, and extras.
 
@@ -97,13 +110,26 @@ class RichValueHelper:
         Args:
             data: The JSON data to process.
             field_path: Dot/bracket-notation path for the current position.
+            max_depth: Maximum nesting depth before raising ``ValueError``.
+                Guards against pathological inputs blowing the recursion
+                stack. The default of 64 is well past anything a real
+                structured model would need (the deepest existing test is
+                six levels). Increase only if you have a documented need.
 
         Returns:
             Tuple of (unwrapped_data, confidences_dict, extras_dict).
             unwrapped_data has rich values replaced with their plain values.
             confidences_dict maps field paths to confidence scores.
             extras_dict maps field paths to dicts of extra metadata.
+
+        Raises:
+            ValueError: When the data tree exceeds ``max_depth`` levels.
         """
+        if _depth > max_depth:
+            raise ValueError(
+                f"Rich value tree exceeds max_depth={max_depth} at "
+                f"'{field_path}'"
+            )
         if isinstance(data, dict):
             if cls._is_rich_value(data):
                 value = data["_value"]
@@ -136,23 +162,16 @@ class RichValueHelper:
 
                 return value, confidences, extras
             elif cls._is_legacy_rich_value(data):
-                # Deprecation shim: treat {"value", "confidence"} as a rich
-                # value for one release so existing JSONL corpora still have
-                # their confidence extracted. Remove in the next major.
-                warnings.warn(
+                # Remove in 0.4.0.
+                warn_once(
+                    "legacy_rich_value_shape",
+                    field_path,
                     f"Field '{field_path}' uses the legacy "
                     f"{{'value', 'confidence'}} rich value shape. Rename "
-                    f"these keys to '_value' and '_confidence'. Support for "
-                    f"the legacy shape will be removed in the next release.",
-                    DeprecationWarning,
-                    stacklevel=2,
+                    f"these keys to '_value' and '_confidence'. Support "
+                    f"for the legacy shape will be removed in 0.4.0.",
                 )
-                confidences = (
-                    {field_path: data["confidence"]}
-                    if "confidence" in data
-                    else {}
-                )
-                return data["value"], confidences, {}
+                return data["value"], {field_path: data["confidence"]}, {}
             else:
                 processed = {}
                 all_confidences: Dict[str, float] = {}
@@ -160,7 +179,7 @@ class RichValueHelper:
                 for key, value in data.items():
                     new_path = f"{field_path}.{key}" if field_path else key
                     processed_value, confidences, extras = cls.process_rich_values(
-                        value, new_path
+                        value, new_path, max_depth=max_depth, _depth=_depth + 1
                     )
                     processed[key] = processed_value
                     all_confidences.update(confidences)
@@ -173,7 +192,7 @@ class RichValueHelper:
             for i, item in enumerate(data):
                 item_path = f"{field_path}[{i}]"
                 processed_item, confidences, extras = cls.process_rich_values(
-                    item, item_path
+                    item, item_path, max_depth=max_depth, _depth=_depth + 1
                 )
                 processed_list.append(processed_item)
                 all_confidences.update(confidences)
