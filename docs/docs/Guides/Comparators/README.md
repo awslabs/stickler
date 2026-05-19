@@ -11,6 +11,7 @@ Comparators are the algorithms that determine how similar two field values are. 
 | [**ExactComparator**](#exactcomparator) | IDs, codes, booleans | Instant | No | Binary (0.0 or 1.0) |
 | [**LevenshteinComparator**](#levenshteincomparator) | Names, addresses, text with typos | Instant | No | Continuous (0.0--1.0) |
 | [**NumericComparator**](#numericcomparator) | Prices, quantities, measurements | Instant | No | Binary (0.0 or 1.0) |
+| [**DateComparator**](date-comparator.md) | Date fields with mixed formats, partial dates, ranges | Instant | No | Continuous (0.0--1.0) |
 | [**FuzzyComparator**](#fuzzycomparator) | Flexible text, descriptions, reordered tokens | Fast | No | Continuous (0.0--1.0) |
 | [**SemanticComparator**](#semanticcomparator) | Meaning-based text similarity | Moderate | Yes (Bedrock) | Continuous (0.0--1.0) |
 | [**BERTComparator**](#bertcomparator) | Contextual semantic similarity | Moderate | No (runs locally) | Continuous (0.0--1.0) |
@@ -101,7 +102,35 @@ class Invoice(StructuredModel):
 
 ---
 
-### FuzzyComparator
+### DateComparator
+
+Parses both sides as dates (or date ranges) using `python-dateutil`, then scores the comparison on a tier system: same calendar day after surface-form normalization is `1.0`, partial information (year-less, range-vs-single) is configurable, anything else is `0.0`. Handles ISO/named-month/slash formats, two-digit years, day-of-week prefixes, and timezone-aware datetimes.
+
+**When to use:** Any date field where surface form varies (different separators, formats, locales, two- vs four-digit years), or where ground truth and predictions may disagree on year-presence or use ranges.
+
+```python
+from stickler import StructuredModel, ComparableField
+from stickler.comparators import DateComparator
+
+class Invoice(StructuredModel):
+    invoice_date: str = ComparableField(
+        comparator=DateComparator(allow_partial_year=True),
+        threshold=0.7
+    )
+```
+
+**Key parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `tolerance` | `timedelta(0)` | Allowed difference for same-day comparisons (single dates only) |
+| `dayfirst` | `None` | Interpretation hint for ambiguous numeric dates |
+| `allow_partial_year` | `False` | If `True`, year-less ↔ year-bearing pairs with matching m/d score `0.7` |
+| `range_mode` | `"graded"` | How range comparisons are scored: `"strict"`, `"reject"`, `"contains"`, or `"graded"` |
+
+For the full behavior reference, configuration matrix, and corner cases, see the [DateComparator page](date-comparator.md).
+
+---
 
 Uses the [rapidfuzz](https://github.com/rapidfuzz/RapidFuzz) library for advanced fuzzy string matching. Supports multiple matching methods including standard ratio, partial matching, and token-based matching that is order-independent.
 

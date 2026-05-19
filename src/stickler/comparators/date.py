@@ -1,60 +1,42 @@
 """Date comparison comparator.
 
-Provides a deterministic, non-LLM comparator that parses two date strings
-(or ``datetime`` / ``date`` objects) and compares them as ``datetime`` values.
+Deterministic, non-LLM date comparator. Parses both sides into ``datetime``
+(or a date range) and scores per the tier system documented in
+``docs/docs/Guides/Comparators/date-comparator.md``.
 
-Built on ``python-dateutil`` for flexible parsing of canonical and
-non-canonical formats (ISO 8601, ``"Jan 1, 2025"``, ``"1/1/25"``, etc.)
-with no network calls and no LLM usage.
+Scoring tiers:
 
-Example:
-    ```python
-    from stickler.comparators import DateComparator
+* Tier 1: same calendar day (after surface-form normalization) → 1.0
+* Tier 2: both sides year-less, same month/day → 1.0
+* Tier 3: one side year-less, m/d match (only when ``allow_partial_year=True``)
+  → ``_PARTIAL_YEAR_MULTIPLIER`` (0.7), else 0.0
+* Tier 4 / 4b: range comparisons, behavior controlled by ``range_mode``:
+    - ``"strict"``  – range-vs-single = 0; range-vs-range = endpoints must
+      match exactly, else 0.
+    - ``"reject"``  – any range input = 0 regardless of the other side;
+      single-day ranges are NOT collapsed.
+    - ``"contains"`` – range-vs-single = 1 if single is inside range, else
+      0; range-vs-range = endpoints exact, else 0.
+    - ``"graded"`` (default) – range-vs-single = 0.5 if inside, else 0;
+      range-vs-range = Jaccard (overlap days / union days).
+* Tier 5: anything else → 0.0
 
-    # Default: ISO-biased parsing, exact day-level equality
-    cmp = DateComparator()
-    cmp.compare("2025-01-01", "Jan 1, 2025")         # 1.0
-    cmp.compare("2025-01-01", "2025-01-02")          # 0.0
+Year-presence mismatch in range comparisons multiplies the base range score
+by ``_PARTIAL_YEAR_MULTIPLIER`` when ``allow_partial_year=True``, or by
+``0.0`` (i.e. the comparison is rejected) otherwise.
 
-    # Year-level granularity
-    cmp = DateComparator(granularity="year")
-    cmp.compare("2025-01-01", "2025-12-31")          # 1.0
+Higher-level threshold/clip behavior is the caller's job — this comparator
+returns the honest similarity, ``ComparableField`` decides what counts as
+a match.
 
-    # Tolerance window
-    from datetime import timedelta
-    cmp = DateComparator(tolerance=timedelta(days=1))
-    cmp.compare("2025-01-01", "2025-01-02")          # 1.0
-
-    # Disambiguate ambiguous numeric dates. The hint only kicks in for
-    # strings where the component order is unclear (like "01/02/2025").
-    # ISO-looking and named-month inputs always parse the same way.
-    us = DateComparator(date_order="us")
-    us.compare("01/02/2025", "2025-01-02")           # 1.0 (Jan 2)
-
-    eu = DateComparator(date_order="european")
-    eu.compare("01/02/2025", "2025-02-01")           # 1.0 (Feb 1)
-    ```
-
-Note on parse failures:
-    Unparseable input (``"not a date"``, garbled strings, empty values)
-    returns ``0.0`` — the same value as a valid-but-different date. This
-    matches the behavior of other comparators in this package (e.g.
-    ``NumericComparator`` treats ``"abc"`` the same way). Callers that
-    need to distinguish "garbage in" from "dates differ" should validate
-    inputs upstream.
-
-Note on scoring:
-    Scoring is currently binary: within tolerance → ``1.0``, outside →
-    ``0.0``. A future enhancement could introduce a "ramp" mode that
-    awards partial credit between an inner ``tolerance`` and an outer
-    ``ramp_tolerance``, decaying linearly (or on another curve) from
-    ``1.0`` down to ``threshold``. Not included in v1 — flagged here for
-    future work.
+Built on ``python-dateutil`` for parsing.
 """
 
-import re
+from __future__ import annotations
+
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Tuple, Union
 
 from stickler.comparators.base import BaseComparator
 
@@ -66,82 +48,74 @@ except ImportError:  # pragma: no cover - dateutil is a declared dep
     _DATEUTIL_AVAILABLE = False
 
 
-# ISO 8601-ish strings lead with a 4-digit year (e.g., "2025-01-01",
-# "2025-01-01T00:00:00Z", "2025/01/01"). These should always parse
-# year-first regardless of the user's date_order hint — the hint is for
-# disambiguating numeric slash-separated dates like "01/02/2025".
-_ISO_LEADING_YEAR = re.compile(r"^\s*\d{4}[-/.]")
+# Score constants (baked in; tune via ``ComparableField.threshold`` rather
+# than per-comparator knobs).
+_PARTIAL_YEAR_MULTIPLIER = 0.7
+_RANGE_CONTAINS_GRADED_SCORE = 0.5
+
+# Range delimiters in priority order. Spaces are required around the bare
+# ``-`` so we don't shred ISO dates like ``2025-01-01``.
+_RANGE_DELIMS = (" to ", " through ", " - ")
 
 
-Granularity = Literal["year", "month", "day", "hour", "minute", "second"]
-DateOrder = Literal["iso", "us", "european"]
+RangeMode = Literal["strict", "reject", "contains", "graded"]
+_VALID_RANGE_MODES: Tuple[RangeMode, ...] = (
+    "strict",
+    "reject",
+    "contains",
+    "graded",
+)
+
+
+@dataclass(frozen=True)
+class _ParsedSingle:
+    """A successfully-parsed single date plus whether the input claimed a year."""
+
+    dt: datetime
+    has_year: bool
+
+
+@dataclass(frozen=True)
+class _ParsedRange:
+    """A successfully-parsed date range (start <= end)."""
+
+    start: _ParsedSingle
+    end: _ParsedSingle
+
+
+_ParseResult = Union[_ParsedSingle, _ParsedRange, None]
 
 
 class DateComparator(BaseComparator):
-    """Deterministic date comparator.
+    """Deterministic date comparator with year/range awareness.
 
-    Parses both operands into ``datetime`` objects and compares them.
-    Supports configurable tolerance windows, partial granularity (e.g.
-    year-only or month-only comparison), and a ``date_order`` hint for
-    disambiguating genuinely ambiguous numeric dates like ``"01/02/2025"``.
+    See ``docs/docs/Guides/Comparators/date-comparator.md`` for the full
+    behavior reference, configuration matrix, and corner cases.
 
-    The ``date_order`` hint is a **tiebreaker**, not a global mode.
-    Unambiguously-formatted input (ISO-looking strings like
-    ``"2025-01-01"``, or named-month strings like ``"Jan 1, 2025"``)
-    always parses the same way regardless of the hint. The hint only
-    matters when the parser can't tell which of two interpretations is
-    correct.
-
-    Unparseable input is treated as a comparison failure (returns
-    ``0.0``). See the module docstring for the rationale.
-
-    Attributes:
-        tolerance: ``timedelta`` window for near-matches, applied at the
-            configured granularity. Defaults to ``timedelta(0)`` (exact).
-        granularity: Precision of the comparison. One of ``"year"``,
-            ``"month"``, ``"day"``, ``"hour"``, ``"minute"``, ``"second"``.
-            Defaults to ``"day"``.
-        date_order: Tiebreaker for ambiguous numeric dates. One of
-            ``"iso"`` (year-first, default), ``"us"`` (month-first), or
-            ``"european"`` (day-first). Only affects parsing of dates
-            like ``"01/02/2025"`` where the component order is unclear.
+    Args:
+        threshold: Forwarded to :class:`BaseComparator`.
+        tolerance: Optional ``timedelta`` window for Tier 1 same-day
+            comparisons only. Range and partial-year branches ignore it.
+            Defaults to ``timedelta(0)``.
+        dayfirst: How to interpret ambiguous numeric dates like
+            ``"01/02/2025"``. ``None`` (default) tries both
+            interpretations and takes the better-matching score; ``True``
+            forces day-first; ``False`` forces month-first.
+        allow_partial_year: If ``True``, year-less ↔ year-bearing pairs
+            with matching month/day score ``0.7``. Default ``False``.
+        range_mode: How range comparisons are scored. One of
+            ``"strict"``, ``"reject"``, ``"contains"``, ``"graded"``
+            (default).
     """
-
-    _GRANULARITY_ORDER = ("year", "month", "day", "hour", "minute", "second")
-    _VALID_DATE_ORDERS = ("iso", "us", "european")
 
     def __init__(
         self,
         threshold: float = 1.0,
-        tolerance: Optional[timedelta] = None,
-        granularity: Granularity = "day",
-        date_order: DateOrder = "iso",
+        tolerance: Optional[Union[timedelta, int, float]] = None,
+        dayfirst: Optional[bool] = None,
+        allow_partial_year: bool = False,
+        range_mode: RangeMode = "graded",
     ):
-        """Initialize the comparator.
-
-        Args:
-            threshold: Similarity threshold (default 1.0). Kept for
-                interface compatibility; this comparator is currently
-                binary (0.0 or 1.0).
-            tolerance: Optional ``timedelta`` window. Two dates are
-                considered equal if their absolute difference is within
-                this window. Defaults to ``timedelta(0)``.
-            granularity: Precision at which dates are compared. Fields
-                below this level are truncated before comparison.
-            date_order: Tiebreaker for ambiguous numeric dates. Only
-                matters for strings like ``"01/02/2025"`` where the
-                component order is unclear.
-                ``"iso"`` → year-first (default, matches typical clean
-                ground truth).
-                ``"us"`` → month-first (e.g. ``"01/02/2025"`` = Jan 2).
-                ``"european"`` → day-first (e.g. ``"01/02/2025"`` = Feb 1).
-                Has no effect on ISO-formatted or named-month inputs.
-
-        Raises:
-            ImportError: If ``python-dateutil`` is not installed.
-            ValueError: If ``granularity`` or ``date_order`` is invalid,
-                or if ``tolerance`` is negative.
-        """
         super().__init__(threshold=threshold)
 
         if not _DATEUTIL_AVAILABLE:
@@ -150,77 +124,364 @@ class DateComparator(BaseComparator):
                 "Install it with: pip install python-dateutil"
             )
 
-        if granularity not in self._GRANULARITY_ORDER:
+        if dayfirst not in (None, True, False):
             raise ValueError(
-                f"Invalid granularity '{granularity}'. "
-                f"Must be one of {self._GRANULARITY_ORDER}."
+                f"dayfirst must be None, True, or False; got {dayfirst!r}"
             )
 
-        if date_order not in self._VALID_DATE_ORDERS:
+        if range_mode not in _VALID_RANGE_MODES:
             raise ValueError(
-                f"Invalid date_order '{date_order}'. "
-                f"Must be one of {self._VALID_DATE_ORDERS}."
+                f"range_mode must be one of {_VALID_RANGE_MODES}; "
+                f"got {range_mode!r}"
             )
 
-        self.tolerance = tolerance if tolerance is not None else timedelta(0)
+        # Tolerance accepts ``timedelta``, ``int``, or ``float``. Numeric
+        # inputs are interpreted as days — friendlier for JSON-schema
+        # configs where a literal ``timedelta(days=N)`` isn't expressible.
+        if tolerance is None:
+            self.tolerance = timedelta(0)
+        elif isinstance(tolerance, timedelta):
+            self.tolerance = tolerance
+        elif isinstance(tolerance, bool):
+            # bool is a subclass of int; reject it explicitly so True/False
+            # don't silently become 1-day / 0-day windows.
+            raise ValueError(
+                "tolerance must be a timedelta or a numeric value in days; "
+                f"got bool {tolerance!r}"
+            )
+        elif isinstance(tolerance, (int, float)):
+            self.tolerance = timedelta(days=tolerance)
+        else:
+            raise ValueError(
+                "tolerance must be a timedelta or a numeric value in days; "
+                f"got {type(tolerance).__name__}"
+            )
+
         if self.tolerance < timedelta(0):
             raise ValueError("tolerance must be non-negative")
 
-        self.granularity = granularity
-        self.date_order = date_order
+        self.dayfirst = dayfirst
+        self.allow_partial_year = allow_partial_year
+        self.range_mode = range_mode
 
-        # Map date_order to dateutil's dayfirst / yearfirst flags.
-        if date_order == "iso":
-            self._dayfirst = False
-            self._yearfirst = True
-        elif date_order == "european":
-            self._dayfirst = True
-            self._yearfirst = False
-        else:  # "us"
-            self._dayfirst = False
-            self._yearfirst = False
+    @property
+    def config(self) -> dict:
+        """Round-trippable config for JSON-schema export.
+
+        Tolerance is exported as days (an int when the timedelta is a
+        whole number of days, otherwise a float) so it can survive a
+        JSON round-trip.
+        """
+        cfg: dict = {
+            "dayfirst": self.dayfirst,
+            "allow_partial_year": self.allow_partial_year,
+            "range_mode": self.range_mode,
+        }
+        if self.tolerance != timedelta(0):
+            seconds = self.tolerance.total_seconds()
+            days = seconds / 86400
+            cfg["tolerance"] = int(days) if days.is_integer() else days
+        return cfg
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     def compare(self, str1: Any, str2: Any) -> float:
-        """Compare two date values.
-
-        Args:
-            str1: First value. May be ``str``, ``datetime``, ``date``, or ``None``.
-            str2: Second value. Same accepted types as ``str1``.
-
-        Returns:
-            ``1.0`` if the parsed dates are equal at the configured
-            granularity (optionally within ``tolerance``), else ``0.0``.
-            Also returns ``0.0`` when either input is unparseable.
-        """
+        """Score two date values per the tier system documented above."""
         if str1 is None and str2 is None:
             return 1.0
         if str1 is None or str2 is None:
             return 0.0
 
-        dt1 = self._parse(str1)
-        dt2 = self._parse(str2)
-        if dt1 is None or dt2 is None:
+        # Resolve dayfirst pairwise. ``None`` means "try both
+        # interpretations and take the best score" — that way a string
+        # whose layout is genuinely ambiguous in isolation can still
+        # match if one consistent interpretation lines up.
+        if self.dayfirst is not None:
+            return self._compare_with_dayfirst(str1, str2, self.dayfirst)
+
+        return max(
+            self._compare_with_dayfirst(str1, str2, False),
+            self._compare_with_dayfirst(str1, str2, True),
+        )
+
+    def _compare_with_dayfirst(
+        self, str1: Any, str2: Any, dayfirst: bool
+    ) -> float:
+        """Run the tier dispatch with ``dayfirst`` pinned to one value."""
+        a = self._parse(str1, dayfirst=dayfirst)
+        b = self._parse(str2, dayfirst=dayfirst)
+        if a is None or b is None:
             return 0.0
 
-        dt1, dt2 = self._align_timezones(dt1, dt2)
-        dt1 = self._truncate(dt1)
-        dt2 = self._truncate(dt2)
+        a_is_range = isinstance(a, _ParsedRange)
+        b_is_range = isinstance(b, _ParsedRange)
 
-        diff = abs(dt1 - dt2)
-        return 1.0 if diff <= self.tolerance else 0.0
+        # ``reject`` mode: any range input zeros out the comparison.
+        if self.range_mode == "reject" and (a_is_range or b_is_range):
+            return 0.0
+
+        # Tier 4b: range vs range
+        if a_is_range and b_is_range:
+            return self._compare_range_range(a, b)
+
+        # Tier 4: range vs single
+        if a_is_range or b_is_range:
+            single = b if a_is_range else a  # type: ignore[assignment]
+            rng = a if a_is_range else b  # type: ignore[assignment]
+            return self._compare_range_single(rng, single)
+
+        # Both singles
+        return self._compare_singles(a, b)
+
+    # ------------------------------------------------------------------
+    # Tier dispatch
+    # ------------------------------------------------------------------
+
+    def _compare_range_range(
+        self, a: _ParsedRange, b: _ParsedRange
+    ) -> float:
+        """Tier 4b: range vs range under the configured range_mode."""
+        # Year-presence consistency on both endpoints of both sides.
+        # If endpoints disagree on year-presence within a side it's
+        # malformed; we treat that as a 0.0 rather than try to repair.
+        if a.start.has_year != a.end.has_year:
+            return 0.0
+        if b.start.has_year != b.end.has_year:
+            return 0.0
+
+        year_match = a.start.has_year == b.start.has_year
+        partial_year_multiplier = self._partial_year_multiplier(year_match)
+        if partial_year_multiplier == 0.0:
+            return 0.0
+
+        if self.range_mode in ("strict", "contains"):
+            if (
+                self._dates_equal_day(a.start.dt, b.start.dt)
+                and self._dates_equal_day(a.end.dt, b.end.dt)
+            ):
+                return 1.0 * partial_year_multiplier
+            return 0.0
+
+        # graded → Jaccard
+        # (reject mode is handled before we get here)
+        return self._jaccard(a, b) * partial_year_multiplier
+
+    def _compare_range_single(
+        self, rng: _ParsedRange, single: _ParsedSingle
+    ) -> float:
+        """Tier 4: range-vs-single under the configured range_mode."""
+        if self.range_mode == "strict":
+            return 0.0
+
+        # Year-presence consistency: the range's endpoints must agree
+        # internally, and we compare against the single's claim.
+        if rng.start.has_year != rng.end.has_year:
+            return 0.0
+        year_match = rng.start.has_year == single.has_year
+        partial_year_multiplier = self._partial_year_multiplier(year_match)
+        if partial_year_multiplier == 0.0:
+            return 0.0
+
+        # Containment: when both sides agree on year-presence we compare
+        # the full datetimes; when they disagree (only possible under
+        # allow_partial_year=True) the year on the year-less side is a
+        # fictional 1900 placeholder, so we compare on (month, day) only.
+        if year_match:
+            s = self._truncate_day(single.dt)
+            lo = self._truncate_day(rng.start.dt)
+            hi = self._truncate_day(rng.end.dt)
+            inside = lo <= s <= hi
+        else:
+            inside = self._md_in_md_range(
+                (single.dt.month, single.dt.day),
+                (rng.start.dt.month, rng.start.dt.day),
+                (rng.end.dt.month, rng.end.dt.day),
+            )
+
+        if inside:
+            base = (
+                1.0 if self.range_mode == "contains" else _RANGE_CONTAINS_GRADED_SCORE
+            )
+            return base * partial_year_multiplier
+        return 0.0
 
     @staticmethod
-    def _align_timezones(dt1: datetime, dt2: datetime) -> tuple[datetime, datetime]:
-        """Make two datetimes tz-comparable before subtraction.
+    def _md_in_md_range(
+        target: Tuple[int, int],
+        lo: Tuple[int, int],
+        hi: Tuple[int, int],
+    ) -> bool:
+        """Check (month, day) containment in a (month, day) range.
 
-        Python rejects subtracting a tz-aware datetime from a tz-naive one.
-        When exactly one side is tz-aware, we assume the naive side is in
-        the same implicit zone and attach the aware side's tzinfo. When
-        both are aware, we normalize to UTC to get an unambiguous diff.
+        Treats the range as a same-year span. If the range crosses year
+        boundary in m/d terms (e.g. Dec 20 to Jan 5), we'd need wrap-around
+        logic; for the year-mismatch partial-year case the range is always
+        year-bearing internally so this only matters when its m/d span
+        wraps mid-comparison. In practice ranges in our data are
+        same-year, so we keep this simple and treat the m/d ordering as
+        non-wrapping (lo <= target <= hi).
         """
+        return lo <= target <= hi
+
+    def _compare_singles(
+        self, a: _ParsedSingle, b: _ParsedSingle
+    ) -> float:
+        """Tiers 1/2/3/5 for two single dates."""
+        if not a.has_year and not b.has_year:
+            # Tier 2: both year-less. Match on m/d alone.
+            return 1.0 if (a.dt.month, a.dt.day) == (b.dt.month, b.dt.day) else 0.0
+
+        if a.has_year != b.has_year:
+            # Tier 3: only one side claims a year.
+            if not self.allow_partial_year:
+                return 0.0
+            if (a.dt.month, a.dt.day) == (b.dt.month, b.dt.day):
+                return _PARTIAL_YEAR_MULTIPLIER
+            return 0.0
+
+        # Tier 1/5: both have years. Standard comparison with tolerance.
+        a_dt, b_dt = self._align_timezones(a.dt, b.dt)
+        a_dt = self._truncate_day(a_dt)
+        b_dt = self._truncate_day(b_dt)
+        return 1.0 if abs(a_dt - b_dt) <= self.tolerance else 0.0
+
+    def _partial_year_multiplier(self, year_match: bool) -> float:
+        """Multiplier applied to range scores when year-presence (mis)matches.
+
+        Returns 1.0 when both sides agree on year-presence. Returns
+        ``_PARTIAL_YEAR_MULTIPLIER`` (0.7) when ``allow_partial_year=True``
+        and they disagree. Returns 0.0 otherwise.
+        """
+        if year_match:
+            return 1.0
+        return _PARTIAL_YEAR_MULTIPLIER if self.allow_partial_year else 0.0
+
+    def _jaccard(self, a: _ParsedRange, b: _ParsedRange) -> float:
+        """Jaccard overlap between two date ranges, day-level."""
+        a_lo = self._truncate_day(a.start.dt)
+        a_hi = self._truncate_day(a.end.dt)
+        b_lo = self._truncate_day(b.start.dt)
+        b_hi = self._truncate_day(b.end.dt)
+
+        # Inclusive day count.
+        intersect_lo = max(a_lo, b_lo)
+        intersect_hi = min(a_hi, b_hi)
+        if intersect_hi < intersect_lo:
+            return 0.0
+
+        intersect_days = (intersect_hi - intersect_lo).days + 1
+        union_lo = min(a_lo, b_lo)
+        union_hi = max(a_hi, b_hi)
+        union_days = (union_hi - union_lo).days + 1
+        return intersect_days / union_days
+
+    # ------------------------------------------------------------------
+    # Parsing
+    # ------------------------------------------------------------------
+
+    def _parse(self, value: Any, dayfirst: bool) -> _ParseResult:
+        """Parse input into a single date or range, or ``None`` on failure.
+
+        Single-day ranges (``X to X``) are normally collapsed to a
+        ``_ParsedSingle`` so they compare consistently with the bare
+        single-date form. Under ``range_mode="reject"`` we skip the
+        collapse so that the original range shape is preserved and the
+        comparison surfaces it as a structural mismatch.
+        """
+        if isinstance(value, datetime):
+            return _ParsedSingle(dt=value, has_year=True)
+        if isinstance(value, date):
+            return _ParsedSingle(
+                dt=datetime(value.year, value.month, value.day), has_year=True
+            )
+
+        if not isinstance(value, str):
+            value = str(value)
+
+        s = value.strip()
+        if not s:
+            return None
+
+        rng = self._try_parse_range(s, dayfirst=dayfirst)
+        if rng is not None:
+            # Collapse degenerate single-day ranges to singles, EXCEPT
+            # under reject mode where we want the range shape preserved.
+            if (
+                self.range_mode != "reject"
+                and self._dates_equal_day(rng.start.dt, rng.end.dt)
+                and rng.start.has_year == rng.end.has_year
+            ):
+                return rng.start
+            return rng
+
+        return self._try_parse_single(s, dayfirst=dayfirst)
+
+    def _try_parse_range(
+        self, s: str, dayfirst: bool
+    ) -> Optional[_ParsedRange]:
+        """Detect a range by splitting on configured delimiters."""
+        for delim in _RANGE_DELIMS:
+            if delim not in s:
+                continue
+            left, _, right = s.partition(delim)
+            left_p = self._try_parse_single(left.strip(), dayfirst=dayfirst)
+            right_p = self._try_parse_single(right.strip(), dayfirst=dayfirst)
+            if left_p is None or right_p is None:
+                continue
+            if left_p.dt > right_p.dt:
+                return None
+            return _ParsedRange(start=left_p, end=right_p)
+        return None
+
+    def _try_parse_single(
+        self, s: str, dayfirst: bool
+    ) -> Optional[_ParsedSingle]:
+        """Parse one side as a single date (or ``None`` on failure)."""
+        if not s:
+            return None
+
+        try:
+            dt_lo = _dateutil_parser.parse(
+                s, default=datetime(1900, 1, 1), dayfirst=dayfirst
+            )
+            dt_hi = _dateutil_parser.parse(
+                s, default=datetime(2099, 1, 1), dayfirst=dayfirst
+            )
+        except (ValueError, OverflowError, TypeError):
+            return None
+
+        has_year = dt_lo.year == dt_hi.year
+
+        # Reject time-only inputs ('12:30 PM', '10/45AM' etc.). When
+        # neither year nor month/day is fully specified, both parses
+        # land on the default's Jan 1 with a non-zero time component.
+        if not has_year:
+            if (dt_lo.month, dt_lo.day) != (dt_hi.month, dt_hi.day):
+                return None
+            time_present = (
+                dt_lo.hour != 0
+                or dt_lo.minute != 0
+                or dt_lo.second != 0
+                or dt_lo.microsecond != 0
+            )
+            if time_present and (dt_lo.month, dt_lo.day) == (1, 1):
+                return None
+
+        return _ParsedSingle(dt=dt_lo, has_year=has_year)
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _align_timezones(
+        dt1: datetime, dt2: datetime
+    ) -> tuple[datetime, datetime]:
+        """Make two datetimes tz-comparable for subtraction."""
         aware1 = dt1.tzinfo is not None
         aware2 = dt2.tzinfo is not None
-
         if aware1 and aware2:
             return dt1.astimezone(timezone.utc), dt2.astimezone(timezone.utc)
         if aware1 and not aware2:
@@ -229,66 +490,21 @@ class DateComparator(BaseComparator):
             return dt1.replace(tzinfo=dt2.tzinfo), dt2
         return dt1, dt2
 
-    def _parse(self, value: Any) -> Optional[datetime]:
-        """Parse a value into a ``datetime``.
+    @staticmethod
+    def _truncate_day(dt: datetime) -> datetime:
+        return dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
-        Returns ``None`` for unparseable input so the caller can treat it
-        as a comparison failure.
-
-        Uses the ``date_order`` hint only when the input is genuinely
-        ambiguous. Strings that start with a 4-digit year (ISO 8601-ish)
-        always parse year-first, so mixed-format inputs — common when
-        predictions come from LLM extractions — are handled correctly
-        without requiring the user to configure anything per-side.
-        """
-        if isinstance(value, datetime):
-            return value
-        if isinstance(value, date):
-            return datetime(value.year, value.month, value.day)
-
-        if not isinstance(value, str):
-            value = str(value)
-
-        stripped = value.strip()
-        if not stripped:
-            return None
-
-        # ISO-leading strings are unambiguous; force year-first parsing
-        # so the date_order hint doesn't accidentally flip them.
-        if _ISO_LEADING_YEAR.match(stripped):
-            dayfirst, yearfirst = False, True
-        else:
-            dayfirst, yearfirst = self._dayfirst, self._yearfirst
-
-        try:
-            return _dateutil_parser.parse(
-                stripped, dayfirst=dayfirst, yearfirst=yearfirst
-            )
-        except (ValueError, OverflowError, TypeError):
-            return None
-
-    def _truncate(self, dt: datetime) -> datetime:
-        """Truncate a ``datetime`` to the configured granularity."""
-        if self.granularity == "year":
-            return dt.replace(
-                month=1, day=1, hour=0, minute=0, second=0, microsecond=0
-            )
-        if self.granularity == "month":
-            return dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        if self.granularity == "day":
-            return dt.replace(hour=0, minute=0, second=0, microsecond=0)
-        if self.granularity == "hour":
-            return dt.replace(minute=0, second=0, microsecond=0)
-        if self.granularity == "minute":
-            return dt.replace(second=0, microsecond=0)
-        # second
-        return dt.replace(microsecond=0)
+    @classmethod
+    def _dates_equal_day(cls, dt1: datetime, dt2: datetime) -> bool:
+        a, b = cls._align_timezones(dt1, dt2)
+        return cls._truncate_day(a) == cls._truncate_day(b)
 
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
             f"threshold={self.threshold}, "
             f"tolerance={self.tolerance!r}, "
-            f"granularity='{self.granularity}', "
-            f"date_order='{self.date_order}')"
+            f"dayfirst={self.dayfirst!r}, "
+            f"allow_partial_year={self.allow_partial_year}, "
+            f"range_mode={self.range_mode!r})"
         )
