@@ -259,6 +259,39 @@ class TestUpdateFromComparisonResultConfidence:
         assert result.confidence_metrics is not None
         assert result.confidence_metrics["coverage"]["fields_with_confidence"] == 0
 
+    def test_prediction_confidences_absent_fallback(self):
+        """Replay of pre-cache JSONL: no prediction_confidences key, only prediction_raw.
+
+        Simulates a comparison_result captured before the
+        ``prediction_confidences`` cache existed. The accumulator must
+        fall back to walking ``prediction_raw`` via
+        ``RichValueHelper.process_rich_values`` and still emit
+        confidence metrics.
+        """
+        gt = Product(name="Widget", price=29.99, sku="ABC123")
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 99.99, "_confidence": 0.3},
+            "sku": {"_value": "ABC123", "_confidence": 0.8},
+        })
+        comparison = gt.compare_with(
+            pred,
+            include_confusion_matrix=True,
+            document_field_comparisons=True,
+        )
+        assert "prediction_confidences" in comparison
+        assert "prediction_raw" in comparison
+        # Drop the cache to force the fallback walk.
+        del comparison["prediction_confidences"]
+
+        evaluator = BulkStructuredModelEvaluator(target_schema=Product)
+        evaluator.update_from_comparison_result(comparison)
+        result = evaluator.compute()
+
+        assert result.confidence_metrics is not None
+        assert result.confidence_metrics["coverage"]["fields_with_confidence"] == 3
+        assert result.confidence_metrics["coverage"]["fields_total"] == 3
+
     def test_multiple_docs_accumulate(self):
         """Multiple update_from_comparison_result calls accumulate confidence."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")

@@ -315,7 +315,7 @@ class StructuredModel(BaseModel):
         cls,
         json_data: Dict[str, Any],
         process_rich_values: Optional[bool] = None,
-        **kwargs,
+        process_confidence: Optional[bool] = None,
     ) -> "StructuredModel":
         """Create a StructuredModel instance from JSON data.
 
@@ -328,20 +328,16 @@ class StructuredModel(BaseModel):
             json_data: Dictionary containing the JSON data
             process_rich_values: Whether to unwrap rich values on this call.
                 Set to False for recursive calls where the parent already handled it.
-            **kwargs: Accepts the legacy ``process_confidence`` alias. Emits a
-                DeprecationWarning; support will be removed in 0.4.0.
+            process_confidence: Deprecated alias for ``process_rich_values``;
+                emits a DeprecationWarning. Will be removed in 0.4.0.
 
         Returns:
             StructuredModel instance created from the JSON data
 
         Raises:
             ValueError: If ``json_data`` contains any reserved
-                ``__stickler_*`` dunder name at the top level. Those names
-                are reserved for library metadata and would otherwise be
-                silently shadowed by ``extra: "allow"``.
+                ``__stickler_*`` dunder name at the top level.
         """
-        # Reject reserved dunder names before any processing — see
-        # ``_RESERVED_DUNDER_NAMES`` for context.
         if isinstance(json_data, dict):
             reserved_in_payload = cls._RESERVED_DUNDER_NAMES.intersection(json_data)
             if reserved_in_payload:
@@ -352,10 +348,7 @@ class StructuredModel(BaseModel):
                     f"metadata and cannot appear in user payloads."
                 )
 
-        # Deprecation shim: accept the old `process_confidence` alias so that
-        # upgrading callers don't hit a TypeError.
-        if "process_confidence" in kwargs:
-            legacy_value = kwargs.pop("process_confidence")
+        if process_confidence is not None:
             warn_once(
                 "process_confidence_kwarg",
                 "",
@@ -364,13 +357,7 @@ class StructuredModel(BaseModel):
                 "for the legacy kwarg will be removed in 0.4.0.",
             )
             if process_rich_values is None:
-                process_rich_values = legacy_value
-
-        if kwargs:
-            raise TypeError(
-                f"from_json() got unexpected keyword argument(s): "
-                f"{sorted(kwargs)}"
-            )
+                process_rich_values = process_confidence
 
         if process_rich_values is None:
             process_rich_values = True
@@ -387,11 +374,8 @@ class StructuredModel(BaseModel):
                 )
             if extras:
                 object.__setattr__(instance, "__stickler_field_extras__", extras)
-            # Always store the original JSON for round-tripping through
-            # comparison results. Keeping this unconditional (not gated on
-            # confidences/extras) means map/reduce aggregation works even
-            # when a dataset gets confidence scores added later, and matches
-            # what the Rich Value Pattern doc promises about __stickler_raw_json__.
+            # Unconditional so map/reduce aggregation works when confidence
+            # scores are added later; matches the Rich Value Pattern doc.
             object.__setattr__(instance, "__stickler_raw_json__", json_data)
         else:
             # Skip rich value processing for recursive calls

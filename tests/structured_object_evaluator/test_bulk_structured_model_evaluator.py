@@ -1500,3 +1500,136 @@ class TestAccumulatorErrorVisibility:
         merged = worker_a.compute()
 
         assert merged.accumulator_errors == {"failing_one": 3}
+
+
+class TestJsonlPersistentHandle:
+    """Persistent JSONL handle: one open() per evaluator instead of one per
+    document. Verifies shape (line count, append on reopen) — not perf."""
+
+    def _gt_pred(self):
+        sample = {
+            "accountNumber": "1234567890",
+            "contact": {"phone": "555-123-4567"},
+            "transactions": [],
+        }
+        return BankStatement(**sample), BankStatement(**sample)
+
+    def test_jsonl_writer_writes_one_line_per_doc(self, tmp_path):
+        path = tmp_path / "results.jsonl"
+        evaluator = BulkStructuredModelEvaluator(
+            target_schema=BankStatement,
+            individual_results_jsonl=str(path),
+        )
+        gt, pred = self._gt_pred()
+        for i in range(100):
+            evaluator.update(gt, pred, doc_id=f"doc_{i}")
+        evaluator.compute()  # close() runs at the end of compute()
+
+        assert path.exists()
+        with open(path) as f:
+            lines = f.readlines()
+        assert len(lines) == 100
+        # Each line must be a complete JSON record (flush-per-line keeps
+        # the file valid even on mid-run termination).
+        for line in lines:
+            record = json.loads(line)
+            assert "doc_id" in record
+            assert "comparison_result" in record
+
+    def test_jsonl_writer_appends_after_close_and_reopen(self, tmp_path):
+        path = tmp_path / "results.jsonl"
+
+        first = BulkStructuredModelEvaluator(
+            target_schema=BankStatement,
+            individual_results_jsonl=str(path),
+        )
+        gt, pred = self._gt_pred()
+        first.update(gt, pred, doc_id="first_doc")
+        first.close()
+
+        second = BulkStructuredModelEvaluator(
+            target_schema=BankStatement,
+            individual_results_jsonl=str(path),
+        )
+        second.update(gt, pred, doc_id="second_doc")
+        second.close()
+
+        with open(path) as f:
+            lines = f.readlines()
+        assert len(lines) == 2
+        assert json.loads(lines[0])["doc_id"] == "first_doc"
+        assert json.loads(lines[1])["doc_id"] == "second_doc"
+
+    def test_close_is_idempotent(self, tmp_path):
+        path = tmp_path / "results.jsonl"
+        evaluator = BulkStructuredModelEvaluator(
+            target_schema=BankStatement,
+            individual_results_jsonl=str(path),
+        )
+        gt, pred = self._gt_pred()
+        evaluator.update(gt, pred, doc_id="doc_0")
+        evaluator.close()
+        # A second close() on a never-opened handle must be a no-op.
+        evaluator.close()
+
+
+class TestLegacyStateMigration:
+    """The migration helper at ``_migrate_legacy_acc_states`` must lift
+    pre-accumulator (top-level) confidence keys into the new
+    ``accumulators`` shape on both load and merge paths."""
+
+    def _legacy_state(self, schema_name: str) -> dict:
+        # Old top-level confidence shape — no ``accumulators`` key.
+        return {
+            "confusion_matrix": {
+                "overall": {"tp": 2, "fp": 1, "fn": 0, "tn": 0, "fa": 0, "fd": 0},
+                "fields": {
+                    "name": {"tp": 1, "fp": 0, "fn": 0, "tn": 0, "fa": 0, "fd": 0},
+                    "price": {"tp": 1, "fp": 1, "fn": 0, "tn": 0, "fa": 0, "fd": 0},
+                },
+            },
+            "errors": [],
+            "processed_count": 2,
+            "start_time": 0.0,
+            "target_schema": schema_name,
+            "elide_errors": False,
+            # Legacy confidence keys live at the top level.
+            "keyed_confidence_pairs": {
+                "name": [
+                    {"is_match": True, "confidence": 0.9, "similarity": 1.0},
+                    {"is_match": False, "confidence": 0.2, "similarity": 0.5},
+                ],
+                "price": [
+                    {"is_match": True, "confidence": 0.85, "similarity": 1.0},
+                ],
+            },
+            "confidence_fields_with": 3,
+            "confidence_fields_total": 4,
+        }
+
+    def test_load_state_migrates_legacy_confidence_keys(self):
+        evaluator = BulkStructuredModelEvaluator(target_schema=BankStatement)
+        legacy = self._legacy_state(schema_name="BankStatement")
+
+        evaluator.load_state(legacy)
+        result = evaluator.compute()
+
+        # Confidence metrics surface despite the legacy top-level shape.
+        assert result.confidence_metrics is not None
+        cov = result.confidence_metrics["coverage"]
+        assert cov["fields_with_confidence"] == 3
+        assert cov["fields_total"] == 4
+        # AUROC needs both classes — we have one match and one non-match.
+        assert result.confidence_metrics["overall"]["auroc"]["value"] is not None
+
+    def test_merge_state_migrates_legacy_confidence_keys(self):
+        evaluator = BulkStructuredModelEvaluator(target_schema=BankStatement)
+        legacy = self._legacy_state(schema_name="BankStatement")
+
+        evaluator.merge_state(legacy)
+        result = evaluator.compute()
+
+        assert result.confidence_metrics is not None
+        cov = result.confidence_metrics["coverage"]
+        assert cov["fields_with_confidence"] == 3
+        assert cov["fields_total"] == 4

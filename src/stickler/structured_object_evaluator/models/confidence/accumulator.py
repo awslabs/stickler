@@ -1,14 +1,6 @@
-"""
-Confidence accumulator for bulk evaluation.
+"""Confidence accumulator for bulk evaluation."""
 
-Extracts confidence pairs from comparison results, accumulates them
-across documents, and computes aggregate confidence metrics (AUROC,
-Brier, ECE, ECARB, etc.).
-
-This is a PostComparisonAccumulator that the BulkStructuredModelEvaluator
-delegates to for all confidence-related state management.
-"""
-
+import warnings
 from typing import Any, Dict, List, Optional
 
 from stickler.structured_object_evaluator.models.confidence.calculator import (
@@ -50,35 +42,28 @@ class ConfidenceAccumulator(PostComparisonAccumulator):
     ) -> None:
         field_comparisons = comparison_result.get("field_comparisons", [])
         if not field_comparisons:
-            # Align behavior with ConfidenceCalculator.extract: both paths
-            # used to diverge on this input (extract raised, accumulator
-            # silently returned), which meant a caller who forgot
-            # ``document_field_comparisons=True`` got zero confidence with
-            # no signal. When we have prediction_raw we clearly *expected*
-            # confidence, so a missing field_comparisons list is likely a
-            # misuse; surface it with a warning so it shows up in logs
-            # without killing the bulk run.
+            # When prediction_raw is present the caller clearly wanted
+            # confidence; warn so the misuse surfaces without killing the run.
             if prediction_raw is not None:
-                import warnings as _warnings
-
-                _warnings.warn(
-                    "ConfidenceAccumulator got a comparison_result with "
-                    "prediction_raw but no field_comparisons. Confidence "
-                    "cannot be accumulated for this document. Re-run "
-                    "compare_with(..., document_field_comparisons=True) "
-                    "so the field-level join data is available.",
+                warnings.warn(
+                    "ConfidenceAccumulator got prediction_raw but no "
+                    "field_comparisons; re-run compare_with("
+                    "document_field_comparisons=True).",
                     UserWarning,
                     stacklevel=2,
                 )
             return
 
-        # Extract confidences from prediction_raw if available
-        if prediction_raw is not None:
-            _unwrapped, confidences, _extras = RichValueHelper.process_rich_values(
-                prediction_raw
-            )
-        else:
-            confidences = {}
+        # Prefer the pre-extracted dict when compare_with provided it;
+        # fall back to walking prediction_raw for older serialized results.
+        confidences = comparison_result.get("prediction_confidences")
+        if confidences is None:
+            if prediction_raw is not None:
+                _unwrapped, confidences, _extras = (
+                    RichValueHelper.process_rich_values(prediction_raw)
+                )
+            else:
+                confidences = {}
 
         extraction = self._calculator.extract_from_dicts(
             field_comparisons, confidences
@@ -92,12 +77,8 @@ class ConfidenceAccumulator(PostComparisonAccumulator):
         self._fields_total += extraction.fields_total
 
     def compute(self) -> Optional[Dict[str, Any]]:
-        # Report coverage-only when we've seen fields but none had confidence.
-        # Previously the accumulator returned None when keyed_pairs was empty,
-        # which dropped the coverage signal entirely. After the coverage
-        # accounting fix, an evaluator that sees 400 fields without
-        # confidence should still publish ``{fields_with: 0, fields_total:
-        # 400}`` rather than ``confidence_metrics=None``.
+        # Report coverage-only when fields were seen but none had confidence,
+        # so a 0/N coverage signal still surfaces (vs. None).
         if self._fields_total == 0:
             return None
         return self._calculator.compute_metrics(

@@ -453,6 +453,23 @@ class TestECEBins:
         expected_ece = abs(0.5 - expected_mc)
         assert abs(result["value"] - expected_ece) < 0.001
 
+    def test_ece_bin_assignment_at_lower_boundary(self):
+        # Pins bisect_right behaviour at confidence == 0.0: lands in bin 0.
+        result = ECEMetric(n_bins=10).compute(
+            [ConfidencePair(is_match=False, confidence=0.0, similarity=0.0)]
+        )
+        assert result["bins"][0]["count"] == 1
+        assert all(b["count"] == 0 for b in result["bins"][1:])
+
+    def test_ece_bin_assignment_at_upper_boundary(self):
+        # Pins the min(idx, n_bins-1) clamp: confidence == 1.0 lands in
+        # the last bin rather than overflowing past it.
+        result = ECEMetric(n_bins=10).compute(
+            [ConfidencePair(is_match=True, confidence=1.0, similarity=1.0)]
+        )
+        assert result["bins"][9]["count"] == 1
+        assert all(b["count"] == 0 for b in result["bins"][:9])
+
 
 # ── 8. Single-doc compare_with integration ──
 

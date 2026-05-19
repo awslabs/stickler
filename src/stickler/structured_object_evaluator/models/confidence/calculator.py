@@ -45,64 +45,20 @@ class ConfidenceCalculator:
     ) -> ExtractionResult:
         """Extract ConfidencePair objects keyed by field path, with coverage stats.
 
-        Joins field_comparisons (from compare_with) with confidence data
-        (from from_json). Fields without confidence are skipped but still
-        counted toward ``fields_total`` so coverage reflects the model's
-        declared surface area. Unkeyed rows (e.g. list FN entries where
-        the prediction has fewer items than ground truth, which arrive
-        with ``actual_key=None``) are skipped entirely since they cannot
-        be joined to any confidence score and would otherwise inflate
-        ``fields_total``.
-
-        Args:
-            comparison_result: Must contain "field_comparisons".
-            pred_instance: Prediction with confidence data.
-
-        Returns:
-            ExtractionResult with keyed_pairs and coverage counts.
-
         Raises:
             ValueError: If no field_comparisons in comparison_result.
         """
         field_comparisons = comparison_result.get("field_comparisons", [])
         if not field_comparisons:
             raise ValueError("No field comparisons found in comparison result.")
-
-        pred_confidences = pred_instance.get_all_confidences()
-        keyed: KeyedConfidencePairs = {}
-        fields_with = 0
-        fields_total = 0
-
-        for fc in field_comparisons:
-            field_path = fc.get("actual_key")
-            # Skip rows without a join key; these are prediction-side misses
-            # (list FN entries) that can't carry a confidence score.
-            if not isinstance(field_path, str):
-                continue
-            fields_total += 1
-            confidence = pred_confidences.get(field_path)
-            if confidence is not None:
-                fields_with += 1
-                pair = ConfidencePair(
-                    is_match=bool(fc["match"]),
-                    confidence=confidence,
-                    similarity=fc.get("score", 0.0),
-                )
-                keyed.setdefault(field_path, []).append(pair)
-
-        return ExtractionResult(
-            keyed_pairs=keyed,
-            fields_with_confidence=fields_with,
-            fields_total=fields_total,
+        return self.extract_from_dicts(
+            field_comparisons, pred_instance.get_all_confidences()
         )
 
     def extract_keyed_pairs(
         self, comparison_result: Dict, pred_instance: StructuredModel
     ) -> KeyedConfidencePairs:
-        """Extract keyed pairs only (convenience wrapper around extract).
-
-        Use extract() when you also need coverage stats.
-        """
+        """Extract keyed pairs only (convenience wrapper around extract)."""
         return self.extract(comparison_result, pred_instance).keyed_pairs
 
     def extract_from_dicts(
@@ -110,22 +66,11 @@ class ConfidenceCalculator:
         field_comparisons: List[Dict],
         confidences: Dict[str, float],
     ) -> ExtractionResult:
-        """Extract ConfidencePair objects from raw dicts (no model instance needed).
+        """Extract ConfidencePair objects from raw field_comparisons + confidences dicts.
 
-        This is the path used by update_from_comparison_result() when
-        reconstructing confidence pairs from a serialized comparison result
-        that includes prediction_raw.
-
-        Rows without a string ``actual_key`` are skipped (see ``extract``
-        for rationale).
-
-        Args:
-            field_comparisons: List of field comparison dicts (from compare_with).
-            confidences: Dict mapping field paths to confidence floats
-                (from RichValueHelper.process_rich_values).
-
-        Returns:
-            ExtractionResult with keyed_pairs and coverage counts.
+        Rows without a string ``actual_key`` (e.g., list FN entries where
+        the prediction has fewer items than ground truth) are skipped — they
+        can't be joined to a confidence score and would inflate fields_total.
         """
         keyed: KeyedConfidencePairs = {}
         fields_with = 0

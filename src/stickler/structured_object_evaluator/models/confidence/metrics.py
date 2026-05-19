@@ -1,38 +1,15 @@
-"""
-Pluggable confidence metrics.
+"""Pluggable confidence metrics.
 
 Each metric operates on a list of ConfidencePair objects and returns a
-result dict with at least {"value": float | None}. Metrics may include
+result dict with at least ``{"value": float | None}``. Metrics may include
 additional structured data (e.g., bins for ECE).
 
-ConfidencePair fields:
-    is_match:   bool  - whether the field crossed its ComparableField threshold
-    confidence: float - the model's self-reported confidence (from JSON)
-    similarity: float - the raw comparator similarity score (0.0 to 1.0)
-
-Existing metrics use is_match and confidence. The similarity score is
-available for future metrics that correlate confidence with *how right*
-the prediction is, not just whether it crossed a threshold.
-
-TODO: The similarity field enables several future metric directions:
-  - Parameterized AUROC: re-threshold using similarity >= custom_threshold
-    instead of the pre-baked is_match, allowing AUROC computation at
-    different correctness standards without re-running comparisons.
-  - Confidence-similarity correlation (Spearman/Pearson): does higher
-    confidence correspond to higher similarity? Pure continuous metric,
-    no binary label needed.
-  - Review Efficiency Metric: sort by confidence ascending, measure how
-    quickly you discover errors. Could use similarity to define error
-    severity instead of binary match. See the Review_Efficiency_Exploration
-    notebook for a worked example.
-
-To add a new metric:
-    1. Subclass ConfidenceMetric
-    2. Implement name (property) and compute(pairs)
-    3. Pass it to ConfidenceCalculator(metrics=[...])
+To add a new metric: subclass ConfidenceMetric, implement ``name`` and
+``compute(pairs)``, then pass it to ``ConfidenceCalculator(metrics=[...])``.
 """
 
 from abc import ABC, abstractmethod
+from bisect import bisect_right
 from math import isfinite
 from typing import Any, Dict, List, Optional
 
@@ -57,12 +34,7 @@ class ConfidencePair(BaseModel):
     @field_validator("confidence", "similarity", mode="before")
     @classmethod
     def _reject_non_numeric(cls, v: Any, info) -> Any:
-        # Reject before Pydantic's permissive coercion: bool is a subclass of
-        # int and would silently become 1.0/0.0; strings like "0.9" or "high"
-        # would either coerce or raise a generic Pydantic error far from the
-        # actual cause. Insisting on plain int/float here turns malformed
-        # upstream data (e.g. ``{"_confidence": True}``) into a loud failure
-        # at parse time.
+        # bool is an int subclass; reject before pydantic coerces it.
         if isinstance(v, bool) or not isinstance(v, (int, float)):
             raise ValueError(
                 f"{info.field_name} must be a numeric float in [0.0, 1.0], "
@@ -175,31 +147,40 @@ class ECEMetric(ConfidenceMetric):
         if not pairs:
             return {"value": None, "bins": []}
 
+        n_bins = self.n_bins
+        # bisect against the upper edges so a pair with confidence == hi[i]
+        # lands in bin i+1 (matching the old `lo <= p < hi` rule). Last bin
+        # is closed on the right, so confidence == 1.0 still falls in bin n-1.
+        edges = [(i + 1) / n_bins for i in range(n_bins)]
+        counts = [0] * n_bins
+        sum_match = [0] * n_bins
+        sum_conf = [0.0] * n_bins
+        for p in pairs:
+            idx = min(bisect_right(edges, p.confidence), n_bins - 1)
+            counts[idx] += 1
+            if p.is_match:
+                sum_match[idx] += 1
+            sum_conf[idx] += p.confidence
+
+        total = len(pairs)
         bins = []
-        for i in range(self.n_bins):
-            lo = i / self.n_bins
-            hi = (i + 1) / self.n_bins
-            bp = [
-                p for p in pairs
-                if (lo <= p.confidence < hi) or (i == self.n_bins - 1 and p.confidence == hi)
-            ]
-            if bp:
-                acc = sum(1 for p in bp if p.is_match) / len(bp)
-                mc = sum(p.confidence for p in bp) / len(bp)
+        ece = 0.0
+        for i in range(n_bins):
+            lo = i / n_bins
+            hi = edges[i]
+            count = counts[i]
+            if count:
+                acc = sum_match[i] / count
+                mc = sum_conf[i] / count
+                ece += (count / total) * abs(acc - mc)
             else:
                 acc, mc = 0.0, 0.0
             bins.append({
                 "range": [lo, hi],
-                "count": len(bp),
+                "count": count,
                 "accuracy": acc,
                 "mean_confidence": mc,
             })
-
-        total = len(pairs)
-        ece = sum(
-            (b["count"] / total) * abs(b["accuracy"] - b["mean_confidence"])
-            for b in bins if b["count"] > 0
-        )
         return {"value": ece, "bins": bins}
 
 
@@ -315,11 +296,5 @@ class ErrorCaptureAtBudgetMetric(ConfidenceMetric):
 
 
 def default_metrics() -> List[ConfidenceMetric]:
-    """Return a fresh list of the default metrics.
-
-    Using a factory ensures each calculator gets its own metric instances,
-    which matters if a metric holds state (cached thresholds, precomputed
-    values, etc.). Today AUROCMetric is stateless, but this keeps the
-    contract safe for future metrics.
-    """
+    """Fresh default metric instances (factory keeps state safe for stateful metrics)."""
     return [AUROCMetric()]
