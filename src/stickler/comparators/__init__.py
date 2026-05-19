@@ -6,6 +6,7 @@ interface that works with both systems.
 """
 
 from stickler.comparators.base import BaseComparator
+from stickler.comparators.date import DateComparator
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.llm import LLMComparator
@@ -47,6 +48,7 @@ __all__ = [
     "NumericComparator",
     "NumericExactC",
     "ExactComparator",
+    "DateComparator",
     "StructuredModelComparator",
     "SemanticComparator",
     "generate_bedrock_embedding",
