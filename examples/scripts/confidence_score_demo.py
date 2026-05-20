@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Example script demonstrating confidence structure handling in StructuredModel.
+Example script demonstrating the Rich Value Pattern in StructuredModel.
 
 This script shows how to:
 1. Define a StructuredModel with various field types
-2. Create instances from JSON data with confidence structures
-3. Access field values directly (unwrapped from confidence structures)
+2. Create instances from JSON data with rich values (value + metadata)
+3. Access field values directly (unwrapped from rich values)
 4. Access confidence scores via the API
 """
 
@@ -45,18 +45,18 @@ class Customer(StructuredModel):
 
 
 def main():
-    print("Confidence Structure Handling Demo\n")
+    print("Rich Value Pattern Demo\n")
 
     # Example 1: Simple Product with mixed confidence/plain values
     print("1. Simple Product Example:")
 
     json_output = {
-        "product_name": {"value": "Widget Pro", "confidence": 0.95},
-        "price": {"value": 29.99, "confidence": 0.72},
+        "product_name": {"_value": "Widget Pro", "_confidence": 0.95},
+        "price": {"_value": 29.99, "_confidence": 0.72},
         "sku": "ABC123",  # plain value still works
         "description": {
-            "value": "High-quality widget for professional use",
-            "confidence": 0.88,
+            "_value": "High-quality widget for professional use",
+            "_confidence": 0.88,
         },
     }
 
@@ -83,27 +83,27 @@ def main():
     print("\n2. Nested Structure Example:")
 
     complex_json = {
-        "name": {"value": "John Doe", "confidence": 0.92},
+        "name": {"_value": "John Doe", "_confidence": 0.92},
         "email": "john.doe@example.com",  # plain value
         "address": {
-            "street": {"value": "123 Main Street", "confidence": 0.85},
-            "city": {"value": "New York", "confidence": 0.98},
+            "street": {"_value": "123 Main Street", "_confidence": 0.85},
+            "city": {"_value": "New York", "_confidence": 0.98},
             "zip_code": "10001",  # plain value
         },
         "orders": [
             {
-                "product_name": {"value": "Laptop Pro", "confidence": 0.89},
-                "price": {"value": 1299.99, "confidence": 0.76},
+                "product_name": {"_value": "Laptop Pro", "_confidence": 0.89},
+                "price": {"_value": 1299.99, "_confidence": 0.76},
                 "sku": "LAP001",
                 "description": {
-                    "value": "Professional laptop computer",
-                    "confidence": 0.91,
+                    "_value": "Professional laptop computer",
+                    "_confidence": 0.91,
                 },
             },
             {
                 "product_name": "Mouse Wireless",
-                "price": {"value": 49.99, "confidence": 0.83},
-                "sku": {"value": "MOU001", "confidence": 0.94},
+                "price": {"_value": 49.99, "_confidence": 0.83},
+                "sku": {"_value": "MOU001", "_confidence": 0.94},
                 "description": "Wireless optical mouse",
             },
         ],
@@ -179,11 +179,11 @@ def test_auroc_functionality():
     pred_well_calibrated = Product.from_json(
         {
             "product_name": {
-                "value": "Widget Pro",
-                "confidence": 0.95,
+                "_value": "Widget Pro",
+                "_confidence": 0.95,
             },  # High conf, correct
-            "price": {"value": 29.99, "confidence": 0.90},  # High conf, correct
-            "sku": {"value": "XYZ789", "confidence": 0.30},  # Low conf, incorrect
+            "price": {"_value": 29.99, "_confidence": 0.90},  # High conf, correct
+            "sku": {"_value": "XYZ789", "_confidence": 0.30},  # Low conf, incorrect
         }
     )
 
@@ -194,7 +194,7 @@ def test_auroc_functionality():
             document_field_comparisons=True,
         )
 
-        auroc = result_well_calibrated.get("auroc_confidence_metric", {})
+        auroc = result_well_calibrated["confidence_metrics"]["overall"]["auroc"]["value"]
         print(f"AUROC (well-calibrated): {auroc}")
 
     except Exception as e:
@@ -209,11 +209,11 @@ def test_auroc_functionality():
     pred_poor_calibrated = Product.from_json(
         {
             "product_name": {
-                "value": "Wrong Name",
-                "confidence": 0.95,
+                "_value": "Wrong Name",
+                "_confidence": 0.95,
             },  # High conf, incorrect
-            "price": {"value": 50.00, "confidence": 0.90},  # High conf, incorrect
-            "sku": {"value": "ABC123", "confidence": 0.20},  # Low conf, correct
+            "price": {"_value": 50.00, "_confidence": 0.90},  # High conf, incorrect
+            "sku": {"_value": "ABC123", "_confidence": 0.20},  # Low conf, correct
         }
     )
 
@@ -224,7 +224,7 @@ def test_auroc_functionality():
             document_field_comparisons=True,
         )
 
-        auroc = result_poor_calibrated.get("auroc_confidence_metric", {})
+        auroc = result_poor_calibrated["confidence_metrics"]["overall"]["auroc"]["value"]
         print(f"AUROC (poorly-calibrated): {auroc}")
 
     except Exception as e:
@@ -242,15 +242,15 @@ def test_auroc_functionality():
 
     pred_nested = Customer.from_json(
         {
-            "name": {"value": "John Doe", "confidence": 0.95},
-            "email": {"value": "john@example.com", "confidence": 0.85},
+            "name": {"_value": "John Doe", "_confidence": 0.95},
+            "email": {"_value": "john@example.com", "_confidence": 0.85},
             "address": {
-                "street": {"value": "123 Main St", "confidence": 0.90},
+                "street": {"_value": "123 Main St", "_confidence": 0.90},
                 "city": {
-                    "value": "Boston",
-                    "confidence": 0.70,
+                    "_value": "Boston",
+                    "_confidence": 0.70,
                 },  # Incorrect but medium confidence
-                "zip_code": {"value": "10001", "confidence": 0.95},
+                "zip_code": {"_value": "10001", "_confidence": 0.95},
             },
             "orders": [],
         }
@@ -260,7 +260,7 @@ def test_auroc_functionality():
         result_nested = gt_nested.compare_with(
             pred_nested, add_confidence_metrics=True, document_field_comparisons=True
         )
-        auroc = result_nested.get("auroc_confidence_metric", {})
+        auroc = result_nested["confidence_metrics"]["overall"]["auroc"]["value"]
         print(f"AUROC (nested): {auroc}")
 
     except Exception as e:
@@ -273,9 +273,9 @@ def test_auroc_functionality():
 
     pred_simple = Product.from_json(
         {
-            "product_name": {"value": "Test Product", "confidence": 0.95},
-            "price": {"value": 99.0, "confidence": 0.80},
-            "sku": {"value": "WRONG", "confidence": 0.30},
+            "product_name": {"_value": "Test Product", "_confidence": 0.95},
+            "price": {"_value": 99.0, "_confidence": 0.80},
+            "sku": {"_value": "WRONG", "_confidence": 0.30},
         }
     )
 
@@ -297,11 +297,9 @@ def test_auroc_functionality():
                 )
 
         # Test confidence access
-        print(
-            f"\nConfidence data available: {hasattr(pred_simple, 'field_confidences')}"
-        )
-        if hasattr(pred_simple, "field_confidences"):
-            confidences = pred_simple.get_all_confidences()
+        confidences = pred_simple.get_all_confidences()
+        print(f"\nConfidence data available: {bool(confidences)}")
+        if confidences:
             print(f"Confidence keys: {list(confidences.keys())}")
 
     except Exception as e:

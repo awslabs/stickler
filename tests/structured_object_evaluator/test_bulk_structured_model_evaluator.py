@@ -763,13 +763,16 @@ class TestUpdateFromComparisonResult:
         assert standalone_result.field_metrics == evaluator_result.field_metrics
 
     def test_update_from_comparison_result_missing_confusion_matrix(self):
-        """Test error handling when confusion_matrix key is missing."""
+        """Caller-misuse precondition re-raises rather than being silently
+        folded into the per-doc error counter; otherwise a malformed
+        comparison_result would just bump fn and look like a normal miss."""
         evaluator = BulkStructuredModelEvaluator(elide_errors=False)
-        evaluator.update_from_comparison_result({"overall_score": 0.5}, "bad_doc")
-
-        assert len(evaluator._errors) == 1
-        assert evaluator._errors[0]["doc_id"] == "bad_doc"
-        assert evaluator._errors[0]["error_type"] == "ValueError"
+        with pytest.raises(ValueError, match="confusion_matrix"):
+            evaluator.update_from_comparison_result(
+                {"overall_score": 0.5}, "bad_doc"
+            )
+        assert evaluator._errors == []
+        assert evaluator._confusion_matrix["overall"]["fn"] == 0
 
     def test_update_from_comparison_result_accumulates(self):
         """Test that multiple calls accumulate correctly."""
@@ -1052,7 +1055,11 @@ class TestWeightedOverallScore:
         evaluator.update(*good_pair, doc_id="good")
 
         # Induce a comparison error via a malformed comparison_result dict.
-        evaluator.update_from_comparison_result({}, doc_id="bad")
+        # confusion_matrix=None passes the precondition but blows up inside
+        # _accumulate_confusion_matrix (None has no `in` membership).
+        evaluator.update_from_comparison_result(
+            {"confusion_matrix": None}, doc_id="bad"
+        )
 
         good_score = good_pair[0].compare_with(
             good_pair[1], include_confusion_matrix=True
@@ -1398,3 +1405,231 @@ class TestWeightedOverallScore:
         # Overall aggregate spans both docs.
         assert worker_a._overall_score_count == 0  # no top-level overall_score set
         assert result.document_count == 2
+
+
+class TestAccumulatorErrorVisibility:
+    """A custom accumulator that raises on every doc must surface its
+    failure count on ``compute().accumulator_errors`` so the user can
+    spot silently-broken metrics. The outer confusion matrix should be
+    unaffected because each accumulator runs in its own try/except."""
+
+    class _AlwaysFailingAccumulator:
+        """Minimal PostComparisonAccumulator that raises on every accumulate."""
+
+        @property
+        def name(self) -> str:
+            return "failing_one"
+
+        def reset(self) -> None:
+            return None
+
+        def accumulate(self, comparison_result, prediction_raw) -> None:
+            raise RuntimeError("intentional accumulator failure")
+
+        def compute(self):
+            return None
+
+        def get_state(self):
+            return {}
+
+        def load_state(self, state) -> None:
+            return None
+
+        def merge_state(self, other_state) -> None:
+            return None
+
+    def _baseline_comparison_result(self):
+        return {
+            "confusion_matrix": {
+                "overall": {"tp": 1, "fp": 0, "fn": 0, "tn": 0, "fa": 0, "fd": 0},
+                "fields": {},
+            }
+        }
+
+    def test_accumulator_errors_counted_per_name(self):
+        evaluator = BulkStructuredModelEvaluator(
+            accumulators=[self._AlwaysFailingAccumulator()],
+        )
+
+        for i in range(3):
+            evaluator.update_from_comparison_result(
+                self._baseline_comparison_result(), doc_id=f"doc_{i}"
+            )
+
+        result = evaluator.compute()
+
+        assert result.accumulator_errors == {"failing_one": 3}
+        # Confusion matrix is untouched — the outer try/except only fires
+        # when accumulation itself fails, not when an accumulator raises.
+        assert result.metrics["tp"] == 3
+        assert result.document_count == 3
+
+    def test_accumulator_errors_none_when_all_succeed(self):
+        """No failures → accumulator_errors stays None to preserve the
+        ``additive optional`` contract on ProcessEvaluation."""
+        evaluator = BulkStructuredModelEvaluator(
+            accumulators=[],
+        )
+        evaluator.update_from_comparison_result(
+            self._baseline_comparison_result(), doc_id="doc_0"
+        )
+        result = evaluator.compute()
+        assert result.accumulator_errors is None
+
+    def test_accumulator_errors_round_trip_through_state(self):
+        """Failures must survive get_state / load_state for checkpoint
+        recovery and merge across distributed workers."""
+        worker_a = BulkStructuredModelEvaluator(
+            accumulators=[self._AlwaysFailingAccumulator()],
+        )
+        worker_a.update_from_comparison_result(
+            self._baseline_comparison_result(), doc_id="a"
+        )
+
+        worker_b = BulkStructuredModelEvaluator(
+            accumulators=[self._AlwaysFailingAccumulator()],
+        )
+        worker_b.update_from_comparison_result(
+            self._baseline_comparison_result(), doc_id="b"
+        )
+        worker_b.update_from_comparison_result(
+            self._baseline_comparison_result(), doc_id="c"
+        )
+
+        worker_a.merge_state(worker_b.get_state())
+        merged = worker_a.compute()
+
+        assert merged.accumulator_errors == {"failing_one": 3}
+
+
+class TestJsonlPersistentHandle:
+    """Persistent JSONL handle: one open() per evaluator instead of one per
+    document. Verifies shape (line count, append on reopen) — not perf."""
+
+    def _gt_pred(self):
+        sample = {
+            "accountNumber": "1234567890",
+            "contact": {"phone": "555-123-4567"},
+            "transactions": [],
+        }
+        return BankStatement(**sample), BankStatement(**sample)
+
+    def test_jsonl_writer_writes_one_line_per_doc(self, tmp_path):
+        path = tmp_path / "results.jsonl"
+        evaluator = BulkStructuredModelEvaluator(
+            target_schema=BankStatement,
+            individual_results_jsonl=str(path),
+        )
+        gt, pred = self._gt_pred()
+        for i in range(100):
+            evaluator.update(gt, pred, doc_id=f"doc_{i}")
+        evaluator.compute()  # close() runs at the end of compute()
+
+        assert path.exists()
+        with open(path) as f:
+            lines = f.readlines()
+        assert len(lines) == 100
+        # Each line must be a complete JSON record (flush-per-line keeps
+        # the file valid even on mid-run termination).
+        for line in lines:
+            record = json.loads(line)
+            assert "doc_id" in record
+            assert "comparison_result" in record
+
+    def test_jsonl_writer_appends_after_close_and_reopen(self, tmp_path):
+        path = tmp_path / "results.jsonl"
+
+        first = BulkStructuredModelEvaluator(
+            target_schema=BankStatement,
+            individual_results_jsonl=str(path),
+        )
+        gt, pred = self._gt_pred()
+        first.update(gt, pred, doc_id="first_doc")
+        first.close()
+
+        second = BulkStructuredModelEvaluator(
+            target_schema=BankStatement,
+            individual_results_jsonl=str(path),
+        )
+        second.update(gt, pred, doc_id="second_doc")
+        second.close()
+
+        with open(path) as f:
+            lines = f.readlines()
+        assert len(lines) == 2
+        assert json.loads(lines[0])["doc_id"] == "first_doc"
+        assert json.loads(lines[1])["doc_id"] == "second_doc"
+
+    def test_close_is_idempotent(self, tmp_path):
+        path = tmp_path / "results.jsonl"
+        evaluator = BulkStructuredModelEvaluator(
+            target_schema=BankStatement,
+            individual_results_jsonl=str(path),
+        )
+        gt, pred = self._gt_pred()
+        evaluator.update(gt, pred, doc_id="doc_0")
+        evaluator.close()
+        # A second close() on a never-opened handle must be a no-op.
+        evaluator.close()
+
+
+class TestLegacyStateMigration:
+    """The migration helper at ``_migrate_legacy_acc_states`` must lift
+    pre-accumulator (top-level) confidence keys into the new
+    ``accumulators`` shape on both load and merge paths."""
+
+    def _legacy_state(self, schema_name: str) -> dict:
+        # Old top-level confidence shape — no ``accumulators`` key.
+        return {
+            "confusion_matrix": {
+                "overall": {"tp": 2, "fp": 1, "fn": 0, "tn": 0, "fa": 0, "fd": 0},
+                "fields": {
+                    "name": {"tp": 1, "fp": 0, "fn": 0, "tn": 0, "fa": 0, "fd": 0},
+                    "price": {"tp": 1, "fp": 1, "fn": 0, "tn": 0, "fa": 0, "fd": 0},
+                },
+            },
+            "errors": [],
+            "processed_count": 2,
+            "start_time": 0.0,
+            "target_schema": schema_name,
+            "elide_errors": False,
+            # Legacy confidence keys live at the top level.
+            "keyed_confidence_pairs": {
+                "name": [
+                    {"is_match": True, "confidence": 0.9, "similarity": 1.0},
+                    {"is_match": False, "confidence": 0.2, "similarity": 0.5},
+                ],
+                "price": [
+                    {"is_match": True, "confidence": 0.85, "similarity": 1.0},
+                ],
+            },
+            "confidence_fields_with": 3,
+            "confidence_fields_total": 4,
+        }
+
+    def test_load_state_migrates_legacy_confidence_keys(self):
+        evaluator = BulkStructuredModelEvaluator(target_schema=BankStatement)
+        legacy = self._legacy_state(schema_name="BankStatement")
+
+        evaluator.load_state(legacy)
+        result = evaluator.compute()
+
+        # Confidence metrics surface despite the legacy top-level shape.
+        assert result.confidence_metrics is not None
+        cov = result.confidence_metrics["coverage"]
+        assert cov["fields_with_confidence"] == 3
+        assert cov["fields_total"] == 4
+        # AUROC needs both classes — we have one match and one non-match.
+        assert result.confidence_metrics["overall"]["auroc"]["value"] is not None
+
+    def test_merge_state_migrates_legacy_confidence_keys(self):
+        evaluator = BulkStructuredModelEvaluator(target_schema=BankStatement)
+        legacy = self._legacy_state(schema_name="BankStatement")
+
+        evaluator.merge_state(legacy)
+        result = evaluator.compute()
+
+        assert result.confidence_metrics is not None
+        cov = result.confidence_metrics["coverage"]
+        assert cov["fields_with_confidence"] == 3
+        assert cov["fields_total"] == 4
