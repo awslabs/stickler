@@ -27,7 +27,7 @@ Deprecation window:
     not a rich value, and is passed through verbatim. When the shim does
     fire, a DeprecationWarning is emitted naming the field path and the
     dict is unwrapped the same way as the new ``_value``/``_confidence``
-    form. The legacy shape will be removed in 0.4.0.
+    form. The legacy shape will be removed in 0.5.0.
 
 See the Rich Value Pattern proposal for design rationale.
 """
@@ -162,14 +162,14 @@ class RichValueHelper:
 
                 return value, confidences, extras
             elif cls._is_legacy_rich_value(data):
-                # Remove in 0.4.0.
+                # Remove in 0.5.0.
                 warn_once(
                     "legacy_rich_value_shape",
                     field_path,
                     f"Field '{field_path}' uses the legacy "
                     f"{{'value', 'confidence'}} rich value shape. Rename "
                     f"these keys to '_value' and '_confidence'. Support "
-                    f"for the legacy shape will be removed in 0.4.0.",
+                    f"for the legacy shape will be removed in 0.5.0.",
                 )
                 return data["value"], {field_path: data["confidence"]}, {}
             else:

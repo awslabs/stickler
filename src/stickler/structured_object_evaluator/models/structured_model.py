@@ -329,7 +329,7 @@ class StructuredModel(BaseModel):
             process_rich_values: Whether to unwrap rich values on this call.
                 Set to False for recursive calls where the parent already handled it.
             process_confidence: Deprecated alias for ``process_rich_values``;
-                emits a DeprecationWarning. Will be removed in 0.4.0.
+                emits a DeprecationWarning. Will be removed in 0.5.0.
 
         Returns:
             StructuredModel instance created from the JSON data
@@ -354,7 +354,7 @@ class StructuredModel(BaseModel):
                 "",
                 "StructuredModel.from_json(process_confidence=...) is "
                 "deprecated; use process_rich_values=... instead. Support "
-                "for the legacy kwarg will be removed in 0.4.0.",
+                "for the legacy kwarg will be removed in 0.5.0.",
             )
             if process_rich_values is None:
                 process_rich_values = process_confidence

@@ -360,7 +360,7 @@ class ComparisonEngine:
                 "The 'auroc_confidence_metric' result key is deprecated; "
                 "use "
                 "result['confidence_metrics']['overall']['auroc']['value'] "
-                "instead. The legacy key will be removed in 0.4.0.",
+                "instead. The legacy key will be removed in 0.5.0.",
             )
 
         # Include raw prediction JSON for round-tripping through JSONL.
