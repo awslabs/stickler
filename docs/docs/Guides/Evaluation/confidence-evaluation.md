@@ -34,7 +34,7 @@ print(results.confidence_metrics["overall"]["auroc"]["value"])
 # Practical: how useful?
 ecab = results.confidence_metrics["overall"]["error_capture_at_budget"]
 for budget, data in ecab["budgets"].items():
-    print(f"Review {budget:.0%} of data: catch {data['pct_errors_caught']:.0%} of errors "
+    print(f"Review {float(budget):.0%} of data: catch {data['pct_errors_caught']:.0%} of errors "
           f"({data['gain']:.1f}x vs random)")
 
 # How much data has confidence?
