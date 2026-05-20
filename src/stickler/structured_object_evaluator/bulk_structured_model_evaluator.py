@@ -410,18 +410,18 @@ class BulkStructuredModelEvaluator:
             self._jsonl_handle = None
             try:
                 handle.close()
-            except Exception:
+            except Exception as exc:
                 # Closing should never crash the surrounding flow
-                # (compute, reset, GC). Best-effort.
-                pass
+                # (compute, reset, GC). Log and continue.
+                logger.debug("Failed to close JSONL handle: %s", exc)
 
     def __del__(self) -> None:
         # GC fallback for the case where compute()/reset() were never
         # called before the evaluator went out of scope.
         try:
             self.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("close() raised during __del__: %s", exc)
 
     def _accumulate_confusion_matrix(self, cm_result: Dict[str, Any]) -> None:
         """
