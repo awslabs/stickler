@@ -123,11 +123,23 @@ final = evaluator.compute()
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `document_count` | `int` | Total number of documents processed. |
-| `metrics` | `dict` | Overall confusion matrix counts (`tp`, `fp`, `tn`, `fn`, `fd`, `fa`) plus derived metrics (`cm_precision`, `cm_recall`, `cm_f1`, `cm_accuracy`). |
-| `field_metrics` | `dict` | Per-field metrics with the same structure as `metrics`, keyed by dotted field path (e.g., `"customer.name"`). |
+| `metrics` | `dict` | Overall confusion matrix counts (`tp`, `fp`, `tn`, `fn`, `fd`, `fa`), derived metrics (`cm_precision`, `cm_recall`, `cm_f1`, `cm_accuracy`), and the weight-aware `weighted_overall_score`. |
+| `field_metrics` | `dict` | Per-field metrics with the same confusion-matrix structure as `metrics`, plus `mean_score` (arithmetic mean of the per-document `threshold_applied_score` at that path) when that path was actually scored. Keyed by dotted field path (e.g., `"customer.name"`). |
 | `errors` | `list` | Records for any documents that raised exceptions during processing. |
 | `total_time` | `float` | Wall-clock time in seconds since the evaluator was created or last reset. |
 | `non_matches` | `list` | Detailed non-match records (when `document_non_matches=True`), each tagged with `doc_id`. |
+
+---
+
+### Weighted Overall Score
+
+`metrics["weighted_overall_score"]` is the arithmetic mean of each document's weight-aware `overall_score` returned by `compare_with()`. Prefer it over `cm_f1` whenever your schema uses non-uniform `ComparableField(weight=...)` values -- `cm_f1` treats every field-match equally regardless of its declared weight, so a high-weight field being wrong can look identical to a low-weight field being wrong in the headline number. `weighted_overall_score` preserves that weighting across the dataset.
+
+Because each document's `overall_score = Σ_f(score × weight) / Σ_f(weight)` already divides by the schema-constant total weight, the mean-of-per-document-overalls equals the `(doc, field)`-weighted aggregate -- a single key suffices.
+
+The denominator is the count of documents whose `overall_score` was a finite number: error docs (`update()` raised) and successful docs carrying a non-finite or missing `overall_score` are both excluded. With zero eligible documents the score is `0.0` — disambiguate via `document_count` when that matters.
+
+Per-field `mean_score` is reported at every nested path (leaf and object/list aggregate) where `threshold_applied_score` was observed in at least one document, averaging over just those documents. Paths with confusion-matrix counts but no score data (e.g., leaves inside `List[StructuredModel]`, where `compare_with()` only emits the score at the list parent) are surfaced without a `mean_score` key rather than reported as `0.0`.
 
 ---
 
@@ -152,6 +164,8 @@ Each line in `results.jsonl` contains:
 ```
 
 This is the raw output of `compare_with(include_confusion_matrix=True)` for that pair, making it easy to analyze individual results after the fact.
+
+Lines are appended only after the comparison has been successfully accumulated into the bulk evaluator's state, so the JSONL reflects "successfully accumulated" outcomes rather than "attempted" ones. Documents that error inside `update()` are recorded in the in-memory error list and do not produce a JSONL row.
 
 ---
 
@@ -198,6 +212,80 @@ combined.load_state(state1)
 combined.merge_state(state2)
 
 final_result = combined.compute()
+```
+
+---
+
+## Map/Reduce: Single-Doc Compare, Bulk Aggregate
+
+In production pipelines (like the IDP Accelerator), documents are often compared individually in a map step, with results saved to JSONL. A separate reduce step aggregates those results into bulk metrics. This pattern works for both confusion matrix metrics and confidence metrics.
+
+### How It Works
+
+When predictions are created via `from_json()` with rich values (e.g., `{"_value": "Widget", "_confidence": 0.95}`), the original prediction JSON is automatically stored in the comparison result as `prediction_raw`. This enables the reduce step to reconstruct confidence pairs without needing the original model instances.
+
+### Map Step: Compare Individual Documents
+
+```python
+import json
+
+results_file = "comparison_results.jsonl"
+
+for doc_id, gt_json, pred_json in your_dataset:
+    gt = Invoice(**gt_json)
+    pred = Invoice.from_json(pred_json)  # from_json() preserves rich value metadata
+
+    result = gt.compare_with(
+        pred,
+        include_confusion_matrix=True,
+        document_field_comparisons=True,
+    )
+
+    # Save to JSONL. prediction_raw is included automatically.
+    with open(results_file, "a") as f:
+        record = {"doc_id": doc_id, "comparison_result": result}
+        f.write(json.dumps(record, default=str) + "\n")
+```
+
+### Reduce Step: Aggregate from JSONL
+
+```python
+evaluator = BulkStructuredModelEvaluator(target_schema=Invoice)
+
+with open(results_file) as f:
+    for line in f:
+        record = json.loads(line)
+        evaluator.update_from_comparison_result(
+            record["comparison_result"],
+            doc_id=record["doc_id"],
+        )
+
+result = evaluator.compute()
+print(f"F1: {result.metrics['cm_f1']:.3f}")
+print(f"AUROC: {result.confidence_metrics['overall']['auroc']['value']}")
+```
+
+### Requirements
+
+For confidence metrics to survive the JSONL round-trip:
+
+1. Predictions must be created via `from_json()` (not direct construction)
+2. Rich values must use the `_value`/`_confidence` convention
+3. `compare_with()` must be called with `document_field_comparisons=True`
+
+When these conditions are met, `update_from_comparison_result()` produces identical confidence metrics to the direct `update()` path.
+
+### Alternative: aggregate_from_comparisons()
+
+For simpler cases where you have a list of comparison results in memory:
+
+```python
+from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
+    aggregate_from_comparisons,
+)
+
+results = [comp1, comp2, comp3]  # list of compare_with() outputs
+evaluation = aggregate_from_comparisons(results)
 ```
 
 ---

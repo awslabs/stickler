@@ -5,9 +5,12 @@ comparison process for StructuredModel instances, coordinating between the
 dispatcher, collectors, and calculators.
 """
 
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+from stickler.utils.deprecation import warn_once
 
 if TYPE_CHECKING:
+    from .confidence import ConfidenceMetric
     from .structured_model import StructuredModel
 
 
@@ -200,7 +203,8 @@ class ComparisonEngine:
         recall_with_fd: bool = False,
         add_derived_metrics: bool = True,
         document_field_comparisons: bool = False,
-        add_confidence_metrics: bool = False
+        add_confidence_metrics: bool = False,
+        confidence_metrics: Optional[List["ConfidenceMetric"]] = None,
     ) -> Dict[str, Any]:
         """Compare with another instance using single traversal.
         
@@ -236,7 +240,7 @@ class ComparisonEngine:
                 "confusion_matrix": {...},  # If include_confusion_matrix=True
                 "non_matches": [...],  # If document_non_matches=True
                 "field_comparisons": [...] # If field_comparisons=True
-                "auroc_confidence_metric": float # If add_confidence_metrics=True
+                "confidence_metrics": {...} # If add_confidence_metrics=True
             }
             
         Example:
@@ -298,12 +302,80 @@ class ComparisonEngine:
             field_comparisons = self.field_comparison_collector.collect_field_comparisons(recursive_result, other)
             result["field_comparisons"] = field_comparisons
 
-        # If add_confidence_metrics is requested, add confidence metrics
+        # If add_confidence_metrics is requested, add confidence metrics.
+        # Warn that single-doc confidence is a sanity check; bulk evaluation is
+        # the recommended path for statistically meaningful results.
         if add_confidence_metrics:
-            from .confidence_calculator import ConfidenceCalculator
-            calculator = ConfidenceCalculator()
-            auroc = calculator.calculate_overall_auroc(result, other)
-            result['auroc_confidence_metric'] = auroc
+            import warnings as _warnings
+
+            from .confidence import ConfidenceCalculator
+
+            # Auto-enable field_comparisons when the caller asked for
+            # confidence. Previously forgetting document_field_comparisons=True
+            # raised `ValueError: No field comparisons found` from deep inside
+            # the calculator. The calculator is a lower-level API and still
+            # raises, but at the compare_with level we know the user wants
+            # confidence and can wire the data through themselves.
+            if "field_comparisons" not in result:
+                field_comparisons = (
+                    self.field_comparison_collector.collect_field_comparisons(
+                        recursive_result, other
+                    )
+                )
+                result["field_comparisons"] = field_comparisons
+
+            _warnings.warn(
+                "Single-document confidence metrics are a quick sanity check. "
+                "For statistically meaningful results (especially non-AUROC metrics "
+                "like Brier Score and ECE), use BulkStructuredModelEvaluator with "
+                "confidence_metrics=[...]. Per-document metrics with few fields are "
+                "noisy and may return None (single-class) frequently.",
+                UserWarning,
+                stacklevel=2,
+            )
+            calculator = ConfidenceCalculator(metrics=confidence_metrics)
+            extraction = calculator.extract(result, other)
+            result['confidence_metrics'] = calculator.compute_metrics(
+                extraction.keyed_pairs,
+                fields_with_confidence=extraction.fields_with_confidence,
+                fields_total=extraction.fields_total,
+            )
+            # Deprecation shim: populate the pre-rename
+            # `auroc_confidence_metric` key from the new structured result so
+            # callers doing `result["auroc_confidence_metric"]` keep working
+            # for one release. The legacy key carried a single AUROC float
+            # (or 0.5 sentinel). Accessing it via a proxy that emits the
+            # warning on read would be nicer, but we want the key to survive
+            # JSON serialization, so we populate the value eagerly and warn
+            # on the wrapping compare_with call.
+            overall = result["confidence_metrics"].get("overall") or {}
+            auroc_entry = overall.get("auroc") or {}
+            legacy_auroc = auroc_entry.get("value")
+            if legacy_auroc is None:
+                legacy_auroc = 0.5
+            result["auroc_confidence_metric"] = legacy_auroc
+            warn_once(
+                "auroc_confidence_metric_result_key",
+                "",
+                "The 'auroc_confidence_metric' result key is deprecated; "
+                "use "
+                "result['confidence_metrics']['overall']['auroc']['value'] "
+                "instead. The legacy key will be removed in 0.5.0.",
+            )
+
+        # Include raw prediction JSON for round-tripping through JSONL.
+        # This enables update_from_comparison_result() to reconstruct
+        # confidence pairs (and future bbox/MAP data) without needing
+        # the original model instance.
+        if hasattr(other, "__stickler_raw_json__"):
+            result["prediction_raw"] = other.__stickler_raw_json__
+
+        # Pre-extract confidences so the bulk path doesn't re-walk
+        # prediction_raw via RichValueHelper.process_rich_values().
+        if hasattr(other, "get_all_confidences"):
+            confidences = other.get_all_confidences()
+            if confidences:
+                result["prediction_confidences"] = confidences
 
         # If evaluator_format is requested, transform the result
         if evaluator_format:

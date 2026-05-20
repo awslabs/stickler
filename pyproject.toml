@@ -1,6 +1,6 @@
 [project]
 name = "stickler-eval"
-version = "0.3.0"
+version = "0.4.0"
 description = "Structured object comparison and evaluation library"
 authors = [
     {name = "Spencer Romo", email = "sromo@amazon.com"},
@@ -48,6 +48,8 @@ dev = [
     "mkdocs-awesome-nav",
     "mkdocstrings-python",
     "pymdown-extensions",
+    # Used by examples/notebooks/Review_Efficiency_Exploration.ipynb.
+    "matplotlib>=3.8.0",
 ]
 llm = [
     "strands-agents>=1.0.0,<=1.16.0"
@@ -96,6 +98,8 @@ test = [
     "pytest-xdist>=3.0.0",
     "coverage>=7.0.0",
     "beautifulsoup4>=4.14.2",
+    # Used by examples/notebooks/Review_Efficiency_Exploration.ipynb.
+    "matplotlib>=3.8.0",
 ]
 lint = [
     "ruff>=0.14.10",

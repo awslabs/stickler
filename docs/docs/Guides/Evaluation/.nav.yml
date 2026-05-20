@@ -1,4 +1,5 @@
 nav:
   - README.md
   - bulk-evaluation.md
+  - confidence-evaluation.md
   - understanding-results.md

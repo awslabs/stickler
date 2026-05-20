@@ -19,14 +19,15 @@ from typing import (
 from pydantic import BaseModel, Field
 
 from stickler.comparators.base import BaseComparator
+from stickler.utils.deprecation import warn_once
 
 from .comparable_field import ComparableField
 from .comparison_helper import ComparisonHelper
-from .confidence_helper import ConfidenceHelper
 from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
+from .rich_value_helper import RichValueHelper
 
 
 class StructuredModel(BaseModel):
@@ -241,7 +242,7 @@ class StructuredModel(BaseModel):
     def model_post_init(self, __context):
         """Initialize confidence storage after model creation."""
         # Use object.__setattr__ to bypass Pydantic field detection
-        object.__setattr__(self, "field_confidences", {})
+        object.__setattr__(self, "__stickler_field_confidences__", {})
 
     @classmethod
     def _is_list_of_structured_model_type(cls, field_type) -> bool:
@@ -273,42 +274,111 @@ class StructuredModel(BaseModel):
     def get_field_confidence(self, field_name: str) -> Optional[float]:
         """Get confidence for a field."""
         # Don't create the attribute - just check if it exists
-        if not hasattr(self, "field_confidences"):
+        if not hasattr(self, "__stickler_field_confidences__"):
             return None
-        return self.field_confidences.get(field_name)
+        return self.__stickler_field_confidences__.get(field_name)
 
     def get_all_confidences(self) -> Dict[str, float]:
         """Get all confidences."""
         # Don't create the attribute - return empty dict if no confidence data
-        if not hasattr(self, "field_confidences"):
+        if not hasattr(self, "__stickler_field_confidences__"):
             return {}
-        return self.field_confidences.copy()
+        return self.__stickler_field_confidences__.copy()
+
+    def get_field_extras(self, field_name: str) -> Optional[Dict[str, Any]]:
+        """Get user-provided extras for a field (non-system metadata from rich values)."""
+        if not hasattr(self, "__stickler_field_extras__"):
+            return None
+        return self.__stickler_field_extras__.get(field_name)
+
+    def get_all_extras(self) -> Dict[str, Dict[str, Any]]:
+        """Get all user-provided extras, keyed by field path."""
+        if not hasattr(self, "__stickler_field_extras__"):
+            return {}
+        return self.__stickler_field_extras__.copy()
+
+    # Names the library writes onto instances via object.__setattr__. User
+    # JSON containing any of these at the top level would silently shadow
+    # the library's own metadata under ``extra: "allow"``, so from_json
+    # rejects them up front rather than letting confidence/extras get
+    # overwritten by user data.
+    _RESERVED_DUNDER_NAMES: ClassVar[frozenset] = frozenset(
+        {
+            "__stickler_raw_json__",
+            "__stickler_field_confidences__",
+            "__stickler_field_extras__",
+        }
+    )
 
     @classmethod
     def from_json(
-        cls, json_data: Dict[str, Any], process_confidence=True
+        cls,
+        json_data: Dict[str, Any],
+        process_rich_values: Optional[bool] = None,
+        process_confidence: Optional[bool] = None,
     ) -> "StructuredModel":
         """Create a StructuredModel instance from JSON data.
 
         This method handles missing fields gracefully and stores extra fields
-        in the extra_fields attribute.
+        in the extra_fields attribute. When process_rich_values is True,
+        rich value structures (e.g., {"_value": "Widget", "_confidence": 0.95})
+        are automatically unwrapped, with metadata stored separately.
 
         Args:
             json_data: Dictionary containing the JSON data
+            process_rich_values: Whether to unwrap rich values on this call.
+                Set to False for recursive calls where the parent already handled it.
+            process_confidence: Deprecated alias for ``process_rich_values``;
+                emits a DeprecationWarning. Will be removed in 0.5.0.
 
         Returns:
             StructuredModel instance created from the JSON data
+
+        Raises:
+            ValueError: If ``json_data`` contains any reserved
+                ``__stickler_*`` dunder name at the top level.
         """
-        if process_confidence:
-            # Only process confidence on the top-level call
-            processed_data, confidences = (
-                ConfidenceHelper.process_confidence_structures(json_data)
+        if isinstance(json_data, dict):
+            reserved_in_payload = cls._RESERVED_DUNDER_NAMES.intersection(json_data)
+            if reserved_in_payload:
+                raise ValueError(
+                    f"json_data contains reserved key(s): "
+                    f"{sorted(reserved_in_payload)}. The "
+                    f"'__stickler_*' namespace is reserved for library "
+                    f"metadata and cannot appear in user payloads."
+                )
+
+        if process_confidence is not None:
+            warn_once(
+                "process_confidence_kwarg",
+                "",
+                "StructuredModel.from_json(process_confidence=...) is "
+                "deprecated; use process_rich_values=... instead. Support "
+                "for the legacy kwarg will be removed in 0.5.0.",
+            )
+            if process_rich_values is None:
+                process_rich_values = process_confidence
+
+        if process_rich_values is None:
+            process_rich_values = True
+
+        if process_rich_values:
+            # Only process rich values on the top-level call
+            processed_data, confidences, extras = (
+                RichValueHelper.process_rich_values(json_data)
             )
             instance = ConfigurationHelper.from_json(cls, processed_data)
-            if confidences:  # Only set if we have confidence data
-                object.__setattr__(instance, "field_confidences", confidences)
+            if confidences:
+                object.__setattr__(
+                    instance, "__stickler_field_confidences__", confidences
+                )
+            if extras:
+                object.__setattr__(instance, "__stickler_field_extras__", extras)
+            # Unconditional so map/reduce aggregation works when confidence
+            # scores are added later; matches the Rich Value Pattern doc.
+            object.__setattr__(instance, "__stickler_raw_json__", json_data)
         else:
-            # Skip confidence processing for recursive calls
+            # Skip rich value processing for recursive calls
             instance = ConfigurationHelper.from_json(cls, json_data)
         return instance
 
@@ -1022,6 +1092,7 @@ class StructuredModel(BaseModel):
         add_derived_metrics: bool = True,
         document_field_comparisons: bool = False,
         add_confidence_metrics: bool = False,
+        confidence_metrics: Optional[List[Any]] = None,
     ) -> Dict[str, Any]:
         """Compare this model with another instance using SINGLE TRAVERSAL optimization.
 
@@ -1036,7 +1107,13 @@ class StructuredModel(BaseModel):
                             If False, use traditional recall (TP/(TP+FN))
             add_derived_metrics: Whether to add derived metrics to confusion matrix
             document_field_comparisons: Whether to document all matches and non matches made in the comparison
-            add_confidence_metrics: Whether to add AUROC confidence metric
+            add_confidence_metrics: Whether to add confidence calibration metrics.
+                Emits a UserWarning recommending BulkStructuredModelEvaluator for
+                statistically meaningful results.
+            confidence_metrics: Optional list of ConfidenceMetric instances to compute.
+                Defaults to [AUROCMetric()] if not provided. Only used when
+                add_confidence_metrics=True. For bulk evaluation, pass the metric
+                list to BulkStructuredModelEvaluator instead.
 
         Returns:
             Dictionary with comparison results including:
@@ -1046,7 +1123,7 @@ class StructuredModel(BaseModel):
             - confusion_matrix: (optional) Confusion matrix data if requested
             - non_matches: (optional) Non-match documentation if requested
             - field_comparisons: (optional) Field level comparison information if requested
-            - auroc_confidence_metric: (optional) AUROC confidence metric if requested
+            - confidence_metrics: (optional) Confidence calibration metrics if requested
         """
         from .comparison_engine import ComparisonEngine
 
@@ -1060,6 +1137,7 @@ class StructuredModel(BaseModel):
             add_derived_metrics=add_derived_metrics,
             document_field_comparisons=document_field_comparisons,
             add_confidence_metrics=add_confidence_metrics,
+            confidence_metrics=confidence_metrics,
         )
 
     def _convert_score_to_binary_metrics(
