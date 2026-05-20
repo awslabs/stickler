@@ -156,7 +156,7 @@ present for the shim to fire — a plain dict like
 `{"currency": "USD", "value": 100}` is treated as user data, not a rich
 value. When the shim does fire, a `DeprecationWarning` names the
 offending field path and the value is unwrapped the same way as the new
-form. The legacy shape will be removed in 0.4.0 — migrate payloads to
+form. The legacy shape will be removed in 0.5.0 — migrate payloads to
 `_value`/`_confidence` as soon as you can.
 
 ## Integration with Confidence Evaluation
