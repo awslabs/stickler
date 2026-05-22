@@ -107,9 +107,12 @@ class TestLLMComparator:
         )
         assert new_comp.agent is self.mock_agent_class.return_value
 
-    def test_compare_values_equal(self):
-        """Test comparison of values that are considered equal by the LLM."""
-        self._mock_agent_response("true")
+    @pytest.mark.parametrize(
+        "response", ["true", "TRUE", "True", " true ", "  TRUE  "]
+    )
+    def test_compare_values_equal(self, response):
+        """Test that 'true' responses (across case/whitespace) map to 1.0."""
+        self._mock_agent_response(response)
 
         result = self.comparator.compare("hello world", "hello world")
 
@@ -118,9 +121,12 @@ class TestLLMComparator:
         prompt = self.mock_agent.call_args[0][0]
         assert "hello world" in prompt
 
-    def test_compare_values_not_equal(self):
-        """Test comparison of values that are not considered equal by the LLM."""
-        self._mock_agent_response("false")
+    @pytest.mark.parametrize(
+        "response", ["false", "FALSE", "False", " false ", "  FALSE  "]
+    )
+    def test_compare_values_not_equal(self, response):
+        """Test that 'false' responses (across case/whitespace) map to 0.0."""
+        self._mock_agent_response(response)
 
         result = self.comparator.compare("apple", "orange")
 
