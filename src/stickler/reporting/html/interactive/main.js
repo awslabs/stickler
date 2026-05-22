@@ -29,8 +29,13 @@ const setStyle = (selector, styles) => { const el = getElement(selector); if (el
 const createElement = (tag, className, innerHTML) => {
     const el = document.createElement(tag);
     if (className) el.className = className;
-    if (innerHTML) el.textContent = innerHTML;
+    if (innerHTML) el.innerHTML = innerHTML;
     return el;
+};
+const escapeHtml = (text) => {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 };
 
 // Utility functions
@@ -377,11 +382,11 @@ const updateNonMatchesTable = (data) => {
     tableBody.innerHTML = '';
     data.forEach(row => {
         const tr = createElement('tr', '', `
-            <td>${row.doc_id}</td>
-            <td>${row.field_path}</td>
-            <td>${row.non_match_type}</td>
-            <td>${row.ground_truth_value}</td>
-            <td>${row.prediction_value}</td>
+            <td>${escapeHtml(row.doc_id)}</td>
+            <td>${escapeHtml(row.field_path)}</td>
+            <td>${escapeHtml(row.non_match_type)}</td>
+            <td>${escapeHtml(row.ground_truth_value)}</td>
+            <td>${escapeHtml(row.prediction_value)}</td>
         `);
         tableBody.appendChild(tr);
     });
@@ -390,12 +395,6 @@ const updateNonMatchesTable = (data) => {
 const updateDocumentFiles = (data) => {
     const documentGallery = getElement('.document-gallery');
     if (!documentGallery || !data) return;
-
-    const escapeHtml = (text) => {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    };
 
     documentGallery.innerHTML = '';
     Object.entries(data).forEach(([docId, filePath]) => {
@@ -407,13 +406,13 @@ const updateDocumentFiles = (data) => {
 
             const pdfContainer = createElement('div', 'pdf-container');
             const canvas = document.createElement('canvas');
-            canvas.id = `pdf-canvas-${escapeHtml(docId)}`;
+            canvas.id = `pdf-canvas-${docId}`;
             canvas.className = 'pdf-canvas';
             const loading = createElement('div', 'pdf-loading');
-            loading.id = `pdf-loading-${escapeHtml(docId)}`;
+            loading.id = `pdf-loading-${docId}`;
             loading.textContent = 'Loading PDF...';
             const error = createElement('div', 'pdf-error');
-            error.id = `pdf-error-${escapeHtml(docId)}`;
+            error.id = `pdf-error-${docId}`;
             error.textContent = 'Error loading PDF';
             error.style.display = 'none';
             pdfContainer.appendChild(canvas);
@@ -538,11 +537,28 @@ const loadPDF = (url, canvasId, loadingId, errorId) => {
     
     pdfjsLib.getDocument(url).promise.then(pdf => {
         const pdfContainer = canvas.parentElement;
-        const navControls = createElement('div', 'pdf-navigation', `
-            <button class="btn btn-primary pdf-nav-btn" id="prev-${docId}" onclick="navigatePDF('${docId}', -1)">← Previous</button>
-            <span class="pdf-page-info" id="page-info-${docId}">Page 1 of ${pdf.numPages}</span>
-            <button class="btn btn-primary pdf-nav-btn" id="next-${docId}" onclick="navigatePDF('${docId}', 1)">Next →</button>
-        `);
+        const navControls = createElement('div', 'pdf-navigation');
+
+        const prevBtn = document.createElement('button');
+        prevBtn.className = 'btn btn-primary pdf-nav-btn';
+        prevBtn.id = `prev-${docId}`;
+        prevBtn.textContent = '← Previous';
+        prevBtn.addEventListener('click', () => navigatePDF(docId, -1));
+
+        const pageInfo = document.createElement('span');
+        pageInfo.className = 'pdf-page-info';
+        pageInfo.id = `page-info-${docId}`;
+        pageInfo.textContent = `Page 1 of ${pdf.numPages}`;
+
+        const nextBtn = document.createElement('button');
+        nextBtn.className = 'btn btn-primary pdf-nav-btn';
+        nextBtn.id = `next-${docId}`;
+        nextBtn.textContent = 'Next →';
+        nextBtn.addEventListener('click', () => navigatePDF(docId, 1));
+
+        navControls.appendChild(prevBtn);
+        navControls.appendChild(pageInfo);
+        navControls.appendChild(nextBtn);
         pdfContainer.appendChild(navControls);
         
         window.pdfData = window.pdfData || {};
