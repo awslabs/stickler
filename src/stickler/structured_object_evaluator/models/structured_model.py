@@ -40,10 +40,16 @@ class StructuredModel(BaseModel):
     ----------------------------------
     StructuredModel uses a delegation pattern where comparison logic is
     distributed across specialized helper classes. This refactoring reduced
-    the class from 2584 lines to ~500 lines while maintaining all functionality.
+    the class from 2584 lines to ~1486 lines while maintaining all
+    functionality. Several previously-monolithic concerns (recursive
+    comparison, dispatch, list comparison, confusion-matrix metrics,
+    non-match collection, evaluator formatting) now live in dedicated
+    components, with thin delegating shims kept on the model for backward
+    compatibility. See ``docs/structured_model_REFACTORING.md`` for the
+    full component map.
 
     The delegation pattern works as follows:
-    1. StructuredModel maintains the public API (compare, compare_with, compare_field)
+    1. StructuredModel maintains the public API (compare, compare_with, compare_field_raw)
     2. All implementation details are delegated to specialized helper classes
     3. Each helper class has a single, well-defined responsibility
     4. Helpers receive the StructuredModel instance as a parameter (composition)
