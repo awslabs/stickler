@@ -11,6 +11,7 @@ memory-efficient processing of large datasets through accumulation-based evaluat
 import gc
 import json
 import logging
+import math
 import time
 from collections import Counter, defaultdict
 from typing import IO, Any, Dict, List, Optional, Tuple, Type, Union
@@ -78,7 +79,7 @@ class BulkStructuredModelEvaluator:
 
     def __init__(
         self,
-        target_schema: Type[StructuredModel],
+        target_schema: Optional[Type[StructuredModel]] = None,
         verbose: bool = False,
         document_non_matches: bool = True,
         elide_errors: bool = False,
@@ -90,7 +91,9 @@ class BulkStructuredModelEvaluator:
         Initialize the stateful bulk evaluator.
 
         Args:
-            target_schema: StructuredModel class for validation and processing
+            target_schema: Optional StructuredModel class for validation and processing.
+                Required for update() and evaluate_dataframe(). Not required when using
+                update_from_comparison_result() with pre-computed results.
             verbose: Whether to print detailed progress information
             document_non_matches: Whether to document detailed non-match information
             elide_errors: If True, skip documents with errors; if False, accumulate error metrics
@@ -136,10 +139,10 @@ class BulkStructuredModelEvaluator:
         # Initialize state
         self.reset()
 
+        self._schema_name = target_schema.__name__ if target_schema else "unknown"
+
         if self.verbose:
-            print(
-                f"Initialized BulkStructuredModelEvaluator for {target_schema.__name__}"
-            )
+            print(f"Initialized BulkStructuredModelEvaluator for {self._schema_name}")
             if self.individual_results_jsonl:
                 print(
                     f"Individual results will be appended to: {self.individual_results_jsonl}"
@@ -158,6 +161,11 @@ class BulkStructuredModelEvaluator:
             "overall": defaultdict(int),
             "fields": defaultdict(lambda: defaultdict(int)),
         }
+
+        self._overall_score_sum: float = 0.0
+        self._overall_score_count: int = 0
+        self._field_score_sums: Dict[str, float] = defaultdict(float)
+        self._field_score_counts: Dict[str, int] = defaultdict(int)
 
         # Non-match tracking (when document_non_matches=True)
         self._non_matches = []
@@ -194,9 +202,8 @@ class BulkStructuredModelEvaluator:
         """
         Process a single document pair and accumulate the results in internal state.
 
-        This is the core method for stateful evaluation, inspired by PyTorch Lightning's
-        training_step pattern. Each call processes one document pair and updates
-        the internal confusion matrix counters.
+        Runs compare_with() on the model pair, optionally writes the raw result
+        to JSONL, then delegates accumulation to update_from_comparison_result().
 
         Args:
             gt_model: Ground truth StructuredModel instance
@@ -207,8 +214,6 @@ class BulkStructuredModelEvaluator:
             doc_id = f"doc_{self._processed_count}"
 
         try:
-            # Use compare_with method directly on the StructuredModel
-            # Pass document_non_matches to achieve parity with compare_with method
             comparison_result = gt_model.compare_with(
                 pred_model,
                 include_confusion_matrix=True,
@@ -281,17 +286,16 @@ class BulkStructuredModelEvaluator:
         try:
             # Collect non-matches if enabled and present
             if self.document_non_matches and "non_matches" in comparison_result:
-                # Add doc_id to each non-match for bulk tracking
                 for non_match in comparison_result["non_matches"]:
                     non_match_with_doc = non_match.copy()
                     non_match_with_doc["doc_id"] = doc_id
                     self._non_matches.append(non_match_with_doc)
 
-            # Simple JSONL append of raw comparison result (before any processing)
-            if self.individual_results_jsonl:
-                record = {"doc_id": doc_id, "comparison_result": comparison_result}
-                with open(self.individual_results_jsonl, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(record) + "\n")
+            cm_result = comparison_result["confusion_matrix"]
+            self._accumulate_confusion_matrix(cm_result)
+
+            if "overall_score" in comparison_result:
+                self._accumulate_overall_score(comparison_result["overall_score"])
 
             # Isolate per-accumulator failures so one bad accumulator can't tank the cm.
             prediction_raw = comparison_result.get("prediction_raw")
@@ -329,9 +333,6 @@ class BulkStructuredModelEvaluator:
 
             if not self.elide_errors:
                 self._errors.append(error_record)
-
-                # For errors, add a "failed" classification to overall metrics
-                # This represents complete failure to process the document
                 self._confusion_matrix["overall"]["fn"] += 1
 
             if self.verbose:
@@ -587,8 +588,10 @@ class BulkStructuredModelEvaluator:
         )
 
         field_metrics = {}
-        for field_path, field_cm in self._confusion_matrix["fields"].items():
-            field_cm_dict = dict(field_cm)
+        field_paths = set(self._confusion_matrix["fields"].keys())
+        field_paths.update(self._field_score_sums.keys())
+        for field_path in field_paths:
+            field_cm_dict = dict(self._confusion_matrix["fields"].get(field_path, {}))
             field_derived = self._calculate_derived_metrics(field_cm_dict)
             field_metrics[field_path] = {**field_cm_dict, **field_derived}
 
@@ -661,7 +664,7 @@ class BulkStructuredModelEvaluator:
                 "error_rate": len(process_eval.errors) / self._processed_count
                 if self._processed_count > 0
                 else 0,
-                "target_schema": self.target_schema.__name__,
+                "target_schema": self._schema_name,
             },
             "errors": process_eval.errors,
             "metadata": {
@@ -698,7 +701,7 @@ class BulkStructuredModelEvaluator:
 
         # Header
         print("\n" + "=" * 80)
-        print(f"BULK EVALUATION RESULTS - {self.target_schema.__name__}")
+        print(f"BULK EVALUATION RESULTS - {self._schema_name}")
         print("=" * 80)
 
         # Overall metrics
@@ -728,6 +731,10 @@ class BulkStructuredModelEvaluator:
         print(f"  Recall:        {overall_metrics.get('cm_recall', 0.0):.4f}")
         print(f"  F1 Score:      {overall_metrics.get('cm_f1', 0.0):.4f}")
         print(f"  Accuracy:      {overall_metrics.get('cm_accuracy', 0.0):.4f}")
+        print(
+            f"  Weighted Overall Score: "
+            f"{overall_metrics.get('weighted_overall_score', 0.0):.4f}"
+        )
 
         # Field-level metrics
         if process_eval.field_metrics:
@@ -748,11 +755,16 @@ class BulkStructuredModelEvaluator:
                 precision = field_metrics.get("cm_precision", 0.0)
                 recall = field_metrics.get("cm_recall", 0.0)
                 f1 = field_metrics.get("cm_f1", 0.0)
+                mean_score = field_metrics.get("mean_score")
+                mean_cell = f"{mean_score:.3f}" if mean_score is not None else "  n/a"
 
                 # Only show fields with some activity
                 if tp + fp + fn > 0:
+                    display_path = (
+                        field_path if len(field_path) <= 30 else field_path[:27] + "..."
+                    )
                     print(
-                        f"  {field_path:30} P: {precision:.3f} | R: {recall:.3f} | F1: {f1:.3f} | TP: {tp:,} | FP: {fp:,} | FN: {fn:,}"
+                        f"  {display_path:30} Mean: {mean_cell} | P: {precision:.3f} | R: {recall:.3f} | F1: {f1:.3f} | TP: {tp:,} | FP: {fp:,} | FN: {fn:,}"
                     )
 
         # Error summary
@@ -795,7 +807,7 @@ class BulkStructuredModelEvaluator:
         # Configuration info
         print("\nCONFIGURATION:")
         print("-" * 40)
-        print(f"Target Schema: {self.target_schema.__name__}")
+        print(f"Target Schema: {self._schema_name}")
         print(f"Document Non-matches: {'Yes' if self.document_non_matches else 'No'}")
         print(f"Elide Errors: {'Yes' if self.elide_errors else 'No'}")
         if self.individual_results_jsonl:
@@ -835,7 +847,7 @@ class BulkStructuredModelEvaluator:
             "field_score_sums": dict(self._field_score_sums),
             "field_score_counts": dict(self._field_score_counts),
             # Configuration
-            "target_schema": self.target_schema.__name__,
+            "target_schema": self._schema_name,
             "elide_errors": self.elide_errors,
         }
 
@@ -850,9 +862,9 @@ class BulkStructuredModelEvaluator:
             state: State dictionary from get_state()
         """
         # Validate state compatibility
-        if state.get("target_schema") != self.target_schema.__name__:
+        if state.get("target_schema") != self._schema_name:
             raise ValueError(
-                f"State schema {state.get('target_schema')} doesn't match evaluator schema {self.target_schema.__name__}"
+                f"State schema {state.get('target_schema')} doesn't match evaluator schema {self._schema_name}"
             )
 
         # Restore confusion matrix state
@@ -881,6 +893,12 @@ class BulkStructuredModelEvaluator:
             if acc.name in acc_states:
                 acc.load_state(acc_states[acc.name])
 
+        # .get() keeps older state dicts (no score keys) loadable.
+        self._overall_score_sum = float(state.get("overall_score_sum", 0.0))
+        self._overall_score_count = int(state.get("overall_score_count", 0))
+        self._field_score_sums = defaultdict(float, state.get("field_score_sums", {}))
+        self._field_score_counts = defaultdict(int, state.get("field_score_counts", {}))
+
         if self.verbose:
             print(f"Loaded state: {self._processed_count} documents processed")
 
@@ -896,9 +914,9 @@ class BulkStructuredModelEvaluator:
             other_state: State dictionary from another evaluator instance
         """
         # Validate compatibility
-        if other_state.get("target_schema") != self.target_schema.__name__:
+        if other_state.get("target_schema") != self._schema_name:
             raise ValueError(
-                f"Cannot merge incompatible schemas: {other_state.get('target_schema')} vs {self.target_schema.__name__}"
+                f"Cannot merge incompatible schemas: {other_state.get('target_schema')} vs {self._schema_name}"
             )
 
         # Merge overall metrics
@@ -921,6 +939,14 @@ class BulkStructuredModelEvaluator:
         for acc in self._accumulators:
             if acc.name in acc_states:
                 acc.merge_state(acc_states[acc.name])
+
+        # .get() keeps older peer states (no score keys) mergeable.
+        self._overall_score_sum += float(other_state.get("overall_score_sum", 0.0))
+        self._overall_score_count += int(other_state.get("overall_score_count", 0))
+        for path, s in other_state.get("field_score_sums", {}).items():
+            self._field_score_sums[path] += float(s)
+        for path, c in other_state.get("field_score_counts", {}).items():
+            self._field_score_counts[path] += int(c)
 
         if self.verbose:
             print(

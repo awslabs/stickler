@@ -9,12 +9,15 @@ capabilities of the new BulkStructuredModelEvaluator.
 """
 
 import json
+import math
 from typing import List, Optional
 
 import pandas as pd
 import pytest
 
 from stickler.comparators.exact import ExactComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.comparators.numeric import NumericComparator
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
 )
