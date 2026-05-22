@@ -44,6 +44,12 @@ This directory contains comprehensive examples demonstrating the core functional
   - Complex nested structures and list matching
   - Production-ready JSON-driven evaluation
 
+- **`scripts/bert_comparator_demo.py`** - BERTComparator for document extraction eval
+  - Semantic similarity via BERTScore (token-level embedding matching)
+  - Threshold tuning for paraphrased LLM outputs
+  - StructuredModel integration with mixed comparators
+  - Requires `--extra bert` (torch, bert-score, evaluate)
+
 ### 3. Interactive Notebooks
 - **`notebooks/Quick_start.ipynb`** - Interactive introduction
   - Step-by-step guided examples  
@@ -54,6 +60,21 @@ This directory contains comprehensive examples demonstrating the core functional
   - Deeply nested object evaluation
   - Optional field handling
   - Complex error analysis
+
+- **`notebooks/Confidence_Estimation.ipynb`** - Single-document confidence evaluation
+  - Rich value pattern in JSON (confidence, bbox, or value-only)
+  - Per-field confidence metrics and coverage
+  - Nested object path handling
+
+- **`notebooks/Bulk_Confidence_AUROC.ipynb`** - Dataset-level confidence evaluation
+  - Bulk AUROC, Brier Score, ECE with bin data
+  - Per-field breakdowns and side-by-side model comparison
+  - State merge for distributed evaluation
+
+- **`notebooks/Map_Reduce_Evaluation.ipynb`** - Production map/reduce pattern
+  - Compare individual docs (map), save to JSONL
+  - Aggregate from JSONL (reduce) with full confidence metrics
+  - Verify direct bulk vs JSONL replay produce identical results
 
 ## 🎯 What Each Example Demonstrates
 

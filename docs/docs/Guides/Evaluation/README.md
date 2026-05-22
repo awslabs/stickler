@@ -15,6 +15,9 @@ This guide covers three ways to configure evaluation behavior:
 !!! tip "Evaluating a test set?"
     If you need to evaluate many document pairs (not just one), use **`BulkStructuredModelEvaluator`** — it handles streaming aggregation, progress reporting, and metrics export. See the [Bulk Evaluation](bulk-evaluation.md) guide.
 
+!!! tip "Evaluating confidence scores?"
+    If your model produces confidence scores alongside predictions, see the [Confidence Evaluation](confidence-evaluation.md) guide for AUROC, Brier Score, ECE, and Error Capture at Review Budget metrics.
+
 ---
 
 ## How Evaluation Works
@@ -137,7 +140,7 @@ The default output contains three keys:
 | `include_confusion_matrix` | `bool` | `False` | Adds a `confusion_matrix` key with TP/FP/TN/FN/FD/FA counts and derived precision, recall, F1, and accuracy metrics at both the overall and field levels. |
 | `document_non_matches` | `bool` | `False` | Adds a `non_matches` list with details about every field that failed to match, including the field path, non-match type, both values, and a human-readable reason. |
 | `document_field_comparisons` | `bool` | `False` | Adds a `field_comparisons` list documenting every field-level comparison (both matches and non-matches) with expected/actual keys and values, scores, and reasons. |
-| `add_confidence_metrics` | `bool` | `False` | Adds an `auroc_confidence_metric` for evaluating confidence calibration. |
+| `add_confidence_metrics` | `bool` | `False` | Adds a `confidence_metrics` dict with `overall`, `fields`, and `coverage` keys, using the configured metrics (AUROC by default). Auto-enables `document_field_comparisons` so the field-level join data is available. |
 | `evaluator_format` | `bool` | `False` | Restructures the output for bulk evaluation integration. See [Evaluator Format](#evaluator-format) below. |
 
 ### Example with Detailed Metrics

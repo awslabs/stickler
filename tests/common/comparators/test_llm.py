@@ -4,13 +4,14 @@ Tests for LLMComparator.
 Note: This test module mocks the strands-agents and botocore dependencies
 to allow tests to run without these optional packages installed. The mocking
 is done at module level using sys.modules before importing LLMComparator.
-This logic is located in teh conftest.py file in this directory.
+This logic is located in the conftest.py file in this directory.
 """
 
-import json
+import re
 import socket
 from unittest.mock import MagicMock, patch
 
+import jinja2
 import pytest
 
 from stickler.comparators import BaseComparator, LLMComparator
@@ -53,6 +54,11 @@ class TestLLMComparator:
             self.agent_patcher = patch("stickler.comparators.llm.Agent")
             self.mock_agent_class = self.agent_patcher.start()
             self.mock_agent = MagicMock()
+            # Pinning return_value before construction means self.comparator.agent
+            # and self.mock_agent are the same object — reprogramming
+            # self.mock_agent.side_effect/return_value reprograms the comparator's
+            # agent. Tests that construct a fresh LLMComparator share the same
+            # mock instance for the same reason.
             self.mock_agent_class.return_value = self.mock_agent
 
             # Create comparator instance
@@ -71,169 +77,123 @@ class TestLLMComparator:
         mock_result.message = {"content": [{"text": content_text}]}
         self.mock_agent.return_value = mock_result
 
-    @pytest.mark.skip(reason="Not implemented yet")
     def test_init(self):
         """Test the initialization of the LLMComparator."""
-        comparator = LLMComparator(model_name="test-model", temperature=0.5)
-        assert comparator.model_name == "test-model"
-        assert comparator.temperature == 0.5
-        assert comparator.client is None
+        comparator = LLMComparator(model="test-model")
+        assert comparator.model == "test-model"
+        assert comparator.eval_guidelines is None
+        assert comparator.threshold == 0.7
+        # Pin the system prompt to its default and to the parsing invariant
+        # downstream ("true"/"false" detection in compare()).
+        assert comparator.system_prompt == comparator._default_system_prompt()
+        assert "Only return one word" in comparator.system_prompt
+        assert isinstance(comparator.prompt_template, jinja2.Template)
 
-    @pytest.mark.skip(reason="Not implemented yet")
-    @patch("stickler.comparators.llm.BedrockRuntime")
-    def test_init_with_client(self, mock_bedrock):
-        """Test initialization with a client."""
-        mock_client = MagicMock()
-        comparator = LLMComparator(model_name="test-model", client=mock_client)
-        assert comparator.client == mock_client
-        mock_bedrock.assert_not_called()
+    def test_init_with_model_instance(self):
+        """Test initialization with a strands Model object instead of a string model ID."""
+        mock_model = MagicMock()
+        comparator = LLMComparator(model=mock_model)
+        assert comparator.model is mock_model
+        assert comparator.agent is self.mock_agent_class.return_value
 
-    @pytest.mark.skip(reason="Not implemented yet")
-    @patch("stickler.comparators.llm.BedrockRuntime")
-    def test_client_initialization(self, mock_bedrock):
-        """Test client initialization when no client is provided."""
-        mock_client = MagicMock()
-        mock_bedrock.return_value = mock_client
+    def test_client_initialization(self):
+        """Test that the Agent is initialized eagerly during __init__."""
+        self.mock_agent_class.reset_mock()
+        new_comp = LLMComparator(model="eager-init-model")
+        self.mock_agent_class.assert_called_once_with(
+            model="eager-init-model",
+            system_prompt=new_comp.system_prompt,
+            callback_handler=None,
+        )
+        assert new_comp.agent is self.mock_agent_class.return_value
 
-        comparator = LLMComparator(model_name="test-model")
-        # Access the client property to trigger initialization
-        client = comparator.client
+    @pytest.mark.parametrize(
+        "response", ["true", "TRUE", "True", " true ", "  TRUE  "]
+    )
+    def test_compare_values_equal(self, response):
+        """Test that 'true' responses (across case/whitespace) map to 1.0."""
+        self._mock_agent_response(response)
 
-        mock_bedrock.assert_called_once()
-        assert client == mock_client
+        result = self.comparator.compare("hello world", "hello world")
 
-    @pytest.mark.skip(reason="Not implemented yet")
-    @patch("stickler.comparators.llm.BedrockRuntime")
-    def test_compare_values_equal(self, mock_bedrock):
-        """Test comparison of values that are considered equal by the LLM."""
-        # Setup mock response for equal values
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.body.read.return_value = json.dumps(
-            {
-                "completion": "After comparing the values, they are semantically equivalent."
-            }
-        ).encode()
-        mock_client.invoke_model.return_value = mock_response
-        mock_bedrock.return_value = mock_client
+        assert result == 1.0
+        self.mock_agent.assert_called_once()
+        prompt = self.mock_agent.call_args[0][0]
+        assert "hello world" in prompt
 
-        comparator = LLMComparator(model_name="test-model")
+    @pytest.mark.parametrize(
+        "response", ["false", "FALSE", "False", " false ", "  FALSE  "]
+    )
+    def test_compare_values_not_equal(self, response):
+        """Test that 'false' responses (across case/whitespace) map to 0.0."""
+        self._mock_agent_response(response)
+
+        result = self.comparator.compare("apple", "orange")
+
+        assert result == 0.0
+        self.mock_agent.assert_called_once()
+        prompt = self.mock_agent.call_args[0][0]
+        assert "apple" in prompt
+        assert "orange" in prompt
+
+    def test_compare_with_special_values(self):
+        """Test that HTML-special characters in values are escaped in the prompt."""
+        self._mock_agent_response("true")
+
+        result = self.comparator.compare("<script>", "<script>")
+
+        assert result == 1.0
+        prompt = self.mock_agent.call_args[0][0]
+        # Values are HTML-escaped before insertion into the prompt
+        assert "&lt;script&gt;" in prompt
+        # Scope the negative to the rendered Value 1 / Value 2 slots so that
+        # future template additions (e.g. <example>, <output>, few-shot blocks)
+        # don't break this test even though the escape path is still correct.
+        value_lines = re.findall(r"Value [12]:.*", prompt)
+        assert value_lines, "expected Value 1: / Value 2: lines in rendered prompt"
+        for line in value_lines:
+            assert "<script>" not in line
+
+    def test_compare_escapes_eval_guidelines(self):
+        """Test that eval_guidelines are HTML-escaped and rendered inside the
+        <guidelines> block of the prompt."""
+        self._mock_agent_response("true")
+
+        guidelines = "<rule> Use strict & exact matching"
+        comparator = LLMComparator(model="test-model", eval_guidelines=guidelines)
         result = comparator.compare("value1", "value2")
 
-        # Verify the compare method returns True for equal values
-        assert result is True
-        mock_client.invoke_model.assert_called_once()
-
-    @pytest.mark.skip(reason="Not implemented yet")
-    @patch("stickler.comparators.llm.BedrockRuntime")
-    def test_compare_values_not_equal(self, mock_bedrock):
-        """Test comparison of values that are not considered equal by the LLM."""
-        # Setup mock response for unequal values
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.body.read.return_value = json.dumps(
-            {
-                "completion": "After comparing the values, they are not semantically equivalent."
-            }
-        ).encode()
-        mock_client.invoke_model.return_value = mock_response
-        mock_bedrock.return_value = mock_client
-
-        comparator = LLMComparator(model_name="test-model")
-        result = comparator.compare("value1", "completely different value")
-
-        # Verify the compare method returns False for unequal values
-        assert result is False
-        mock_client.invoke_model.assert_called_once()
-
-    @pytest.mark.skip(reason="Not implemented yet")
-    @patch("stickler.comparators.llm.BedrockRuntime")
-    def test_compare_with_special_values(self, mock_bedrock):
-        """Test comparison with special values like None and empty strings."""
-        mock_client = MagicMock()
-        mock_bedrock.return_value = mock_client
-
-        comparator = LLMComparator(model_name="test-model")
-
-        # Compare None with None (should be equal without calling the LLM)
-        assert comparator.compare(None, None) is True
-        mock_client.invoke_model.assert_not_called()
-
-        # Compare empty string with None (should not be equal without calling the LLM)
-        assert comparator.compare("", None) is False
-        mock_client.invoke_model.assert_not_called()
-
-        # Compare None with a value (should not be equal without calling the LLM)
-        assert comparator.compare(None, "value") is False
-        mock_client.invoke_model.assert_not_called()
-
-        # Reset mock for next test
-        mock_client.reset_mock()
-
-        # Setup mock response for comparing empty strings
-        mock_response = MagicMock()
-        mock_response.body.read.return_value = json.dumps(
-            {
-                "completion": "After comparing the values, they are semantically equivalent."
-            }
-        ).encode()
-        mock_client.invoke_model.return_value = mock_response
-
-        # Compare empty strings (should call LLM)
-        assert comparator.compare("", "") is True
-        mock_client.invoke_model.assert_called_once()
-
-    @pytest.mark.skip(reason="Not implemented yet")
-    @patch("stickler.comparators.llm.BedrockRuntime")
-    def test_compare_with_custom_prompt(self, mock_bedrock):
-        """Test comparison with a custom prompt."""
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.body.read.return_value = json.dumps(
-            {
-                "completion": "After comparing the values, they are semantically equivalent."
-            }
-        ).encode()
-        mock_client.invoke_model.return_value = mock_response
-        mock_bedrock.return_value = mock_client
-
-        custom_prompt = "Custom prompt {value1} vs {value2}"
-        LLMComparator(model_name="test-model", prompt_template=custom_prompt)
+        assert result == 1.0
+        prompt = self.mock_agent.call_args[0][0]
+        # The escaped guidelines must land inside the <guidelines>...</guidelines>
+        # block, not just somewhere in the prompt.
+        assert re.search(
+            r"<guidelines>.*?&lt;rule&gt; Use strict &amp; exact matching.*?</guidelines>",
+            prompt,
+            re.DOTALL,
+        )
 
     def test_inheritance(self):
         """Test that LLMComparator inherits from BaseComparator."""
         assert isinstance(self.comparator, BaseComparator)
 
-    @pytest.mark.skip(reason="Not implemented yet")
-    @patch("stickler.comparators.llm.BedrockRuntime")
-    def test_compare_exception_handling(self, mock_bedrock):
-        """Test exception handling during comparison."""
-        mock_client = MagicMock()
-        mock_client.invoke_model.side_effect = Exception("API Error")
-        mock_bedrock.return_value = mock_client
+    def test_compare_exception_handling(self):
+        """Test that NoCredentialsError raised by the agent propagates via the
+        dedicated except branch, and that the comparator stays usable after."""
+        # Use the module's own NoCredentialsError so we actually hit the
+        # `except NoCredentialsError` branch in compare(), not the generic one.
+        from stickler.comparators.llm import NoCredentialsError as LLMNoCredentialsError
 
-    def test_no_match(self):
-        """Test that non-matching values return 0.0."""
-        self._mock_agent_response("false")
+        self.mock_agent.side_effect = LLMNoCredentialsError()
 
-        result = self.comparator.compare("test", "completely different")
-        assert result == 0.0
+        with pytest.raises(LLMNoCredentialsError):
+            self.comparator.compare("value1", "value2")
 
-    def test_case_variations(self):
-        """Test different case variations of true/false responses."""
-        # Test true variations
-        true_cases = ["TRUE", "True", "true", " true ", "  TRUE  "]
-        for response in true_cases:
-            self._mock_agent_response(response)
-            result = self.comparator.compare("value1", "value2")
-            assert result == 1.0, f"Failed for response: {response}"
-
-        # Test false variations
-        false_cases = ["FALSE", "False", "false", " false ", "  FALSE  "]
-        for response in false_cases:
-            self._mock_agent_response(response)
-            result = self.comparator.compare("value1", "value2")
-            assert result == 0.0, f"Failed for response: {response}"
+        # Comparator remains usable after the exception is cleared. Use a
+        # 'true' → 1.0 roundtrip so a regression to always-zero would fail here.
+        self.mock_agent.side_effect = None
+        self._mock_agent_response("true")
+        assert self.comparator.compare("value1", "value2") == 1.0
 
     def test_ambiguous_response(self):
         """Test that ambiguous responses default to 0.0."""
@@ -323,20 +283,6 @@ class TestLLMComparator:
         assert comparator.eval_guidelines == custom_guidelines
         assert comparator.threshold == 0.7  # BaseComparator default
 
-    def test_default_initialization(self):
-        """Test default initialization parameters."""
-        comparator = LLMComparator(model="us.anthropic.claude-3-haiku-20240307-v1:0")
-        assert comparator.model == "us.anthropic.claude-3-haiku-20240307-v1:0"
-        assert comparator.eval_guidelines is None
-        assert comparator.threshold == 0.7  # BaseComparator default
-
-    def test_agent_exception_handling(self):
-        """Test that Agent exceptions are handled gracefully."""
-        self.mock_agent.side_effect = Exception("Agent Error")
-
-        with pytest.raises(Exception):
-            self.comparator.compare("value1", "value2")
-
     def test_agent_response_format_error(self):
         """Test handling of unexpected agent response format."""
         # Mock agent response with missing expected structure
@@ -346,31 +292,6 @@ class TestLLMComparator:
 
         with pytest.raises(Exception):
             self.comparator.compare("value1", "value2")
-
-    def test_agent_initialization(self):
-        """Test that Agent is properly initialized."""
-        # Verify Agent was called with correct parameters
-        self.mock_agent_class.assert_called_once_with(
-            model="us.anthropic.claude-3-haiku-20240307-v1:0",
-            system_prompt="You are a helpful assistant that compares two values and determines if they are equivalent. Only return one word: 'true' or 'false'.",
-            callback_handler=None,
-        )
-
-    def test_prompt_template_with_guidelines(self):
-        """Test that eval_guidelines are included in prompt when provided."""
-        self._mock_agent_response("true")
-
-        comparator_with_guidelines = LLMComparator(
-            model="test-model", eval_guidelines="Use strict comparison rules"
-        )
-
-        result = comparator_with_guidelines.compare("value1", "value2")
-        assert result == 1.0
-
-        # Check that guidelines were included in the prompt
-        call_args = self.mock_agent.call_args[0][0]
-        assert "Use strict comparison rules" in call_args
-        assert "<guidelines>" in call_args
 
     def test_prompt_template_without_guidelines(self):
         """Test that prompt works correctly without eval_guidelines."""
@@ -419,13 +340,6 @@ class TestLLMComparator:
         assert "threshold" in repr(self.comparator)
 
     # Enhanced Error Handling Tests
-
-    def test_no_credentials_error_handling(self):
-        """Test handling of AWS NoCredentialsError."""
-        self.mock_agent.side_effect = NoCredentialsError()
-
-        with pytest.raises(NoCredentialsError):
-            self.comparator.compare("value1", "value2")
 
     def test_client_error_handling(self):
         """Test handling of AWS ClientError."""
@@ -487,21 +401,6 @@ class TestLLMComparator:
 
         with pytest.raises(Exception):
             self.comparator.compare("value1", "value2")
-
-    def test_error_recovery_after_exception(self):
-        """Test that comparator recovers properly after an exception."""
-        # First call raises exception
-        self.mock_agent.side_effect = Exception("Temporary error")
-
-        with pytest.raises(Exception):
-            self.comparator.compare("value1", "value2")
-
-        # Reset mock and verify subsequent calls work
-        self.mock_agent.side_effect = None
-        self._mock_agent_response("true")
-
-        result = self.comparator.compare("value3", "value4")
-        assert result == 1.0
 
     def test_get_comparison_details_comprehensive_error_handling(self):
         """Test comprehensive error handling in get_comparison_details."""

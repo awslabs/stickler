@@ -1,9 +1,11 @@
 nav:
   - README.md
+  - rich-value-pattern.md
   - classification-logic.md
   - hungarian-matching.md
   - threshold-gated-evaluation.md
   - dynamic-models.md
   - confidence-metrics.md
+  - map-reduce-evaluation.md
   - aggregate-metrics.md
   - model-export.md
