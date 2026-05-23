@@ -1018,6 +1018,9 @@ class TestNullableTypeListForm:
         )
         # Required and nullable: None is a valid value, not a missing field.
         assert NullableModel(description=None).description is None
+        # Nullable does not make the field optional: omitting it still errors.
+        with pytest.raises(ValidationError):
+            NullableModel()
 
         PlainModel = StructuredModel.from_json_schema(
             {
@@ -1046,6 +1049,28 @@ class TestNullableTypeListForm:
 
         Rebuilt = StructuredModel.from_json_schema(schema)
         assert Rebuilt(description=None).description is None
+
+    def test_nullable_object_array_element_accepts_none(self):
+        """An array of nullable objects accepts None as a list element."""
+        from stickler import StructuredModel
+
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": ["object", "null"],
+                            "properties": {"id": {"type": "string"}},
+                            "required": ["id"],
+                        },
+                    }
+                },
+                "required": ["items"],
+            }
+        )
+        assert Model(items=[None]).items == [None]
 
     @pytest.mark.parametrize(
         "bad_type",

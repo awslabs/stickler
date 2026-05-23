@@ -415,6 +415,7 @@ class StructuredModel(BaseModel):
         -------------------
         - Primitive types: string, number, integer, boolean
         - Nullable list-form types, e.g. {"type": ["string", "null"]}
+          (anyOf-based nullability and implicit type:object are not yet supported)
         - Nested objects and arrays (primitive/object items)
         - Required fields, defaults, descriptions
         - Schema references ($ref with #/definitions/ and #/$defs/)

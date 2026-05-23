@@ -448,7 +448,8 @@ class JsonSchemaFieldConverter:
             except ValueError:
                 # Nested errors already have field path context
                 raise
-            field_type = List[ElementModel]
+            element_type = Optional[ElementModel] if items_nullable else ElementModel
+            field_type = List[element_type]
             # Use default comparator for the element type
             comparator = self._get_default_comparator_for_type("string")
         else:
