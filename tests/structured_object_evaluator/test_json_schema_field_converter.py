@@ -1085,12 +1085,10 @@ class TestNullableTypeListForm:
         }
 
         converter = JsonSchemaFieldConverter(schema)
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="value"):
             converter.convert_properties_to_fields(
                 schema["properties"], schema["required"]
             )
-
-        assert "value" in str(exc_info.value)
 
     def test_nullable_outer_object(self):
         """Outer-level {"type": ["object", "null"]} field wraps model in Optional."""
@@ -1143,3 +1141,21 @@ class TestNullableTypeListForm:
         inner_types = [t for t in get_args(field_type) if t is not type(None)]
         assert len(inner_types) == 1
         assert get_origin(inner_types[0]) is list
+
+    def test_nullable_reversed_order(self):
+        """["null", "string"] (null first) is equivalent to ["string", "null"]."""
+        from typing import Union, get_args, get_origin
+
+        schema = {
+            "type": "object",
+            "properties": {"value": {"type": ["null", "string"]}},
+            "required": ["value"],
+        }
+        converter = JsonSchemaFieldConverter(schema)
+        fields = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+        field_type, _ = fields["value"]
+        assert get_origin(field_type) is Union
+        assert type(None) in get_args(field_type)
+        assert str in get_args(field_type)
