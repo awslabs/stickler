@@ -1091,3 +1091,55 @@ class TestNullableTypeListForm:
             )
 
         assert "value" in str(exc_info.value)
+
+    def test_nullable_outer_object(self):
+        """Outer-level {"type": ["object", "null"]} field wraps model in Optional."""
+        from typing import Union, get_args, get_origin
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "nested": {
+                    "type": ["object", "null"],
+                    "properties": {"id": {"type": "string"}},
+                    "required": ["id"],
+                }
+            },
+            "required": ["nested"],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        fields = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+
+        field_type, _ = fields["nested"]
+        assert get_origin(field_type) is Union
+        assert type(None) in get_args(field_type)
+
+    def test_nullable_outer_array(self):
+        """Outer-level {"type": ["array", "null"]} field wraps list in Optional."""
+        from typing import List, Union, get_args, get_origin
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "tags": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string"},
+                }
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        fields = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+
+        field_type, _ = fields["tags"]
+        assert get_origin(field_type) is Union
+        assert type(None) in get_args(field_type)
+        inner_types = [t for t in get_args(field_type) if t is not type(None)]
+        assert len(inner_types) == 1
+        assert get_origin(inner_types[0]) is list
