@@ -1,8 +1,8 @@
 """Tests for DateComparator.
 
-Organized by tier (see ``date_requirements.md``). Tier 1 (surface form)
-and Tier 5 (must-not-match) are covered by parametrized format-zoo and
-unparseable-input tests. Tiers 2/3/4/4b each have a dedicated class.
+Organized by tier. Tier 1 (surface form) and Tier 5 (must-not-match) are
+covered by parametrized format-zoo and unparseable-input tests. Tiers
+2/3/4/4b each have a dedicated class.
 """
 
 from datetime import date, datetime, timedelta, timezone
