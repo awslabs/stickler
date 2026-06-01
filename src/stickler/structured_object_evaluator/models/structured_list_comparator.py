@@ -1,14 +1,32 @@
 """
 Dedicated class for handling Hungarian matching of List[StructuredModel] fields.
 
-This class extracts the Hungarian matching logic from StructuredModel to improve
-code organization and maintainability. The extraction preserves existing behavior
-exactly, including current bugs that will be fixed in subsequent phases.
+Encapsulates the comparison logic for a list whose elements are themselves
+StructuredModel instances. It runs Hungarian matching to pair items between
+the GT and predicted lists, then produces two parallel views of the result:
+a threshold-gated view ("overall") and an ungated view ("aggregate") used
+for drill-down field-level metrics.
 
-Current Behavior Preserved (including bugs):
-- Uses parent field threshold instead of object match_threshold (bug)
-- Generates nested metrics for all matched pairs regardless of threshold (bug)
-- Object-level counting discrepancies in some scenarios (bug)
+Behavior summary:
+
+- Object-level threshold: the element model's own ``match_threshold``
+  (``StructuredModel.match_threshold`` of the list's item type) is used to
+  classify each Hungarian-matched pair. Pairs at or above threshold are
+  TP; matched pairs below threshold are FD; unmatched GT/Pred items are
+  FN/FA.
+- Zero-similarity pairs (similarity == 0.0) are treated as unmatched
+  (FN+FA), not FD. Hungarian can pair items that share no aligning fields
+  at all; treating those as FD would be misleading.
+- Per-field ``overall`` metrics are threshold-gated: only TP pairs and
+  unmatched FN/FA items contribute. FD pairs are excluded so per-field
+  ``overall`` reflects the same threshold decision as the object level.
+- Per-field ``aggregate`` metrics ALWAYS recurse through every matched
+  pair (TP and FD) and every unmatched item (FN and FA), providing a
+  complete drill-down view independent of the threshold gate.
+- Empty-list cases account properly for child leaf nodes: empty-vs-empty
+  yields TN; populated-vs-empty contributes FN/FA per populated field.
+- Nested field metrics are computed by delegating into each child model's
+  ``compare_with`` rather than re-implementing the recursion here.
 """
 
 from typing import TYPE_CHECKING, Any, Dict, List, Union, get_args, get_origin
