@@ -6,6 +6,19 @@ title: Aggregate Metrics
 
 Stickler automatically includes an `aggregate` field at every node in the confusion-matrix result tree. This provides a hierarchical rollup of all primitive-field metrics below each node, without any per-field configuration.
 
+## Why aggregates?
+
+The default `overall` metrics answer the question *"how did the model do at this level of the object?"* For a `List[Product]`, that means one TP/FD/FA/FN per item — a five-item GT compared against five predictions yields five object-level events, each gated by `match_threshold`. That view is correct for object-level evaluation, but it hides the field-level signal: a TP item with three of four fields wrong still counts as a single TP, and an FD or unmatched item contributes nothing to per-field accuracy because the per-field counts are threshold-gated.
+
+`aggregate` answers a different question: *"how did the model do across **every** field of **every** item, regardless of whether each item cleared the match threshold?"* The aggregate path always recurses into the nested fields of TP and FD pairs, and counts populated fields on unmatched items as FN (for missing GT) or FA (for spurious predictions). The result is a single per-field rollup at the parent level that tells you, e.g., "across this entire `List[LineItem]`, sku had 2 TP / 0 FD / 1 FN; description had 1 TP / 1 FD / 1 FN."
+
+In short:
+
+- Use **`overall`** when you want object-level pass/fail performance gated by `match_threshold` (e.g., "what fraction of predicted line items matched a GT line item?").
+- Use **`aggregate`** when you want field-level performance rolled up across an entire list or nested structure (e.g., "what's the precision and recall of the `sku` field across all line items in this invoice?").
+
+The two are complementary: `overall` and `aggregate` agree exactly for primitive fields and primitive-list fields (no recursion to do), and they diverge in interesting ways for `List[StructuredModel]`. The [Common pitfalls](#common-pitfalls) section near the end of this page covers the most frequent confusions.
+
 ## Key Features
 
 - **Automatic** -- Every node gets an `aggregate` field. No `aggregate=True` parameter needed.
@@ -259,6 +272,37 @@ def print_metrics(node, path=""):
 result = gt.compare_with(pred, include_confusion_matrix=True)
 print_metrics(result['confusion_matrix'])
 ```
+
+## Common pitfalls
+
+A handful of behaviors trip up users when they first start consuming `aggregate` metrics in earnest. Each subsection below is anchored so you can link directly to the specific footgun.
+
+### Aggregate doesn't equal the sum of `overall` counts {#aggregate-not-sum-of-overall}
+
+For `List[StructuredModel]` parents, `aggregate` is **not** derived from the parent's `overall` — it is a separately-accumulated rollup that recurses through every Hungarian-paired item, regardless of `match_threshold`. The object-level `overall` (TP/FD/FA/FN per item) is threshold-gated; `aggregate` pre-seeds its leaf counts from the full ungated set of pairs and then sums upward. If your numbers don't add up, this is almost always why — see the FD-recursion table in [Example 2](#example-2-list-of-structuredmodel-fd-recursion-and-unmatched-items) and the [threshold-gated drill-down explanation](threshold-gated-evaluation.md).
+
+### Zero-similarity item pairs are unmatched, not FD {#zero-similarity-pairs}
+
+Hungarian can return a "pairing" with similarity exactly `0.0` (e.g., two list items that share no signal at all). At the **object level**, those pairs are treated as unmatched and contribute one FN to GT plus one FA to Pred — not a single FD. Only pairs with `0.0 < similarity < match_threshold` count as FD. If you're tuning `match_threshold` and expect to see FD for very different items, you'll instead see FN+FA. See `_calculate_object_level_metrics` in `structured_list_comparator.py` (the `elif similarity > 0.0:` branch around line 205).
+
+### Empty list comparisons {#empty-lists}
+
+When **both** the GT and Pred lists are empty, the list field's `overall` is recorded as `tn: 1` (object-level true negative, similarity `1.0`). When **one** side is empty and the other is populated, every item on the non-empty side counts at the field level — populated GT items become FN, populated Pred items become FA. This matters in IDP scenarios where many document fields are optional: a model that hallucinates a 5-item table when GT is empty will produce 5 items' worth of FA across all sub-fields in `aggregate`, not just one object-level FA.
+
+### Bulk evaluator does not yet aggregate the `aggregate` field {#bulk-aggregate-not-rolled-up}
+
+`BulkStructuredModelEvaluator._accumulate_confusion_matrix` walks `cm_result["overall"]` and `cm_result["fields"]` (recursively into `fields` and `nested_fields`), but it **does not** roll up the per-document `aggregate` key into a corpus-level aggregate. Each per-document result still contains `aggregate`, but the bulk-rolled-up output exposes only `overall` and per-field metrics. If you need a corpus-level aggregate today, sum the per-document `aggregate` blocks yourself from `evaluate_pair` results. (Tracked as a follow-up.)
+
+### `recall_with_fd` parameter {#recall-with-fd}
+
+Derived metrics support two recall formulas, controlled by `recall_with_fd`:
+
+```text
+recall_with_fd=False (default):  TP / (TP + FN)
+recall_with_fd=True:             TP / (TP + FN + FD)
+```
+
+The default matches the textbook definition and treats FDs (partial/below-threshold matches) as neither rewards nor penalties for recall. Set `recall_with_fd=True` when a soft-but-wrong prediction should still count against you — i.e., when your downstream consumer can't tell the difference between "not retrieved" and "retrieved but below quality bar." Precision, F1, and accuracy are unaffected by this flag; only `cm_recall` (and the `cm_f1` derived from it) change.
 
 ## See Also
 

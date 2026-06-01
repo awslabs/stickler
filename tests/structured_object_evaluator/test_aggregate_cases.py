@@ -110,6 +110,38 @@ class TestAggregation:
         assert agg_results['fp'] == 4, 'fp'
         assert agg_results['fn'] == 0, 'fn'
 
+    def test_primitive_list_zero_similarity_treated_as_unmatched(self):
+        """Regression test: single-item primitive lists with zero similarity
+        must be treated as both items unmatched (FN + FA), not as a paired-but-
+        mismatched item (FD).
+
+        Previously the HungarianMatcher single-item shortcut returned a
+        synthetic matched pair for score==0, which caused the
+        ``unordered_list_metrics`` helper to count the pair as a False
+        Discovery (fd:1, fa:0, fn:0). The correct behavior — consistent with
+        StructuredListComparator's zero-similarity handling — is to leave the
+        items unmatched, yielding fa:1, fn:1, fd:0.
+
+        See PR #115 review feedback.
+        """
+        from typing import List, Any, Optional
+
+        class Doc(StructuredModel):
+            tags: Optional[List[str]] | Any = exact_field
+
+        gt = Doc(tags=['a'])
+        pred = Doc(tags=['b'])
+
+        result = gt.compare_with(pred, include_confusion_matrix=True)
+        tags_overall = result['confusion_matrix']['fields']['tags']['overall']
+
+        assert tags_overall['fa'] == 1, f"fa: expected 1, got {tags_overall['fa']}"
+        assert tags_overall['fn'] == 1, f"fn: expected 1, got {tags_overall['fn']}"
+        assert tags_overall['fd'] == 0, f"fd: expected 0 (regression — used to be 1), got {tags_overall['fd']}"
+        assert tags_overall['tp'] == 0, f"tp: expected 0, got {tags_overall['tp']}"
+        # fp = fa + fd should remain consistent
+        assert tags_overall['fp'] == tags_overall['fa'] + tags_overall['fd'], 'fp = fa + fd'
+
 
     def test_list_structure(self):
         invoice_gt = Invoice(

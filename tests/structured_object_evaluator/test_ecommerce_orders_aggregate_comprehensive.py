@@ -376,13 +376,13 @@ class TestEcommerceOrdersAggregateComprehensive:
         assert cm["fields"]["Products"]["fields"]["Product_Id"]["aggregate"]["fn"] == 0, f'Expected Product_Id aggregate FN=0, got {cm["fields"]["Products"]["fields"]["Product_Id"]["aggregate"]["fn"]}'
 
         # gt_json["Products"][0]["Product_Category"], pred_json["Products"][0]["Product_Category"]:  1 true positive
-        # gt_json["Products"][1]["Product_Category"], pred_json["Products"][1]["Product_Category"]:  1 false discovery
+        # gt_json["Products"][1]["Product_Category"], pred_json["Products"][1]["Product_Category"]:  zero similarity → both items unmatched (1 FN + 1 FA)
         # Category_Name fields should be ignored since CategoryOnly model only defines Category_Code field, not Category_Name field
         assert cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["tp"] == 1, f'Expected Product_Category aggregate TP=1, got {cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["tp"]}'
-        assert cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["fa"] == 0, f'Expected Product_Category aggregate FA=0, got {cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["fa"]}'
-        assert cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["fd"] == 1, f'Expected Product_Category aggregate FD=1, got {cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["fd"]}'
+        assert cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["fa"] == 1, f'Expected Product_Category aggregate FA=1, got {cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["fa"]}'
+        assert cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["fd"] == 0, f'Expected Product_Category aggregate FD=0, got {cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["fd"]}'
         assert cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["tn"] == 0, f'Expected Product_Category aggregate TN=0, got {cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["tn"]}'
-        assert cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["fn"] == 0, f'Expected Product_Category aggregate FN=0, got {cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["fn"]}'
+        assert cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["fn"] == 1, f'Expected Product_Category aggregate FN=1, got {cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["fn"]}'
 
         # at the object level with match_threshold = 1.0, 1 true positve, 1 false discovery (2 entries are matched, but only one match is above threshold)
         assert cm["fields"]["Products"]["overall"]["tp"] == 1, f'Expected Products overall TP=1, got {cm["fields"]["Products"]["overall"]["tp"]}'
@@ -391,12 +391,16 @@ class TestEcommerceOrdersAggregateComprehensive:
         assert cm["fields"]["Products"]["overall"]["tn"] == 0, f'Expected Products overall TN=0, got {cm["fields"]["Products"]["overall"]["tn"]}'
         assert cm["fields"]["Products"]["overall"]["fn"] == 0, f'Expected Products overall FN=0, got {cm["fields"]["Products"]["overall"]["fn"]}'
 
-        # at the field level within all matched entries (2 matched entries are considered for the sub field comparison)     
+        # at the field level within all matched entries:
+        # 3 TP from Product_Id (both match) and Product_Category[0] (codes match)
+        # Product_Category[1] (codes "01" vs "02") has zero similarity at the
+        # inner single-item list, so its items are treated as unmatched
+        # (1 FN + 1 FA), not as a paired False Discovery.
         assert cm["fields"]["Products"]["aggregate"]["tp"] == 3, f'Expected Products aggregate TP=3, got {cm["fields"]["Products"]["aggregate"]["tp"]}'
-        assert cm["fields"]["Products"]["aggregate"]["fa"] == 0, f'Expected Products aggregate FA=0, got {cm["fields"]["Products"]["aggregate"]["fa"]}'
-        assert cm["fields"]["Products"]["aggregate"]["fd"] == 1, f'Expected Products aggregate FD=1, got {cm["fields"]["Products"]["aggregate"]["fd"]}'
+        assert cm["fields"]["Products"]["aggregate"]["fa"] == 1, f'Expected Products aggregate FA=1, got {cm["fields"]["Products"]["aggregate"]["fa"]}'
+        assert cm["fields"]["Products"]["aggregate"]["fd"] == 0, f'Expected Products aggregate FD=0, got {cm["fields"]["Products"]["aggregate"]["fd"]}'
         assert cm["fields"]["Products"]["aggregate"]["tn"] == 0, f'Expected Products aggregate TN=0, got {cm["fields"]["Products"]["aggregate"]["tn"]}'
-        assert cm["fields"]["Products"]["aggregate"]["fn"] == 0, f'Expected Products aggregate FN=0, got {cm["fields"]["Products"]["aggregate"]["fn"]}'
+        assert cm["fields"]["Products"]["aggregate"]["fn"] == 1, f'Expected Products aggregate FN=1, got {cm["fields"]["Products"]["aggregate"]["fn"]}'
 
     def test_discounts_field_aggregate_counts(self):
         """Test the Discounts field aggregate counts."""
@@ -462,11 +466,14 @@ class TestEcommerceOrdersAggregateComprehensive:
         aggregate = cm["aggregate"]
         
         assert aggregate["tp"] == 20, f'Expected TP=20, got {aggregate["tp"]}'
-        assert aggregate["fa"] == 2, f'Expected FA=2, got {aggregate["fa"]}'
-        assert aggregate["fd"] == 5, f'Expected FD=5, got {aggregate["fd"]}'
+        # Single-item primitive/structured lists with zero similarity now count
+        # as unmatched (FA + FN) rather than paired False Discovery (FD), so
+        # one entry shifts from FD into both FA and FN.
+        assert aggregate["fa"] == 3, f'Expected FA=3, got {aggregate["fa"]}'
+        assert aggregate["fd"] == 4, f'Expected FD=4, got {aggregate["fd"]}'
         # 5 TN: Order_Info.Order_Status.Category_Code, Order_Info.Store_Location, Customers.Loyalty_Status.Category_Code, Customers.Loyalty_Status.Category_Name, Discounts.Discount_Code
-        assert aggregate["tn"] == 5, f'Expected TN=5, got {aggregate["tn"]}' 
-        assert aggregate["fn"] == 10, f'Expected FN=10, got {aggregate["fn"]}'
+        assert aggregate["tn"] == 5, f'Expected TN=5, got {aggregate["tn"]}'
+        assert aggregate["fn"] == 11, f'Expected FN=11, got {aggregate["fn"]}'
         
     def test_hungarian_matching_verification(self):
         """Test that Hungarian matching works correctly for the Customers list."""
@@ -667,13 +674,67 @@ class TestEcommerceOrdersAggregateComprehensive:
         
         result = gt_order.compare_with(pred_order, include_confusion_matrix=True)
         cm = result["confusion_matrix"]
-        
-        # Verify that threshold-based classification affects aggregates correctly
+
+        # Threshold-based classification per child of Order_Info:
+        #   Order_Status: list with one identical {Category_Code:"A", Category_Name:"EXACT MATCH"}
+        #                 -> object-level TP=1, aggregate TP=2 (one per leaf: Code + Name)
+        #   Total_Amount: "5" == "5" exact (NumericComparator threshold=1.0) -> TP=1
+        #   Store_Location: "TEST" == "TEST" exact (ExactComparator threshold=1.0) -> TP=1
+        #   Payment_Method: empty lists both sides -> object-level TN=1, aggregate TN=2
+        #                   (one per leaf in CategoryDescription: Code + Name)
+        #   Order_Notes: "exact notes" vs "different notes" via LevenshteinComparator threshold=0.75
+        #                -> similarity below threshold -> FD=1
+        order_info_fields = cm["fields"]["Order_Info"]["fields"]
+
+        # Order_Status: identical single-item list, object TP=1, aggregate TP=2 (Code+Name)
+        assert order_info_fields["Order_Status"]["overall"]["tp"] == 1
+        assert order_info_fields["Order_Status"]["aggregate"]["tp"] == 2
+        assert order_info_fields["Order_Status"]["aggregate"]["fd"] == 0
+        assert order_info_fields["Order_Status"]["aggregate"]["tn"] == 0
+        assert order_info_fields["Order_Status"]["aggregate"]["fn"] == 0
+        assert order_info_fields["Order_Status"]["aggregate"]["fa"] == 0
+
+        # Total_Amount: leaf TP=1
+        assert order_info_fields["Total_Amount"]["aggregate"]["tp"] == 1
+        assert order_info_fields["Total_Amount"]["aggregate"]["fd"] == 0
+        assert order_info_fields["Total_Amount"]["aggregate"]["tn"] == 0
+
+        # Store_Location: leaf TP=1
+        assert order_info_fields["Store_Location"]["aggregate"]["tp"] == 1
+        assert order_info_fields["Store_Location"]["aggregate"]["fd"] == 0
+        assert order_info_fields["Store_Location"]["aggregate"]["tn"] == 0
+
+        # Payment_Method: empty list -> object TN=1, aggregate TN=2 (one per child leaf)
+        assert order_info_fields["Payment_Method"]["overall"]["tn"] == 1
+        assert order_info_fields["Payment_Method"]["aggregate"]["tn"] == 2
+        assert order_info_fields["Payment_Method"]["aggregate"]["tp"] == 0
+        assert order_info_fields["Payment_Method"]["aggregate"]["fd"] == 0
+
+        # Order_Notes: below-threshold mismatch -> FD=1
+        assert order_info_fields["Order_Notes"]["aggregate"]["tp"] == 0
+        assert order_info_fields["Order_Notes"]["aggregate"]["fd"] == 1
+        assert order_info_fields["Order_Notes"]["aggregate"]["tn"] == 0
+
+        # Order_Info object-level: match_threshold default (mean similarity drops below 1.0
+        # because Order_Notes is below its threshold), so object-level is FD=1, TP=0
+        order_info_overall = cm["fields"]["Order_Info"]["overall"]
+        assert order_info_overall["tp"] == 0
+        assert order_info_overall["fd"] == 1
+        assert order_info_overall["fa"] == 0
+        assert order_info_overall["tn"] == 0
+        assert order_info_overall["fn"] == 0
+
+        # Order_Info aggregate (sum of all leaf-level counts under Order_Info):
+        #   TP: 2 (Order_Status: Code + Name) + 1 (Total_Amount) + 1 (Store_Location) = 4
+        #   FD: 1 (Order_Notes)
+        #   TN: 2 (Payment_Method: Code + Name leaves on empty list)
+        #   FA: 0, FN: 0
         order_info_agg = cm["fields"]["Order_Info"]["aggregate"]
-        
-        # We should have some TPs and potentially some FDs based on thresholds
-        assert order_info_agg["tp"] > 0, "Should have some true positives"
-        assert order_info_agg["tp"] + order_info_agg["fd"] + order_info_agg["tn"] > 0, "Should have some classifications"
+        assert order_info_agg["tp"] == 4, f'Expected Order_Info aggregate TP=4, got {order_info_agg["tp"]}'
+        assert order_info_agg["fd"] == 1, f'Expected Order_Info aggregate FD=1, got {order_info_agg["fd"]}'
+        assert order_info_agg["tn"] == 2, f'Expected Order_Info aggregate TN=2, got {order_info_agg["tn"]}'
+        assert order_info_agg["fa"] == 0, f'Expected Order_Info aggregate FA=0, got {order_info_agg["fa"]}'
+        assert order_info_agg["fn"] == 0, f'Expected Order_Info aggregate FN=0, got {order_info_agg["fn"]}'
 
 
 if __name__ == "__main__":

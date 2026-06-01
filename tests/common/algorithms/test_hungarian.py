@@ -165,11 +165,12 @@ class TestHungarianMatcher:
         assert metrics["fp"] == 0
         assert metrics["fn"] == 0
 
-        # Non-matching single items
+        # Non-matching single items: zero similarity is treated as both items
+        # unmatched (FN + FA), not as a paired-but-mismatched item.
         metrics = self.matcher.calculate_metrics("apple", "banana")
         assert metrics["tp"] == 0
         assert metrics["fp"] == 1
-        assert metrics["fn"] == 0
+        assert metrics["fn"] == 1
 
     def test_string_list_parsing(self):
         """Test parsing of string representations of lists."""

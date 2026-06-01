@@ -212,7 +212,7 @@ class HungarianMatcher:
             else:
                 score = self.comparator(prepared_list1[0], prepared_list2[0])
 
-            if score >= self.match_threshold:
+            if score > 0:
                 return {
                     "matched_pairs": [(0, 0, score)],
                     "tp": 1,
@@ -223,11 +223,17 @@ class HungarianMatcher:
                     "f1": 1.0,
                 }
             else:
+                # score == 0: items have no similarity, so treat as both
+                # unmatched (FN + FA) rather than as a paired-but-mismatched
+                # item (FD). This is consistent with the StructuredListComparator
+                # behavior, which excludes zero-similarity pairings from the
+                # matched set so that unmatched_gt and unmatched_pred each
+                # contribute to FN and FA respectively.
                 return {
-                    "matched_pairs": [(0, 0, score)],
+                    "matched_pairs": [],
                     "tp": 0,
                     "fp": 1,
-                    "fn": 0,
+                    "fn": 1,
                     "precision": 0.0,
                     "recall": 0.0,
                     "f1": 0.0,
