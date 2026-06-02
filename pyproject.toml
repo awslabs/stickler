@@ -50,6 +50,8 @@ dev = [
     "pymdown-extensions",
     # Used by examples/notebooks/Review_Efficiency_Exploration.ipynb.
     "matplotlib>=3.8.0",
+    # Executes example notebooks end-to-end as pytest items in CI.
+    "nbmake>=1.5.0",
 ]
 llm = [
     "strands-agents>=1.0.0,<=1.16.0"
@@ -100,6 +102,8 @@ test = [
     "beautifulsoup4>=4.14.2",
     # Used by examples/notebooks/Review_Efficiency_Exploration.ipynb.
     "matplotlib>=3.8.0",
+    # Executes example notebooks end-to-end as pytest items in CI.
+    "nbmake>=1.5.0",
 ]
 lint = [
     "ruff>=0.14.10",

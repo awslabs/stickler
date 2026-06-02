@@ -1,0 +1,39 @@
+name: Examples
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  run-examples:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EXAMPLES_RUN_MODE: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'scheduled' || 'pr' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: uv sync --group test --extra llm --frozen
+      - name: Run examples
+        run: uv run pytest examples/ --nbmake --nbmake-timeout=300 --junitxml=examples-results.xml -v
+      - name: Write job summary
+        if: always()
+        run: uv run python .github/scripts/examples_summary.py examples-results.xml >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload JUnit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: examples-results
+          path: examples-results.xml

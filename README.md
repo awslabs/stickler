@@ -1,6 +1,7 @@
 # Stickler: Structured Object Evaluation for GenAI
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/awslabs/stickler)
+[![Examples](https://github.com/awslabs/stickler/actions/workflows/examples.yaml/badge.svg?branch=dev)](https://github.com/awslabs/stickler/actions/workflows/examples.yaml)
 
 When in the course of human events, it becomes necessary to evaluate structured outputs from generative AI systems, we must acknowledge that traditional evaluation treats all fields equally. But **not all fields are created equal**.
 
@@ -687,7 +688,7 @@ print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # ~1.0 - match
 
 ## Examples
 
-Check out the `examples/` directory for more detailed usage examples and notebooks.
+Check out the `examples/` directory for more detailed usage examples and notebooks. Every notebook and script there is executed end-to-end in CI on PRs and pushes to `dev`/`main` and on a daily schedule, so the examples stay in sync with the library. See [`examples/README.md`](examples/README.md#-running-examples-in-ci) for how to reproduce the check locally.
 
 # A note for AI assisted coding agents
 - The project uses coding assistant agnostic context files, like README.md and AGENTS.md

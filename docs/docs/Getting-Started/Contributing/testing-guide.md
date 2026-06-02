@@ -399,6 +399,12 @@ Tests run automatically on every push and pull request via GitHub Actions.
    - Runs Bandit for Python security issues
    - Runs ASH (AWS Security Helper)
 
+4. **examples.yaml** - Executes every example end-to-end
+   - Triggers on PRs and pushes to `dev`/`main`, plus a daily 07:00 UTC schedule
+   - Runs every notebook under `examples/notebooks/` (via `nbmake`) and every script under `examples/scripts/` (via a custom pytest collector)
+   - Skips credentialed examples (e.g., `llm_comparator_demo.py`) when AWS credentials are not available, and skips long-running examples (e.g., `bert_comparator_demo.py`) on PR runs to keep the budget under 10 minutes
+   - Reproduce locally with `uv run pytest examples/ --nbmake` — see [`examples/README.md`](https://github.com/awslabs/stickler/blob/dev/examples/README.md#-running-examples-in-ci) for the full guide
+
 ### CI Requirements
 
 Before submitting a PR, ensure:
