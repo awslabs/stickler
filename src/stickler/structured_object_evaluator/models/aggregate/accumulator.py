@@ -62,11 +62,22 @@ class AggregateConfusionMatrixAccumulator(PostComparisonAccumulator):
     Documents that did not include a confusion matrix are silently
     skipped — there is no warning, since mixing old (pre-feature) and
     new results in a single corpus is an explicit goal.
+
+    Args:
+        recall_with_fd: When ``True``, derived ``cm_recall`` (and therefore
+            ``cm_f1``) at every level uses the include-FD formula
+            ``TP / (TP + FN + FD)``, penalizing partial matches that
+            didn't clear ``match_threshold``. When ``False`` (default),
+            uses the textbook ``TP / (TP + FN)``. Mirrors the
+            ``recall_with_fd`` knob on
+            :meth:`StructuredModel.compare_with`, kept off by default
+            so corpus-level numbers match the per-document defaults.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, recall_with_fd: bool = False) -> None:
         """Initialize the accumulator with empty state."""
         self._metrics_helper = MetricsHelper()
+        self._recall_with_fd = bool(recall_with_fd)
         self.reset()
 
     @property
@@ -189,7 +200,7 @@ class AggregateConfusionMatrixAccumulator(PostComparisonAccumulator):
         overall_counts = self._counts_dict(self._overall)
         overall_node = dict(overall_counts)
         overall_node["derived"] = self._metrics_helper.calculate_derived_metrics(
-            overall_counts, recall_with_fd=False
+            overall_counts, recall_with_fd=self._recall_with_fd
         )
 
         field_nodes: Dict[str, Dict[str, Any]] = {}
@@ -197,7 +208,7 @@ class AggregateConfusionMatrixAccumulator(PostComparisonAccumulator):
             counts = self._counts_dict(self._fields[path])
             node = dict(counts)
             node["derived"] = self._metrics_helper.calculate_derived_metrics(
-                counts, recall_with_fd=False
+                counts, recall_with_fd=self._recall_with_fd
             )
             field_nodes[path] = node
 

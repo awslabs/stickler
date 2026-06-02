@@ -7,6 +7,8 @@ returned compute() output / state shape.
 
 import json
 
+import pytest
+
 from stickler.structured_object_evaluator.models.aggregate.accumulator import (
     AggregateConfusionMatrixAccumulator,
 )
@@ -306,3 +308,55 @@ class TestMergeStateIsAdditive:
 
         # Field that only exists in the peer's state shows up after merge.
         assert result["fields"]["only_in_two"]["tp"] == 4
+
+
+class TestRecallWithFdParameter:
+    """``recall_with_fd`` ctor flag controls derived recall/F1 formulas."""
+
+    @staticmethod
+    def _accumulate_one(acc):
+        # Counts chosen so the formula difference is observable:
+        #   tp=2, fn=1, fd=2  -> recall_with_fd=False  ->  2/(2+1)   = 0.667
+        #                       recall_with_fd=True   ->  2/(2+1+2) = 0.4
+        acc.accumulate(_make_result(_counts(tp=2, fn=1, fd=2)), None)
+
+    def test_default_uses_textbook_recall(self):
+        acc = AggregateConfusionMatrixAccumulator()
+        self._accumulate_one(acc)
+        result = acc.compute()
+        derived = result["overall"]["derived"]
+        # Textbook recall: TP / (TP + FN) = 2 / 3
+        assert derived["cm_recall"] == pytest.approx(2 / 3)
+
+    def test_opt_in_uses_include_fd_recall(self):
+        acc = AggregateConfusionMatrixAccumulator(recall_with_fd=True)
+        self._accumulate_one(acc)
+        result = acc.compute()
+        derived = result["overall"]["derived"]
+        # Include-FD recall: TP / (TP + FN + FD) = 2 / 5
+        assert derived["cm_recall"] == pytest.approx(2 / 5)
+
+    def test_recall_with_fd_propagates_to_per_field_derived(self):
+        acc = AggregateConfusionMatrixAccumulator(recall_with_fd=True)
+        acc.accumulate(
+            _make_result(
+                _counts(tp=2, fn=1, fd=2),
+                fields={"x": {"aggregate": _counts(tp=2, fn=1, fd=2)}},
+            ),
+            None,
+        )
+        result = acc.compute()
+        # Same formula must apply at every aggregate level, per docs.
+        assert result["fields"]["x"]["derived"]["cm_recall"] == pytest.approx(2 / 5)
+
+    def test_recall_with_fd_does_not_change_raw_counts(self):
+        # The flag only affects derived metrics. Raw counts must be identical
+        # between the two flavors so a downstream consumer can recompute.
+        acc_a = AggregateConfusionMatrixAccumulator(recall_with_fd=False)
+        acc_b = AggregateConfusionMatrixAccumulator(recall_with_fd=True)
+        for acc in (acc_a, acc_b):
+            self._accumulate_one(acc)
+        cm_keys = ("tp", "fp", "fn", "fa", "fd", "tn")
+        assert {k: acc_a.compute()["overall"][k] for k in cm_keys} == {
+            k: acc_b.compute()["overall"][k] for k in cm_keys
+        }

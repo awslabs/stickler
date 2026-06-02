@@ -411,3 +411,111 @@ class TestEmptyEvaluation:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestBulkEvaluatorStateLifecycle:
+    """The bulk evaluator's own ``get_state`` / ``load_state`` walk every
+    registered accumulator. Verify that the aggregate accumulator's
+    counts survive a serialize-via-bulk → load-via-bulk round trip,
+    not just the in-process ``merge_state`` path covered by
+    :class:`TestDistributedEvalRoundTrip`.
+    """
+
+    def _person_pair(self, gt_email, pred_email):
+        gt = _Person(name="A", contact=_Contact(phone="1", email=gt_email))
+        pred = _Person(name="A", contact=_Contact(phone="1", email=pred_email))
+        return gt, pred
+
+    def test_aggregate_state_survives_get_load_round_trip(self):
+        """Serialize from one evaluator, load into a fresh one — corpus
+        rollup must match what a single evaluator would have produced.
+        """
+        # Run a partial corpus through evaluator A.
+        ev_a = BulkStructuredModelEvaluator(target_schema=_Person)
+        for gt_email, pred_email in [
+            ("john@x.com", "john@x.com"),
+            ("ann@x.com",  "ann@x.com"),
+            ("bob@x.com",  "wrong@x.com"),
+        ]:
+            gt, pred = self._person_pair(gt_email, pred_email)
+            ev_a.update(gt, pred, doc_id=f"d_{gt_email}")
+
+        # Serialize via the bulk evaluator's own get_state and load
+        # into a fresh instance.
+        state = ev_a.get_state()
+        ev_b = BulkStructuredModelEvaluator(target_schema=_Person)
+        ev_b.load_state(state)
+
+        # compute() output must agree on aggregate_metrics.
+        agg_a = ev_a.compute().accumulator_metrics["aggregate_metrics"]
+        agg_b = ev_b.compute().accumulator_metrics["aggregate_metrics"]
+        assert agg_a["overall"] == agg_b["overall"]
+        assert agg_a["fields"] == agg_b["fields"]
+
+    def test_load_state_then_more_pairs_combines_correctly(self):
+        """After load_state, evaluating more pairs must additively
+        contribute to the aggregate rollup.
+        """
+        # Run pairs through evaluator A.
+        ev_a = BulkStructuredModelEvaluator(target_schema=_Person)
+        for gt_email, pred_email in [
+            ("john@x.com", "john@x.com"),
+            ("ann@x.com",  "ann@x.com"),
+        ]:
+            gt, pred = self._person_pair(gt_email, pred_email)
+            ev_a.update(gt, pred, doc_id=f"first_{gt_email}")
+
+        # Hand off state to evaluator B, then keep going.
+        state_after_first = ev_a.get_state()
+        ev_b = BulkStructuredModelEvaluator(target_schema=_Person)
+        ev_b.load_state(state_after_first)
+        for gt_email, pred_email in [
+            ("bob@x.com", "wrong@x.com"),
+            ("zoe@x.com", "zoe@x.com"),
+        ]:
+            gt, pred = self._person_pair(gt_email, pred_email)
+            ev_b.update(gt, pred, doc_id=f"second_{gt_email}")
+
+        # And separately, run all 4 through a single evaluator.
+        ev_full = BulkStructuredModelEvaluator(target_schema=_Person)
+        for gt_email, pred_email in [
+            ("john@x.com", "john@x.com"),
+            ("ann@x.com",  "ann@x.com"),
+            ("bob@x.com",  "wrong@x.com"),
+            ("zoe@x.com",  "zoe@x.com"),
+        ]:
+            gt, pred = self._person_pair(gt_email, pred_email)
+            ev_full.update(gt, pred, doc_id=f"full_{gt_email}")
+
+        # The continued-from-state corpus and the single-pass corpus
+        # must produce identical aggregate metrics.
+        agg_b = ev_b.compute().accumulator_metrics["aggregate_metrics"]
+        agg_full = ev_full.compute().accumulator_metrics["aggregate_metrics"]
+        assert agg_b["overall"] == agg_full["overall"]
+        assert agg_b["fields"] == agg_full["fields"]
+
+
+class TestPrettyPrintSurfacesAggregate:
+    """``BulkStructuredModelEvaluator.pretty_print_metrics()`` must
+    surface the corpus-level aggregate slice when the accumulator is
+    enabled. Pinning the section heading and a recognisable derived
+    metric line is enough to catch a regression where the new section
+    is accidentally dropped from the printer.
+    """
+
+    def test_pretty_print_includes_aggregate_section(self, capsys):
+        ev = BulkStructuredModelEvaluator(target_schema=_Person)
+        gt, pred = _Person(name="A", contact=_Contact(phone="1", email="a@x")), \
+                   _Person(name="A", contact=_Contact(phone="2", email="a@x"))
+        ev.update(gt, pred, doc_id="d1")
+
+        ev.pretty_print_metrics()
+        out = capsys.readouterr().out
+
+        assert "AGGREGATE METRICS" in out, (
+            "pretty_print_metrics must surface the corpus-level "
+            "aggregate rollup. Output:\n" + out
+        )
+        # And the per-field path block should print at least one line
+        # with the dotted-path convention.
+        assert "Precision:" in out
