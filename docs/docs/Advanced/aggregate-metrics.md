@@ -54,6 +54,10 @@ Within each pair, sub-fields are dispatched by their own type — primitives are
 
 Matched and unmatched items contribute to aggregate metrics differently. For matched pairs (TP or FD), every child field is fully evaluated whether populated or not — both-null fields produce a TN, mismatches produce FD, etc. For unmatched items (FN or FA), only populated fields are counted: each non-null field on an unmatched GT item counts as FN, each non-null field on an unmatched Pred item counts as FA. Null fields on unmatched items are skipped entirely and do not produce a TN. This avoids inflating the TN count when a long predicted list contains mostly-empty objects.
 
+### Bulk evaluation
+
+`BulkStructuredModelEvaluator` exposes corpus-level rollups through a small plug-in accumulator pattern: each accumulator inspects every per-document comparison result and contributes its own block under `ProcessEvaluation.accumulator_metrics`. Two accumulators ship by default — `AggregateConfusionMatrixAccumulator` (rolls up per-document `aggregate` blocks into `accumulator_metrics["aggregate_metrics"]`; see [Corpus-level aggregate metrics](#bulk-aggregate-not-rolled-up)) and `ConfidenceAccumulator` (rolls up rich-value `_confidence` scores; see [Confidence Metrics](confidence-metrics.md)). To customize the set, pass an explicit `accumulators=` list to `BulkStructuredModelEvaluator`; only the accumulators you list will run.
+
 ## Example 1: Primitive + List of Primitives + Nested Structure
 
 This example covers three node types in one model: a primitive field (`name`), a list of primitives (`tags`), and a nested `StructuredModel` (`contact`).
@@ -250,6 +254,114 @@ Key observations:
 - Summing the columns: `sku` = 2 TP + 1 FN, `description` = 1 TP + 1 FD + 1 FN, `qty` = 1 TP + 1 FD + 1 FN. Grand total across all sub-fields: 4 TP, 2 FD, 3 FN — which is exactly what `items.aggregate` reports.
 - The threshold gates only the object-level classification. Aggregate metrics always drill down to the leaf fields.
 
+## Example 3: Corpus-level Rollup with BulkStructuredModelEvaluator
+
+This example shows how the per-document `aggregate` blocks from Examples 1 and 2 roll up into a single corpus-level view through `BulkStructuredModelEvaluator`'s plug-in `AggregateConfusionMatrixAccumulator` (enabled by default). The accumulator sums each document's `aggregate` and per-field-path aggregates and exposes the result on `ProcessEvaluation.accumulator_metrics["aggregate_metrics"]`.
+
+```python
+from typing import List
+from stickler import StructuredModel, ComparableField
+from stickler.comparators.exact import ExactComparator
+from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
+    BulkStructuredModelEvaluator,
+)
+
+class LineItem(StructuredModel):
+    match_threshold = 0.6
+    sku: str = ComparableField(comparator=ExactComparator(), threshold=1.0, weight=2.0)
+    description: str = ComparableField(
+        comparator=LevenshteinComparator(), threshold=0.7, weight=1.0
+    )
+    qty: int = ComparableField(comparator=ExactComparator(), threshold=1.0, weight=1.0)
+
+class Invoice(StructuredModel):
+    invoice_id: str = ComparableField(comparator=ExactComparator(), threshold=1.0)
+    items: List[LineItem] = ComparableField(weight=1.0)
+
+# Doc 1: all-TP — every field matches exactly.
+gt1 = Invoice(invoice_id="INV-001", items=[
+    LineItem(sku="AAA", description="Widget", qty=10),
+    LineItem(sku="BBB", description="Gadget", qty=5),
+])
+pred1 = Invoice(invoice_id="INV-001", items=[
+    LineItem(sku="AAA", description="Widget", qty=10),
+    LineItem(sku="BBB", description="Gadget", qty=5),
+])
+
+# Doc 2: includes an FD pair (item below match_threshold).
+# DDD pair: sku TP, description FD, qty FD — combined similarity < 0.6 so the
+# item is classified FD at the object level, but aggregate still recurses
+# through its leaf fields.
+gt2 = Invoice(invoice_id="INV-002", items=[
+    LineItem(sku="CCC", description="Cable", qty=3),
+    LineItem(sku="DDD", description="Dongle", qty=7),
+])
+pred2 = Invoice(invoice_id="INV-002", items=[
+    LineItem(sku="CCC", description="Cable", qty=3),
+    LineItem(sku="DDD", description="Completely Wrong", qty=99),
+])
+
+# Doc 3: unmatched FN — GT has an extra item with no pred counterpart, so its
+# populated leaf fields each contribute one FN to the aggregate.
+gt3 = Invoice(invoice_id="INV-003", items=[
+    LineItem(sku="EEE", description="Eraser", qty=1),
+    LineItem(sku="FFF", description="Folder", qty=4),
+])
+pred3 = Invoice(invoice_id="INV-003", items=[
+    LineItem(sku="EEE", description="Eraser", qty=1),
+])
+
+evaluator = BulkStructuredModelEvaluator(target_schema=Invoice)
+for gt, pred, doc_id in [
+    (gt1, pred1, "doc_1"),
+    (gt2, pred2, "doc_2"),
+    (gt3, pred3, "doc_3"),
+]:
+    evaluator.update(gt, pred, doc_id)
+
+result = evaluator.compute()
+corpus_aggregate = result.accumulator_metrics["aggregate_metrics"]
+
+# Corpus-level rollup: summed across every document, recursing into FD pairs
+# and unmatched items just like per-document aggregate would.
+print(corpus_aggregate["overall"])
+print(corpus_aggregate["fields"]["items.sku"])
+```
+
+### Output Structure
+
+```json
+{
+  "overall": {
+    "tp": 16, "fd": 2, "fa": 0, "fn": 3, "fp": 2, "tn": 0,
+    "derived": {
+      "cm_precision": 0.889, "cm_recall": 0.842,
+      "cm_f1": 0.865, "cm_accuracy": 0.762
+    }
+  },
+  "fields": {
+    "invoice_id": {
+      "tp": 3, "fd": 0, "fa": 0, "fn": 0, "fp": 0, "tn": 0,
+      "derived": { "cm_precision": 1.0, "cm_recall": 1.0, "cm_f1": 1.0, "cm_accuracy": 1.0 }
+    },
+    "items": {
+      "tp": 13, "fd": 2, "fa": 0, "fn": 3, "fp": 2, "tn": 0,
+      "derived": { "cm_precision": 0.867, "cm_recall": 0.812, "cm_f1": 0.839, "cm_accuracy": 0.722 }
+    },
+    "items.sku":         { "tp": 5, "fd": 0, "fa": 0, "fn": 1, "fp": 0, "tn": 0, "derived": { "...": "..." } },
+    "items.description": { "tp": 4, "fd": 1, "fa": 0, "fn": 1, "fp": 1, "tn": 0, "derived": { "...": "..." } },
+    "items.qty":         { "tp": 4, "fd": 1, "fa": 0, "fn": 1, "fp": 1, "tn": 0, "derived": { "...": "..." } }
+  }
+}
+```
+
+What to notice:
+
+- `accumulator_metrics["aggregate_metrics"]` and `result.metrics` (i.e. `evaluator.compute().overall_metrics`) answer different questions. The corpus `aggregate_metrics["overall"]` sums leaf-level signal from every document — including fields below FD pairs and unmatched items — so it counts 16 TP and 2 FD across the corpus. `result.metrics` is the threshold-gated object-level rollup and reports just 7 TP / 1 FD / 1 FN in this run (one FD line item from doc 2, one FN list from doc 3 plus six TP items elsewhere).
+- Per-field paths use the same dotted convention as `result.field_metrics` — `items.sku`, `items.description`, `items.qty` — so a field's threshold-gated counts and its corpus-aggregate counts can be compared side by side at the same key.
+- The accumulator is on by default; pass `accumulators=[...]` to `BulkStructuredModelEvaluator` only if you want to opt out or replace the set, as covered in [Corpus-level aggregate metrics (bulk evaluation)](#bulk-aggregate-not-rolled-up).
+
 ## Calculation Summary
 
 1. **Leaf nodes** (primitives and primitive lists): `aggregate` equals `overall`.
@@ -289,9 +401,21 @@ Hungarian can return a "pairing" with similarity exactly `0.0` (e.g., two list i
 
 When **both** the GT and Pred lists are empty, the list field's `overall` is recorded as `tn: 1` (object-level true negative, similarity `1.0`). When **one** side is empty and the other is populated, every item on the non-empty side counts at the field level — populated GT items become FN, populated Pred items become FA. This matters in IDP scenarios where many document fields are optional: a model that hallucinates a 5-item table when GT is empty will produce 5 items' worth of FA across all sub-fields in `aggregate`, not just one object-level FA.
 
-### Bulk evaluator does not yet aggregate the `aggregate` field {#bulk-aggregate-not-rolled-up}
+### Corpus-level aggregate metrics (bulk evaluation) {#bulk-aggregate-not-rolled-up}
 
-`BulkStructuredModelEvaluator._accumulate_confusion_matrix` walks `cm_result["overall"]` and `cm_result["fields"]` (recursively into `fields` and `nested_fields`), but it **does not** roll up the per-document `aggregate` key into a corpus-level aggregate. Each per-document result still contains `aggregate`, but the bulk-rolled-up output exposes only `overall` and per-field metrics. If you need a corpus-level aggregate today, sum the per-document `aggregate` blocks yourself from `evaluate_pair` results. (Tracked as a follow-up.)
+`BulkStructuredModelEvaluator` now rolls per-document `aggregate` blocks up into corpus-level totals via the built-in `AggregateConfusionMatrixAccumulator`, which is enabled by default and recurses through every nested field path. The corpus-level metrics are exposed on the `ProcessEvaluation` result at `accumulator_metrics["aggregate_metrics"]`, with an `overall` block plus a `fields` dict keyed by dotted field paths (e.g. `items.sku`). To opt out, pass an explicit `accumulators=` list to `BulkStructuredModelEvaluator` that omits this accumulator (default injection is suppressed when you provide your own list).
+
+```python
+evaluator = BulkStructuredModelEvaluator(target_schema=Invoice)
+for gt, pred, doc_id in pairs:
+    evaluator.update(gt, pred, doc_id)
+process_eval = evaluator.compute()
+
+corpus_agg = process_eval.accumulator_metrics["aggregate_metrics"]
+corpus_agg["overall"]["tp"]                       # corpus-wide TP across every leaf
+corpus_agg["overall"]["derived"]["cm_precision"]  # recomputed from the summed counts
+corpus_agg["fields"]["items.sku"]["fd"]           # per-field path counts
+```
 
 ### `recall_with_fd` parameter {#recall-with-fd}
 

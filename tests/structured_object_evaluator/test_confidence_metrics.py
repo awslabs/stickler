@@ -1421,7 +1421,11 @@ class TestBulkEvaluatorConstructionConflicts:
             target_schema=Product,
             confidence_metrics=[AUROCMetric(), BrierScoreMetric()],
         )
-        assert len(ev._accumulators) == 1
+        # Defaults: ConfidenceAccumulator + AggregateConfusionMatrixAccumulator.
+        assert [acc.name for acc in ev._accumulators] == [
+            "confidence_metrics",
+            "aggregate_metrics",
+        ]
 
     def test_duplicate_accumulator_names_raise(self):
         """Two accumulators with the same .name silently overwrite each
