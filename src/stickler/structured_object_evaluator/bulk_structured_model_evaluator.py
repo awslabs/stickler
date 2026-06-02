@@ -16,6 +16,9 @@ import time
 from collections import Counter, defaultdict
 from typing import IO, Any, Dict, List, Optional, Tuple, Type, Union
 
+from stickler.structured_object_evaluator.models.aggregate import (
+    AggregateConfusionMatrixAccumulator,
+)
 from stickler.structured_object_evaluator.models.confidence import (
     ConfidenceMetric,
 )
@@ -103,7 +106,7 @@ class BulkStructuredModelEvaluator:
                 ``accumulators`` — pass metrics through ``ConfidenceAccumulator``
                 instead, e.g. ``ConfidenceAccumulator(metrics=[AUROCMetric()])``.
             accumulators: Optional list of PostComparisonAccumulator instances.
-                Defaults to [ConfidenceAccumulator()].
+                Defaults to [ConfidenceAccumulator(), AggregateConfusionMatrixAccumulator()].
 
         Raises:
             ValueError: If both ``accumulators`` and ``confidence_metrics`` are set,
@@ -128,7 +131,10 @@ class BulkStructuredModelEvaluator:
         if accumulators is not None:
             self._accumulators = accumulators
         else:
-            self._accumulators = [ConfidenceAccumulator(metrics=confidence_metrics)]
+            self._accumulators = [
+                ConfidenceAccumulator(metrics=confidence_metrics),
+                AggregateConfusionMatrixAccumulator(),
+            ]
 
         # Names key accumulator_metrics; duplicates would silently overwrite.
         name_counts = Counter(acc.name for acc in self._accumulators)
