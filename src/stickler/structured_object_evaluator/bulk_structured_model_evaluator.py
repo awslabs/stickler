@@ -797,6 +797,52 @@ class BulkStructuredModelEvaluator:
                 ):
                     print(f"  {error_type}: {count:,}")
 
+        # Corpus-level aggregate slice (universal aggregate accumulator).
+        # Surfaces the field-level rollup that's separately accumulated from
+        # the threshold-gated overall metrics — see docs/Advanced/aggregate-metrics.md.
+        aggregate_metrics = (process_eval.accumulator_metrics or {}).get(
+            "aggregate_metrics"
+        )
+        if aggregate_metrics:
+            agg_overall = aggregate_metrics.get("overall") or {}
+            agg_derived = agg_overall.get("derived") or {}
+            print("\nAGGREGATE METRICS (corpus rollup, ungated by match_threshold):")
+            print("-" * 40)
+            print(f"  TP: {agg_overall.get('tp', 0):,}  "
+                  f"FD: {agg_overall.get('fd', 0):,}  "
+                  f"FA: {agg_overall.get('fa', 0):,}  "
+                  f"FN: {agg_overall.get('fn', 0):,}  "
+                  f"FP: {agg_overall.get('fp', 0):,}  "
+                  f"TN: {agg_overall.get('tn', 0):,}")
+            print(f"  Precision: {agg_derived.get('cm_precision', 0.0):.4f}  "
+                  f"Recall: {agg_derived.get('cm_recall', 0.0):.4f}  "
+                  f"F1: {agg_derived.get('cm_f1', 0.0):.4f}  "
+                  f"Accuracy: {agg_derived.get('cm_accuracy', 0.0):.4f}")
+            agg_fields = aggregate_metrics.get("fields") or {}
+            if agg_fields:
+                # Sort by F1 desc for readability, mirror the field-metrics block.
+                sorted_agg = sorted(
+                    agg_fields.items(),
+                    key=lambda x: (x[1].get("derived") or {}).get("cm_f1", 0.0),
+                    reverse=True,
+                )
+                for path, counts in sorted_agg:
+                    derived = counts.get("derived") or {}
+                    tp = counts.get("tp", 0)
+                    fd = counts.get("fd", 0)
+                    fa = counts.get("fa", 0)
+                    fn = counts.get("fn", 0)
+                    if tp + fd + fa + fn == 0:
+                        continue
+                    display_path = path if len(path) <= 30 else path[:27] + "..."
+                    print(
+                        f"  {display_path:30} "
+                        f"P: {derived.get('cm_precision', 0.0):.3f} | "
+                        f"R: {derived.get('cm_recall', 0.0):.3f} | "
+                        f"F1: {derived.get('cm_f1', 0.0):.3f} | "
+                        f"TP: {tp:,} | FD: {fd:,} | FA: {fa:,} | FN: {fn:,}"
+                    )
+
         # Per-accumulator failure visibility — surfaced separately so a
         # silently-failing accumulator (whose errors don't affect the
         # confusion matrix) still shows up clearly.
