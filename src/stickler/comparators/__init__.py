@@ -14,6 +14,14 @@ from stickler.comparators.semantic import SemanticComparator
 from stickler.comparators.structured import StructuredModelComparator
 from stickler.comparators.utils import generate_bedrock_embedding
 
+# Import DateComparator if python-dateutil is available
+try:
+    from stickler.comparators.date import DateComparator  # noqa: F401
+
+    DATEUTIL_AVAILABLE = True
+except ImportError:
+    DATEUTIL_AVAILABLE = False
+
 # Import LLMComparator if strands-agents is available
 try:
     from stickler.comparators.llm import LLMComparator  # noqa: F401
@@ -51,6 +59,10 @@ __all__ = [
     "SemanticComparator",
     "generate_bedrock_embedding",
 ]
+
+# Add DateComparator to __all__ if available
+if DATEUTIL_AVAILABLE:
+    __all__.append("DateComparator")
 
 # Add LLMComparator to __all__ if available
 if LLM_AVAILABLE:
