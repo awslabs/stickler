@@ -5,6 +5,8 @@ JSON processing, and schema generation for StructuredModel instances.
 """
 
 import inspect
+import types
+
 from typing import TYPE_CHECKING, Any, Dict, Union, get_args, get_origin
 
 from stickler.comparators.levenshtein import LevenshteinComparator
@@ -161,6 +163,22 @@ class ConfigurationHelper:
                                 element_type, StructuredModel
                             ):
                                 return True
+
+            # Handle PEP 604 union types (list[X] | None, X | None)
+            elif isinstance(annotation, types.UnionType):
+                for arg in get_args(annotation):
+                    if arg is type(None):
+                        continue
+                    if get_origin(arg) is list:
+                        list_args = get_args(arg)
+                        if list_args:
+                            element_type = list_args[0]
+                            if inspect.isclass(element_type) and issubclass(
+                                element_type, StructuredModel
+                            ):
+                                return True
+                    elif inspect.isclass(arg) and issubclass(arg, StructuredModel):
+                        return True
 
             # Handle direct StructuredModel annotations
             elif inspect.isclass(annotation):
@@ -478,6 +496,21 @@ class ConfigurationHelper:
                         ):
                             return True
 
+            # Handle PEP 604 union types (list[X] | None)
+            elif isinstance(annotation, types.UnionType):
+                none_type = type(None)
+                for arg in get_args(annotation):
+                    if arg is none_type:
+                        continue
+                    if get_origin(arg) is list:
+                        list_args = get_args(arg)
+                        if (
+                            list_args
+                            and inspect.isclass(list_args[0])
+                            and issubclass(list_args[0], StructuredModel)
+                        ):
+                            return True
+
             return False
         except (TypeError, AttributeError):
             return False
@@ -511,6 +544,21 @@ class ConfigurationHelper:
                 none_type = type(None)
                 for arg in union_args:
                     if arg != none_type and get_origin(arg) is list:
+                        list_args = get_args(arg)
+                        if (
+                            list_args
+                            and inspect.isclass(list_args[0])
+                            and issubclass(list_args[0], StructuredModel)
+                        ):
+                            return list_args[0]
+
+            # Handle PEP 604 union types (list[X] | None)
+            elif isinstance(annotation, types.UnionType):
+                none_type = type(None)
+                for arg in get_args(annotation):
+                    if arg is none_type:
+                        continue
+                    if get_origin(arg) is list:
                         list_args = get_args(arg)
                         if (
                             list_args

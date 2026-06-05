@@ -4,6 +4,8 @@ This module provides the StructuredModel class for defining structured data mode
 with comparison configuration and evaluation capabilities.
 """
 
+import types
+
 from typing import (
     Any,
     ClassVar,
@@ -272,6 +274,14 @@ class StructuredModel(BaseModel):
         elif origin is Union:
             args = get_args(field_type)
             for arg in args:
+                if cls._is_list_of_structured_model_type(arg):
+                    return True
+
+        # Handle PEP 604 union types (list[X] | None)
+        elif isinstance(field_type, types.UnionType):
+            for arg in get_args(field_type):
+                if arg is type(None):
+                    continue
                 if cls._is_list_of_structured_model_type(arg):
                     return True
 
@@ -716,6 +726,13 @@ class StructuredModel(BaseModel):
                         arg.__origin__ is list or arg.__origin__ is List
                     ):
                         return True
+        # Handle PEP 604 union types (list[X] | None)
+        elif isinstance(field_type, types.UnionType):
+            for arg in get_args(field_type):
+                if arg is type(None):
+                    continue
+                if get_origin(arg) is list or arg is list:
+                    return True
         return False
 
     def _handle_list_field_dispatch(
