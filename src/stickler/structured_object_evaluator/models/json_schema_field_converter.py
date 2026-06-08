@@ -4,7 +4,7 @@ This module provides utilities for converting JSON Schema properties to
 Pydantic Field instances with ComparableField functionality.
 """
 
-from typing import Any, Dict, List, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from pydantic.fields import FieldInfo
 
@@ -147,7 +147,14 @@ class JsonSchemaFieldConverter:
         default = property_schema.get("default", ... if is_required else None)
         description = property_schema.get("description")
         examples = property_schema.get("examples")
-        
+
+        # Widen the annotation to Optional[...] for non-required fields so the
+        # None default is a valid value. See issue #149: the rich-value path
+        # round-trips through from_json(...).model_dump(), which materializes
+        # the None default and re-validates it against the annotation.
+        if not is_required:
+            field_type = Optional[field_type]
+
         # Call ComparableField() to create the Pydantic Field
         field = ComparableField(
             comparator=comparator,
@@ -158,7 +165,7 @@ class JsonSchemaFieldConverter:
             description=description,
             examples=examples
         )
-        
+
         return field_type, field
 
     def _map_json_type_to_python_type(self, json_type: str) -> Type:
@@ -353,8 +360,16 @@ class JsonSchemaFieldConverter:
             default=default,
             description=description
         )
-        
-        return NestedModel, field
+
+        # Widen the annotation to Optional[...] for non-required fields so the
+        # None default is a valid value. See issue #149: the rich-value path
+        # round-trips through from_json(...).model_dump(), which materializes
+        # the None default and re-validates it against the annotation.
+        field_type = NestedModel
+        if not is_required:
+            field_type = Optional[field_type]
+
+        return field_type, field
 
     def _handle_array_type(
         self, field_name: str, property_schema: Dict[str, Any], is_required: bool, field_path: str = None
@@ -413,7 +428,14 @@ class JsonSchemaFieldConverter:
         # Get default
         default = property_schema.get("default", ... if is_required else None)
         description = property_schema.get("description")
-        
+
+        # Widen the annotation to Optional[...] for non-required fields so the
+        # None default is a valid value. See issue #149: the rich-value path
+        # round-trips through from_json(...).model_dump(), which materializes
+        # the None default and re-validates it against the annotation.
+        if not is_required:
+            field_type = Optional[field_type]
+
         # Create ComparableField
         field = ComparableField(
             comparator=comparator,
@@ -423,7 +445,7 @@ class JsonSchemaFieldConverter:
             default=default,
             description=description
         )
-        
+
         return field_type, field
 
     
