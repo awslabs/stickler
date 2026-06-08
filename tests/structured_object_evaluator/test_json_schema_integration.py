@@ -158,9 +158,103 @@ class TestEndToEndWorkflow:
         # Test exact match
         score = emp1.compare(emp2)
         assert score == 1.0
-        
+
         result = emp1.compare_with(emp2)
         assert result["overall_score"] == 1.0
+
+
+class TestOptionalFieldNoneFromJson:
+    """Regression tests for issue #149.
+
+    from_json(process_rich_values=True) must accept models where an OPTIONAL
+    JSON-Schema field (absent from ``required``) is omitted from the payload.
+
+    Before the fix, from_json_schema() built optional fields with
+    ``default=None`` but a NON-nullable annotation (bare ``str``). The
+    rich-value path round-trips nested objects through
+    ``from_json(...).model_dump()``, which materializes the ``None`` default
+    and re-validates it against ``str`` -> ValidationError. Plain
+    ``ModelClass(**data)`` never hit this because it does not re-validate the
+    dumped ``None``.
+    """
+
+    def test_optional_nested_field_none_via_from_json_rich_values(self):
+        """Nested object with an OPTIONAL inner field round-trips via from_json.
+
+        Both ``M(**data)`` and ``M.from_json(data, process_rich_values=True)``
+        must succeed and agree when the optional inner field is omitted.
+        """
+        schema = {
+            "type": "object",
+            "properties": {
+                "C": {
+                    "type": "object",
+                    "properties": {
+                        "A": {"type": "string"},
+                        "B": {"type": "string"},  # OPTIONAL (not in required)
+                    },
+                    "required": ["A"],
+                },
+            },
+            "required": ["C"],
+        }
+
+        M = StructuredModel.from_json_schema(schema)
+
+        data = {"C": {"A": "x"}}
+
+        # Plain construction accepts the missing optional field.
+        plain = M(**data)
+        assert plain.C.A == "x"
+        assert plain.C.B is None
+
+        # from_json with rich-value processing must also accept it (the bug).
+        rich = M.from_json(data, process_rich_values=True)
+        assert rich.C.A == "x"
+        assert rich.C.B is None
+
+        # The two paths must agree.
+        assert plain.model_dump() == rich.model_dump()
+
+    def test_optional_primitive_field_none_via_from_json_rich_values(self):
+        """Top-level OPTIONAL primitive field round-trips via from_json."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "required_name": {"type": "string"},
+                "optional_note": {"type": "string"},  # OPTIONAL
+            },
+            "required": ["required_name"],
+        }
+
+        M = StructuredModel.from_json_schema(schema)
+        data = {"required_name": "x"}
+
+        plain = M(**data)
+        rich = M.from_json(data, process_rich_values=True)
+        assert plain.optional_note is None
+        assert rich.optional_note is None
+        assert plain.model_dump() == rich.model_dump()
+
+    def test_optional_array_field_none_via_from_json_rich_values(self):
+        """Top-level OPTIONAL array field round-trips via from_json."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string"},
+                "tags": {"type": "array", "items": {"type": "string"}},  # OPTIONAL
+            },
+            "required": ["id"],
+        }
+
+        M = StructuredModel.from_json_schema(schema)
+        data = {"id": "x"}
+
+        plain = M(**data)
+        rich = M.from_json(data, process_rich_values=True)
+        assert plain.tags is None
+        assert rich.tags is None
+        assert plain.model_dump() == rich.model_dump()
 
 
 class TestComplexNestedStructures:

@@ -1,6 +1,8 @@
 """Integration tests for JsonSchemaFieldConverter.convert_properties_to_fields()."""
 
 
+import typing
+
 import pytest
 
 from stickler.comparators.exact import ExactComparator
@@ -9,6 +11,21 @@ from stickler.comparators.numeric import NumericComparator
 from stickler.structured_object_evaluator.models.json_schema_field_converter import (
     JsonSchemaFieldConverter,
 )
+
+
+def _unwrap_optional(field_type):
+    """Strip ``Optional[...]`` (i.e. ``Union[X, None]``) down to the inner type.
+
+    Non-required JSON-Schema fields are annotated as ``Optional[T]`` so their
+    ``None`` default is valid (issue #149). Required fields stay bare. This
+    helper lets type assertions target the underlying ``T`` regardless of the
+    optional wrapper.
+    """
+    if typing.get_origin(field_type) is typing.Union:
+        args = [a for a in typing.get_args(field_type) if a is not type(None)]
+        if len(args) == 1:
+            return args[0]
+    return field_type
 
 
 class TestConvertPropertiesToFields:
@@ -38,11 +55,13 @@ class TestConvertPropertiesToFields:
         assert "price" in field_definitions
         assert "active" in field_definitions
 
-        # Check types
-        assert field_definitions["name"][0] is str
-        assert field_definitions["age"][0] is int
-        assert field_definitions["price"][0] is float
-        assert field_definitions["active"][0] is bool
+        # Check types. Required fields keep a bare annotation; optional fields
+        # are widened to Optional[...] (issue #149) so their None default is
+        # valid, so unwrap before comparing the underlying type.
+        assert field_definitions["name"][0] is str  # required -> bare
+        assert field_definitions["age"][0] is int  # required -> bare
+        assert _unwrap_optional(field_definitions["price"][0]) is float  # optional
+        assert _unwrap_optional(field_definitions["active"][0]) is bool  # optional
 
         # Check required vs optional (via is_required)
         name_field = field_definitions["name"][1]
@@ -54,6 +73,62 @@ class TestConvertPropertiesToFields:
         assert age_field.is_required()  # Required
         assert not price_field.is_required()  # Optional
         assert not active_field.is_required()  # Optional
+
+    def test_not_required_fields_are_optional_annotations(self):
+        """Non-required fields get Optional[...] annotations; required stay bare.
+
+        Regression for issue #149: an optional field has ``default=None`` but
+        must also be annotated as ``Optional[...]`` so that None is valid when
+        the rich-value path round-trips through from_json(...).model_dump().
+        Covers all three sites: primitive, nested object, and array.
+        """
+        schema = {
+            "type": "object",
+            "properties": {
+                # Required primitive -> bare
+                "req_str": {"type": "string"},
+                # Optional primitive -> Optional[str]
+                "opt_str": {"type": "string"},
+                # Optional nested object -> Optional[NestedModel]
+                "opt_obj": {
+                    "type": "object",
+                    "properties": {"inner": {"type": "string"}},
+                },
+                # Optional array -> Optional[List[str]]
+                "opt_arr": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["req_str"],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        field_definitions = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+
+        # Required field stays a bare annotation.
+        req_type = field_definitions["req_str"][0]
+        assert req_type is str
+        assert typing.get_origin(req_type) is not typing.Union
+
+        # Each optional field is wrapped in Optional[...] (Union[X, None]).
+        for name, inner_check in [
+            ("opt_str", lambda t: t is str),
+            (
+                "opt_obj",
+                lambda t: (
+                    __import__(
+                        "stickler.structured_object_evaluator.models.structured_model",
+                        fromlist=["StructuredModel"],
+                    ).StructuredModel
+                    in t.__mro__
+                ),
+            ),
+            ("opt_arr", lambda t: typing.get_origin(t) is list),
+        ]:
+            field_type = field_definitions[name][0]
+            assert typing.get_origin(field_type) is typing.Union, name
+            assert type(None) in typing.get_args(field_type), name
+            assert inner_check(_unwrap_optional(field_type)), name
 
     def test_convert_with_default_comparators(self):
         """Test that default comparators are assigned correctly."""
@@ -189,9 +264,11 @@ class TestConvertPropertiesToFields:
             schema["properties"], schema["required"]
         )
 
-        # Check types are List[primitive]
-        tags_type = field_definitions["tags"][0]
-        scores_type = field_definitions["scores"][0]
+        # Check types are List[primitive]. Both fields are optional (not in
+        # required), so they are widened to Optional[List[...]] (issue #149);
+        # unwrap to inspect the List.
+        tags_type = _unwrap_optional(field_definitions["tags"][0])
+        scores_type = _unwrap_optional(field_definitions["scores"][0])
 
         # Verify they are List types
         assert hasattr(tags_type, "__origin__")
@@ -317,8 +394,9 @@ class TestConvertPropertiesToFields:
             assert isinstance(field_name, str)
             assert isinstance(field_def, tuple)
             assert len(field_def) == 2
-            # First element is a type
-            assert isinstance(field_def[0], type)
+            # First element is a type. Optional fields are wrapped in
+            # Optional[...] (issue #149), so unwrap before the type check.
+            assert isinstance(_unwrap_optional(field_def[0]), type)
             # Second element is a Pydantic FieldInfo
             from pydantic.fields import FieldInfo
             assert isinstance(field_def[1], FieldInfo)
@@ -351,10 +429,12 @@ class TestRefResolution:
             schema["properties"], schema["required"]
         )
 
-        # Should successfully resolve and create nested model
+        # Should successfully resolve and create nested model.
+        # 'home' is optional, so the annotation is Optional[NestedModel]
+        # (issue #149); unwrap to inspect the model class.
         assert "home" in field_definitions
-        home_type = field_definitions["home"][0]
-        
+        home_type = _unwrap_optional(field_definitions["home"][0])
+
         # Verify it's a StructuredModel subclass
         from stickler.structured_object_evaluator.models.structured_model import (
             StructuredModel,
@@ -385,10 +465,12 @@ class TestRefResolution:
             schema["properties"], schema["required"]
         )
 
-        # Should successfully resolve and create nested model
+        # Should successfully resolve and create nested model.
+        # 'contact' is optional, so the annotation is Optional[NestedModel]
+        # (issue #149); unwrap to inspect the model class.
         assert "contact" in field_definitions
-        contact_type = field_definitions["contact"][0]
-        
+        contact_type = _unwrap_optional(field_definitions["contact"][0])
+
         # Verify it's a StructuredModel subclass
         from stickler.structured_object_evaluator.models.structured_model import (
             StructuredModel,
@@ -468,14 +550,16 @@ class TestRefResolution:
             schema["properties"], schema["required"]
         )
 
-        # Should successfully resolve and create List[StructuredModel]
+        # Should successfully resolve and create List[StructuredModel].
+        # 'items' is optional, so the annotation is Optional[List[...]]
+        # (issue #149); unwrap to inspect the List.
         assert "items" in field_definitions
-        items_type = field_definitions["items"][0]
-        
+        items_type = _unwrap_optional(field_definitions["items"][0])
+
         # Verify it's a List type
         assert hasattr(items_type, "__origin__")
         assert items_type.__origin__ is list
-        
+
         # Verify element is a StructuredModel subclass
         from stickler.structured_object_evaluator.models.structured_model import (
             StructuredModel,
@@ -508,16 +592,17 @@ class TestNestedObjectHandling:
             schema["properties"], schema["required"]
         )
 
-        # Check nested model was created
+        # Check nested model was created. 'person' is optional, so the
+        # annotation is Optional[NestedModel] (issue #149); unwrap it.
         assert "person" in field_definitions
-        person_type = field_definitions["person"][0]
-        
+        person_type = _unwrap_optional(field_definitions["person"][0])
+
         # Verify it's a StructuredModel subclass
         from stickler.structured_object_evaluator.models.structured_model import (
             StructuredModel,
         )
         assert issubclass(person_type, StructuredModel)
-        
+
         # Verify nested model has correct fields
         assert "name" in person_type.model_fields
         assert "age" in person_type.model_fields
@@ -583,15 +668,16 @@ class TestNestedObjectHandling:
             schema["properties"], schema["required"]
         )
 
-        # Should successfully create deeply nested structure
+        # Should successfully create deeply nested structure. 'company' is
+        # optional, so the annotation is Optional[NestedModel] (issue #149).
         assert "company" in field_definitions
-        company_type = field_definitions["company"][0]
-        
+        company_type = _unwrap_optional(field_definitions["company"][0])
+
         from stickler.structured_object_evaluator.models.structured_model import (
             StructuredModel,
         )
         assert issubclass(company_type, StructuredModel)
-        
+
         # Verify nested fields exist
         assert "name" in company_type.model_fields
         assert "address" in company_type.model_fields
@@ -624,14 +710,15 @@ class TestArrayHandling:
             schema["properties"], schema["required"]
         )
 
-        # Check array type
+        # Check array type. 'employees' is optional, so the annotation is
+        # Optional[List[...]] (issue #149); unwrap to inspect the List.
         assert "employees" in field_definitions
-        employees_type = field_definitions["employees"][0]
-        
+        employees_type = _unwrap_optional(field_definitions["employees"][0])
+
         # Verify it's a List type
         assert hasattr(employees_type, "__origin__")
         assert employees_type.__origin__ is list
-        
+
         # Verify element is a StructuredModel subclass
         from stickler.structured_object_evaluator.models.structured_model import (
             StructuredModel,
@@ -692,11 +779,12 @@ class TestArrayHandling:
             schema["properties"], schema["required"]
         )
 
-        # Check all array types
-        assert field_definitions["strings"][0].__args__[0] is str
-        assert field_definitions["integers"][0].__args__[0] is int
-        assert field_definitions["numbers"][0].__args__[0] is float
-        assert field_definitions["booleans"][0].__args__[0] is bool
+        # Check all array types. All fields are optional, so each annotation
+        # is Optional[List[...]] (issue #149); unwrap to inspect the List.
+        assert _unwrap_optional(field_definitions["strings"][0]).__args__[0] is str
+        assert _unwrap_optional(field_definitions["integers"][0]).__args__[0] is int
+        assert _unwrap_optional(field_definitions["numbers"][0]).__args__[0] is float
+        assert _unwrap_optional(field_definitions["booleans"][0]).__args__[0] is bool
 
 
 class TestErrorHandling:
@@ -997,8 +1085,9 @@ class TestNullableTypeListForm:
         from typing import Union, get_args, get_origin
 
         field_type, _ = fields["tags"]
-        # List[Optional[str]]
-        (inner,) = get_args(field_type)
+        # The field is not required, so the outer annotation is
+        # Optional[List[Optional[str]]] (issue #149); unwrap to inspect the List.
+        (inner,) = get_args(_unwrap_optional(field_type))
         assert get_origin(inner) is Union
         assert str in get_args(inner)
         assert type(None) in get_args(inner)
@@ -1049,6 +1138,47 @@ class TestNullableTypeListForm:
 
         Rebuilt = StructuredModel.from_json_schema(schema)
         assert Rebuilt(description=None).description is None
+
+    def test_optional_field_round_trips_as_explicitly_nullable(self):
+        """An optional-but-not-nullable field gains an explicit "null" on export.
+
+        This pins the interaction between the #149 widening (an optional field
+        is annotated Optional[T] so its None default validates) and the #127
+        exporter (an Optional[T] primitive is emitted as ["X", "null"]): a
+        property declared only as {"type": "string"} and omitted from
+        ``required`` round-trips out as ["string", "null"].
+
+        This is intentional, not incidental. Under the explicit-null contract
+        documented in docs/dynamic-models.md, "absent from required" means the
+        value may be None, and the exported schema now says so out loud rather
+        than leaving it implicit. The round trip is idempotent and lossless in
+        meaning -- rebuilding from the exported schema yields a model that
+        accepts exactly the same values.
+        """
+        from stickler import StructuredModel
+
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {"nickname": {"type": "string"}},
+                "required": [],
+            }
+        )
+
+        schema = Model.to_json_schema()
+        assert schema["properties"]["nickname"]["type"] == ["string", "null"]
+        assert "nickname" not in schema.get("required", [])
+
+        # Idempotent: exporting the rebuilt model produces the same schema, and
+        # the accepted value set is unchanged.
+        Rebuilt = StructuredModel.from_json_schema(schema)
+        assert Rebuilt.to_json_schema()["properties"]["nickname"]["type"] == [
+            "string",
+            "null",
+        ]
+        assert Rebuilt(nickname=None).nickname is None
+        assert Rebuilt(nickname="ada").nickname == "ada"
+        assert Model(nickname=None).nickname is None
 
     def test_nullable_object_array_element_accepts_none(self):
         """An array of nullable objects accepts None as a list element."""
