@@ -205,6 +205,8 @@ class ComparisonEngine:
         document_field_comparisons: bool = False,
         add_confidence_metrics: bool = False,
         confidence_metrics: Optional[List["ConfidenceMetric"]] = None,
+        add_bbox_metrics: bool = False,
+        bbox_iou_threshold: float = 0.5,
     ) -> Dict[str, Any]:
         """Compare with another instance using single traversal.
         
@@ -363,6 +365,39 @@ class ComparisonEngine:
                 "instead. The legacy key will be removed in 0.5.0.",
             )
 
+        # If add_bbox_metrics is requested, add bounding-box mAP metrics.
+        # Single-document mAP is a sanity check; bulk evaluation via
+        # BBoxMAPAccumulator is the recommended path for meaningful results.
+        if add_bbox_metrics:
+            import warnings as _warnings
+
+            from .map_calculator import MAPCalculator
+
+            # Auto-enable field_comparisons (mirrors add_confidence_metrics).
+            if "field_comparisons" not in result:
+                field_comparisons = (
+                    self.field_comparison_collector.collect_field_comparisons(
+                        recursive_result, other
+                    )
+                )
+                result["field_comparisons"] = field_comparisons
+
+            _warnings.warn(
+                "Single-document mAP metrics are a quick sanity check. For "
+                "statistically meaningful results, use "
+                "BulkStructuredModelEvaluator with "
+                "accumulators=[BBoxMAPAccumulator(...)].",
+                UserWarning,
+                stacklevel=2,
+            )
+            calculator = MAPCalculator(iou_threshold=bbox_iou_threshold)
+            extraction = calculator.extract(result, self.model, other)
+            result["bbox_metrics"] = calculator.compute_metrics(
+                extraction.keyed_pairs,
+                fields_with_bbox=extraction.fields_with_bbox,
+                fields_total=extraction.fields_total,
+            )
+
         # Include raw prediction JSON for round-tripping through JSONL.
         # This enables update_from_comparison_result() to reconstruct
         # confidence pairs (and future bbox/MAP data) without needing
@@ -376,6 +411,21 @@ class ComparisonEngine:
             confidences = other.get_all_confidences()
             if confidences:
                 result["prediction_confidences"] = confidences
+
+        # Pre-extract bounding boxes for the mAP accumulator. Unlike
+        # confidence, mAP needs both sides: ground-truth boxes live on
+        # self.model and can't be recovered from prediction_raw, so stash
+        # both maps keyed by field path (mirrors prediction_confidences).
+        from .map_calculator import MAPCalculator as _MAPCalculator
+
+        if hasattr(self.model, "get_all_extras"):
+            gt_bboxes = _MAPCalculator.bboxes_from_extras(self.model.get_all_extras())
+            if gt_bboxes:
+                result["ground_truth_bboxes"] = gt_bboxes
+        if hasattr(other, "get_all_extras"):
+            pred_bboxes = _MAPCalculator.bboxes_from_extras(other.get_all_extras())
+            if pred_bboxes:
+                result["prediction_bboxes"] = pred_bboxes
 
         # If evaluator_format is requested, transform the result
         if evaluator_format:

@@ -1099,6 +1099,8 @@ class StructuredModel(BaseModel):
         document_field_comparisons: bool = False,
         add_confidence_metrics: bool = False,
         confidence_metrics: Optional[List[Any]] = None,
+        add_bbox_metrics: bool = False,
+        bbox_iou_threshold: float = 0.5,
     ) -> Dict[str, Any]:
         """Compare this model with another instance using SINGLE TRAVERSAL optimization.
 
@@ -1120,6 +1122,12 @@ class StructuredModel(BaseModel):
                 Defaults to [AUROCMetric()] if not provided. Only used when
                 add_confidence_metrics=True. For bulk evaluation, pass the metric
                 list to BulkStructuredModelEvaluator instead.
+            add_bbox_metrics: Whether to add bounding-box mAP metrics (single-doc
+                sanity check). Emits a UserWarning recommending
+                BulkStructuredModelEvaluator with BBoxMAPAccumulator for
+                statistically meaningful results.
+            bbox_iou_threshold: IoU threshold for mAP match classification
+                (default 0.5). Only used when add_bbox_metrics=True.
 
         Returns:
             Dictionary with comparison results including:
@@ -1144,6 +1152,8 @@ class StructuredModel(BaseModel):
             document_field_comparisons=document_field_comparisons,
             add_confidence_metrics=add_confidence_metrics,
             confidence_metrics=confidence_metrics,
+            add_bbox_metrics=add_bbox_metrics,
+            bbox_iou_threshold=bbox_iou_threshold,
         )
 
     def _convert_score_to_binary_metrics(
