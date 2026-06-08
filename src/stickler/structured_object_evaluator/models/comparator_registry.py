@@ -75,6 +75,13 @@ class ComparatorRegistry:
         except ImportError:
             pass
 
+        try:
+            from stickler.comparators.bbox import BBoxIoUComparator
+
+            self._registry["BBoxIoUComparator"] = BBoxIoUComparator
+        except ImportError:
+            pass
+
     def register(self, name: str, comparator_class: Type[BaseComparator]) -> None:
         """Register a new comparator class.
 
