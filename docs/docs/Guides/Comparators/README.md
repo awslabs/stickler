@@ -12,6 +12,7 @@ Comparators are the algorithms that determine how similar two field values are. 
 | [**LevenshteinComparator**](#levenshteincomparator) | Names, addresses, text with typos | Instant | No | Continuous (0.0--1.0) |
 | [**NumericComparator**](#numericcomparator) | Prices, quantities, measurements | Instant | No | Binary (0.0 or 1.0) |
 | [**FuzzyComparator**](#fuzzycomparator) | Flexible text, descriptions, reordered tokens | Fast | No | Continuous (0.0--1.0) |
+| [**BBoxIoUComparator**](#bboxioucomparator) | Bounding boxes, spatial localization | Instant | No | Continuous (0.0--1.0) |
 | [**SemanticComparator**](#semanticcomparator) | Meaning-based text similarity | Moderate | Yes (Bedrock) | Continuous (0.0--1.0) |
 | [**BERTComparator**](#bertcomparator) | Contextual semantic similarity | Moderate | No (runs locally) | Continuous (0.0--1.0) |
 | [**LLMComparator**](#llmcomparator) | Complex semantic evaluation with reasoning | Slow | Yes (Bedrock) | Binary (0.0 or 1.0) |
@@ -135,6 +136,35 @@ class Product(StructuredModel):
 
 !!! note "Dependency"
     FuzzyComparator requires the `rapidfuzz` package. Install it with: `pip install rapidfuzz`
+
+---
+
+### BBoxIoUComparator
+
+Compares two bounding boxes using Intersection over Union (IoU) as the similarity score. Accepts both two-point (`[[x1, y1], [x2, y2]]`) and flat (`[x1, y1, x2, y2]`) formats. Coordinates are automatically normalized so that x1 <= x2 and y1 <= y2.
+
+**When to use:** Evaluating spatial localization accuracy for document fields, signature detection, logo identification, or any use case where you need to measure how well a predicted bounding box overlaps with ground truth.
+
+```python
+from stickler import StructuredModel, ComparableField
+from stickler.comparators import BBoxIoUComparator
+
+class DocumentField(StructuredModel):
+    bbox: list = ComparableField(
+        comparator=BBoxIoUComparator(threshold=0.5),
+        weight=1.0
+    )
+```
+
+**Key parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `threshold` | `0.5` | IoU threshold for binary match classification |
+| `margin_percent` | `5.0` | Vertical margin percentage for snap correction |
+
+!!! tip "Rich Value Pattern"
+    For end-to-end mAP evaluation with per-field breakdown, use the [Bounding Box mAP Metrics](../../Advanced/bbox-map-metrics.md) feature instead of using BBoxIoUComparator directly.
 
 ---
 
