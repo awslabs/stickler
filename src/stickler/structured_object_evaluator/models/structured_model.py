@@ -670,26 +670,6 @@ class StructuredModel(BaseModel):
         """
         return ConfigurationHelper.is_aggregate_field(cls, field_name)
 
-    def _should_use_hierarchical_structure(self, val: Any, field_name: str) -> bool:
-        """Check if a list value should maintain hierarchical structure.
-
-        For lists, we need to check if they should maintain hierarchical structure
-        based on their field type configuration.
-
-        Args:
-            val: Value to check (typically a list)
-            field_name: Name of the field being evaluated
-
-        Returns:
-            True if the value should use hierarchical structure, False otherwise
-        """
-        if isinstance(val, list):
-            # Check if this field is configured as List[StructuredModel]
-            field_info = self.__class__.model_fields.get(field_name)
-            if field_info and self._is_structured_field_type(field_info):
-                return True
-        return False
-
     def _is_list_field(self, field_name: str) -> bool:
         """Check if a field is ANY list type.
 

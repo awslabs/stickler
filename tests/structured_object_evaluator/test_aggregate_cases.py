@@ -68,7 +68,7 @@ class TestAggregation:
         agg_results = result['confusion_matrix']['aggregate']
 
         assert agg_results['tp'] == 2, 'tp'
-        assert agg_results['tn'] == 6, 'tn'
+        assert agg_results['tn'] == 2, 'tn'  # Advertiser=TN + LineItems=TN (no leaf expansion for empty lists)
         assert agg_results['fd'] == 1, 'fd'
         assert agg_results['fa'] == 1, 'fa'
         assert agg_results['fp'] == 2, 'fp'

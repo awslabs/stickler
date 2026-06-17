@@ -315,14 +315,14 @@ class TestVetRecordsMetricsCalculation:
             # Should have nested fields for aggregate metrics
             assert (len(nested_fields) > 0), "Should have nested fields for aggregate metrics"
             
-            # Check that overall sections are empty (no matches above threshold)
+            # Verify behavior difference between primitives and List[StructuredModel]:
+            # - Primitive fields: overall is zeroed (gated), aggregate has the counts
+            # - List[StructuredModel] fields: same behavior (gated at every level)
             for field_name, field_metrics in nested_fields.items():
                 overall_metrics = field_metrics["overall"]
                 aggregate_metrics = field_metrics["aggregate"]
                 
-                # Overall should have some metrics from poor matches at the leaf node level.
-                # When the node is primitive or simple list, overall metrics will be same as aggregate metrics. 
-                # When node is structured list, then overall can be different from aggregate due to threshold. 
+                # Overall should be empty for below-threshold matches (gated out)
                 overall_total = sum(overall_metrics[metric] for metric in ["tp", "fa", "fd", "fp", "tn", "fn"])
                 assert (overall_total == 0), f"Field {field_name} overall should be empty for below-threshold matches"
                 

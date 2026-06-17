@@ -118,12 +118,6 @@ class ComparisonDispatcher:
         is_list_field = self.model._is_list_field(field_name)
         is_structured_list_field = self.model._is_structured_list_field(field_name)
 
-        # Get hierarchical needs for both ground truth and prediction.
-        # These flags control whether we need to maintain hierarchical structure
-        # for list fields (e.g., List[StructuredModel] vs List[str]).
-        #gt_needs_hierarchy = self.model._should_use_hierarchical_structure(gt_val, field_name)
-        #pred_needs_hierarchy = self.model._should_use_hierarchical_structure(pred_val, field_name)
-
         # ============================================================================
         # STEP 3: Handle list field null cases (early exit)
         # ============================================================================

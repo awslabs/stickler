@@ -164,7 +164,7 @@ class AggregateConfusionMatrixAccumulator(PostComparisonAccumulator):
 
         ``source`` may be missing, ``None``, or a non-dict; in those
         cases nothing is added. Non-numeric or negative values are
-        silently skipped per the design spec.
+        silently skipped to keep accumulator state consistent.
 
         Returns True iff at least one metric was added.
         """
@@ -252,6 +252,8 @@ class AggregateConfusionMatrixAccumulator(PostComparisonAccumulator):
 
         # Backward compat: older states may not record docs_with_data.
         # Treat any non-zero counts as evidence that data was accumulated.
+        # Note: if all counts are zero, docs_with_data defaults to 0, which
+        # causes compute() to return None for that accumulator instance.
         docs_with_data = state.get("docs_with_data")
         if isinstance(docs_with_data, int) and docs_with_data >= 0:
             self._docs_with_data = docs_with_data

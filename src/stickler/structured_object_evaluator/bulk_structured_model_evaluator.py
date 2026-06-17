@@ -806,7 +806,7 @@ class BulkStructuredModelEvaluator:
         if aggregate_metrics:
             agg_overall = aggregate_metrics.get("overall") or {}
             agg_derived = agg_overall.get("derived") or {}
-            print("\nAGGREGATE METRICS (corpus rollup, ungated by match_threshold):")
+            print("\nAGGREGATE METRICS (corpus rollup, includes below-threshold structured list pairs):")
             print("-" * 40)
             print(f"  TP: {agg_overall.get('tp', 0):,}  "
                   f"FD: {agg_overall.get('fd', 0):,}  "
@@ -820,9 +820,16 @@ class BulkStructuredModelEvaluator:
                   f"Accuracy: {agg_derived.get('cm_accuracy', 0.0):.4f}")
             agg_fields = aggregate_metrics.get("fields") or {}
             if agg_fields:
-                # Sort by F1 desc for readability, mirror the field-metrics block.
+                # Only show leaf-level fields (those without children in the
+                # path hierarchy) to avoid visually doubling counts. Parent
+                # paths are sums of their leaf children.
+                all_paths = set(agg_fields.keys())
+                leaf_paths = sorted(
+                    (p for p in all_paths
+                     if not any(other.startswith(p + ".") for other in all_paths if other != p)),
+                )
                 sorted_agg = sorted(
-                    agg_fields.items(),
+                    ((p, agg_fields[p]) for p in leaf_paths),
                     key=lambda x: (x[1].get("derived") or {}).get("cm_f1", 0.0),
                     reverse=True,
                 )
@@ -832,7 +839,8 @@ class BulkStructuredModelEvaluator:
                     fd = counts.get("fd", 0)
                     fa = counts.get("fa", 0)
                     fn = counts.get("fn", 0)
-                    if tp + fd + fa + fn == 0:
+                    tn = counts.get("tn", 0)
+                    if tp + fd + fa + fn + tn == 0:
                         continue
                     display_path = path if len(path) <= 30 else path[:27] + "..."
                     print(
@@ -841,6 +849,7 @@ class BulkStructuredModelEvaluator:
                         f"R: {derived.get('cm_recall', 0.0):.3f} | "
                         f"F1: {derived.get('cm_f1', 0.0):.3f} | "
                         f"TP: {tp:,} | FD: {fd:,} | FA: {fa:,} | FN: {fn:,}"
+                        + (f" | TN: {tn:,}" if tn else "")
                     )
 
         # Per-accumulator failure visibility — surfaced separately so a

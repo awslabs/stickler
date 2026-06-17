@@ -241,8 +241,8 @@ def test_nested_field_aggregation():
     # With threshold-gated recursion, only item1 (similarity=1.0 >= 0.7) gets field-level analysis
     # item2 (similarity=0.407 < 0.7) is classified as FD at object level, no field recursion
 
-    # items.name should have 2 TP (both item1 and item2)
-    # Overall should have some metrics from poor matches at the leaf node level.
+    # items.name should have 1 TP in overall (only item1, item2 was below threshold)
+    # In aggregate, both items contribute (2 TP)
     name_metrics = items_fields["name"]
     if "overall" in name_metrics:
         assert name_metrics["overall"]["tp"] == 1

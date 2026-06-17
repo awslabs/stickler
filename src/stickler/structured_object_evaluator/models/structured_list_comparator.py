@@ -15,26 +15,29 @@ Behavior summary:
   TP; matched pairs below threshold are FD; unmatched GT/Pred items are
   FN/FA.
 - Zero-similarity pairs (similarity == 0.0) are treated as unmatched
-  (FN+FA), not FD. Hungarian can pair items that share no aligning fields
-  at all; treating those as FD would be misleading.
-- Per-field ``overall`` metrics are threshold-gated: only TP pairs and
-  unmatched FN/FA items contribute. FD pairs are excluded so per-field
-  ``overall`` reflects the same threshold decision as the object level.
-- Per-field ``aggregate`` metrics ALWAYS recurse through every matched
-  pair (TP and FD) and every unmatched item (FN and FA), providing a
-  complete drill-down view independent of the threshold gate.
-- Empty-list cases account properly for child leaf nodes: empty-vs-empty
-  yields TN; populated-vs-empty contributes FN/FA per populated field.
+  (FN+FA) at ALL levels — object-level, per-field ``overall``, and
+  per-field ``aggregate``. Hungarian can pair items that share no
+  aligning fields at all; treating those as matched would be misleading.
+- Per-field ``overall`` metrics are threshold-gated at every nesting
+  level: only TP pairs and unmatched FN/FA items contribute. FD pairs are
+  excluded so per-field ``overall`` reflects the same threshold decision
+  as the object level. Nested ``List[StructuredModel]`` fields apply
+  the same gating recursively using the inner model's ``match_threshold``.
+- Per-field ``aggregate`` metrics recurse through every matched pair
+  (TP and FD, but NOT zero-similarity) and every unmatched item (FN and
+  FA), providing a complete drill-down view independent of the threshold
+  gate.
+- Empty-list cases: empty-vs-empty yields a single list-level TN with no
+  nested field metrics.
 - Nested field metrics are computed by delegating into each child model's
-  ``compare_with`` rather than re-implementing the recursion here.
+  ``compare_recursive`` rather than re-implementing the recursion here.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Union, get_args, get_origin
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from .comparable_field import ComparableField
 from .comparison_helper import ComparisonHelper
 from .hungarian_helper import HungarianHelper
-from .metrics_helper import MetricsHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -42,11 +45,6 @@ if TYPE_CHECKING:
 
 class StructuredListComparator:
     """Handles comparison of List[StructuredModel] fields using Hungarian matching."""
-
-    # Class-level nesting depth tracker.
-    # Threshold-gating only applies at the outermost list level (_nesting_depth == 1).
-    # Inner list comparisons (called via compare_recursive) use ungated behavior.
-    _nesting_depth = 0
 
     def __init__(self, parent_model: "StructuredModel"):
         """Initialize the comparator with reference to parent model.
@@ -162,11 +160,11 @@ class StructuredListComparator:
 
             match (gt_len, pred_len):
                 case (0, 0):
-                    fields_metrics = self._get_leaves_under_field(self.parent_model.__class__, field_name)
-                    # Both empty lists → True Negative
+                    # Both empty lists → True Negative at list level.
+                    # No nested field metrics are emitted (matches dev behavior).
                     return {
                         "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
-                        "fields": fields_metrics,
+                        "fields": {},
                         "raw_similarity_score": 1.0,
                         "similarity_score": 1.0,
                         "threshold_applied_score": 1.0,
@@ -216,10 +214,12 @@ class StructuredListComparator:
         fn_objects = len(gt_list) - len(matched_gt_for_counting)
         fa_objects = len(pred_list) - len(matched_pred_for_counting)
 
-        # For field-level recursion, ALL Hungarian-paired items are still considered
-        # "matched" so their fields get compared (yielding FD at field level)
-        matched_gt_indices = {idx for idx, _, _ in matched_pairs}
-        matched_pred_indices = {idx for _, idx, _ in matched_pairs}
+        # For field-level recursion, also exclude zero-similarity pairs.
+        # Zero-similarity means the items share no aligning fields at all;
+        # comparing them pairwise would produce FD-shaped metrics that
+        # contradict the object-level FN+FA classification.
+        matched_gt_indices = {idx for idx, _, sim in matched_pairs if sim > 0.0}
+        matched_pred_indices = {idx for _, idx, sim in matched_pairs if sim > 0.0}
 
         # Build list-level metrics counting OBJECTS (not fields)
         object_level_metrics = {
@@ -294,7 +294,10 @@ class StructuredListComparator:
     ) -> Dict[str, Dict[str, Any]]:
         """Calculate field-level details for nested structure with threshold-gated recursion.
 
-        PHASE 3 FIX: Implements proper threshold-gated recursion as documented.
+        Implements proper threshold-gated recursion as documented: the same
+        threshold-gating applies recursively at each nesting level, using the
+        inner model's ``match_threshold``.
+
         Only generates nested field metrics in per-field 'overall' for object pairs
         with similarity >= match_threshold. Below-threshold pairs still contribute to
         'aggregate' metrics (which recurse into all leaf nodes regardless of threshold).
@@ -306,76 +309,64 @@ class StructuredListComparator:
             matched_pairs: List of (gt_idx, pred_idx, similarity) tuples
             matched_gt_indices: Set of matched GT indices
             matched_pred_indices: Set of matched pred indices
-            match_threshold: Match threshold for threshold-gating (NOW PROPERLY USED!)
+            match_threshold: Match threshold for threshold-gating
 
         Returns:
             Dictionary mapping field names to their metrics
         """
-        # Track nesting depth: threshold-gating only applies at outermost list level
-        StructuredListComparator._nesting_depth += 1
-        is_outermost = StructuredListComparator._nesting_depth == 1
+        # Two result sets:
+        # - gated_results: only above-threshold pairs + unmatched items (for per-field "overall")
+        # - all_results: ALL pairs including below-threshold (for "aggregate" pre-seeding)
+        all_results = []
+        gated_results = []
 
-        try:
-            # Two result sets:
-            # - gated_results: only above-threshold pairs (for per-field "overall")
-            # - all_results: ALL pairs including below-threshold (for "aggregate" pre-seeding)
-            all_results = []
-            gated_results = [] if is_outermost else None  # Only needed at outermost level
+        # Handle matched pairs - split by threshold
+        # Zero-similarity pairs are excluded (they're treated as unmatched at all levels)
+        for gt_idx, pred_idx, similarity in matched_pairs:
+            if similarity <= 0.0:
+                continue  # Skip zero-similarity; handled as unmatched below
+            if gt_idx < len(gt_list) and pred_idx < len(pred_list):
+                gt_item = gt_list[gt_idx]
+                pred_item = pred_list[pred_idx]
+                field_details_tmp = gt_item.compare_recursive(pred_item)
+                all_results.append(field_details_tmp)
+                if similarity >= match_threshold:
+                    gated_results.append(field_details_tmp)
 
-            # Handle matched pairs - split by threshold at outermost level only
-            for gt_idx, pred_idx, similarity in matched_pairs:
-                if gt_idx < len(gt_list) and pred_idx < len(pred_list):
-                    gt_item = gt_list[gt_idx]
-                    pred_item = pred_list[pred_idx]
-                    field_details_tmp = gt_item.compare_recursive(pred_item)
-                    all_results.append(field_details_tmp)
-                    if is_outermost and similarity >= match_threshold:
-                        gated_results.append(field_details_tmp)
+        # Handle unmatched GT objects - count each element in the list
+        for gt_idx, gt_item in enumerate(gt_list):
+            if gt_idx not in matched_gt_indices:
+                #compare against itself to count all non-null values
+                field_details_tmp = gt_item.compare_recursive(gt_item)
 
-            # Handle unmatched GT objects - count each element in the list
-            for gt_idx, gt_item in enumerate(gt_list):
-                if gt_idx not in matched_gt_indices:
-                    #compare against itself to count all non-null values
-                    field_details_tmp = gt_item.compare_recursive(gt_item)
+                #take all the tp values and convert to fn
+                field_details_tmp["fields"] = self._switch_metrics(field_details_tmp["fields"] , source_metric='tp', target_metric='fn')
+                all_results.append(field_details_tmp)
+                gated_results.append(field_details_tmp)
 
-                    #take all the tp values and convert to fn
-                    field_details_tmp["fields"] = self._switch_metrics(field_details_tmp["fields"] , source_metric='tp', target_metric='fn')
-                    all_results.append(field_details_tmp)
-                    if is_outermost:
-                        gated_results.append(field_details_tmp)
+        # Handle unmatched pred objects - count each element in the list
+        for pred_idx, pred_item in enumerate(pred_list):
+            if pred_idx not in matched_pred_indices:
+                #compare against itself to count all non-null values
+                field_details_tmp = pred_item.compare_recursive(pred_item)
 
-            # Handle unmatched pred objects - count each element in the list
-            for pred_idx, pred_item in enumerate(pred_list):
-                if pred_idx not in matched_pred_indices:
-                    #compare against itself to count all non-null values
-                    field_details_tmp = pred_item.compare_recursive(pred_item)
+                #take all the tp values and convert to fa and fp
+                target_result = field_details_tmp.copy()
+                target_result["fields"]  = self._switch_metrics(field_details_tmp["fields"], source_metric='tp', target_metric='fa')
+                field_details_tmp["fields"] = self._switch_metrics(field_details_tmp["fields"], target_result["fields"], source_metric='tp', target_metric='fp')
+                all_results.append(field_details_tmp)
+                gated_results.append(field_details_tmp)
 
-                    #take all the tp values and convert to fa and fp
-                    target_result = field_details_tmp.copy()
-                    target_result["fields"]  = self._switch_metrics(field_details_tmp["fields"], source_metric='tp', target_metric='fa')
-                    field_details_tmp["fields"] = self._switch_metrics(field_details_tmp["fields"], target_result["fields"], source_metric='tp', target_metric='fp')
-                    all_results.append(field_details_tmp)
-                    if is_outermost:
-                        gated_results.append(field_details_tmp)
+        # Aggregate gated results for per-field "overall" values
+        gated_aggregated = self._recursive_aggregate_metrics(gated_results)
 
-            if is_outermost:
-                # Aggregate gated results for per-field "overall" values
-                gated_aggregated = self._recursive_aggregate_metrics(gated_results)
+        # Aggregate all results for pre-seeded "aggregate" values
+        all_aggregated = self._recursive_aggregate_metrics(all_results)
 
-                # Aggregate all results for pre-seeded "aggregate" values
-                all_aggregated = self._recursive_aggregate_metrics(all_results)
+        # Merge: use gated structure for "overall" but pre-seed "aggregate" from full results
+        merged = self._preseed_aggregate_from_full(gated_aggregated, all_aggregated)
 
-                # Merge: use gated structure for "overall" but pre-seed "aggregate" from full results
-                merged = self._preseed_aggregate_from_full(gated_aggregated, all_aggregated)
-
-                return merged['fields']
-            else:
-                # Inner list: no gating, use all results directly (old behavior)
-                aggregated = self._recursive_aggregate_metrics(all_results)
-                return aggregated['fields']
-
-        finally:
-            StructuredListComparator._nesting_depth -= 1
+        return merged['fields']
 
     def _switch_metrics(self, source_result:dict, target_result: dict =None, source_metric: str ='tp', target_metric: str ='fp'):
         if not target_result:
@@ -415,8 +406,12 @@ class StructuredListComparator:
 
         The gated structure has per-field 'overall' counts that only include above-threshold
         entity pairs. The full structure includes ALL pairs. We copy the full structure's
-        'overall' values into 'aggregate' keys at leaf levels so that the
+        ungated counts into 'aggregate' keys at leaf levels so that the
         AggregateMetricsCalculator picks them up as pre-computed aggregates and sums them upward.
+
+        When a leaf node in the full structure already has an 'aggregate' key (from an inner
+        list comparison that also applied gating), we use that pre-computed aggregate rather
+        than the gated 'overall', since it represents the true ungated counts.
 
         Args:
             gated: Aggregated result from above-threshold pairs only (used for 'overall')
@@ -429,8 +424,10 @@ class StructuredListComparator:
         full_has_children = "fields" in full and full["fields"] and len(full["fields"]) > 0
 
         if not full_has_children:
-            # Leaf node: pre-seed aggregate from full's overall
-            if "overall" in full:
+            # Leaf node: pre-seed aggregate from full's aggregate (if present) or overall
+            if "aggregate" in full:
+                gated["aggregate"] = dict(full["aggregate"])
+            elif "overall" in full:
                 gated["aggregate"] = dict(full["overall"])
         else:
             # Non-leaf node: recurse into children but do NOT pre-seed aggregate here.
@@ -456,61 +453,6 @@ class StructuredListComparator:
                     gated["fields"][field_name] = shell
 
         return gated
-
-    def _handle_hierarchical_field(
-        self,
-        sub_field_name: str,
-        gt_list: List["StructuredModel"],
-        pred_list: List["StructuredModel"],
-        matched_pairs: List,
-        matched_gt_indices: set,
-        matched_pred_indices: set,
-        match_threshold: float,
-    ) -> Dict[str, Any]:
-        """Handle hierarchical List[StructuredModel] fields with TRUE recursive aggregation.
-
-        CRITICAL FIX: Now uses proper recursion to handle arbitrary nesting depth.
-        """
-
-        # Collect all pair results for recursive aggregation
-        pair_results = []
-
-        # Process good matched pairs only
-        for gt_idx, pred_idx, similarity in matched_pairs:
-            if gt_idx < len(gt_list) and pred_idx < len(pred_list):
-                gt_item = gt_list[gt_idx]
-                pred_item = pred_list[pred_idx]
-                gt_sub_value = getattr(gt_item, sub_field_name)
-                pred_sub_value = getattr(pred_item, sub_field_name)
-
-                # Get hierarchical comparison for this pair
-                pair_result = gt_item._dispatch_field_comparison(
-                    sub_field_name, gt_sub_value, pred_sub_value
-                )
-                pair_results.append(pair_result)
-
-        # Use recursive aggregation function
-        aggregated_result = self._recursive_aggregate_metrics(pair_results)
-
-        # Add derived metrics recursively
-        self._add_derived_metrics_recursively(aggregated_result)
-
-        # Add metadata from first pair if available
-        if pair_results:
-            for key in [
-                "raw_similarity_score",
-                "similarity_score",
-                "threshold_applied_score",
-                "weight",
-            ]:
-                if key in pair_results[0]:
-                    aggregated_result[key] = pair_results[0][key]
-
-        return (
-            aggregated_result
-            if pair_results
-            else {"overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}}
-        )
 
     def _recursive_aggregate_metrics(
         self, pair_results: List[Dict[str, Any]]
@@ -583,6 +525,20 @@ class StructuredListComparator:
                         "overall"
                     ].get(metric, 0)
 
+                # Propagate aggregate keys from inner list comparisons.
+                # When an inner List[StructuredModel] has already been gated and
+                # pre-seeded, its leaf nodes carry 'aggregate' keys that must be
+                # summed across multiple pair results.
+                if "aggregate" in field_metrics:
+                    if "aggregate" not in target_fields[field_name]:
+                        target_fields[field_name]["aggregate"] = {
+                            "tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0
+                        }
+                    for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
+                        target_fields[field_name]["aggregate"][metric] += field_metrics[
+                            "aggregate"
+                        ].get(metric, 0)
+
                 # RECURSIVE CALL: Handle nested fields at arbitrary depth
                 if "fields" in field_metrics:
                     if "fields" not in target_fields[field_name]:
@@ -596,217 +552,3 @@ class StructuredListComparator:
                     target_fields[field_name][metric] += field_metrics.get(metric, 0)
 
         return target_fields
-
-    def _add_derived_metrics_recursively(self, metrics_dict: Dict[str, Any]) -> None:
-        """Recursively add derived metrics to all levels of the structure."""
-        metrics_helper = MetricsHelper()
-
-        # Add derived metrics to overall if present
-        if "overall" in metrics_dict:
-            metrics_dict["overall"]["derived"] = (
-                metrics_helper.calculate_derived_metrics(metrics_dict["overall"])
-            )
-
-        # Recursively process fields
-        if "fields" in metrics_dict:
-            for field_name, field_data in metrics_dict["fields"].items():
-                if "overall" in field_data:
-                    # Hierarchical structure - add derived and recurse
-                    field_data["overall"]["derived"] = (
-                        metrics_helper.calculate_derived_metrics(field_data["overall"])
-                    )
-                    self._add_derived_metrics_recursively(field_data)  # RECURSIVE CALL
-                elif "tp" in field_data:
-                    # Flat structure with metrics - add derived metrics directly
-                    field_data["derived"] = metrics_helper.calculate_derived_metrics(
-                        field_data
-                    )
-                # If neither "overall" nor "tp" is present, it might be an empty structure - skip
-
-    def _handle_non_hierarchical_field(
-        self,
-        sub_field_name: str,
-        gt_list: List["StructuredModel"],
-        pred_list: List["StructuredModel"],
-        matched_pairs: List,
-        matched_gt_indices: set,
-        matched_pred_indices: set,
-    ) -> Dict[str, Any]:
-        """Handle non-hierarchical fields with aggregation across matched pairs.
-
-        Handles both true primitive fields (str, int, etc.) and simple list fields
-        (List[str], List[int], etc.). Simple list fields are dispatched through
-        _dispatch_field_comparison to use PrimitiveListComparator for element-level
-        comparison, rather than being treated as atomic primitive values.
-
-        See: https://github.com/awslabs/stickler/issues/33
-        """
-
-        # Check if this field is a simple list type (e.g., List[str]) by inspecting
-        # the first available GT item's model definition.
-        is_simple_list = False
-        if gt_list:
-            is_simple_list = gt_list[0]._is_list_field(sub_field_name)
-
-        if is_simple_list:
-            # Simple list fields (List[str], List[int], etc.) need element-level
-            # comparison via _dispatch_field_comparison → PrimitiveListComparator.
-            # Use the same aggregation pattern as _handle_hierarchical_field.
-            pair_results = []
-
-            for gt_idx, pred_idx, similarity in matched_pairs:
-                if gt_idx < len(gt_list) and pred_idx < len(pred_list):
-                    gt_item = gt_list[gt_idx]
-                    pred_item = pred_list[pred_idx]
-                    gt_sub_value = getattr(gt_item, sub_field_name)
-                    pred_sub_value = getattr(pred_item, sub_field_name)
-
-                    pair_result = gt_item._dispatch_field_comparison(
-                        sub_field_name, gt_sub_value, pred_sub_value
-                    )
-                    pair_results.append(pair_result)
-
-            aggregated_result = self._recursive_aggregate_metrics(pair_results)
-
-            # Handle unmatched objects — count each list element as FN or FA
-            for gt_idx, gt_item in enumerate(gt_list):
-                if gt_idx not in matched_gt_indices:
-                    gt_sub_value = getattr(gt_item, sub_field_name)
-                    if isinstance(gt_sub_value, list) and gt_sub_value:
-                        aggregated_result["overall"]["fn"] += len(gt_sub_value)
-                    elif gt_sub_value is not None:
-                        aggregated_result["overall"]["fn"] += 1
-
-            for pred_idx, pred_item in enumerate(pred_list):
-                if pred_idx not in matched_pred_indices:
-                    pred_sub_value = getattr(pred_item, sub_field_name)
-                    if isinstance(pred_sub_value, list) and pred_sub_value:
-                        aggregated_result["overall"]["fa"] += len(pred_sub_value)
-                        aggregated_result["overall"]["fp"] += len(pred_sub_value)
-                    elif pred_sub_value is not None:
-                        aggregated_result["overall"]["fa"] += 1
-                        aggregated_result["overall"]["fp"] += 1
-
-            self._add_derived_metrics_recursively(aggregated_result)
-            return aggregated_result
-
-        # True primitive fields — use flat classification
-        sub_field_metrics = {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
-
-        for gt_idx, pred_idx, similarity in matched_pairs:
-            if gt_idx < len(gt_list) and pred_idx < len(pred_list):
-                gt_item = gt_list[gt_idx]
-                pred_item = pred_list[pred_idx]
-                gt_sub_value = getattr(gt_item, sub_field_name)
-                pred_sub_value = getattr(pred_item, sub_field_name)
-
-                field_classification = gt_item._classify_field_for_confusion_matrix(
-                    sub_field_name, pred_sub_value
-                )
-
-                for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-                    sub_field_metrics[metric] += field_classification.get(metric, 0)
-
-        # Handle unmatched objects for primitive fields
-        for gt_idx, gt_item in enumerate(gt_list):
-            if gt_idx not in matched_gt_indices:
-                gt_sub_value = getattr(gt_item, sub_field_name)
-                if gt_sub_value is not None:
-                    sub_field_metrics["fn"] += 1
-
-        for pred_idx, pred_item in enumerate(pred_list):
-            if pred_idx not in matched_pred_indices:
-                pred_sub_value = getattr(pred_item, sub_field_name)
-                if pred_sub_value is not None:
-                    sub_field_metrics["fa"] += 1
-                    sub_field_metrics["fp"] += 1
-
-        return {"overall": sub_field_metrics}
-    
-    def _get_all_leaves(self, model_class: "StructuredModel", prefix: str) -> List[str]:
-        """Recursively get all leaf nodes in the model."""
-        metrics = {}
-        
-        for fname, field_info in model_class.model_fields.items():
-            if fname == "extra_fields":
-                continue
-                
-            full_path = f"{prefix}.{fname}" if prefix else fname
-            field_type = field_info.annotation
-            
-            # Check if it's a nested StructuredModel
-            nested_model = self._get_nested_model_type(field_type)
-            
-            if nested_model:
-                # Recurse into nested model
-                field_metrics = self._get_all_leaves(nested_model, full_path)
-                metrics[fname] = {
-                    "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
-                    "fields": field_metrics,
-                    }
-            else:
-                # This is a leaf node
-                metrics[fname] = {
-                    "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
-                    "fields": {},
-                    }
-        
-        return metrics
-
-
-    def _get_leaves_under_field(self, model_class: "StructuredModel", field_name: str) -> List[str]:
-        """Get all leaf nodes under a specific field."""
-        # Find the field in the model
-        if field_name not in model_class.model_fields:
-            raise ValueError(f"Field '{field_name}' not found in {model_class.__name__}")
-        
-        field_info = model_class.model_fields[field_name]
-        field_type = field_info.annotation
-        
-        # Get the nested model type (handles List[Model] and direct Model)
-        nested_model = self._get_nested_model_type(field_type)
-        
-        if not nested_model:
-            # This field itself is a leaf
-            return [field_name]
-        
-        # Get all leaves under this nested model
-        return self._get_all_leaves(nested_model, field_name)
-
-
-    def _get_nested_model_type(self, field_type) -> "StructuredModel":
-        """
-        Extract nested StructuredModel type from field annotation.
-        Handles: StructuredModel, List[StructuredModel], Optional[StructuredModel], etc.
-        """
-        origin = get_origin(field_type)
-        
-        # Handle Optional/Union types
-        if origin is Union:
-            args = get_args(field_type)
-            for arg in args:
-                if arg is not type(None):
-                    nested = self._get_nested_model_type(arg)
-                    if nested:
-                        return nested
-            return None
-        
-        # Handle List types
-        if origin is list or origin is List:
-            args = get_args(field_type)
-            if args:
-                return self._get_nested_model_type(args[0])
-            return None
-        
-        # Direct StructuredModel type
-        try:
-            if isinstance(field_type, type) and issubclass(field_type, StructuredModel):
-                return field_type
-        except (TypeError, AttributeError):
-            pass
-        
-        return None
-
-
-# Import needed at bottom to avoid circular imports
-from .structured_model import StructuredModel
