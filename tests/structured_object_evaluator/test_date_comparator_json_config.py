@@ -142,7 +142,11 @@ class TestConfigPropertyRoundTrip:
         assert isinstance(cmp.config["tolerance"], float)
 
     def test_zero_tolerance_omitted_from_config(self):
-        cmp = DateComparator()
+        # A fully-default instance emits no config at all (matches the
+        # NumericComparator sibling; keeps the schema export clean).
+        assert DateComparator().config is None
+        # A non-default instance still omits the unset tolerance key.
+        cmp = DateComparator(allow_partial_year=True)
         assert "tolerance" not in cmp.config
 
     def test_config_is_json_serializable(self):

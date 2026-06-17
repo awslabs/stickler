@@ -127,10 +127,13 @@ class Invoice(StructuredModel):
 | `dayfirst` | `None` | Interpretation hint for ambiguous numeric dates |
 | `allow_partial_year` | `False` | If `True`, year-less ↔ year-bearing pairs with matching m/d score `0.7` |
 | `range_mode` | `"graded"` | How range comparisons are scored: `"strict"`, `"reject"`, `"contains"`, or `"graded"` |
+| `precision_mode` | `"exact"` | How month/day resolution mismatches score (`Jan 2024` vs `Jan 1, 2024`): `"exact"`, `"gt_loose"`, or `"overlap"` |
 
 For the full behavior reference, configuration matrix, and corner cases, see the [DateComparator page](date-comparator.md).
 
 ---
+
+### FuzzyComparator
 
 Uses the [rapidfuzz](https://github.com/rapidfuzz/RapidFuzz) library for advanced fuzzy string matching. Supports multiple matching methods including standard ratio, partial matching, and token-based matching that is order-independent.
 

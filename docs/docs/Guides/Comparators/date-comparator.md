@@ -19,11 +19,17 @@ from stickler import StructuredModel, ComparableField
 class Invoice(StructuredModel):
     invoice_date: str = ComparableField(
         comparator=DateComparator(),
-        threshold=1.0
+        threshold=1.0,   # field-level: how much similarity counts as a match
     )
 ```
 
-By default this comparator is **conservative**: it accepts surface-form differences (separators, padding, named months, ISO vs slash) and refuses to score anything genuinely ambiguous. Two opt-in flags (`allow_partial_year`, `range_mode`) loosen specific cases that show up in real document-extraction data.
+`DateComparator` returns a raw similarity (0.0–1.0); the `threshold` on `ComparableField` decides what counts as a match for that field. They're separate: the comparator's own `threshold` argument is unused in this pattern — set the gating threshold on the field, as above. A quick standalone check, no model required:
+
+```python
+DateComparator().compare("2025-01-01", "Jan 1, 2025")   # 1.0
+```
+
+By default this comparator is **conservative**: it accepts surface-form differences (separators, padding, named months, ISO vs slash) and refuses to score anything genuinely ambiguous — including a reduced-precision date (`Jan 2024`) against a fuller one (`Jan 1, 2024`), which scores `0.0` by default rather than letting the parser fabricate the missing day. Three knobs (`allow_partial_year`, `range_mode`, `precision_mode`) relax specific cases that show up in real document-extraction data.
 
 ---
 
@@ -36,6 +42,7 @@ By default this comparator is **conservative**: it accepts surface-form differen
 | `Mon 10/24/16` | `10/24/16` | `1.0` | [weekday prefix](#surface-form-variation) |
 | `Oct 24` | `10/24` | `1.0` | [both sides year-less](#missing-years) |
 | `11/03` | `11/03/2012` | `0.7`*  | [year hallucination](#missing-years) |
+| `Jan 2024` | `Jan 1, 2024` | `0.0`* | [reduced precision](#reduced-precision) |
 | `10/28/16` | `10/24/16 to 10/30/16` | varies | [range-vs-single](#range-comparisons) |
 | `10/24/16 to 10/30/16` | `10/24/2016 - 10/30/2016` | `1.0` | [range-vs-range](#range-comparisons) |
 | `01/02/2025` | `Jan 2, 2025` | `1.0` | [ambiguous numeric dates](#ambiguous-numeric-dates) |
@@ -51,12 +58,13 @@ By default this comparator is **conservative**: it accepts surface-form differen
 
 | Parameter | Type | Default | Purpose |
 |---|---|---|---|
-| `tolerance` | `timedelta`, `int`, or `float` | `timedelta(0)` | Allowed difference for same-day comparisons. Numeric inputs are interpreted as days. Single dates only. |
+| `tolerance` | `timedelta`, `int`, or `float` | `None` (→ `timedelta(0)`, same calendar day) | Allowed difference for same-day comparisons. Numeric inputs are interpreted as days. Single dates only. |
 | `dayfirst` | `Optional[bool]` | `None` | Interpretation of ambiguous numeric dates. `None` tries both and takes the better-matching score. |
 | `allow_partial_year` | `bool` | `False` | If `True`, year-less ↔ year-bearing pairs with matching m/d score `0.7`. |
 | `range_mode` | `"strict"` \| `"reject"` \| `"contains"` \| `"graded"` | `"graded"` | How range comparisons score. |
+| `precision_mode` | `"exact"` \| `"gt_loose"` \| `"overlap"` | `"exact"` | How month/day **resolution** mismatches score (`Jan 2024` vs `Jan 1, 2024`). |
 
-`threshold` is the standard `BaseComparator` parameter (forwarded unchanged) and isn't listed here — see [Comparators index](README.md) for how `threshold` interacts with `ComparableField`.
+`threshold` is the standard `BaseComparator` parameter (forwarded unchanged) and isn't listed here — see [Customizing Your Evaluation](../Evaluation/README.md) for how `threshold`, `weight`, and `clip_under_threshold` interact at the `ComparableField` layer.
 
 These are also accepted via `comparator_config` in JSON schemas:
 
@@ -67,12 +75,13 @@ These are also accepted via `comparator_config` in JSON schemas:
   "x-aws-stickler-comparator-config": {
     "allow_partial_year": true,
     "range_mode": "contains",
+    "precision_mode": "gt_loose",
     "tolerance": 1
   }
 }
 ```
 
-The config round-trips: `DateComparator(...).config` returns a JSON-serializable dict that can be passed back through `create_comparator("DateComparator", cfg)` to rebuild the same instance.
+The config round-trips: `DateComparator(...).config` returns a JSON-serializable dict that can be passed back through `create_comparator("DateComparator", cfg)` to rebuild the same instance. Only non-default values are included, and an all-default instance returns `None` (matching the other comparators) so no redundant `x-aws-stickler-comparator-config` block is written into exported schemas.
 
 ---
 
@@ -93,7 +102,7 @@ The most common case: same calendar day, different rendering. These all score `1
 | `2016-10-24` | `10/24/16` | ISO vs slash |
 | `24/10/2016` | `10/24/16` | EU vs US (day=24 disambiguates) |
 
-Two-digit years use `python-dateutil`'s pivot: `00–68` → `2000–2068`, `69–99` → `1969–1999`. If your data needs a different cutoff, normalize upstream.
+Two-digit years follow `python-dateutil`'s pivot: a **sliding 50-year window centered on the current year**, so a two-digit input maps to whichever century puts it within ~50 years of today. This means the boundary moves as the calendar advances (it is not a fixed cutoff). If you need deterministic control, write the year out in full upstream.
 
 ---
 
@@ -126,6 +135,64 @@ Default is conservative: the model *did* introduce a year that may be wrong. Tur
 - Your eval prefers fixable failures over false-zero matches.
 - You're characterizing model behavior rather than gating releases.
 - Your ground truth is known to be year-less (e.g., a date field that's just MM/DD).
+
+!!! note "Year presence vs. resolution are different axes"
+    `allow_partial_year` is about the **year** specifically — one side omits the year while still pinning month and day exactly (`11/03` vs `11/03/2012`). When a side is coarser in its **month or day** (`Jan 2024`, `2024`), that's a *resolution* mismatch, governed by [`precision_mode`](#reduced-precision). The two compose independently.
+
+---
+
+## Reduced precision
+
+A date can be written at different *resolutions*: `2024` (year only), `Jan 2024` (month), `Jan 1, 2024` (day). `python-dateutil` fills any field a string omits with a default, so a naive parse of `Jan 2024` silently becomes `Jan 1, 2024` — and a year-only `2024` becomes `Jan 1, 2024`. Treating those as equal inflates scores in the direction that *hides* extraction bugs, so by default the comparator detects which of year/month/day each side actually specified and **refuses to fabricate the difference away**.
+
+`precision_mode` controls what happens when the two sides differ in resolution. The **first argument to `compare` is treated as ground truth**, which is what lets `gt_loose` be directional.
+
+### Modes at a glance
+
+| Ground truth | Prediction | `exact` (default) | `gt_loose` | `overlap` |
+|---|---|---|---|---|
+| `Jan 2024` | `Jan 1, 2024` (pred finer) | `0.0` | `1.0` | `1.0` |
+| `Jan 1, 2024` | `Jan 2024` (pred coarser) | `0.0` | `0.0` | `1.0` |
+| `2024` | `2024-06-15` (pred finer) | `0.0` | `1.0` | `1.0` |
+| `2024` | `2024` (same resolution) | `1.0` | `1.0` | `1.0` |
+| `Jan 2024` | `Feb 2024` (value differs) | `0.0` | `0.0` | `0.0` |
+| `Jan 2024` | `Feb 1, 2024` (finer, but disagrees) | `0.0` | `0.0` | `0.0` |
+
+Same-resolution pairs are unaffected by `precision_mode` — the entire surface-form, year-less, and partial-year behavior above is untouched. The mode only decides cross-resolution pairs.
+
+**Which mode?** Resolutions must match → `exact` (default). Ground truth is deliberately coarse and a more-specific prediction should still count → `gt_loose`. Neither side is authoritative on precision and you only care that they're consistent → `overlap`.
+
+```python
+from stickler.comparators import DateComparator
+
+# Default: a fabricated day is a miss.
+DateComparator().compare("Jan 2024", "Jan 1, 2024")                      # 0.0
+
+# gt_loose: prediction may be finer than the (coarse) ground truth...
+DateComparator(precision_mode="gt_loose").compare("Jan 2024", "Jan 1, 2024")  # 1.0
+# ...but not coarser than it.
+DateComparator(precision_mode="gt_loose").compare("Jan 1, 2024", "Jan 2024")  # 0.0
+
+# overlap: either side may be coarser, as long as they're consistent.
+DateComparator(precision_mode="overlap").compare("Jan 1, 2024", "Jan 2024")   # 1.0
+DateComparator(precision_mode="overlap").compare("Jan 2024", "Feb 1, 2024")   # 0.0 (month differs)
+```
+
+### `exact` (default)
+
+Both sides must specify the same fields. A prediction that adds a month/day the ground truth didn't have (or drops one it did) is a miss. This is the conservative default for release-gating evals: a fabricated component is exactly the kind of extraction error you don't want scored as a match.
+
+### `gt_loose`
+
+The ground truth sets the required resolution. A prediction may be **more** precise than the ground truth — the extra precision is ignored as long as it's consistent at the ground truth's grain (`Jan 2024` vs `Jan 1, 2024` → `1.0`) — but may **not** be less precise (`Jan 1, 2024` vs `Jan 2024` → `0.0`, the prediction under-specified the truth). Use this when ground truth is deliberately coarse (a month-level or year-level field) and any in-grain prediction should count.
+
+### `overlap`
+
+Symmetric: either side may be the coarser one, and they match as long as they agree on every field both sides specify. Use this when neither side is authoritative on resolution and you only care that the two are *consistent*, not that they're equally precise.
+
+### Composing with `allow_partial_year`
+
+The two axes are independent. `precision_mode` judges month/day resolution; `allow_partial_year` judges year presence (and carries the `0.7` partial-year credit). A pair can be gated by either: e.g. under `precision_mode="exact"`, `Jan 2024` vs `Jan 1, 2024` is `0.0` regardless of `allow_partial_year`, because the resolution gate fails first.
 
 ---
 
@@ -211,8 +278,16 @@ When year-presence differs between the two sides being compared (e.g., year-less
 | `Oct 28` | `10/24/16 to 10/30/16` | `graded` | `0.0` | `0.35` |
 | `Oct 28` | `10/24/16 to 10/30/16` | `strict` | `0.0` | `0.0` |
 | `Oct 24 to Oct 30` | `10/24/16 to 10/30/16` | `graded` | `0.0` | `0.7` |
+| `Dec 25` | `Dec 20, 2024 to Jan 5, 2025` | `contains` | `0.0` | `0.7` |
 
 The principle: each guard contributes a confidence cap, and they multiply.
+
+When year-presence differs, the comparison drops to `(month, day)` space (the year-less side has no real year to compare). This applies to every range shape:
+
+- **Range-vs-single** containment is checked on m/d. Ranges that **wrap the year boundary** in that space — e.g. `Dec 20 → Jan 5`, common for fiscal and holiday spans — are handled as a wrap-around: both `Dec 25` and `Jan 2` count as inside.
+- **Range-vs-range** endpoint equality (`strict`/`contains`) and overlap (`graded`) are likewise measured on m/d, so `Oct 24 to Oct 30` vs `10/24/16 to 10/30/16` scores `1.0 × 0.7` under `contains` and its m/d Jaccard `× 0.7` under `graded`.
+
+(When both sides carry a year, no m/d projection is involved — the full dates are compared directly.)
 
 ---
 
@@ -229,6 +304,7 @@ The comparator parses each side under both interpretations and returns the bette
 | `01/02/2025` | `Jan 2, 2025` | `1.0` (month-first matches the named-month side) |
 | `01/02/2025` | `Feb 1, 2025` | `1.0` (day-first matches the named-month side) |
 | `01/02/2025` | `01/02/2025` | `1.0` (identical strings, any interpretation works) |
+| `2025-02-01` | `01/02/2025` | `1.0` (ISO side pins Feb 1; month-first reading of the prediction agrees) |
 | `10/03/16` | `03/10/16` | `0.0` (no consistent interpretation matches) |
 
 This is symmetric — the comparator doesn't favor ground truth or prediction.
@@ -247,13 +323,13 @@ eu.compare("01/02/2025", "Feb 1, 2025")    # 1.0 (Feb 1)
 eu.compare("01/02/2025", "Jan 2, 2025")    # 0.0
 ```
 
-ISO-leading strings (`2025-01-01`) and named-month strings (`Jan 2, 2025`) always parse the same way regardless of `dayfirst`.
+ISO / year-first strings (`2025-01-01`, `2025/01/01`) and named-month strings (`Jan 2, 2025`) always parse the same way regardless of `dayfirst`. A leading four-digit year fixes month-then-day order, so the comparator **pins year-first inputs to month-first parsing even when `dayfirst=True`** — without that, an unambiguous canonical date like `2025-02-01` would be misread as Jan 2 and a non-canonical prediction of the same date would score `0.0`.
 
 ---
 
 ## Tolerance
 
-`tolerance` allows two single dates to compare equal if they're within N days of each other. Accepts a `timedelta`, an `int` (days), or a `float` (days, fractional allowed).
+`tolerance` allows two single dates to compare equal if they're within the window of each other. Accepts a `timedelta`, an `int` (days), or a `float` (days, fractional allowed).
 
 ```python
 DateComparator(tolerance=timedelta(days=1))
@@ -265,6 +341,22 @@ DateComparator(tolerance=1.5)      # 36 hours
 cmp = DateComparator(tolerance=1)
 cmp.compare("2025-01-01", "2025-01-02")   # 1.0
 cmp.compare("2025-01-01", "2025-01-03")   # 0.0
+```
+
+### Whole-day vs. sub-day windows
+
+The comparison granularity follows the tolerance:
+
+- **Whole-day tolerance** (`0`, `1`, `2`, …) floors both sides to their calendar day before measuring, so intra-day times are ignored and the window counts whole calendar days. This is the common case and the default (`tolerance=0` → same calendar day).
+- **Sub-day tolerance** (any value with an hours/minutes component, e.g. `1.5` = 36h or `0.5` = 12h) compares the **actual timestamps** without flooring, so the window means real elapsed time.
+
+```python
+cmp = DateComparator(tolerance=1.5)   # 36 hours, real elapsed time
+cmp.compare("2025-01-01 00:00", "2025-01-02 12:00")   # 1.0 (exactly 36h)
+cmp.compare("2025-01-01 00:00", "2025-01-02 13:00")   # 0.0 (37h)
+
+day = DateComparator(tolerance=1)     # 1 calendar day, time ignored
+day.compare("2025-01-01 00:00", "2025-01-02 23:00")   # 1.0 (1 calendar day apart)
 ```
 
 Tolerance only applies when **both sides are year-bearing single dates** (the same-calendar-day path). It does not apply to:
@@ -301,17 +393,22 @@ A string like `12:30 PM` or `10/45AM` is a time, not a date. The comparator dete
 
 Strings like `'07/17/ 6'` (embedded whitespace inside a year) or `'11/0316'` (missing separator) typically fail to parse and return `0.0`. The comparator does not attempt to repair these — surfacing them as misses is more honest than silently accepting them.
 
+**Why a silent `0.0` rather than an explicit error or warning?** Issue #117 asked that unparseable/ambiguous input surface as a failure rather than a silent guess, and that's exactly what `0.0` is here: an unparseable value scores as a non-match, which a threshold of any value treats as a miss. An earlier draft carried a `warn_on_corrupted_input` flag that logged when an input matched a known data-quality pattern; it was dropped because a comparator's job is to return an honest similarity score, not to run a side-channel logger — that conflates scoring with data-quality reporting and diverges from how every other stickler comparator behaves. If you need to *detect* corrupted inputs (not just score them as misses), validate upstream of the evaluation, where you have the field context to act on it.
+
+Inputs longer than 256 characters are rejected (scored `0.0`) before parsing — a real date string is far shorter, and skipping the parse keeps a pathologically long garbage value from costing a full scan.
+
 ### Range edge cases
 
 | Case | Behavior |
 |---|---|
-| `'10/24/16 to '` | Empty right side → fails range parse, falls through to single → `0.0` |
+| `'10/24/16 to '` | Empty right side → fails range parse; the string still carries a range-delimiter signal, so it's rejected as a malformed range → `0.0` (not silently re-read as a single date) |
+| `' - 10/24/16'`, `'10/24/16 -'` | Dangling dash at an edge → treated as a truncated range and rejected → `0.0` (in every `range_mode`, including `reject`) |
 | `'10/24/16 - 10/24/16'` | Endpoints equal → collapses to a single date internally (except under `range_mode="reject"`) |
-| `'10/30/16 to 10/24/16'` | Endpoints reversed → fails range parse, falls through to single |
-| `'2025-01-01'` | Contains a `-` but no spaces around it → not a range, parses as single ISO date |
-| `'10/24/16-10/30/16'` (no spaces) | Not detected as a range. Parses as single, which dateutil rejects → `0.0` |
+| `'10/30/16 to 10/24/16'` | Endpoints reversed → fails range parse; carries a delimiter signal, so rejected → `0.0` |
+| `'2025-01-01'` | Dash sits *between digits*, not at an edge → not a range signal, parses as a single ISO date |
+| `'10/24/16-10/30/16'` (no spaces) | Internal dash, no delimiter signal → parsed as a single, which dateutil rejects → `0.0` |
 
-The "spaces required around `-`" rule keeps ISO dates from being misread as ranges. If your data has unspaced range delimiters, normalize upstream.
+Two rules keep legitimate dates from being misread: a bare `-` is only a range delimiter when surrounded by spaces (so ISO `2025-01-01` is safe), and a string that carries a delimiter signal but fails to parse as a valid range is rejected rather than silently re-read as a single date (so a dangling `'- 10/24/16'` can't score as a clean date). If your data has unspaced range delimiters, normalize upstream.
 
 ### Mixed date types
 
@@ -337,7 +434,7 @@ The comparator is designed to be subclassed when you need behavior that doesn't 
 
 ### Custom range delimiters
 
-Override `_RANGE_DELIMS` (module constant) at construction time, or subclass and shadow it. Order matters — the parser tries delimiters in order and uses the first one that splits into two parsable dates.
+`_RANGE_DELIMS` is a module-level constant that the parser reads directly, so assigning it on an instance has no effect. To change which delimiters count as a range, subclass and override `_try_parse_range` (as the example below does). The parser tries delimiters in order and uses the first one that splits into two parsable dates, so order matters.
 
 ```python
 from stickler.comparators import date as _date_module
@@ -402,6 +499,12 @@ A few decisions worth calling out:
 **Why is `"contains"` symmetric in implementation?** A common motivating case is "annotator gives a single date; document shows a range." But the comparator doesn't know which side is annotator vs. extraction — and shouldn't. A range-vs-single in `"contains"` mode scores `1.0` regardless of which side has the range. If your evaluation cares about direction (e.g., "predictions must be at least as specific as truth"), enforce that upstream.
 
 **Why does `tolerance` only apply to single-vs-single?** Tolerance is a *single-date* notion — "within N days of the target." For range comparisons, the range itself already encodes uncertainty. Adding tolerance on top would double-count and produce confusing scores.
+
+**Why is `precision_mode` a separate axis from `allow_partial_year`?** They answer different questions. `allow_partial_year` is about whether a *year* was hallucinated or dropped, with month and day still pinned exactly — a frequent, well-characterized failure mode that earns its own tuned `0.7` partial credit. `precision_mode` is about *month/day resolution* — whether a side is coarser than the other. Folding both into one knob would force a single policy on two failure modes that real data treats differently (a hallucinated year is "probably wrong"; a coarser month is "less specific but not wrong"). Keeping them orthogonal is what makes the configuration space logically complete: every (year-presence, resolution) combination has a defined score.
+
+**Why is `precision_mode` binary (1.0/0.0) rather than graded?** Partial credit already lives on the two axes that have a natural magnitude — `allow_partial_year` (the `0.7` year-hallucination credit) and `range_mode="graded"` (Jaccard overlap for explicit ranges). A resolution mismatch is a yes/no question ("is the prediction allowed to be this coarse/fine?"), so a third graded scale would add tuning surface without a principled magnitude behind it. If you want a non-binary resolution score, see [Extending the comparator](#extending-the-comparator).
+
+**Why is `precision_mode="gt_loose"` directional when `"contains"` isn't?** Resolution genuinely has a "more specific" ordering (day ⊃ month ⊃ year), and ground truth is a meaningful anchor for it — `compare(gt, pred)` passes ground truth first at every real call site. Containment of an explicit range has no comparable canonical direction, so `"contains"` stays symmetric and `"overlap"` is offered for callers who want symmetry on resolution too.
 
 **Why no `partial_match_score` knob?** The partial-year score (`0.7`) and the contains/graded scores (`1.0`/`0.5`) are baked in. Tuning them per-comparator deviates from how the rest of stickler's comparators work — the standard pattern is a continuous score from the comparator and `threshold` + `clip_under_threshold` on the `ComparableField`. If you want stricter behavior, raise `threshold`. If you want something fundamentally different, see [Extending the comparator](#extending-the-comparator).
 

@@ -90,6 +90,57 @@ CASES: list[Case] = [
         "0.0 (m/d differ)",
     ),
     # ------------------------------------------------------------------
+    # Reduced precision — precision_mode (month/day resolution axis)
+    # ------------------------------------------------------------------
+    Case(
+        "precision",
+        "Month-grain GT vs day-grain pred, default exact",
+        "Jan 2024",
+        "Jan 1, 2024",
+        {},
+        "0.0 (fabricated day rejected)",
+    ),
+    Case(
+        "precision",
+        "Month-grain GT vs finer pred, gt_loose",
+        "Jan 2024",
+        "Jan 1, 2024",
+        {"precision_mode": "gt_loose"},
+        "1.0 (pred may be finer than GT)",
+    ),
+    Case(
+        "precision",
+        "Day-grain GT vs coarser pred, gt_loose",
+        "Jan 1, 2024",
+        "Jan 2024",
+        {"precision_mode": "gt_loose"},
+        "0.0 (pred under-specifies GT)",
+    ),
+    Case(
+        "precision",
+        "Year-grain GT vs day-grain pred, gt_loose",
+        "2024",
+        "2024-06-15",
+        {"precision_mode": "gt_loose"},
+        "1.0 (finer pred, consistent at year grain)",
+    ),
+    Case(
+        "precision",
+        "Day-grain GT vs coarser pred, overlap (symmetric)",
+        "Jan 1, 2024",
+        "Jan 2024",
+        {"precision_mode": "overlap"},
+        "1.0 (either side may be coarser)",
+    ),
+    Case(
+        "precision",
+        "Resolution differs but values disagree, overlap",
+        "Jan 2024",
+        "Feb 1, 2024",
+        {"precision_mode": "overlap"},
+        "0.0 (month differs)",
+    ),
+    # ------------------------------------------------------------------
     # Tier 4 — single-in-range under each mode
     # ------------------------------------------------------------------
     Case("4-graded", "Inside, default", "10/28/16", "10/24/16 to 10/30/16", {}, "0.5"),

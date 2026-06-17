@@ -131,7 +131,11 @@ class TestTier1TwoDigitYear:
 
     def test_two_digit_low_maps_to_2000s(self):
         cmp = DateComparator()
-        # dateutil default pivot keeps 25 → 2025
+        # NOTE: dateutil's two-digit pivot is a sliding 50-year window
+        # centered on the current year, NOT a fixed cutoff. '25' resolves
+        # to 2025 today; this assertion is stable for ~25 more years but
+        # will flip once 2025 falls outside the window (~2050s). It's not
+        # hermetic — if it fails in the future, that's the pivot sliding.
         assert cmp.compare("1/1/25", "2025-01-01") == 1.0
 
 
@@ -151,7 +155,8 @@ class TestTier2BothYearLess:
         cmp = DateComparator()
         # Both numeric m/d, both unambiguous (no year on either side).
         # Use a day > 12 so the layout is unambiguous either direction.
-        assert cmp.compare("10/24", "Oct 24") == 1.0
+        assert cmp.compare("10/24", "10/24") == 1.0
+        assert cmp.compare("10/24", "10/25") == 0.0
 
     def test_partial_year_flag_does_not_change_tier_2(self):
         """Tier 2 score is 1.0 whether or not allow_partial_year is set."""
@@ -235,7 +240,11 @@ class TestTier4SingleInRange:
 
     def test_iso_not_misread_as_range(self):
         cmp = DateComparator()
+        # Identity check, plus a discriminating one: if the internal dash
+        # were treated as a range delimiter these distinct days would not
+        # compare as a clean single-vs-single 0.0.
         assert cmp.compare("2025-01-01", "2025-01-01") == 1.0
+        assert cmp.compare("2025-01-01", "2025-01-02") == 0.0
 
 
 class TestTier4bRangeVsRange:
@@ -435,6 +444,64 @@ class TestSingleDayRangeCollapse:
 
 
 # ---------------------------------------------------------------------------
+# Malformed range delimiters (stray/dangling dash)
+# ---------------------------------------------------------------------------
+
+
+class TestMalformedRangeDelimiter:
+    """A stray range delimiter must not slip through as a single date.
+
+    `' - 10/24/16'` previously fell through to a single parse, dateutil
+    quietly ignored the dangling dash, and it scored `1.0` against
+    `'10/24/16'` (#141 review). A string carrying a range delimiter is a
+    malformed range, not a single date.
+    """
+
+    @pytest.mark.parametrize(
+        "garbage",
+        [
+            " - 10/24/16",
+            "10/24/16 - ",
+            "-10/24/16",
+            "10/24/16-",
+            "10/24/16 to ",
+            " to 10/24/16",
+            "10/24/16 through ",
+        ],
+    )
+    def test_dangling_delimiter_scores_zero_graded(self, garbage):
+        cmp = DateComparator()
+        assert cmp.compare(garbage, "10/24/16") == 0.0
+        assert cmp.compare("10/24/16", garbage) == 0.0
+
+    @pytest.mark.parametrize("garbage", [" - 10/24/16", "10/24/16 - "])
+    def test_dangling_delimiter_scores_zero_reject(self, garbage):
+        """reject mode's 'any range input = 0' contract must hold here too."""
+        cmp = DateComparator(range_mode="reject")
+        assert cmp.compare(garbage, "10/24/16") == 0.0
+
+    def test_legit_iso_with_internal_dash_unaffected(self):
+        cmp = DateComparator()
+        assert cmp.compare("2025-01-01", "2025-01-01") == 1.0
+        assert cmp.compare("2025-01-01", "2025-01-02") == 0.0
+
+    def test_legit_dash_separated_date_unaffected(self):
+        cmp = DateComparator()
+        assert cmp.compare("10-24-2016", "10/24/16") == 1.0
+
+    def test_legit_dash_range_unaffected(self):
+        cmp = DateComparator()
+        assert (
+            cmp.compare("09-12-16 to 09-15-16", "09-12-2016 to 09-15-2016")
+            == 1.0
+        )
+
+    def test_legit_spaced_dash_range_unaffected(self):
+        cmp = DateComparator()
+        assert cmp.compare("10/28/16", "10/24/16 - 10/30/16") == 0.5
+
+
+# ---------------------------------------------------------------------------
 # Year-presence multiplier interactions with ranges
 # ---------------------------------------------------------------------------
 
@@ -474,6 +541,227 @@ class TestYearPresenceMultiplierInRanges:
             )
             == 1.0
         )
+
+
+class TestYearMismatchRangeVsRange:
+    """Year-less range vs year-bearing range under allow_partial_year.
+
+    When year-presence differs, range-vs-range must fall back to (month,
+    day) comparison just like range-vs-single does. Without it the 1900
+    placeholder zeroed every overlap, making the documented `0.7` path
+    unreachable (#141 review).
+    """
+
+    def test_graded_exact_md_overlap(self):
+        cmp = DateComparator(allow_partial_year=True, range_mode="graded")
+        # Same m/d span → Jaccard 1.0 × partial-year 0.7.
+        assert cmp.compare(
+            "Oct 24 to Oct 30", "10/24/16 to 10/30/16"
+        ) == pytest.approx(0.7)
+
+    def test_graded_partial_md_overlap(self):
+        cmp = DateComparator(allow_partial_year=True, range_mode="graded")
+        # 7-day vs 8-day, 7 overlap, 8 union → 7/8 × 0.7.
+        assert cmp.compare(
+            "Oct 24 to Oct 30", "10/24/16 to 10/31/16"
+        ) == pytest.approx((7 / 8) * 0.7)
+
+    def test_contains_exact_endpoints(self):
+        cmp = DateComparator(allow_partial_year=True, range_mode="contains")
+        # Endpoints equal in m/d → 1.0 × 0.7.
+        assert cmp.compare(
+            "Oct 24 to Oct 30", "10/24/16 to 10/30/16"
+        ) == pytest.approx(0.7)
+
+    def test_contains_endpoints_differ(self):
+        cmp = DateComparator(allow_partial_year=True, range_mode="contains")
+        assert cmp.compare("Oct 24 to Oct 30", "10/24/16 to 10/31/16") == 0.0
+
+    def test_no_md_overlap_is_zero(self):
+        cmp = DateComparator(allow_partial_year=True, range_mode="graded")
+        assert cmp.compare("Oct 24 to Oct 30", "12/01/16 to 12/05/16") == 0.0
+
+    def test_default_partial_off_is_zero(self):
+        cmp = DateComparator(range_mode="graded")
+        # allow_partial_year defaults False → year mismatch zeros out.
+        assert cmp.compare("Oct 24 to Oct 30", "10/24/16 to 10/30/16") == 0.0
+
+    def test_both_year_bearing_unaffected(self):
+        cmp = DateComparator(allow_partial_year=True, range_mode="graded")
+        assert (
+            cmp.compare("10/24/16 to 10/30/16", "10/24/2016 - 10/30/2016")
+            == 1.0
+        )
+        assert cmp.compare(
+            "10/24/16 to 10/30/16", "10/24/16 to 10/31/16"
+        ) == pytest.approx(7 / 8)
+
+
+class TestYearEndWrapMonthDayRange:
+    """Year-less single vs a year-bearing range that wraps year-end.
+
+    When year-presence differs the comparison drops to (month, day)
+    space; a range like Dec 20 → Jan 5 wraps there, so containment must
+    treat lo > hi as a wrap-around span (#141 review).
+    """
+
+    def test_single_inside_wrap_before_boundary(self):
+        cmp = DateComparator(allow_partial_year=True, range_mode="contains")
+        assert cmp.compare(
+            "Dec 25", "Dec 20, 2024 to Jan 5, 2025"
+        ) == pytest.approx(0.7)
+
+    def test_single_inside_wrap_after_boundary(self):
+        cmp = DateComparator(allow_partial_year=True, range_mode="contains")
+        assert cmp.compare(
+            "Jan 2", "Dec 20, 2024 to Jan 5, 2025"
+        ) == pytest.approx(0.7)
+
+    def test_single_on_wrap_endpoints_inclusive(self):
+        cmp = DateComparator(allow_partial_year=True, range_mode="contains")
+        assert cmp.compare(
+            "Dec 20", "Dec 20, 2024 to Jan 5, 2025"
+        ) == pytest.approx(0.7)
+        assert cmp.compare(
+            "Jan 5", "Dec 20, 2024 to Jan 5, 2025"
+        ) == pytest.approx(0.7)
+
+    def test_single_outside_wrap_is_zero(self):
+        cmp = DateComparator(allow_partial_year=True, range_mode="contains")
+        # Jul 4 is in the excluded middle of the wrap span.
+        assert cmp.compare("Jul 4", "Dec 20, 2024 to Jan 5, 2025") == 0.0
+
+    def test_wrap_graded_mode(self):
+        cmp = DateComparator(allow_partial_year=True, range_mode="graded")
+        # inside → graded base 0.5 × partial-year 0.7 = 0.35
+        assert cmp.compare(
+            "Dec 25", "Dec 20, 2024 to Jan 5, 2025"
+        ) == pytest.approx(0.35)
+
+    def test_non_wrap_md_range_unaffected(self):
+        cmp = DateComparator(allow_partial_year=True, range_mode="contains")
+        assert cmp.compare(
+            "Oct 28", "10/24/16 to 10/30/16"
+        ) == pytest.approx(0.7)
+        assert cmp.compare("Nov 15", "10/24/16 to 10/30/16") == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Reduced-resolution dates (precision_mode)
+# ---------------------------------------------------------------------------
+
+
+class TestPrecisionModeExactDefault:
+    """Default precision_mode='exact': resolutions must match.
+
+    A reduced-precision input (missing month or day) must NOT score 1.0
+    against a fuller date — the missing component is fabricated by the
+    parser, and for an eval library that's a score-inflating false
+    positive (issue #141 review, blocking).
+    """
+
+    def test_month_grain_vs_day_grain_is_zero(self):
+        cmp = DateComparator()
+        # GT 'Jan 2024' lacks a day; pred 'Jan 1, 2024' fabricates day=1.
+        assert cmp.compare("Jan 2024", "Jan 1, 2024") == 0.0
+
+    def test_year_grain_vs_day_grain_is_zero(self):
+        cmp = DateComparator()
+        # GT '2024' lacks month+day; pred '2024-01-01' fabricates both.
+        assert cmp.compare("2024", "2024-01-01") == 0.0
+
+    def test_reduced_precision_compounds_in_ranges_is_zero(self):
+        cmp = DateComparator()
+        assert (
+            cmp.compare("Jan 2024 to Mar 2024", "1/1/2024 to 3/1/2024") == 0.0
+        )
+
+    def test_same_resolution_year_grain_still_matches(self):
+        cmp = DateComparator()
+        assert cmp.compare("2024", "2024") == 1.0
+
+    def test_same_resolution_month_grain_still_matches(self):
+        cmp = DateComparator()
+        assert cmp.compare("Jan 2024", "Jan 2024") == 1.0
+        assert cmp.compare("Jan 2024", "2024-01") == 1.0
+
+    def test_same_resolution_month_grain_value_mismatch_is_zero(self):
+        cmp = DateComparator()
+        assert cmp.compare("Jan 2024", "Feb 2024") == 0.0
+
+    def test_same_resolution_year_grain_value_mismatch_is_zero(self):
+        cmp = DateComparator()
+        assert cmp.compare("2024", "2025") == 0.0
+
+
+class TestPrecisionModeGtLoose:
+    """precision_mode='gt_loose': pred may be FINER than GT, not coarser.
+
+    GT anchors the required resolution. A prediction that is more precise
+    than GT (and consistent at GT's grain) gets full credit; a prediction
+    that is less precise than GT under-specifies the truth and misses.
+    """
+
+    def test_pred_finer_than_gt_matches(self):
+        cmp = DateComparator(precision_mode="gt_loose")
+        # GT month-grain, pred day-grain, consistent at month → 1.0
+        assert cmp.compare("Jan 2024", "Jan 1, 2024") == 1.0
+        assert cmp.compare("2024", "2024-06-15") == 1.0
+
+    def test_pred_coarser_than_gt_is_zero(self):
+        cmp = DateComparator(precision_mode="gt_loose")
+        # GT day-grain, pred month-grain → pred under-specifies → 0.0
+        assert cmp.compare("Jan 1, 2024", "Jan 2024") == 0.0
+        assert cmp.compare("2024-01-01", "2024") == 0.0
+
+    def test_finer_pred_inconsistent_at_gt_grain_is_zero(self):
+        cmp = DateComparator(precision_mode="gt_loose")
+        # GT 'Jan 2024'; pred 'Feb 1, 2024' disagrees on month → 0.0
+        assert cmp.compare("Jan 2024", "Feb 1, 2024") == 0.0
+
+    def test_same_resolution_unaffected(self):
+        cmp = DateComparator(precision_mode="gt_loose")
+        assert cmp.compare("Jan 2024", "Jan 2024") == 1.0
+        assert cmp.compare("2024-01-01", "Jan 1, 2024") == 1.0
+
+
+class TestPrecisionModeOverlap:
+    """precision_mode='overlap': either side may be coarser (symmetric)."""
+
+    def test_pred_finer_than_gt_matches(self):
+        cmp = DateComparator(precision_mode="overlap")
+        assert cmp.compare("Jan 2024", "Jan 1, 2024") == 1.0
+
+    def test_pred_coarser_than_gt_matches(self):
+        cmp = DateComparator(precision_mode="overlap")
+        assert cmp.compare("Jan 1, 2024", "Jan 2024") == 1.0
+        assert cmp.compare("2024-01-01", "2024") == 1.0
+
+    def test_inconsistent_at_coarser_grain_is_zero(self):
+        cmp = DateComparator(precision_mode="overlap")
+        assert cmp.compare("Jan 2024", "Feb 1, 2024") == 0.0
+        assert cmp.compare("2024", "2025-01-01") == 0.0
+
+
+class TestPrecisionModeValidation:
+    @pytest.mark.parametrize(
+        "bad", ["", "EXACT", "loose", "gtloose", "yes", 1, None]
+    )
+    def test_invalid_precision_mode_rejected(self, bad):
+        with pytest.raises((ValueError, TypeError), match="precision_mode"):
+            DateComparator(precision_mode=bad)  # type: ignore[arg-type]
+
+    def test_error_message_lists_valid_values(self):
+        """The error echoes the bad value and all valid options."""
+        with pytest.raises(ValueError) as exc:
+            DateComparator(precision_mode="loose")  # type: ignore[arg-type]
+        msg = str(exc.value)
+        assert "loose" in msg
+        for valid in ("exact", "gt_loose", "overlap"):
+            assert valid in msg
+
+    def test_default_is_exact(self):
+        assert DateComparator().precision_mode == "exact"
 
 
 # ---------------------------------------------------------------------------
@@ -521,6 +809,46 @@ class TestTier5Ambiguity:
         cmp = DateComparator()
         # Day=24 > 12 → unambiguous in both halves.
         assert cmp.compare("10/24/16", "10/24/16") == 1.0
+        assert cmp.compare("24/10/2016", "10/24/16") == 1.0
+
+
+class TestIssue117HeadlineIsoVsAmbiguous:
+    """ISO/year-first layout must not be corrupted by a day-first pass.
+
+    #117's headline case: canonical ISO ground truth vs a non-canonical
+    numeric prediction. The year unambiguously leads in `2025-02-01`, so
+    month-then-day order is fixed; a day-first interpretation that reads
+    it as Jan 2 is wrong and must not be applied.
+    """
+
+    def test_iso_gt_vs_ambiguous_numeric_default(self):
+        cmp = DateComparator()
+        # 2025-02-01 is Feb 1; 01/02/2025 read month-first is also Feb 1.
+        assert cmp.compare("2025-02-01", "01/02/2025") == 1.0
+
+    def test_iso_gt_vs_ambiguous_numeric_dayfirst_true(self):
+        # Even forcing EU, the ISO side stays Feb 1, and 01/02/2025
+        # day-first is also Feb 1 → match.
+        cmp = DateComparator(dayfirst=True)
+        assert cmp.compare("2025-02-01", "01/02/2025") == 1.0
+
+    def test_iso_gt_vs_ambiguous_numeric_dayfirst_false(self):
+        # US: 01/02/2025 is Jan 2, ISO side Feb 1 → genuinely differ.
+        cmp = DateComparator(dayfirst=False)
+        assert cmp.compare("2025-02-01", "01/02/2025") == 0.0
+
+    def test_slash_year_first_also_pinned(self):
+        cmp = DateComparator()
+        assert cmp.compare("2025/02/01", "01/02/2025") == 1.0
+
+    def test_year_first_self_consistent_distinct_dates_still_zero(self):
+        cmp = DateComparator()
+        assert cmp.compare("2025-02-01", "2025-02-02") == 0.0
+
+    def test_eu_disambiguation_still_works(self):
+        """Non-year-first ambiguous layouts still resolve via dayfirst."""
+        cmp = DateComparator()
+        # 24/10/2016 (day=24) is unambiguous EU; matches 10/24/16.
         assert cmp.compare("24/10/2016", "10/24/16") == 1.0
 
     def test_invalid_dayfirst(self):
@@ -598,6 +926,40 @@ class TestTolerance:
         cmp = DateComparator(tolerance=1.5)
         assert cmp.tolerance == timedelta(days=1, hours=12)
 
+    def test_subday_tolerance_honors_actual_times(self):
+        """A sub-day tolerance compares real timestamps, not day-floors."""
+        cmp = DateComparator(tolerance=0.5)  # 12 hours
+        # 1 hour apart across midnight → within 12h → match.
+        assert cmp.compare("2025-01-01 23:30", "2025-01-02 00:30") == 1.0
+        # 17 hours apart, same calendar day → beyond 12h → miss.
+        assert cmp.compare("2025-01-01 06:00", "2025-01-01 23:00") == 0.0
+
+    def test_subday_tolerance_36_hours(self):
+        """The documented `tolerance=1.5  # 36 hours` actually means 36h."""
+        cmp = DateComparator(tolerance=1.5)
+        assert cmp.compare("2025-01-01 00:00", "2025-01-02 12:00") == 1.0  # 36h
+        assert cmp.compare("2025-01-01 00:00", "2025-01-02 13:00") == 0.0  # 37h
+
+    def test_subday_tolerance_boundary_inclusive(self):
+        cmp = DateComparator(tolerance=0.5)  # exactly 12h
+        assert cmp.compare("2025-01-01 00:00", "2025-01-01 12:00") == 1.0
+        assert cmp.compare("2025-01-01 00:00", "2025-01-01 12:01") == 0.0
+
+    def test_whole_day_tolerance_keeps_day_semantics(self):
+        """Whole-day tolerance still floors to calendar days (time ignored)."""
+        cmp = DateComparator(tolerance=1)
+        # 47 hours apart in real time, but only 1 calendar day apart →
+        # day-floored → match. (An actual-time reading would be 0.0.)
+        assert cmp.compare("2025-01-01 00:00", "2025-01-02 23:00") == 1.0
+        # 2 calendar days apart → beyond a 1-day tolerance → miss.
+        assert cmp.compare("2025-01-01", "2025-01-03") == 0.0
+
+    def test_zero_tolerance_is_same_calendar_day(self):
+        """Default zero tolerance: same calendar day regardless of time."""
+        cmp = DateComparator()
+        assert cmp.compare("2025-01-01 06:00", "2025-01-01 23:00") == 1.0
+        assert cmp.compare("2025-01-01 23:00", "2025-01-02 01:00") == 0.0
+
     def test_tolerance_rejects_bool(self):
         # bool subclasses int but should not be silently accepted
         with pytest.raises(ValueError, match="bool"):
@@ -630,6 +992,60 @@ class TestTimezones:
         assert cmp.compare(
             "2025-01-01", datetime(2025, 1, 1, tzinfo=timezone.utc)
         ) == 1.0
+
+
+class TestMixedTimezoneRangesDoNotCrash:
+    """A mixed tz-aware/naive range endpoint must not raise.
+
+    Comparisons in the range paths previously skipped timezone
+    alignment, so one malformed field value (#141 review, blocking)
+    raised TypeError and killed the whole evaluation run instead of
+    degrading to a score.
+    """
+
+    def test_range_vs_single_mixed_tz_graded(self):
+        cmp = DateComparator()
+        # Must not raise; 2025-02-01 is inside Jan 1–Mar 1 → graded 0.5.
+        result = cmp.compare(
+            "2025-01-01T00:00:00Z to 2025-03-01", "2025-02-01"
+        )
+        assert result == pytest.approx(0.5)
+
+    def test_range_vs_single_mixed_tz_contains(self):
+        cmp = DateComparator(range_mode="contains")
+        result = cmp.compare(
+            "2025-01-01T00:00:00Z to 2025-03-01", "2025-02-01"
+        )
+        assert result == 1.0
+
+    def test_range_vs_range_mixed_tz_jaccard(self):
+        cmp = DateComparator()
+        # Overlap Jan 15–Feb 15 inside Jan 1–Mar 1; must not raise.
+        result = cmp.compare(
+            "2025-01-01T00:00:00Z to 2025-03-01",
+            "2025-01-15 to 2025-02-15",
+        )
+        assert 0.0 < result <= 1.0
+
+    def test_range_parse_order_check_mixed_tz_no_crash(self):
+        """The start<=end ordering check must tolerate mixed awareness."""
+        cmp = DateComparator()
+        # Aware start, naive end, correctly ordered → parses as a range.
+        result = cmp.compare(
+            "2025-01-01T00:00:00Z to 2025-03-01",
+            "2025-01-01 to 2025-03-01",
+        )
+        assert result == 1.0
+
+    def test_compare_never_raises_typeerror_is_zero(self):
+        """Even an unforeseen tz edge degrades to 0.0, never raises."""
+        cmp = DateComparator()
+        # Reversed mixed-tz endpoints (aware after naive) — whatever the
+        # parse outcome, compare() must return a float, not raise.
+        result = cmp.compare(
+            "2025-03-01 to 2025-01-01T00:00:00Z", "2025-02-01"
+        )
+        assert isinstance(result, float)
 
 
 # ---------------------------------------------------------------------------
@@ -750,6 +1166,7 @@ class TestRegistry:
             dayfirst=True,
             allow_partial_year=True,
             range_mode="strict",
+            precision_mode="gt_loose",
         )
         config = original.config
         rebuilt = create_comparator("DateComparator", config)
@@ -757,11 +1174,54 @@ class TestRegistry:
         assert rebuilt.dayfirst == original.dayfirst
         assert rebuilt.allow_partial_year == original.allow_partial_year
         assert rebuilt.range_mode == original.range_mode
+        assert rebuilt.precision_mode == original.precision_mode
 
     def test_config_omits_default_tolerance(self):
         """A zero tolerance shouldn't clutter the config dict."""
-        cmp = DateComparator()
+        cmp = DateComparator(allow_partial_year=True)
         assert "tolerance" not in cmp.config
+
+    def test_default_config_is_falsy(self):
+        """A fully-default instance emits no config block.
+
+        The schema exporter keys off truthiness, and the sibling
+        NumericComparator returns None at defaults; a default
+        DateComparator must not write a redundant config block into every
+        exported schema (#141 review).
+        """
+        assert not DateComparator().config
+
+    def test_config_omits_default_keys(self):
+        """Each non-default instance exports only the keys that changed."""
+        assert DateComparator(allow_partial_year=True).config == {
+            "allow_partial_year": True
+        }
+        assert DateComparator(range_mode="contains").config == {
+            "range_mode": "contains"
+        }
+        assert DateComparator(precision_mode="gt_loose").config == {
+            "precision_mode": "gt_loose"
+        }
+        assert DateComparator(dayfirst=True).config == {"dayfirst": True}
+        assert DateComparator(tolerance=2).config == {"tolerance": 2}
+
+    def test_config_combines_only_nondefaults(self):
+        cmp = DateComparator(allow_partial_year=True, precision_mode="overlap")
+        assert cmp.config == {
+            "allow_partial_year": True,
+            "precision_mode": "overlap",
+        }
+
+    def test_default_config_roundtrips(self):
+        """A default instance round-trips even though its config is falsy."""
+        from stickler.structured_object_evaluator.models.comparator_registry import (
+            create_comparator,
+        )
+
+        rebuilt = create_comparator("DateComparator", DateComparator().config)
+        assert isinstance(rebuilt, DateComparator)
+        assert rebuilt.range_mode == "graded"
+        assert rebuilt.precision_mode == "exact"
 
     def test_config_serializable_to_json(self):
         """The exported config must round-trip through JSON."""
@@ -834,3 +1294,44 @@ class TestPerformanceSanity:
         cmp = DateComparator()
         for _ in range(1000):
             assert cmp.compare("2025-01-01", "Jan 1, 2025") == 1.0
+
+
+class TestInputLengthCap:
+    """Pathologically long input is rejected cheaply rather than parsed.
+
+    A multi-kilobyte garbage string already scored 0.0, but dateutil
+    chewed through the whole thing first (~ms-to-100s-of-ms per call).
+    The length cap short-circuits before parsing (#141 review hardening).
+    """
+
+    def test_over_length_input_scores_zero(self):
+        cmp = DateComparator()
+        garbage = "a" * 100_000
+        assert cmp.compare(garbage, "2025-01-01") == 0.0
+        assert cmp.compare("2025-01-01", garbage) == 0.0
+
+    def test_over_length_input_with_delimiter_not_split(self):
+        cmp = DateComparator()
+        # A huge string containing ' to ' must not be split into two
+        # huge range halves and parsed — the cap rejects it first.
+        garbage = ("x" * 50_000) + " to " + ("y" * 50_000)
+        assert cmp.compare(garbage, "2025-01-01") == 0.0
+
+    def test_realistic_long_date_unaffected(self):
+        cmp = DateComparator()
+        # The most verbose realistic form is well under the cap.
+        assert (
+            cmp.compare("Wednesday, January 1, 2025", "2025-01-01") == 1.0
+        )
+
+    def test_cap_completes_quickly(self):
+        import time
+
+        cmp = DateComparator()
+        big = "z" * 200_000
+        start = time.perf_counter()
+        cmp.compare(big, "2025-01-01")
+        elapsed = time.perf_counter() - start
+        # Generous bound: capped rejection is sub-millisecond; an
+        # uncapped dateutil parse of 200k chars is tens of ms or more.
+        assert elapsed < 0.01
