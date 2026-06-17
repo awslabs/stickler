@@ -1072,9 +1072,45 @@ class TestNullableTypeListForm:
         )
         assert Model(items=[None]).items == [None]
 
+    def test_nullable_object_array_compare_with_none_element(self):
+        """compare_with on a list holding None elements does not crash."""
+        from stickler import StructuredModel
+
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "people": {
+                        "type": "array",
+                        "items": {
+                            "type": ["object", "null"],
+                            "properties": {"n": {"type": "string"}},
+                            "required": ["n"],
+                        },
+                    }
+                },
+                "required": ["people"],
+            }
+        )
+
+        gt = Model(people=[{"n": "alice"}, None])
+        same = Model(people=[{"n": "alice"}, None])
+        mismatch = Model(people=[{"n": "alice"}, {"n": "bob"}])
+
+        # Identical None placement scores higher than a None-vs-model mismatch.
+        assert same.compare_with(gt)["overall_score"] == pytest.approx(1.0)
+        assert mismatch.compare_with(gt)["overall_score"] < 1.0
+
     @pytest.mark.parametrize(
         "bad_type",
-        [[], ["null"], ["null", "null"], ["string", "integer"], [["string"], "null"]],
+        [
+            [],
+            ["null"],
+            ["null", "null"],
+            ["string", "integer"],
+            [["string"], "null"],
+            [123, "null"],
+        ],
     )
     def test_invalid_list_form_type_rejected(self, bad_type):
         """List-form ``type`` values that are not ['<type>', 'null'] are rejected."""
@@ -1085,7 +1121,7 @@ class TestNullableTypeListForm:
         }
 
         converter = JsonSchemaFieldConverter(schema)
-        with pytest.raises(ValueError, match="value"):
+        with pytest.raises(ValueError, match="Unsupported JSON Schema type"):
             converter.convert_properties_to_fields(
                 schema["properties"], schema["required"]
             )
@@ -1115,9 +1151,20 @@ class TestNullableTypeListForm:
         assert get_origin(field_type) is Union
         assert type(None) in get_args(field_type)
 
+        from stickler import StructuredModel
+        from stickler.structured_object_evaluator.models.structured_model import (
+            StructuredModel as _SM,
+        )
+
+        Model = StructuredModel.from_json_schema(schema)
+        assert Model(nested=None).nested is None
+        non_null = [t for t in get_args(field_type) if t is not type(None)]
+        assert len(non_null) == 1
+        assert isinstance(non_null[0], type) and issubclass(non_null[0], _SM)
+
     def test_nullable_outer_array(self):
         """Outer-level {"type": ["array", "null"]} field wraps list in Optional."""
-        from typing import List, Union, get_args, get_origin
+        from typing import Union, get_args, get_origin
 
         schema = {
             "type": "object",
@@ -1141,6 +1188,11 @@ class TestNullableTypeListForm:
         inner_types = [t for t in get_args(field_type) if t is not type(None)]
         assert len(inner_types) == 1
         assert get_origin(inner_types[0]) is list
+
+        from stickler import StructuredModel
+
+        Model = StructuredModel.from_json_schema(schema)
+        assert Model(tags=None).tags is None
 
     def test_nullable_reversed_order(self):
         """["null", "string"] (null first) is equivalent to ["string", "null"]."""
