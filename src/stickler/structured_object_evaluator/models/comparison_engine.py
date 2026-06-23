@@ -7,7 +7,7 @@ dispatcher, collectors, and calculators.
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from stickler.structured_object_evaluator.models.map_calculator import MAPCalculator
+from stickler.structured_object_evaluator.models.bbox import MAPCalculator
 from stickler.utils.deprecation import warn_once
 
 if TYPE_CHECKING:

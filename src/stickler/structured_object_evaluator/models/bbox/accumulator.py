@@ -17,7 +17,7 @@ cannot have their localization recovered (the GT boxes aren't in
 import warnings
 from typing import Any, Dict, Optional
 
-from stickler.structured_object_evaluator.models.map_calculator import (
+from stickler.structured_object_evaluator.models.bbox.calculator import (
     BBoxObservation,
     KeyedBBoxPairs,
     MAPCalculator,

@@ -26,19 +26,17 @@ from stickler.comparators.bbox import BBoxIoUComparator
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
 )
-from stickler.structured_object_evaluator.models.bbox_map_accumulator import (
+from stickler.structured_object_evaluator.models.bbox import (
     BBoxMAPAccumulator,
+    BBoxObservation,
+    MAPCalculator,
+    class_key,
 )
 from stickler.structured_object_evaluator.models.comparable_field import (
     ComparableField,
 )
 from stickler.structured_object_evaluator.models.confidence.accumulator import (
     ConfidenceAccumulator,
-)
-from stickler.structured_object_evaluator.models.map_calculator import (
-    BBoxObservation,
-    MAPCalculator,
-    class_key,
 )
 from stickler.structured_object_evaluator.models.structured_model import (
     StructuredModel,
