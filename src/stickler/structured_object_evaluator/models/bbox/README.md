@@ -57,6 +57,12 @@ are recommended.
 A below-threshold matched box counts as **both** a false positive and a false
 negative (wrong location + unmatched ground truth).
 
+**Scope:** this matches COCO's AP *definition* (envelope + 101-point + IoU
+range), not a full detection evaluator. Each field has at most one GT box and
+one predicted box, paired by field path — there is no many-to-many box
+assignment per image. That suits document field localization but is not
+interchangeable with COCO mAP on multi-instance detection datasets.
+
 ## BBoxObservation
 
 ```python

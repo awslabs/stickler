@@ -220,6 +220,10 @@ Two things worth knowing about the class denominator:
 
 This is a different universe from `coverage`, which counts per-(document, field) occurrences. The two will not line up by construction; `mean_ap` answers "how well is each field-type localized on average" while `coverage` answers "what fraction of compared fields carried a bounding box". When no field carries a ground-truth box, `mean_ap` is `None`.
 
+### Scope
+
+This implementation matches the COCO/pycocotools **AP definition** — precision envelope, 101-point interpolation, and averaging over the IoU-threshold range. It is **not** a full object-detection evaluator: there is no greedy assignment of many predicted boxes to many ground-truth boxes per image. Each document field carries at most one ground-truth box and one predicted box, and they are paired by the field path (`expected_key` / `actual_key`) that the comparison already establishes. This is the right model for document field localization (each field has a single location), but it means the metric is not interchangeable with COCO mAP on detection datasets where a field/class can contain multiple instances per image.
+
 ## Result Structure
 
 ```python
