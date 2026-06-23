@@ -103,12 +103,12 @@ Pass a `BBoxMAPAccumulator` to `BulkStructuredModelEvaluator`. The accumulator e
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
 )
-from stickler.structured_object_evaluator.models.bbox_map_accumulator import (
+from stickler.structured_object_evaluator.models.bbox import (
     BBoxMAPAccumulator,
 )
 
 evaluator = BulkStructuredModelEvaluator(
-    accumulators=[BBoxMAPAccumulator(iou_threshold=0.5)],
+    accumulators=[BBoxMAPAccumulator()],
 )
 
 for gt, pred in dataset:
@@ -116,7 +116,8 @@ for gt, pred in dataset:
 
 result = evaluator.compute()
 bbox_metrics = result.accumulator_metrics["bbox_map_metrics"]
-print(f"Mean AP: {bbox_metrics['mean_ap']:.3f}")
+print(f"mAP@[.50:.95]: {bbox_metrics['mean_ap']:.3f}")
+print(f"mAP@.50:       {bbox_metrics['map_50']:.3f}")
 print(f"Coverage: {bbox_metrics['coverage']}")
 ```
 
@@ -134,7 +135,7 @@ from stickler.structured_object_evaluator.models.confidence.accumulator import (
 evaluator = BulkStructuredModelEvaluator(
     accumulators=[
         ConfidenceAccumulator(),
-        BBoxMAPAccumulator(iou_threshold=0.5),
+        BBoxMAPAccumulator(),
     ],
 )
 
@@ -160,20 +161,22 @@ result = ground_truth.compare_with(
 bbox_metrics = result["bbox_metrics"]
 print(f"Mean AP: {bbox_metrics['mean_ap']:.3f}")
 for field, m in bbox_metrics["fields"].items():
-    print(f"  {field}: IoU={m['iou']:.3f}, AP={m['ap']:.1f}")
+    print(f"  {field}: mean_iou={m['mean_iou']:.3f}, AP={m['ap']:.3f}")
 ```
 
-### Custom IoU threshold
+### IoU thresholds
+
+By default the metric uses the COCO IoU range `[0.50, 0.55, ..., 0.95]` and reports `mean_ap` as the average over that range (COCO mAP@[.50:.95]), plus `map_50` and `map_75` for the individual thresholds. Pass a single value or a custom list to change this:
 
 ```python
-# Stricter (mAP@0.75)
-BBoxMAPAccumulator(iou_threshold=0.75)
+# Single threshold: mean_ap == map_50 (no averaging over a range).
+BBoxMAPAccumulator(iou_thresholds=0.5)
 
-# More lenient (mAP@0.3)
-BBoxMAPAccumulator(iou_threshold=0.3)
+# A custom range.
+BBoxMAPAccumulator(iou_thresholds=[0.5, 0.75, 0.9])
 ```
 
-The single-document path takes the same threshold via `compare_with(..., bbox_iou_threshold=0.75)`.
+The single-document path takes the same argument via `compare_with(..., bbox_iou_thresholds=0.5)`.
 
 ## How It Works
 
@@ -189,27 +192,28 @@ A predicted box is a **true positive** when its IoU with the matched ground-trut
 
 ### Average Precision
 
-AP is computed as the area under the confidence-ranked precision-recall curve, using the Pascal VOC 2010+ all-points interpolation:
+AP is computed COCO-style, matching the [pycocotools](https://github.com/cocodataset/cocoapi) / [torchmetrics](https://lightning.ai/docs/torchmetrics/stable/detection/mean_average_precision.html) implementation:
 
 1. Rank a field's predicted boxes by `_confidence` (descending).
 2. Walk the ranking, labelling each detection TP or FP at the IoU threshold and tracking cumulative precision and recall (recall denominator = number of ground-truth boxes).
-3. Make precision monotonically non-increasing, then integrate over recall.
+3. Apply the precision envelope (make precision monotonically non-increasing from the right — "remove zig-zags").
+4. Sample precision at 101 fixed recall points (0.00, 0.01, ..., 1.00) and average them.
 
-Predicted boxes are ranked by `_confidence`, which rides the same rich-value pattern (`{"_value": ..., "_confidence": ..., "_bbox": ...}`). When a prediction has no `_confidence` it defaults to `1.0`; without real confidence scores the ranking is uninformative and AP collapses to a single operating point, so providing `_confidence` is recommended for meaningful AP.
+Predicted boxes are ranked by `_confidence`, which rides the same rich-value pattern (`{"_value": ..., "_confidence": ..., "_bbox": ...}`). When a prediction has no `_confidence` it defaults to `1.0`; without real confidence scores the ranking is uninformative, so providing `_confidence` is recommended for meaningful AP.
 
-Threshold classification is deferred to compute time, so the same accumulated observations can be re-scored at a different IoU threshold.
+The raw IoU and confidence are kept per observation, so the same accumulated data is re-scored at every IoU threshold in the configured range.
 
-The per-field entry also reports `precision`, `recall`, `mean_iou`, `num_gt`, `num_detections`, and `num_true_positives` at the all-detections operating point for inspection.
+The per-field entry reports `ap` (averaged over the IoU range), `ap_50`, `ap_75`, `mean_iou`, `num_gt`, and `num_detections`.
 
 ### Mean AP
 
-The mean Average Precision macro-averages per-field AP across field-type classes that carry at least one ground-truth box:
+AP is computed per (field-type class, IoU threshold), then averaged over the configured IoU thresholds and over field-type classes that carry at least one ground-truth box to give `mean_ap` (COCO mAP). `map_50` and `map_75` are the same class-average at a single IoU threshold:
 
 ```
-mAP = mean(AP for each field-type class with at least one GT bbox)
+mean_ap = mean over IoU thresholds of [ mean over classes of AP ]
 ```
 
-Two things worth knowing about the denominator:
+Two things worth knowing about the class denominator:
 
 - **Macro-average over classes.** Each field-type class weighs equally regardless of how many observations it has — a class seen once counts the same as one seen a thousand times. A class enters the mean if *any* document carried a ground-truth box for it.
 - **List indices are normalized into one class.** `LineItems[0].StartDate` and `LineItems[2].StartDate` are grouped under `LineItems[].StartDate`, so AP is measured per field-type rather than per list slot.
@@ -220,20 +224,22 @@ This is a different universe from `coverage`, which counts per-(document, field)
 
 ```python
 {
-    "mean_ap": 0.667,
-    "iou_threshold": 0.5,
+    "mean_ap": 0.667,       # mAP averaged over the IoU-threshold range
+    "map_50": 0.667,
+    "map_75": 0.667,
+    "iou_thresholds": [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95],
     "fields": {
         "vendor_name": {
-            "ap": 1.0, "precision": 1.0, "recall": 1.0, "mean_iou": 0.92,
-            "num_gt": 1, "num_detections": 1, "num_true_positives": 1
+            "ap": 1.0, "ap_50": 1.0, "ap_75": 1.0, "mean_iou": 0.92,
+            "num_gt": 1, "num_detections": 1
         },
         "invoice_number": {
-            "ap": 1.0, "precision": 1.0, "recall": 1.0, "mean_iou": 1.0,
-            "num_gt": 1, "num_detections": 1, "num_true_positives": 1
+            "ap": 1.0, "ap_50": 1.0, "ap_75": 1.0, "mean_iou": 1.0,
+            "num_gt": 1, "num_detections": 1
         },
         "total_amount": {
-            "ap": 0.0, "precision": 0.0, "recall": 0.0, "mean_iou": 0.05,
-            "num_gt": 1, "num_detections": 1, "num_true_positives": 0
+            "ap": 0.0, "ap_50": 0.0, "ap_75": 0.0, "mean_iou": 0.05,
+            "num_gt": 1, "num_detections": 1
         }
     },
     "coverage": {

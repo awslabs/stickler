@@ -44,12 +44,15 @@ field-type, not per list slot.
 
 ## Average Precision
 
-`compute_metrics` computes a true AP per field-type: predicted boxes are ranked by
-`_confidence`, each labelled TP/FP at the IoU threshold (recall denominator = number
-of GT boxes), and the precision-recall curve area is integrated with the Pascal VOC
-2010+ all-points method. `mean_ap` macro-averages per-field AP over fields with at
-least one GT box. Missing `_confidence` defaults to 1.0 (uninformative ranking ->
-single operating point), so real confidence scores are recommended.
+`compute_metrics` computes a true AP per field-type, COCO-style (matching
+pycocotools / torchmetrics): predicted boxes are ranked by `_confidence`, each
+labelled TP/FP at an IoU threshold (recall denominator = number of GT boxes),
+the precision envelope is applied ("zig-zags removed"), and precision is sampled
+at 101 fixed recall points. AP is computed at each IoU threshold in the
+configured range (COCO `[0.50:0.95]` by default); `mean_ap` averages over those
+thresholds and over field-type classes (with `map_50` / `map_75` exposed
+separately). Missing `_confidence` defaults to 1.0, so real confidence scores
+are recommended.
 
 A below-threshold matched box counts as **both** a false positive and a false
 negative (wrong location + unmatched ground truth).
@@ -77,7 +80,7 @@ from stickler.structured_object_evaluator.bulk_structured_model_evaluator import
 )
 from stickler.structured_object_evaluator.models.bbox import BBoxMAPAccumulator
 
-evaluator = BulkStructuredModelEvaluator(accumulators=[BBoxMAPAccumulator(0.5)])
+evaluator = BulkStructuredModelEvaluator(accumulators=[BBoxMAPAccumulator()])
 for gt, pred in dataset:
     evaluator.update(gt, pred)
 metrics = evaluator.compute().accumulator_metrics["bbox_map_metrics"]
