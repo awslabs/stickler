@@ -185,31 +185,36 @@ For each field that has bounding box data on both ground truth and prediction, t
 IoU = Area of Intersection / Area of Union
 ```
 
-A field is classified as a **true positive** if its IoU meets or exceeds the threshold, and a **false positive** otherwise. A field with a ground-truth box but no prediction box is a **false negative** (a localization miss).
+A predicted box is a **true positive** when its IoU with the matched ground-truth box meets or exceeds the threshold. A below-threshold detection counts as **both a false positive and a false negative** (the prediction is in the wrong place, and the ground-truth box is left unmatched). A ground-truth box with no prediction is a **false negative** (a localization miss).
 
-### Per-field metrics
+### Average Precision
 
-For each field with a ground truth bounding box:
+AP is computed as the area under the confidence-ranked precision-recall curve, using the Pascal VOC 2010+ all-points interpolation:
 
-| Metric | Formula |
-|---|---|
-| **IoU** | Intersection area / Union area (mean across observations for that field) |
-| **Precision** | TP / (TP + FP) |
-| **Recall** | TP / (TP + FN) |
-| **F1** | 2 × Precision × Recall / (Precision + Recall) |
-| **AP** | Precision × Recall |
+1. Rank a field's predicted boxes by `_confidence` (descending).
+2. Walk the ranking, labelling each detection TP or FP at the IoU threshold and tracking cumulative precision and recall (recall denominator = number of ground-truth boxes).
+3. Make precision monotonically non-increasing, then integrate over recall.
 
-Threshold classification is deferred to compute time, so the same accumulated pairs can be re-scored at a different IoU threshold.
+Predicted boxes are ranked by `_confidence`, which rides the same rich-value pattern (`{"_value": ..., "_confidence": ..., "_bbox": ...}`). When a prediction has no `_confidence` it defaults to `1.0`; without real confidence scores the ranking is uninformative and AP collapses to a single operating point, so providing `_confidence` is recommended for meaningful AP.
+
+Threshold classification is deferred to compute time, so the same accumulated observations can be re-scored at a different IoU threshold.
+
+The per-field entry also reports `precision`, `recall`, `mean_iou`, `num_gt`, `num_detections`, and `num_true_positives` at the all-detections operating point for inspection.
 
 ### Mean AP
 
-The mean Average Precision is the average of per-field AP values across all fields that have ground truth bounding boxes:
+The mean Average Precision macro-averages per-field AP across field-type classes that carry at least one ground-truth box:
 
 ```
-mAP = mean(AP for each field with GT bbox)
+mAP = mean(AP for each field-type class with at least one GT bbox)
 ```
 
-Fields without ground truth bounding boxes are excluded from the per-field metrics but still counted in `coverage.fields_total`. When no field carries a ground-truth box, `mean_ap` is `None`.
+Two things worth knowing about the denominator:
+
+- **Macro-average over classes.** Each field-type class weighs equally regardless of how many observations it has — a class seen once counts the same as one seen a thousand times. A class enters the mean if *any* document carried a ground-truth box for it.
+- **List indices are normalized into one class.** `LineItems[0].StartDate` and `LineItems[2].StartDate` are grouped under `LineItems[].StartDate`, so AP is measured per field-type rather than per list slot.
+
+This is a different universe from `coverage`, which counts per-(document, field) occurrences. The two will not line up by construction; `mean_ap` answers "how well is each field-type localized on average" while `coverage` answers "what fraction of compared fields carried a bounding box". When no field carries a ground-truth box, `mean_ap` is `None`.
 
 ## Result Structure
 
@@ -219,16 +224,16 @@ Fields without ground truth bounding boxes are excluded from the per-field metri
     "iou_threshold": 0.5,
     "fields": {
         "vendor_name": {
-            "iou": 0.92, "precision": 1.0, "recall": 1.0,
-            "f1": 1.0, "ap": 1.0, "support": 1
+            "ap": 1.0, "precision": 1.0, "recall": 1.0, "mean_iou": 0.92,
+            "num_gt": 1, "num_detections": 1, "num_true_positives": 1
         },
         "invoice_number": {
-            "iou": 1.0, "precision": 1.0, "recall": 1.0,
-            "f1": 1.0, "ap": 1.0, "support": 1
+            "ap": 1.0, "precision": 1.0, "recall": 1.0, "mean_iou": 1.0,
+            "num_gt": 1, "num_detections": 1, "num_true_positives": 1
         },
         "total_amount": {
-            "iou": 0.05, "precision": 0.0, "recall": 0.0,
-            "f1": 0.0, "ap": 0.0, "support": 1
+            "ap": 0.0, "precision": 0.0, "recall": 0.0, "mean_iou": 0.05,
+            "num_gt": 1, "num_detections": 1, "num_true_positives": 0
         }
     },
     "coverage": {

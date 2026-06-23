@@ -161,7 +161,6 @@ class DocumentField(StructuredModel):
 | Parameter | Default | Description |
 |---|---|---|
 | `threshold` | `0.5` | IoU threshold for binary match classification |
-| `margin_percent` | `5.0` | Vertical margin percentage for snap correction |
 
 !!! tip "Rich Value Pattern"
     For end-to-end mAP evaluation with per-field breakdown, use the [Bounding Box mAP Metrics](../../Advanced/bbox-map-metrics.md) feature instead of using BBoxIoUComparator directly.
