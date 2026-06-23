@@ -3,16 +3,10 @@
 This comparator compares two bounding boxes and returns their IoU score
 as the similarity measure. It supports both two-point format
 ([[x1, y1], [x2, y2]]) and four-element flat format ([x1, y1, x2, y2]).
-
-The comparator also includes a margin-based correction that snaps
-predictions to ground truth when the prediction fully contains the
-ground truth vertically (within a margin) and does not overlap with
-other bounding boxes. This handles the common case where OCR-based
-extractors return line-level bounding boxes that are wider than the
-target field.
 """
 
-from typing import Any, Dict, Optional, Tuple
+import math
+from typing import Any, Optional, Tuple
 
 from stickler.comparators.base import BaseComparator
 
@@ -27,9 +21,14 @@ class BBoxIoUComparator(BaseComparator):
         - Two-point: [[x1, y1], [x2, y2]]
         - Flat: [x1, y1, x2, y2]
 
+    Coordinates must be finite numbers; non-finite values (NaN, inf) are
+    treated as malformed input and score 0.0. Note that a zero-area box (a
+    point, e.g. ``[[5, 5], [5, 5]]``) has no area to intersect, so it scores
+    IoU 0.0 even against an identical point — relevant when annotating point
+    locations rather than regions.
+
     Args:
         threshold: IoU threshold for binary match classification (default: 0.5).
-        margin_percent: Vertical margin percentage for snap correction (default: 5).
 
     Example:
         >>> from stickler.comparators.bbox import BBoxIoUComparator
@@ -43,18 +42,8 @@ class BBoxIoUComparator(BaseComparator):
     def __init__(
         self,
         threshold: float = 0.5,
-        margin_percent: float = 5.0,
     ):
         super().__init__(threshold=threshold)
-        self.margin_percent = margin_percent
-
-    @property
-    def config(self) -> Optional[Dict[str, Any]]:
-        """Return configuration parameters for serialization."""
-        config: Dict[str, Any] = {}
-        if self.margin_percent != 5.0:
-            config["margin_percent"] = self.margin_percent
-        return config or None
 
     def compare(self, bbox1: Any, bbox2: Any) -> float:
         """Compare two bounding boxes and return their IoU.
@@ -110,6 +99,11 @@ class BBoxIoUComparator(BaseComparator):
                 # Flat format: [x1, y1, x2, y2]
                 x1, y1, x2, y2 = (float(v) for v in bbox)
             else:
+                return None
+
+            # Reject non-finite coordinates (NaN, inf) as malformed input so
+            # they score as a miss rather than poisoning IoU output.
+            if not all(math.isfinite(v) for v in (x1, y1, x2, y2)):
                 return None
 
             return (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
