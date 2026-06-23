@@ -7,6 +7,7 @@ dispatcher, collectors, and calculators.
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from stickler.structured_object_evaluator.models.map_calculator import MAPCalculator
 from stickler.utils.deprecation import warn_once
 
 if TYPE_CHECKING:
@@ -371,8 +372,6 @@ class ComparisonEngine:
         if add_bbox_metrics:
             import warnings as _warnings
 
-            from .map_calculator import MAPCalculator
-
             # Auto-enable field_comparisons (mirrors add_confidence_metrics).
             if "field_comparisons" not in result:
                 field_comparisons = (
@@ -390,12 +389,31 @@ class ComparisonEngine:
                 UserWarning,
                 stacklevel=2,
             )
+            if evaluator_format:
+                _warnings.warn(
+                    "add_bbox_metrics has no effect with evaluator_format=True: "
+                    "the evaluator format rebuilds the result from a fixed key "
+                    "set and drops 'bbox_metrics'.",
+                    UserWarning,
+                    stacklevel=2,
+                )
             calculator = MAPCalculator(iou_threshold=bbox_iou_threshold)
-            extraction = calculator.extract(result, self.model, other)
+            # An empty field_comparisons list (e.g. a model whose only list
+            # field is empty on both sides) yields a coverage-only result
+            # instead of raising.
+            if result.get("field_comparisons"):
+                extraction = calculator.extract(result, self.model, other)
+                keyed_pairs = extraction.keyed_pairs
+                fields_with_bbox = extraction.fields_with_bbox
+                fields_total = extraction.fields_total
+            else:
+                keyed_pairs = {}
+                fields_with_bbox = 0
+                fields_total = 0
             result["bbox_metrics"] = calculator.compute_metrics(
-                extraction.keyed_pairs,
-                fields_with_bbox=extraction.fields_with_bbox,
-                fields_total=extraction.fields_total,
+                keyed_pairs,
+                fields_with_bbox=fields_with_bbox,
+                fields_total=fields_total,
             )
 
         # Include raw prediction JSON for round-tripping through JSONL.
@@ -416,14 +434,12 @@ class ComparisonEngine:
         # confidence, mAP needs both sides: ground-truth boxes live on
         # self.model and can't be recovered from prediction_raw, so stash
         # both maps keyed by field path (mirrors prediction_confidences).
-        from .map_calculator import MAPCalculator as _MAPCalculator
-
         if hasattr(self.model, "get_all_extras"):
-            gt_bboxes = _MAPCalculator.bboxes_from_extras(self.model.get_all_extras())
+            gt_bboxes = MAPCalculator.bboxes_from_extras(self.model.get_all_extras())
             if gt_bboxes:
                 result["ground_truth_bboxes"] = gt_bboxes
         if hasattr(other, "get_all_extras"):
-            pred_bboxes = _MAPCalculator.bboxes_from_extras(other.get_all_extras())
+            pred_bboxes = MAPCalculator.bboxes_from_extras(other.get_all_extras())
             if pred_bboxes:
                 result["prediction_bboxes"] = pred_bboxes
 
