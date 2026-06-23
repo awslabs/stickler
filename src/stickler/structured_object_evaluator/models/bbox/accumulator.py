@@ -18,6 +18,7 @@ import warnings
 from typing import Any, Dict, Optional
 
 from stickler.structured_object_evaluator.models.bbox.calculator import (
+    DEFAULT_IOU_THRESHOLDS,
     BBoxObservation,
     KeyedBBoxPairs,
     MAPCalculator,
@@ -30,8 +31,8 @@ from stickler.structured_object_evaluator.models.post_comparison_accumulator imp
 class BBoxMAPAccumulator(PostComparisonAccumulator):
     """Accumulates bbox observations and computes aggregate mAP metrics."""
 
-    def __init__(self, iou_threshold: float = 0.5):
-        self._calculator = MAPCalculator(iou_threshold=iou_threshold)
+    def __init__(self, iou_thresholds=DEFAULT_IOU_THRESHOLDS):
+        self._calculator = MAPCalculator(iou_thresholds=iou_thresholds)
         self.reset()
 
     @property

@@ -1100,7 +1100,7 @@ class StructuredModel(BaseModel):
         add_confidence_metrics: bool = False,
         confidence_metrics: Optional[List[Any]] = None,
         add_bbox_metrics: bool = False,
-        bbox_iou_threshold: float = 0.5,
+        bbox_iou_thresholds=None,
     ) -> Dict[str, Any]:
         """Compare this model with another instance using SINGLE TRAVERSAL optimization.
 
@@ -1126,8 +1126,9 @@ class StructuredModel(BaseModel):
                 sanity check). Emits a UserWarning recommending
                 BulkStructuredModelEvaluator with BBoxMAPAccumulator for
                 statistically meaningful results.
-            bbox_iou_threshold: IoU threshold for mAP match classification
-                (default 0.5). Only used when add_bbox_metrics=True.
+            bbox_iou_thresholds: A single IoU threshold or an iterable of them
+                for mAP. Defaults to the COCO range (0.50, 0.55, ..., 0.95).
+                Only used when add_bbox_metrics=True.
 
         Returns:
             Dictionary with comparison results including:
@@ -1153,7 +1154,7 @@ class StructuredModel(BaseModel):
             add_confidence_metrics=add_confidence_metrics,
             confidence_metrics=confidence_metrics,
             add_bbox_metrics=add_bbox_metrics,
-            bbox_iou_threshold=bbox_iou_threshold,
+            bbox_iou_thresholds=bbox_iou_thresholds,
         )
 
     def _convert_score_to_binary_metrics(

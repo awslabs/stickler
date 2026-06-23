@@ -14,14 +14,16 @@ This is the orchestrator for bounding-box localization scoring. It mirrors
 Average Precision
 -----------------
 AP is the area under the confidence-ranked precision-recall curve, computed
-with the Pascal VOC 2010+ all-points interpolation. ``mean_ap`` is the mean of
-per-field AP over fields that carry at least one ground-truth box.
+COCO-style (matching pycocotools / torchmetrics): the precision envelope is
+applied ("zig-zags removed") and precision is sampled at 101 fixed recall points.
+``mean_ap`` averages AP over the configured IoU thresholds (COCO mAP@[0.50:0.95]
+by default) and over field-type classes; ``map_50`` / ``map_75`` expose the
+single-threshold values.
 
 Predicted boxes are ranked by their ``_confidence`` (which rides the same
 rich-value pattern). When a prediction has no confidence, it defaults to 1.0;
-without real confidence scores the ranking is uninformative and AP collapses to
-a single operating point, so providing ``_confidence`` is recommended for
-meaningful AP.
+without real confidence scores the ranking is uninformative, so providing
+``_confidence`` is recommended for meaningful AP.
 
 List fields
 -----------
@@ -37,6 +39,7 @@ Bounding boxes ride on the rich value pattern under the ``_bbox`` key, e.g.::
 """
 
 import re
+from bisect import bisect_left
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from pydantic import BaseModel
@@ -53,6 +56,13 @@ BBOX_KEY = "_bbox"
 
 # Confidence assigned to a predicted box that carries no _confidence.
 _DEFAULT_CONFIDENCE = 1.0
+
+# COCO default IoU thresholds: 0.50, 0.55, ..., 0.95 (averaged for the headline
+# mAP). Matches torchmetrics' linspace(0.5, 0.95, 10).
+DEFAULT_IOU_THRESHOLDS = tuple(round(0.5 + 0.05 * i, 2) for i in range(10))
+
+# COCO recall sampling points for 101-point interpolation: 0.00, 0.01, ..., 1.00.
+_RECALL_THRESHOLDS = tuple(round(0.01 * i, 2) for i in range(101))
 
 _LIST_INDEX_RE = re.compile(r"\[\d+\]")
 
@@ -101,13 +111,24 @@ class BBoxExtractionResult(BaseModel):
 class MAPCalculator:
     """Extracts bounding-box observations and computes Mean Average Precision.
 
+    AP is computed COCO-style: per field-type class, predicted boxes are ranked
+    by confidence, classified TP/FP at an IoU threshold, and the precision-recall
+    curve is interpolated with 101-point sampling (matching pycocotools /
+    torchmetrics). The reported ``mean_ap`` averages AP over the configured IoU
+    thresholds (COCO mAP@[0.50:0.95] by default) and over classes; ``map_50`` /
+    ``map_75`` expose the single-threshold values.
+
     Args:
-        iou_threshold: IoU threshold for considering a detection correct
-            (default: 0.5, corresponding to mAP@0.5).
+        iou_thresholds: A single IoU threshold or an iterable of them. Defaults
+            to the COCO range ``(0.50, 0.55, ..., 0.95)``. Passing a single float
+            (e.g. ``0.5``) yields a single-threshold ``mean_ap`` equal to
+            ``map_50``.
     """
 
-    def __init__(self, iou_threshold: float = 0.5):
-        self.iou_threshold = iou_threshold
+    def __init__(self, iou_thresholds=DEFAULT_IOU_THRESHOLDS):
+        if isinstance(iou_thresholds, (int, float)):
+            iou_thresholds = (float(iou_thresholds),)
+        self.iou_thresholds = tuple(sorted(float(t) for t in iou_thresholds))
         # Only compare() is used; classification happens in this calculator.
         self._comparator = BBoxIoUComparator()
 
@@ -285,16 +306,19 @@ class MAPCalculator:
 
     @staticmethod
     def _average_precision(
-        detections: List[BBoxObservation], num_gt: int
+        detections: List[tuple], num_gt: int, threshold: float
     ) -> Optional[float]:
-        """Pascal VOC 2010+ all-points AP from confidence-ranked detections.
+        """COCO 101-point interpolated AP from confidence-ranked detections.
+
+        Mirrors pycocotools / torchmetrics: rank detections by confidence,
+        classify TP/FP at ``threshold``, build the precision-recall curve,
+        remove zig-zags (precision envelope), then average precision sampled at
+        101 fixed recall points (0.00, 0.01, ..., 1.00).
 
         Args:
-            detections: Predicted boxes (``has_pred``) with a ``matched`` flag
-                already resolved into ``iou``/threshold by the caller; here each
-                detection must expose ``confidence`` and a precomputed
-                ``is_tp`` via the tuple form ``(confidence, is_tp)``.
+            detections: List of ``(confidence, iou)`` tuples for predicted boxes.
             num_gt: Number of ground-truth boxes (recall denominator).
+            threshold: IoU threshold for the TP/FP decision.
 
         Returns:
             AP in [0, 1], or None when ``num_gt`` is 0 (undefined).
@@ -304,65 +328,70 @@ class MAPCalculator:
         if not detections:
             return 0.0
 
-        # detections is a list of (confidence, is_tp) tuples.
         ranked = sorted(detections, key=lambda d: d[0], reverse=True)
         tp = 0
         fp = 0
         recalls: List[float] = []
         precisions: List[float] = []
-        for _conf, is_tp in ranked:
-            if is_tp:
+        for _conf, iou in ranked:
+            if iou >= threshold:
                 tp += 1
             else:
                 fp += 1
             recalls.append(tp / num_gt)
             precisions.append(tp / (tp + fp))
 
-        # Sentinels + monotonic precision envelope, then integrate over recall.
-        mrec = [0.0] + recalls + [1.0]
-        mpre = [0.0] + precisions + [0.0]
-        for i in range(len(mpre) - 1, 0, -1):
-            mpre[i - 1] = max(mpre[i - 1], mpre[i])
-        ap = 0.0
-        for i in range(1, len(mrec)):
-            if mrec[i] != mrec[i - 1]:
-                ap += (mrec[i] - mrec[i - 1]) * mpre[i]
-        return ap
+        # Precision envelope: make precision monotonically non-increasing from
+        # the right ("remove zig-zags"), matching COCO/torchmetrics.
+        for i in range(len(precisions) - 1, 0, -1):
+            precisions[i - 1] = max(precisions[i - 1], precisions[i])
+
+        # 101-point sampling: precision at the first recall >= each sample point
+        # (0 beyond the maximum achieved recall).
+        n = len(recalls)
+        total = 0.0
+        for rt in _RECALL_THRESHOLDS:
+            idx = bisect_left(recalls, rt)
+            total += precisions[idx] if idx < n else 0.0
+        return total / len(_RECALL_THRESHOLDS)
 
     def _score_field(self, observations: BBoxObservations) -> Dict[str, Any]:
-        """Compute AP and summary stats for one field's observations."""
+        """Compute per-threshold AP and summary stats for one field's observations."""
         num_gt = sum(1 for o in observations if o.has_gt)
 
         detections: List[tuple] = []
-        tp = 0
         iou_sum = 0.0
-        iou_count = 0
         for o in observations:
             if not o.has_pred:
                 continue
             conf = o.confidence if o.confidence is not None else _DEFAULT_CONFIDENCE
-            is_tp = o.has_gt and o.iou >= self.iou_threshold
-            detections.append((conf, is_tp))
-            if is_tp:
-                tp += 1
+            detections.append((conf, o.iou))
             iou_sum += o.iou
-            iou_count += 1
 
-        ap = self._average_precision(detections, num_gt)
         num_det = len(detections)
-        precision = tp / num_det if num_det > 0 else 0.0
-        recall = tp / num_gt if num_gt > 0 else 0.0
-        mean_iou = iou_sum / iou_count if iou_count > 0 else 0.0
+        mean_iou = iou_sum / num_det if num_det > 0 else 0.0
+
+        # AP at each configured IoU threshold; per-field "ap" averages them.
+        ap_by_threshold: Dict[float, Optional[float]] = {
+            t: self._average_precision(detections, num_gt, t)
+            for t in self.iou_thresholds
+        }
+        valid = [ap for ap in ap_by_threshold.values() if ap is not None]
+        ap = sum(valid) / len(valid) if valid else None
 
         return {
             "ap": ap,
-            "precision": precision,
-            "recall": recall,
+            "ap_by_threshold": ap_by_threshold,
+            "ap_50": ap_by_threshold.get(0.5),
+            "ap_75": ap_by_threshold.get(0.75),
             "mean_iou": mean_iou,
             "num_gt": num_gt,
             "num_detections": num_det,
-            "num_true_positives": tp,
         }
+
+    @staticmethod
+    def _mean(values: List[float]) -> Optional[float]:
+        return sum(values) / len(values) if values else None
 
     def compute_metrics(
         self,
@@ -372,10 +401,14 @@ class MAPCalculator:
     ) -> Dict[str, Any]:
         """Compute per-field AP and overall mAP from accumulated observations.
 
-        ``mean_ap`` macro-averages AP over field-type classes that carry at
-        least one ground-truth box (each class weighs equally regardless of how
-        many observations it has). This differs from ``coverage``, which counts
-        per-(document, field) occurrences; see the bbox mAP metrics doc.
+        ``mean_ap`` is the COCO-style mAP: AP is computed per (field-type class,
+        IoU threshold), then averaged over the configured thresholds and over
+        classes that carry at least one ground-truth box. Each class weighs
+        equally regardless of how many observations it has. ``map_50`` /
+        ``map_75`` are the single-threshold means (None when that threshold is
+        not configured). This class-averaging is a different universe from
+        ``coverage``, which counts per-(document, field) occurrences; see the
+        bbox mAP metrics doc.
 
         Args:
             keyed_pairs: Class key -> list of BBoxObservation.
@@ -384,29 +417,40 @@ class MAPCalculator:
 
         Returns:
             {
-                "mean_ap": float | None,
-                "iou_threshold": float,
-                "fields": {class_key: {ap, precision, recall, mean_iou,
-                                       num_gt, num_detections,
-                                       num_true_positives}},
+                "mean_ap": float | None,        # mAP over the IoU-threshold range
+                "map_50": float | None,
+                "map_75": float | None,
+                "iou_thresholds": [float, ...],
+                "fields": {class_key: {ap, ap_50, ap_75, mean_iou,
+                                       num_gt, num_detections}},
                 "coverage": {fields_with_bbox, fields_total, ratio},
             }
             ``mean_ap`` is None when no field carried a ground-truth box.
         """
         per_field: Dict[str, Dict[str, Any]] = {}
-        scored_aps: List[float] = []
+        # Collect per-threshold AP across classes so the headline averages over
+        # both thresholds and classes (COCO map).
+        ap_by_threshold: Dict[float, List[float]] = {
+            t: [] for t in self.iou_thresholds
+        }
         for key, observations in keyed_pairs.items():
             scored = self._score_field(observations)
+            for t, ap in scored.pop("ap_by_threshold").items():
+                if ap is not None:
+                    ap_by_threshold[t].append(ap)
             per_field[key] = scored
-            if scored["ap"] is not None:
-                scored_aps.append(scored["ap"])
 
-        mean_ap: Optional[float]
-        mean_ap = sum(scored_aps) / len(scored_aps) if scored_aps else None
+        per_threshold_map = {
+            t: self._mean(aps) for t, aps in ap_by_threshold.items()
+        }
+        valid_maps = [m for m in per_threshold_map.values() if m is not None]
+        mean_ap = self._mean(valid_maps)
 
         return {
             "mean_ap": mean_ap,
-            "iou_threshold": self.iou_threshold,
+            "map_50": per_threshold_map.get(0.5),
+            "map_75": per_threshold_map.get(0.75),
+            "iou_thresholds": list(self.iou_thresholds),
             "fields": per_field,
             "coverage": {
                 "fields_with_bbox": fields_with_bbox,
