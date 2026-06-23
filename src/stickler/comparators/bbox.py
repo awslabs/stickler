@@ -22,10 +22,12 @@ class BBoxIoUComparator(BaseComparator):
         - Flat: [x1, y1, x2, y2]
 
     Coordinates must be finite numbers; non-finite values (NaN, inf) are
-    treated as malformed input and score 0.0. Note that a zero-area box (a
-    point, e.g. ``[[5, 5], [5, 5]]``) has no area to intersect, so it scores
-    IoU 0.0 even against an identical point — relevant when annotating point
-    locations rather than regions.
+    treated as malformed input and score 0.0. Booleans are accepted as
+    coordinates (``bool`` is a subclass of ``int``: ``True`` == 1, ``False``
+    == 0), so guard upstream if that is not intended. Note that a zero-area
+    box (a point, e.g. ``[[5, 5], [5, 5]]``) has no area to intersect, so it
+    scores IoU 0.0 even against an identical point — relevant when annotating
+    point locations rather than regions.
 
     Args:
         threshold: IoU threshold for binary match classification (default: 0.5).
