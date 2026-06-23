@@ -182,6 +182,54 @@ class TestAveragePrecision:
         assert fp_first == 0.25
         assert tp_first != fp_first
 
+    def test_multi_detection_envelope_interpolation(self):
+        """Multi-detection curve where the VOC precision envelope changes the result.
+
+        Detections ranked by confidence: FP, TP, TP with num_gt=2.
+
+            rank  label  tp fp  recall  precision
+              1   FP     0  1    0.0     0.0
+              2   TP     1  1    0.5     0.5
+              3   TP     2  1    1.0     0.667
+
+        Pascal VOC 2010+ makes precision monotonically non-increasing from the
+        right before integrating, so the precision at recall 0.5 is lifted from
+        0.5 to the later max of 0.667:
+
+            AP = (0.5 - 0.0) * 0.667 + (1.0 - 0.5) * 0.667 = 2/3
+
+        Without the envelope (sklearn-style, non-interpolated) the same curve
+        gives 7/12 ≈ 0.583, so this asserts the interpolation is actually
+        applied — not just that some number comes out.
+        """
+        calc = MAPCalculator(0.5)
+        ap = calc._average_precision([(0.9, False), (0.8, True), (0.7, True)], 2)
+        assert ap == pytest.approx(2 / 3)
+        # Strictly greater than the non-interpolated value: the envelope is live.
+        assert ap > 0.5833
+
+    def test_larger_pr_curve(self):
+        """A richer alternating curve, hand-derived against VOC all-points.
+
+        Detections ranked: TP, FP, TP, FP, TP with num_gt=3.
+
+            rank  label  tp fp  recall   precision
+              1   TP     1  0    1/3      1.0
+              2   FP     1  1    1/3      0.5
+              3   TP     2  1    2/3      0.667
+              4   FP     2  2    2/3      0.5
+              5   TP     3  2    1.0      0.6
+
+        Integrating the envelope at the recall-increasing steps:
+
+            AP = (1/3)(1.0) + (1/3)(2/3) + (1/3)(3/5) = 34/45 ≈ 0.756
+        """
+        calc = MAPCalculator(0.5)
+        ap = calc._average_precision(
+            [(0.9, True), (0.8, False), (0.7, True), (0.6, False), (0.5, True)], 3
+        )
+        assert ap == pytest.approx(34 / 45)
+
 
 class TestMAPCalculator:
     def test_bboxes_from_extras(self):
