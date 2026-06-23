@@ -163,27 +163,30 @@ def _fc(*pairs):
 class TestAveragePrecision:
     def test_all_correct_ap_is_one(self):
         calc = MAPCalculator(0.5)
-        assert calc._average_precision([(0.9, True), (0.8, True)], 2) == 1.0
+        # detections are (confidence, iou); both clear the 0.5 threshold.
+        assert calc._average_precision([(0.9, 0.9), (0.8, 0.8)], 2, 0.5) == 1.0
 
     def test_undefined_when_no_gt(self):
         calc = MAPCalculator(0.5)
-        assert calc._average_precision([(0.9, True)], 0) is None
+        assert calc._average_precision([(0.9, 0.9)], 0, 0.5) is None
 
     def test_no_detections_is_zero(self):
         calc = MAPCalculator(0.5)
-        assert calc._average_precision([], 2) == 0.0
+        assert calc._average_precision([], 2, 0.5) == 0.0
 
     def test_confidence_ranking_matters(self):
         """Same TP/FP counts, different ordering by confidence -> different AP."""
         calc = MAPCalculator(0.5)
-        tp_first = calc._average_precision([(0.9, True), (0.6, False)], 2)
-        fp_first = calc._average_precision([(0.9, False), (0.6, True)], 2)
-        assert tp_first == 0.5
-        assert fp_first == 0.25
-        assert tp_first != fp_first
+        # TP (iou 0.9) ranked above FP (iou 0.0) vs. the reverse.
+        tp_first = calc._average_precision([(0.9, 0.9), (0.6, 0.0)], 2, 0.5)
+        fp_first = calc._average_precision([(0.9, 0.0), (0.6, 0.9)], 2, 0.5)
+        # COCO 101-point values: 51/101 vs 25.5/101.
+        assert tp_first == pytest.approx(51 / 101)
+        assert fp_first == pytest.approx(25.5 / 101)
+        assert tp_first > fp_first
 
     def test_multi_detection_envelope_interpolation(self):
-        """Multi-detection curve where the VOC precision envelope changes the result.
+        """Multi-detection curve where the precision envelope changes the result.
 
         Detections ranked by confidence: FP, TP, TP with num_gt=2.
 
@@ -192,43 +195,30 @@ class TestAveragePrecision:
               2   TP     1  1    0.5     0.5
               3   TP     2  1    1.0     0.667
 
-        Pascal VOC 2010+ makes precision monotonically non-increasing from the
-        right before integrating, so the precision at recall 0.5 is lifted from
-        0.5 to the later max of 0.667:
-
-            AP = (0.5 - 0.0) * 0.667 + (1.0 - 0.5) * 0.667 = 2/3
-
-        Without the envelope (sklearn-style, non-interpolated) the same curve
-        gives 7/12 ≈ 0.583, so this asserts the interpolation is actually
-        applied — not just that some number comes out.
+        COCO removes zig-zags (precision envelope) before sampling, lifting the
+        precision at recall 0.5 to the later max of 0.667, so the 101-point mean
+        is 2/3. Without the envelope (sklearn-style) the same curve gives
+        7/12 ≈ 0.583, so this asserts the interpolation is actually applied.
         """
         calc = MAPCalculator(0.5)
-        ap = calc._average_precision([(0.9, False), (0.8, True), (0.7, True)], 2)
+        ap = calc._average_precision([(0.9, 0.0), (0.8, 0.9), (0.7, 0.8)], 2, 0.5)
         assert ap == pytest.approx(2 / 3)
-        # Strictly greater than the non-interpolated value: the envelope is live.
         assert ap > 0.5833
 
     def test_larger_pr_curve(self):
-        """A richer alternating curve, hand-derived against VOC all-points.
+        """A richer alternating curve, hand-derived against COCO 101-point.
 
-        Detections ranked: TP, FP, TP, FP, TP with num_gt=3.
+        Detections ranked: TP, FP, TP, FP, TP with num_gt=3. After the envelope,
+        precision is 1.0 up to recall 1/3, 2/3 up to recall 2/3, and 0.6 up to
+        recall 1.0. Sampling at 101 recall points (34 / 33 / 34 split) gives:
 
-            rank  label  tp fp  recall   precision
-              1   TP     1  0    1/3      1.0
-              2   FP     1  1    1/3      0.5
-              3   TP     2  1    2/3      0.667
-              4   FP     2  2    2/3      0.5
-              5   TP     3  2    1.0      0.6
-
-        Integrating the envelope at the recall-increasing steps:
-
-            AP = (1/3)(1.0) + (1/3)(2/3) + (1/3)(3/5) = 34/45 ≈ 0.756
+            AP = (34*1.0 + 33*(2/3) + 34*0.6) / 101 ≈ 0.7564
         """
         calc = MAPCalculator(0.5)
         ap = calc._average_precision(
-            [(0.9, True), (0.8, False), (0.7, True), (0.6, False), (0.5, True)], 3
+            [(0.9, 0.9), (0.8, 0.0), (0.7, 0.9), (0.6, 0.0), (0.5, 0.9)], 3, 0.5
         )
-        assert ap == pytest.approx(34 / 45)
+        assert ap == pytest.approx((34 + 33 * (2 / 3) + 34 * 0.6) / 101)
 
 
 class TestMAPCalculator:
@@ -348,6 +338,35 @@ class TestMAPCalculator:
         with pytest.raises(ValueError, match="No field comparisons"):
             calc.extract({"field_comparisons": []}, gt, gt)
 
+    def test_multi_threshold_averaging_and_map_50_75(self):
+        """Default COCO IoU range: mean_ap averages over thresholds; map_50/75.
+
+        A single detection with IoU exactly 0.7 is a TP at thresholds
+        0.50-0.70 (5 of the 10 COCO thresholds) and an FP at 0.75-0.95. With
+        one GT box, AP is 1.0 where it's a TP and 0.0 where it's an FP, so:
+
+            mean_ap = 5/10 = 0.5,  map_50 = 1.0,  map_75 = 0.0
+        """
+        calc = MAPCalculator()  # COCO default (0.50 ... 0.95)
+        assert calc.iou_thresholds == tuple(round(0.5 + 0.05 * i, 2) for i in range(10))
+        obs = [BBoxObservation(has_gt=True, has_pred=True, iou=0.7, confidence=0.9)]
+        m = calc.compute_metrics({"field": obs}, fields_with_bbox=1, fields_total=1)
+        assert m["map_50"] == 1.0
+        assert m["map_75"] == 0.0
+        assert m["mean_ap"] == pytest.approx(0.5)
+        assert m["fields"]["field"]["ap_50"] == 1.0
+        assert m["fields"]["field"]["ap_75"] == 0.0
+        assert m["fields"]["field"]["ap"] == pytest.approx(0.5)
+
+    def test_single_threshold_has_no_map_75(self):
+        calc = MAPCalculator(0.5)
+        obs = [BBoxObservation(has_gt=True, has_pred=True, iou=0.9, confidence=0.9)]
+        m = calc.compute_metrics({"field": obs}, 1, 1)
+        assert m["iou_thresholds"] == [0.5]
+        assert m["map_50"] == 1.0
+        assert m["map_75"] is None
+        assert m["mean_ap"] == 1.0
+
 
 # ══════════════════════════════════════════════════════════════════════
 # Reordered list fields — the join-correctness regression (B1)
@@ -397,8 +416,10 @@ class TestListFieldJoin:
         field = result["bbox_metrics"]["fields"]["items[].description"]
         assert field["num_gt"] == 2
         assert field["num_detections"] == 1
-        # 1 TP out of 2 GT, single detection -> AP 0.5
-        assert result["bbox_metrics"]["mean_ap"] == 0.5
+        # 1 TP out of 2 GT, single detection. Under COCO 101-point sampling this
+        # is 51/101 at every IoU threshold (the detection has IoU 1.0), so the
+        # averaged mean_ap is 51/101 ≈ 0.505 rather than an exact 0.5.
+        assert result["bbox_metrics"]["mean_ap"] == pytest.approx(51 / 101)
 
 
 # ══════════════════════════════════════════════════════════════════════
