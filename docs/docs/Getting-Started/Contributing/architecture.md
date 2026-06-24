@@ -127,7 +127,7 @@ The dispatcher routes each field comparison through a 5-step decision tree:
 | Step | Logic | Early Exit? |
 |------|-------|-------------|
 | 1. **Get field config** | Extract weight, threshold, comparator from `_get_comparison_info()` | No |
-| 2. **Determine types** | Check `_is_list_field()` and `_should_use_hierarchical_structure()` | No |
+| 2. **Determine types** | Check `_is_list_field()` and `_is_structured_list_field()` | No |
 | 3. **List null cases** | Match on `(gt_null, pred_null)` → TN/FA/FN | Yes, if null case |
 | 4. **Primitive null cases** | Match on `(gt_null, pred_null)` for non-hierarchical fields | Yes, if null case |
 | 5. **Type-based dispatch** | Route by runtime types to specialized comparator | Terminal |
@@ -329,7 +329,7 @@ From `ComparisonDispatcher` source:
 |---------|---------------|---------------|
 | Wrong similarity scores | `FieldComparator` | `ComparableField` comparator/threshold config |
 | TP + FP ≠ expected | `StructuredListComparator` | Object-level vs field-level counting |
-| Wrong comparator used | `ComparisonDispatcher` | `_is_list_field()` / `_should_use_hierarchical_structure()` return values |
+| Wrong comparator used | `ComparisonDispatcher` | `_is_list_field()` / `_is_structured_list_field()` return values |
 | Slow on large objects | `StructuredListComparator` | Threshold gate effectiveness; Hungarian O(n³) |
 | High memory usage | `ComparisonEngine` | Result structure depth; helper instantiation count |
 
