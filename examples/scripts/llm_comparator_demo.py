@@ -11,11 +11,13 @@ Requirements:
 - AWS credentials configured for Bedrock access
 - Environment variables for model configuration (optional)
 """
-from stickler.comparators.exact import ExactComparator
-from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.comparators.llm import LLMComparator
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+from stickler import (
+    ComparableField,
+    ExactComparator,
+    LLMComparator,
+    LevenshteinComparator,
+    StructuredModel,
+)
 
 
 def print_section_header(title: str):

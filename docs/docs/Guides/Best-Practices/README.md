@@ -54,7 +54,7 @@ Once you have calibrated thresholds, encode them as pytest unit tests so they do
 
 ```python
 import pytest
-from stickler.comparators import LevenshteinComparator
+from stickler import LevenshteinComparator
 
 comparator = LevenshteinComparator()
 

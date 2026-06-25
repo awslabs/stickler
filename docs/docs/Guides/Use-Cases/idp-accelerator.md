@@ -26,7 +26,7 @@ Create `StructuredModel` classes that mirror the fields your IDP pipeline extrac
 ```python
 from typing import List
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import ExactComparator, NumericComparator, LevenshteinComparator, FuzzyComparator
+from stickler import ExactComparator, NumericComparator, LevenshteinComparator, FuzzyComparator
 
 class IDPLineItem(StructuredModel):
     description: str = ComparableField(comparator=FuzzyComparator(), weight=1.0)

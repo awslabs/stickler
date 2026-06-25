@@ -16,7 +16,7 @@ Stickler answers these questions. It compares structured AI output against groun
 # pip install stickler-eval
 from typing import List
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import ExactComparator, NumericComparator, LevenshteinComparator
+from stickler import ExactComparator, NumericComparator, LevenshteinComparator
 
 # Define your models
 class LineItem(StructuredModel):

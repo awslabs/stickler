@@ -280,9 +280,7 @@ When these conditions are met, `update_from_comparison_result()` produces identi
 For simpler cases where you have a list of comparison results in memory:
 
 ```python
-from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
-    aggregate_from_comparisons,
-)
+from stickler import aggregate_from_comparisons
 
 results = [comp1, comp2, comp3]  # list of compare_with() outputs
 evaluation = aggregate_from_comparisons(results)
@@ -311,10 +309,7 @@ Stickler can generate interactive HTML reports from evaluation results. See [Und
 ## Complete Example
 
 ```python
-from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.comparators.exact import ExactComparator
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+from stickler import ComparableField, ExactComparator, LevenshteinComparator, StructuredModel
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
 )

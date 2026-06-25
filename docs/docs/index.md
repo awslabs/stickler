@@ -12,7 +12,7 @@ Generative AI models extract structured data from documents — invoices, forms,
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import ExactComparator, NumericComparator
+from stickler import ExactComparator, NumericComparator
 
 # 1. Define what "correct" looks like — each field gets its own comparator and weight
 class Invoice(StructuredModel):
