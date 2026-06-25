@@ -324,7 +324,6 @@ from pydantic import Field, BaseModel
 
 # Local imports
 from stickler import StructuredModel, ComparableField, LevenshteinComparator
-
 ```
 
 ### Import Guidelines

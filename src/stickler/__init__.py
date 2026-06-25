@@ -1,5 +1,6 @@
 """
 stickler: Structured object comparison and evaluation library.
+
 This library provides tools for comparing complex structured objects
 with configurable comparison strategies and detailed evaluation metrics.
 """
@@ -28,12 +29,15 @@ from .structured_object_evaluator import (
 if _HAS_LLM:
     from .comparators.llm import LLMComparator  # noqa: F401
 
-# Optional: BERT comparator (import fails without evaluate package)
+# Optional: BERT comparator (requires the `bert` extra: torch, bert-score,
+# evaluate). Catch broad ImportError, not just ModuleNotFoundError: a
+# version-skewed transitive dep (datasets/pyarrow/huggingface_hub) raises plain
+# ImportError, and a broken optional extra must not take down `import stickler`.
 try:
     from .comparators.bert import BERTComparator  # noqa: F401
 
     _HAS_BERT = True
-except ModuleNotFoundError:
+except ImportError:
     _HAS_BERT = False
 
 __version__ = "0.4.0"

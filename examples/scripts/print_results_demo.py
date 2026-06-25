@@ -12,11 +12,10 @@ Usage:
 
 from typing import List
 
-from stickler import LevenshteinComparator
+from stickler import ComparableField, LevenshteinComparator, StructuredModel
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
 )
-from stickler import ComparableField, StructuredModel
 
 # Import the beautiful print functions
 from stickler.structured_object_evaluator.utils.pretty_print import (

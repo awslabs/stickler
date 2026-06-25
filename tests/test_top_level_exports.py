@@ -83,6 +83,15 @@ class TestAllConsistency:
         assert "NumericExactC" not in stickler.__all__
         assert not hasattr(stickler, "NumericExactC")
 
+    def test_numeric_exact_c_importable_via_canonical_path(self):
+        """The compat alias stays importable from its canonical module."""
+        from stickler.comparators.numeric import (
+            NumericComparator,
+            NumericExactC,
+        )
+
+        assert NumericExactC is NumericComparator
+
 
 class TestOptionalGating:
     """Verify optional comparators are gated correctly in __all__."""
@@ -119,21 +128,20 @@ class TestOptionalGating:
 
     def test_llm_not_exported_when_strands_missing(self, monkeypatch):
         """Simulate missing strands-agents and verify LLMComparator is excluded."""
-        # Block strands from importing
+        # Block strands from importing (covers strands.* submodules too).
         monkeypatch.setitem(sys.modules, "strands", None)
-        monkeypatch.setitem(sys.modules, "strands.agent", None)
 
-        # Clear cached modules so reload picks up the block
+        # Clear cached stickler modules so the fresh import re-runs __init__
+        # with the block active. Match the package exactly, not a prefix, so an
+        # unrelated `sticklerfoo` package wouldn't be cleared.
         modules_to_clear = [
-            k for k in sys.modules if k.startswith("stickler")
+            k for k in sys.modules if k == "stickler" or k.startswith("stickler.")
         ]
         for mod in modules_to_clear:
             monkeypatch.delitem(sys.modules, mod, raising=False)
 
-        # Re-import with strands blocked
+        # Fresh import re-executes __init__ with strands blocked.
         import stickler as reloaded
-
-        importlib.reload(reloaded)
 
         assert "LLMComparator" not in reloaded.__all__
         assert not hasattr(reloaded, "LLMComparator")

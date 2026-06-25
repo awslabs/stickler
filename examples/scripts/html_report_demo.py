@@ -2,12 +2,11 @@
 Demo script showing how to use the EvaluationHTMLReporter with bulk evaluation.
 """
 
-from stickler import LevenshteinComparator
+from stickler import ComparableField, LevenshteinComparator, StructuredModel
 from stickler.reporting.html import EvaluationHTMLReporter, ReportConfig
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
 )
-from stickler import ComparableField, StructuredModel
 
 
 # Define a simple model for testing
