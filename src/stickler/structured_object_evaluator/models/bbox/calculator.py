@@ -432,9 +432,7 @@ class MAPCalculator:
         per_field: Dict[str, Dict[str, Any]] = {}
         # Collect per-threshold AP across classes so the headline averages over
         # both thresholds and classes (COCO map).
-        ap_by_threshold: Dict[float, List[float]] = {
-            t: [] for t in self.iou_thresholds
-        }
+        ap_by_threshold: Dict[float, List[float]] = {t: [] for t in self.iou_thresholds}
         for key, observations in keyed_pairs.items():
             scored = self._score_field(observations)
             for t, ap in scored.pop("ap_by_threshold").items():
@@ -442,9 +440,7 @@ class MAPCalculator:
                     ap_by_threshold[t].append(ap)
             per_field[key] = scored
 
-        per_threshold_map = {
-            t: self._mean(aps) for t, aps in ap_by_threshold.items()
-        }
+        per_threshold_map = {t: self._mean(aps) for t, aps in ap_by_threshold.items()}
         valid_maps = [m for m in per_threshold_map.values() if m is not None]
         mean_ap = self._mean(valid_maps)
 
