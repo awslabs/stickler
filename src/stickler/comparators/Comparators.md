@@ -26,6 +26,15 @@ comparator = NumericComparator()
 - Handles type conversion from strings
 - Ideal for financial data or measurement comparisons
 
+#### Date Comparator
+```python
+comparator = DateComparator()
+```
+- Deterministic, non-LLM comparison of date fields (parses with `python-dateutil`)
+- Normalizes surface form: separators, padding, named months, ISO vs slash, two-digit years, weekday prefixes
+- Configurable tolerance, locale (`dayfirst`), partial-year handling, date ranges (`range_mode`), and reduced-precision handling (`precision_mode`)
+- See the [DateComparator guide](../../../docs/docs/Guides/Comparators/date-comparator.md) for the full behavior reference
+
 ### 2. String Distance Comparators
 
 #### Levenshtein Comparator

@@ -77,12 +77,14 @@ Fields with higher weights pull the overall score toward their individual result
 ### Example Model
 
 ```python
-from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.comparators.exact import ExactComparator
-from stickler.comparators.numeric import NumericComparator
-from stickler.comparators.fuzzy import FuzzyComparator
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+from stickler import (
+    ComparableField,
+    ExactComparator,
+    FuzzyComparator,
+    LevenshteinComparator,
+    NumericComparator,
+    StructuredModel,
+)
 
 
 class Invoice(StructuredModel):
@@ -227,7 +229,7 @@ Add these extensions to any property in your JSON Schema to control comparison b
 ### Loading a Schema
 
 ```python
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+from stickler import StructuredModel
 import json
 
 with open("invoice_schema.json") as f:

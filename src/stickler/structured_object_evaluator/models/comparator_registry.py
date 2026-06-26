@@ -41,6 +41,13 @@ class ComparatorRegistry:
             pass
 
         try:
+            from stickler.comparators.date import DateComparator
+
+            self._registry["DateComparator"] = DateComparator
+        except ImportError:
+            pass
+
+        try:
             from stickler.comparators.fuzzy import FuzzyComparator
 
             self._registry["FuzzyComparator"] = FuzzyComparator

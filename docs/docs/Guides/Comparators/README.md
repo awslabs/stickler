@@ -11,6 +11,7 @@ Comparators are the algorithms that determine how similar two field values are. 
 | [**ExactComparator**](#exactcomparator) | IDs, codes, booleans | Instant | No | Binary (0.0 or 1.0) |
 | [**LevenshteinComparator**](#levenshteincomparator) | Names, addresses, text with typos | Instant | No | Continuous (0.0--1.0) |
 | [**NumericComparator**](#numericcomparator) | Prices, quantities, measurements | Instant | No | Binary (0.0 or 1.0) |
+| [**DateComparator**](date-comparator.md) | Date fields with mixed formats, partial dates, ranges | Instant | No | Continuous (0.0--1.0) |
 | [**FuzzyComparator**](#fuzzycomparator) | Flexible text, descriptions, reordered tokens | Fast | No | Continuous (0.0--1.0) |
 | [**BBoxIoUComparator**](#bboxioucomparator) | Bounding boxes, spatial localization | Instant | No | Continuous (0.0--1.0) |
 | [**SemanticComparator**](#semanticcomparator) | Meaning-based text similarity | Moderate | Yes (Bedrock) | Continuous (0.0--1.0) |
@@ -29,7 +30,7 @@ Checks for exact string matching after normalizing whitespace, punctuation, and 
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import ExactComparator
+from stickler import ExactComparator
 
 class Order(StructuredModel):
     order_id: str = ComparableField(
@@ -56,7 +57,7 @@ Calculates the Levenshtein edit distance between two strings and returns a norma
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import LevenshteinComparator
+from stickler import LevenshteinComparator
 
 class Contact(StructuredModel):
     name: str = ComparableField(
@@ -82,7 +83,7 @@ Extracts numeric values from strings or numbers and compares them with configura
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import NumericComparator
+from stickler import NumericComparator
 
 class Invoice(StructuredModel):
     amount: float = ComparableField(
@@ -102,6 +103,37 @@ class Invoice(StructuredModel):
 
 ---
 
+### DateComparator
+
+Parses both sides as dates (or date ranges) using `python-dateutil`, then scores the comparison on a tier system: same calendar day after surface-form normalization is `1.0`, partial information (year-less, range-vs-single) is configurable, anything else is `0.0`. Handles ISO/named-month/slash formats, two-digit years, day-of-week prefixes, and timezone-aware datetimes.
+
+**When to use:** Any date field where surface form varies (different separators, formats, locales, two- vs four-digit years), or where ground truth and predictions may disagree on year-presence or use ranges.
+
+```python
+from stickler import StructuredModel, ComparableField
+from stickler.comparators import DateComparator
+
+class Invoice(StructuredModel):
+    invoice_date: str = ComparableField(
+        comparator=DateComparator(allow_partial_year=True),
+        threshold=0.7
+    )
+```
+
+**Key parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `tolerance` | `timedelta(0)` | Allowed difference for same-day comparisons (single dates only) |
+| `dayfirst` | `None` | Interpretation hint for ambiguous numeric dates |
+| `allow_partial_year` | `False` | If `True`, year-less ↔ year-bearing pairs with matching m/d score `0.7` |
+| `range_mode` | `"graded"` | How range comparisons are scored: `"strict"`, `"reject"`, `"contains"`, or `"graded"` |
+| `precision_mode` | `"exact"` | How month/day resolution mismatches score (`Jan 2024` vs `Jan 1, 2024`): `"exact"`, `"gt_loose"`, or `"overlap"` |
+
+For the full behavior reference, configuration matrix, and corner cases, see the [DateComparator page](date-comparator.md).
+
+---
+
 ### FuzzyComparator
 
 Uses the [rapidfuzz](https://github.com/rapidfuzz/RapidFuzz) library for advanced fuzzy string matching. Supports multiple matching methods including standard ratio, partial matching, and token-based matching that is order-independent.
@@ -110,7 +142,7 @@ Uses the [rapidfuzz](https://github.com/rapidfuzz/RapidFuzz) library for advance
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import FuzzyComparator
+from stickler import FuzzyComparator
 
 class Product(StructuredModel):
     description: str = ComparableField(
@@ -175,7 +207,7 @@ Uses AWS Bedrock Titan embeddings to generate vector representations of text, th
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import SemanticComparator
+from stickler import SemanticComparator
 
 class Review(StructuredModel):
     summary: str = ComparableField(
@@ -203,7 +235,7 @@ Uses the BERTScore metric (via the `evaluate` library) to calculate contextual s
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import BERTComparator
+from stickler import BERTComparator
 
 class Document(StructuredModel):
     summary: str = ComparableField(
@@ -230,7 +262,7 @@ Uses a Large Language Model (via AWS Bedrock and the `strands-agents` library) t
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import LLMComparator
+from stickler import LLMComparator
 
 class Address(StructuredModel):
     street: str = ComparableField(
@@ -277,7 +309,7 @@ You can create your own comparator by extending `BaseComparator`. The only requi
 ### The BaseComparator Interface
 
 ```python
-from stickler.comparators.base import BaseComparator
+from stickler import BaseComparator
 
 class BaseComparator(ABC):
     def __init__(self, threshold: float = 0.7):
@@ -307,7 +339,7 @@ class BaseComparator(ABC):
 ```python
 import re
 from typing import Any
-from stickler.comparators.base import BaseComparator
+from stickler import BaseComparator
 
 class RegexComparator(BaseComparator):
     """Comparator that checks if a value matches a reference regex pattern."""

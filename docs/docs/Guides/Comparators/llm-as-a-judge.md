@@ -41,7 +41,7 @@ export AWS_DEFAULT_REGION=us-east-1
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import SemanticComparator
+from stickler import SemanticComparator
 
 class DeliveryNote(StructuredModel):
     description: str = ComparableField(
@@ -114,7 +114,7 @@ The model is loaded globally as `distilbert-base-uncased` via the `evaluate` lib
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import BERTComparator
+from stickler import BERTComparator
 
 class Article(StructuredModel):
     headline: str = ComparableField(
@@ -188,7 +188,7 @@ This example is based on the [`examples/scripts/llm_comparator_demo.py`](https:/
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import ExactComparator, LevenshteinComparator, LLMComparator
+from stickler import ExactComparator, LevenshteinComparator, LLMComparator
 
 class CustomerAddress(StructuredModel):
     street: str = ComparableField(
@@ -264,7 +264,7 @@ In practice, you will often use different comparators for different fields in a 
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import (
+from stickler import (
     ExactComparator,
     NumericComparator,
     LevenshteinComparator,

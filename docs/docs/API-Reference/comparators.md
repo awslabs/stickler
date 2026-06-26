@@ -25,6 +25,10 @@
     options:
       heading_level: 2
 
+::: stickler.comparators.DateComparator
+    options:
+      heading_level: 2
+
 ::: stickler.comparators.FuzzyComparator
     options:
       heading_level: 2
