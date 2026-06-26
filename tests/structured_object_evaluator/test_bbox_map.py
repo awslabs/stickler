@@ -132,6 +132,99 @@ class TestBBoxIoUComparator:
 
 
 # ══════════════════════════════════════════════════════════════════════
+# BBoxIoUComparator — page-aware comparison
+# ══════════════════════════════════════════════════════════════════════
+
+
+class TestBBoxIoUComparatorPageAware:
+    """page_aware=True forces a miss when boxes disagree about their page."""
+
+    def setup_method(self):
+        self.aware = BBoxIoUComparator(threshold=0.5, page_aware=True)
+        self.plain = BBoxIoUComparator(threshold=0.5)
+
+    # --- page numbers are accepted in both formats (regardless of flag) -----
+
+    def test_two_point_with_page_parses(self):
+        # Same coords, same page -> normal IoU even when page-aware.
+        assert self.aware.compare([[0, 0], [10, 10], 1], [[0, 0], [10, 10], 1]) == 1.0
+
+    def test_flat_with_page_parses(self):
+        assert self.aware.compare([0, 0, 10, 10, 3], [0, 0, 10, 10, 3]) == 1.0
+
+    def test_mixed_formats_same_page(self):
+        assert self.aware.compare([[0, 0], [10, 10], 2], [0, 0, 10, 10, 2]) == 1.0
+
+    def test_integer_valued_float_page_coerced(self):
+        # 2.0 is treated as page 2, so it matches an int page 2.
+        assert self.aware.compare([[0, 0], [10, 10], 2.0], [[0, 0], [10, 10], 2]) == 1.0
+
+    def test_partial_overlap_same_page_matches_plain_iou(self):
+        # When pages agree, the page-aware comparator must return the EXACT
+        # same partial IoU as the plain comparator on the same coordinates --
+        # i.e. the page suffix didn't disturb the geometry math.
+        aware_iou = self.aware.compare([[0, 0], [10, 10], 1], [[5, 5], [15, 15], 1])
+        plain_iou = self.plain.compare([[0, 0], [10, 10]], [[5, 5], [15, 15]])
+        assert aware_iou == plain_iou
+        assert abs(aware_iou - 25 / 175) < 1e-6  # genuinely partial, not 0 or 1
+
+    def test_partial_overlap_flat_same_page_matches_plain_iou(self):
+        # Same invariant via the flat (5-element) format.
+        aware_iou = self.aware.compare([0, 0, 20, 20, 3], [5, 5, 10, 10, 3])
+        plain_iou = self.plain.compare([0, 0, 20, 20], [5, 5, 10, 10])
+        assert aware_iou == plain_iou
+        assert abs(aware_iou - 25 / 400) < 1e-6
+
+    # --- page disagreement forces 0.0 when page-aware ----------------------
+
+    def test_different_pages_force_miss(self):
+        # Identical coordinates, different pages -> automatic miss.
+        assert self.aware.compare([[0, 0], [10, 10], 1], [[0, 0], [10, 10], 2]) == 0.0
+
+    def test_gt_has_page_pred_missing_forces_miss(self):
+        assert self.aware.compare([[0, 0], [10, 10]], [[0, 0], [10, 10], 1]) == 0.0
+
+    def test_pred_has_page_gt_missing_forces_miss(self):
+        assert self.aware.compare([[0, 0], [10, 10], 1], [[0, 0], [10, 10]]) == 0.0
+
+    def test_both_missing_page_forces_miss(self):
+        # In page-aware mode a box MUST declare its page, so a page-less box is
+        # wrong even against another page-less box.
+        assert self.aware.compare([[0, 0], [10, 10]], [[0, 0], [10, 10]]) == 0.0
+
+    def test_flat_without_page_forces_miss(self):
+        # A four-element (page-less) box is wrong 100% of the time when aware.
+        assert self.aware.compare([0, 0, 10, 10], [0, 0, 10, 10, 1]) == 0.0
+
+    # --- default (page_aware=False) ignores pages entirely -----------------
+
+    def test_default_ignores_different_pages(self):
+        # Without the flag, the page suffix is parsed but does not affect IoU.
+        assert self.plain.compare([[0, 0], [10, 10], 1], [[0, 0], [10, 10], 2]) == 1.0
+
+    def test_default_ignores_present_absent_page(self):
+        assert self.plain.compare([[0, 0], [10, 10], 1], [[0, 0], [10, 10]]) == 1.0
+
+    # --- malformed pages are treated as malformed boxes (score 0.0) --------
+
+    def test_non_integer_float_page_is_malformed(self):
+        assert self.aware.compare([[0, 0], [10, 10], 1.5], [[0, 0], [10, 10], 1]) == 0.0
+
+    def test_non_numeric_page_is_malformed(self):
+        assert self.aware.compare([[0, 0], [10, 10], "1"], [[0, 0], [10, 10], 1]) == 0.0
+
+    def test_nan_page_is_malformed(self):
+        nan = float("nan")
+        assert self.aware.compare([[0, 0], [10, 10], nan], [[0, 0], [10, 10], 1]) == 0.0
+
+    def test_three_scalars_still_invalid(self):
+        # [1, 2, 3] is NOT a two-point+page box (first two aren't points);
+        # it stays malformed under both flag settings.
+        assert self.aware.compare([1, 2, 3], [[0, 0], [10, 10], 1]) == 0.0
+        assert self.plain.compare([1, 2, 3], [[0, 0], [10, 10]]) == 0.0
+
+
+# ══════════════════════════════════════════════════════════════════════
 # class_key
 # ══════════════════════════════════════════════════════════════════════
 

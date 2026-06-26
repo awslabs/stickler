@@ -173,7 +173,9 @@ class Product(StructuredModel):
 
 ### BBoxIoUComparator
 
-Compares two bounding boxes using Intersection over Union (IoU) as the similarity score. Accepts both two-point (`[[x1, y1], [x2, y2]]`) and flat (`[x1, y1, x2, y2]`) formats. Coordinates are automatically normalized so that x1 <= x2 and y1 <= y2.
+Compares two bounding boxes using Intersection over Union (IoU) as the similarity score. Accepts both two-point (`[[x1, y1], [x2, y2]]`) and flat (`[x1, y1, x2, y2]`) formats, each optionally carrying a trailing page number (`[[x1, y1], [x2, y2], page]` or `[x1, y1, x2, y2, page]`). Coordinates are automatically normalized so that x1 <= x2 and y1 <= y2.
+
+For multi-page documents, set `page_aware=True` so boxes on different pages never match. In page-aware mode a box must declare its page and the two pages must match for IoU to be computed; otherwise the comparison scores `0.0` — which also means a box that omits its page is counted wrong. When `page_aware=False` (the default) the page number is parsed but ignored, so the page suffix is fully backward compatible and opt-in.
 
 **When to use:** Evaluating spatial localization accuracy for document fields, signature detection, logo identification, or any use case where you need to measure how well a predicted bounding box overlaps with ground truth.
 
@@ -193,6 +195,7 @@ class DocumentField(StructuredModel):
 | Parameter | Default | Description |
 |---|---|---|
 | `threshold` | `0.5` | IoU threshold for binary match classification |
+| `page_aware` | `False` | When `True`, require both boxes to declare the same page; mismatched or missing pages score `0.0` |
 
 !!! tip "Rich Value Pattern"
     For end-to-end mAP evaluation with per-field breakdown, use the [Bounding Box mAP Metrics](../../Advanced/bbox-map-metrics.md) feature instead of using BBoxIoUComparator directly.

@@ -44,12 +44,19 @@ Bounding boxes are provided through the [Rich Value Pattern](rich-value-pattern.
 
 ### Supported formats
 
-Two bounding box formats are accepted:
+Bounding box formats accepted:
 
 - **Two-point**: `[[x1, y1], [x2, y2]]` — top-left and bottom-right corners
 - **Flat**: `[x1, y1, x2, y2]` — four coordinates in a single list
+- **Two-point with page**: `[[x1, y1], [x2, y2], page]` — corners plus a page number
+- **Flat with page**: `[x1, y1, x2, y2, page]` — four coordinates plus a page number
 
 Coordinates can be in any unit system (pixels, normalized 0-1, etc.) as long as ground truth and predictions use the same system.
+
+The optional trailing **page** number identifies which page of a multi-page
+document the box lives on. It must be an integer (an integer-valued float like
+`2.0` is accepted and coerced to `2`). It is ignored unless the comparator is
+constructed with `page_aware=True` — see [Page-aware comparison](#page-aware-comparison).
 
 ## Usage
 
@@ -269,6 +276,40 @@ cmp = BBoxIoUComparator(threshold=0.5)
 iou = cmp.compare([[0, 0], [100, 50]], [[10, 5], [110, 55]])
 print(f"IoU: {iou:.3f}")
 ```
+
+### Page-aware comparison
+
+In a multi-page document, two boxes with identical coordinates on *different*
+pages refer to different regions and must not be treated as a match. Construct
+the comparator with `page_aware=True` to enforce this: a box must declare its
+page and the two pages must match, otherwise the comparison short-circuits to
+`0.0` instead of computing IoU.
+
+```python
+cmp = BBoxIoUComparator(threshold=0.5, page_aware=True)
+
+# Same coordinates, same page -> normal IoU
+cmp.compare([[0, 0], [10, 10], 1], [[0, 0], [10, 10], 1])   # 1.0
+
+# Same coordinates, different page -> automatic miss
+cmp.compare([[0, 0], [10, 10], 1], [[0, 0], [10, 10], 2])   # 0.0
+
+# A box with no page is wrong 100% of the time when page-aware
+cmp.compare([[0, 0], [10, 10]], [[0, 0], [10, 10], 1])      # 0.0
+```
+
+When `page_aware=True`, the comparison returns `0.0` whenever:
+
+- either box omits a page number, **or**
+- the two boxes carry different page numbers.
+
+IoU is computed only when both boxes declare the **same** page. A page-less box
+(a two- or four-element box) therefore always misses in page-aware mode — so a
+prediction that fails to specify a page is counted wrong.
+
+Page numbers are parsed but **ignored** when `page_aware=False` (the default),
+so the page suffix is fully backward compatible and opt-in: existing two- and
+four-element boxes behave exactly as before.
 
 ## See Also
 
