@@ -15,7 +15,7 @@ cannot have their localization recovered (the GT boxes aren't in
 """
 
 import warnings
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterable, Optional, Union
 
 from stickler.structured_object_evaluator.models.bbox.calculator import (
     DEFAULT_IOU_THRESHOLDS,
@@ -31,7 +31,9 @@ from stickler.structured_object_evaluator.models.post_comparison_accumulator imp
 class BBoxMAPAccumulator(PostComparisonAccumulator):
     """Accumulates bbox observations and computes aggregate mAP metrics."""
 
-    def __init__(self, iou_thresholds=DEFAULT_IOU_THRESHOLDS):
+    def __init__(
+        self, iou_thresholds: Union[float, Iterable[float]] = DEFAULT_IOU_THRESHOLDS
+    ):
         self._calculator = MAPCalculator(iou_thresholds=iou_thresholds)
         self.reset()
 

@@ -40,7 +40,7 @@ Bounding boxes ride on the rich value pattern under the ``_bbox`` key, e.g.::
 
 import re
 from bisect import bisect_left
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 
 from pydantic import BaseModel
 
@@ -125,7 +125,9 @@ class MAPCalculator:
             ``map_50``.
     """
 
-    def __init__(self, iou_thresholds=DEFAULT_IOU_THRESHOLDS):
+    def __init__(
+        self, iou_thresholds: Union[float, Iterable[float]] = DEFAULT_IOU_THRESHOLDS
+    ):
         if isinstance(iou_thresholds, (int, float)):
             iou_thresholds = (float(iou_thresholds),)
         self.iou_thresholds = tuple(sorted(float(t) for t in iou_thresholds))

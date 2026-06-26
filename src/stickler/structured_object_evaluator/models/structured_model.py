@@ -8,6 +8,7 @@ from typing import (
     Any,
     ClassVar,
     Dict,
+    Iterable,
     List,
     Optional,
     Type,
@@ -1100,7 +1101,7 @@ class StructuredModel(BaseModel):
         add_confidence_metrics: bool = False,
         confidence_metrics: Optional[List[Any]] = None,
         add_bbox_metrics: bool = False,
-        bbox_iou_thresholds=None,
+        bbox_iou_thresholds: Optional[Union[float, Iterable[float]]] = None,
     ) -> Dict[str, Any]:
         """Compare this model with another instance using SINGLE TRAVERSAL optimization.
 

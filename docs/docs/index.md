@@ -63,7 +63,7 @@ graph TD
 
     ---
 
-    Exact, numeric, fuzzy, semantic, and LLM-based comparison algorithms.
+    Exact, numeric, fuzzy, semantic, LLM-based, and bounding-box (IoU) comparison algorithms.
 
     [:octicons-arrow-right-24: Choose a comparator](Guides/Comparators/README.md)
 

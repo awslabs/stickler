@@ -5,7 +5,7 @@ comparison process for StructuredModel instances, coordinating between the
 dispatcher, collectors, and calculators.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 
 from stickler.structured_object_evaluator.models.bbox import MAPCalculator
 from stickler.utils.deprecation import warn_once
@@ -207,7 +207,7 @@ class ComparisonEngine:
         add_confidence_metrics: bool = False,
         confidence_metrics: Optional[List["ConfidenceMetric"]] = None,
         add_bbox_metrics: bool = False,
-        bbox_iou_thresholds=None,
+        bbox_iou_thresholds: Optional[Union[float, Iterable[float]]] = None,
     ) -> Dict[str, Any]:
         """Compare with another instance using single traversal.
         
@@ -438,6 +438,10 @@ class ComparisonEngine:
         # confidence, mAP needs both sides: ground-truth boxes live on
         # self.model and can't be recovered from prediction_raw, so stash
         # both maps keyed by field path (mirrors prediction_confidences).
+        # Done on every call (not gated on add_bbox_metrics) so the bulk
+        # accumulator path, which never sets that flag, finds the data in the
+        # result/JSONL. Gated on a non-empty map, so non-bbox models see no new
+        # keys; bbox-carrying models accept a small JSONL size cost.
         if hasattr(self.model, "get_all_extras"):
             gt_bboxes = MAPCalculator.bboxes_from_extras(self.model.get_all_extras())
             if gt_bboxes:
