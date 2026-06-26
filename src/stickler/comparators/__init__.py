@@ -6,6 +6,7 @@ interface that works with both systems.
 """
 
 from stickler.comparators.base import BaseComparator
+from stickler.comparators.bbox import BBoxIoUComparator
 from stickler.comparators.date import DateComparator
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
@@ -44,6 +45,7 @@ except ImportError:
 
 __all__ = [
     "BaseComparator",
+    "BBoxIoUComparator",
     "LevenshteinComparator",
     "NumericComparator",
     "NumericExactC",

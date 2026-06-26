@@ -5,8 +5,9 @@ comparison process for StructuredModel instances, coordinating between the
 dispatcher, collectors, and calculators.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 
+from stickler.structured_object_evaluator.models.bbox import MAPCalculator
 from stickler.utils.deprecation import warn_once
 
 if TYPE_CHECKING:
@@ -205,6 +206,8 @@ class ComparisonEngine:
         document_field_comparisons: bool = False,
         add_confidence_metrics: bool = False,
         confidence_metrics: Optional[List["ConfidenceMetric"]] = None,
+        add_bbox_metrics: bool = False,
+        bbox_iou_thresholds: Optional[Union[float, Iterable[float]]] = None,
     ) -> Dict[str, Any]:
         """Compare with another instance using single traversal.
         
@@ -363,6 +366,60 @@ class ComparisonEngine:
                 "instead. The legacy key will be removed in 0.5.0.",
             )
 
+        # If add_bbox_metrics is requested, add bounding-box mAP metrics.
+        # Single-document mAP is a sanity check; bulk evaluation via
+        # BBoxMAPAccumulator is the recommended path for meaningful results.
+        if add_bbox_metrics:
+            import warnings as _warnings
+
+            # Auto-enable field_comparisons (mirrors add_confidence_metrics).
+            if "field_comparisons" not in result:
+                field_comparisons = (
+                    self.field_comparison_collector.collect_field_comparisons(
+                        recursive_result, other
+                    )
+                )
+                result["field_comparisons"] = field_comparisons
+
+            _warnings.warn(
+                "Single-document mAP metrics are a quick sanity check. For "
+                "statistically meaningful results, use "
+                "BulkStructuredModelEvaluator with "
+                "accumulators=[BBoxMAPAccumulator(...)].",
+                UserWarning,
+                stacklevel=2,
+            )
+            if evaluator_format:
+                _warnings.warn(
+                    "add_bbox_metrics has no effect with evaluator_format=True: "
+                    "the evaluator format rebuilds the result from a fixed key "
+                    "set and drops 'bbox_metrics'.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            calculator = (
+                MAPCalculator(iou_thresholds=bbox_iou_thresholds)
+                if bbox_iou_thresholds is not None
+                else MAPCalculator()
+            )
+            # An empty field_comparisons list (e.g. a model whose only list
+            # field is empty on both sides) yields a coverage-only result
+            # instead of raising.
+            if result.get("field_comparisons"):
+                extraction = calculator.extract(result, self.model, other)
+                keyed_pairs = extraction.keyed_pairs
+                fields_with_bbox = extraction.fields_with_bbox
+                fields_total = extraction.fields_total
+            else:
+                keyed_pairs = {}
+                fields_with_bbox = 0
+                fields_total = 0
+            result["bbox_metrics"] = calculator.compute_metrics(
+                keyed_pairs,
+                fields_with_bbox=fields_with_bbox,
+                fields_total=fields_total,
+            )
+
         # Include raw prediction JSON for round-tripping through JSONL.
         # This enables update_from_comparison_result() to reconstruct
         # confidence pairs (and future bbox/MAP data) without needing
@@ -376,6 +433,23 @@ class ComparisonEngine:
             confidences = other.get_all_confidences()
             if confidences:
                 result["prediction_confidences"] = confidences
+
+        # Pre-extract bounding boxes for the mAP accumulator. Unlike
+        # confidence, mAP needs both sides: ground-truth boxes live on
+        # self.model and can't be recovered from prediction_raw, so stash
+        # both maps keyed by field path (mirrors prediction_confidences).
+        # Done on every call (not gated on add_bbox_metrics) so the bulk
+        # accumulator path, which never sets that flag, finds the data in the
+        # result/JSONL. Gated on a non-empty map, so non-bbox models see no new
+        # keys; bbox-carrying models accept a small JSONL size cost.
+        if hasattr(self.model, "get_all_extras"):
+            gt_bboxes = MAPCalculator.bboxes_from_extras(self.model.get_all_extras())
+            if gt_bboxes:
+                result["ground_truth_bboxes"] = gt_bboxes
+        if hasattr(other, "get_all_extras"):
+            pred_bboxes = MAPCalculator.bboxes_from_extras(other.get_all_extras())
+            if pred_bboxes:
+                result["prediction_bboxes"] = pred_bboxes
 
         # If evaluator_format is requested, transform the result
         if evaluator_format:

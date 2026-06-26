@@ -18,6 +18,9 @@ This guide covers three ways to configure evaluation behavior:
 !!! tip "Evaluating confidence scores?"
     If your model produces confidence scores alongside predictions, see the [Confidence Evaluation](confidence-evaluation.md) guide for AUROC, Brier Score, ECE, and Error Capture at Review Budget metrics.
 
+!!! tip "Evaluating bounding boxes?"
+    If your model returns bounding boxes (via the `_bbox` rich-value key), see the [Bounding Box mAP Metrics](../../Advanced/bbox-map-metrics.md) page for COCO-style mean Average Precision over a configurable IoU-threshold range.
+
 ---
 
 ## How Evaluation Works
@@ -143,6 +146,8 @@ The default output contains three keys:
 | `document_non_matches` | `bool` | `False` | Adds a `non_matches` list with details about every field that failed to match, including the field path, non-match type, both values, and a human-readable reason. |
 | `document_field_comparisons` | `bool` | `False` | Adds a `field_comparisons` list documenting every field-level comparison (both matches and non-matches) with expected/actual keys and values, scores, and reasons. |
 | `add_confidence_metrics` | `bool` | `False` | Adds a `confidence_metrics` dict with `overall`, `fields`, and `coverage` keys, using the configured metrics (AUROC by default). Auto-enables `document_field_comparisons` so the field-level join data is available. |
+| `add_bbox_metrics` | `bool` | `False` | Adds a `bbox_metrics` dict with `mean_ap`, `map_50`, `map_75`, per-field AP, and `coverage`, using bounding boxes from the `_bbox` rich-value key. Auto-enables `document_field_comparisons`. Single-document mAP is a sanity check; emits a warning recommending `BulkStructuredModelEvaluator` with `BBoxMAPAccumulator` for meaningful results. |
+| `bbox_iou_thresholds` | `float \| Iterable[float] \| None` | `None` | IoU threshold(s) for mAP. Defaults to the COCO range `(0.50, 0.55, ..., 0.95)`; pass a single float for a single-threshold `mean_ap` (equal to `map_50`). Only used when `add_bbox_metrics=True`. |
 | `evaluator_format` | `bool` | `False` | Restructures the output for bulk evaluation integration. See [Evaluator Format](#evaluator-format) below. |
 
 ### Example with Detailed Metrics
