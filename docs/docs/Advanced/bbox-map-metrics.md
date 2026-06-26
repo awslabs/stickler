@@ -311,6 +311,31 @@ Page numbers are parsed but **ignored** when `page_aware=False` (the default),
 so the page suffix is fully backward compatible and opt-in: existing two- and
 four-element boxes behave exactly as before.
 
+#### Page-aware mAP scoring
+
+To apply page-awareness across the whole mAP pipeline (not just a single
+comparator), pass `page_aware=True` to `MAPCalculator` / `BBoxMAPAccumulator`,
+or `bbox_page_aware=True` to `compare_with(add_bbox_metrics=True)`. The flag is
+threaded down to the underlying comparator, so a prediction with correct
+coordinates on the wrong page is scored as a localization miss.
+
+```python
+# Bulk evaluation
+evaluator = BulkStructuredModelEvaluator(
+    accumulators=[BBoxMAPAccumulator(page_aware=True)],
+)
+
+# Single document
+result = gt.compare_with(
+    pred,
+    add_bbox_metrics=True,
+    bbox_page_aware=True,
+)
+```
+
+Provide page-suffixed boxes in your rich values for this to work, e.g.
+`{"_value": "Acme", "_bbox": [[10, 20], [200, 50], 1]}`.
+
 ## See Also
 
 - [Rich Value Pattern](rich-value-pattern.md) — how fields carry `_value`, `_confidence`, and `_bbox` metadata

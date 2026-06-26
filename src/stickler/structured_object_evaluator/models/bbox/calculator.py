@@ -123,16 +123,24 @@ class MAPCalculator:
             to the COCO range ``(0.50, 0.55, ..., 0.95)``. Passing a single float
             (e.g. ``0.5``) yields a single-threshold ``mean_ap`` equal to
             ``map_50``.
+        page_aware: When True, boxes must declare a matching page number to count
+            as a localization match (a correct box on the wrong page is a miss).
+            Requires boxes to carry a trailing page element
+            (``[x1, y1, x2, y2, page]`` or ``[[x1, y1], [x2, y2], page]``).
+            Defaults to False (page numbers, if present, are ignored).
     """
 
     def __init__(
-        self, iou_thresholds: Union[float, Iterable[float]] = DEFAULT_IOU_THRESHOLDS
+        self,
+        iou_thresholds: Union[float, Iterable[float]] = DEFAULT_IOU_THRESHOLDS,
+        page_aware: bool = False,
     ):
         if isinstance(iou_thresholds, (int, float)):
             iou_thresholds = (float(iou_thresholds),)
         self.iou_thresholds = tuple(sorted(float(t) for t in iou_thresholds))
+        self.page_aware = page_aware
         # Only compare() is used; classification happens in this calculator.
-        self._comparator = BBoxIoUComparator()
+        self._comparator = BBoxIoUComparator(page_aware=page_aware)
 
     # ------------------------------------------------------------------
     # Extraction

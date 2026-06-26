@@ -819,3 +819,113 @@ class TestCompareWithBBoxMetrics:
                 pred, add_bbox_metrics=True, document_field_comparisons=True
             )
         assert result["bbox_metrics"]["mean_ap"] == 1.0
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Page-aware mAP scoring (page number threaded through the pipeline)
+# ══════════════════════════════════════════════════════════════════════
+
+
+def _doc(page_gt, page_pred):
+    """A one-field doc pair with identical coords; pages parameterized.
+
+    page_* of None omits the page element entirely.
+    """
+    gt_box = [[0, 0], [100, 20]] + ([page_gt] if page_gt is not None else [])
+    pred_box = [[0, 0], [100, 20]] + ([page_pred] if page_pred is not None else [])
+    gt = DocumentField.from_json({"vendor_name": {"_value": "Acme", "_bbox": gt_box}})
+    pred = DocumentField.from_json(
+        {"vendor_name": {"_value": "Acme", "_bbox": pred_box, "_confidence": 0.9}}
+    )
+    return gt, pred
+
+
+class TestPageAwareMAPCalculator:
+    def test_calculator_carries_page_aware(self):
+        assert MAPCalculator(page_aware=True).page_aware is True
+        assert MAPCalculator().page_aware is False
+
+    def test_same_page_is_a_hit(self):
+        calc = MAPCalculator(iou_thresholds=0.5, page_aware=True)
+        fc = [{"expected_key": "v", "actual_key": "v", "match": True}]
+        gt = {"v": [[0, 0], [100, 20], 1]}
+        pred = {"v": [[0, 0], [100, 20], 1]}
+        ex = calc.extract_from_dicts(fc, gt, pred, {})
+        assert calc.compute_metrics(ex.keyed_pairs, 1, 1)["mean_ap"] == 1.0
+
+    def test_wrong_page_is_a_miss(self):
+        calc = MAPCalculator(iou_thresholds=0.5, page_aware=True)
+        fc = [{"expected_key": "v", "actual_key": "v", "match": True}]
+        gt = {"v": [[0, 0], [100, 20], 1]}
+        pred = {"v": [[0, 0], [100, 20], 2]}  # identical coords, wrong page
+        ex = calc.extract_from_dicts(fc, gt, pred, {})
+        assert calc.compute_metrics(ex.keyed_pairs, 1, 1)["mean_ap"] == 0.0
+
+    def test_page_ignored_when_not_aware(self):
+        calc = MAPCalculator(iou_thresholds=0.5)  # page_aware defaults False
+        fc = [{"expected_key": "v", "actual_key": "v", "match": True}]
+        gt = {"v": [[0, 0], [100, 20], 1]}
+        pred = {"v": [[0, 0], [100, 20], 2]}
+        ex = calc.extract_from_dicts(fc, gt, pred, {})
+        assert calc.compute_metrics(ex.keyed_pairs, 1, 1)["mean_ap"] == 1.0
+
+
+class TestPageAwareCompareWith:
+    def test_wrong_page_drops_to_zero(self):
+        gt, pred = _doc(page_gt=1, page_pred=2)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            result = gt.compare_with(
+                pred,
+                add_bbox_metrics=True,
+                document_field_comparisons=True,
+                bbox_iou_thresholds=0.5,
+                bbox_page_aware=True,
+            )
+        assert result["bbox_metrics"]["mean_ap"] == 0.0
+
+    def test_same_page_is_one(self):
+        gt, pred = _doc(page_gt=1, page_pred=1)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            result = gt.compare_with(
+                pred,
+                add_bbox_metrics=True,
+                document_field_comparisons=True,
+                bbox_iou_thresholds=0.5,
+                bbox_page_aware=True,
+            )
+        assert result["bbox_metrics"]["mean_ap"] == 1.0
+
+    def test_default_is_page_unaware(self):
+        gt, pred = _doc(page_gt=1, page_pred=2)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            result = gt.compare_with(
+                pred,
+                add_bbox_metrics=True,
+                document_field_comparisons=True,
+                bbox_iou_thresholds=0.5,
+            )
+        # Without bbox_page_aware, the wrong page is ignored -> geometric hit.
+        assert result["bbox_metrics"]["mean_ap"] == 1.0
+
+
+class TestPageAwareBulkAccumulator:
+    def test_accumulator_page_aware_wrong_page_miss(self):
+        gt, pred = _doc(page_gt=1, page_pred=2)
+        evaluator = BulkStructuredModelEvaluator(
+            accumulators=[BBoxMAPAccumulator(iou_thresholds=0.5, page_aware=True)]
+        )
+        evaluator.update(gt, pred)
+        bm = evaluator.compute().accumulator_metrics["bbox_map_metrics"]
+        assert bm["mean_ap"] == 0.0
+
+    def test_accumulator_page_aware_same_page_hit(self):
+        gt, pred = _doc(page_gt=3, page_pred=3)
+        evaluator = BulkStructuredModelEvaluator(
+            accumulators=[BBoxMAPAccumulator(iou_thresholds=0.5, page_aware=True)]
+        )
+        evaluator.update(gt, pred)
+        bm = evaluator.compute().accumulator_metrics["bbox_map_metrics"]
+        assert bm["mean_ap"] == 1.0

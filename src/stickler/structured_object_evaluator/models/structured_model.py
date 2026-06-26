@@ -1102,6 +1102,7 @@ class StructuredModel(BaseModel):
         confidence_metrics: Optional[List[Any]] = None,
         add_bbox_metrics: bool = False,
         bbox_iou_thresholds: Optional[Union[float, Iterable[float]]] = None,
+        bbox_page_aware: bool = False,
     ) -> Dict[str, Any]:
         """Compare this model with another instance using SINGLE TRAVERSAL optimization.
 
@@ -1130,6 +1131,10 @@ class StructuredModel(BaseModel):
             bbox_iou_thresholds: A single IoU threshold or an iterable of them
                 for mAP. Defaults to the COCO range (0.50, 0.55, ..., 0.95).
                 Only used when add_bbox_metrics=True.
+            bbox_page_aware: When True, mAP requires matching page numbers, so a
+                correct box on the wrong page is a miss. Boxes must carry a
+                trailing page element ([x1, y1, x2, y2, page] or
+                [[x1, y1], [x2, y2], page]). Only used when add_bbox_metrics=True.
 
         Returns:
             Dictionary with comparison results including:
@@ -1156,6 +1161,7 @@ class StructuredModel(BaseModel):
             confidence_metrics=confidence_metrics,
             add_bbox_metrics=add_bbox_metrics,
             bbox_iou_thresholds=bbox_iou_thresholds,
+            bbox_page_aware=bbox_page_aware,
         )
 
     def _convert_score_to_binary_metrics(

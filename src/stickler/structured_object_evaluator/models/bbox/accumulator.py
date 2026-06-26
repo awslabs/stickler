@@ -32,9 +32,13 @@ class BBoxMAPAccumulator(PostComparisonAccumulator):
     """Accumulates bbox observations and computes aggregate mAP metrics."""
 
     def __init__(
-        self, iou_thresholds: Union[float, Iterable[float]] = DEFAULT_IOU_THRESHOLDS
+        self,
+        iou_thresholds: Union[float, Iterable[float]] = DEFAULT_IOU_THRESHOLDS,
+        page_aware: bool = False,
     ):
-        self._calculator = MAPCalculator(iou_thresholds=iou_thresholds)
+        self._calculator = MAPCalculator(
+            iou_thresholds=iou_thresholds, page_aware=page_aware
+        )
         self.reset()
 
     @property
