@@ -287,6 +287,52 @@ class TestMAPCalculator:
         assert metrics["fields"]["invoice_number"]["num_detections"] == 0
         assert metrics["fields"]["invoice_number"]["ap"] == 0.0
 
+    def test_object_level_fn_row_coverage_stays_consistent(self):
+        """An object-level FN row hiding several nested GT boxes must count each
+        missed box toward both fields_with_bbox and fields_total, so the coverage
+        ratio cannot exceed 1.0."""
+        calc = MAPCalculator(0.5)
+        # item[0] matched; item[1] missing entirely (object-level FN row) while
+        # carrying two nested GT boxes.
+        fc = [
+            {
+                "expected_key": "items[0].description",
+                "actual_key": "items[0].description",
+                "match": True,
+            },
+            {
+                "expected_key": "items[0].amount",
+                "actual_key": "items[0].amount",
+                "match": True,
+            },
+            {"expected_key": "items[1]", "actual_key": None, "match": False},
+        ]
+        gt = {
+            "items[0].description": [[0, 0], [10, 10]],
+            "items[0].amount": [[0, 10], [10, 20]],
+            "items[1].description": [[0, 20], [10, 30]],
+            "items[1].amount": [[0, 30], [10, 40]],
+        }
+        pred = {
+            "items[0].description": [[0, 0], [10, 10]],
+            "items[0].amount": [[0, 10], [10, 20]],
+        }
+        ex = calc.extract_from_dicts(fc, gt, pred, {})
+        metrics = calc.compute_metrics(
+            ex.keyed_pairs, ex.fields_with_bbox, ex.fields_total
+        )
+        cov = metrics["coverage"]
+        # 4 GT boxes total, all carried a bbox; every one of them counts toward
+        # both numerator and denominator.
+        assert cov["fields_with_bbox"] == 4
+        assert cov["fields_total"] == 4
+        assert cov["ratio"] == 1.0
+        # The two missed boxes still deflate recall on their field-types.
+        assert metrics["fields"]["items[].description"]["num_gt"] == 2
+        assert metrics["fields"]["items[].description"]["num_detections"] == 1
+        assert metrics["fields"]["items[].amount"]["num_gt"] == 2
+        assert metrics["fields"]["items[].amount"]["num_detections"] == 1
+
     def test_no_gt_field_skipped_but_counted(self):
         calc = MAPCalculator(0.5)
         fc = _fc(("vendor_name", "vendor_name"), ("invoice_number", "invoice_number"))

@@ -203,7 +203,7 @@ Predicted boxes are ranked by `_confidence`, which rides the same rich-value pat
 
 The raw IoU and confidence are kept per observation, so the same accumulated data is re-scored at every IoU threshold in the configured range.
 
-The per-field entry reports `ap` (averaged over the IoU range), `ap_50`, `ap_75`, `mean_iou`, `num_gt`, and `num_detections`.
+The per-field entry reports `ap` (averaged over the IoU range), `ap_50`, `ap_75`, `mean_iou`, `num_gt`, and `num_detections`. Note that `mean_iou` is the mean IoU over *all* predicted boxes for the field-type, including spurious detections that contribute `0.0`; it measures average overlap across every prediction, not just the ones that matched, so it can sit below the IoU of the boxes that did localize correctly.
 
 ### Mean AP
 

@@ -230,18 +230,27 @@ class MAPCalculator:
 
             # FN row: an unmatched ground-truth entry (no prediction). The row
             # may be reported at the object level (e.g. "items[1]") while the
-            # GT box lives on a nested field ("items[1].description"), so record
+            # GT boxes live on nested fields ("items[1].description"), so record
             # a localization miss for every GT bbox at or under expected_key.
             if actual_key is None and isinstance(expected_key, str):
                 gt_keys = self._gt_keys_under(expected_key, gt_bboxes)
-                fields_total += 1
-                for gt_key in gt_keys:
-                    fields_with_bbox += 1
-                    keyed.setdefault(class_key(gt_key), []).append(
-                        BBoxObservation(
-                            has_gt=True, has_pred=False, iou=0.0, confidence=None
+                if gt_keys:
+                    # Count each missed GT box as one (field) occurrence that
+                    # carried a bbox, so coverage stays consistent with the
+                    # matched path (and the ratio cannot exceed 1.0 when one
+                    # object-level FN row hides several nested boxes).
+                    for gt_key in gt_keys:
+                        fields_total += 1
+                        fields_with_bbox += 1
+                        keyed.setdefault(class_key(gt_key), []).append(
+                            BBoxObservation(
+                                has_gt=True, has_pred=False, iou=0.0, confidence=None
+                            )
                         )
-                    )
+                else:
+                    # No GT bbox under this row, but it is still a real
+                    # comparison row, so it counts toward the total.
+                    fields_total += 1
                 continue
 
             gt_bbox = (
