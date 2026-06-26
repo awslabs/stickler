@@ -10,5 +10,14 @@
 .kiro/*
 .kiro/**/*
 
+.claude/*
+.claude/**/*
+
 build/
 dist/
+
+# Working directories let's exclude for convenience
+.context/
+.working/
+.temp/
+.data/

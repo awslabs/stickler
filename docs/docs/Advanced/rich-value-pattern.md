@@ -165,15 +165,21 @@ The confidence evaluation module consumes `_confidence` values from rich values.
 
 ## JSONL Serialization
 
-When a prediction is created via `from_json()` with rich values, the original JSON is stored on the model instance. When `compare_with()` runs, this raw JSON is included in the result as `prediction_raw`. This enables the map/reduce pattern: compare individual documents, save results to JSONL, and later aggregate them via `update_from_comparison_result()` with full confidence (and future bbox) metric support.
+When a prediction is created via `from_json()` with rich values, the original JSON is stored on the model instance. When `compare_with()` runs, this raw JSON is included in the result as `prediction_raw`. This enables the map/reduce pattern: compare individual documents, save results to JSONL, and later aggregate them via `update_from_comparison_result()` with full confidence and bounding-box (mAP) metric support.
 
 See [Bulk Evaluation: Map/Reduce](../Guides/Evaluation/bulk-evaluation.md#mapreduce-single-doc-compare-bulk-aggregate) for the full pattern.
 
-## Future Metadata Types
+## Metadata Types
 
-The pattern is designed for extensibility. When new metadata types are supported (bounding boxes for MAP evaluation, source spans for provenance tracking), they'll be promoted from extras to dedicated accessors (e.g., `get_field_bbox()`). Users who already store these in extras get a natural upgrade path.
+The pattern is designed for extensibility. Two metadata types are supported today:
+
+- `_confidence` — consumed by the [Confidence Metrics](confidence-metrics.md) module for calibration scoring.
+- `_bbox` — consumed by the [Bounding Box mAP Metrics](bbox-map-metrics.md) module for localization scoring.
+
+Known metadata keys are extracted into typed accessors (`_confidence` via `get_field_confidence()` / `get_all_confidences()`), while any other underscore-prefixed keys — including `_bbox` — are preserved in extras and read via `get_field_extras()` / `get_all_extras()`. The bbox metric reads boxes directly from `get_all_extras()`, so no dedicated `get_field_bbox()` accessor is needed. Future metadata types (e.g. source spans for provenance tracking) follow the same path: store them in a rich value and the relevant metric picks them up from extras.
 
 ## See Also
 
 - [Confidence Metrics](confidence-metrics.md): evaluating confidence calibration quality
 - [Confidence Evaluation Guide](../Guides/Evaluation/confidence-evaluation.md): practical guide for using confidence metrics
+- [Bounding Box mAP Metrics](bbox-map-metrics.md): evaluating bounding-box localization with mean Average Precision
