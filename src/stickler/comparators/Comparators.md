@@ -101,6 +101,19 @@ comparator = StructuredModelComparator()
 - Integrates with evaluation framework
 - Supports custom field comparators
 
+### 5. Spatial Comparators
+
+#### BBox IoU Comparator
+```python
+comparator = BBoxIoUComparator(threshold=0.5)
+```
+- Compares two bounding boxes using Intersection over Union (IoU)
+- Accepts two-point `[[x1, y1], [x2, y2]]` and flat `[x1, y1, x2, y2]` formats
+- Normalizes coordinates; non-finite values (NaN/inf) score 0.0
+- Returns IoU as the similarity score (0.0-1.0)
+- For end-to-end mean Average Precision (mAP) scoring over fields, see the
+  Bounding Box mAP Metrics documentation rather than using this comparator directly
+
 ## Best Practices
 
 1. **Choosing the Right Comparator**
@@ -109,6 +122,7 @@ comparator = StructuredModelComparator()
    - Use semantic comparators (BERT/Semantic) for meaning-based comparison
    - Use LevenshteinComparator for simple edit distance-based matching
    - Use NumericComparator for number comparisons
+   - Use BBoxIoUComparator for bounding-box / spatial localization comparisons
 
 2. **Threshold Selection**
    - Higher thresholds (>0.9) for strict matching
