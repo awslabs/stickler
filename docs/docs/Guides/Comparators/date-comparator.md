@@ -158,7 +158,7 @@ A date can be written at different *resolutions*: `2024` (year only), `Jan 2024`
 | `Jan 2024` | `Feb 2024` (value differs) | `0.0` | `0.0` | `0.0` |
 | `Jan 2024` | `Feb 1, 2024` (finer, but disagrees) | `0.0` | `0.0` | `0.0` |
 
-Same-resolution pairs are unaffected by `precision_mode` — the entire surface-form, year-less, and partial-year behavior above is untouched. The mode only decides cross-resolution pairs.
+Same-resolution pairs are unaffected by `precision_mode` — the entire surface-form, year-less, and partial-year behavior above is untouched. The mode only decides cross-resolution pairs. The gate isn't limited to single dates: ranges are gated the same way, before any range scoring runs (see [Composing with `precision_mode`](#composing-with-precision_mode)).
 
 **Which mode?** Resolutions must match → `exact` (default). Ground truth is deliberately coarse and a more-specific prediction should still count → `gt_loose`. Neither side is authoritative on precision and you only care that they're consistent → `overlap`.
 
@@ -260,7 +260,7 @@ Single-in-range gets partial credit. Range-vs-range uses Jaccard overlap (`overl
 | `11/15/16` | `10/24/16 to 10/30/16` | `0.0` |
 | `10/24/16 to 10/30/16` | `10/24/2016 - 10/30/2016` | `1.0` |
 | `10/24/16 to 10/30/16` | `10/24/16 to 10/31/16` | `~0.875` (7/8) |
-| `10/01/2016 to 10/10/2016` | `10/06/2016 to 10/15/2016` | `~0.333` (5/15) |
+| `Oct 1, 2016 to Oct 10, 2016` | `Oct 6, 2016 to Oct 15, 2016` | `~0.333` (5/15) |
 | `10/24/16 to 10/30/16` | `12/01/16 to 12/05/16` | `0.0` |
 
 Use this as your default when you want to reward "close but not exact" range predictions without giving full credit for shape mismatches.
@@ -288,6 +288,18 @@ When year-presence differs, the comparison drops to `(month, day)` space (the ye
 - **Range-vs-range** endpoint equality (`strict`/`contains`) and overlap (`graded`) are likewise measured on m/d, so `Oct 24 to Oct 30` vs `10/24/16 to 10/30/16` scores `1.0 × 0.7` under `contains` and its m/d Jaccard `× 0.7` under `graded`.
 
 (When both sides carry a year, no m/d projection is involved — the full dates are compared directly.)
+
+### Composing with `precision_mode`
+
+`precision_mode` gates ranges the same way it gates single dates: a month/day **resolution** mismatch is rejected (under `exact`) *before* any range scoring runs, on both the range-vs-single and range-vs-range paths. So a reduced-precision date on one side can't earn range credit by having its missing component fabricated to fall inside the other side's span.
+
+| Ground truth | Prediction | range_mode | `exact` (default) | `gt_loose` | `overlap` |
+|---|---|---|---|---|---|
+| `Jan 2024` | `1/1/2024 to 1/31/2024` | `contains` | `0.0` | `1.0` | `1.0` |
+| `Jan 2024 to Mar 2024` | `1/1/2024 to 3/1/2024` | `graded` | `0.0` | `1.0` | `1.0` |
+| `10/28/16` | `10/24/16 to 10/30/16` | `graded` | `0.5` | `0.5` | `0.5` |
+
+The resolution gate is directional just like in the single-vs-single case — the **first `compare` argument is ground truth**, so under `gt_loose` a finer prediction range matches a coarser ground-truth date but not the reverse. Same-resolution range pairs (the common case, last row) are untouched by `precision_mode`. The gate runs first, so if it fails the score is `0.0` regardless of `range_mode` or `allow_partial_year`.
 
 ---
 

@@ -17,7 +17,6 @@ import csv
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Optional
 
 from stickler.comparators import DateComparator
 

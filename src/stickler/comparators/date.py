@@ -320,11 +320,15 @@ class DateComparator(BaseComparator):
         if a_is_range and b_is_range:
             return self._compare_range_range(a, b)
 
-        # Tier 4: range vs single
+        # Tier 4: range vs single. ``a`` is always the ground truth (first
+        # compare() argument); track whether it's the single side so the
+        # directional precision gate (gt_loose) orients correctly.
         if a_is_range or b_is_range:
             single = b if a_is_range else a  # type: ignore[assignment]
             rng = a if a_is_range else b  # type: ignore[assignment]
-            return self._compare_range_single(rng, single)
+            return self._compare_range_single(
+                rng, single, single_is_gt=not a_is_range
+            )
 
         # Both singles
         return self._compare_singles(a, b)
@@ -379,10 +383,34 @@ class DateComparator(BaseComparator):
         return jaccard * partial_year_multiplier
 
     def _compare_range_single(
-        self, rng: _ParsedRange, single: _ParsedSingle
+        self, rng: _ParsedRange, single: _ParsedSingle, single_is_gt: bool
     ) -> float:
-        """Tier 4: range-vs-single under the configured range_mode."""
+        """Tier 4: range-vs-single under the configured range_mode.
+
+        ``single_is_gt`` records whether the single side was the ground
+        truth (the first :meth:`compare` argument), so the directional
+        precision gate (``gt_loose``) is oriented the same way it is in the
+        single-vs-single and range-vs-range paths.
+        """
         if self.range_mode == "strict":
+            return 0.0
+
+        # Month/day resolution gate (precision_mode), applied per endpoint
+        # with ground truth in the correct position — mirroring
+        # _compare_range_range. Without this a reduced-precision single
+        # (e.g. 'Jan 2024', whose day is fabricated to the 1st) would land
+        # inside a day-grain range and score credit even under the default
+        # 'exact' mode, the same score-inflating fabrication the gate
+        # exists to refuse on the single-vs-single path.
+        if single_is_gt:
+            resolution_ok = self._resolution_ok(
+                single, rng.start
+            ) and self._resolution_ok(single, rng.end)
+        else:
+            resolution_ok = self._resolution_ok(
+                rng.start, single
+            ) and self._resolution_ok(rng.end, single)
+        if not resolution_ok:
             return 0.0
 
         # Year-presence consistency: the range's endpoints must agree

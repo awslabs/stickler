@@ -166,6 +166,24 @@ class TestConfigPropertyRoundTrip:
         assert rebuilt.allow_partial_year == cmp.allow_partial_year
         assert rebuilt.range_mode == cmp.range_mode
 
+    @pytest.mark.parametrize("mode", ["gt_loose", "overlap"])
+    def test_precision_mode_round_trips(self, mode):
+        """precision_mode is a JSON-friendly string and must survive the
+        config -> create_comparator cycle like every other option."""
+        cmp = create_comparator("DateComparator", {"precision_mode": mode})
+        assert cmp.precision_mode == mode
+        rebuilt = create_comparator("DateComparator", cmp.config)
+        assert rebuilt.precision_mode == mode
+
+    def test_default_precision_mode_omitted_from_config(self):
+        """The default 'exact' must not clutter exported configs."""
+        cmp = DateComparator(allow_partial_year=True)
+        assert "precision_mode" not in cmp.config
+
+    def test_invalid_precision_mode_raises(self):
+        with pytest.raises(ValueError, match="precision_mode must be one of"):
+            create_comparator("DateComparator", {"precision_mode": "fuzzy"})
+
 
 class TestModelFromJsonIntegration:
     """``StructuredModel.model_from_json`` wires DateComparator end-to-end."""
@@ -248,6 +266,26 @@ class TestModelFromJsonIntegration:
         pred = Cls(ship_date="2025-01-02")
         # Default DateComparator would score this 0.0. With tolerance=1 it's 1.0.
         assert gt.compare_with(pred)["field_scores"]["ship_date"] == 1.0
+
+    def test_precision_mode_propagates(self):
+        """precision_mode='gt_loose' lets a finer prediction match a coarse GT."""
+        config = {
+            "model_name": "Statement",
+            "match_threshold": 0.5,
+            "fields": {
+                "period_month": {
+                    "type": "str",
+                    "comparator": "DateComparator",
+                    "comparator_config": {"precision_mode": "gt_loose"},
+                    "weight": 1.0,
+                },
+            },
+        }
+        Cls = StructuredModel.model_from_json(config)
+        gt = Cls(period_month="Jan 2024")
+        pred = Cls(period_month="Jan 1, 2024")
+        # Default 'exact' would score this 0.0; gt_loose accepts the finer pred.
+        assert gt.compare_with(pred)["field_scores"]["period_month"] == 1.0
 
     def test_idp_invoice_scenario_end_to_end(self):
         """The realistic IDP shape: multiple date fields each tuned differently."""
@@ -392,6 +430,27 @@ class TestFromJsonSchemaIntegration:
             .compare_with(Cls(ship_date="2025-01-02"))
             ["field_scores"]["ship_date"]
             == 1.0
+        )
+
+    def test_precision_mode_extension_propagates(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "period_month": {
+                    "type": "string",
+                    "x-aws-stickler-comparator": "DateComparator",
+                    "x-aws-stickler-comparator-config": {
+                        "precision_mode": "gt_loose",
+                    },
+                },
+            },
+        }
+        Cls = StructuredModel.from_json_schema(schema)
+        gt = Cls(period_month="Jan 2024")
+        pred = Cls(period_month="Jan 1, 2024")
+        # 'exact' (default) would be 0.0; gt_loose accepts the finer pred.
+        assert (
+            gt.compare_with(pred)["field_scores"]["period_month"] == 1.0
         )
 
     def test_all_options_together_via_x_aws_extensions(self):

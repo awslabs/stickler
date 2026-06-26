@@ -764,6 +764,74 @@ class TestPrecisionModeValidation:
         assert DateComparator().precision_mode == "exact"
 
 
+class TestPrecisionModeWithRanges:
+    """precision_mode must gate range comparisons too, not just singles.
+
+    `_compare_range_single` previously skipped the resolution gate, so a
+    reduced-precision single (e.g. 'Jan 2024', whose day is fabricated to
+    the 1st) landed inside a day-grain range and scored credit even under
+    the default 'exact' mode — the same score-inflating fabrication the
+    gate refuses on the single-vs-single path (#141 review).
+    """
+
+    def test_range_vs_single_exact_rejects_reduced_precision_graded(self):
+        cmp = DateComparator()  # exact, graded
+        # 'Jan 2024' lacks a day; it must not score against a day-grain range.
+        assert cmp.compare("Jan 2024", "1/1/2024 to 3/1/2024") == 0.0
+
+    def test_range_vs_single_exact_rejects_reduced_precision_contains(self):
+        cmp = DateComparator(range_mode="contains")
+        assert cmp.compare("Jan 2024", "1/1/2024 to 1/31/2024") == 0.0
+        assert cmp.compare("2024", "1/1/2024 to 12/31/2024") == 0.0
+
+    def test_range_vs_single_exact_rejects_regardless_of_gt_side(self):
+        """The gate fires whether the single or the range is ground truth."""
+        cmp = DateComparator(range_mode="contains")
+        assert cmp.compare("1/1/2024 to 1/31/2024", "Jan 2024") == 0.0
+
+    def test_gt_loose_allows_finer_pred_range(self):
+        """GT coarse single, pred finer day-grain range → gt_loose accepts."""
+        cmp = DateComparator(range_mode="contains", precision_mode="gt_loose")
+        assert cmp.compare("Jan 2024", "1/1/2024 to 1/31/2024") == 1.0
+
+    def test_gt_loose_rejects_coarser_pred_single(self):
+        """GT day-grain range, pred coarser single → gt_loose rejects."""
+        cmp = DateComparator(range_mode="contains", precision_mode="gt_loose")
+        assert cmp.compare("1/1/2024 to 1/31/2024", "Jan 2024") == 0.0
+
+    def test_overlap_is_symmetric_on_range_path(self):
+        cmp = DateComparator(range_mode="contains", precision_mode="overlap")
+        assert cmp.compare("Jan 2024", "1/1/2024 to 1/31/2024") == 1.0
+        assert cmp.compare("1/1/2024 to 1/31/2024", "Jan 2024") == 1.0
+
+    def test_same_resolution_range_vs_single_unaffected(self):
+        """The gate is a no-op when both sides are day-grain (the common case)."""
+        cmp = DateComparator()
+        assert cmp.compare("10/28/16", "10/24/16 to 10/30/16") == 0.5
+        assert (
+            DateComparator(range_mode="contains").compare(
+                "10/28/16", "10/24/16 to 10/30/16"
+            )
+            == 1.0
+        )
+
+    def test_precision_gate_composes_with_partial_year(self):
+        """A same-resolution year-presence mismatch still earns the 0.7."""
+        cmp = DateComparator(allow_partial_year=True, range_mode="contains")
+        # Both day-grain; only the year differs → resolution gate passes,
+        # partial-year multiplier applies.
+        assert cmp.compare(
+            "Oct 28", "10/24/16 to 10/30/16"
+        ) == pytest.approx(0.7)
+
+    def test_reduced_precision_blocks_before_partial_year_credit(self):
+        """Resolution gate fails first, so no partial-year credit leaks out."""
+        cmp = DateComparator(allow_partial_year=True, range_mode="contains")
+        # 'Jan' is month-grain and year-less; the day-grain range can't earn
+        # credit under exact even though allow_partial_year is on.
+        assert cmp.compare("Jan", "10/24/16 to 10/30/16") == 0.0
+
+
 # ---------------------------------------------------------------------------
 # Tier 5 — must-not-match
 # ---------------------------------------------------------------------------
