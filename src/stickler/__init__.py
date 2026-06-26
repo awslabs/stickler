@@ -40,7 +40,7 @@ try:
 except ImportError:
     _HAS_BERT = False
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __all__ = [
     # Models and evaluation
     "StructuredModel",
