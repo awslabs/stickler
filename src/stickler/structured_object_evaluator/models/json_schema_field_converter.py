@@ -126,68 +126,62 @@ class JsonSchemaFieldConverter:
             property_schema.get("type"), field_path
         )
 
-        # Decide annotation widening ONCE here, the sole dispatcher (and the
-        # convergence point with #127). Three independent reasons a field needs
-        # a nullable annotation, folded into one condition below:
+        # Decide annotation widening ONCE here, in the sole dispatcher (also the
+        # convergence point with #127). Three independent reasons a field needs a
+        # nullable annotation, folded into one condition:
         #   - it is not required, so it carries a None default (issue #149);
         #   - it declares an explicit ``"default": null`` even while required;
         #   - it declares explicit nullability as ``type: ["X", "null"]`` (#127).
-        # Optional[Optional[T]] collapses, so the nested-object / array handlers
-        # never widen themselves -- item-level nullability inside arrays
+        # Both leave a None that the rich-value path materializes via
+        # from_json(...).model_dump() and re-validates against the annotation.
+        # Keeping this in one place means the nested-object / array handlers
+        # never widen themselves; item-level nullability inside arrays
         # (List[Optional[T]]) is still applied by _handle_array_type.
         default = property_schema.get("default", ... if is_required else None)
         widen_to_optional = (not is_required) or (default is None) or is_nullable
 
-        # Handle nested objects
+        # Handle nested objects / arrays via their handlers; primitives inline.
         if json_type == "object":
             field_type, field = self._handle_nested_object(
                 field_name, property_schema, is_required, field_path
             )
-            if widen_to_optional:
-                field_type = Optional[field_type]
-            return field_type, field
-
-        # Handle arrays
-        if json_type == "array":
+        elif json_type == "array":
             field_type, field = self._handle_array_type(
                 field_name, property_schema, is_required, field_path
             )
-            if widen_to_optional:
-                field_type = Optional[field_type]
-            return field_type, field
+        else:
+            # Handle primitive types
+            field_type = self._map_json_type_to_python_type(json_type)
 
-        # Handle primitive types
-        field_type = self._map_json_type_to_python_type(json_type)
+            # Extract x-aws-stickler-* extensions
+            extensions = self._extract_stickler_extensions(property_schema, field_path)
 
-        # Extract x-aws-stickler-* extensions
-        extensions = self._extract_stickler_extensions(property_schema, field_path)
-        
-        # Get comparator (from extension or default)
-        comparator = extensions.get("comparator") or self._get_default_comparator_for_type(json_type)
-        
-        # Get other parameters
-        threshold = extensions.get("threshold", 0.5)
-        weight = extensions.get("weight", 1.0)
-        clip_under_threshold = extensions.get("clip_under_threshold", True)
-        
-        # Get Pydantic field parameters (``default`` resolved above, where the
-        # widening decision needed it).
-        description = property_schema.get("description")
-        examples = property_schema.get("examples")
+            # Get comparator (from extension or default)
+            comparator = extensions.get("comparator") or self._get_default_comparator_for_type(json_type)
+
+            # Get other parameters
+            threshold = extensions.get("threshold", 0.5)
+            weight = extensions.get("weight", 1.0)
+            clip_under_threshold = extensions.get("clip_under_threshold", True)
+
+            # Get Pydantic field parameters (``default`` resolved above, where
+            # the widening decision needed it).
+            description = property_schema.get("description")
+            examples = property_schema.get("examples")
+
+            # Call ComparableField() to create the Pydantic Field
+            field = ComparableField(
+                comparator=comparator,
+                threshold=threshold,
+                weight=weight,
+                clip_under_threshold=clip_under_threshold,
+                default=default,
+                description=description,
+                examples=examples
+            )
 
         if widen_to_optional:
             field_type = Optional[field_type]
-
-        # Call ComparableField() to create the Pydantic Field
-        field = ComparableField(
-            comparator=comparator,
-            threshold=threshold,
-            weight=weight,
-            clip_under_threshold=clip_under_threshold,
-            default=default,
-            description=description,
-            examples=examples
-        )
 
         return field_type, field
 
@@ -423,15 +417,9 @@ class JsonSchemaFieldConverter:
             description=description
         )
 
-        # Widen the annotation to Optional[...] for non-required fields so the
-        # None default is a valid value. See issue #149: the rich-value path
-        # round-trips through from_json(...).model_dump(), which materializes
-        # the None default and re-validates it against the annotation.
-        field_type = NestedModel
-        if not is_required:
-            field_type = Optional[field_type]
-
-        return field_type, field
+        # Annotation widening (Optional[...]) is decided once by the caller
+        # convert_property_to_field; this handler returns the bare nested model.
+        return NestedModel, field
 
     def _handle_array_type(
         self, field_name: str, property_schema: Dict[str, Any], is_required: bool, field_path: str = None
@@ -496,13 +484,6 @@ class JsonSchemaFieldConverter:
         default = property_schema.get("default", ... if is_required else None)
         description = property_schema.get("description")
 
-        # Widen the annotation to Optional[...] for non-required fields so the
-        # None default is a valid value. See issue #149: the rich-value path
-        # round-trips through from_json(...).model_dump(), which materializes
-        # the None default and re-validates it against the annotation.
-        if not is_required:
-            field_type = Optional[field_type]
-
         # Create ComparableField
         field = ComparableField(
             comparator=comparator,
@@ -513,6 +494,8 @@ class JsonSchemaFieldConverter:
             description=description
         )
 
+        # Annotation widening (Optional[...]) is decided once by the caller
+        # convert_property_to_field; this handler returns the bare List[...].
         return field_type, field
 
     

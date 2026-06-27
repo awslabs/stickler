@@ -117,6 +117,25 @@ Default comparators are assigned by JSON Schema type when no extension is specif
 
 For the complete reference, see the [Evaluation](../Guides/Evaluation/README.md) page.
 
+### Optional fields and `null`
+
+A property that is **not** listed in `required` (or that declares an explicit
+`"default": null`) is built as an optional field: its Python annotation is
+widened to `Optional[T]` and its default is `None`. This keeps the model usable
+through every construction path — in particular `from_json(..., process_rich_values=True)`,
+which round-trips nested objects and would otherwise re-validate the `None`
+default against a non-nullable annotation and raise.
+
+Two consequences are worth noting:
+
+- An explicit `null` is **accepted** for an optional typed field (e.g. a JSON
+  payload `{"note": null}` for an optional `string`), even though strict JSON
+  Schema treats `null` as invalid for `"type": "string"`. This is deliberate:
+  model predictions often emit explicit nulls, and these should score as a value
+  rather than crash evaluation.
+- `model_json_schema()` reflects this by emitting `{"anyOf": [{"type": "string"}, {"type": "null"}]}`
+  for such fields.
+
 ---
 
 ## Method 2: Custom Stickler Configuration

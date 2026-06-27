@@ -11,6 +11,7 @@ from stickler.comparators.numeric import NumericComparator
 from stickler.structured_object_evaluator.models.json_schema_field_converter import (
     JsonSchemaFieldConverter,
 )
+from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
 def _unwrap_optional(field_type):
@@ -20,6 +21,9 @@ def _unwrap_optional(field_type):
     ``None`` default is valid (issue #149). Required fields stay bare. This
     helper lets type assertions target the underlying ``T`` regardless of the
     optional wrapper.
+
+    Mirrors ``StructuredModel._unwrap_optional`` (structured_model.py); kept
+    local for test independence from production internals.
     """
     if typing.get_origin(field_type) is typing.Union:
         args = [a for a in typing.get_args(field_type) if a is not type(None)]
@@ -108,21 +112,11 @@ class TestConvertPropertiesToFields:
         # Required field stays a bare annotation.
         req_type = field_definitions["req_str"][0]
         assert req_type is str
-        assert typing.get_origin(req_type) is not typing.Union
 
         # Each optional field is wrapped in Optional[...] (Union[X, None]).
         for name, inner_check in [
             ("opt_str", lambda t: t is str),
-            (
-                "opt_obj",
-                lambda t: (
-                    __import__(
-                        "stickler.structured_object_evaluator.models.structured_model",
-                        fromlist=["StructuredModel"],
-                    ).StructuredModel
-                    in t.__mro__
-                ),
-            ),
+            ("opt_obj", lambda t: issubclass(t, StructuredModel)),
             ("opt_arr", lambda t: typing.get_origin(t) is list),
         ]:
             field_type = field_definitions[name][0]
