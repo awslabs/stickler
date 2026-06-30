@@ -20,6 +20,7 @@ from stickler.utils.process_evaluation import ProcessEvaluation
 
 logger = logging.getLogger(__name__)
 
+
 class EvaluationHTMLReporter:
     """
     Simple HTML report generator for evaluation results.
@@ -34,11 +35,11 @@ class EvaluationHTMLReporter:
         document_files: Optional[Dict[str, str]] = None,
         title: Optional[str] = None,
         model_schema: Optional[StructuredModel] = None,
-        individual_results_jsonl_path: Optional[str] = None
+        individual_results_jsonl_path: Optional[str] = None,
     ) -> ReportResult:
         """
         Generate HTML report from evaluation results.
-        
+
         Args:
             evaluation_results: Results from evaluator (individual or bulk)
             output_path: Path where HTML report will be saved
@@ -46,39 +47,40 @@ class EvaluationHTMLReporter:
             document_files: Dictionary mapping document IDs to file paths
             title: Custom report title
             model_schema: StructuredModel class to extract field thresholds from
-            
+
         Returns:
             ReportResult with generation metadata
         """
         start_time = time.time()
         config = config or ReportConfig()
-        
+
         try:
             # Determine if this is bulk or individual results
             is_bulk = isinstance(evaluation_results, ProcessEvaluation)
-            
-            
+
             if document_files:
-                copied_document_files = self._copy_files_to_report_dir(document_files, output_path)
-            
+                copied_document_files = self._copy_files_to_report_dir(
+                    document_files, output_path
+                )
+
             # Generate HTML content
             html_content = self._generate_html_content(
-                results=evaluation_results, 
-                config=config, 
-                title=title, 
-                model_schema=model_schema, 
-                individual_results_jsonl_path=individual_results_jsonl_path, 
-                document_files=copied_document_files if document_files else None
+                results=evaluation_results,
+                config=config,
+                title=title,
+                model_schema=model_schema,
+                individual_results_jsonl_path=individual_results_jsonl_path,
+                document_files=copied_document_files if document_files else None,
             )
-            
+
             # Write to file
             os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-            with open(output_path, 'w', encoding='utf-8') as f:
+            with open(output_path, "w", encoding="utf-8") as f:
                 f.write(html_content)
-            
+
             # Calculate file size and timing
             generation_time = time.time() - start_time
-            
+
             return ReportResult(
                 output_path=output_path,
                 success=True,
@@ -87,9 +89,9 @@ class EvaluationHTMLReporter:
                 metadata={
                     "is_bulk": is_bulk,
                     "document_count": self._get_document_count(evaluation_results),
-                }
+                },
             )
-            
+
         except Exception as e:
             generation_time = time.time() - start_time
             return ReportResult(
@@ -99,7 +101,7 @@ class EvaluationHTMLReporter:
                 sections_included=[],
                 errors=[str(e)],
             )
-    
+
     def _generate_html_content(
         self,
         results: Union[Dict[str, Any], ProcessEvaluation],
@@ -107,55 +109,60 @@ class EvaluationHTMLReporter:
         title: Optional[str],
         model_schema: Optional[type] = None,
         individual_results_jsonl_path: Optional[str] = None,
-        document_files: Optional[Dict[str, str]] = None
+        document_files: Optional[Dict[str, str]] = None,
     ) -> str:
         """Generate the complete HTML content."""
-        
+
         # Initialize content analyzer and visualization engine
         viz_engine = VisualizationEngine()
-        
+
         # Generate sections
         sections = []
         section_generator = SectionGenerator(results, viz_engine)
 
         is_bulk = isinstance(results, ProcessEvaluation)
-        
+
         if config.include_executive_summary:
             sections.append(section_generator.generate_executive_summary(config))
-        
+
         if config.include_non_matches:
             sections.append(section_generator.generate_non_matches(config))
-        
+
         if document_files:
-            sections.append(section_generator.generate_document_gallery(document_files, config))
-        
+            sections.append(
+                section_generator.generate_document_gallery(document_files, config)
+            )
+
         if config.include_field_analysis:
             sections.append(section_generator.generate_field_analysis(config))
-        
+
         if config.include_confusion_matrix:
             sections.append(section_generator.generate_confusion_matrix())
-        
 
         # Add individual document details section if JSONL path provided
         individual_docs = None
-        if individual_results_jsonl_path and os.path.exists(individual_results_jsonl_path):
-            individual_docs = self._load_individual_results(individual_results_jsonl_path)
+        if individual_results_jsonl_path and os.path.exists(
+            individual_results_jsonl_path
+        ):
+            individual_docs = self._load_individual_results(
+                individual_results_jsonl_path
+            )
 
         # Build complete HTML
         html_content = self._build_html_document(
             sections=sections,
             title=title or self._generate_title(results, is_bulk),
             individual_docs=individual_docs,
-            model_schema=model_schema
+            model_schema=model_schema,
         )
-        
+
         return html_content
-    
+
     def _load_individual_results(self, jsonl_path: str) -> List[Dict[str, Any]]:
         """Load individual document results from JSONL file."""
         individual_docs = []
         try:
-            with open(jsonl_path, 'r', encoding='utf-8') as f:
+            with open(jsonl_path, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if line:
@@ -164,65 +171,89 @@ class EvaluationHTMLReporter:
         except Exception as e:
             logger.warning(f"Failed to load individual results from {jsonl_path}: {e}")
         return individual_docs
-    
-    def _copy_files_to_report_dir(self, document_files: Dict[str, str], output_path: str) -> Dict[str, str]:
+
+    def _copy_files_to_report_dir(
+        self, document_files: Dict[str, str], output_path: str
+    ) -> Dict[str, str]:
         """
         Copy image files to the report directory and return updated paths.
-        
+
         Args:
             document_files: Dictionary mapping document IDs to image paths
             output_path: Path where HTML report will be saved
-            
+
         Returns:
             Dictionary with updated image paths relative to the report
         """
         copied_images = {}
-        
+
         # Get the directory where the report will be saved
         report_dir = os.path.dirname(os.path.abspath(output_path))
         images_dir = os.path.join(report_dir, "images")
-        
+
         # Create images directory if it doesn't exist
         os.makedirs(images_dir, exist_ok=True)
-        
+
         for doc_id, image_path in document_files.items():
             try:
                 if os.path.exists(image_path):
                     filename = os.path.basename(image_path)
                     dest_path = os.path.join(images_dir, filename)
                     shutil.copy2(image_path, dest_path)
-                    
+
                     copied_images[doc_id] = f"images/{filename}"
-                    
+
                     logger.info(f"Copied image: {image_path} -> {dest_path}")
                 else:
                     logger.warning(f"Image file not found: {image_path}")
                     copied_images[doc_id] = image_path
-                    
+
             except Exception as e:
                 logger.warning(f"Failed to copy image {image_path}: {e}")
                 # Keep the original path as fallback
                 copied_images[doc_id] = image_path
-        
+
         return copied_images
 
-
-    def _build_html_document(self, sections: List[str], title: str, individual_docs: Optional[List[Dict]] = None, model_schema: StructuredModel = None) -> str:
+    def _build_html_document(
+        self,
+        sections: List[str],
+        title: str,
+        individual_docs: Optional[List[Dict]] = None,
+        model_schema: StructuredModel = None,
+    ) -> str:
         """Build the complete HTML document."""
         css = self._get_basic_css()
-        javascript = self._get_javascript(individual_docs, model_schema) if individual_docs else ""
-        
-        html_string = f'''<!DOCTYPE html>
+        javascript = (
+            self._get_javascript(individual_docs, model_schema)
+            if individual_docs
+            else ""
+        )
+
+        html_string = f"""<!DOCTYPE html>
             <html lang="en">
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>{html.escape(title)}</title>
                 <style>{css}</style>
-                <!-- PDF.js CDN -->
-                <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+                <!--
+                    PDF.js CDN. The integrity hash pins the asset to the
+                    exact 3.11.174 build, so generated reports are
+                    tamper-evident even when committed to a repo (CodeQL
+                    rule py/insecure-loaded-script). Update both the URL
+                    version and the hash together.
+                -->
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
+                        integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e"
+                        crossorigin="anonymous"
+                        referrerpolicy="no-referrer"></script>
                 <script>
-                    // Configure PDF.js worker
+                    // Configure PDF.js worker. The worker URL is set via
+                    // the PDF.js API rather than a <script> tag, so the
+                    // browser fetches it directly and applies no SRI; the
+                    // worker is loaded only after user interaction (open
+                    // a PDF) and runs in an isolated worker context.
                     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
                 </script>
             </head>
@@ -238,32 +269,31 @@ class EvaluationHTMLReporter:
                     
                     <footer>
                         <p>Evaluation Report - Generated by Stickler</p>
-                        <p>Generated on {time.strftime('%Y-%m-%d %H:%M:%S')}</p>
+                        <p>Generated on {time.strftime("%Y-%m-%d %H:%M:%S")}</p>
                     </footer>
                 </div>
                 {javascript}
             </body>
-            </html>'''
-                    
+            </html>"""
+
         return html_string
-    
+
     def _get_basic_css(self) -> str:
         """Load CSS from external file."""
-        
+
         module_dir = Path(__file__).parent
         css_dir = module_dir / "styling"
-        
-        css_path = css_dir / 'style.css'
-        
+
+        css_path = css_dir / "style.css"
+
         try:
-            with open(css_path, 'r', encoding='utf-8') as f:
+            with open(css_path, "r", encoding="utf-8") as f:
                 css_content = f.read()
             return css_content
-            
+
         except FileNotFoundError:
             logger.warning(f"CSS file {css_path} not found.")
-        
-    
+
     def _get_sections_included(self, config: ReportConfig) -> List[str]:
         """Get list of sections included in the report."""
         sections = []
@@ -276,32 +306,40 @@ class EvaluationHTMLReporter:
         if config.include_non_matches:
             sections.append("non_matches")
         return sections
-    
+
     def _get_document_count(self, results: Union[Dict, ProcessEvaluation]) -> int:
         """Get document count by counting unique doc_ids from available data."""
         if isinstance(results, ProcessEvaluation):
-           return getattr(results, 'document_count', 1)
+            return getattr(results, "document_count", 1)
         return 1
-        
-    def _generate_title(self, results: Union[Dict, ProcessEvaluation], is_bulk: bool) -> str:
+
+    def _generate_title(
+        self, results: Union[Dict, ProcessEvaluation], is_bulk: bool
+    ) -> str:
         """Generate report title."""
         if is_bulk:
             doc_count = self._get_document_count(results)
             return f"Evaluation Report - {doc_count} Documents"
         return "Evaluation Report"
-    
-    def _get_javascript(self, individual_docs: List[Dict], model_schema: StructuredModel) -> str:
+
+    def _get_javascript(
+        self, individual_docs: List[Dict], model_schema: StructuredModel
+    ) -> str:
         """Generate JavaScript section with external file reference and data initialization."""
-        field_thresholds = DataExtractor.extract_all_field_thresholds(model_schema) if model_schema else None
-        
+        field_thresholds = (
+            DataExtractor.extract_all_field_thresholds(model_schema)
+            if model_schema
+            else None
+        )
+
         # Convert documents and analysis to JSON for JavaScript
         docs_json = json.dumps(individual_docs)
         thresholds_json = json.dumps(field_thresholds)
-        
+
         # Load external JavaScript file
         js_file_content = self._load_javascript_file()
-        
-        return f'''
+
+        return f"""
             <script>
             {js_file_content}
             </script>
@@ -309,16 +347,16 @@ class EvaluationHTMLReporter:
             // Initialize document data
             initializeDocumentData({docs_json}, {thresholds_json});
             </script>
-        '''
-    
+        """
+
     def _load_javascript_file(self) -> str:
         """Load JavaScript from external file."""
         module_dir = Path(__file__).parent
         js_dir = module_dir / "interactive"
-        js_path = js_dir / 'main.js'
-        
+        js_path = js_dir / "main.js"
+
         try:
-            with open(js_path, 'r', encoding='utf-8') as f:
+            with open(js_path, "r", encoding="utf-8") as f:
                 return f.read()
         except FileNotFoundError:
             logger.warning(f"JavaScript file {js_path} not found.")

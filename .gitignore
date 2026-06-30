@@ -12,3 +12,16 @@
 
 build/
 dist/
+
+# Generated artifacts from running examples/scripts/*.py locally or in CI.
+# Scripts run with cwd set to their own directory (see examples/conftest.py),
+# so any relative-path output lands here. The patterns below only match
+# files directly under examples/scripts/ — input fixtures committed under
+# examples/scripts/<subdir>/ (e.g., examples/scripts/data/) are not affected.
+examples/scripts/reports/
+examples/scripts/*.jsonl
+examples/scripts/*.json
+examples/scripts/*.html
+examples/scripts/*.csv
+examples/scripts/*.png
+examples/scripts/*.pdf
