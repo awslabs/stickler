@@ -2,11 +2,16 @@
 
 This conftest is the single entry point that drives the example-execution CI
 checks (notebooks via ``nbmake``, scripts via a custom collector) and the
-local invocation ``uv run pytest examples/``.
+local invocation ``uv run pytest examples/``. It owns:
 
-This module currently exposes only the registry constants and run-mode
-helpers used by later layers of the implementation. Skip logic, the script
-collector, and the populated registries are added by subsequent tasks.
+* the two path-based registries (:data:`CREDENTIALED_EXAMPLES` and
+  :data:`LONG_RUNNING_EXAMPLES`) used to gate execution per run mode,
+* the :func:`pytest_collection_modifyitems` skip logic that consults those
+  registries plus the ``EXAMPLES_RUN_MODE`` env var, and
+* the :func:`pytest_collect_file` collector that runs each
+  ``examples/scripts/*.py`` file as a standalone subprocess.
+
+See ``examples/README.md`` for the contributor-facing documentation.
 """
 
 from __future__ import annotations
@@ -27,8 +32,9 @@ if TYPE_CHECKING:
 # Registries
 #
 # Each entry is a repo-relative POSIX path (forward slashes, no leading
-# ``./``). These are intentionally empty in this scaffold; later tasks
-# populate them with the current credentialed and long-running examples.
+# ``./``). Authors add a new example here when its execution requires AWS
+# credentials or its typical wall-clock on ``ubuntu-latest`` exceeds the
+# PR runtime budget (see ``examples/README.md``).
 # ---------------------------------------------------------------------------
 
 CREDENTIALED_EXAMPLES: frozenset[str] = frozenset(
@@ -121,6 +127,48 @@ _CREDENTIALED_SKIP_REASON = "credentialed example: requires AWS credentials"
 _LONG_RUNNING_SKIP_REASON = "long-running example: scheduled runs only"
 
 
+def _is_full_examples_run(config: pytest.Config) -> bool:
+    """Return ``True`` when the current session is a full ``examples/`` run.
+
+    The stale-registry warning is only meaningful when pytest had a chance
+    to collect every example. On a scoped invocation (e.g.
+    ``pytest examples/notebooks/`` or
+    ``pytest examples/scripts/quick_start.py``) registry entries outside
+    the requested scope will not match any item, so the warning would fire
+    spuriously. We treat a run as "full" only when at least one positional
+    argument resolves to (or contains) the ``examples/`` directory itself.
+    """
+    rootpath = getattr(config, "rootpath", None)
+    if rootpath is None:
+        return False
+    examples_root = Path(rootpath) / "examples"
+    if not examples_root.is_dir():
+        return False
+
+    args = list(getattr(config, "args", []))
+    if not args:
+        # ``pytest`` with no explicit args uses ``testpaths``; that's
+        # ``["tests"]`` for this project, so registry-vs-collection
+        # comparison is not meaningful.
+        return False
+
+    for arg in args:
+        # Strip any pytest ``::`` test-id suffix before resolving.
+        raw = str(arg).split("::", 1)[0]
+        try:
+            resolved = Path(raw).resolve()
+        except OSError:
+            continue
+        try:
+            resolved.relative_to(examples_root)
+        except ValueError:
+            # ``resolved`` is not within ``examples/``; ignore.
+            continue
+        if resolved == examples_root:
+            return True
+    return False
+
+
 def pytest_collection_modifyitems(
     config: pytest.Config, items: list[pytest.Item]
 ) -> None:
@@ -135,10 +183,10 @@ def pytest_collection_modifyitems(
     * Items whose repo-relative path is in :data:`LONG_RUNNING_EXAMPLES` are
       skipped on every run mode except ``"scheduled"``.
     * Registry entries that do not match any collected item produce a
-      :class:`pytest.PytestConfigWarning` so stale entries are visible.
+      :class:`pytest.PytestConfigWarning` so stale entries are visible. The
+      warning is suppressed on scoped runs (e.g.,
+      ``pytest examples/notebooks/``) where a non-match is expected.
     """
-    del config  # unused; kept for the hook's documented signature
-
     run_mode = _run_mode()
     has_creds = _has_aws_credentials()
     skip_credentialed = run_mode == "pr" or not has_creds
@@ -157,6 +205,9 @@ def pytest_collection_modifyitems(
             matched_long_running.add(path)
             if skip_long_running:
                 item.add_marker(pytest.mark.skip(reason=_LONG_RUNNING_SKIP_REASON))
+
+    if not _is_full_examples_run(config):
+        return
 
     for stale in sorted(CREDENTIALED_EXAMPLES - matched_credentialed):
         warnings.warn(
@@ -206,12 +257,26 @@ def _is_collectible_script(file_path: Path) -> bool:
     return True
 
 
+def _decode_captured(stream: str | bytes | None) -> str:
+    """Decode a captured stdio stream to ``str`` for use in failure messages."""
+    if stream is None:
+        return ""
+    if isinstance(stream, bytes):
+        return stream.decode("utf-8", errors="replace")
+    return stream
+
+
 class ScriptItem(pytest.Item):
     """A pytest item that runs a single example script as a subprocess."""
 
     def runtest(self) -> None:
         script_path = Path(self.path)
         rel_path = self._repo_relative_path(script_path)
+        # Run scripts from their own directory so any incidental file
+        # output (e.g., generated HTML reports, JSON dumps) lands next to
+        # the script rather than dirtying the working tree of the local
+        # ``pytest examples/`` invocation.
+        cwd = script_path.parent
         try:
             result = subprocess.run(
                 [sys.executable, str(script_path)],
@@ -220,20 +285,23 @@ class ScriptItem(pytest.Item):
                 encoding="utf-8",
                 errors="replace",
                 timeout=_SCRIPT_TIMEOUT_SECONDS,
+                cwd=str(cwd),
             )
         except subprocess.TimeoutExpired as exc:
-            stderr = exc.stderr or ""
-            if isinstance(stderr, bytes):
-                stderr = stderr.decode("utf-8", errors="replace")
             message = (
                 f"{rel_path}: timed out after {_SCRIPT_TIMEOUT_SECONDS}s\n"
-                f"--- stderr ---\n{stderr}"
+                f"--- stdout ---\n{_decode_captured(exc.stdout)}"
+                f"--- stderr ---\n{_decode_captured(exc.stderr)}"
             )
             raise pytest.fail.Exception(message, pytrace=False) from None
 
         if result.returncode != 0:
+            # Many demo scripts print error context to stdout (e.g., the
+            # ``bert_comparator_demo`` "Missing dependency" message), so
+            # we surface both streams to make CI failures self-diagnosing.
             message = (
                 f"{rel_path} exited with code {result.returncode}\n"
+                f"--- stdout ---\n{result.stdout}"
                 f"--- stderr ---\n{result.stderr}"
             )
             raise AssertionError(message)

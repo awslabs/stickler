@@ -1,0 +1,2845 @@
+{
+  "overall_metrics": {
+    "tp": 1752,
+    "fa": 0,
+    "fd": 248,
+    "fp": 248,
+    "tn": 0,
+    "fn": 0,
+    "cm_precision": 0.876,
+    "cm_recall": 1.0,
+    "cm_f1": 0.933901918976546,
+    "cm_accuracy": 0.876,
+    "weighted_overall_score": 0.8415102256980443
+  },
+  "field_metrics": {
+    "doc_id": {
+      "tp": 398,
+      "fa": 0,
+      "fd": 102,
+      "fp": 102,
+      "tn": 0,
+      "fn": 0,
+      "cm_precision": 0.796,
+      "cm_recall": 1.0,
+      "cm_f1": 0.8864142538975501,
+      "cm_accuracy": 0.796,
+      "mean_score": 0.796
+    },
+    "title": {
+      "tp": 388,
+      "fa": 0,
+      "fd": 112,
+      "fp": 112,
+      "tn": 0,
+      "fn": 0,
+      "cm_precision": 0.776,
+      "cm_recall": 1.0,
+      "cm_f1": 0.8738738738738739,
+      "cm_accuracy": 0.776,
+      "mean_score": 0.7532051282051281
+    },
+    "author": {
+      "tp": 466,
+      "fa": 0,
+      "fd": 34,
+      "fp": 34,
+      "tn": 0,
+      "fn": 0,
+      "cm_precision": 0.932,
+      "cm_recall": 1.0,
+      "cm_f1": 0.9648033126293997,
+      "cm_accuracy": 0.932,
+      "mean_score": 0.932
+    },
+    "content": {
+      "tp": 500,
+      "fa": 0,
+      "fd": 0,
+      "fp": 0,
+      "tn": 0,
+      "fn": 0,
+      "cm_precision": 1.0,
+      "cm_recall": 1.0,
+      "cm_f1": 1.0,
+      "cm_accuracy": 1.0,
+      "mean_score": 0.9734062106270417
+    }
+  },
+  "confidence_metrics": {
+    "overall": {
+      "auroc": {
+        "value": null
+      }
+    },
+    "fields": {},
+    "coverage": {
+      "fields_with_confidence": 0,
+      "fields_total": 2000,
+      "ratio": 0.0
+    }
+  },
+  "accumulator_metrics": {
+    "confidence_metrics": {
+      "overall": {
+        "auroc": {
+          "value": null
+        }
+      },
+      "fields": {},
+      "coverage": {
+        "fields_with_confidence": 0,
+        "fields_total": 2000,
+        "ratio": 0.0
+      }
+    }
+  },
+  "non_matches": [
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Dr. Alice Smith",
+      "prediction_value": "Alice Smith",
+      "similarity_score": 0.7333333333333334,
+      "details": {
+        "reason": "below threshold (0.733 < 0.8)"
+      },
+      "doc_id": "doc_1"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00004",
+      "prediction_value": "DOC-00005",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_4"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Introduction to Machine Learning",
+      "similarity_score": 0.1875,
+      "details": {
+        "reason": "below threshold (0.188 < 0.7)"
+      },
+      "doc_id": "doc_4"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00005",
+      "prediction_value": "DOC-00006",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_5"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_7"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00010",
+      "prediction_value": "DOC-00011",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_10"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00011",
+      "prediction_value": "DOC-00012",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_11"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Web React",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_12"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_14"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_17"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00018",
+      "prediction_value": "DOC-00019",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_18"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Prof. Bob Johnson",
+      "prediction_value": "Bob Johnson",
+      "similarity_score": 0.6470588235294117,
+      "details": {
+        "reason": "below threshold (0.647 < 0.8)"
+      },
+      "doc_id": "doc_18"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00024",
+      "prediction_value": "DOC-00025",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_24"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00025",
+      "prediction_value": "DOC-00026",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_25"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00026",
+      "prediction_value": "DOC-00027",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_26"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Dr. Alice Smith",
+      "prediction_value": "Alice Smith",
+      "similarity_score": 0.7333333333333334,
+      "details": {
+        "reason": "below threshold (0.733 < 0.8)"
+      },
+      "doc_id": "doc_26"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00027",
+      "prediction_value": "DOC-00028",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_27"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_29"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Introduction to Machine Learning",
+      "similarity_score": 0.1875,
+      "details": {
+        "reason": "below threshold (0.188 < 0.7)"
+      },
+      "doc_id": "doc_31"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00032",
+      "prediction_value": "DOC-00033",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_32"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_35"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Dr. Alice Smith",
+      "prediction_value": "Alice Smith",
+      "similarity_score": 0.7333333333333334,
+      "details": {
+        "reason": "below threshold (0.733 < 0.8)"
+      },
+      "doc_id": "doc_36"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_37"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Dr. Alice Smith",
+      "prediction_value": "Alice Smith",
+      "similarity_score": 0.7333333333333334,
+      "details": {
+        "reason": "below threshold (0.733 < 0.8)"
+      },
+      "doc_id": "doc_38"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00039",
+      "prediction_value": "DOC-00040",
+      "similarity_score": 0.7777777777777778,
+      "details": {
+        "reason": "below threshold (0.778 < 0.9)"
+      },
+      "doc_id": "doc_39"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_39"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Data Science Fundamentals",
+      "similarity_score": 0.21875,
+      "details": {
+        "reason": "below threshold (0.219 < 0.7)"
+      },
+      "doc_id": "doc_44"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00048",
+      "prediction_value": "DOC-00049",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_48"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Web React",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_48"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00049",
+      "prediction_value": "DOC-00050",
+      "similarity_score": 0.7777777777777778,
+      "details": {
+        "reason": "below threshold (0.778 < 0.9)"
+      },
+      "doc_id": "doc_49"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Web React",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_49"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00050",
+      "prediction_value": "DOC-00051",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_50"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00051",
+      "prediction_value": "DOC-00052",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_51"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Dr. Alice Smith",
+      "prediction_value": "Alice Smith",
+      "similarity_score": 0.7333333333333334,
+      "details": {
+        "reason": "below threshold (0.733 < 0.8)"
+      },
+      "doc_id": "doc_51"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00054",
+      "prediction_value": "DOC-00055",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_54"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Web React",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_55"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00056",
+      "prediction_value": "DOC-00057",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_56"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Web React",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_57"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Advanced Python Programming",
+      "prediction_value": "Database Design Principles",
+      "similarity_score": 0.2222222222222222,
+      "details": {
+        "reason": "below threshold (0.222 < 0.7)"
+      },
+      "doc_id": "doc_60"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_61"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_62"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00064",
+      "prediction_value": "DOC-00065",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_64"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_64"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Prof. Bob Johnson",
+      "prediction_value": "Bob Johnson",
+      "similarity_score": 0.6470588235294117,
+      "details": {
+        "reason": "below threshold (0.647 < 0.8)"
+      },
+      "doc_id": "doc_67"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00068",
+      "prediction_value": "DOC-00069",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_68"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Database Design Principles",
+      "prediction_value": "Web Development with React",
+      "similarity_score": 0.07692307692307687,
+      "details": {
+        "reason": "below threshold (0.077 < 0.7)"
+      },
+      "doc_id": "doc_68"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Prof. Bob Johnson",
+      "prediction_value": "Bob Johnson",
+      "similarity_score": 0.6470588235294117,
+      "details": {
+        "reason": "below threshold (0.647 < 0.8)"
+      },
+      "doc_id": "doc_70"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00073",
+      "prediction_value": "DOC-00074",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_73"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00074",
+      "prediction_value": "DOC-00075",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_74"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00077",
+      "prediction_value": "DOC-00078",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_77"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Web React",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_79"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Advanced Python Programming",
+      "prediction_value": "Web Development with React",
+      "similarity_score": 0.07407407407407407,
+      "details": {
+        "reason": "below threshold (0.074 < 0.7)"
+      },
+      "doc_id": "doc_81"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00082",
+      "prediction_value": "DOC-00083",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_82"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00083",
+      "prediction_value": "DOC-00084",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_83"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_83"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00085",
+      "prediction_value": "DOC-00086",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_85"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Prof. Bob Johnson",
+      "prediction_value": "Bob Johnson",
+      "similarity_score": 0.6470588235294117,
+      "details": {
+        "reason": "below threshold (0.647 < 0.8)"
+      },
+      "doc_id": "doc_89"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00097",
+      "prediction_value": "DOC-00098",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_97"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_97"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00100",
+      "prediction_value": "DOC-00101",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_100"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00104",
+      "prediction_value": "DOC-00105",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_104"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00105",
+      "prediction_value": "DOC-00106",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_105"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_105"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_108"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Advanced Python Programming",
+      "prediction_value": "Introduction to Machine Learning",
+      "similarity_score": 0.21875,
+      "details": {
+        "reason": "below threshold (0.219 < 0.7)"
+      },
+      "doc_id": "doc_112"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_113"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Prof. Bob Johnson",
+      "prediction_value": "Bob Johnson",
+      "similarity_score": 0.6470588235294117,
+      "details": {
+        "reason": "below threshold (0.647 < 0.8)"
+      },
+      "doc_id": "doc_113"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Prof. Bob Johnson",
+      "prediction_value": "Bob Johnson",
+      "similarity_score": 0.6470588235294117,
+      "details": {
+        "reason": "below threshold (0.647 < 0.8)"
+      },
+      "doc_id": "doc_114"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00117",
+      "prediction_value": "DOC-00118",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_117"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Web React",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_118"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_119"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Web Development with React",
+      "similarity_score": 0.1875,
+      "details": {
+        "reason": "below threshold (0.188 < 0.7)"
+      },
+      "doc_id": "doc_122"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00123",
+      "prediction_value": "DOC-00124",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_123"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00124",
+      "prediction_value": "DOC-00125",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_124"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00125",
+      "prediction_value": "DOC-00126",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_125"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Advanced Python Programming",
+      "similarity_score": 0.11111111111111116,
+      "details": {
+        "reason": "below threshold (0.111 < 0.7)"
+      },
+      "doc_id": "doc_129"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Database Design Principles",
+      "prediction_value": "Web Development with React",
+      "similarity_score": 0.07692307692307687,
+      "details": {
+        "reason": "below threshold (0.077 < 0.7)"
+      },
+      "doc_id": "doc_130"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00131",
+      "prediction_value": "DOC-00132",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_131"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00133",
+      "prediction_value": "DOC-00134",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_133"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00134",
+      "prediction_value": "DOC-00135",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_134"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_137"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Prof. Bob Johnson",
+      "prediction_value": "Bob Johnson",
+      "similarity_score": 0.6470588235294117,
+      "details": {
+        "reason": "below threshold (0.647 < 0.8)"
+      },
+      "doc_id": "doc_142"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Advanced Python Programming",
+      "similarity_score": 0.07407407407407407,
+      "details": {
+        "reason": "below threshold (0.074 < 0.7)"
+      },
+      "doc_id": "doc_143"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Prof. Bob Johnson",
+      "prediction_value": "Bob Johnson",
+      "similarity_score": 0.6470588235294117,
+      "details": {
+        "reason": "below threshold (0.647 < 0.8)"
+      },
+      "doc_id": "doc_144"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_145"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00146",
+      "prediction_value": "DOC-00147",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_146"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00150",
+      "prediction_value": "DOC-00151",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_150"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00152",
+      "prediction_value": "DOC-00153",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_152"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Data Science Fundamentals",
+      "similarity_score": 0.21875,
+      "details": {
+        "reason": "below threshold (0.219 < 0.7)"
+      },
+      "doc_id": "doc_153"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00154",
+      "prediction_value": "DOC-00155",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_154"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00164",
+      "prediction_value": "DOC-00165",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_164"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Web React",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_164"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00167",
+      "prediction_value": "DOC-00168",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_167"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Prof. Bob Johnson",
+      "prediction_value": "Bob Johnson",
+      "similarity_score": 0.6470588235294117,
+      "details": {
+        "reason": "below threshold (0.647 < 0.8)"
+      },
+      "doc_id": "doc_167"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00169",
+      "prediction_value": "DOC-00170",
+      "similarity_score": 0.7777777777777778,
+      "details": {
+        "reason": "below threshold (0.778 < 0.9)"
+      },
+      "doc_id": "doc_169"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00172",
+      "prediction_value": "DOC-00173",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_172"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Web React",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_173"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00177",
+      "prediction_value": "DOC-00178",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_177"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00181",
+      "prediction_value": "DOC-00182",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_181"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Dr. Alice Smith",
+      "prediction_value": "Alice Smith",
+      "similarity_score": 0.7333333333333334,
+      "details": {
+        "reason": "below threshold (0.733 < 0.8)"
+      },
+      "doc_id": "doc_181"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Web Development with React",
+      "similarity_score": 0.1875,
+      "details": {
+        "reason": "below threshold (0.188 < 0.7)"
+      },
+      "doc_id": "doc_182"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_185"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00187",
+      "prediction_value": "DOC-00188",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_187"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_187"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_190"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Advanced Python Programming",
+      "prediction_value": "Introduction to Machine Learning",
+      "similarity_score": 0.21875,
+      "details": {
+        "reason": "below threshold (0.219 < 0.7)"
+      },
+      "doc_id": "doc_192"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00196",
+      "prediction_value": "DOC-00197",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_196"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Advanced Python Programming",
+      "prediction_value": "Web Development with React",
+      "similarity_score": 0.07407407407407407,
+      "details": {
+        "reason": "below threshold (0.074 < 0.7)"
+      },
+      "doc_id": "doc_196"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Prof. Bob Johnson",
+      "prediction_value": "Bob Johnson",
+      "similarity_score": 0.6470588235294117,
+      "details": {
+        "reason": "below threshold (0.647 < 0.8)"
+      },
+      "doc_id": "doc_197"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Advanced Python Programming",
+      "prediction_value": "Web Development with React",
+      "similarity_score": 0.07407407407407407,
+      "details": {
+        "reason": "below threshold (0.074 < 0.7)"
+      },
+      "doc_id": "doc_198"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Data Science Fundamentals",
+      "similarity_score": 0.11538461538461542,
+      "details": {
+        "reason": "below threshold (0.115 < 0.7)"
+      },
+      "doc_id": "doc_199"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00200",
+      "prediction_value": "DOC-00201",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_200"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00204",
+      "prediction_value": "DOC-00205",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_204"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_205"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00210",
+      "prediction_value": "DOC-00211",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_210"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Advanced Python Programming",
+      "similarity_score": 0.21875,
+      "details": {
+        "reason": "below threshold (0.219 < 0.7)"
+      },
+      "doc_id": "doc_210"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00211",
+      "prediction_value": "DOC-00212",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_211"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Data Science Fundamentals",
+      "similarity_score": 0.11538461538461542,
+      "details": {
+        "reason": "below threshold (0.115 < 0.7)"
+      },
+      "doc_id": "doc_213"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00220",
+      "prediction_value": "DOC-00221",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_220"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00222",
+      "prediction_value": "DOC-00223",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_222"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_223"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_224"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00228",
+      "prediction_value": "DOC-00229",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_228"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Database Design Principles",
+      "prediction_value": "Data Science Fundamentals",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_228"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00229",
+      "prediction_value": "DOC-00230",
+      "similarity_score": 0.7777777777777778,
+      "details": {
+        "reason": "below threshold (0.778 < 0.9)"
+      },
+      "doc_id": "doc_229"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Introduction to Machine Learning",
+      "similarity_score": 0.1875,
+      "details": {
+        "reason": "below threshold (0.188 < 0.7)"
+      },
+      "doc_id": "doc_230"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Database Design Principles",
+      "similarity_score": 0.15625,
+      "details": {
+        "reason": "below threshold (0.156 < 0.7)"
+      },
+      "doc_id": "doc_233"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00234",
+      "prediction_value": "DOC-00235",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_234"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Advanced Python Programming",
+      "prediction_value": "Introduction to Machine Learning",
+      "similarity_score": 0.21875,
+      "details": {
+        "reason": "below threshold (0.219 < 0.7)"
+      },
+      "doc_id": "doc_235"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00236",
+      "prediction_value": "DOC-00237",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_236"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Web React",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_236"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Advanced Python Programming",
+      "similarity_score": 0.07407407407407407,
+      "details": {
+        "reason": "below threshold (0.074 < 0.7)"
+      },
+      "doc_id": "doc_242"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00243",
+      "prediction_value": "DOC-00244",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_243"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_248"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_250"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Web React",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_251"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00253",
+      "prediction_value": "DOC-00254",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_253"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_253"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00255",
+      "prediction_value": "DOC-00256",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_255"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00256",
+      "prediction_value": "DOC-00257",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_256"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Database Design Principles",
+      "prediction_value": "Data Science Fundamentals",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_258"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00261",
+      "prediction_value": "DOC-00262",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_261"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_261"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Prof. Bob Johnson",
+      "prediction_value": "Bob Johnson",
+      "similarity_score": 0.6470588235294117,
+      "details": {
+        "reason": "below threshold (0.647 < 0.8)"
+      },
+      "doc_id": "doc_261"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_263"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_266"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00268",
+      "prediction_value": "DOC-00269",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_268"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00271",
+      "prediction_value": "DOC-00272",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_271"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Dr. Alice Smith",
+      "prediction_value": "Alice Smith",
+      "similarity_score": 0.7333333333333334,
+      "details": {
+        "reason": "below threshold (0.733 < 0.8)"
+      },
+      "doc_id": "doc_272"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Database Design Principles",
+      "similarity_score": 0.15625,
+      "details": {
+        "reason": "below threshold (0.156 < 0.7)"
+      },
+      "doc_id": "doc_274"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00275",
+      "prediction_value": "DOC-00276",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_275"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Advanced Python Programming",
+      "prediction_value": "Database Design Principles",
+      "similarity_score": 0.2222222222222222,
+      "details": {
+        "reason": "below threshold (0.222 < 0.7)"
+      },
+      "doc_id": "doc_276"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00279",
+      "prediction_value": "DOC-00280",
+      "similarity_score": 0.7777777777777778,
+      "details": {
+        "reason": "below threshold (0.778 < 0.9)"
+      },
+      "doc_id": "doc_279"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00281",
+      "prediction_value": "DOC-00282",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_281"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Database Design Principles",
+      "prediction_value": "Introduction to Machine Learning",
+      "similarity_score": 0.15625,
+      "details": {
+        "reason": "below threshold (0.156 < 0.7)"
+      },
+      "doc_id": "doc_285"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_288"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Database Design Principles",
+      "prediction_value": "Web Development with React",
+      "similarity_score": 0.07692307692307687,
+      "details": {
+        "reason": "below threshold (0.077 < 0.7)"
+      },
+      "doc_id": "doc_292"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00293",
+      "prediction_value": "DOC-00294",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_293"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Advanced Python Programming",
+      "similarity_score": 0.11111111111111116,
+      "details": {
+        "reason": "below threshold (0.111 < 0.7)"
+      },
+      "doc_id": "doc_294"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00296",
+      "prediction_value": "DOC-00297",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_296"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Web Development with React",
+      "similarity_score": 0.11538461538461542,
+      "details": {
+        "reason": "below threshold (0.115 < 0.7)"
+      },
+      "doc_id": "doc_297"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00300",
+      "prediction_value": "DOC-00301",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_300"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Database Design Principles",
+      "similarity_score": 0.15625,
+      "details": {
+        "reason": "below threshold (0.156 < 0.7)"
+      },
+      "doc_id": "doc_302"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00303",
+      "prediction_value": "DOC-00304",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_303"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_306"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Prof. Bob Johnson",
+      "prediction_value": "Bob Johnson",
+      "similarity_score": 0.6470588235294117,
+      "details": {
+        "reason": "below threshold (0.647 < 0.8)"
+      },
+      "doc_id": "doc_307"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_316"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00319",
+      "prediction_value": "DOC-00320",
+      "similarity_score": 0.7777777777777778,
+      "details": {
+        "reason": "below threshold (0.778 < 0.9)"
+      },
+      "doc_id": "doc_319"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Advanced Python Programming",
+      "prediction_value": "Database Design Principles",
+      "similarity_score": 0.2222222222222222,
+      "details": {
+        "reason": "below threshold (0.222 < 0.7)"
+      },
+      "doc_id": "doc_325"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00327",
+      "prediction_value": "DOC-00328",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_327"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Web React",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_328"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Dr. Alice Smith",
+      "prediction_value": "Alice Smith",
+      "similarity_score": 0.7333333333333334,
+      "details": {
+        "reason": "below threshold (0.733 < 0.8)"
+      },
+      "doc_id": "doc_328"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Dr. Alice Smith",
+      "prediction_value": "Alice Smith",
+      "similarity_score": 0.7333333333333334,
+      "details": {
+        "reason": "below threshold (0.733 < 0.8)"
+      },
+      "doc_id": "doc_330"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_331"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Prof. Bob Johnson",
+      "prediction_value": "Bob Johnson",
+      "similarity_score": 0.6470588235294117,
+      "details": {
+        "reason": "below threshold (0.647 < 0.8)"
+      },
+      "doc_id": "doc_331"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_336"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00337",
+      "prediction_value": "DOC-00338",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_337"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Database Design Principles",
+      "prediction_value": "Advanced Python Programming",
+      "similarity_score": 0.2222222222222222,
+      "details": {
+        "reason": "below threshold (0.222 < 0.7)"
+      },
+      "doc_id": "doc_338"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00339",
+      "prediction_value": "DOC-00340",
+      "similarity_score": 0.7777777777777778,
+      "details": {
+        "reason": "below threshold (0.778 < 0.9)"
+      },
+      "doc_id": "doc_339"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Database Design Principles",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_343"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Prof. Bob Johnson",
+      "prediction_value": "Bob Johnson",
+      "similarity_score": 0.6470588235294117,
+      "details": {
+        "reason": "below threshold (0.647 < 0.8)"
+      },
+      "doc_id": "doc_343"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_346"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00352",
+      "prediction_value": "DOC-00353",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_352"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Web React",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_354"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00359",
+      "prediction_value": "DOC-00360",
+      "similarity_score": 0.7777777777777778,
+      "details": {
+        "reason": "below threshold (0.778 < 0.9)"
+      },
+      "doc_id": "doc_359"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Database Design Principles",
+      "prediction_value": "Advanced Python Programming",
+      "similarity_score": 0.2222222222222222,
+      "details": {
+        "reason": "below threshold (0.222 < 0.7)"
+      },
+      "doc_id": "doc_359"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00362",
+      "prediction_value": "DOC-00363",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_362"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Database Design Principles",
+      "prediction_value": "Advanced Python Programming",
+      "similarity_score": 0.2222222222222222,
+      "details": {
+        "reason": "below threshold (0.222 < 0.7)"
+      },
+      "doc_id": "doc_364"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00365",
+      "prediction_value": "DOC-00366",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_365"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00369",
+      "prediction_value": "DOC-00370",
+      "similarity_score": 0.7777777777777778,
+      "details": {
+        "reason": "below threshold (0.778 < 0.9)"
+      },
+      "doc_id": "doc_369"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Prof. Bob Johnson",
+      "prediction_value": "Bob Johnson",
+      "similarity_score": 0.6470588235294117,
+      "details": {
+        "reason": "below threshold (0.647 < 0.8)"
+      },
+      "doc_id": "doc_369"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_370"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Database Design Principles",
+      "similarity_score": 0.07692307692307687,
+      "details": {
+        "reason": "below threshold (0.077 < 0.7)"
+      },
+      "doc_id": "doc_374"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_375"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00378",
+      "prediction_value": "DOC-00379",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_378"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00380",
+      "prediction_value": "DOC-00381",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_380"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00383",
+      "prediction_value": "DOC-00384",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_383"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00396",
+      "prediction_value": "DOC-00397",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_396"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_398"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00399",
+      "prediction_value": "DOC-00400",
+      "similarity_score": 0.6666666666666667,
+      "details": {
+        "reason": "below threshold (0.667 < 0.9)"
+      },
+      "doc_id": "doc_399"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Web React",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_399"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Dr. Alice Smith",
+      "prediction_value": "Alice Smith",
+      "similarity_score": 0.7333333333333334,
+      "details": {
+        "reason": "below threshold (0.733 < 0.8)"
+      },
+      "doc_id": "doc_400"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00406",
+      "prediction_value": "DOC-00407",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_406"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Dr. Alice Smith",
+      "prediction_value": "Alice Smith",
+      "similarity_score": 0.7333333333333334,
+      "details": {
+        "reason": "below threshold (0.733 < 0.8)"
+      },
+      "doc_id": "doc_410"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Web Development with React",
+      "similarity_score": 0.1875,
+      "details": {
+        "reason": "below threshold (0.188 < 0.7)"
+      },
+      "doc_id": "doc_411"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Dr. Alice Smith",
+      "prediction_value": "Alice Smith",
+      "similarity_score": 0.7333333333333334,
+      "details": {
+        "reason": "below threshold (0.733 < 0.8)"
+      },
+      "doc_id": "doc_414"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00415",
+      "prediction_value": "DOC-00416",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_415"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00416",
+      "prediction_value": "DOC-00417",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_416"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00417",
+      "prediction_value": "DOC-00418",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_417"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00420",
+      "prediction_value": "DOC-00421",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_420"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Web React",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_420"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_424"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Advanced Python Programming",
+      "prediction_value": "Web Development with React",
+      "similarity_score": 0.07407407407407407,
+      "details": {
+        "reason": "below threshold (0.074 < 0.7)"
+      },
+      "doc_id": "doc_425"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Web React",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_428"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_429"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_433"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Dr. Alice Smith",
+      "prediction_value": "Alice Smith",
+      "similarity_score": 0.7333333333333334,
+      "details": {
+        "reason": "below threshold (0.733 < 0.8)"
+      },
+      "doc_id": "doc_436"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Database Design Principles",
+      "prediction_value": "Web Development with React",
+      "similarity_score": 0.07692307692307687,
+      "details": {
+        "reason": "below threshold (0.077 < 0.7)"
+      },
+      "doc_id": "doc_437"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00438",
+      "prediction_value": "DOC-00439",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_438"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Dr. Alice Smith",
+      "prediction_value": "Alice Smith",
+      "similarity_score": 0.7333333333333334,
+      "details": {
+        "reason": "below threshold (0.733 < 0.8)"
+      },
+      "doc_id": "doc_438"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_440"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Dr. Alice Smith",
+      "prediction_value": "Alice Smith",
+      "similarity_score": 0.7333333333333334,
+      "details": {
+        "reason": "below threshold (0.733 < 0.8)"
+      },
+      "doc_id": "doc_442"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Dr. Alice Smith",
+      "prediction_value": "Alice Smith",
+      "similarity_score": 0.7333333333333334,
+      "details": {
+        "reason": "below threshold (0.733 < 0.8)"
+      },
+      "doc_id": "doc_447"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Dr. Alice Smith",
+      "prediction_value": "Alice Smith",
+      "similarity_score": 0.7333333333333334,
+      "details": {
+        "reason": "below threshold (0.733 < 0.8)"
+      },
+      "doc_id": "doc_450"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Advanced Python Programming",
+      "prediction_value": "Introduction to Machine Learning",
+      "similarity_score": 0.21875,
+      "details": {
+        "reason": "below threshold (0.219 < 0.7)"
+      },
+      "doc_id": "doc_451"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00454",
+      "prediction_value": "DOC-00455",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_454"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00457",
+      "prediction_value": "DOC-00458",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_457"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00462",
+      "prediction_value": "DOC-00463",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_462"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00463",
+      "prediction_value": "DOC-00464",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_463"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Database Design Principles",
+      "similarity_score": 0.07692307692307687,
+      "details": {
+        "reason": "below threshold (0.077 < 0.7)"
+      },
+      "doc_id": "doc_463"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00465",
+      "prediction_value": "DOC-00466",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_465"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_465"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Prof. Bob Johnson",
+      "prediction_value": "Bob Johnson",
+      "similarity_score": 0.6470588235294117,
+      "details": {
+        "reason": "below threshold (0.647 < 0.8)"
+      },
+      "doc_id": "doc_465"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Data Fundamentals",
+      "similarity_score": 0.6799999999999999,
+      "details": {
+        "reason": "below threshold (0.680 < 0.7)"
+      },
+      "doc_id": "doc_469"
+    },
+    {
+      "field_path": "author",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Dr. Alice Smith",
+      "prediction_value": "Alice Smith",
+      "similarity_score": 0.7333333333333334,
+      "details": {
+        "reason": "below threshold (0.733 < 0.8)"
+      },
+      "doc_id": "doc_472"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_474"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Web React",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_475"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00477",
+      "prediction_value": "DOC-00478",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_477"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Introduction Learning",
+      "similarity_score": 0.65625,
+      "details": {
+        "reason": "below threshold (0.656 < 0.7)"
+      },
+      "doc_id": "doc_477"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00478",
+      "prediction_value": "DOC-00479",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_478"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Database Design Principles",
+      "prediction_value": "Advanced Python Programming",
+      "similarity_score": 0.2222222222222222,
+      "details": {
+        "reason": "below threshold (0.222 < 0.7)"
+      },
+      "doc_id": "doc_479"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Data Science Fundamentals",
+      "prediction_value": "Introduction to Machine Learning",
+      "similarity_score": 0.21875,
+      "details": {
+        "reason": "below threshold (0.219 < 0.7)"
+      },
+      "doc_id": "doc_486"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00489",
+      "prediction_value": "DOC-00490",
+      "similarity_score": 0.7777777777777778,
+      "details": {
+        "reason": "below threshold (0.778 < 0.9)"
+      },
+      "doc_id": "doc_489"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00490",
+      "prediction_value": "DOC-00491",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_490"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Introduction to Machine Learning",
+      "prediction_value": "Web Development with React",
+      "similarity_score": 0.1875,
+      "details": {
+        "reason": "below threshold (0.188 < 0.7)"
+      },
+      "doc_id": "doc_490"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Advanced Python Programming",
+      "similarity_score": 0.07407407407407407,
+      "details": {
+        "reason": "below threshold (0.074 < 0.7)"
+      },
+      "doc_id": "doc_491"
+    },
+    {
+      "field_path": "doc_id",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "DOC-00495",
+      "prediction_value": "DOC-00496",
+      "similarity_score": 0.8888888888888888,
+      "details": {
+        "reason": "below threshold (0.889 < 0.9)"
+      },
+      "doc_id": "doc_495"
+    },
+    {
+      "field_path": "title",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Web Development with React",
+      "prediction_value": "Web React",
+      "similarity_score": 0.34615384615384615,
+      "details": {
+        "reason": "below threshold (0.346 < 0.7)"
+      },
+      "doc_id": "doc_498"
+    }
+  ],
+  "evaluation_summary": {
+    "total_documents_processed": 500,
+    "total_evaluation_time": 0.6854231357574463,
+    "documents_per_second": 729.4763977400045,
+    "error_count": 0,
+    "error_rate": 0.0,
+    "target_schema": "Document"
+  },
+  "errors": [],
+  "metadata": {
+    "saved_at": "2026-06-30 21:11:20 UTC",
+    "evaluator_config": {
+      "verbose": true,
+      "document_non_matches": true,
+      "elide_errors": false,
+      "individual_results_jsonl": "individual_results.jsonl"
+    }
+  }
+}

@@ -12,12 +12,28 @@ on:
 permissions:
   contents: read
 
+# Cancel any superseded run for the same PR or branch. The scheduled and
+# workflow_dispatch runs always get their own group so they don't cancel
+# each other or PR runs.
+concurrency:
+  group: examples-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   run-examples:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       EXAMPLES_RUN_MODE: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'scheduled' || 'pr' }}
+      # Scheduled and workflow_dispatch runs actually execute the
+      # long-running BERT demo, which needs the ``bert`` extra (torch,
+      # bert-score, evaluate). PR runs skip that example, so they don't
+      # pay for the install. The ``--no-default-groups`` flag suppresses
+      # the project's ``dev`` default group (which would pull in docs and
+      # lint deps) — CI only needs the ``test`` group plus the extras
+      # used by examples at runtime.
+      UV_SYNC_GROUPS: --group test
+      UV_SYNC_EXTRAS: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '--extra llm --extra bert' || '--extra llm' }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up uv
@@ -25,12 +41,21 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: uv sync --group test --extra llm --frozen
+        run: uv sync --no-default-groups ${{ env.UV_SYNC_GROUPS }} ${{ env.UV_SYNC_EXTRAS }} --frozen
       - name: Run examples
         run: uv run pytest examples/ --nbmake --nbmake-timeout=300 --junitxml=examples-results.xml -v
       - name: Write job summary
         if: always()
-        run: uv run python .github/scripts/examples_summary.py examples-results.xml >> "$GITHUB_STEP_SUMMARY"
+        # Redirect the parser's stderr to the Actions log so any error in
+        # the summary script is diagnosable; stdout (the Markdown table)
+        # goes to the step summary. ``set -o pipefail`` ensures a parser
+        # error surfaces as a failed step, but the script's own
+        # ``main()`` returns 0 on parse failure so the workflow's exit
+        # status still reflects the pytest run, not the summary step.
+        run: |
+          set -o pipefail
+          uv run python .github/scripts/examples_summary.py examples-results.xml \
+            >> "$GITHUB_STEP_SUMMARY" 2> >(tee -a "$GITHUB_STEP_SUMMARY" >&2)
       - name: Upload JUnit results
         if: always()
         uses: actions/upload-artifact@v4

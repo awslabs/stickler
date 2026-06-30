@@ -124,6 +124,8 @@ uv run pytest examples/ --nbmake
 
 This is the same command CI runs. Local and CI invocations differ only in environment, not in test selection or runner logic — the only deltas are CI-side output formatting (JUnit XML, the GitHub Actions job summary, and the uploaded artifact).
 
+Scripts are executed as subprocesses (`python <script>.py`), each with its **own directory** as the working directory, so any incidental file output (HTML reports, JSON dumps, model caches) lands next to the script rather than dirtying the repo root when you run `uv run pytest examples/` locally. Notebooks run via `nbmake` in the standard kernel cwd.
+
 When you run the command without AWS credentials configured, the local invocation skips exactly the same set of credentialed examples that CI skips on the GitHub-hosted runner. Skipped paths are listed in pytest's standard summary section, e.g.:
 
 ```
@@ -198,12 +200,14 @@ To add a new long-running example:
 1. Measure typical wall-clock on `ubuntu-latest` (e.g., from a recent workflow run). If it consistently exceeds 5 minutes, the example qualifies.
 2. Add the example's repo-relative POSIX path to `LONG_RUNNING_EXAMPLES` in `examples/conftest.py`.
 3. Append a row to the table above describing the cost driver (model download, large input fixture, expensive computation).
-4. Verify locally: `uv run pytest examples/ --nbmake --collect-only -q` should show the new path as `SKIPPED`, and `EXAMPLES_RUN_MODE=scheduled uv run pytest examples/ --nbmake --collect-only -q` should include it.
+4. If the example pulls in a heavy optional dependency (e.g., `torch`, `boto3`), add the corresponding extra to the **scheduled-mode install line** in `.github/workflows/examples.yaml` (`UV_SYNC_EXTRAS`). PR runs deliberately do not install these — the long-running example is skipped before it ever imports.
+5. Verify locally: `uv run pytest examples/ --nbmake --collect-only -q` should show the new path as `SKIPPED`, and `EXAMPLES_RUN_MODE=scheduled uv run pytest examples/ --nbmake --collect-only -q` should include it.
 
 ### Runtime budget and scheduling
 
 - **PR runtime budget**: 10 minutes wall-clock on the standard GitHub-hosted Ubuntu runner. Examples that don't fit are added to `LONG_RUNNING_EXAMPLES` and run on the daily schedule instead.
 - **Daily scheduled run**: 07:00 UTC. The scheduled run executes every example, including those excluded from PR runs.
+- **Dependency install differs by mode.** PR runs install only `--group test --extra llm` (the minimum needed to collect every example and execute every non-skipped one). Scheduled and `workflow_dispatch` runs additionally install `--extra bert` because the BERT demo executes in those modes; if you add a new long-running example that needs more extras, extend `UV_SYNC_EXTRAS` in `.github/workflows/examples.yaml`.
 
 ### Why we skip credentialed examples instead of mocking or wiring OIDC
 

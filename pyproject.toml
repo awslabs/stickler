@@ -52,6 +52,8 @@ dev = [
     "matplotlib>=3.8.0",
     # Executes example notebooks end-to-end as pytest items in CI.
     "nbmake>=1.5.0",
+    # Hardened XML parser for .github/scripts/examples_summary.py.
+    "defusedxml>=0.7.1",
 ]
 llm = [
     "strands-agents>=1.0.0,<=1.16.0"
@@ -104,6 +106,8 @@ test = [
     "matplotlib>=3.8.0",
     # Executes example notebooks end-to-end as pytest items in CI.
     "nbmake>=1.5.0",
+    # Hardened XML parser for .github/scripts/examples_summary.py.
+    "defusedxml>=0.7.1",
 ]
 lint = [
     "ruff>=0.14.10",
@@ -127,4 +131,20 @@ python_functions = ["test_*"]
 addopts = ["-v", "--tb=short"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+
+[tool.coverage.run]
+# Track coverage for the importable package, the example-execution
+# conftest, and the CI helper scripts (which live outside ``src/`` but
+# are exercised by ``tests/``). Keeping them listed explicitly means
+# ``coverage report`` highlights gaps in those files instead of silently
+# omitting them.
+source = ["src", "examples/conftest.py", ".github/scripts"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
 ]
