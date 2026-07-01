@@ -150,11 +150,14 @@ class ConfigurationHelper:
                     ):
                         return True
 
-            # Handle Optional[List[SomeType]] annotations (Union[List[SomeType], NoneType])
-            elif get_origin(annotation) is Union:
-                union_args = get_args(annotation)
-                # Look for List[SomeType] within the Union
-                for union_arg in union_args:
+            # Handle Optional[List[SomeType]] in both typing.Union and PEP 604
+            # (X | None) spellings. get_origin/get_args normalize both, so a
+            # single branch keeps them at parity by construction. Like the
+            # legacy typing.Union branch, this only recognizes list-wrapped
+            # models: a bare Model | None is left to fall through to
+            # LevenshteinComparator, matching Optional[Model] behavior.
+            elif get_origin(annotation) in (Union, types.UnionType):
+                for union_arg in get_args(annotation):
                     if get_origin(union_arg) is list:
                         list_args = get_args(union_arg)
                         if list_args:
@@ -163,22 +166,6 @@ class ConfigurationHelper:
                                 element_type, StructuredModel
                             ):
                                 return True
-
-            # Handle PEP 604 union types (list[X] | None, X | None)
-            elif isinstance(annotation, types.UnionType):
-                for arg in get_args(annotation):
-                    if arg is type(None):
-                        continue
-                    if get_origin(arg) is list:
-                        list_args = get_args(arg)
-                        if list_args:
-                            element_type = list_args[0]
-                            if inspect.isclass(element_type) and issubclass(
-                                element_type, StructuredModel
-                            ):
-                                return True
-                    elif inspect.isclass(arg) and issubclass(arg, StructuredModel):
-                        return True
 
             # Handle direct StructuredModel annotations
             elif inspect.isclass(annotation):
@@ -481,27 +468,10 @@ class ConfigurationHelper:
                 ):
                     return True
 
-            # Handle Optional[List[StructuredModel]] annotations (Union[List[StructuredModel], NoneType])
-            elif get_origin(annotation) is Union:
-                union_args = get_args(annotation)
-                none_type = type(None)
-                # Look for List[StructuredModel] within the Union
-                for arg in union_args:
-                    if arg != none_type and get_origin(arg) is list:
-                        list_args = get_args(arg)
-                        if (
-                            list_args
-                            and inspect.isclass(list_args[0])
-                            and issubclass(list_args[0], StructuredModel)
-                        ):
-                            return True
-
-            # Handle PEP 604 union types (list[X] | None)
-            elif isinstance(annotation, types.UnionType):
-                none_type = type(None)
+            # Handle Optional[List[StructuredModel]] in both typing.Union and
+            # PEP 604 (list[X] | None) spellings via normalized get_origin.
+            elif get_origin(annotation) in (Union, types.UnionType):
                 for arg in get_args(annotation):
-                    if arg is none_type:
-                        continue
                     if get_origin(arg) is list:
                         list_args = get_args(arg)
                         if (
@@ -538,26 +508,10 @@ class ConfigurationHelper:
                 ):
                     return args[0]
 
-            # Handle Optional[List[StructuredModel]]
-            elif get_origin(annotation) is Union:
-                union_args = get_args(annotation)
-                none_type = type(None)
-                for arg in union_args:
-                    if arg != none_type and get_origin(arg) is list:
-                        list_args = get_args(arg)
-                        if (
-                            list_args
-                            and inspect.isclass(list_args[0])
-                            and issubclass(list_args[0], StructuredModel)
-                        ):
-                            return list_args[0]
-
-            # Handle PEP 604 union types (list[X] | None)
-            elif isinstance(annotation, types.UnionType):
-                none_type = type(None)
+            # Handle Optional[List[StructuredModel]] in both typing.Union and
+            # PEP 604 (list[X] | None) spellings via normalized get_origin.
+            elif get_origin(annotation) in (Union, types.UnionType):
                 for arg in get_args(annotation):
-                    if arg is none_type:
-                        continue
                     if get_origin(arg) is list:
                         list_args = get_args(arg)
                         if (
