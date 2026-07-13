@@ -929,3 +929,92 @@ class TestPageAwareBulkAccumulator:
         evaluator.update(gt, pred)
         bm = evaluator.compute().accumulator_metrics["bbox_map_metrics"]
         assert bm["mean_ap"] == 1.0
+
+
+class TestPageAwareMultiPageAggregate:
+    """Multi-field documents spread across pages.
+
+    The single-field page tests above pin the per-box decision (same-page hit,
+    wrong-page miss). These pin the *aggregate* mAP over several fields on
+    different pages in one document — the realistic multi-page case. Coordinates
+    are identical for every field so the page number is the only variable: any
+    deviation from the expected mean_ap can only come from page handling.
+    """
+
+    # Same box reused everywhere; only the trailing page element differs.
+    _BOX = [[0, 0], [10, 10]]
+
+    def _rows(self, keys):
+        """Matched field_comparisons rows (no reordering) for the given keys."""
+        return [{"expected_key": k, "actual_key": k, "match": True} for k in keys]
+
+    def test_mixed_pages_aggregate(self):
+        """Half the fields on the right page, half on the wrong page -> mAP 0.5."""
+        calc = MAPCalculator(iou_thresholds=0.5, page_aware=True)
+        # Four fields keyed by (page, field); a,b on page 1, c,d on page 2.
+        gt = {
+            "p1.a": self._BOX + [1],
+            "p1.b": self._BOX + [1],
+            "p2.c": self._BOX + [2],
+            "p2.d": self._BOX + [2],
+        }
+        # a,c predicted on the correct page (hit); b,d on the wrong page (miss).
+        pred = {
+            "p1.a": self._BOX + [1],
+            "p1.b": self._BOX + [2],
+            "p2.c": self._BOX + [2],
+            "p2.d": self._BOX + [1],
+        }
+        conf = {k: 0.9 for k in pred}
+        ex = calc.extract_from_dicts(self._rows(gt), gt, pred, conf)
+        metrics = calc.compute_metrics(ex.keyed_pairs, 4, 4)
+        # Each field path is its own class: two score AP 1.0, two AP 0.0.
+        assert metrics["mean_ap"] == 0.5
+        assert metrics["fields"]["p1.a"]["ap"] == 1.0
+        assert metrics["fields"]["p1.b"]["ap"] == 0.0
+        assert metrics["fields"]["p2.c"]["ap"] == 1.0
+        assert metrics["fields"]["p2.d"]["ap"] == 0.0
+
+    def test_all_correct_pages_aggregate_is_one(self):
+        """Every field on its correct page -> mAP 1.0 across all pages."""
+        calc = MAPCalculator(iou_thresholds=0.5, page_aware=True)
+        gt = {
+            "p1.a": self._BOX + [1],
+            "p2.b": self._BOX + [2],
+            "p3.c": self._BOX + [3],
+        }
+        pred = {k: list(v) for k, v in gt.items()}
+        conf = {k: 0.9 for k in pred}
+        ex = calc.extract_from_dicts(self._rows(gt), gt, pred, conf)
+        assert calc.compute_metrics(ex.keyed_pairs, 3, 3)["mean_ap"] == 1.0
+
+    def test_all_wrong_pages_aggregate_is_zero(self):
+        """Perfect coordinates but every field on the wrong page -> mAP 0.0."""
+        calc = MAPCalculator(iou_thresholds=0.5, page_aware=True)
+        gt = {
+            "p1.a": self._BOX + [1],
+            "p2.b": self._BOX + [2],
+            "p3.c": self._BOX + [3],
+        }
+        # Shift each prediction to a different page than its ground truth.
+        pred = {
+            "p1.a": self._BOX + [2],
+            "p2.b": self._BOX + [3],
+            "p3.c": self._BOX + [1],
+        }
+        conf = {k: 0.9 for k in pred}
+        ex = calc.extract_from_dicts(self._rows(gt), gt, pred, conf)
+        assert calc.compute_metrics(ex.keyed_pairs, 3, 3)["mean_ap"] == 0.0
+
+    def test_same_coords_wrong_pages_would_hit_when_unaware(self):
+        """Control: the same all-wrong-page doc scores 1.0 when page-unaware.
+
+        Guards against a regression where page-awareness silently stops being
+        applied — without it, identical coordinates hit regardless of page.
+        """
+        calc = MAPCalculator(iou_thresholds=0.5)  # page_aware defaults False
+        gt = {"p1.a": self._BOX + [1], "p2.b": self._BOX + [2]}
+        pred = {"p1.a": self._BOX + [2], "p2.b": self._BOX + [1]}
+        conf = {k: 0.9 for k in pred}
+        ex = calc.extract_from_dicts(self._rows(gt), gt, pred, conf)
+        assert calc.compute_metrics(ex.keyed_pairs, 2, 2)["mean_ap"] == 1.0
