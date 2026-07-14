@@ -1,19 +1,29 @@
 name: Code Quality
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       matrix:
         python-version: ["3.12"]
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - name: Set up uv
         uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
@@ -22,4 +32,3 @@ jobs:
         run: uv sync --group lint --frozen
       - name: Lint with Ruff
         run: uv run ruff check --output-format=github .
-        continue-on-error: true
