@@ -115,6 +115,10 @@ docs = [
 
 [tool.uv]
 default-groups = ["dev"]
+# Dependency cooldown: wait 7 days before resolving newly published package
+# versions to mitigate supply-chain attacks via freshly compromised releases.
+# https://docs.astral.sh/uv/concepts/resolution/#dependency-cooldowns
+exclude-newer = "7 days"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
