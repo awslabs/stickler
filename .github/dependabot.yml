@@ -1,5 +1,6 @@
 # Dependabot version updates.
-# Note: dependabot only reads this file from the default branch (main).
+# Note: dependabot only reads this file from the repository's default branch
+# (currently `dev`).
 # Grouped security updates (e.g. the "uv group" PRs) are enabled via repo
 # settings and are independent of this file.
 version: 2
@@ -10,6 +11,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Wait 7 days before proposing newly published action versions
+    # (supply-chain cooldown, mirrors [tool.uv].exclude-newer).
+    cooldown:
+      default-days: 7
     target-branch: "dev"
     commit-message:
       prefix: "chore(deps)"
