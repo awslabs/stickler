@@ -14,10 +14,14 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering",
     "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
 ]
 requires-python = ">=3.12"
 
@@ -77,13 +81,18 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-stickler = ["reporting/html/styling/*.css", "reporting/html/interactive/*.js"]
+stickler = [
+    "py.typed",
+    "reporting/html/styling/*.css",
+    "reporting/html/interactive/*.js",
+]
 
 [tool.bandit]
 exclude_dirs = ["tests"]
 
 [build-system]
-requires = ["setuptools >= 61.0", "wheel"]
+# setuptools >= 77.0.3 is required for the PEP 639 SPDX `license` string above.
+requires = ["setuptools>=77.0.3"]
 build-backend = "setuptools.build_meta"
 
 # uv-native dependency groups (for `uv sync`)
