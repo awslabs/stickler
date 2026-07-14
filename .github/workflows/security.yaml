@@ -38,8 +38,8 @@ jobs:
           uv run --with "bandit[toml]" bandit -r src/ -f txt
       - name: Install ASH
         run: |
-          # Pinned to the commit for v3.1.2 (mutable git tags can be repointed).
-          uv tool install git+https://github.com/awslabs/automated-security-helper.git@e73de85c1db7f443276370c4a6f7501815756780
+          # Mutable git tags can be repointed; pin to the release commit.
+          uv tool install git+https://github.com/awslabs/automated-security-helper.git@e73de85c1db7f443276370c4a6f7501815756780 # v3.1.2
       - name: Run ASH Security Scan
         continue-on-error: true
         run: |
