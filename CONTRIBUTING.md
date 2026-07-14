@@ -43,10 +43,10 @@ For comprehensive documentation, see:
 
 | Guide | Description |
 |-------|-------------|
-| [Development Setup](docs/docs/Contributing/development-setup.md) | Full environment configuration |
-| [Testing Guide](docs/docs/Contributing/testing-guide.md) | Test patterns and best practices |
-| [Code Style](docs/docs/Contributing/code-style.md) | Naming conventions and linting |
-| [Pull Request Guide](docs/docs/Contributing/pull-request-guide.md) | Branch workflow and PR process |
+| [Development Setup](docs/docs/Getting-Started/Contributing/development-setup.md) | Full environment configuration |
+| [Testing Guide](docs/docs/Getting-Started/Contributing/testing-guide.md) | Test patterns and best practices |
+| [Code Style](docs/docs/Getting-Started/Contributing/code-style.md) | Naming conventions and linting |
+| [Pull Request Guide](docs/docs/Getting-Started/Contributing/pull-request-guide.md) | Branch workflow and PR process |
 
 ## Quick Reference
 
@@ -85,7 +85,7 @@ When contributing documentation:
 - Test locally with `make docs` before submitting PR
 - Documentation PRs should also target `dev` branch
 
-See the [Building Documentation](docs/docs/Contributing/development-setup.md#building-documentation) section for detailed information.
+See the [Building Documentation](docs/docs/Getting-Started/Contributing/development-setup.md#building-documentation) section for detailed information.
 
 ---
 

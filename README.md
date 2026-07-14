@@ -2,6 +2,8 @@
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/awslabs/stickler)
 
+**Documentation**: [awslabs.github.io/stickler](https://awslabs.github.io/stickler/)
+
 When in the course of human events, it becomes necessary to evaluate structured outputs from generative AI systems, we must acknowledge that traditional evaluation treats all fields equally. But **not all fields are created equal**.
 
 **Stickler is a Python library that enables complex structured JSON comparison and evaluation** that lets you focus on the fields your customer actually cares about, to answer the question: "Is it doing a good job?" 
@@ -217,7 +219,7 @@ result = ground_truth.compare_with(prediction)
 - Production-ready JSON-based evaluation pipeline
 - Full Pydantic compatibility with comparison capabilities
 
-See [`examples/scripts/json_to_evaluation_demo.py`](examples/scripts/json_to_evaluation_demo.py) for a complete working example and [`docs/StructuredModel_Dynamic_Creation.md`](docs/StructuredModel_Dynamic_Creation.md) for comprehensive documentation.
+See [`examples/scripts/json_to_evaluation_demo.py`](examples/scripts/json_to_evaluation_demo.py) for a complete working example and the [Dynamic Models guide](https://awslabs.github.io/stickler/Advanced/dynamic-models/) for comprehensive documentation.
 
 ## JSON Schema Extensions: `x-aws-stickler-*` Complete Reference
 
@@ -681,7 +683,7 @@ print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # ~1.0 - match
 ### Additional Resources
 
 - **Complete examples**: [`examples/scripts/json_schema_demo.py`](examples/scripts/json_schema_demo.py)
-- **Dynamic model creation**: [`docs/StructuredModel_Dynamic_Creation.md`](docs/StructuredModel_Dynamic_Creation.md)
+- **Dynamic model creation**: [Dynamic Models guide](https://awslabs.github.io/stickler/Advanced/dynamic-models/)
 - **Comparator details**: [`src/stickler/comparators/Comparators.md`](src/stickler/comparators/Comparators.md)
 
 ## Examples
