@@ -1,5 +1,6 @@
 # Dependabot version updates.
-# Note: dependabot only reads this file from the default branch (main).
+# Note: dependabot only reads this file from the repository's default branch
+# (currently `dev`).
 # Grouped security updates (e.g. the "uv group" PRs) are enabled via repo
 # settings and are independent of this file.
 version: 2

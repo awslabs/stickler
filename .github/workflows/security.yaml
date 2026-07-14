@@ -1,13 +1,21 @@
 name: Security Scan
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   security:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
     strategy:
@@ -16,6 +24,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - name: Set up uv
         uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
@@ -28,7 +38,8 @@ jobs:
           uv run --with "bandit[toml]" bandit -r src/ -f txt
       - name: Install ASH
         run: |
-          uv tool install git+https://github.com/awslabs/automated-security-helper.git@v3.1.2
+          # Pinned to the commit for v3.1.2 (mutable git tags can be repointed).
+          uv tool install git+https://github.com/awslabs/automated-security-helper.git@e73de85c1db7f443276370c4a6f7501815756780
       - name: Run ASH Security Scan
         continue-on-error: true
         run: |

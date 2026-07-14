@@ -7,10 +7,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Build distribution
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: read
 
@@ -35,6 +40,7 @@ jobs:
     needs:
     - build
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     environment:
       name: release
       url: https://pypi.org/p/stickler-eval
@@ -54,6 +60,7 @@ jobs:
     needs:
     - build
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     environment:
       name: testpypi
       url: https://test.pypi.org/p/stickler-eval
