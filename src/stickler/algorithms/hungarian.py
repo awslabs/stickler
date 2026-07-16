@@ -223,12 +223,17 @@ class HungarianMatcher:
                     "f1": 1.0,
                 }
             else:
-                # score == 0: items have no similarity, so treat as both
-                # unmatched (FN + FA) rather than as a paired-but-mismatched
-                # item (FD). This is consistent with the StructuredListComparator
-                # behavior, which excludes zero-similarity pairings from the
-                # matched set so that unmatched_gt and unmatched_pred each
-                # contribute to FN and FA respectively.
+                # score == 0: this single-item shortcut drops the pair, so the
+                # two items are counted as unmatched (one FN + one FA) rather
+                # than as a below-threshold matched pair (FD).
+                #
+                # NOTE: this is only the len==1 vs len==1 fast path. The general
+                # multi-item path below keeps every assigned pair (including
+                # zero-similarity ones), and StructuredListComparator therefore
+                # classifies a below-threshold matched pair as FD regardless of
+                # similarity. As a result a 1-item list and a 2-item list can
+                # classify the same zero-similarity situation differently; see
+                # test_zero_similarity_pair_is_fd_not_unmatched.
                 return {
                     "matched_pairs": [],
                     "tp": 0,

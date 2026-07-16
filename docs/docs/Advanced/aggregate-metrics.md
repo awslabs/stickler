@@ -393,9 +393,13 @@ A handful of behaviors trip up users when they first start consuming `aggregate`
 
 For `List[StructuredModel]` parents, `aggregate` is **not** derived from the parent's `overall` — it is a separately-accumulated rollup that recurses through every Hungarian-paired item, regardless of `match_threshold`. The object-level `overall` (TP/FD/FA/FN per item) is threshold-gated; `aggregate` pre-seeds its leaf counts from the full ungated set of pairs and then sums upward. If your numbers don't add up, this is almost always why — see the FD-recursion table in [Example 2](#example-2-list-of-structuredmodel-fd-recursion-and-unmatched-items) and the [threshold-gated drill-down explanation](threshold-gated-evaluation.md).
 
-### Zero-similarity item pairs are unmatched, not FD {#zero-similarity-pairs}
+### Below-threshold item pairs are FD, including at similarity 0.0 {#zero-similarity-pairs}
 
-Hungarian can return a "pairing" with similarity exactly `0.0` (e.g., two list items that share no signal at all). At the **object level**, those pairs are treated as unmatched and contribute one FN to GT plus one FA to Pred — not a single FD. Only pairs with `0.0 < similarity < match_threshold` count as FD. If you're tuning `match_threshold` and expect to see FD for very different items, you'll instead see FN+FA. See `_calculate_object_level_metrics` in `structured_list_comparator.py` (the `elif similarity > 0.0:` branch around line 205).
+A pair the Hungarian algorithm assigns is a match. `match_threshold` only splits assigned pairs into TP (`similarity >= match_threshold`) and FD (`similarity < match_threshold`) — it does not un-match them. For multi-item lists this holds all the way down to `similarity == 0.0`: a pair sharing no signal at all is still an assigned match, so it counts as one FD, not one FN plus one FA. Only genuinely *unpaired* items (extra GT or extra Pred beyond the matched set) become FN/FA.
+
+This keeps object-level classification independent of the comparator's similarity floor. Exact-match comparators bottom out at `0.0` for any mismatch, while smooth comparators (Levenshtein, semantic) rarely hit exactly `0.0`; treating `0.0` as a special "unmatched" case would make identical mismatches classify differently depending only on which comparator you picked. Whether FD counts against recall is a separate, explicit choice — the `recall_with_fd` knob (see [below](#recall-with-fd)). See `_calculate_object_level_metrics` in `structured_list_comparator.py`.
+
+**One exception — single-item lists.** `HungarianMatcher.calculate_metrics` has a `len == 1` vs `len == 1` fast path that *drops* a zero-similarity pair, so a one-item GT list compared against a one-item Pred list with no overlap yields one FN + one FA rather than one FD. This predates the FD convention above and applies to both primitive and single-item structured lists. It means a 1-item and a 2-item list can classify the same zero-similarity situation differently; if that matters for your corpus, be aware of the arity dependence.
 
 ### Empty list comparisons {#empty-lists}
 

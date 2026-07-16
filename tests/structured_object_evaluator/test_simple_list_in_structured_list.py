@@ -150,10 +150,14 @@ def test_simple_list_extra_elements():
 def test_simple_list_no_match():
     """Completely different elements — objects don't match, classified at object level.
 
-    With match_threshold=0.3 and completely different single-character tags,
-    the object similarity is ~0 which is below even 0.3. The objects get
-    paired by Hungarian but classified as unmatched (FN + FA) because the
-    similarity is effectively zero.
+    One item per side with completely different single-character tags gives
+    an object similarity of 0. This is the single-item (``len == 1`` vs
+    ``len == 1``) shortcut in ``HungarianMatcher.calculate_metrics``: at
+    exactly zero similarity it *drops* the pair rather than assigning it, so
+    the two items are counted as unmatched (1 FN + 1 FA). Note this differs
+    from the general multi-item path, where a below-threshold assigned pair
+    (including similarity 0.0) is FD; see
+    ``test_zero_similarity_pair_is_fd_not_unmatched``.
     """
     gt = TaggedContainer(items=[TaggedItem(tags=["X", "Y"])])
     pred = TaggedContainer(items=[TaggedItem(tags=["A", "B"])])

@@ -376,7 +376,7 @@ class TestEcommerceOrdersAggregateComprehensive:
         assert cm["fields"]["Products"]["fields"]["Product_Id"]["aggregate"]["fn"] == 0, f'Expected Product_Id aggregate FN=0, got {cm["fields"]["Products"]["fields"]["Product_Id"]["aggregate"]["fn"]}'
 
         # gt_json["Products"][0]["Product_Category"], pred_json["Products"][0]["Product_Category"]:  1 true positive
-        # gt_json["Products"][1]["Product_Category"], pred_json["Products"][1]["Product_Category"]:  zero similarity → both items unmatched (1 FN + 1 FA)
+        # gt_json["Products"][1]["Product_Category"], pred_json["Products"][1]["Product_Category"]:  single-item list, zero similarity → single-item shortcut drops the pair → both items unmatched (1 FN + 1 FA)
         # Category_Name fields should be ignored since CategoryOnly model only defines Category_Code field, not Category_Name field
         assert cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["tp"] == 1, f'Expected Product_Category aggregate TP=1, got {cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["tp"]}'
         assert cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["fa"] == 1, f'Expected Product_Category aggregate FA=1, got {cm["fields"]["Products"]["fields"]["Product_Category"]["aggregate"]["fa"]}'

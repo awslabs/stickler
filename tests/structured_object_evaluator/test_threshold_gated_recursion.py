@@ -350,19 +350,24 @@ class _ZeroSimContainer(StructuredModel):
     items: List[_ZeroSimItem] = ComparableField(weight=1.0)
 
 
-def test_zero_similarity_pair_is_unmatched_not_fd():
-    """A Hungarian-matched pair with similarity exactly 0.0 must be FN+FA, not FD.
+def test_zero_similarity_pair_is_fd_not_unmatched():
+    """A Hungarian-matched pair with similarity exactly 0.0 is FD, not FN+FA.
 
-    Pinning this catches a mutation of ``> 0.0`` to ``>= 0.0`` in
-    ``StructuredListComparator``. Without this filter, Hungarian's
-    bookkeeping would call a totally non-overlapping pair an FD
-    ("matched but below threshold"), which is misleading: the items
-    share no fields at all, so they ought to surface as one missing
-    GT and one spurious prediction.
+    A pair the Hungarian algorithm assigns is a match; the threshold only
+    decides TP vs FD, it does not un-match the pair. This holds regardless
+    of similarity magnitude — a pair at 0.0 is still an assigned match and
+    therefore FD (below threshold), not one FN + one FA. Whether that FD
+    counts against recall is a separate policy choice exposed via the
+    ``recall_with_fd`` knob.
+
+    Pinning this guards against re-introducing a zero-similarity special
+    case that would split assigned pairs into FN+FA and make object-level
+    classification depend on the comparator's similarity floor (e.g. exact
+    bottoms out at 0.0 while Levenshtein does not).
 
     Uses two items per side so Hungarian must produce real pair
-    assignments (the single-item-vs-single-item shortcut bypasses the
-    branch we want to guard).
+    assignments (the single-item-vs-single-item shortcut in
+    ``HungarianMatcher.calculate_metrics`` takes a different path).
     """
     gt = _ZeroSimContainer(
         items=[_ZeroSimItem(value="alpha"), _ZeroSimItem(value="beta")]
@@ -374,13 +379,17 @@ def test_zero_similarity_pair_is_unmatched_not_fd():
     result = gt.compare_with(pred, include_confusion_matrix=True)
     items_overall = result["confusion_matrix"]["fields"]["items"]["overall"]
 
-    assert items_overall["fn"] == 2, f"expected fn=2, got {items_overall}"
-    assert items_overall["fa"] == 2, f"expected fa=2, got {items_overall}"
-    assert items_overall["fd"] == 0, (
-        "zero-similarity pairs must NOT be classified as FD; "
+    assert items_overall["fd"] == 2, (
+        "below-threshold assigned pairs (incl. similarity 0.0) must be FD; "
         f"got fd={items_overall['fd']}"
     )
+    assert items_overall["fn"] == 0, f"expected fn=0, got {items_overall}"
+    assert items_overall["fa"] == 0, f"expected fa=0, got {items_overall}"
     assert items_overall["tp"] == 0, f"expected tp=0, got {items_overall}"
+    # fp rolls up fd (+ fa): 2 FD + 0 FA = 2
+    assert items_overall["fp"] == items_overall["fa"] + items_overall["fd"], (
+        f"fp should equal fa+fd, got {items_overall}"
+    )
 
 
 if __name__ == "__main__":
@@ -391,6 +400,6 @@ if __name__ == "__main__":
     test_threshold_gated_mixed_scenario()
     test_threshold_gated_empty_lists()
     test_threshold_boundary_conditions()
-    test_zero_similarity_pair_is_unmatched_not_fd()
+    test_zero_similarity_pair_is_fd_not_unmatched()
 
     print("All tests completed!")

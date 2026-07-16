@@ -118,9 +118,17 @@ class TestAggregation:
         Previously the HungarianMatcher single-item shortcut returned a
         synthetic matched pair for score==0, which caused the
         ``unordered_list_metrics`` helper to count the pair as a False
-        Discovery (fd:1, fa:0, fn:0). The correct behavior — consistent with
-        StructuredListComparator's zero-similarity handling — is to leave the
-        items unmatched, yielding fa:1, fn:1, fd:0.
+        Discovery (fd:1, fa:0, fn:0). The correct behavior for the primitive
+        single-item path is to leave the items unmatched, yielding
+        fa:1, fn:1, fd:0.
+
+        Note: this exercises the ``HungarianMatcher`` single-item shortcut
+        (``len == 1`` vs ``len == 1``), which drops a zero-similarity pair and
+        yields FN+FA. That shortcut fires for any single-item list — primitive
+        OR single-item ``List[StructuredModel]``. It differs from the general
+        multi-item path, where ``StructuredListComparator`` classifies a
+        below-threshold assigned pair (including similarity 0.0) as FD; see
+        ``test_zero_similarity_pair_is_fd_not_unmatched``.
 
         See PR #115 review feedback.
         """

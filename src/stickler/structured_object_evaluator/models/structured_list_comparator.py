@@ -14,19 +14,24 @@ Behavior summary:
   classify each Hungarian-matched pair. Pairs at or above threshold are
   TP; matched pairs below threshold are FD; unmatched GT/Pred items are
   FN/FA.
-- Zero-similarity pairs (similarity == 0.0) are treated as unmatched
-  (FN+FA) at ALL levels — object-level, per-field ``overall``, and
-  per-field ``aggregate``. Hungarian can pair items that share no
-  aligning fields at all; treating those as matched would be misleading.
+- Below-threshold pairs are FD, not unmatched: a pair the Hungarian
+  algorithm assigns counts as a match. The threshold splits matched pairs
+  into TP (>= threshold) and FD (< threshold); it does not un-match them.
+  For the general multi-item matching this holds regardless of similarity
+  magnitude — a pair at similarity 0.0 is still an assigned match and
+  therefore FD, not FN+FA. (Exception: the len==1-vs-len==1 fast path in
+  ``HungarianMatcher.calculate_metrics`` drops a zero-similarity pair, so a
+  single-item list yields FN+FA at 0.0. This predates and is independent of
+  this comparator.) Whether FD counts against recall is controlled by the
+  ``recall_with_fd`` knob.
 - Per-field ``overall`` metrics are threshold-gated at every nesting
   level: only TP pairs and unmatched FN/FA items contribute. FD pairs are
   excluded so per-field ``overall`` reflects the same threshold decision
   as the object level. Nested ``List[StructuredModel]`` fields apply
   the same gating recursively using the inner model's ``match_threshold``.
 - Per-field ``aggregate`` metrics recurse through every matched pair
-  (TP and FD, but NOT zero-similarity) and every unmatched item (FN and
-  FA), providing a complete drill-down view independent of the threshold
-  gate.
+  (TP and FD alike) and every unmatched item (FN and FA), providing a
+  complete drill-down view independent of the threshold gate.
 - Empty-list cases: empty-vs-empty yields a single list-level TN with no
   nested field metrics.
 - Nested field metrics are computed by delegating into each child model's
@@ -196,30 +201,25 @@ class StructuredListComparator:
         hungarian_info = hungarian_helper.get_complete_matching_info(gt_list, pred_list)
         matched_pairs = hungarian_info["matched_pairs"]
 
-        # Count OBJECTS, not individual fields
-        # When similarity is exactly 0.0, the pairing is meaningless at object level —
-        # treat as unmatched (FN + FA) rather than as FD
+        # Count OBJECTS, not individual fields.
+        # A Hungarian-matched pair below match_threshold is FD regardless of
+        # whether its similarity is exactly 0.0. The match/no-match decision is
+        # binary (the pair exists in the Hungarian assignment), and the
+        # threshold gate then splits matched pairs into TP vs FD. The
+        # recall_with_fd knob controls whether FD counts against recall.
         tp_objects = 0  # Objects with similarity >= match_threshold
-        fd_objects = 0  # Objects with similarity < match_threshold but > 0
+        fd_objects = 0  # Objects with similarity < match_threshold
         for gt_idx, pred_idx, similarity in matched_pairs:
             if similarity >= match_threshold:
                 tp_objects += 1
-            elif similarity > 0.0:
+            else:
                 fd_objects += 1
-            # else: similarity == 0.0 → effectively unmatched at object level
 
-        # For object-level counting, exclude zero-similarity pairs
-        matched_gt_for_counting = {idx for idx, _, sim in matched_pairs if sim > 0.0}
-        matched_pred_for_counting = {idx for _, idx, sim in matched_pairs if sim > 0.0}
-        fn_objects = len(gt_list) - len(matched_gt_for_counting)
-        fa_objects = len(pred_list) - len(matched_pred_for_counting)
-
-        # For field-level recursion, also exclude zero-similarity pairs.
-        # Zero-similarity means the items share no aligning fields at all;
-        # comparing them pairwise would produce FD-shaped metrics that
-        # contradict the object-level FN+FA classification.
-        matched_gt_indices = {idx for idx, _, sim in matched_pairs if sim > 0.0}
-        matched_pred_indices = {idx for _, idx, sim in matched_pairs if sim > 0.0}
+        # Count unmatched objects
+        matched_gt_indices = {idx for idx, _, _ in matched_pairs}
+        matched_pred_indices = {idx for _, idx, _ in matched_pairs}
+        fn_objects = len(gt_list) - len(matched_gt_indices)  # Unmatched GT objects
+        fa_objects = len(pred_list) - len(matched_pred_indices)  # Unmatched pred objects
 
         # Build list-level metrics counting OBJECTS (not fields)
         object_level_metrics = {
@@ -320,11 +320,12 @@ class StructuredListComparator:
         all_results = []
         gated_results = []
 
-        # Handle matched pairs - split by threshold
-        # Zero-similarity pairs are excluded (they're treated as unmatched at all levels)
+        # Handle matched pairs - split by threshold.
+        # Every Hungarian-matched pair recurses for aggregate purposes; the
+        # threshold only gates whether the pair also contributes to per-field
+        # "overall". This mirrors the object-level treatment where a matched
+        # pair below threshold is FD (not unmatched), regardless of similarity.
         for gt_idx, pred_idx, similarity in matched_pairs:
-            if similarity <= 0.0:
-                continue  # Skip zero-similarity; handled as unmatched below
             if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                 gt_item = gt_list[gt_idx]
                 pred_item = pred_list[pred_idx]
