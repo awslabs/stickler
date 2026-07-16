@@ -10,6 +10,7 @@ from typing import (
     Any,
     ClassVar,
     Dict,
+    Iterable,
     List,
     Optional,
     Type,
@@ -160,9 +161,9 @@ class StructuredModel(BaseModel):
 
     Example Usage:
     --------------
-    >>> from stickler.structured_object_evaluator.models import StructuredModel
-    >>> from stickler.structured_object_evaluator.models import ComparableField
-    >>> from stickler.comparators import LevenshteinComparator
+    >>> from stickler import StructuredModel
+    >>> from stickler import ComparableField
+    >>> from stickler import LevenshteinComparator
     >>>
     >>> class Product(StructuredModel):
     ...     name: str = ComparableField(
@@ -1104,6 +1105,8 @@ class StructuredModel(BaseModel):
         document_field_comparisons: bool = False,
         add_confidence_metrics: bool = False,
         confidence_metrics: Optional[List[Any]] = None,
+        add_bbox_metrics: bool = False,
+        bbox_iou_thresholds: Optional[Union[float, Iterable[float]]] = None,
     ) -> Dict[str, Any]:
         """Compare this model with another instance using SINGLE TRAVERSAL optimization.
 
@@ -1125,6 +1128,13 @@ class StructuredModel(BaseModel):
                 Defaults to [AUROCMetric()] if not provided. Only used when
                 add_confidence_metrics=True. For bulk evaluation, pass the metric
                 list to BulkStructuredModelEvaluator instead.
+            add_bbox_metrics: Whether to add bounding-box mAP metrics (single-doc
+                sanity check). Emits a UserWarning recommending
+                BulkStructuredModelEvaluator with BBoxMAPAccumulator for
+                statistically meaningful results.
+            bbox_iou_thresholds: A single IoU threshold or an iterable of them
+                for mAP. Defaults to the COCO range (0.50, 0.55, ..., 0.95).
+                Only used when add_bbox_metrics=True.
 
         Returns:
             Dictionary with comparison results including:
@@ -1149,6 +1159,8 @@ class StructuredModel(BaseModel):
             document_field_comparisons=document_field_comparisons,
             add_confidence_metrics=add_confidence_metrics,
             confidence_metrics=confidence_metrics,
+            add_bbox_metrics=add_bbox_metrics,
+            bbox_iou_thresholds=bbox_iou_thresholds,
         )
 
     def _convert_score_to_binary_metrics(

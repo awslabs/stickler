@@ -19,7 +19,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: uv sync --extra llm --frozen
+        # --extra bert installs evaluate, so the BERTComparator positive branch
+        # (_HAS_BERT = True gating in src/stickler/__init__.py) is exercised in CI.
+        run: uv sync --extra llm --extra bert --frozen
       - name: Test with pytest
         run: uv run coverage run -m pytest -v -s
       - name: Generate Coverage Report

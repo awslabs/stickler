@@ -50,7 +50,7 @@ tests/
 Use for simple, independent tests:
 
 ```python
-from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler import LevenshteinComparator
 
 def test_exact_match():
     """Test exact string match returns 1.0."""
@@ -70,7 +70,7 @@ Use when tests share setup or test a single component:
 
 ```python
 import pytest
-from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler import LevenshteinComparator
 
 class TestLevenshteinComparator:
     """Test cases for the LevenshteinComparator."""
@@ -99,10 +99,7 @@ Define test models within test files for isolated testing:
 
 ```python
 from typing import Optional
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.comparators.exact import ExactComparator
+from stickler import StructuredModel, ComparableField, LevenshteinComparator, ExactComparator
 
 # Define test model
 class SimpleTestModel(StructuredModel):
@@ -146,7 +143,7 @@ Use `pytest.mark.parametrize` for testing multiple inputs:
 
 ```python
 import pytest
-from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler import LevenshteinComparator
 
 @pytest.mark.parametrize("str1,str2,expected_min,expected_max", [
     ("hello", "hello", 1.0, 1.0),       # Exact match

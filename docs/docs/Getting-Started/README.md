@@ -8,7 +8,7 @@ title: Getting Started
 
 You're building an invoice extraction pipeline. Your AI reads scanned documents and produces structured JSON — invoice IDs, amounts, line items. How accurate is it? Do the errors matter? A wrong total is a billing error. A wrong ID routes a package to the wrong warehouse. A minor typo in a vendor name is cosmetic.
 
-Stickler answers these questions. It compares structured AI output against ground truth using specialized comparators tailored to each data type (exact, numeric, fuzzy, semantic), business-weighted scoring so critical fields count more than cosmetic ones, and Hungarian algorithm matching for lists regardless of order. The result is a single weighted score that reflects real operational impact, not just raw accuracy.
+Stickler answers these questions. It compares structured AI output against ground truth using specialized comparators tailored to each data type (exact, numeric, fuzzy, semantic, bounding-box IoU), business-weighted scoring so critical fields count more than cosmetic ones, and Hungarian algorithm matching for lists regardless of order. The result is a single weighted score that reflects real operational impact, not just raw accuracy.
 
 ## Your First Evaluation in 30 Seconds
 
@@ -16,7 +16,7 @@ Stickler answers these questions. It compares structured AI output against groun
 # pip install stickler-eval
 from typing import List
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import ExactComparator, NumericComparator, LevenshteinComparator
+from stickler import ExactComparator, NumericComparator, LevenshteinComparator
 
 # Define your models
 class LineItem(StructuredModel):
