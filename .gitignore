@@ -10,6 +10,9 @@
 .kiro/*
 .kiro/**/*
 
+.claude/*
+.claude/**/*
+
 build/
 dist/
 
@@ -25,3 +28,9 @@ examples/scripts/*.html
 examples/scripts/*.csv
 examples/scripts/*.png
 examples/scripts/*.pdf
+
+# Working directories let's exclude for convenience
+.context/
+.working/
+.temp/
+.data/

@@ -38,6 +38,7 @@ pytest tests/ -n auto
 
 ```
 tests/
+├── test_top_level_exports.py      # Top-level package re-exports
 ├── structured_object_evaluator/   # Core evaluation tests
 │   ├── test_structured_model.py           # StructuredModel tests
 │   ├── test_comparators.py                # Comparator integration
@@ -61,7 +62,7 @@ tests/
 ### Basic Test Pattern
 
 ```python
-from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler import LevenshteinComparator
 
 def test_exact_match():
     """Test exact string match returns 1.0."""
@@ -72,9 +73,7 @@ def test_exact_match():
 ### StructuredModel Test Pattern
 
 ```python
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler import ComparableField, LevenshteinComparator, StructuredModel
 
 class TestModel(StructuredModel):
     name: str = ComparableField(comparator=LevenshteinComparator())

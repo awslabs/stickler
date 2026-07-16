@@ -17,7 +17,7 @@ Stickler automatically includes an `aggregate` field at every node in the confus
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators.exact import ExactComparator
+from stickler import ExactComparator
 
 class Contact(StructuredModel):
     phone: str = ComparableField(comparator=ExactComparator(), threshold=1.0)

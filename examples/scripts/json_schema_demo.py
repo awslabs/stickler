@@ -11,7 +11,7 @@ Key Features:
 - Full evaluation with confusion matrices and metrics
 """
 
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+from stickler import StructuredModel
 
 
 def basic_json_schema_example():
