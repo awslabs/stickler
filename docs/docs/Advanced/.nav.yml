@@ -6,6 +6,7 @@ nav:
   - threshold-gated-evaluation.md
   - dynamic-models.md
   - confidence-metrics.md
+  - bbox-map-metrics.md
   - map-reduce-evaluation.md
   - aggregate-metrics.md
   - model-export.md

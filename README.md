@@ -6,7 +6,7 @@ When in the course of human events, it becomes necessary to evaluate structured 
 
 **Stickler is a Python library that enables complex structured JSON comparison and evaluation** that lets you focus on the fields your customer actually cares about, to answer the question: "Is it doing a good job?" 
 
-Stickler uses specialized comparators for different data types: exact matching for critical identifiers, numeric tolerance for currency amounts, semantic similarity for text fields, and fuzzy matching for names and addresses. You can build custom comparators for domain-specific logic. The Hungarian algorithm ensures optimal list matching regardless of order, while the recursive evaluation engine handles unlimited nesting depth. Business-weighted scoring reflects actual operational impact, not just technical accuracy.
+Stickler uses specialized comparators for different data types: exact matching for critical identifiers, numeric tolerance for currency amounts, semantic similarity for text fields, fuzzy matching for names and addresses, and IoU-based matching for bounding boxes. You can build custom comparators for domain-specific logic. The Hungarian algorithm ensures optimal list matching regardless of order, while the recursive evaluation engine handles unlimited nesting depth. Business-weighted scoring reflects actual operational impact, not just technical accuracy.
 
 Consider an invoice extraction agent that perfectly captures shipment numbers (which must be exact or packages get routed to the wrong warehouse) but sometimes garbles driver notes like "delivered to front door" vs "left at entrance." Those note variations don't affect logistics operations at all. Traditional evaluation treats both error types identically and reports your agent as "95% accurate" without telling you if that 5% error rate matters. Stickler tells you exactly where the errors are and whether they're actually problems.
 
@@ -22,8 +22,7 @@ pip install stickler-eval
 ```python
 # pip install stickler-eval
 from typing import List
-from stickler import StructuredModel, ComparableField
-from stickler.comparators import ExactComparator, NumericComparator, LevenshteinComparator
+from stickler import StructuredModel, ComparableField, ExactComparator, NumericComparator, LevenshteinComparator
 
 # Define your models
 class LineItem(StructuredModel):
@@ -99,8 +98,7 @@ pytest tests/
 ### Static Model Definition
 
 ```python
-from stickler import StructuredModel, ComparableField
-from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler import StructuredModel, ComparableField, LevenshteinComparator
 
 # Define your data structure
 class Invoice(StructuredModel):
@@ -156,7 +154,7 @@ print(results.confidence_metrics["overall"]["auroc"]["value"])
 Create models from JSON configuration for maximum flexibility:
 
 ```python
-from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+from stickler import StructuredModel
 
 # Define model configuration
 config = {
@@ -256,6 +254,7 @@ Specifies the comparison algorithm for this field.
 | `"SemanticComparator"` | Semantic similarity | Embedding-based comparison for meaning |
 | `"BertComparator"` | Deep semantic understanding | BERT model for contextual similarity |
 | `"LLMComparator"` | Complex semantic evaluation | LLM-powered comparison with reasoning |
+| `"BBoxIoUComparator"` | Bounding boxes, spatial localization | Intersection over Union (IoU) between two boxes; accepts `[[x1,y1],[x2,y2]]` or `[x1,y1,x2,y2]`. See [Bounding Box mAP Metrics](docs/docs/Advanced/bbox-map-metrics.md) for end-to-end mAP scoring |
 
 **Default Comparators by JSON Schema Type:**
 

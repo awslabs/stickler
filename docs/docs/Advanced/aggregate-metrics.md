@@ -65,7 +65,7 @@ This example covers three node types in one model: a primitive field (`name`), a
 ```python
 from typing import List
 from stickler import StructuredModel, ComparableField
-from stickler.comparators.exact import ExactComparator
+from stickler import ExactComparator
 
 class Contact(StructuredModel):
     phone: str = ComparableField(comparator=ExactComparator(), threshold=1.0)

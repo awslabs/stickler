@@ -18,6 +18,8 @@ This section provides deep dives into Stickler's internal algorithms and advance
 
 - **[Confidence Metrics](confidence-metrics.md)** -- AUROC-based confidence calibration: attaching confidence scores to predictions, measuring how well confidence correlates with accuracy, and interpreting the results.
 
+- **[Bounding Box mAP Metrics](bbox-map-metrics.md)** -- Mean Average Precision for bounding-box localization: attaching `_bbox` metadata to fields and computing COCO-style AP (precision envelope + 101-point interpolation) over a configurable IoU-threshold range.
+
 - **[Aggregate Metrics](aggregate-metrics.md)** -- Automatic hierarchical confusion-matrix aggregation at every node in the comparison result tree.
 
 - **[Model Export](model-export.md)** -- Exporting and importing model schemas in JSON Schema and Stickler-config formats for round-trip serialization, version control, and cross-system interoperability.
