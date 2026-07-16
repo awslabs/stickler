@@ -25,8 +25,7 @@ pip install stickler
 ### Defining Structured Models
 
 ```python
-from stickler.structured_object_evaluator import StructuredModel, ComparableField
-from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler import StructuredModel, ComparableField, LevenshteinComparator
 from pydantic import Field
 
 # Define a simple structured model

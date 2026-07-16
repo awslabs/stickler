@@ -24,7 +24,7 @@ The primary use case. Extract structured data from documents (invoices, forms, r
 ```python
 from typing import List
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import ExactComparator, NumericComparator, LevenshteinComparator, FuzzyComparator
+from stickler import ExactComparator, NumericComparator, LevenshteinComparator, FuzzyComparator
 
 class LineItem(StructuredModel):
     description: str = ComparableField(comparator=FuzzyComparator(), weight=1.0)
@@ -51,7 +51,7 @@ Compare OCR engine output against ground truth transcriptions. `LevenshteinCompa
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import LevenshteinComparator, NumericComparator
+from stickler import LevenshteinComparator, NumericComparator
 
 class OCRTextBlock(StructuredModel):
     text: str = ComparableField(
@@ -77,7 +77,7 @@ Named entity recognition (NER) and entity extraction from text. Compare extracte
 ```python
 from typing import List
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import ExactComparator, LevenshteinComparator, NumericComparator
+from stickler import ExactComparator, LevenshteinComparator, NumericComparator
 
 class Entity(StructuredModel):
     name: str = ComparableField(
@@ -106,7 +106,7 @@ Compare ML model predictions against ground truth labels. Useful for both regres
 ```python
 from typing import List
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import ExactComparator, NumericComparator
+from stickler import ExactComparator, NumericComparator
 
 class Prediction(StructuredModel):
     sample_id: str = ComparableField(comparator=ExactComparator(), weight=1.0)
@@ -135,7 +135,7 @@ Validate that ETL pipeline outputs match expected results. Stickler ensures data
 ```python
 from typing import List
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import ExactComparator, NumericComparator, LevenshteinComparator
+from stickler import ExactComparator, NumericComparator, LevenshteinComparator
 
 class TransformedRecord(StructuredModel):
     record_id: str = ComparableField(
@@ -166,7 +166,7 @@ Ongoing monitoring of data quality by comparing incoming data against baseline o
 
 ```python
 from stickler import StructuredModel, ComparableField
-from stickler.comparators import ExactComparator, NumericComparator, LevenshteinComparator
+from stickler import ExactComparator, NumericComparator, LevenshteinComparator
 
 class CustomerRecord(StructuredModel):
     customer_id: str = ComparableField(

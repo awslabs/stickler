@@ -33,9 +33,7 @@ For each matched pair, compare the similarity score against `StructuredModel.mat
 ## Code Example
 
 ```python
-from stickler import StructuredModel, ComparableField
-from stickler.comparators.levenshtein import LevenshteinComparator
-from stickler.comparators.exact import ExactComparator
+from stickler import StructuredModel, ComparableField, LevenshteinComparator, ExactComparator
 from typing import List
 
 class Product(StructuredModel):

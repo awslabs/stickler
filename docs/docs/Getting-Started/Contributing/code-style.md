@@ -231,7 +231,7 @@ strings based on edit distance. It's useful for handling typos and
 minor variations in text fields.
 
 Example:
-    >>> from stickler.comparators.levenshtein import LevenshteinComparator
+    >>> from stickler import LevenshteinComparator
     >>> comparator = LevenshteinComparator()
     >>> comparator.compare("hello", "helo")
     0.8
@@ -323,9 +323,7 @@ import pytest
 from pydantic import Field, BaseModel
 
 # Local imports
-from stickler.structured_object_evaluator import StructuredModel
-from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler import StructuredModel, ComparableField, LevenshteinComparator
 ```
 
 ### Import Guidelines
@@ -336,13 +334,13 @@ from stickler.comparators.levenshtein import LevenshteinComparator
 
 ```python
 # Good
-from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler import LevenshteinComparator
 
 # Acceptable for commonly used items
 from typing import List, Optional, Dict
 
 # Avoid
-from stickler.comparators import *
+from stickler import *
 ```
 
 ## Code Organization
