@@ -1,6 +1,7 @@
 # Maintainer's Guide
 
-Everything a maintainer needs that isn't in [CONTRIBUTING](README.md).
+Everything a maintainer needs that isn't in the
+[contributor docs](README.md).
 Contributors' docs cover how to write code for Stickler; this page covers how
 to run the project.
 
@@ -58,8 +59,8 @@ Things that will surprise you if nobody tells you:
   `ComparisonEngine`. [#135](https://github.com/awslabs/stickler/issues/135)
   is the RFC to resolve this. Don't build new features on `trees/`.
 - **Known performance TODO** in
-  `structured_object_evaluator/models/field_comparator.py`: redundant
-  nested-tree traversal on deeply nested models.
+  `src/stickler/structured_object_evaluator/models/field_comparator.py`:
+  redundant nested-tree traversal on deeply nested models.
 - **Install failures on older GCC** (RHEL/Amazon Linux): see
   [known issues](../known-issues.md).
 - **PEP 604 unions (`X | None`) are inconsistently handled** in schema export

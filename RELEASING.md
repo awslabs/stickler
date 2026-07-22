@@ -137,6 +137,5 @@ uv venv /tmp/stickler-check && VIRTUAL_ENV=/tmp/stickler-check uv pip install st
 
 ## Historical tag quirks
 
-Tags `v.0.1.3` and `v.0.1.4` have a stray dot (legacy inconsistency), and
-`v1.5.0` is a mistagged duplicate of the v0.1.5 release. All tags from
-`v0.1.5` onward follow `vX.Y.Z` — keep it that way.
+Tags `v.0.1.3` and `v.0.1.4` have a stray dot (legacy inconsistency). All
+tags from `v0.1.5` onward follow `vX.Y.Z` — keep it that way.
