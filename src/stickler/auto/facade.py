@@ -18,7 +18,7 @@ For a batch loop, compile once with :func:`eval_for` and reuse the returned
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Type
 
 from pydantic import BaseModel
 
@@ -72,12 +72,10 @@ class EvalSpec:
         eval_model: Type,
         *,
         weight_hints: bool,
-        overrides: Optional[Dict[str, Any]] = None,
     ):
         self.source_cls = source_cls
         self.eval_model = eval_model
         self._weight_hints = weight_hints
-        self._overrides = overrides or {}
 
     def evaluate(self, ground_truth: BaseModel, prediction: BaseModel) -> EvalResult:
         """Score a single ground-truth / prediction pair."""
@@ -99,7 +97,6 @@ class EvalSpec:
         for name, spec in specs_for(
             self.source_cls,
             weight_hints=self._weight_hints,
-            overrides=self._overrides,
         ).items():
             out[name] = {
                 "comparator": spec.comparator_name,
@@ -115,7 +112,6 @@ class EvalSpec:
 def eval_for(
     cls: Type[BaseModel],
     *,
-    overrides: Optional[Dict[str, Any]] = None,
     weight_hints: bool = False,
     match_threshold: float = 0.7,
 ) -> EvalSpec:
@@ -123,8 +119,6 @@ def eval_for(
 
     Args:
         cls: The pydantic ``BaseModel`` subclass to evaluate instances of.
-        overrides: Optional ``{field_name: ComparableField(...)}`` honored
-            verbatim; unlisted fields are inferred.
         weight_hints: Apply name-token weight heuristics (default off, so
             weights stay uniform and precision/recall are not skewed by guessed
             business-criticality).
@@ -132,20 +126,16 @@ def eval_for(
     """
     eval_model = structured_model_for(
         cls,
-        overrides=overrides,
         weight_hints=weight_hints,
         match_threshold=match_threshold,
     )
-    return EvalSpec(
-        cls, eval_model, weight_hints=weight_hints, overrides=overrides
-    )
+    return EvalSpec(cls, eval_model, weight_hints=weight_hints)
 
 
 def evaluate(
     ground_truth: BaseModel,
     prediction: BaseModel,
     *,
-    overrides: Optional[Dict[str, Any]] = None,
     weight_hints: bool = False,
     match_threshold: float = 0.7,
 ) -> EvalResult:
@@ -158,7 +148,6 @@ def evaluate(
     Args:
         ground_truth: The reference instance.
         prediction: The instance to score (e.g. a Strands ``response_model``).
-        overrides: Optional per-field ``ComparableField`` overrides.
         weight_hints: Enable name-token weight heuristics (default off).
         match_threshold: Overall match threshold.
 
@@ -169,7 +158,6 @@ def evaluate(
     cls = _shared_class(ground_truth, prediction)
     spec = eval_for(
         cls,
-        overrides=overrides,
         weight_hints=weight_hints,
         match_threshold=match_threshold,
     )

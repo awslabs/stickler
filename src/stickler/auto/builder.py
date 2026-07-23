@@ -14,8 +14,8 @@ enums degrade to bare strings, and ``datetime`` loses its type. The live
 annotations keep every signal inference needs.
 
 Results are cached in a ``WeakKeyDictionary`` keyed on
-``(cls, overrides-signature, weight_hints, match_threshold)`` so repeated
-``evaluate`` calls in a loop are cheap without pinning user classes in memory.
+``(cls, weight_hints, match_threshold)`` so repeated ``evaluate`` calls in a
+loop are cheap without pinning user classes in memory.
 """
 
 from __future__ import annotations
@@ -46,7 +46,6 @@ _CACHE: "weakref.WeakKeyDictionary[type, Dict[Any, Type[StructuredModel]]]" = (
 def structured_model_for(
     cls: Type[BaseModel],
     *,
-    overrides: Optional[Dict[str, Any]] = None,
     weight_hints: bool = False,
     match_threshold: float = 0.7,
 ) -> Type[StructuredModel]:
@@ -54,28 +53,25 @@ def structured_model_for(
 
     Args:
         cls: A pydantic ``BaseModel`` subclass (e.g. a Strands ``response_model``).
-        overrides: Optional ``{field_name: ComparableField(...)}`` honored verbatim
-            at the highest precedence. Fields not present are inferred.
         weight_hints: Enable name-token weight heuristics (default off).
         match_threshold: Overall match threshold for the generated model.
 
     Returns:
-        A cached ``StructuredModel`` subclass whose fields carry inferred (or
-        overridden) comparators, ready for ``compare_with``.
+        A cached ``StructuredModel`` subclass whose fields carry inferred
+        comparators, ready for ``compare_with``.
     """
     if not (isinstance(cls, type) and issubclass(cls, BaseModel)):
         raise TypeError(
             f"structured_model_for expects a pydantic BaseModel subclass, got {cls!r}"
         )
 
-    key = _cache_key(overrides, weight_hints, match_threshold)
+    key = _cache_key(weight_hints, match_threshold)
     per_class = _CACHE.get(cls)
     if per_class is not None and key in per_class:
         return per_class[key]
 
     shadow = _build(
         cls,
-        overrides=overrides or {},
         weight_hints=weight_hints,
         match_threshold=match_threshold,
         _seen={},
@@ -89,24 +85,15 @@ def specs_for(
     cls: Type[BaseModel],
     *,
     weight_hints: bool = False,
-    overrides: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, InferredSpec]:
     """Return the inferred spec per primitive field (for ``.explain()``).
 
     Nested-model and list fields are reported with a synthetic spec describing
-    the structural handling rather than a primitive comparator. Overridden
-    fields report ``source="override"`` rather than the inferred choice.
+    the structural handling rather than a primitive comparator.
     """
     registry = get_global_registry()
-    overrides = overrides or {}
     result: Dict[str, InferredSpec] = {}
     for name, field_info in cls.model_fields.items():
-        if name in overrides:
-            result[name] = InferredSpec(
-                comparator_name="(user override)",
-                provenance=["override: user-supplied ComparableField"],
-            )
-            continue
         kind = _field_kind(field_info.annotation)
         if kind == "model":
             result[name] = InferredSpec(
@@ -132,7 +119,6 @@ def specs_for(
 def _build(
     cls: Type[BaseModel],
     *,
-    overrides: Dict[str, Any],
     weight_hints: bool,
     match_threshold: float,
     _seen: Dict[type, Type[StructuredModel]],
@@ -141,24 +127,13 @@ def _build(
     if cls in _seen:
         return _seen[cls]
 
-    # Placeholder registration for self-referential models. Pydantic can't build
-    # a truly recursive dynamic class in one pass, so a direct cycle degrades to
-    # a generic structured comparison at that edge (documented limitation).
     registry = get_global_registry()
     field_definitions: Dict[str, Tuple[Any, Any]] = {}
 
     for name, field_info in cls.model_fields.items():
-        if name in overrides:
-            comparable = overrides[name]
-            wire_type, _ = _wire_type_for(field_info, cls, overrides, weight_hints, match_threshold, _seen)
-            field_definitions[name] = (wire_type, comparable)
-            continue
-
         field_definitions[name] = _field_definition(
             name,
             field_info,
-            cls=cls,
-            overrides=overrides,
             weight_hints=weight_hints,
             match_threshold=match_threshold,
             registry=registry,
@@ -180,8 +155,6 @@ def _field_definition(
     name: str,
     field_info: FieldInfo,
     *,
-    cls: Type[BaseModel],
-    overrides: Dict[str, Any],
     weight_hints: bool,
     match_threshold: float,
     registry,
@@ -194,7 +167,6 @@ def _field_definition(
     if kind == "model":
         child = _build(
             annotation,
-            overrides={},
             weight_hints=weight_hints,
             match_threshold=match_threshold,
             _seen=_seen,
@@ -215,7 +187,6 @@ def _field_definition(
         element = get_args(annotation)[0]
         child = _build(
             element,
-            overrides={},
             weight_hints=weight_hints,
             match_threshold=match_threshold,
             _seen=_seen,
@@ -238,10 +209,15 @@ def _field_definition(
     )
     wire = _scalar_wire_type(annotation)
     default = ... if field_info.is_required() else None
-    return (Optional[wire] if default is None else wire, _comparable_from_spec(spec, default=default))
+    return (
+        Optional[wire] if default is None else wire,
+        _comparable_from_spec(spec, default=default),
+    )
 
 
-def _primitive_spec(name: str, element: Any, weight_hints: bool, registry) -> InferredSpec:
+def _primitive_spec(
+    name: str, element: Any, weight_hints: bool, registry
+) -> InferredSpec:
     """Infer a spec for the *element* type of a primitive list."""
     dummy = FieldInfo(annotation=element)
     return infer_field_config(name, dummy, weight_hints=weight_hints, registry=registry)
@@ -255,30 +231,6 @@ def _comparable_from_spec(spec: InferredSpec, *, default: Any):
         clip_under_threshold=spec.clip_under_threshold,
         default=default,
     )
-
-
-def _wire_type_for(
-    field_info: FieldInfo,
-    cls: Type[BaseModel],
-    overrides: Dict[str, Any],
-    weight_hints: bool,
-    match_threshold: float,
-    _seen: Dict[type, Type[StructuredModel]],
-) -> Tuple[Any, None]:
-    """Resolve just the wire type for an overridden field (config comes from the override)."""
-    annotation, _ = unwrap_optional(field_info.annotation)
-    kind = _field_kind(annotation)
-    if kind == "model":
-        child = _build(annotation, overrides={}, weight_hints=weight_hints, match_threshold=match_threshold, _seen=_seen)
-        return Optional[child], None
-    if kind == "model_list":
-        element = get_args(annotation)[0]
-        child = _build(element, overrides={}, weight_hints=weight_hints, match_threshold=match_threshold, _seen=_seen)
-        return List[child], None
-    if kind == "primitive_list":
-        return List[get_args(annotation)[0]], None
-    wire = _scalar_wire_type(annotation)
-    return (Optional[wire] if not field_info.is_required() else wire), None
 
 
 def _field_kind(annotation: Any) -> str:
@@ -340,8 +292,5 @@ def _valid_identifier(name: str) -> str:
     return cleaned or "DynamicModelEval"
 
 
-def _cache_key(
-    overrides: Optional[Dict[str, Any]], weight_hints: bool, match_threshold: float
-) -> Tuple:
-    override_sig = tuple(sorted((overrides or {}).keys()))
-    return (override_sig, weight_hints, match_threshold, len(overrides or {}))
+def _cache_key(weight_hints: bool, match_threshold: float) -> Tuple:
+    return (weight_hints, match_threshold)

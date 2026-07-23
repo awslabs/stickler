@@ -85,9 +85,6 @@ class InferredSpec:
     @property
     def source(self) -> str:
         """Coarse origin label for the final comparator decision."""
-        for entry in self.provenance:
-            if entry.startswith("override"):
-                return "override"
         for entry in reversed(self.provenance):
             if entry.startswith("degrade"):
                 return "degrade"

@@ -48,8 +48,7 @@ call yields both `field_scores`/`overall_score` **and** precision/recall/f1/accu
 
 ## Inference precedence (per field, first match wins)
 
-1. **Override** — a `ComparableField` in `overrides={...}` is used verbatim.
-2. **Type signal** (always on, safe) — after unwrapping `Optional`/`Union[X, None]`:
+1. **Type signal** (always on, safe) — after unwrapping `Optional`/`Union[X, None]`:
 
    | Python type | Comparator | Threshold | clip |
    |---|---|---|---|
@@ -64,7 +63,7 @@ call yields both `field_scores`/`overall_score` **and** precision/recall/f1/accu
    | `List[primitive]` | element comparator | element | yes |
    | anything else | Levenshtein (str wire) | 0.7 | yes |
 
-3. **Name-token refinement** (comparator/threshold on by default; **weight only
+2. **Name-token refinement** (comparator/threshold on by default; **weight only
    when `weight_hints=True`**). Tokens are matched as whole words in the snake/
    camelCase-split field name. Highlights: `id/sku/code`→Exact (w 3.0),
    `amount/price/total`→Numeric\@0.95 (w 2.5), `email/url/zip`→Exact,
@@ -82,7 +81,7 @@ Every decision is recorded in `InferredSpec.provenance` and surfaced by
   model; guessing it silently would skew precision/recall. Opt in with
   `weight_hints=True`.
 - **Semantic / BERT / LLM are never auto-selected.** They need embeddings/creds
-  and would surprise. A field only gets them via explicit override.
+  and would surprise as a silent default.
 - **Unavailable comparators degrade.** If `rapidfuzz` (Fuzzy) or
   `python-dateutil` (Date) is missing, the field falls back to Levenshtein/Exact
   and the degrade is recorded in provenance.

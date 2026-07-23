@@ -3,7 +3,7 @@
 Covers the pipeline that turns a plain ``pydantic.BaseModel`` into a scored
 stickler evaluation: type-driven comparator inference, name-token refinement,
 the tricky pydantic types that break the JSON-schema path (Optional, enum,
-datetime, nested models, lists), overrides, weight hints, and provenance.
+datetime, nested models, lists), weight hints, and provenance.
 """
 
 import datetime
@@ -14,7 +14,6 @@ import pytest
 from pydantic import BaseModel
 
 import stickler
-from stickler import ComparableField, FuzzyComparator
 from stickler.auto.inference import infer_field_config, unwrap_optional
 
 
@@ -151,24 +150,7 @@ def test_never_auto_selects_semantic_or_llm():
     assert not (chosen & {"SemanticComparator", "BERTComparator", "LLMComparator"})
 
 
-# --- overrides & batch ------------------------------------------------------
-
-
-def test_override_is_honored_and_labeled():
-    gt = _invoice(customer_name="Acme Corporation")
-    pred = _invoice(customer_name="Acme Corp")
-    result = stickler.evaluate(
-        gt,
-        pred,
-        overrides={
-            "customer_name": ComparableField(
-                comparator=FuzzyComparator(method="token_sort_ratio"), threshold=0.5
-            )
-        },
-    )
-    assert result.explain()["customer_name"]["source"] == "override"
-    # Fuzzy token-sort should score the partial match well above 0.
-    assert result.field_scores["customer_name"] > 0.5
+# --- batch & guards ---------------------------------------------------------
 
 
 def test_eval_for_is_cached():
