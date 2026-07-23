@@ -1,4 +1,4 @@
-# `stickler.auto` — zero-config evaluation of vanilla pydantic models
+# `stickler.auto`: zero-config evaluation of vanilla pydantic models
 
 This package lets a caller evaluate structured output **without** defining a
 `StructuredModel`, a JSON schema, or any `x-aws-stickler-*` annotation. It is the
@@ -22,7 +22,7 @@ The two pre-existing entry points fail on real pydantic models:
   `datetime` to bare strings.
 - Unannotated `StructuredModel` fields fall through
   `configuration_helper.py`'s type-blind default and get compared with
-  `LevenshteinComparator` — wrong for `float`, `bool`, `date`.
+  `LevenshteinComparator`, which is wrong for `float`, `bool`, `date`.
 
 `auto` walks the **live** `cls.model_fields` (keeping every python-type signal)
 and infers a real per-field comparator, so "unconfigured" already means
@@ -48,7 +48,7 @@ call yields both `field_scores`/`overall_score` **and** precision/recall/f1/accu
 
 ## Inference precedence (per field, first match wins)
 
-1. **Type signal** (always on, safe) — after unwrapping `Optional`/`Union[X, None]`:
+1. **Type signal** (always on, safe), after unwrapping `Optional`/`Union[X, None]`:
 
    | Python type | Comparator | Threshold | clip |
    |---|---|---|---|
@@ -59,7 +59,7 @@ call yields both `field_scores`/`overall_score` **and** precision/recall/f1/accu
    | `date` / `datetime` | Date | 0.95 | yes |
    | `str` | Levenshtein | 0.7 | yes |
    | nested `BaseModel` | recurse → child shadow model | 0.9 | yes |
-   | `List[BaseModel]` | Hungarian object matching | (element `match_threshold`) | — |
+   | `List[BaseModel]` | Hungarian object matching | (element `match_threshold`) | n/a |
    | `List[primitive]` | element comparator | element | yes |
    | anything else | Levenshtein (str wire) | 0.7 | yes |
 
@@ -91,7 +91,7 @@ Every decision is recorded in `InferredSpec.provenance` and surfaced by
 Instances are compared as `model_dump(mode="json")`: `date`/`datetime` become
 ISO strings and enums become their values, matching the wire types the inferred
 comparators expect. Shadow fields for those types are therefore declared as
-`str`. `mode="json"` (not plain `model_dump()`) is mandatory — a native `date`
+`str`. `mode="json"` (not plain `model_dump()`) is mandatory, because a native `date`
 would otherwise score 0.
 
 ## Known limitations
@@ -100,7 +100,7 @@ would otherwise score 0.
   degrade to a generic structured comparison at that edge; pydantic cannot build
   a truly recursive dynamic class in one pass.
 - **`List[BaseModel]` semantics** use Hungarian matching (order-independent),
-  which differs from `anls_score`'s ordering-based path — this is intentional and
+  which differs from `anls_score`'s ordering-based path. This is intentional and
   documented so scores are explainable.
 - **Extending later.** The `InferredSpec` config dict is the single contract; an
   agentic configurator (future) would be just another producer of that dict,

@@ -142,7 +142,7 @@ def evaluate(
     """Evaluate a prediction against ground truth with zero configuration.
 
     ``ground_truth`` and ``prediction`` must be pydantic instances of the same
-    class (or a compatible superset — extra/missing fields are tolerated). The
+    class (or a compatible superset, so extra/missing fields are tolerated). The
     comparison config is inferred from their class.
 
     Args:

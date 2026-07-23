@@ -4,11 +4,9 @@ title: Ultra Quick Start
 
 # Ultra Quick Start
 
-> "I'm too lazy to configure anything, read the docs, or make decisions I'll have to defend later. Can't you just do it for me?"
+**Already have a Pydantic model? You can evaluate with it as-is, with no configuration required.**
 
-Yes.
-
-If you already have a [Pydantic](https://docs.pydantic.dev/) model — say, the `response_model` your agent produces structured output with — you do **not** need to define a `StructuredModel`, pick comparators, choose thresholds, or write a JSON schema. Hand Stickler your two objects and it figures out the rest.
+If you have a [Pydantic](https://docs.pydantic.dev/) model (say, the `response_model` your agent produces structured output with) you do **not** need to define a `StructuredModel`, pick comparators, choose thresholds, or write a JSON schema. Hand Stickler your two objects and it picks sensible defaults for you, then shows you exactly what it chose.
 
 ```python
 # pip install stickler-eval
@@ -25,7 +23,7 @@ That's the whole integration. `ground_truth` and `prediction` are ordinary Pydan
 
 ## The full example
 
-Here is a realistic model with the types that usually make evaluation annoying — an enum, a date, an optional field, and a nested list. You configure none of it.
+Here is a realistic model with the types that usually make evaluation annoying: an enum, a date, an optional field, and a nested list. You configure none of it.
 
 ```python
 import datetime
@@ -72,7 +70,7 @@ ground_truth = Invoice(
     ],
 )
 
-# What the model actually produced — minor variations, reordered list.
+# What the model actually produced: minor variations, reordered list.
 prediction = Invoice(
     invoice_id="INV-2024-0042",
     vendor_name="Acme Corp",                       # abbreviated
@@ -106,13 +104,13 @@ Notice what happened with **zero configuration**:
 - `total_amount` matched despite being a float, using a small numeric tolerance.
 - `invoice_date` matched as a real date, not string edit-distance.
 - `priority` (an enum) matched exactly.
-- `notes` ("Net 30 payment terms" vs "net 30 terms") matched with **fuzzy** text matching — reworded free text still counts.
-- `line_items` scored **0.996** even though the list was reordered — Stickler pairs list elements optimally (Hungarian matching) rather than comparing by position.
-- `vendor_name` scored **0.0** — and that's the interesting one. Read on.
+- `notes` ("Net 30 payment terms" vs "net 30 terms") matched with **fuzzy** text matching, so reworded free text still counts.
+- `line_items` scored **0.996** even though the list was reordered. Stickler pairs list elements optimally (Hungarian matching) rather than comparing by position.
+- `vendor_name` scored **0.0**, and that's the interesting one. Read on.
 
-## "But how do I defend the score?"
+## Every decision is inspectable
 
-This is the part you were dreading. You don't have to remember or justify any choices, because Stickler will tell you exactly what it decided and why:
+You didn't make any of these choices, so you shouldn't have to defend them from memory. `.explain()` tells you exactly what Stickler decided and why, for when a reviewer (or future you) asks:
 
 ```python
 for field, info in result.explain().items():
@@ -129,12 +127,12 @@ notes          FuzzyComparator          threshold=0.6  src=name-token
 line_items     Hungarian (per-element)  threshold=0.5  src=type
 ```
 
-So `vendor_name` scored 0.0 because "Acme Corporation" vs "Acme Corp" falls **below** the `0.85` similarity threshold Stickler picked for a name field — and by default scores under the threshold are clipped to zero. That is a decision you can now defend in one sentence, or override in one line if you disagree (see below).
+So `vendor_name` scored 0.0 because "Acme Corporation" vs "Acme Corp" falls **below** the `0.85` similarity threshold Stickler picked for a name field, and by default scores under the threshold are clipped to zero. That is a decision you can now defend in one sentence, or override in one line if you disagree (see below).
 
 `src` tells you where each decision came from:
 
-- **`type`** — inferred from the Python type (e.g. `priority: Priority` → an enum → `ExactComparator`).
-- **`name-token`** — sharpened by the field name (e.g. a field named `..._id` → `ExactComparator`; `..._amount` → `NumericComparator`; `notes` → `FuzzyComparator`).
+- **`type`**: inferred from the Python type. For example, `priority: Priority` is an enum, so it gets `ExactComparator`.
+- **`name-token`**: sharpened by the field name. A field named `..._id` gets `ExactComparator`, `..._amount` gets `NumericComparator`, and `notes` gets `FuzzyComparator`.
 
 ## How it decides (the 10-second version)
 
@@ -142,7 +140,7 @@ So `vendor_name` scored 0.0 because "Acme Corporation" vs "Acme Corp" falls **be
 |---|---|---|
 | `bool`, `Enum`, `Literal` | `ExactComparator` | must match exactly |
 | `int` | `NumericComparator` (exact) | counts are exact |
-| `float` | `NumericComparator` (small tolerance) | `1247.50` ≈ `1247.5001` |
+| `float` | `NumericComparator` (small tolerance) | `1247.50` is close enough to `1247.5001` |
 | `date` / `datetime` | `DateComparator` | real date semantics, not text |
 | `str` | `LevenshteinComparator` | tolerate typos |
 | a field named `*_id`, `sku`, `code` | `ExactComparator` | IDs must be exact |
@@ -155,7 +153,7 @@ Full rules and rationale live in [`src/stickler/auto/README.md`](https://github.
 
 ## The two knobs (still optional)
 
-You can keep being lazy, but if you want a little control without defining a `StructuredModel`:
+The defaults are meant to be enough, but if you want a little more control without defining a `StructuredModel`:
 
 ```python
 # Reuse the compiled evaluator across a whole dataset (faster):
@@ -166,7 +164,7 @@ scores = [spec.evaluate(gt, pred).overall_score for gt, pred in dataset]
 result = stickler.evaluate(ground_truth, prediction, weight_hints=True)
 ```
 
-By default every field weighs the same (`weight=1.0`), because business-criticality is not something a plain model encodes and we would rather not guess it silently. `weight_hints=True` turns on name-based weighting (e.g. `invoice_id` → 3×, `total_amount` → 2.5×) — and, as always, `.explain()` shows you exactly what changed.
+By default every field weighs the same (`weight=1.0`), because business-criticality is not something a plain model encodes and we would rather not guess it silently. `weight_hints=True` turns on name-based weighting (for example, `invoice_id` at 3x and `total_amount` at 2.5x), and, as always, `.explain()` shows you exactly what changed.
 
 !!! tip "Want full control?"
     When you outgrow inference, graduate to a hand-authored [`StructuredModel`](README.md) with explicit `ComparableField` comparators, thresholds, and weights. `stickler.evaluate` is the on-ramp, not a ceiling.

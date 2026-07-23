@@ -1,7 +1,7 @@
 """Zero-config evaluation of vanilla pydantic models.
 
 Turn any ``pydantic.BaseModel`` (e.g. a Strands agent ``response_model``) into a
-scored stickler evaluation with a single call — no ``StructuredModel`` subclass,
+scored stickler evaluation with a single call, with no ``StructuredModel`` subclass,
 no JSON schema, no per-field configuration:
 
     >>> import stickler

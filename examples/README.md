@@ -63,7 +63,7 @@ This directory contains comprehensive examples demonstrating the core functional
 
 ### 3. Interactive Notebooks
 - **`notebooks/Ultra_Quick_Start.ipynb`** - Zero-config evaluation of a vanilla Pydantic model
-  - `stickler.evaluate(gt, pred)` — no `StructuredModel`, comparators, or thresholds
+  - `stickler.evaluate(gt, pred)` with no `StructuredModel`, comparators, or thresholds
   - Handles enums, dates, optionals, and nested lists automatically
   - `.explain()` to inspect and defend every inferred decision
 

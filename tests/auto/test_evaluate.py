@@ -1,4 +1,4 @@
-"""Tests for stickler.auto — zero-config evaluation of vanilla pydantic models.
+"""Tests for stickler.auto: zero-config evaluation of vanilla pydantic models.
 
 Covers the pipeline that turns a plain ``pydantic.BaseModel`` into a scored
 stickler evaluation: type-driven comparator inference, name-token refinement,

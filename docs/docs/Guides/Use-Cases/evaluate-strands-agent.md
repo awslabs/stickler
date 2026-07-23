@@ -14,7 +14,7 @@ invoice = agent.structured_output(Invoice, "Extract the invoice from this docume
 # `invoice` is a validated Invoice instance
 ```
 
-The question this guide answers: **how accurate is that output, and do the errors matter?** With `stickler.evaluate` the integration is a single line — you do not write a `StructuredModel`, pick comparators, or annotate anything.
+The question this guide answers: **how accurate is that output, and do the errors matter?** With `stickler.evaluate` the integration is a single line. You do not write a `StructuredModel`, pick comparators, or annotate anything.
 
 ## The whole integration
 
@@ -27,7 +27,7 @@ result = stickler.evaluate(ground_truth, prediction)     # <-- the entire integr
 print(result.overall_score, result.f1, result.field_scores)
 ```
 
-`ground_truth` is your labeled expected output (same `Invoice` type). Everything else — which comparator each field gets, sensible thresholds, order-independent list matching — is inferred from the model. See [Ultra Quick Start](../../Getting-Started/ultra-quick-start.md) for how that inference works.
+`ground_truth` is your labeled expected output (same `Invoice` type). Everything else is inferred from the model: which comparator each field gets, sensible thresholds, and order-independent list matching. See [Ultra Quick Start](../../Getting-Started/ultra-quick-start.md) for how that inference works.
 
 ## End-to-end example
 
@@ -108,11 +108,11 @@ for doc, expected in labeled_dataset:          # your (document, ground_truth) p
 print(f"Mean score over {len(scores)} docs: {sum(scores) / len(scores):.3f}")
 ```
 
-For streaming aggregation with precision/recall/F1 across the dataset, feed the shadow model into `BulkStructuredModelEvaluator` — see [Bulk Evaluation](../Evaluation/bulk-evaluation.md).
+For streaming aggregation with precision/recall/F1 across the dataset, feed the shadow model into `BulkStructuredModelEvaluator`. See [Bulk Evaluation](../Evaluation/bulk-evaluation.md).
 
 ## Defending the numbers
 
-When someone asks "why did `vendor_name` score zero?", you don't guess — you ask:
+When someone asks "why did `vendor_name` score zero?", you don't guess. You ask:
 
 ```python
 result.explain()["vendor_name"]
@@ -130,4 +130,4 @@ Strands is an optional dependency:
 pip install "stickler-eval[llm]"     # brings in strands-agents
 ```
 
-`stickler.evaluate` itself has **no** dependency on Strands — it works on any Pydantic instances. You only need `[llm]` to run the agent that produces them.
+`stickler.evaluate` itself has **no** dependency on Strands; it works on any Pydantic instances. You only need `[llm]` to run the agent that produces them.

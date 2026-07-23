@@ -123,7 +123,7 @@ def main() -> None:
 
     # --- 5. Defend every decision -------------------------------------------
     print("\n" + "=" * 60)
-    print("WHY (inferred configuration — nothing was hand-written)")
+    print("WHY (inferred configuration, nothing was hand-written)")
     print("=" * 60)
     for field, info in result.explain().items():
         print(
