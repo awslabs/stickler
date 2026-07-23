@@ -4,11 +4,22 @@ This directory contains comprehensive examples demonstrating the core functional
 
 ## 🚀 Quick Start
 
-**For beginners, start here:**
+**Too lazy to configure anything? Start here:**
+- [`notebooks/Ultra_Quick_Start.ipynb`](notebooks/Ultra_Quick_Start.ipynb) - Score a vanilla Pydantic model with **zero configuration** via `stickler.evaluate(gt, pred)`
+- [`scripts/strands_agent_eval_demo.py`](scripts/strands_agent_eval_demo.py) - Evaluate a Strands agent's structured output in one line
+
+**Want to see the full comparator API:**
 - [`scripts/quick_start.py`](scripts/quick_start.py) - Essential functionality demonstration
 - [`notebooks/Quick_start.ipynb`](notebooks/Quick_start.ipynb) - Interactive Jupyter notebook
 
 ## 📚 Example Files
+
+### 0. Zero-Config Evaluation (No Setup)
+- **`scripts/strands_agent_eval_demo.py`** - Evaluate a Strands agent with `stickler.evaluate`
+  - No `StructuredModel`, comparators, thresholds, or schema
+  - Comparator/threshold inferred per field from the Pydantic model
+  - `.explain()` shows (and lets you defend) every decision
+  - Runs with or without the `[llm]` extra (falls back to a fabricated prediction)
 
 ### 1. Basic Usage
 - **`scripts/quick_start.py`** - Core functionality in 5 minutes
@@ -51,6 +62,11 @@ This directory contains comprehensive examples demonstrating the core functional
   - Requires `--extra bert` (torch, bert-score, evaluate)
 
 ### 3. Interactive Notebooks
+- **`notebooks/Ultra_Quick_Start.ipynb`** - Zero-config evaluation of a vanilla Pydantic model
+  - `stickler.evaluate(gt, pred)` — no `StructuredModel`, comparators, or thresholds
+  - Handles enums, dates, optionals, and nested lists automatically
+  - `.explain()` to inspect and defend every inferred decision
+
 - **`notebooks/Quick_start.ipynb`** - Interactive introduction
   - Step-by-step guided examples  
   - Individual and list comparison
@@ -80,6 +96,8 @@ This directory contains comprehensive examples demonstrating the core functional
 
 | Example | Individual Objects | List Comparison | Nested Structures | Error Analysis | Large Scale | Pretty Print |
 |---------|:------------------:|:---------------:|:-----------------:|:--------------:|:-----------:|:------------:|
+| `strands_agent_eval_demo.py` | ✅ | ✅ | ✅ | ✅ | ➖ | ➖ |
+| `Ultra_Quick_Start.ipynb` | ✅ | ✅ | ✅ | ✅ | ➖ | ➖ |
 | `quick_start.py` | ✅ | ✅ | ➖ | ➖ | ➖ | ➖ |
 | `non_match_analysis_demo.py` | ✅ | ✅ | ✅ | ✅ | ➖ | ➖ |
 | `bulk_evaluation_demo.py` | ✅ | ➖ | ➖ | ➖ | ✅ | ➖ |
