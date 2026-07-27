@@ -187,9 +187,17 @@ class StructuredListComparator:
                 gt_item = gt_list[gt_idx]
                 pred_item = pred_list[pred_idx]
 
-                # Use individual comparison with threshold application (same as .compare_with())
-                individual_result = gt_item.compare_with(pred_item)
-                threshold_applied_score = individual_result["overall_score"]
+                if gt_item is None or pred_item is None:
+                    # Nullable object elements (List[Optional[Model]]) can pair a
+                    # None against a model; compare_with would crash on None, so
+                    # score it directly: both-None is a match, one-None is not.
+                    threshold_applied_score = (
+                        1.0 if gt_item is None and pred_item is None else 0.0
+                    )
+                else:
+                    # Use individual comparison with threshold application (same as .compare_with())
+                    individual_result = gt_item.compare_with(pred_item)
+                    threshold_applied_score = individual_result["overall_score"]
 
                 threshold_corrected_pairs.append(
                     (gt_idx, pred_idx, threshold_applied_score)
@@ -237,8 +245,13 @@ class StructuredListComparator:
         """
         field_details = {}
 
-        if gt_list and isinstance(gt_list[0], StructuredModel):
-            model_class = gt_list[0].__class__
+        # A nullable object list may start with None, so locate the first real
+        # model element to source the field schema from.
+        first_model = next(
+            (item for item in gt_list if isinstance(item, StructuredModel)), None
+        )
+        if first_model is not None:
+            model_class = first_model.__class__
 
             # PHASE 3 FIX: Only process pairs that meet the match_threshold
             # Filter to good matches only - poor matches get no recursive analysis
@@ -312,6 +325,11 @@ class StructuredListComparator:
             if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                 gt_item = gt_list[gt_idx]
                 pred_item = pred_list[pred_idx]
+                # Nullable object elements may be None; they carry no sub-fields,
+                # so the pair is already scored at the list level and contributes
+                # nothing to the per-field breakdown.
+                if gt_item is None or pred_item is None:
+                    continue
                 gt_sub_value = getattr(gt_item, sub_field_name)
                 pred_sub_value = getattr(pred_item, sub_field_name)
 
@@ -502,7 +520,7 @@ class StructuredListComparator:
 
             # Handle unmatched objects — count each list element as FN or FA
             for gt_idx, gt_item in enumerate(gt_list):
-                if gt_idx not in matched_gt_indices:
+                if gt_idx not in matched_gt_indices and gt_item is not None:
                     gt_sub_value = getattr(gt_item, sub_field_name)
                     if isinstance(gt_sub_value, list) and gt_sub_value:
                         aggregated_result["overall"]["fn"] += len(gt_sub_value)
@@ -510,7 +528,7 @@ class StructuredListComparator:
                         aggregated_result["overall"]["fn"] += 1
 
             for pred_idx, pred_item in enumerate(pred_list):
-                if pred_idx not in matched_pred_indices:
+                if pred_idx not in matched_pred_indices and pred_item is not None:
                     pred_sub_value = getattr(pred_item, sub_field_name)
                     if isinstance(pred_sub_value, list) and pred_sub_value:
                         aggregated_result["overall"]["fa"] += len(pred_sub_value)
@@ -529,6 +547,9 @@ class StructuredListComparator:
             if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                 gt_item = gt_list[gt_idx]
                 pred_item = pred_list[pred_idx]
+                # Nullable object elements carry no sub-fields; skip the pair.
+                if gt_item is None or pred_item is None:
+                    continue
                 gt_sub_value = getattr(gt_item, sub_field_name)
                 pred_sub_value = getattr(pred_item, sub_field_name)
 
@@ -541,13 +562,13 @@ class StructuredListComparator:
 
         # Handle unmatched objects for primitive fields
         for gt_idx, gt_item in enumerate(gt_list):
-            if gt_idx not in matched_gt_indices:
+            if gt_idx not in matched_gt_indices and gt_item is not None:
                 gt_sub_value = getattr(gt_item, sub_field_name)
                 if gt_sub_value is not None:
                     sub_field_metrics["fn"] += 1
 
         for pred_idx, pred_item in enumerate(pred_list):
-            if pred_idx not in matched_pred_indices:
+            if pred_idx not in matched_pred_indices and pred_item is not None:
                 pred_sub_value = getattr(pred_item, sub_field_name)
                 if pred_sub_value is not None:
                     sub_field_metrics["fa"] += 1

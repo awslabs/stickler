@@ -923,10 +923,291 @@ class TestErrorHandling:
         }
 
         converter = JsonSchemaFieldConverter(schema)
-        
+
         # Should handle gracefully - items defaults to {} which has no type
         # This will raise an error when trying to map the type
         with pytest.raises(ValueError):
             converter.convert_properties_to_fields(
                 schema["properties"], schema["required"]
             )
+
+
+class TestNullableTypeListForm:
+    """Tests for the JSON Schema ``type: ["X", "null"]`` nullable idiom."""
+
+    def test_nullable_string_optional_field(self):
+        """``["string", "null"]`` on an optional field accepts both str and None."""
+        schema = {
+            "type": "object",
+            "properties": {"description": {"type": ["string", "null"]}},
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        fields = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+
+        from typing import Union, get_args, get_origin
+
+        field_type, _ = fields["description"]
+        # Optional[str] is Union[str, None]
+        assert get_origin(field_type) is Union
+        assert str in get_args(field_type)
+        assert type(None) in get_args(field_type)
+
+    def test_nullable_integer_required_field(self):
+        """``["integer", "null"]`` on a required field still accepts None."""
+        schema = {
+            "type": "object",
+            "properties": {"count": {"type": ["integer", "null"]}},
+            "required": ["count"],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        fields = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+
+        from typing import Union, get_args, get_origin
+
+        field_type, _ = fields["count"]
+        assert get_origin(field_type) is Union
+        assert int in get_args(field_type)
+        assert type(None) in get_args(field_type)
+
+    def test_nullable_array_items(self):
+        """Array ``items`` may use the ``[type, null]`` idiom for nullable elements."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "tags": {
+                    "type": "array",
+                    "items": {"type": ["string", "null"]},
+                },
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        fields = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+
+        from typing import Union, get_args, get_origin
+
+        field_type, _ = fields["tags"]
+        # List[Optional[str]]
+        (inner,) = get_args(field_type)
+        assert get_origin(inner) is Union
+        assert str in get_args(inner)
+        assert type(None) in get_args(inner)
+
+    def test_nullable_end_to_end_accepts_none(self):
+        """A required nullable field accepts None where a plain field would reject it."""
+        from pydantic import ValidationError
+
+        from stickler import StructuredModel
+
+        NullableModel = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {"description": {"type": ["string", "null"]}},
+                "required": ["description"],
+            }
+        )
+        # Required and nullable: None is a valid value, not a missing field.
+        assert NullableModel(description=None).description is None
+        # Nullable does not make the field optional: omitting it still errors.
+        with pytest.raises(ValidationError):
+            NullableModel()
+
+        PlainModel = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {"description": {"type": "string"}},
+                "required": ["description"],
+            }
+        )
+        # Without the ["X", "null"] wrap, None must be rejected.
+        with pytest.raises(ValidationError):
+            PlainModel(description=None)
+
+    def test_nullable_round_trips_through_json_schema(self):
+        """Optional fields survive to_json_schema -> from_json_schema as ["X", "null"]."""
+        from stickler import StructuredModel
+
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {"description": {"type": ["string", "null"]}},
+                "required": ["description"],
+            }
+        )
+        schema = Model.to_json_schema()
+        assert schema["properties"]["description"]["type"] == ["string", "null"]
+
+        Rebuilt = StructuredModel.from_json_schema(schema)
+        assert Rebuilt(description=None).description is None
+
+    def test_nullable_object_array_element_accepts_none(self):
+        """An array of nullable objects accepts None as a list element."""
+        from stickler import StructuredModel
+
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": ["object", "null"],
+                            "properties": {"id": {"type": "string"}},
+                            "required": ["id"],
+                        },
+                    }
+                },
+                "required": ["items"],
+            }
+        )
+        assert Model(items=[None]).items == [None]
+
+    def test_nullable_object_array_compare_with_none_element(self):
+        """compare_with on a list holding None elements does not crash."""
+        from stickler import StructuredModel
+
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "people": {
+                        "type": "array",
+                        "items": {
+                            "type": ["object", "null"],
+                            "properties": {"n": {"type": "string"}},
+                            "required": ["n"],
+                        },
+                    }
+                },
+                "required": ["people"],
+            }
+        )
+
+        gt = Model(people=[{"n": "alice"}, None])
+        same = Model(people=[{"n": "alice"}, None])
+        mismatch = Model(people=[{"n": "alice"}, {"n": "bob"}])
+
+        # Identical None placement scores higher than a None-vs-model mismatch.
+        assert same.compare_with(gt)["overall_score"] == pytest.approx(1.0)
+        assert mismatch.compare_with(gt)["overall_score"] < 1.0
+
+    @pytest.mark.parametrize(
+        "bad_type",
+        [
+            [],
+            ["null"],
+            ["null", "null"],
+            ["string", "integer"],
+            [["string"], "null"],
+            [123, "null"],
+        ],
+    )
+    def test_invalid_list_form_type_rejected(self, bad_type):
+        """List-form ``type`` values that are not ['<type>', 'null'] are rejected."""
+        schema = {
+            "type": "object",
+            "properties": {"value": {"type": bad_type}},
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        with pytest.raises(ValueError, match="Unsupported JSON Schema type"):
+            converter.convert_properties_to_fields(
+                schema["properties"], schema["required"]
+            )
+
+    def test_nullable_outer_object(self):
+        """Outer-level {"type": ["object", "null"]} field wraps model in Optional."""
+        from typing import Union, get_args, get_origin
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "nested": {
+                    "type": ["object", "null"],
+                    "properties": {"id": {"type": "string"}},
+                    "required": ["id"],
+                }
+            },
+            "required": ["nested"],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        fields = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+
+        field_type, _ = fields["nested"]
+        assert get_origin(field_type) is Union
+        assert type(None) in get_args(field_type)
+
+        from stickler import StructuredModel
+        from stickler.structured_object_evaluator.models.structured_model import (
+            StructuredModel as _SM,
+        )
+
+        Model = StructuredModel.from_json_schema(schema)
+        assert Model(nested=None).nested is None
+        non_null = [t for t in get_args(field_type) if t is not type(None)]
+        assert len(non_null) == 1
+        assert isinstance(non_null[0], type) and issubclass(non_null[0], _SM)
+
+    def test_nullable_outer_array(self):
+        """Outer-level {"type": ["array", "null"]} field wraps list in Optional."""
+        from typing import Union, get_args, get_origin
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "tags": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string"},
+                }
+            },
+            "required": [],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        fields = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+
+        field_type, _ = fields["tags"]
+        assert get_origin(field_type) is Union
+        assert type(None) in get_args(field_type)
+        inner_types = [t for t in get_args(field_type) if t is not type(None)]
+        assert len(inner_types) == 1
+        assert get_origin(inner_types[0]) is list
+
+        from stickler import StructuredModel
+
+        Model = StructuredModel.from_json_schema(schema)
+        assert Model(tags=None).tags is None
+
+    def test_nullable_reversed_order(self):
+        """["null", "string"] (null first) is equivalent to ["string", "null"]."""
+        from typing import Union, get_args, get_origin
+
+        schema = {
+            "type": "object",
+            "properties": {"value": {"type": ["null", "string"]}},
+            "required": ["value"],
+        }
+        converter = JsonSchemaFieldConverter(schema)
+        fields = converter.convert_properties_to_fields(
+            schema["properties"], schema["required"]
+        )
+        field_type, _ = fields["value"]
+        assert get_origin(field_type) is Union
+        assert type(None) in get_args(field_type)
+        assert str in get_args(field_type)
