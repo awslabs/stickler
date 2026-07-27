@@ -1101,6 +1101,65 @@ class TestNullableTypeListForm:
         assert same.compare_with(gt)["overall_score"] == pytest.approx(1.0)
         assert mismatch.compare_with(gt)["overall_score"] < 1.0
 
+    def test_nullable_object_array_compare_with_none_element_list_subfield(self):
+        """compare_with does not crash when a None-holding list's elements
+        carry a list-valued sub-field (exercises the is_simple_list branch)."""
+        from stickler import StructuredModel
+
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "people": {
+                        "type": "array",
+                        "items": {
+                            "type": ["object", "null"],
+                            "properties": {
+                                "n": {"type": "string"},
+                                "tags": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                            },
+                            "required": ["n"],
+                        },
+                    }
+                },
+                "required": ["people"],
+            }
+        )
+
+        gt = Model(people=[{"n": "alice", "tags": ["x"]}, None])
+        same = Model(people=[{"n": "alice", "tags": ["x"]}, None])
+        assert same.compare_with(gt)["overall_score"] == pytest.approx(1.0)
+
+    def test_nullable_object_array_compare_with_none_element_evaluator_format(self):
+        """The evaluator_format=True path also tolerates None list elements."""
+        from stickler import StructuredModel
+
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "people": {
+                        "type": "array",
+                        "items": {
+                            "type": ["object", "null"],
+                            "properties": {"n": {"type": "string"}},
+                            "required": ["n"],
+                        },
+                    }
+                },
+                "required": ["people"],
+            }
+        )
+
+        gt = Model(people=[{"n": "alice"}, None])
+        same = Model(people=[{"n": "alice"}, None])
+        # Must not raise; produces a metrics dict in evaluator format.
+        result = same.compare_with(gt, evaluator_format=True)
+        assert "overall" in result
+
     @pytest.mark.parametrize(
         "bad_type",
         [
