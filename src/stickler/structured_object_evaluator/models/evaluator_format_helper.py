@@ -201,6 +201,13 @@ class EvaluatorFormatHelper:
                     gt_item = gt_list[gt_idx]
                     pred_item = pred_list[pred_idx]
 
+                    # Nullable object elements (List[Optional[Model]]) may pair a
+                    # None against a model; compare_with would crash on None. The
+                    # pair's score is handled at the list level, so it carries no
+                    # per-item breakdown here.
+                    if gt_item is None or pred_item is None:
+                        continue
+
                     # Compare the items with evaluator format
                     item_comparison = gt_item.compare_with(
                         pred_item, evaluator_format=True, recall_with_fd=recall_with_fd

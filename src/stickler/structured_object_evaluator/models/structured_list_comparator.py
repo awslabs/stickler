@@ -508,6 +508,9 @@ class StructuredListComparator:
                 if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                     gt_item = gt_list[gt_idx]
                     pred_item = pred_list[pred_idx]
+                    # Nullable object elements carry no sub-fields; skip the pair.
+                    if gt_item is None or pred_item is None:
+                        continue
                     gt_sub_value = getattr(gt_item, sub_field_name)
                     pred_sub_value = getattr(pred_item, sub_field_name)
 
