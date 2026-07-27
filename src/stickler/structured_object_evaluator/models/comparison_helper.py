@@ -61,9 +61,17 @@ class ComparisonHelper:
                     gt_item = gt_list[gt_idx]
                     pred_item = pred_list[pred_idx]
 
-                    # Use individual comparison with threshold application (same as .compare_with())
-                    individual_result = gt_item.compare_with(pred_item)
-                    threshold_applied_score = individual_result["overall_score"]
+                    if gt_item is None or pred_item is None:
+                        # Nullable object elements (List[Optional[Model]]) can pair
+                        # a None against a model; compare_with would crash on None,
+                        # so score it directly: both-None matches, one-None does not.
+                        threshold_applied_score = (
+                            1.0 if gt_item is None and pred_item is None else 0.0
+                        )
+                    else:
+                        # Use individual comparison with threshold application (same as .compare_with())
+                        individual_result = gt_item.compare_with(pred_item)
+                        threshold_applied_score = individual_result["overall_score"]
 
                     threshold_corrected_pairs.append(
                         (gt_idx, pred_idx, threshold_applied_score)

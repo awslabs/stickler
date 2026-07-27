@@ -251,8 +251,9 @@ def test_to_json_schema_optional_fields():
     assert "optional_product" not in schema["required"]
     assert "optional_products" not in schema["required"]
 
-    # Optional[str] unwraps to string type
-    assert schema["properties"]["optional_note"]["type"] == "string"
+    # Optional[str] exports as the list-form ["string", "null"] so the
+    # nullability survives a from_json_schema round-trip.
+    assert schema["properties"]["optional_note"]["type"] == ["string", "null"]
 
     # Optional[StructuredModel] unwraps to nested object schema
     product_prop = schema["properties"]["optional_product"]
