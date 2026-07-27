@@ -260,7 +260,7 @@ class TestEcommerceOrdersAggregateComprehensive:
         assert cm["fields"]["Order_Info"]["overall"]["tn"] == 0, f'Expected Order_Info overall TN=0, got {cm["fields"]["Order_Info"]["overall"]["tn"]}'
         assert cm["fields"]["Order_Info"]["overall"]["fn"] == 0, f'Expected Order_Info overall FN=0, got {cm["fields"]["Order_Info"]["overall"]["fn"]}'
 
-        # at the field level within all nested fields, 5 true positives, 2 false alarms, 1 false discovery and 1 true negative
+        # at the field level within all nested fields, 4 true positives, 2 false alarms, 1 false discovery and 2 true negatives
         assert cm["fields"]["Order_Info"]["aggregate"]["tp"] == 4, f'Expected Order_Info aggregate TP=4, got {cm["fields"]["Order_Info"]["aggregate"]["tp"]}'
         assert cm["fields"]["Order_Info"]["aggregate"]["fa"] == 2, f'Expected Order_Info aggregate FA=2, got {cm["fields"]["Order_Info"]["aggregate"]["fa"]}'
         assert cm["fields"]["Order_Info"]["aggregate"]["fd"] == 1, f'Expected Order_Info aggregate FD=1, got {cm["fields"]["Order_Info"]["aggregate"]["fd"]}'
@@ -681,8 +681,8 @@ class TestEcommerceOrdersAggregateComprehensive:
         #                 -> object-level TP=1, aggregate TP=2 (one per leaf: Code + Name)
         #   Total_Amount: "5" == "5" exact (NumericComparator threshold=1.0) -> TP=1
         #   Store_Location: "TEST" == "TEST" exact (ExactComparator threshold=1.0) -> TP=1
-        #   Payment_Method: empty lists both sides -> object-level TN=1, aggregate TN=2
-        #                   (one per leaf in CategoryDescription: Code + Name)
+        #   Payment_Method: empty lists both sides -> object-level TN=1, aggregate TN=1
+        #                   (no leaf expansion for empty lists, matches dev behavior)
         #   Order_Notes: "exact notes" vs "different notes" via LevenshteinComparator threshold=0.75
         #                -> similarity below threshold -> FD=1
         order_info_fields = cm["fields"]["Order_Info"]["fields"]
@@ -736,52 +736,3 @@ class TestEcommerceOrdersAggregateComprehensive:
         assert order_info_agg["tn"] == 1, f'Expected Order_Info aggregate TN=1, got {order_info_agg["tn"]}'
         assert order_info_agg["fa"] == 0, f'Expected Order_Info aggregate FA=0, got {order_info_agg["fa"]}'
         assert order_info_agg["fn"] == 0, f'Expected Order_Info aggregate FN=0, got {order_info_agg["fn"]}'
-
-
-if __name__ == "__main__":
-    # Run the tests
-    test_instance = TestEcommerceOrdersAggregateComprehensive()
-    test_instance.setup_method()
-    
-    print("Running comprehensive aggregate tests...")
-    
-    try:
-        test_instance.test_full_comparison_with_expected_aggregate_counts()
-        print("✓ Full comparison aggregate counts test passed")
-        
-        test_instance.test_order_info_field_aggregate_counts()
-        print("✓ Order info field aggregate counts test passed")
-        
-        test_instance.test_customers_field_aggregate_counts()
-        print("✓ Customers field aggregate counts test passed")
-        
-        test_instance.test_products_field_aggregate_counts()
-        print("✓ Products field aggregate counts test passed")
-        
-        test_instance.test_discounts_field_aggregate_counts()
-        print("✓ Discounts field aggregate counts test passed")
-        
-        test_instance.test_hungarian_matching_verification()
-        print("✓ Hungarian matching verification test passed")
-        
-        test_instance.test_products_hungarian_matching()
-        print("✓ Products Hungarian matching test passed")
-        
-        test_instance.test_discounts_hungarian_matching()
-        print("✓ Discounts Hungarian matching test passed")
-        
-        test_instance.test_aggregate_consistency()
-        print("✓ Aggregate consistency test passed")
-        
-        test_instance.test_empty_lists_aggregate_handling()
-        print("✓ Empty lists aggregate handling test passed")
-        
-        test_instance.test_threshold_based_classification()
-        print("✓ Threshold-based classification test passed")
-        
-        print("\n🎉 All aggregate tests passed successfully!")
-        
-    except Exception as e:
-        print(f"\n❌ Test failed with error: {e}")
-        import traceback
-        traceback.print_exc()

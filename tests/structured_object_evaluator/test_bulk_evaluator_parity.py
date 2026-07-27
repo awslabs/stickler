@@ -912,56 +912,6 @@ class TestMultiDocumentAggregation:
         )
 
 
-
-class TestWeightedOverallScoreParity:
-    """Bulk weighted_overall_score matches per-doc mean."""
-
-    def test_weighted_overall_score_parity_vs_compare_with_mean(self):
-        """Bulk weighted_overall_score equals mean of compare_with overall_scores."""
-        from stickler.comparators.levenshtein import LevenshteinComparator
-        from stickler.comparators.numeric import NumericComparator
-
-        class WeightedInvoice(StructuredModel):
-            invoice_id: str = ComparableField(
-                comparator=LevenshteinComparator(), weight=10.0
-            )
-            note: str = ComparableField(comparator=LevenshteinComparator(), weight=0.1)
-            total: float = ComparableField(comparator=NumericComparator(), weight=5.0)
-
-        import random
-
-        rng = random.Random(42)
-        pairs = []
-        for i in range(25):
-            gt = WeightedInvoice(
-                invoice_id=f"INV-{i}",
-                note=rng.choice(["a", "b", "c"]),
-                total=float(i * 10),
-            )
-            pred = WeightedInvoice(
-                invoice_id=f"INV-{i}" if rng.random() < 0.6 else f"INV-X{i}",
-                note=rng.choice(["a", "b", "c", "d"]),
-                total=float(i * 10) if rng.random() < 0.7 else float(i * 10 + 1),
-            )
-            pairs.append((gt, pred))
-
-        per_doc_scores = [
-            gt.compare_with(pred, include_confusion_matrix=True)["overall_score"]
-            for gt, pred in pairs
-        ]
-        expected_mean = sum(per_doc_scores) / len(per_doc_scores)
-
-        evaluator = BulkStructuredModelEvaluator(target_schema=WeightedInvoice)
-        for gt, pred in pairs:
-            evaluator.update(gt, pred)
-        result = evaluator.compute()
-
-        assert abs(result.metrics["weighted_overall_score"] - expected_mean) < 1e-9, (
-            f"bulk weighted_overall_score {result.metrics['weighted_overall_score']}"
-            f" != per-doc mean {expected_mean}"
-        )
-
-
 class TestWeightedOverallScoreParity:
     """Bulk weighted_overall_score matches per-doc mean."""
 

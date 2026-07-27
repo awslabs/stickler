@@ -13,6 +13,17 @@ if TYPE_CHECKING:
     from .structured_model import StructuredModel
 
 
+def _is_list_or_none(value: Any) -> bool:
+    """True if the value is a list or None.
+
+    Used to guard list-field delegation: a list-annotated field may legitimately
+    hold a list or None (empty/null cases are handled downstream), but a non-list
+    runtime value (reachable via model_construct or direct assignment) must not be
+    routed to a list comparator that assumes list inputs.
+    """
+    return value is None or isinstance(value, list)
+
+
 class ComparisonDispatcher:
     """Dispatches field comparisons to appropriate handlers based on field type.
     
@@ -187,7 +198,12 @@ class ComparisonDispatcher:
         
         # CASE 2: Handle list fields. 
         # Note, if it's a primitive list, null/empty cases already handled in STEP 3.
-        elif is_list_field:
+        elif is_list_field and _is_list_or_none(gt_val) and _is_list_or_none(pred_val):
+            # Both values are lists (or None — the comparators handle empty/null
+            # cases). A non-list runtime value on a list-annotated field (reachable
+            # via model_construct or direct assignment, which bypass validation)
+            # falls through to CASE 4 below and is classified as a mismatch (FD),
+            # rather than reaching a comparator that assumes list inputs and crashing.
             if is_structured_list_field:
                 # Delegate to StructuredListComparator for List[StructuredModel]
                 return self.structured_list_comparator.compare_struct_list_with_scores(

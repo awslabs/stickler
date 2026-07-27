@@ -294,3 +294,28 @@ def test_unmatched_pred_object_simple_list_contributes_fa():
     assert tags_metrics["fa"] == 3
     assert priority_metrics["tp"] == 1
     assert priority_metrics["fa"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Regression: non-list value on a list-annotated field must not crash
+# ---------------------------------------------------------------------------
+
+def test_non_list_value_on_structured_list_field_is_mismatch():
+    """A non-list runtime value on a List[StructuredModel] field classifies as FD.
+
+    Normal validation blocks this, but ``model_construct`` (and direct
+    assignment) bypass it, so a str can reach the list-dispatch branch. Without
+    the ``_is_list_or_none`` guard the value flows into the structured-list
+    comparator and crashes in Hungarian matching with
+    ``AttributeError: 'str' object has no attribute 'compare_recursive'``.
+    The guard diverts it to the mismatch path (FD), restoring graceful failure.
+    """
+    gt = TaskList.model_construct(tasks="not-a-list")
+    pred = TaskList(tasks=[TaskItem(tags=["A", "B"], priority="high")])
+
+    result = gt.compare_with(pred, include_confusion_matrix=True)
+    tasks_overall = _overall(result["confusion_matrix"], "tasks")
+
+    assert tasks_overall["fd"] == 1, f"expected fd=1, got {tasks_overall}"
+    assert tasks_overall["fp"] == 1, f"expected fp=1, got {tasks_overall}"
+    assert tasks_overall["tp"] == 0, f"expected tp=0, got {tasks_overall}"
