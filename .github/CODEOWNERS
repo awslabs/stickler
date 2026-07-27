@@ -1,0 +1,4 @@
+# Default owners for everything in the repo.
+# Maintainers are automatically requested for review on every PR.
+# See MAINTAINERS.md for the current maintainer list.
+* @sromoam
