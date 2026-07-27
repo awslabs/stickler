@@ -108,7 +108,28 @@ for doc, expected in labeled_dataset:          # your (document, ground_truth) p
 print(f"Mean score over {len(scores)} docs: {sum(scores) / len(scores):.3f}")
 ```
 
-For streaming aggregation with precision/recall/F1 across the dataset, feed the shadow model into `BulkStructuredModelEvaluator`. See [Bulk Evaluation](../Evaluation/bulk-evaluation.md).
+For corpus-level aggregate metrics (precision/recall/F1 accumulated across every
+document, not a mean of per-document scores), use the standard
+[Bulk Evaluation](../Evaluation/bulk-evaluation.md) update/compute pattern.
+`spec.bulk_evaluator()` returns a `BulkStructuredModelEvaluator` wired to the
+compiled model, and `spec.to_model()` converts your Pydantic instances (or plain
+dicts) into what it accepts:
+
+```python
+spec = stickler.eval_for(Invoice)
+evaluator = spec.bulk_evaluator()               # standard update/compute evaluator
+
+for doc, expected in labeled_dataset:
+    prediction = agent.structured_output(Invoice, f"Extract the invoice:\n{doc}")
+    evaluator.update(spec.to_model(expected), spec.to_model(prediction))
+
+result = evaluator.compute()
+print(f"Corpus F1: {result.metrics['cm_f1']:.3f} over {result.document_count} docs")
+```
+
+Everything from the [Bulk Evaluation guide](../Evaluation/bulk-evaluation.md)
+applies unchanged: `doc_id` tracking, JSONL per-document output, checkpointing,
+and error accumulation.
 
 ## Defending the numbers
 

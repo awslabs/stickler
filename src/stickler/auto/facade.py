@@ -123,12 +123,41 @@ class EvalSpec:
         from a JSON dataset); dicts are validated into the source class first,
         so type coercion and error messages come from the user's own model.
         """
-        gt = self.eval_model.from_json(_dump(self._coerce(ground_truth)))
-        pred = self.eval_model.from_json(_dump(self._coerce(prediction)))
+        gt = self.to_model(ground_truth)
+        pred = self.to_model(prediction)
         raw = gt.compare_with(
             pred, include_confusion_matrix=True, add_derived_metrics=True
         )
         return EvalResult(raw, self)
+
+    def to_model(self, value: Union[BaseModel, Dict[str, Any]]):
+        """Convert a source instance (or dict) to the comparable shadow model.
+
+        This is the bridge into stickler's standard evaluation machinery:
+        anything that takes ``StructuredModel`` instances (``compare_with``,
+        ``BulkStructuredModelEvaluator.update``, HTML reports) accepts the
+        result. ``evaluate()`` uses it internally.
+        """
+        return self.eval_model.from_json(_dump(self._coerce(value)))
+
+    def bulk_evaluator(self, **kwargs):
+        """A ``BulkStructuredModelEvaluator`` targeting this spec's model.
+
+        Returns the standard stateful bulk evaluator (update/compute pattern)
+        configured with the compiled shadow model as ``target_schema``; all
+        keyword arguments pass through. Feed it pairs converted with
+        :meth:`to_model`:
+
+            evaluator = spec.bulk_evaluator()
+            for gt, pred in dataset:
+                evaluator.update(spec.to_model(gt), spec.to_model(pred))
+            metrics = evaluator.compute()
+        """
+        from ..structured_object_evaluator.bulk_structured_model_evaluator import (
+            BulkStructuredModelEvaluator,
+        )
+
+        return BulkStructuredModelEvaluator(target_schema=self.eval_model, **kwargs)
 
     def _coerce(self, value: Union[BaseModel, Dict[str, Any]]) -> BaseModel:
         if isinstance(value, BaseModel):

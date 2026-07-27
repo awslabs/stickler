@@ -426,6 +426,35 @@ class TestDatasetWorkflow:
         assert r1.field_scores == r2.field_scores
         assert r1.overall_score == r2.overall_score
 
+    def test_bulk_evaluator_update_compute_pattern(self):
+        """spec.bulk_evaluator()/to_model() plug into the standard bulk flow."""
+
+        class M(BaseModel):
+            name: str
+            qty: int
+
+        spec = stickler.eval_for(M)
+        evaluator = spec.bulk_evaluator()
+        pairs = [
+            (M(name="a", qty=1), M(name="a", qty=1)),
+            ({"name": "b", "qty": 2}, {"name": "b", "qty": 2}),  # dicts work too
+            (M(name="c", qty=3), M(name="WRONG", qty=99)),
+        ]
+        for gt, pred in pairs:
+            evaluator.update(spec.to_model(gt), spec.to_model(pred))
+        result = evaluator.compute()
+        assert result.document_count == 3
+        assert 0 < result.metrics["cm_f1"] < 1  # 2 perfect + 1 mismatch
+
+    def test_to_model_returns_comparable_instance(self):
+        class M(BaseModel):
+            name: str
+
+        spec = stickler.eval_for(M)
+        gt = spec.to_model(M(name="x"))
+        pred = spec.to_model({"name": "x"})
+        assert gt.compare_with(pred)["overall_score"] == pytest.approx(1.0)
+
 
 class TestDatetimeSensitivity:
     """Datetimes are compared at sub-day resolution; dates at day resolution."""
