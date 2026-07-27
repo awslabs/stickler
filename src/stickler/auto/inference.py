@@ -32,6 +32,7 @@ from __future__ import annotations
 import datetime
 import enum
 import re
+import types
 from dataclasses import dataclass, field
 from typing import (
     Any,
@@ -55,9 +56,7 @@ from ..structured_object_evaluator.models.comparator_registry import (
 # Comparators we will never auto-select: they need models/embeddings/creds and
 # would fail or be surprising as a silent default. A field only ever gets one
 # of these if the user configures it explicitly.
-_NEVER_AUTO = frozenset(
-    {"SemanticComparator", "BERTComparator", "LLMComparator"}
-)
+_NEVER_AUTO = frozenset({"SemanticComparator", "BERTComparator", "LLMComparator"})
 
 # Relative tolerance applied to inferred float comparisons. A bare Numeric
 # comparator defaults to exact matching, so a field threshold alone is inert;
@@ -98,14 +97,15 @@ class InferredSpec:
 
 
 def unwrap_optional(annotation: Any) -> Tuple[Any, bool]:
-    """Strip ``Optional[X]`` / ``Union[X, None]`` down to ``X``.
+    """Strip ``Optional[X]`` / ``Union[X, None]`` / ``X | None`` down to ``X``.
 
     Returns ``(inner, was_optional)``. A multi-arm union that is not simply
     ``X | None`` is returned unchanged (the caller treats it as ambiguous and
     falls back to a string comparator).
     """
     origin = get_origin(annotation)
-    if origin is Union:
+    # PEP 604 unions (X | None) have origin types.UnionType, not typing.Union.
+    if origin is Union or origin is types.UnionType:
         args = [a for a in get_args(annotation) if a is not type(None)]
         if len(args) == 1:
             return args[0], True
@@ -127,81 +127,146 @@ def _is_date(annotation: Any) -> bool:
     return isinstance(annotation, type) and issubclass(annotation, datetime.date)
 
 
+def _is_datetime(annotation: Any) -> bool:
+    return isinstance(annotation, type) and issubclass(annotation, datetime.datetime)
+
+
 # --- Name-token rules -------------------------------------------------------
 
-# Each rule: token-set -> (comparator, config, threshold, weight_hint).
-# ``weight_hint`` is only applied when ``weight_hints=True``. Rules are checked
-# in order; the first whose token appears as a whole word in the field name
-# wins. Ambiguous tokens (type/state/number/key/level/...) are intentionally
-# absent so they stay at the safe type default.
-_NAME_TOKEN_RULES: List[Tuple[frozenset, str, Dict[str, Any], float, float]] = [
-    (
+# Type families a token rule may apply to. A rule whose comparator cannot
+# parse the field's actual type must never fire: DateComparator on a bool or
+# NumericComparator on a free-text str silently scores identical values 0.0,
+# which is the worst failure mode for a metrics API. bool/Enum/Literal always
+# keep their Exact type default (nothing sharpens an exact match).
+_STRINGY = "stringy"  # str
+_NUMERIC = "numeric"  # int, float
+_TEMPORAL = "temporal"  # date, datetime
+
+
+@dataclass(frozen=True)
+class _TokenRule:
+    tokens: frozenset
+    comparator: str
+    config: Dict[str, Any]
+    threshold: float
+    weight_hint: float
+    # Which type families this rule is allowed to refine. A field whose type
+    # is outside the set keeps its type default (conflict noted in provenance).
+    applies_to: frozenset
+
+
+# Rules are checked in order; the first whose token appears as a whole word in
+# the field name AND whose type family matches wins. Ambiguous tokens
+# (type/state/number/key/level/num/...) are intentionally absent so they stay
+# at the safe type default.
+_NAME_TOKEN_RULES: List[_TokenRule] = [
+    _TokenRule(
         frozenset({"id", "uuid", "guid", "sku", "code", "ref", "isbn", "ssn"}),
         "ExactComparator",
         {},
         1.0,
         3.0,
+        frozenset({_STRINGY, _NUMERIC}),
     ),
-    (
-        frozenset(
-            {"amount", "price", "total", "subtotal", "cost", "balance", "fee",
-             "tax", "salary", "revenue"}
-        ),
-        "NumericComparator",
-        {"relative_tolerance": _FLOAT_RELATIVE_TOLERANCE},
-        0.95,
-        2.5,
-    ),
-    (
-        frozenset({"quantity", "qty", "count", "units", "num"}),
-        "NumericComparator",
-        {},
-        1.0,
-        1.2,
-    ),
-    (
-        frozenset(
-            {"date", "dob", "expiry", "expires", "created", "updated",
-             "issued", "due", "birthdate"}
-        ),
-        "DateComparator",
-        {},
-        0.95,
-        1.5,
-    ),
-    (
+    # email/url/zip/phone before the numeric rules so phone_num resolves to
+    # Exact, not Numeric (NumericComparator strips non-digits and would score
+    # identical formatted phone numbers 0.0).
+    _TokenRule(
         frozenset({"email", "url", "uri", "zip", "postal", "postcode", "phone"}),
         "ExactComparator",
         {},
         1.0,
         1.5,
+        frozenset({_STRINGY}),
     ),
-    (
+    _TokenRule(
         frozenset(
-            {"name", "customer", "vendor", "company", "contact", "author",
-             "recipient"}
+            {
+                "amount",
+                "price",
+                "total",
+                "subtotal",
+                "cost",
+                "balance",
+                "fee",
+                "tax",
+                "salary",
+                "revenue",
+            }
+        ),
+        "NumericComparator",
+        {"relative_tolerance": _FLOAT_RELATIVE_TOLERANCE},
+        0.95,
+        2.5,
+        frozenset({_NUMERIC}),
+    ),
+    _TokenRule(
+        frozenset({"quantity", "qty", "count", "units"}),
+        "NumericComparator",
+        {},
+        1.0,
+        1.2,
+        frozenset({_NUMERIC}),
+    ),
+    _TokenRule(
+        frozenset(
+            {
+                "date",
+                "dob",
+                "expiry",
+                "expires",
+                "created",
+                "updated",
+                "issued",
+                "due",
+                "birthdate",
+            }
+        ),
+        "DateComparator",
+        {},
+        0.95,
+        1.5,
+        frozenset({_TEMPORAL}),
+    ),
+    _TokenRule(
+        frozenset(
+            {"name", "customer", "vendor", "company", "contact", "author", "recipient"}
         ),
         "LevenshteinComparator",
         {},
         0.85,
         1.5,
+        frozenset({_STRINGY}),
     ),
-    (
+    _TokenRule(
         frozenset({"address", "addr", "street", "city", "location"}),
         "FuzzyComparator",
         {"method": "token_sort_ratio"},
         0.8,
         1.5,
+        frozenset({_STRINGY}),
     ),
-    (
+    _TokenRule(
         frozenset(
-            {"description", "desc", "summary", "notes", "note", "comment",
-             "comments", "remarks", "memo", "body", "text"}
+            {
+                "description",
+                "desc",
+                "summary",
+                "notes",
+                "note",
+                "comment",
+                "comments",
+                "remarks",
+                "memo",
+                "body",
+                "text",
+            }
         ),
         "FuzzyComparator",
         {"method": "token_set_ratio"},
         0.6,
         0.3,
+        frozenset({_STRINGY}),
     ),
 ]
 
@@ -209,10 +274,37 @@ _TOKEN_SPLIT = re.compile(r"[^a-z0-9]+")
 
 
 def _field_tokens(field_name: str) -> frozenset:
-    """Split a field name into lowercase word tokens (snake/camel-friendly)."""
-    # Insert boundaries for camelCase before lowercasing.
+    """Split a field name into lowercase word tokens (snake/camel-friendly).
+
+    Trailing digits are shed (isbn13 -> isbn) and simple plurals are
+    singularized (ids -> id, addresses -> address) so idiomatic field names
+    reach their intended rules.
+    """
+    # Insert boundaries for camelCase and letter->digit runs before lowercasing.
     spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", field_name)
-    return frozenset(t for t in _TOKEN_SPLIT.split(spaced.lower()) if t)
+    spaced = re.sub(r"(?<=[a-zA-Z])(?=[0-9])", "_", spaced)
+    tokens = set(t for t in _TOKEN_SPLIT.split(spaced.lower()) if t)
+    expanded = set(tokens)
+    for t in tokens:
+        if t.endswith("es") and len(t) > 3:
+            expanded.add(t[:-2])
+        if t.endswith("s") and len(t) > 2:
+            expanded.add(t[:-1])
+    return frozenset(expanded)
+
+
+def _type_family(annotation: Any) -> Optional[str]:
+    """Type family used to gate token rules; None -> never token-refined."""
+    if annotation is bool or _is_enum(annotation) or _is_literal(annotation):
+        # Exact by type; no token rule improves on an exact match.
+        return None
+    if annotation in (int, float):
+        return _NUMERIC
+    if _is_date(annotation):
+        return _TEMPORAL
+    if annotation is str:
+        return _STRINGY
+    return None
 
 
 # --- Availability gate ------------------------------------------------------
@@ -232,11 +324,17 @@ def _gate(
     reach here, but are also downgraded defensively.
     """
     if comparator_name in _NEVER_AUTO:
-        provenance.append(f"degrade:{comparator_name}->LevenshteinComparator (never auto-selected)")
+        provenance.append(
+            f"degrade:{comparator_name}->LevenshteinComparator (never auto-selected)"
+        )
         return "LevenshteinComparator", {}
 
     if not registry.is_registered(comparator_name):
-        fallback = "ExactComparator" if comparator_name == "DateComparator" else "LevenshteinComparator"
+        fallback = (
+            "ExactComparator"
+            if comparator_name == "DateComparator"
+            else "LevenshteinComparator"
+        )
         provenance.append(f"degrade:{comparator_name}->{fallback} (not registered)")
         return fallback, {}
 
@@ -245,7 +343,11 @@ def _gate(
         # compare time.
         registry.create_instance(comparator_name, config)
     except Exception as exc:  # noqa: BLE001 - any construction failure degrades
-        fallback = "ExactComparator" if comparator_name == "DateComparator" else "LevenshteinComparator"
+        fallback = (
+            "ExactComparator"
+            if comparator_name == "DateComparator"
+            else "LevenshteinComparator"
+        )
         provenance.append(
             f"degrade:{comparator_name}->{fallback} ({type(exc).__name__})"
         )
@@ -289,21 +391,40 @@ def infer_field_config(
     # 1) Type signal (safe, always on).
     comparator, config, threshold, clip = _type_default(annotation, provenance)
 
-    # 2) Name-token refinement layered on the type default.
+    # 2) Name-token refinement layered on the type default, gated on type
+    #    compatibility: a rule whose comparator cannot parse this type keeps
+    #    the type default (recorded in provenance) instead of silently
+    #    scoring identical values 0.0.
     weight = 1.0
-    token_match = _match_name_token(field_name)
-    if token_match is not None:
-        t_comparator, t_config, t_threshold, t_weight = token_match
-        comparator, config, threshold = t_comparator, dict(t_config), t_threshold
-        provenance.append(
-            f"name-token:{field_name} -> {t_comparator}@{t_threshold}"
-        )
-        if weight_hints and t_weight != 1.0:
-            weight = t_weight
-            provenance.append(f"name-token:{field_name} -> weight {t_weight}")
-        # Free-text fields keep partial credit rather than clipping to zero.
-        if t_comparator == "FuzzyComparator" and t_config.get("method") == "token_set_ratio":
-            clip = False
+    family = _type_family(annotation)
+    rule = _match_name_token(field_name)
+    if rule is not None:
+        if family is not None and family in rule.applies_to:
+            comparator, config, threshold = (
+                rule.comparator,
+                dict(rule.config),
+                rule.threshold,
+            )
+            provenance.append(
+                f"name-token:{field_name} -> {rule.comparator}@{rule.threshold}"
+            )
+            if weight_hints and rule.weight_hint != 1.0:
+                weight = rule.weight_hint
+                provenance.append(
+                    f"name-token:{field_name} -> weight {rule.weight_hint}"
+                )
+            # Free-text fields keep partial credit rather than clipping to zero.
+            if (
+                rule.comparator == "FuzzyComparator"
+                and rule.config.get("method") == "token_set_ratio"
+            ):
+                clip = False
+        else:
+            provenance.append(
+                f"name-token:{field_name} matched {rule.comparator} but "
+                f"type {_annotation_label(annotation)} is incompatible; "
+                "keeping type default"
+            )
 
     # 3) Availability gate (degrade unavailable comparators).
     comparator, config = _gate(comparator, config, registry, provenance)
@@ -329,6 +450,12 @@ def _type_default(
         kind = "enum" if _is_enum(annotation) else "literal"
         provenance.append(f"type:{kind} -> ExactComparator@1.0")
         return "ExactComparator", {}, 1.0, True
+    if _is_datetime(annotation):
+        # Sub-day tolerance so timestamps hours apart do not silently score
+        # 1.0 (DateComparator's default floors both sides to the calendar
+        # day). One minute absorbs clock-precision noise, nothing more.
+        provenance.append("type:datetime -> DateComparator(tolerance=1min)@0.95")
+        return "DateComparator", {"tolerance": 1.0 / (24 * 60)}, 0.95, True
     if _is_date(annotation):
         provenance.append("type:date -> DateComparator@0.95")
         return "DateComparator", {}, 0.95, True
@@ -356,13 +483,11 @@ def _type_default(
     return "LevenshteinComparator", {}, 0.7, True
 
 
-def _match_name_token(
-    field_name: str,
-) -> Optional[Tuple[str, Dict[str, Any], float, float]]:
+def _match_name_token(field_name: str) -> Optional[_TokenRule]:
     tokens = _field_tokens(field_name)
-    for token_set, comparator, config, threshold, weight_hint in _NAME_TOKEN_RULES:
-        if tokens & token_set:
-            return comparator, config, threshold, weight_hint
+    for rule in _NAME_TOKEN_RULES:
+        if tokens & rule.tokens:
+            return rule
     return None
 
 

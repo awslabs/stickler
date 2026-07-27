@@ -114,20 +114,33 @@ You didn't make any of these choices, so you shouldn't have to defend them from 
 
 ```python
 for field, info in result.explain().items():
-    print(f"{field:14} {info['comparator']:24} threshold={info['threshold']} src={info['source']}")
+    print(f"{field:22} {info['comparator']:40} threshold={info['threshold']} src={info['source']}")
 ```
 
 ```text
-invoice_id     ExactComparator          threshold=1.0  src=name-token
-vendor_name    LevenshteinComparator    threshold=0.85 src=name-token
-invoice_date   DateComparator           threshold=0.95 src=name-token
-total_amount   NumericComparator        threshold=0.95 src=name-token
-priority       ExactComparator          threshold=1.0  src=type
-notes          FuzzyComparator          threshold=0.6  src=name-token
-line_items     Hungarian (per-element)  threshold=0.5  src=type
+invoice_id             ExactComparator                          threshold=1.0  src=name-token
+vendor_name            LevenshteinComparator                    threshold=0.85 src=name-token
+invoice_date           DateComparator                           threshold=0.95 src=name-token
+total_amount           NumericComparator                        threshold=0.95 src=name-token
+priority               ExactComparator                          threshold=1.0  src=type
+notes                  FuzzyComparator                          threshold=0.6  src=name-token
+line_items             Hungarian (per-element StructuredModel)  threshold=0.7  src=type
+line_items.sku         ExactComparator                          threshold=1.0  src=name-token
+line_items.description FuzzyComparator                          threshold=0.6  src=name-token
+line_items.quantity    NumericComparator                        threshold=1.0  src=name-token
+line_items.unit_price  NumericComparator                        threshold=0.95 src=name-token
 ```
 
-So `vendor_name` scored 0.0 because "Acme Corporation" vs "Acme Corp" falls **below** the `0.85` similarity threshold Stickler picked for a name field, and by default scores under the threshold are clipped to zero. That is a decision you can now defend in one sentence, or override in one line if you disagree (see below).
+Nested fields appear under dotted paths (`line_items.sku`), so every decision at every depth is auditable.
+
+And the answer to "why did `vendor_name` score 0.0 for *this* pair?" is right in the result:
+
+```python
+result.explain()["vendor_name"]["verdict"]
+# 'raw 0.56 < threshold 0.85 -> clipped to 0.0'
+```
+
+"Acme Corporation" vs "Acme Corp" was 56% similar, **below** the `0.85` similarity threshold Stickler picked for a name field, and by default scores under the threshold are clipped to zero. A near-miss and a total mismatch are distinguishable at a glance. If you disagree with a decision, graduate that model to a hand-authored [`StructuredModel`](README.md) where you set the comparator, threshold, and weight per field explicitly.
 
 `src` tells you where each decision came from:
 
@@ -146,6 +159,7 @@ So `vendor_name` scored 0.0 because "Acme Corporation" vs "Acme Corp" falls **be
 | a field named `*_id`, `sku`, `code` | `ExactComparator` | IDs must be exact |
 | a field named `*amount`, `price`, `total` | `NumericComparator` | money |
 | a field named `notes`, `description` | `FuzzyComparator` | free text, reworded is fine |
+| name and type disagree (`amount: str`) | the type wins | a comparator that cannot parse the type would mis-score |
 | a nested model | recurse into it | field-by-field |
 | a `List[Model]` | Hungarian matching | order-independent |
 

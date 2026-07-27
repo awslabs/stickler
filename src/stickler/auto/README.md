@@ -48,7 +48,8 @@ call yields both `field_scores`/`overall_score` **and** precision/recall/f1/accu
 
 ## Inference precedence (per field, first match wins)
 
-1. **Type signal** (always on, safe), after unwrapping `Optional`/`Union[X, None]`:
+1. **Type signal** (always on, safe), after unwrapping `Optional[X]` /
+   `Union[X, None]` / PEP 604 `X | None`:
 
    | Python type | Comparator | Threshold | clip |
    |---|---|---|---|
@@ -56,21 +57,35 @@ call yields both `field_scores`/`overall_score` **and** precision/recall/f1/accu
    | `Enum` / `Literal` | Exact | 1.0 | yes |
    | `int` | Numeric (exact) | 1.0 | yes |
    | `float` | Numeric (`relative_tolerance=0.001`) | 0.95 | yes |
-   | `date` / `datetime` | Date | 0.95 | yes |
+   | `datetime` | Date (`tolerance=1min`, so timestamps hours apart do not match) | 0.95 | yes |
+   | `date` | Date (same calendar day) | 0.95 | yes |
    | `str` | Levenshtein | 0.7 | yes |
-   | nested `BaseModel` | recurse → child shadow model | 0.9 | yes |
+   | nested `BaseModel` | recurse → child shadow model | `match_threshold` | **no** (partial credit, consistent with the same object inside a list) |
+   | nested `StructuredModel` | used as configured, never re-inferred | (its own) | (its own) |
    | `List[BaseModel]` | Hungarian object matching | (element `match_threshold`) | n/a |
    | `List[primitive]` | element comparator | element | yes |
-   | anything else | Levenshtein (str wire) | 0.7 | yes |
+   | `dict` / `tuple` / `set` / `Any` / multi-arm unions | Exact over a canonical JSON string (sorted keys; sets also sort elements) | 0.7 | yes |
 
-2. **Name-token refinement** (comparator/threshold on by default; **weight only
-   when `weight_hints=True`**). Tokens are matched as whole words in the snake/
-   camelCase-split field name. Highlights: `id/sku/code`→Exact (w 3.0),
-   `amount/price/total`→Numeric\@0.95 (w 2.5), `email/url/zip`→Exact,
-   `name/vendor/customer`→Levenshtein\@0.85, `address`→Fuzzy(token_sort),
-   `notes/description/summary`→Fuzzy(token_set)\@0.6 with `clip=False` (partial
-   credit). Ambiguous tokens (`type/state/number/key/level`) are intentionally
-   omitted so they keep the safe type default.
+2. **Name-token refinement**, gated on type compatibility (comparator/threshold
+   on by default; **weight only when `weight_hints=True`**). Tokens are matched
+   as whole words in the snake/camelCase-split field name; trailing digits are
+   shed (`isbn13`→`isbn`) and simple plurals singularized (`ids`→`id`).
+   Highlights: `id/sku/code`→Exact (w 3.0), `amount/price/total`→Numeric\@0.95
+   (w 2.5, numeric fields only), `email/url/zip/phone`→Exact,
+   `name/vendor/customer`→Levenshtein\@0.85,
+   `date/due/created/...`→Date\@0.95 (date/datetime fields only),
+   `address`→Fuzzy(token_sort), `notes/description/summary`→Fuzzy(token_set)\@0.6
+   with `clip=False` (partial credit). Ambiguous tokens
+   (`type/state/number/key/level/num`) are intentionally omitted so they keep
+   the safe type default.
+
+   **The type gates the token.** A rule whose comparator cannot parse the
+   field's actual type never fires: `amount: str` keeps Levenshtein,
+   `has_due_date: bool` keeps Exact, and the skipped refinement is recorded in
+   provenance. Without the gate, a Date/Numeric comparator applied to
+   unparseable values silently scores identical strings 0.0, which is the worst
+   failure mode a metrics API can have. `bool`/`Enum`/`Literal` are never
+   token-refined at all (nothing sharpens an exact match).
 
 Every decision is recorded in `InferredSpec.provenance` and surfaced by
 `EvalResult.explain()` / `EvalSpec.explain()`.
@@ -90,18 +105,36 @@ Every decision is recorded in `InferredSpec.provenance` and surfaced by
 
 Instances are compared as `model_dump(mode="json")`: `date`/`datetime` become
 ISO strings and enums become their values, matching the wire types the inferred
-comparators expect. Shadow fields for those types are therefore declared as
-`str`. `mode="json"` (not plain `model_dump()`) is mandatory, because a native `date`
-would otherwise score 0.
+comparators expect. Fields whose JSON form is not a string scalar (`dict`,
+`tuple`, `set`, `Any`, multi-arm unions, `IntEnum`, int `Literal`) canonicalize
+to a deterministic JSON string (sorted keys; sets also sort elements) via a
+shadow-field validator, so key order and container spelling never affect
+scores. `mode="json"` (not plain `model_dump()`) is mandatory, because a
+native `date` would otherwise score 0.
+
+Nullability of a shadow field comes from the **source annotation**
+(`Optional[X]` / `X | None` / `Any`), not from required-ness: a required
+`Optional[str]` accepts `None` as a value, and omitting it is still an error
+in the user's own model.
+
+## Unsupported shapes (loud errors, not crashes)
+
+These raise `TypeError` with an actionable message at `eval_for` time:
+
+- **Recursive models** (self-referential or mutually recursive): a shadow
+  class would need itself as a field type before it exists.
+- **Empty models** (no fields to score).
+- **A field named `extra_fields`** (reserved by the comparison engine).
 
 ## Known limitations
 
-- **Directly self-referential models** (a field whose type is the class itself)
-  degrade to a generic structured comparison at that edge; pydantic cannot build
-  a truly recursive dynamic class in one pass.
 - **`List[BaseModel]` semantics** use Hungarian matching (order-independent),
   which differs from `anls_score`'s ordering-based path. This is intentional and
   documented so scores are explainable.
+- **Inference heuristics may be tuned across releases**, which can change
+  scores for unconfigured models. Benchmark against a pinned stickler version,
+  or graduate to an explicit `StructuredModel` (whose configuration this layer
+  never overrides) for long-lived comparisons.
 - **Extending later.** The `InferredSpec` config dict is the single contract; an
   agentic configurator (future) would be just another producer of that dict,
   seeded by this deterministic inference as its prior. Not implemented here.
