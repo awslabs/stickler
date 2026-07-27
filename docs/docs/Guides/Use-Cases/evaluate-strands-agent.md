@@ -94,32 +94,19 @@ for field, score in result.field_scores.items():
 
 ## Scoring a whole evaluation set
 
-You usually have many labeled documents, not one. Compile the evaluator once with `eval_for`, then loop:
-
-```python
-spec = stickler.eval_for(Invoice)
-
-scores = []
-for doc, expected in labeled_dataset:          # your (document, ground_truth) pairs
-    prediction = agent.structured_output(Invoice, f"Extract the invoice:\n{doc}")
-    result = spec.evaluate(expected, prediction)
-    scores.append(result.overall_score)
-
-print(f"Mean score over {len(scores)} docs: {sum(scores) / len(scores):.3f}")
-```
-
-For corpus-level aggregate metrics (precision/recall/F1 accumulated across every
-document, not a mean of per-document scores), use the standard
-[Bulk Evaluation](../Evaluation/bulk-evaluation.md) update/compute pattern.
-`spec.bulk_evaluator()` returns a `BulkStructuredModelEvaluator` wired to the
-compiled model, and `spec.to_model()` converts your Pydantic instances (or plain
-dicts) into what it accepts:
+You usually have many labeled documents, not one. This is stickler's standard
+[Bulk Evaluation](../Evaluation/bulk-evaluation.md) update/compute pattern;
+the zero-config path plugs straight into it. Compile the evaluator once with
+`eval_for`, then `spec.bulk_evaluator()` returns a
+`BulkStructuredModelEvaluator` wired to the compiled model, and
+`spec.to_model()` converts your Pydantic instances (or plain dicts) into what
+it accepts:
 
 ```python
 spec = stickler.eval_for(Invoice)
 evaluator = spec.bulk_evaluator()               # standard update/compute evaluator
 
-for doc, expected in labeled_dataset:
+for doc, expected in labeled_dataset:           # your (document, ground_truth) pairs
     prediction = agent.structured_output(Invoice, f"Extract the invoice:\n{doc}")
     evaluator.update(spec.to_model(expected), spec.to_model(prediction))
 
@@ -127,9 +114,13 @@ result = evaluator.compute()
 print(f"Corpus F1: {result.metrics['cm_f1']:.3f} over {result.document_count} docs")
 ```
 
-Everything from the [Bulk Evaluation guide](../Evaluation/bulk-evaluation.md)
-applies unchanged: `doc_id` tracking, JSONL per-document output, checkpointing,
-and error accumulation.
+This accumulates true corpus-level precision/recall/F1 (confusion-matrix
+counts across every document, not a mean of per-document scores), and
+everything from the [Bulk Evaluation guide](../Evaluation/bulk-evaluation.md)
+applies unchanged: `doc_id` tracking, JSONL per-document output,
+checkpointing, and error accumulation. For a closer look at any single pair,
+`spec.evaluate(expected, prediction)` returns the per-document
+[`EvalResult`](#defending-the-numbers).
 
 ## Defending the numbers
 

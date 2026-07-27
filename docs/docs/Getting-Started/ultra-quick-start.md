@@ -170,15 +170,12 @@ Full rules and rationale live in [`src/stickler/auto/README.md`](https://github.
 The defaults are meant to be enough, but if you want a little more control without defining a `StructuredModel`:
 
 ```python
-# Reuse the compiled evaluator across a whole dataset (faster):
+# Scoring a dataset? Compile once, then use the standard bulk pattern:
 spec = stickler.eval_for(Invoice)
-scores = [spec.evaluate(gt, pred).overall_score for gt, pred in dataset]
-
-# For corpus-level precision/recall/F1, use the standard bulk pattern:
 evaluator = spec.bulk_evaluator()
 for gt, pred in dataset:
     evaluator.update(spec.to_model(gt), spec.to_model(pred))
-print(evaluator.compute().metrics["cm_f1"])
+print(evaluator.compute().metrics["cm_f1"])   # corpus-level F1
 
 # Let field names hint at business importance (id/amount weigh more):
 result = stickler.evaluate(ground_truth, prediction, weight_hints=True)
