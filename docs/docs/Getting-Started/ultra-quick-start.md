@@ -170,16 +170,39 @@ Full rules and rationale live in [`src/stickler/auto/README.md`](https://github.
 The defaults are meant to be enough, but if you want a little more control without defining a `StructuredModel`:
 
 ```python
-# Scoring a dataset? Compile once, then use the standard bulk pattern:
+# Reuse the compiled evaluator across pairs (faster than evaluate() per pair):
 spec = stickler.eval_for(Invoice)
-evaluator = spec.bulk_evaluator()
-for gt, pred in dataset:
-    evaluator.update(spec.to_model(gt), spec.to_model(pred))
-print(evaluator.compute().metrics["cm_f1"])   # corpus-level F1
+result = spec.evaluate(ground_truth, prediction)
 
 # Let field names hint at business importance (id/amount weigh more):
 result = stickler.evaluate(ground_truth, prediction, weight_hints=True)
 ```
+
+Scoring a whole dataset? The same inference is available as a regular
+`StructuredModel` constructor, so the standard
+[Bulk Evaluation](../Guides/Evaluation/bulk-evaluation.md) pattern applies
+exactly as documented:
+
+```python
+from stickler import StructuredModel
+from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
+    BulkStructuredModelEvaluator,
+)
+
+InvoiceEval = StructuredModel.from_pydantic(Invoice)   # same inference as evaluate()
+
+evaluator = BulkStructuredModelEvaluator(target_schema=InvoiceEval)
+for gt, pred in dataset:
+    evaluator.update(
+        InvoiceEval.from_json(gt.model_dump()),
+        InvoiceEval.from_json(pred.model_dump()),
+    )
+print(evaluator.compute().metrics["cm_f1"])   # corpus-level F1
+```
+
+`InvoiceEval` is an ordinary `StructuredModel` subclass: if you disagree with
+an inferred decision, export it (`to_stickler_config()`), edit the comparator
+or threshold, and rebuild with `StructuredModel.model_from_json(config)`.
 
 By default every field weighs the same (`weight=1.0`), because business-criticality is not something a plain model encodes and we would rather not guess it silently. `weight_hints=True` turns on name-based weighting (for example, `invoice_id` at 3x and `total_amount` at 2.5x), and, as always, `.explain()` shows you exactly what changed.
 

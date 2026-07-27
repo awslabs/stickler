@@ -426,34 +426,95 @@ class TestDatasetWorkflow:
         assert r1.field_scores == r2.field_scores
         assert r1.overall_score == r2.overall_score
 
-    def test_bulk_evaluator_update_compute_pattern(self):
-        """spec.bulk_evaluator()/to_model() plug into the standard bulk flow."""
+    def test_from_pydantic_with_standard_bulk_evaluator(self):
+        """from_pydantic output plugs into BulkStructuredModelEvaluator as-is."""
+        from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
+            BulkStructuredModelEvaluator,
+        )
 
         class M(BaseModel):
             name: str
             qty: int
 
-        spec = stickler.eval_for(M)
-        evaluator = spec.bulk_evaluator()
+        MEval = StructuredModel.from_pydantic(M)
+        evaluator = BulkStructuredModelEvaluator(target_schema=MEval)
         pairs = [
             (M(name="a", qty=1), M(name="a", qty=1)),
-            ({"name": "b", "qty": 2}, {"name": "b", "qty": 2}),  # dicts work too
+            (M(name="b", qty=2), M(name="b", qty=2)),
             (M(name="c", qty=3), M(name="WRONG", qty=99)),
         ]
         for gt, pred in pairs:
-            evaluator.update(spec.to_model(gt), spec.to_model(pred))
+            evaluator.update(
+                MEval.from_json(gt.model_dump()),
+                MEval.from_json(pred.model_dump()),
+            )
         result = evaluator.compute()
         assert result.document_count == 3
         assert 0 < result.metrics["cm_f1"] < 1  # 2 perfect + 1 mismatch
 
-    def test_to_model_returns_comparable_instance(self):
+
+class TestFromPydantic:
+    """StructuredModel.from_pydantic is the first-class constructor."""
+
+    def test_returns_structured_model_subclass(self):
         class M(BaseModel):
             name: str
 
-        spec = stickler.eval_for(M)
-        gt = spec.to_model(M(name="x"))
-        pred = spec.to_model({"name": "x"})
-        assert gt.compare_with(pred)["overall_score"] == pytest.approx(1.0)
+        MEval = StructuredModel.from_pydantic(M)
+        assert issubclass(MEval, StructuredModel)
+
+    def test_accepts_native_and_json_dumps(self):
+        """Instances validate from plain model_dump() and mode='json' alike."""
+
+        class Color(Enum):
+            RED = "red"
+
+        class M(BaseModel):
+            when: datetime.date
+            color: Color
+
+        MEval = StructuredModel.from_pydantic(M)
+        src = M(when=datetime.date(2024, 1, 1), color=Color.RED)
+        native = MEval.from_json(src.model_dump())
+        json_form = MEval.from_json(src.model_dump(mode="json"))
+        assert native.compare_with(json_form)["overall_score"] == pytest.approx(1.0)
+
+    def test_structured_model_passthrough_identity(self):
+        class SM(StructuredModel):
+            code: str = ComparableField(default=None)
+
+        assert StructuredModel.from_pydantic(SM) is SM
+
+    def test_export_edit_rebuild_roundtrip(self):
+        """The inferred model exports to an editable stickler config."""
+
+        class M(BaseModel):
+            name: str
+            note: str
+
+        MEval = StructuredModel.from_pydantic(M)
+        config = MEval.to_stickler_config()
+        config["fields"]["note"]["comparator"] = "ExactComparator"
+        Edited = StructuredModel.model_from_json(config)
+        gt = Edited.from_json({"name": "x", "note": "Hello World"})
+        pred = Edited.from_json({"name": "x", "note": "hello, world"})
+        # ExactComparator normalizes case/punctuation: still a match.
+        assert gt.compare_with(pred)["field_scores"]["note"] == pytest.approx(1.0)
+
+    def test_evaluate_and_from_pydantic_agree(self):
+        """The facade and the constructor produce identical scores."""
+
+        class M(BaseModel):
+            name: str
+            qty: int
+
+        gt, pred = M(name="acme corp", qty=5), M(name="acme corporation", qty=5)
+        facade_score = stickler.evaluate(gt, pred).overall_score
+        MEval = StructuredModel.from_pydantic(M)
+        direct = MEval.from_json(gt.model_dump()).compare_with(
+            MEval.from_json(pred.model_dump())
+        )["overall_score"]
+        assert facade_score == pytest.approx(direct)
 
 
 class TestDatetimeSensitivity:

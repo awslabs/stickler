@@ -94,21 +94,28 @@ for field, score in result.field_scores.items():
 
 ## Scoring a whole evaluation set
 
-You usually have many labeled documents, not one. This is stickler's standard
-[Bulk Evaluation](../Evaluation/bulk-evaluation.md) update/compute pattern;
-the zero-config path plugs straight into it. Compile the evaluator once with
-`eval_for`, then `spec.bulk_evaluator()` returns a
-`BulkStructuredModelEvaluator` wired to the compiled model, and
-`spec.to_model()` converts your Pydantic instances (or plain dicts) into what
-it accepts:
+You usually have many labeled documents, not one. Turn the agent's
+`response_model` into a regular `StructuredModel` with
+`StructuredModel.from_pydantic()` (the same inference `stickler.evaluate`
+uses), then the standard
+[Bulk Evaluation](../Evaluation/bulk-evaluation.md) update/compute pattern
+applies exactly as documented:
 
 ```python
-spec = stickler.eval_for(Invoice)
-evaluator = spec.bulk_evaluator()               # standard update/compute evaluator
+from stickler import StructuredModel
+from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
+    BulkStructuredModelEvaluator,
+)
+
+InvoiceEval = StructuredModel.from_pydantic(Invoice)
+evaluator = BulkStructuredModelEvaluator(target_schema=InvoiceEval)
 
 for doc, expected in labeled_dataset:           # your (document, ground_truth) pairs
     prediction = agent.structured_output(Invoice, f"Extract the invoice:\n{doc}")
-    evaluator.update(spec.to_model(expected), spec.to_model(prediction))
+    evaluator.update(
+        InvoiceEval.from_json(expected.model_dump()),
+        InvoiceEval.from_json(prediction.model_dump()),
+    )
 
 result = evaluator.compute()
 print(f"Corpus F1: {result.metrics['cm_f1']:.3f} over {result.document_count} docs")
@@ -118,7 +125,10 @@ This accumulates true corpus-level precision/recall/F1 (confusion-matrix
 counts across every document, not a mean of per-document scores), and
 everything from the [Bulk Evaluation guide](../Evaluation/bulk-evaluation.md)
 applies unchanged: `doc_id` tracking, JSONL per-document output,
-checkpointing, and error accumulation. For a closer look at any single pair,
+checkpointing, and error accumulation. And because `InvoiceEval` is an
+ordinary `StructuredModel`, you can export its inferred config
+(`to_stickler_config()`), edit any comparator or threshold, and rebuild, no
+zero-config-specific API needed. For a closer look at any single pair,
 `spec.evaluate(expected, prediction)` returns the per-document
 [`EvalResult`](#defending-the-numbers).
 

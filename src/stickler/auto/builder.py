@@ -418,8 +418,12 @@ def _canonicalize_json(value: Any) -> Any:
 
     Applied as a BeforeValidator on shadow fields whose source type has no
     scalar JSON form. Both GT and prediction pass through the same
-    canonicalization, so key order and container spelling never affect scores.
+    canonicalization, so key order, container spelling, and native-vs-JSON
+    dump mode never affect scores.
     """
+    if isinstance(value, enum.Enum):
+        # Plain model_dump() keeps the member; mode="json" gives its value.
+        value = value.value
     if value is None or isinstance(value, str):
         return value
     if isinstance(value, (int, float, bool)):
@@ -438,9 +442,21 @@ def _canonicalize_json_sorted(value: Any) -> Any:
     return _canonicalize_json(value)
 
 
+def _isoformat_dates(value: Any) -> Any:
+    """Convert native date/datetime to ISO strings (strings pass through).
+
+    Lets shadow models accept both wire forms: ``model_dump(mode="json")``
+    (already ISO strings) and plain ``model_dump()`` (native date objects).
+    """
+    if isinstance(value, (datetime.date, datetime.datetime)):
+        return value.isoformat()
+    return value
+
+
 # Shadow types for fields whose JSON wire form is not a scalar.
 _WireJson = Annotated[str, BeforeValidator(_canonicalize_json)]
 _WireJsonSorted = Annotated[str, BeforeValidator(_canonicalize_json_sorted)]
+_WireDate = Annotated[str, BeforeValidator(_isoformat_dates)]
 
 
 def _scalar_wire_type(annotation: Any) -> Any:
@@ -461,7 +477,9 @@ def _scalar_wire_type(annotation: Any) -> Any:
     if _is_literal(annotation):
         return _WireJson
     if isinstance(annotation, type) and issubclass(annotation, datetime.date):
-        return str
+        # Accept both native date objects and ISO strings, so instances
+        # validate regardless of how they were dumped.
+        return _WireDate
     if annotation in (str, int, float, bool):
         return annotation
     if isinstance(annotation, type) and issubclass(annotation, (set, frozenset)):

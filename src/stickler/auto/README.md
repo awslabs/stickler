@@ -38,6 +38,15 @@ Three modules, one pipeline:
 | `builder.py` | `structured_model_for(cls)` → a cached `StructuredModel` subclass. Walks `model_fields`, recurses into nested models / lists, delegates class creation to `ModelFactory.create_model_from_fields`. |
 | `facade.py` | `evaluate`, `eval_for`, `EvalSpec`, `EvalResult`. Normalizes instances via `model_dump(mode="json")`, runs `compare_with`, flattens the result. |
 
+The builder is also exposed as **`StructuredModel.from_pydantic(cls)`**,
+sibling to `from_json_schema()` / `model_from_json()`. That is the
+integration point with the rest of stickler: the returned class is an
+ordinary `StructuredModel`, so `BulkStructuredModelEvaluator`, HTML reports,
+`to_stickler_config()` (export → edit → rebuild), and every other consumer
+work on it unchanged. `evaluate()`/`eval_for()` are conveniences layered on
+top for the single-pair case; there is no bulk-specific API in this package
+by design.
+
 Pipeline: `model_fields` → infer `InferredSpec` per field → `ComparableField`
 tuples → `create_model_from_fields` (cached) → `from_json(model_dump(mode="json"))`
 for gt & pred → `compare_with(include_confusion_matrix=True)` → `EvalResult`.
