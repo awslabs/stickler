@@ -135,6 +135,13 @@ Two consequences are worth noting:
   rather than crash evaluation.
 - `model_json_schema()` reflects this by emitting `{"anyOf": [{"type": "string"}, {"type": "null"}]}`
   for such fields.
+- `to_json_schema()` likewise makes the nullability explicit, emitting
+  `{"type": ["string", "null"]}`. So an optional property declared only as
+  `{"type": "string"}` gains an explicit `"null"` on export that the input schema
+  never stated. This is intended: "absent from `required`" already means the value
+  may be `None`, and the exported schema now says so out loud instead of leaving it
+  implicit. The round trip is idempotent — re-importing the exported schema and
+  exporting again yields the same document, and accepts the same values.
 
 ---
 
