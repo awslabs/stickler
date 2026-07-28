@@ -30,6 +30,7 @@ tuple for ``ModelFactory.create_model_from_fields``.
 from __future__ import annotations
 
 import datetime
+import decimal
 import enum
 import re
 import types
@@ -298,7 +299,7 @@ def _type_family(annotation: Any) -> Optional[str]:
     if annotation is bool or _is_enum(annotation) or _is_literal(annotation):
         # Exact by type; no token rule improves on an exact match.
         return None
-    if annotation in (int, float):
+    if annotation in (int, float, decimal.Decimal):
         return _NUMERIC
     if _is_date(annotation):
         return _TEMPORAL
@@ -472,6 +473,12 @@ def _type_default(
             0.95,
             True,
         )
+    if annotation is decimal.Decimal:
+        # Numeric, not string: Decimal('100') must equal Decimal('100.00').
+        # Exact (no tolerance): Decimal is chosen precisely when precision
+        # matters (money).
+        provenance.append("type:Decimal -> NumericComparator(exact)@1.0")
+        return "NumericComparator", {}, 1.0, True
     if annotation is str:
         provenance.append("type:str -> LevenshteinComparator@0.7")
         return "LevenshteinComparator", {}, 0.7, True

@@ -4,13 +4,14 @@ title: Evaluating a Strands Agent
 
 # Evaluating a Strands Agent
 
-[Strands](https://strandsagents.com/) agents produce structured output by handing the agent a Pydantic `response_model`:
+[Strands](https://strandsagents.com/) agents produce structured output by handing the agent a Pydantic model:
 
 ```python
 from strands import Agent
 
 agent = Agent(model="us.anthropic.claude-sonnet-4-5-20250929-v1:0")
-invoice = agent.structured_output(Invoice, "Extract the invoice from this document: ...")
+result = agent("Extract the invoice from this document: ...", structured_output_model=Invoice)
+invoice = result.structured_output
 # `invoice` is a validated Invoice instance
 ```
 
@@ -21,7 +22,7 @@ The question this guide answers: **how accurate is that output, and do the error
 ```python
 import stickler
 
-prediction = agent.structured_output(Invoice, prompt)   # your agent, unchanged
+prediction = agent(prompt, structured_output_model=Invoice).structured_output  # your agent, unchanged
 result = stickler.evaluate(ground_truth, prediction)     # <-- the entire integration
 
 print(result.overall_score, result.f1, result.field_scores)
@@ -69,7 +70,9 @@ Acme Corporation      Date: 2024-03-15
 Total: $1,247.50    Terms: Net 30
 """
 
-prediction = agent.structured_output(Invoice, f"Extract the invoice:\n{DOCUMENT}")
+prediction = agent(
+    f"Extract the invoice:\n{DOCUMENT}", structured_output_model=Invoice
+).structured_output
 
 # 3. Your labeled ground truth for this document.
 ground_truth = Invoice(
@@ -111,14 +114,16 @@ InvoiceEval = StructuredModel.from_pydantic(Invoice)
 evaluator = BulkStructuredModelEvaluator(target_schema=InvoiceEval)
 
 for doc, expected in labeled_dataset:           # your (document, ground_truth) pairs
-    prediction = agent.structured_output(Invoice, f"Extract the invoice:\n{doc}")
+    prediction = agent(
+        f"Extract the invoice:\n{doc}", structured_output_model=Invoice
+    ).structured_output
     evaluator.update(
         InvoiceEval.from_json(expected.model_dump()),
         InvoiceEval.from_json(prediction.model_dump()),
     )
 
-result = evaluator.compute()
-print(f"Corpus F1: {result.metrics['cm_f1']:.3f} over {result.document_count} docs")
+corpus = evaluator.compute()
+print(f"Corpus F1: {corpus.metrics['cm_f1']:.3f} over {corpus.document_count} docs")
 ```
 
 This accumulates true corpus-level precision/recall/F1 (confusion-matrix
@@ -129,17 +134,19 @@ checkpointing, and error accumulation. And because `InvoiceEval` is an
 ordinary `StructuredModel`, you can export its inferred config
 (`to_stickler_config()`), edit any comparator or threshold, and rebuild, no
 zero-config-specific API needed. For a closer look at any single pair,
-`spec.evaluate(expected, prediction)` returns the per-document
+`stickler.evaluate(expected, prediction)` returns the per-document
 [`EvalResult`](#defending-the-numbers).
 
 ## Defending the numbers
 
-When someone asks "why did `vendor_name` score zero?", you don't guess. You ask:
+When someone asks "why did `vendor_name` score zero?", you don't guess. You
+ask the single-pair result from the end-to-end example above:
 
 ```python
 result.explain()["vendor_name"]
 # {'comparator': 'LevenshteinComparator', 'threshold': 0.85, 'weight': 1.0,
-#  'source': 'name-token', 'why': [...]}
+#  'source': 'name-token', 'score': 0.0, 'raw_similarity': 0.5625,
+#  'verdict': 'raw 0.56 < threshold 0.85 -> clipped to 0.0', 'why': [...]}
 ```
 
 "Acme Corporation" vs "Acme Corp" fell below the `0.85` similarity threshold Stickler chose for a name field. If that is too strict for your use case, graduate to a hand-authored [`StructuredModel`](../../Getting-Started/README.md) where you set the comparator, threshold, and weight per field explicitly. `stickler.evaluate` gets you a defensible baseline in one line; the full API is there when you outgrow it.

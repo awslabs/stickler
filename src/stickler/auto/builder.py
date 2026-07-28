@@ -13,12 +13,13 @@ path is lossy and crashes on real models: ``Optional[str]`` becomes an
 enums degrade to bare strings, and ``datetime`` loses its type. The live
 annotations keep every signal inference needs.
 
-Wire form: instances are normalized via ``model_dump(mode="json")`` before
-comparison. Fields whose JSON form is not a scalar (dict, tuple, set, Any,
-multi-arm unions, unparameterized containers) are declared with a shadow type
-that canonicalizes the incoming JSON value to a deterministic string
-(``json.dumps`` with sorted keys), so "compared as their JSON string form" is
-actually true rather than a validation error.
+Wire form: fields whose JSON form is not a scalar (dict, tuple, set, Any,
+multi-arm unions, unparameterized containers, Decimal) are declared with a
+shadow type that canonicalizes the value to a deterministic string
+(``to_jsonable_python`` then ``json.dumps`` with sorted keys), so "compared as
+their JSON string form" is actually true rather than a validation error. Both
+``model_dump()`` (native ``date``/``Decimal``/``set`` objects) and
+``model_dump(mode="json")`` normalize identically.
 
 Results are cached in a ``WeakKeyDictionary`` keyed on
 ``(cls, weight_hints, match_threshold)`` so repeated ``evaluate`` calls in a
@@ -28,6 +29,7 @@ loop are cheap without pinning user classes in memory.
 from __future__ import annotations
 
 import datetime
+import decimal
 import enum
 import json
 import weakref
@@ -45,6 +47,7 @@ from typing import (
 
 from pydantic import BaseModel, BeforeValidator
 from pydantic.fields import FieldInfo
+from pydantic_core import to_jsonable_python
 
 from ..comparators.structured import StructuredModelComparator
 from ..structured_object_evaluator.models.comparable_field import ComparableField
@@ -414,17 +417,19 @@ def _is_model(annotation: Any) -> bool:
 
 
 def _canonicalize_json(value: Any) -> Any:
-    """Normalize a JSON value to a deterministic string (None passes through).
+    """Normalize a value to a deterministic JSON string (None passes through).
 
     Applied as a BeforeValidator on shadow fields whose source type has no
-    scalar JSON form. Both GT and prediction pass through the same
-    canonicalization, so key order, container spelling, and native-vs-JSON
-    dump mode never affect scores.
+    scalar JSON form. ``to_jsonable_python`` first converts native Python
+    values (sets, enum members, Decimal, UUID, date dict-keys, ...) to their
+    pydantic JSON representation, so plain ``model_dump()`` and
+    ``model_dump(mode="json")`` canonicalize identically; key order and
+    container spelling never affect scores.
     """
-    if isinstance(value, enum.Enum):
-        # Plain model_dump() keeps the member; mode="json" gives its value.
-        value = value.value
-    if value is None or isinstance(value, str):
+    if value is None:
+        return value
+    value = to_jsonable_python(value)
+    if isinstance(value, str):
         return value
     if isinstance(value, (int, float, bool)):
         return json.dumps(value)
@@ -434,12 +439,28 @@ def _canonicalize_json(value: Any) -> Any:
 def _canonicalize_json_sorted(value: Any) -> Any:
     """Like :func:`_canonicalize_json`, also sorting top-level arrays.
 
-    Used for ``Set``/``FrozenSet`` sources, whose ``model_dump`` order is not
-    deterministic across processes.
+    Used for ``Set``/``FrozenSet`` sources, whose iteration order is not
+    deterministic across processes (and whose plain ``model_dump`` form is a
+    native set).
     """
+    if value is None:
+        return value
+    value = to_jsonable_python(value)
     if isinstance(value, (list, tuple)):
         value = sorted(value, key=lambda v: json.dumps(v, sort_keys=True, default=str))
     return _canonicalize_json(value)
+
+
+def _stringify_numeric(value: Any) -> Any:
+    """Normalize numeric scalars (Decimal, int, float) to their string form.
+
+    Decimal fields arrive as native ``Decimal`` from plain ``model_dump()``
+    and as strings from ``mode="json"``; NumericComparator parses either, the
+    shadow field just needs one declared type.
+    """
+    if isinstance(value, (int, float, decimal.Decimal)) and not isinstance(value, bool):
+        return str(value)
+    return value
 
 
 def _isoformat_dates(value: Any) -> Any:
@@ -457,6 +478,7 @@ def _isoformat_dates(value: Any) -> Any:
 _WireJson = Annotated[str, BeforeValidator(_canonicalize_json)]
 _WireJsonSorted = Annotated[str, BeforeValidator(_canonicalize_json_sorted)]
 _WireDate = Annotated[str, BeforeValidator(_isoformat_dates)]
+_WireNumeric = Annotated[str, BeforeValidator(_stringify_numeric)]
 
 
 def _scalar_wire_type(annotation: Any) -> Any:
@@ -480,6 +502,10 @@ def _scalar_wire_type(annotation: Any) -> Any:
         # Accept both native date objects and ISO strings, so instances
         # validate regardless of how they were dumped.
         return _WireDate
+    if annotation is decimal.Decimal:
+        # Native Decimal (plain dump) or string (json dump); NumericComparator
+        # parses the string form either way.
+        return _WireNumeric
     if annotation in (str, int, float, bool):
         return annotation
     if isinstance(annotation, type) and issubclass(annotation, (set, frozenset)):

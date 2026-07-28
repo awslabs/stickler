@@ -1,9 +1,9 @@
 """Evaluate a Strands agent's structured output with zero configuration.
 
 This demo shows the *entire* integration for scoring a Strands agent that emits
-structured output via a Pydantic ``response_model``:
+structured output for a Pydantic model:
 
-    prediction = agent.structured_output(Invoice, prompt)   # your agent, unchanged
+    prediction = agent(prompt, structured_output_model=Invoice).structured_output
     result = stickler.evaluate(ground_truth, prediction)    # the whole integration
 
 No ``StructuredModel`` subclass, no comparators, no thresholds, no schema.
@@ -68,7 +68,10 @@ def get_prediction() -> Invoice:
 
         agent = Agent(model="us.anthropic.claude-sonnet-4-5-20250929-v1:0")
         print("Running Strands agent for structured output...")
-        return agent.structured_output(Invoice, f"Extract the invoice:\n{DOCUMENT}")
+        result = agent(
+            f"Extract the invoice:\n{DOCUMENT}", structured_output_model=Invoice
+        )
+        return result.structured_output
     except Exception as exc:  # noqa: BLE001 - demo fallback for any failure
         print(f"(Strands unavailable: {type(exc).__name__}. Using a fabricated prediction.)")
         # Stand-in for what an agent might return: mostly right, with the kind of

@@ -112,14 +112,15 @@ Every decision is recorded in `InferredSpec.provenance` and surfaced by
 
 ## Wire-form normalization
 
-Instances are compared as `model_dump(mode="json")`: `date`/`datetime` become
-ISO strings and enums become their values, matching the wire types the inferred
+Instances are normalized before comparison: `date`/`datetime` become ISO
+strings and enums become their values, matching the wire types the inferred
 comparators expect. Fields whose JSON form is not a string scalar (`dict`,
-`tuple`, `set`, `Any`, multi-arm unions, `IntEnum`, int `Literal`) canonicalize
-to a deterministic JSON string (sorted keys; sets also sort elements) via a
-shadow-field validator, so key order and container spelling never affect
-scores. `mode="json"` (not plain `model_dump()`) is mandatory, because a
-native `date` would otherwise score 0.
+`tuple`, `set`, `Any`, multi-arm unions, `IntEnum`, int `Literal`, `Decimal`)
+canonicalize to a deterministic form (via `pydantic_core.to_jsonable_python`
+then sorted-key JSON), so key order, container spelling, and dump mode never
+affect scores. Both `model_dump()` (native `date`/`Decimal`/`set` objects) and
+`model_dump(mode="json")` (already-serialized) validate and score identically,
+so `Model.from_json(instance.model_dump())` is safe either way.
 
 Nullability of a shadow field comes from the **source annotation**
 (`Optional[X]` / `X | None` / `Any`), not from required-ness: a required

@@ -388,6 +388,106 @@ class TestNestedScoringConsistency:
         assert single == pytest.approx(listed)
         assert 0 < single < 1  # partial credit, not clipped to zero
 
+    def test_single_nested_below_threshold_not_clipped(self):
+        """A nested object scoring BELOW match_threshold keeps partial credit.
+
+        This engages the clip_under_threshold=False guard directly: with only
+        2/5 sub-fields correct the child scores ~0.4 < 0.7, so a clipping
+        model would return 0.0. Kills the mutation that flips the flag.
+        """
+
+        class Child(BaseModel):
+            a: str
+            b: str
+            c: str
+            d: str
+            e: str
+
+        class Single(BaseModel):
+            child: Child
+
+        gt = Child(a="1", b="2", c="X", d="Y", e="Z")
+        pred = Child(a="1", b="2", c="c", d="d", e="e")  # only a,b match -> 0.4
+        score = stickler.evaluate(Single(child=gt), Single(child=pred)).field_scores[
+            "child"
+        ]
+        assert 0.0 < score < 0.7  # partial credit below threshold, not clipped
+
+
+class TestInferenceInternals:
+    """Guard behaviors that end-to-end tests don't exercise."""
+
+    def test_phone_token_beats_numeric_token_order(self):
+        """A str field named 'phone_num' resolves to Exact, not Numeric.
+
+        'num' and 'phone' both tokenize; the email/phone rule must precede the
+        quantity rule. NumericComparator would strip formatting and score
+        distinct formatted phone numbers as equal (and identical ones fine but
+        for the wrong reason). Kills the rule-reorder mutation.
+        """
+        from pydantic.fields import FieldInfo
+
+        from stickler.auto.inference import infer_field_config
+
+        spec = infer_field_config("phone_num", FieldInfo(annotation=str))
+        assert spec.comparator_name == "ExactComparator"
+
+    def test_gate_degrades_unregistered_comparator(self):
+        """_gate falls back and records provenance for an unavailable comparator."""
+        from stickler.auto.inference import _gate
+
+        class _EmptyRegistry:
+            def is_registered(self, name):
+                return False
+
+            def create_instance(self, name, config):
+                raise AssertionError("should not be called when unregistered")
+
+        prov = []
+        name, _ = _gate("FuzzyComparator", {}, _EmptyRegistry(), prov)
+        assert name == "LevenshteinComparator"
+        assert any("degrade" in p for p in prov)
+
+    def test_gate_degrades_when_construction_fails(self):
+        """A registered comparator whose backend is missing degrades at infer time."""
+        from stickler.auto.inference import _gate
+
+        class _BrokenRegistry:
+            def is_registered(self, name):
+                return True
+
+            def create_instance(self, name, config):
+                raise ImportError("optional backend missing")
+
+        prov = []
+        name, _ = _gate("FuzzyComparator", {}, _BrokenRegistry(), prov)
+        assert name == "LevenshteinComparator"
+        assert any("ImportError" in p for p in prov)
+
+    def test_gate_never_auto_selects_llm(self):
+        from stickler.auto.inference import _gate
+        from stickler.structured_object_evaluator.models.comparator_registry import (
+            get_global_registry,
+        )
+
+        prov = []
+        name, _ = _gate("LLMComparator", {}, get_global_registry(), prov)
+        assert name == "LevenshteinComparator"
+        assert any("never auto-selected" in p for p in prov)
+
+    def test_gate_date_degrades_to_exact(self):
+        from stickler.auto.inference import _gate
+
+        class _EmptyRegistry:
+            def is_registered(self, name):
+                return False
+
+            def create_instance(self, name, config):
+                raise AssertionError("unused")
+
+        name, _ = _gate("DateComparator", {}, _EmptyRegistry(), [])
+        assert name == "ExactComparator"
+
 
 class TestDatasetWorkflow:
     """The compiled-spec path works with the data users actually have."""
@@ -545,3 +645,99 @@ class TestDatetimeSensitivity:
             stickler.evaluate(gt, M(d=datetime.date(2020, 1, 1))).field_scores["d"]
             == 1.0
         )
+
+
+class TestNumericEdgeCases:
+    """Numeric fields must not crash on non-finite values or mis-score Decimal."""
+
+    def test_nan_does_not_crash(self):
+        class M(BaseModel):
+            x: float
+
+        # Must not raise decimal.InvalidOperation. NaN never equals NaN.
+        r = stickler.evaluate(M(x=float("nan")), M(x=float("nan")))
+        assert r.field_scores["x"] == pytest.approx(0.0)
+
+    def test_infinity_matches_exactly(self):
+        class M(BaseModel):
+            x: float
+
+        inf = float("inf")
+        assert stickler.evaluate(M(x=inf), M(x=inf)).field_scores["x"] == 1.0
+        assert stickler.evaluate(M(x=inf), M(x=-inf)).field_scores["x"] == 0.0
+
+    def test_decimal_numeric_equivalence(self):
+        from decimal import Decimal
+
+        class M(BaseModel):
+            total_amount: Decimal
+
+        # Numerically equal, different representation -> match.
+        r = stickler.evaluate(
+            M(total_amount=Decimal("100")), M(total_amount=Decimal("100.00"))
+        )
+        assert r.field_scores["total_amount"] == pytest.approx(1.0)
+        # Different value -> no match.
+        r2 = stickler.evaluate(
+            M(total_amount=Decimal("100")), M(total_amount=Decimal("200"))
+        )
+        assert r2.field_scores["total_amount"] == pytest.approx(0.0)
+
+    def test_decimal_inferred_as_numeric(self):
+        from decimal import Decimal
+
+        class M(BaseModel):
+            price: Decimal
+
+        assert stickler.eval_for(M).explain()["price"]["comparator"] == (
+            "NumericComparator"
+        )
+
+
+class TestDumpModeEquivalence:
+    """Plain model_dump() and model_dump(mode='json') must score identically."""
+
+    def test_set_field_both_dump_modes(self):
+        from stickler import StructuredModel
+
+        class M(BaseModel):
+            tags: Set[str]
+
+        MEval = StructuredModel.from_pydantic(M)
+        inst = M(tags={"alpha", "beta", "gamma"})
+        native = MEval.from_json(inst.model_dump())
+        json_form = MEval.from_json(inst.model_dump(mode="json"))
+        assert native.compare_with(json_form)["overall_score"] == pytest.approx(1.0)
+
+    def test_dict_with_date_keys_both_dump_modes(self):
+        from stickler import StructuredModel
+
+        class M(BaseModel):
+            by_day: Dict[datetime.date, int]
+
+        MEval = StructuredModel.from_pydantic(M)
+        inst = M(by_day={datetime.date(2024, 1, 1): 5})
+        native = MEval.from_json(inst.model_dump())  # would crash pre-fix
+        json_form = MEval.from_json(inst.model_dump(mode="json"))
+        assert native.compare_with(json_form)["overall_score"] == pytest.approx(1.0)
+
+    def test_nested_exotic_scalars_both_dump_modes(self):
+        import uuid
+        from decimal import Decimal
+
+        from stickler import StructuredModel
+
+        class M(BaseModel):
+            meta: Dict[str, Any]
+
+        MEval = StructuredModel.from_pydantic(M)
+        inst = M(
+            meta={
+                "id": uuid.UUID(int=7),
+                "amt": Decimal("1.50"),
+                "ts": datetime.datetime(2024, 1, 1, 12),
+            }
+        )
+        native = MEval.from_json(inst.model_dump())
+        json_form = MEval.from_json(inst.model_dump(mode="json"))
+        assert native.compare_with(json_form)["overall_score"] == pytest.approx(1.0)

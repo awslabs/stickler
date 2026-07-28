@@ -75,6 +75,12 @@ def test_date_matches_exactly_not_levenshtein():
     gt = _invoice(when=datetime.date(2020, 1, 1))
     pred = _invoice(when=datetime.date(2020, 1, 1))
     assert stickler.evaluate(gt, pred).field_scores["when"] == pytest.approx(1.0)
+    # The discriminating case: "2020-01-01" vs "2020-01-02" is 1 edit apart
+    # (Levenshtein ~0.9) but a different date; DateComparator must score 0.
+    off_by_a_day = _invoice(when=datetime.date(2020, 1, 2))
+    assert stickler.evaluate(gt, off_by_a_day).field_scores["when"] == pytest.approx(
+        0.0
+    )
 
 
 def test_enum_uses_exact():
@@ -98,12 +104,13 @@ def test_reordered_list_matches_via_hungarian():
     assert stickler.evaluate(gt, reordered).field_scores["lines"] == pytest.approx(1.0)
 
 
-def test_json_schema_path_still_crashes_but_auto_does_not():
-    # Guards the core premise: the naive path fails on Optional, ours doesn't.
-    with pytest.raises(ValueError):
-        stickler.StructuredModel.from_json_schema(Invoice.model_json_schema())
-    # auto path is fine
-    stickler.evaluate(_invoice(), _invoice())
+def test_auto_path_handles_models_regardless_of_json_schema_path():
+    # The premise: evaluate() works on a model with Optional/enum/date fields
+    # via live annotations, without depending on the JSON-schema round-trip.
+    # (We do NOT assert the schema path crashes: that is an implementation
+    # detail that may improve independently, e.g. via #127-style fixes.)
+    result = stickler.evaluate(_invoice(), _invoice())
+    assert result.overall_score == pytest.approx(1.0)
 
 
 # --- inference --------------------------------------------------------------
@@ -139,9 +146,15 @@ def test_weights_uniform_by_default():
 
 
 def test_weight_hints_bumps_id_and_amount():
-    spec = stickler.eval_for(Invoice, weight_hints=True).explain()
-    assert spec["invoice_id"]["weight"] == 3.0
-    assert spec["amount"]["weight"] == 2.5
+    # Contract: weight_hints raises importance-signalling fields above the
+    # uniform 1.0 baseline and above a plain text field, without pinning the
+    # exact bump magnitudes (which are tunable).
+    hinted = stickler.eval_for(Invoice, weight_hints=True).explain()
+    uniform = stickler.eval_for(Invoice).explain()
+    assert all(v["weight"] == 1.0 for v in uniform.values())
+    assert hinted["invoice_id"]["weight"] > 1.0
+    assert hinted["amount"]["weight"] > 1.0
+    assert hinted["invoice_id"]["weight"] >= hinted["customer_name"]["weight"]
 
 
 def test_never_auto_selects_semantic_or_llm():
