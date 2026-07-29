@@ -3173,7 +3173,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.10" },
     { name = "scikit-learn", specifier = ">=1.8.0,<2.0.0" },
     { name = "scipy", specifier = ">=1.12.0,<2.0.0" },
-    { name = "strands-agents", marker = "extra == 'llm'", specifier = ">=1.0.0,<=1.16.0" },
+    { name = "strands-agents", marker = "extra == 'llm'", specifier = ">=1.14.0,<=1.16.0" },
     { name = "torch", marker = "extra == 'bert'", specifier = ">=2.2.0" },
 ]
 provides-extras = ["dev", "llm", "bert", "semantic"]

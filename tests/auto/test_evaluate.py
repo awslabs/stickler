@@ -7,6 +7,7 @@ datetime, nested models, lists), weight hints, and provenance.
 """
 
 import datetime
+import decimal
 import enum
 from typing import List, Optional
 
@@ -78,9 +79,13 @@ def test_date_matches_exactly_not_levenshtein():
     # The discriminating case: "2020-01-01" vs "2020-01-02" is 1 edit apart
     # (Levenshtein ~0.9) but a different date; DateComparator must score 0.
     off_by_a_day = _invoice(when=datetime.date(2020, 1, 2))
-    assert stickler.evaluate(gt, off_by_a_day).field_scores["when"] == pytest.approx(
-        0.0
-    )
+    result = stickler.evaluate(gt, off_by_a_day)
+    assert result.field_scores["when"] == pytest.approx(0.0)
+    # The post-clip score alone cannot tell the two comparators apart:
+    # Levenshtein's raw 0.9 is under the 0.95 threshold and clips to 0.0 too.
+    # Assert the comparator and the raw similarity, which do diverge.
+    assert result.explain()["when"]["comparator"] == "DateComparator"
+    assert result.explain()["when"]["raw_similarity"] == pytest.approx(0.0)
 
 
 def test_enum_uses_exact():
@@ -140,6 +145,34 @@ def test_infer_comparator(field_name, annotation, expected):
     assert spec.comparator_name == expected
 
 
+# The rows above use field names that carry name tokens (``count`` hits the
+# quantity rule, ``total_amount`` the money rule), so a name rule can satisfy
+# them even if the type branch returns something else entirely. These pin the
+# type dispatch table itself, with token-free names and a provenance assertion
+# proving the TYPE signal is what fired.
+@pytest.mark.parametrize(
+    "annotation,expected,provenance_prefix",
+    [
+        (bool, "ExactComparator", "type:bool"),
+        (int, "NumericComparator", "type:int"),
+        (float, "NumericComparator", "type:float"),
+        (decimal.Decimal, "NumericComparator", "type:Decimal"),
+        (datetime.date, "DateComparator", "type:date"),
+        (datetime.datetime, "DateComparator", "type:datetime"),
+        (str, "LevenshteinComparator", "type:str"),
+        (Status, "ExactComparator", "type:"),
+        (dict, "ExactComparator", "type:"),
+    ],
+)
+def test_type_dispatch_table(annotation, expected, provenance_prefix):
+    from pydantic.fields import FieldInfo
+
+    # "val" carries no name token, so nothing can mask the type branch.
+    spec = infer_field_config("val", FieldInfo(annotation=annotation))
+    assert spec.comparator_name == expected
+    assert spec.provenance[0].startswith(provenance_prefix)
+
+
 def test_weights_uniform_by_default():
     spec = stickler.eval_for(Invoice).explain()
     assert all(v["weight"] == 1.0 for v in spec.values())
@@ -170,6 +203,37 @@ def test_eval_for_is_cached():
     spec_a = stickler.eval_for(Invoice)
     spec_b = stickler.eval_for(Invoice)
     assert spec_a.eval_model is spec_b.eval_model
+
+
+def test_shadow_cache_is_keyed_on_options():
+    """Cache MISSES matter as much as hits: options must be in the key.
+
+    test_eval_for_is_cached pins that a repeat call reuses the shadow class.
+    Nothing pinned the converse, so dropping an option from the cache key made
+    the second call silently reuse the class compiled for the first one, i.e.
+    the same inputs scored differently depending on call order within a
+    process. That is invisible in any single-option test run.
+    """
+    assert (
+        stickler.eval_for(Invoice, match_threshold=0.5).eval_model
+        is not stickler.eval_for(Invoice, match_threshold=0.9).eval_model
+    )
+    assert (
+        stickler.eval_for(Invoice, weight_hints=False).eval_model
+        is not stickler.eval_for(Invoice, weight_hints=True).eval_model
+    )
+
+
+@pytest.mark.parametrize("order", [(0.5, 0.9), (0.9, 0.5)])
+def test_match_threshold_is_honored_regardless_of_call_order(order):
+    """match_threshold must drive the result, in either evaluation order."""
+    gt = _invoice(lines=[Line(sku="S1", qty=2, price=9.99)])
+    # One line item, similarity ~0.66: matched at 0.5, not matched at 0.9.
+    pred = _invoice(lines=[Line(sku="S1", qty=2, price=100.00)])
+    scores = {
+        t: stickler.evaluate(gt, pred, match_threshold=t).f1 for t in order
+    }
+    assert scores[0.5] > scores[0.9]
 
 
 def test_eval_spec_reuse_matches_evaluate():

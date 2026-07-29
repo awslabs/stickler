@@ -483,11 +483,16 @@ def _type_default(
         provenance.append("type:str -> LevenshteinComparator@0.7")
         return "LevenshteinComparator", {}, 0.7, True
 
-    # Unknown / exotic (dict, tuple, bytes, multi-arm union): safe string default.
+    # Unknown / exotic (dict, tuple, set, Any, multi-arm union). These have no
+    # scalar JSON form, so the wire layer canonicalizes them to a deterministic
+    # JSON string (sorted keys; sets also sort elements). Comparison over that
+    # string is all-or-nothing: edit distance on a JSON blob would award ~0.95
+    # to a substantively wrong value, which is indefensible in a metrics API.
     provenance.append(
-        f"type:{_annotation_label(annotation)} -> LevenshteinComparator@0.7 (fallback)"
+        f"type:{_annotation_label(annotation)} -> ExactComparator@1.0 "
+        "(canonical JSON string)"
     )
-    return "LevenshteinComparator", {}, 0.7, True
+    return "ExactComparator", {}, 1.0, True
 
 
 def _match_name_token(field_name: str) -> Optional[_TokenRule]:

@@ -181,8 +181,8 @@ def _collect_specs(
                         _visiting,
                     )
             elif kind == "primitive_list":
-                # Report the element spec — the same one _field_definition
-                # installs — so the audit trail matches the built model.
+                # Report the element spec (the same one _field_definition
+                # installs) so the audit trail matches the built model.
                 element, _ = unwrap_optional(_list_element(annotation))
                 spec = _primitive_spec(name, element, weight_hints, registry)
                 spec.provenance.insert(0, "list: spec applies to each element")

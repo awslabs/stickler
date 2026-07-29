@@ -43,7 +43,10 @@ sibling to `from_json_schema()` / `model_from_json()`. That is the
 integration point with the rest of stickler: the returned class is an
 ordinary `StructuredModel`, so `BulkStructuredModelEvaluator`, HTML reports,
 `to_stickler_config()` (export → edit → rebuild), and every other consumer
-work on it unchanged. `evaluate()`/`eval_for()` are conveniences layered on
+work on it unchanged. One caveat on that round-trip: the exported config
+carries comparators, thresholds, and weights but not the `BeforeValidator`
+wire-normalizers, so a rebuilt class needs JSON-form input
+(`model_dump(mode="json")`) and cannot round-trip `dict` or `set` fields. `evaluate()`/`eval_for()` are conveniences layered on
 top for the single-pair case; there is no bulk-specific API in this package
 by design.
 
@@ -73,7 +76,7 @@ call yields both `field_scores`/`overall_score` **and** precision/recall/f1/accu
    | nested `StructuredModel` | used as configured, never re-inferred | (its own) | (its own) |
    | `List[BaseModel]` | Hungarian object matching | (element `match_threshold`) | n/a |
    | `List[primitive]` | element comparator | element | yes |
-   | `dict` / `tuple` / `set` / `Any` / multi-arm unions | Exact over a canonical JSON string (sorted keys; sets also sort elements) | 0.7 | yes |
+   | `dict` / `tuple` / `set` / `Any` / multi-arm unions | Exact over a canonical JSON string (sorted keys; sets also sort elements) | 1.0 | n/a (Exact is all-or-nothing) |
 
 2. **Name-token refinement**, gated on type compatibility (comparator/threshold
    on by default; **weight only when `weight_hints=True`**). Tokens are matched

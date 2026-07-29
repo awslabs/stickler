@@ -204,6 +204,14 @@ print(evaluator.compute().metrics["cm_f1"])   # corpus-level F1
 an inferred decision, export it (`to_stickler_config()`), edit the comparator
 or threshold, and rebuild with `StructuredModel.model_from_json(config)`.
 
+!!! warning "Round-trip limitation"
+    The exported config carries each field's comparator, threshold, and weight,
+    but not the wire-normalizers that let the in-memory class accept
+    `model_dump()` output directly. Feed a rebuilt class JSON-form values
+    (`model_dump(mode="json")`), and note that `dict` and `set` fields do not
+    survive the round-trip at all: re-declare those explicitly on the rebuilt
+    class, or edit inference by hand-authoring the field instead.
+
 By default every field weighs the same (`weight=1.0`), because business-criticality is not something a plain model encodes and we would rather not guess it silently. `weight_hints=True` turns on name-based weighting (for example, `invoice_id` at 3x and `total_amount` at 2.5x), and, as always, `.explain()` shows you exactly what changed.
 
 !!! tip "Want full control?"

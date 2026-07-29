@@ -62,32 +62,55 @@ Total: $1,247.50    Terms: Net 30
 
 
 def get_prediction() -> Invoice:
-    """Run a Strands agent if available; otherwise fabricate a plausible output."""
+    """Run a Strands agent if available; otherwise fabricate a plausible output.
+
+    Only a missing ``strands`` install falls back quietly. Any other failure
+    (expired or absent credentials, no model access, a validation error on the
+    agent's output) is reported distinctly, so a real agent problem is never
+    disguised as "Strands unavailable" while the demo goes on to score the
+    fabricated invoice.
+    """
     try:
         from strands import Agent
+    except ImportError:
+        print("(Strands not installed. Using a fabricated prediction.)")
+        return _fabricated_prediction()
 
+    try:
         agent = Agent(model="us.anthropic.claude-sonnet-4-5-20250929-v1:0")
         print("Running Strands agent for structured output...")
         result = agent(
             f"Extract the invoice:\n{DOCUMENT}", structured_output_model=Invoice
         )
         return result.structured_output
-    except Exception as exc:  # noqa: BLE001 - demo fallback for any failure
-        print(f"(Strands unavailable: {type(exc).__name__}. Using a fabricated prediction.)")
-        # Stand-in for what an agent might return: mostly right, with the kind of
-        # variations real extraction produces.
-        return Invoice(
-            invoice_id="INV-2024-0042",
-            vendor_name="Acme Corp",  # abbreviated
-            invoice_date=datetime.date(2024, 3, 15),
-            total_amount=1247.50,
-            notes="net 30 terms",  # reworded
-            line_items=[
-                # Reordered relative to ground truth, minor description drift.
-                LineItem(sku="UC-050", description="USB-C Cable 1 m", quantity=5, unit_price=12.99),
-                LineItem(sku="WM-100", description="Wireless Mouse", quantity=2, unit_price=29.99),
-            ],
+    except Exception as exc:  # noqa: BLE001 - demo keeps running on agent failure
+        print(
+            f"(Strands is installed but the agent call failed: "
+            f"{type(exc).__name__}: {exc}\n"
+            f" Falling back to a fabricated prediction, so the scores below are "
+            f"NOT your agent's.)"
         )
+        return _fabricated_prediction()
+
+
+def _fabricated_prediction() -> Invoice:
+    """A stand-in prediction so the demo always runs end to end.
+
+    What an agent might plausibly return: mostly right, with the kind of
+    variations real extraction produces.
+    """
+    return Invoice(
+        invoice_id="INV-2024-0042",
+        vendor_name="Acme Corp",  # abbreviated
+        invoice_date=datetime.date(2024, 3, 15),
+        total_amount=1247.50,
+        notes="net 30 terms",  # reworded
+        line_items=[
+            # Reordered relative to ground truth, minor description drift.
+            LineItem(sku="UC-050", description="USB-C Cable 1 m", quantity=5, unit_price=12.99),
+            LineItem(sku="WM-100", description="Wireless Mouse", quantity=2, unit_price=29.99),
+        ],
+    )
 
 
 # --- 3. Your labeled ground truth -------------------------------------------
