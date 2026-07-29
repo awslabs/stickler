@@ -53,7 +53,11 @@ dev = [
     "matplotlib>=3.8.0",
 ]
 llm = [
-    "strands-agents>=1.0.0,<=1.16.0"
+    # >=1.14.0: the structured_output_model= kwarg on Agent.__call__ used by the
+    # docs and examples landed in 1.14.0. On 1.0-1.13 __call__ swallows it via
+    # **kwargs, so no structured output is requested and the call fails later
+    # with AttributeError on .structured_output.
+    "strands-agents>=1.14.0,<=1.16.0"
 ]
 bert = [
     "evaluate>=0.4.0",

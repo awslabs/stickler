@@ -17,6 +17,21 @@ Whether you're extracting data from documents, performing ETL transformations, e
 pip install stickler-eval
 ```
 
+## Already have a Pydantic model? Evaluate with zero config
+
+If you have a plain [Pydantic](https://docs.pydantic.dev/) model (for example, the `response_model` a Strands agent produces structured output with), you can score it as-is. No `StructuredModel` subclass, no comparators, no thresholds, no schema. Stickler infers a sensible comparator and threshold per field from the model itself, then shows you exactly what it chose.
+
+```python
+import stickler
+
+result = stickler.evaluate(ground_truth, prediction)   # two ordinary Pydantic instances
+
+print(result.overall_score, result.f1, result.field_scores)
+print(result.explain())   # per-field: comparator, threshold, weight, and why
+```
+
+See the [Ultra Quick Start](https://awslabs.github.io/stickler/Getting-Started/ultra-quick-start/) for the full walkthrough, or read on for the fully-configured API.
+
 ## Get Started in 30 Seconds
 
 ```python
