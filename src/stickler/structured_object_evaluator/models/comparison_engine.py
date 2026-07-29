@@ -208,6 +208,7 @@ class ComparisonEngine:
         confidence_metrics: Optional[List["ConfidenceMetric"]] = None,
         add_bbox_metrics: bool = False,
         bbox_iou_thresholds: Optional[Union[float, Iterable[float]]] = None,
+        bbox_page_aware: bool = False,
     ) -> Dict[str, Any]:
         """Compare with another instance using single traversal.
         
@@ -398,9 +399,12 @@ class ComparisonEngine:
                     stacklevel=2,
                 )
             calculator = (
-                MAPCalculator(iou_thresholds=bbox_iou_thresholds)
+                MAPCalculator(
+                    iou_thresholds=bbox_iou_thresholds,
+                    page_aware=bbox_page_aware,
+                )
                 if bbox_iou_thresholds is not None
-                else MAPCalculator()
+                else MAPCalculator(page_aware=bbox_page_aware)
             )
             # An empty field_comparisons list (e.g. a model whose only list
             # field is empty on both sides) yields a coverage-only result

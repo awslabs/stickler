@@ -132,6 +132,99 @@ class TestBBoxIoUComparator:
 
 
 # ══════════════════════════════════════════════════════════════════════
+# BBoxIoUComparator — page-aware comparison
+# ══════════════════════════════════════════════════════════════════════
+
+
+class TestBBoxIoUComparatorPageAware:
+    """page_aware=True forces a miss when boxes disagree about their page."""
+
+    def setup_method(self):
+        self.aware = BBoxIoUComparator(threshold=0.5, page_aware=True)
+        self.plain = BBoxIoUComparator(threshold=0.5)
+
+    # --- page numbers are accepted in both formats (regardless of flag) -----
+
+    def test_two_point_with_page_parses(self):
+        # Same coords, same page -> normal IoU even when page-aware.
+        assert self.aware.compare([[0, 0], [10, 10], 1], [[0, 0], [10, 10], 1]) == 1.0
+
+    def test_flat_with_page_parses(self):
+        assert self.aware.compare([0, 0, 10, 10, 3], [0, 0, 10, 10, 3]) == 1.0
+
+    def test_mixed_formats_same_page(self):
+        assert self.aware.compare([[0, 0], [10, 10], 2], [0, 0, 10, 10, 2]) == 1.0
+
+    def test_integer_valued_float_page_coerced(self):
+        # 2.0 is treated as page 2, so it matches an int page 2.
+        assert self.aware.compare([[0, 0], [10, 10], 2.0], [[0, 0], [10, 10], 2]) == 1.0
+
+    def test_partial_overlap_same_page_matches_plain_iou(self):
+        # When pages agree, the page-aware comparator must return the EXACT
+        # same partial IoU as the plain comparator on the same coordinates --
+        # i.e. the page suffix didn't disturb the geometry math.
+        aware_iou = self.aware.compare([[0, 0], [10, 10], 1], [[5, 5], [15, 15], 1])
+        plain_iou = self.plain.compare([[0, 0], [10, 10]], [[5, 5], [15, 15]])
+        assert aware_iou == plain_iou
+        assert abs(aware_iou - 25 / 175) < 1e-6  # genuinely partial, not 0 or 1
+
+    def test_partial_overlap_flat_same_page_matches_plain_iou(self):
+        # Same invariant via the flat (5-element) format.
+        aware_iou = self.aware.compare([0, 0, 20, 20, 3], [5, 5, 10, 10, 3])
+        plain_iou = self.plain.compare([0, 0, 20, 20], [5, 5, 10, 10])
+        assert aware_iou == plain_iou
+        assert abs(aware_iou - 25 / 400) < 1e-6
+
+    # --- page disagreement forces 0.0 when page-aware ----------------------
+
+    def test_different_pages_force_miss(self):
+        # Identical coordinates, different pages -> automatic miss.
+        assert self.aware.compare([[0, 0], [10, 10], 1], [[0, 0], [10, 10], 2]) == 0.0
+
+    def test_gt_has_page_pred_missing_forces_miss(self):
+        assert self.aware.compare([[0, 0], [10, 10]], [[0, 0], [10, 10], 1]) == 0.0
+
+    def test_pred_has_page_gt_missing_forces_miss(self):
+        assert self.aware.compare([[0, 0], [10, 10], 1], [[0, 0], [10, 10]]) == 0.0
+
+    def test_both_missing_page_forces_miss(self):
+        # In page-aware mode a box MUST declare its page, so a page-less box is
+        # wrong even against another page-less box.
+        assert self.aware.compare([[0, 0], [10, 10]], [[0, 0], [10, 10]]) == 0.0
+
+    def test_flat_without_page_forces_miss(self):
+        # A four-element (page-less) box is wrong 100% of the time when aware.
+        assert self.aware.compare([0, 0, 10, 10], [0, 0, 10, 10, 1]) == 0.0
+
+    # --- default (page_aware=False) ignores pages entirely -----------------
+
+    def test_default_ignores_different_pages(self):
+        # Without the flag, the page suffix is parsed but does not affect IoU.
+        assert self.plain.compare([[0, 0], [10, 10], 1], [[0, 0], [10, 10], 2]) == 1.0
+
+    def test_default_ignores_present_absent_page(self):
+        assert self.plain.compare([[0, 0], [10, 10], 1], [[0, 0], [10, 10]]) == 1.0
+
+    # --- malformed pages are treated as malformed boxes (score 0.0) --------
+
+    def test_non_integer_float_page_is_malformed(self):
+        assert self.aware.compare([[0, 0], [10, 10], 1.5], [[0, 0], [10, 10], 1]) == 0.0
+
+    def test_non_numeric_page_is_malformed(self):
+        assert self.aware.compare([[0, 0], [10, 10], "1"], [[0, 0], [10, 10], 1]) == 0.0
+
+    def test_nan_page_is_malformed(self):
+        nan = float("nan")
+        assert self.aware.compare([[0, 0], [10, 10], nan], [[0, 0], [10, 10], 1]) == 0.0
+
+    def test_three_scalars_still_invalid(self):
+        # [1, 2, 3] is NOT a two-point+page box (first two aren't points);
+        # it stays malformed under both flag settings.
+        assert self.aware.compare([1, 2, 3], [[0, 0], [10, 10], 1]) == 0.0
+        assert self.plain.compare([1, 2, 3], [[0, 0], [10, 10]]) == 0.0
+
+
+# ══════════════════════════════════════════════════════════════════════
 # class_key
 # ══════════════════════════════════════════════════════════════════════
 
@@ -726,3 +819,202 @@ class TestCompareWithBBoxMetrics:
                 pred, add_bbox_metrics=True, document_field_comparisons=True
             )
         assert result["bbox_metrics"]["mean_ap"] == 1.0
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Page-aware mAP scoring (page number threaded through the pipeline)
+# ══════════════════════════════════════════════════════════════════════
+
+
+def _doc(page_gt, page_pred):
+    """A one-field doc pair with identical coords; pages parameterized.
+
+    page_* of None omits the page element entirely.
+    """
+    gt_box = [[0, 0], [100, 20]] + ([page_gt] if page_gt is not None else [])
+    pred_box = [[0, 0], [100, 20]] + ([page_pred] if page_pred is not None else [])
+    gt = DocumentField.from_json({"vendor_name": {"_value": "Acme", "_bbox": gt_box}})
+    pred = DocumentField.from_json(
+        {"vendor_name": {"_value": "Acme", "_bbox": pred_box, "_confidence": 0.9}}
+    )
+    return gt, pred
+
+
+class TestPageAwareMAPCalculator:
+    def test_calculator_carries_page_aware(self):
+        assert MAPCalculator(page_aware=True).page_aware is True
+        assert MAPCalculator().page_aware is False
+
+    def test_same_page_is_a_hit(self):
+        calc = MAPCalculator(iou_thresholds=0.5, page_aware=True)
+        fc = [{"expected_key": "v", "actual_key": "v", "match": True}]
+        gt = {"v": [[0, 0], [100, 20], 1]}
+        pred = {"v": [[0, 0], [100, 20], 1]}
+        ex = calc.extract_from_dicts(fc, gt, pred, {})
+        assert calc.compute_metrics(ex.keyed_pairs, 1, 1)["mean_ap"] == 1.0
+
+    def test_wrong_page_is_a_miss(self):
+        calc = MAPCalculator(iou_thresholds=0.5, page_aware=True)
+        fc = [{"expected_key": "v", "actual_key": "v", "match": True}]
+        gt = {"v": [[0, 0], [100, 20], 1]}
+        pred = {"v": [[0, 0], [100, 20], 2]}  # identical coords, wrong page
+        ex = calc.extract_from_dicts(fc, gt, pred, {})
+        assert calc.compute_metrics(ex.keyed_pairs, 1, 1)["mean_ap"] == 0.0
+
+    def test_page_ignored_when_not_aware(self):
+        calc = MAPCalculator(iou_thresholds=0.5)  # page_aware defaults False
+        fc = [{"expected_key": "v", "actual_key": "v", "match": True}]
+        gt = {"v": [[0, 0], [100, 20], 1]}
+        pred = {"v": [[0, 0], [100, 20], 2]}
+        ex = calc.extract_from_dicts(fc, gt, pred, {})
+        assert calc.compute_metrics(ex.keyed_pairs, 1, 1)["mean_ap"] == 1.0
+
+
+class TestPageAwareCompareWith:
+    def test_wrong_page_drops_to_zero(self):
+        gt, pred = _doc(page_gt=1, page_pred=2)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            result = gt.compare_with(
+                pred,
+                add_bbox_metrics=True,
+                document_field_comparisons=True,
+                bbox_iou_thresholds=0.5,
+                bbox_page_aware=True,
+            )
+        assert result["bbox_metrics"]["mean_ap"] == 0.0
+
+    def test_same_page_is_one(self):
+        gt, pred = _doc(page_gt=1, page_pred=1)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            result = gt.compare_with(
+                pred,
+                add_bbox_metrics=True,
+                document_field_comparisons=True,
+                bbox_iou_thresholds=0.5,
+                bbox_page_aware=True,
+            )
+        assert result["bbox_metrics"]["mean_ap"] == 1.0
+
+    def test_default_is_page_unaware(self):
+        gt, pred = _doc(page_gt=1, page_pred=2)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            result = gt.compare_with(
+                pred,
+                add_bbox_metrics=True,
+                document_field_comparisons=True,
+                bbox_iou_thresholds=0.5,
+            )
+        # Without bbox_page_aware, the wrong page is ignored -> geometric hit.
+        assert result["bbox_metrics"]["mean_ap"] == 1.0
+
+
+class TestPageAwareBulkAccumulator:
+    def test_accumulator_page_aware_wrong_page_miss(self):
+        gt, pred = _doc(page_gt=1, page_pred=2)
+        evaluator = BulkStructuredModelEvaluator(
+            accumulators=[BBoxMAPAccumulator(iou_thresholds=0.5, page_aware=True)]
+        )
+        evaluator.update(gt, pred)
+        bm = evaluator.compute().accumulator_metrics["bbox_map_metrics"]
+        assert bm["mean_ap"] == 0.0
+
+    def test_accumulator_page_aware_same_page_hit(self):
+        gt, pred = _doc(page_gt=3, page_pred=3)
+        evaluator = BulkStructuredModelEvaluator(
+            accumulators=[BBoxMAPAccumulator(iou_thresholds=0.5, page_aware=True)]
+        )
+        evaluator.update(gt, pred)
+        bm = evaluator.compute().accumulator_metrics["bbox_map_metrics"]
+        assert bm["mean_ap"] == 1.0
+
+
+class TestPageAwareMultiPageAggregate:
+    """Multi-field documents spread across pages.
+
+    The single-field page tests above pin the per-box decision (same-page hit,
+    wrong-page miss). These pin the *aggregate* mAP over several fields on
+    different pages in one document — the realistic multi-page case. Coordinates
+    are identical for every field so the page number is the only variable: any
+    deviation from the expected mean_ap can only come from page handling.
+    """
+
+    # Same box reused everywhere; only the trailing page element differs.
+    _BOX = [[0, 0], [10, 10]]
+
+    def _rows(self, keys):
+        """Matched field_comparisons rows (no reordering) for the given keys."""
+        return [{"expected_key": k, "actual_key": k, "match": True} for k in keys]
+
+    def test_mixed_pages_aggregate(self):
+        """Half the fields on the right page, half on the wrong page -> mAP 0.5."""
+        calc = MAPCalculator(iou_thresholds=0.5, page_aware=True)
+        # Four fields keyed by (page, field); a,b on page 1, c,d on page 2.
+        gt = {
+            "p1.a": self._BOX + [1],
+            "p1.b": self._BOX + [1],
+            "p2.c": self._BOX + [2],
+            "p2.d": self._BOX + [2],
+        }
+        # a,c predicted on the correct page (hit); b,d on the wrong page (miss).
+        pred = {
+            "p1.a": self._BOX + [1],
+            "p1.b": self._BOX + [2],
+            "p2.c": self._BOX + [2],
+            "p2.d": self._BOX + [1],
+        }
+        conf = {k: 0.9 for k in pred}
+        ex = calc.extract_from_dicts(self._rows(gt), gt, pred, conf)
+        metrics = calc.compute_metrics(ex.keyed_pairs, 4, 4)
+        # Each field path is its own class: two score AP 1.0, two AP 0.0.
+        assert metrics["mean_ap"] == 0.5
+        assert metrics["fields"]["p1.a"]["ap"] == 1.0
+        assert metrics["fields"]["p1.b"]["ap"] == 0.0
+        assert metrics["fields"]["p2.c"]["ap"] == 1.0
+        assert metrics["fields"]["p2.d"]["ap"] == 0.0
+
+    def test_all_correct_pages_aggregate_is_one(self):
+        """Every field on its correct page -> mAP 1.0 across all pages."""
+        calc = MAPCalculator(iou_thresholds=0.5, page_aware=True)
+        gt = {
+            "p1.a": self._BOX + [1],
+            "p2.b": self._BOX + [2],
+            "p3.c": self._BOX + [3],
+        }
+        pred = {k: list(v) for k, v in gt.items()}
+        conf = {k: 0.9 for k in pred}
+        ex = calc.extract_from_dicts(self._rows(gt), gt, pred, conf)
+        assert calc.compute_metrics(ex.keyed_pairs, 3, 3)["mean_ap"] == 1.0
+
+    def test_all_wrong_pages_aggregate_is_zero(self):
+        """Perfect coordinates but every field on the wrong page -> mAP 0.0."""
+        calc = MAPCalculator(iou_thresholds=0.5, page_aware=True)
+        gt = {
+            "p1.a": self._BOX + [1],
+            "p2.b": self._BOX + [2],
+            "p3.c": self._BOX + [3],
+        }
+        # Shift each prediction to a different page than its ground truth.
+        pred = {
+            "p1.a": self._BOX + [2],
+            "p2.b": self._BOX + [3],
+            "p3.c": self._BOX + [1],
+        }
+        conf = {k: 0.9 for k in pred}
+        ex = calc.extract_from_dicts(self._rows(gt), gt, pred, conf)
+        assert calc.compute_metrics(ex.keyed_pairs, 3, 3)["mean_ap"] == 0.0
+
+    def test_same_coords_wrong_pages_would_hit_when_unaware(self):
+        """Control: the same all-wrong-page doc scores 1.0 when page-unaware.
+
+        Guards against a regression where page-awareness silently stops being
+        applied — without it, identical coordinates hit regardless of page.
+        """
+        calc = MAPCalculator(iou_thresholds=0.5)  # page_aware defaults False
+        gt = {"p1.a": self._BOX + [1], "p2.b": self._BOX + [2]}
+        pred = {"p1.a": self._BOX + [2], "p2.b": self._BOX + [1]}
+        conf = {k: 0.9 for k in pred}
+        ex = calc.extract_from_dicts(self._rows(gt), gt, pred, conf)
+        assert calc.compute_metrics(ex.keyed_pairs, 2, 2)["mean_ap"] == 1.0
