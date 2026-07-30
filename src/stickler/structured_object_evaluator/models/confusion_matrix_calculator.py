@@ -10,6 +10,7 @@ from .field_helper import FieldHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
 from .non_matches_helper import NonMatchesHelper
+from .thresholds import is_above_threshold
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -338,14 +339,8 @@ class ConfusionMatrixCalculator:
                     gt_item = gt_list[gt_idx]
                     pred_item = pred_list[pred_idx]
 
-                    # Handle floating point precision issues
-                    is_above_threshold = (
-                        similarity_score >= match_threshold
-                        or abs(similarity_score - match_threshold) < 1e-10
-                    )
-
                     # Only perform recursive field analysis if similarity meets threshold
-                    if is_above_threshold:
+                    if is_above_threshold(similarity_score, match_threshold):
                         # Get field values
                         gt_value = getattr(gt_item, field_name, None)
                         pred_value = getattr(pred_item, field_name, None)
