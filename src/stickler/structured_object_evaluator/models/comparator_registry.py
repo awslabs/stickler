@@ -69,9 +69,9 @@ class ComparatorRegistry:
             pass
 
         try:
-            from stickler.comparators.bert import BertComparator
+            from stickler.comparators.bert import BERTComparator
 
-            self._registry["BertComparator"] = BertComparator
+            self._registry["BERTComparator"] = BERTComparator
         except ImportError:
             pass
 

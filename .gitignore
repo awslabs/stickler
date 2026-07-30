@@ -4,6 +4,7 @@
 **/*.egg-info/
 .venv/
 .coverage
+.pytest_cache/
 .ash/
 .temp/
 

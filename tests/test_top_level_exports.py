@@ -69,7 +69,7 @@ class TestAllConsistency:
     def test_star_import_matches_all(self):
         """from stickler import * should yield exactly __all__."""
         ns = {}
-        exec("from stickler import *", ns)  # noqa: S102
+        exec("from stickler import *", ns)  # noqa: S102  # nosec B102
         exported_names = set(ns) - {"__builtins__"}
         assert exported_names == set(stickler.__all__)
 

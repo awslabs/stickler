@@ -491,6 +491,8 @@ class StructuredModel(BaseModel):
         Supported Features:
         -------------------
         - Primitive types: string, number, integer, boolean
+        - Nullable list-form types, e.g. {"type": ["string", "null"]}
+          (anyOf-based nullability and implicit type:object are not yet supported)
         - Nested objects and arrays (primitive/object items)
         - Required fields, defaults, descriptions
         - Schema references ($ref with #/definitions/ and #/$defs/)
@@ -558,6 +560,62 @@ class StructuredModel(BaseModel):
         """
 
         return cls._from_json_schema_internal(schema, field_path="")
+
+    @classmethod
+    def from_pydantic(
+        cls,
+        model_cls: Type,
+        *,
+        weight_hints: bool = False,
+        match_threshold: float = 0.7,
+    ) -> Type["StructuredModel"]:
+        """Create a StructuredModel subclass from a vanilla pydantic model class.
+
+        Walks the live ``model_cls.model_fields`` and infers a sensible
+        comparator/threshold per field from the Python type and field name
+        (see ``stickler.auto``): ``bool``/``Enum``/``Literal`` -> Exact,
+        ``int``/``float`` -> Numeric, ``date``/``datetime`` -> Date,
+        ``str`` -> Levenshtein, with name-token refinement (``*_id`` -> Exact,
+        ``*amount`` -> Numeric, ...) gated on type compatibility. Nested
+        ``BaseModel`` and ``List[BaseModel]`` fields recurse.
+
+        The result is an ordinary StructuredModel subclass: construct
+        instances from your pydantic instances via
+        ``Model.from_json(instance.model_dump())``, compare with
+        ``compare_with()``, feed pairs to ``BulkStructuredModelEvaluator``,
+        or export with ``to_stickler_config()`` / ``to_json_schema()``, edit,
+        and rebuild if you want different comparators.
+
+        Args:
+            model_cls: A ``pydantic.BaseModel`` subclass (e.g. a Strands
+                agent ``response_model``). A StructuredModel subclass is
+                returned unchanged (explicit configuration always wins).
+            weight_hints: Apply name-token weight heuristics (default off, so
+                weights stay uniform).
+            match_threshold: Overall match threshold for the generated model.
+
+        Returns:
+            A StructuredModel subclass mirroring ``model_cls`` with inferred
+            comparison configuration.
+
+        Examples:
+            >>> class Invoice(BaseModel):
+            ...     invoice_id: str
+            ...     total_amount: float
+            >>> InvoiceEval = StructuredModel.from_pydantic(Invoice)
+            >>> gt = InvoiceEval.from_json(gt_invoice.model_dump())
+            >>> pred = InvoiceEval.from_json(pred_invoice.model_dump())
+            >>> gt.compare_with(pred)["overall_score"]
+        """
+        from ...auto.builder import structured_model_for
+
+        if isinstance(model_cls, type) and issubclass(model_cls, cls):
+            return model_cls
+        return structured_model_for(
+            model_cls,
+            weight_hints=weight_hints,
+            match_threshold=match_threshold,
+        )
 
     @classmethod
     def _from_json_schema_internal(
@@ -1355,8 +1413,13 @@ class StructuredModel(BaseModel):
                     )
                     property_schema.update(extensions)
             else:
-                # Primitive type - use converter for consistent formatting
-                property_schema = converter.field_to_property(field_type, field_info)
+                # Primitive type - use converter for consistent formatting.
+                # field_type is already unwrapped above, so pass whether the
+                # original annotation was Optional so nullability round-trips.
+                _, field_is_nullable = cls._unwrap_optional(field_info.annotation)
+                property_schema = converter.field_to_property(
+                    field_type, field_info, is_nullable=field_is_nullable
+                )
 
             schema["properties"][field_name] = property_schema
 

@@ -4,7 +4,7 @@ This module provides utilities for converting JSON Schema properties to
 Pydantic Field instances with ComparableField functionality.
 """
 
-from typing import Any, Dict, List, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple, Type, Union, get_args, get_origin
 
 from pydantic.fields import FieldInfo
 
@@ -117,20 +117,37 @@ class JsonSchemaFieldConverter:
         # Handle $ref
         if "$ref" in property_schema:
             property_schema = self._resolve_ref(property_schema["$ref"])
-        
-        # Get JSON Schema type
-        json_type = property_schema.get("type")
-        
+
+        # Get JSON Schema type. Normalize list-form ``type: ["X", "null"]`` to
+        # a scalar non-null type and remember that the field is nullable. This
+        # is the JSON Schema draft-07/2020-12 idiom for an optional value and
+        # is also accepted by ``Draft7Validator.check_schema``.
+        json_type, is_nullable = self._normalize_type(
+            property_schema.get("type"), field_path
+        )
+
         # Handle nested objects
         if json_type == "object":
-            return self._handle_nested_object(field_name, property_schema, is_required, field_path)
-        
+            field_type, field = self._handle_nested_object(
+                field_name, property_schema, is_required, field_path
+            )
+            if is_nullable:
+                field_type = Optional[field_type]
+            return field_type, field
+
         # Handle arrays
         if json_type == "array":
-            return self._handle_array_type(field_name, property_schema, is_required, field_path)
-        
+            field_type, field = self._handle_array_type(
+                field_name, property_schema, is_required, field_path
+            )
+            if is_nullable:
+                field_type = Optional[field_type]
+            return field_type, field
+
         # Handle primitive types
         field_type = self._map_json_type_to_python_type(json_type)
+        if is_nullable:
+            field_type = Optional[field_type]
         
         # Extract x-aws-stickler-* extensions
         extensions = self._extract_stickler_extensions(property_schema, field_path)
@@ -160,6 +177,45 @@ class JsonSchemaFieldConverter:
         )
         
         return field_type, field
+
+    def _normalize_type(
+        self, raw_type: Any, field_path: str = ""
+    ) -> Tuple[Optional[str], bool]:
+        """Normalize a JSON Schema ``type`` value.
+
+        JSON Schema permits ``type`` to be either a single string or a list of
+        strings. The common nullable idiom is ``["X", "null"]``. This helper
+        collapses such lists to ``(X, True)`` and returns ``(raw_type, False)``
+        for plain string types.
+
+        Args:
+            raw_type: The raw value of the ``type`` keyword.
+            field_path: Field path used in error messages.
+
+        Returns:
+            Tuple of ``(non_null_type, is_nullable)``.
+
+        Raises:
+            ValueError: If the list form does not contain exactly one non-null
+                type alongside ``"null"``.
+        """
+        if not isinstance(raw_type, list):
+            return raw_type, False
+
+        field_info = f" for field '{field_path}'" if field_path else ""
+        if not all(isinstance(t, str) for t in raw_type):
+            raise ValueError(
+                f"Unsupported JSON Schema type{field_info}: {raw_type}. "
+                "List-form types must contain only strings."
+            )
+        non_null = [t for t in raw_type if t != "null"]
+        has_null = len(non_null) != len(raw_type)
+        if not has_null or len(non_null) != 1:
+            raise ValueError(
+                f"Unsupported JSON Schema type{field_info}: {raw_type}. "
+                "List-form types are only supported as ['<type>', 'null']."
+            )
+        return non_null[0], True
 
     def _map_json_type_to_python_type(self, json_type: str) -> Type:
         """Map JSON Schema type to Python type.
@@ -380,8 +436,10 @@ class JsonSchemaFieldConverter:
         if "$ref" in items_schema:
             items_schema = self._resolve_ref(items_schema["$ref"])
         
-        items_type = items_schema.get("type")
-        
+        items_type, items_nullable = self._normalize_type(
+            items_schema.get("type"), f"{field_path}[]"
+        )
+
         # Array of objects -> List[StructuredModel]
         if items_type == "object":
             from .structured_model import StructuredModel
@@ -390,12 +448,15 @@ class JsonSchemaFieldConverter:
             except ValueError:
                 # Nested errors already have field path context
                 raise
-            field_type = List[ElementModel]
+            element_type = Optional[ElementModel] if items_nullable else ElementModel
+            field_type = List[element_type]
             # Use default comparator for the element type
             comparator = self._get_default_comparator_for_type("string")
         else:
             # Array of primitives -> List[primitive]
             element_type = self._map_json_type_to_python_type(items_type)
+            if items_nullable:
+                element_type = Optional[element_type]
             field_type = List[element_type]
             # Use default comparator for the element type
             comparator = self._get_default_comparator_for_type(items_type)
@@ -427,21 +488,33 @@ class JsonSchemaFieldConverter:
         return field_type, field
 
     
-    def field_to_property(self, field_type: Type, field_info: FieldInfo) -> Dict[str, Any]:
+    def field_to_property(
+        self, field_type: Type, field_info: FieldInfo, is_nullable: bool = False
+    ) -> Dict[str, Any]:
         """Convert Pydantic field to JSON Schema property.
-        
+
         Extracts comparison metadata from the field's json_schema_extra attribute
         and formats it as x-aws-stickler-* extensions compatible with from_json_schema().
-        
+
         Args:
             field_type: Python type annotation (e.g., str, int, float)
             field_info: Pydantic FieldInfo object containing field metadata
-            
+            is_nullable: Whether the source field was Optional[T]; emits the
+                list-form ``["X", "null"]`` type so nullability round-trips.
+
         Returns:
             JSON Schema property dict with x-aws-stickler-* extensions
         """
+        # Unwrap Optional[T] in case the caller passes the wrapped type so the
+        # nullability still survives the round-trip as the ["X", "null"] idiom.
+        if get_origin(field_type) is Union:
+            args = [a for a in get_args(field_type) if a is not type(None)]
+            if len(args) == 1 and type(None) in get_args(field_type):
+                field_type = args[0]
+                is_nullable = True
+
         json_type = PYTHON_TYPE_TO_JSON_TYPE.get(field_type, "string")
-        property_schema = {"type": json_type}
+        property_schema = {"type": [json_type, "null"] if is_nullable else json_type}
         
         # Extract metadata and build extensions using consolidated helper
         metadata = self._extract_field_metadata(field_info)

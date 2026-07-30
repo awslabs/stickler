@@ -1,6 +1,6 @@
 [project]
 name = "stickler-eval"
-version = "0.5.0"
+version = "0.6.0"
 description = "Structured object comparison and evaluation library"
 authors = [
     {name = "Spencer Romo", email = "sromo@amazon.com"},
@@ -53,7 +53,11 @@ dev = [
     "matplotlib>=3.8.0",
 ]
 llm = [
-    "strands-agents>=1.0.0,<=1.16.0"
+    # >=1.14.0: the structured_output_model= kwarg on Agent.__call__ used by the
+    # docs and examples landed in 1.14.0. On 1.0-1.13 __call__ swallows it via
+    # **kwargs, so no structured output is requested and the call fails later
+    # with AttributeError on .structured_output.
+    "strands-agents>=1.14.0,<=1.16.0"
 ]
 bert = [
     "evaluate>=0.4.0",
@@ -114,6 +118,12 @@ docs = [
 ]
 
 [tool.uv]
+# Dependency cooldown: wait 7 days before resolving newly published package
+# versions to mitigate supply-chain attacks via freshly compromised releases.
+# https://docs.astral.sh/uv/concepts/resolution/#dependency-cooldowns
+# Note: keep `exclude-newer` as the first key in this table; the semgrep rule
+# package_managers.uv.uv-missing-dependency-cooldown only matches it there.
+exclude-newer = "7 days"
 default-groups = ["dev"]
 
 [tool.pytest.ini_options]

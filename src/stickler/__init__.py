@@ -5,6 +5,10 @@ This library provides tools for comparing complex structured objects
 with configurable comparison strategies and detailed evaluation metrics.
 """
 
+# Zero-config evaluation of vanilla pydantic models (no StructuredModel
+# subclass or schema required). See stickler/auto/README.md.
+from .auto import EvalResult, EvalSpec, eval_for, evaluate
+
 # Always-available comparators (core deps)
 from .comparators.base import BaseComparator
 from .comparators.exact import ExactComparator
@@ -40,7 +44,7 @@ try:
 except ImportError:
     _HAS_BERT = False
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 __all__ = [
     # Models and evaluation
     "StructuredModel",
@@ -51,6 +55,11 @@ __all__ = [
     "anls_score",
     "compare_json",
     "aggregate_from_comparisons",
+    # Zero-config evaluation (vanilla pydantic -> scored eval)
+    "evaluate",
+    "eval_for",
+    "EvalResult",
+    "EvalSpec",
     # Comparators (always available)
     "BaseComparator",
     "ExactComparator",

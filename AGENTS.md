@@ -5,7 +5,7 @@
 - Documentation should be minimal, and only say what needs to be said to communicate how to work with and extend the system.
 
 ## MKDocs Documentation Project
-- An MKDocs documentation project exists at [docs/](./docs/). More information can be found in the [docs/README.md](./docs/README.md) and [docs/AGENTS.md](./docs/AGENTS.md) files.
+- An MKDocs documentation project exists at [docs/](./docs/). More information can be found in the [docs/README.md](./docs/README.md) file.
 
 ## Testing
 - Test documentation and guidelines can be found in [tests/README.md](./tests/README.md).
