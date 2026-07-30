@@ -9,6 +9,16 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Changed
+
+- Demote `ThresholdHelper` to a single module-level function,
+  `is_above_threshold()`, in a new `thresholds.py`; drop 5 of its 6 methods
+  that had zero callers anywhere. Also fixes `confusion_matrix_calculator.py`
+  silently reimplementing the same floating-point-tolerant threshold check
+  inline instead of using the shared helper. Part of the `models/`
+  helper-module consolidation towards #134
+  ([#192](https://github.com/awslabs/stickler/pull/192))
+
 ## [0.6.0] - 2026-07-30
 
 ### Added
