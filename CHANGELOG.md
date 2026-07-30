@@ -9,6 +9,13 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Changed
+
+- Inline `ResultHelper`'s result-dict factories directly into
+  `ComparisonDispatcher`, their only caller, and remove the now-empty
+  `result_helper.py`. Part of the `models/` helper-module consolidation
+  towards #134 ([#191](https://github.com/awslabs/stickler/pull/191))
+
 ## [0.6.0] - 2026-07-30
 
 ### Added
