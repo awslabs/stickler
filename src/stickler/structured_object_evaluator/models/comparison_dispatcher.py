@@ -7,10 +7,92 @@ to appropriate handlers based on field type and null states.
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from .null_helper import NullHelper
-from .result_helper import ResultHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
+
+
+def _create_true_negative_result(weight: float) -> Dict[str, Any]:
+    """A perfect match: both sides are null/empty."""
+    return {
+        "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 1, "fn": 0},
+        "fields": {},
+        "raw_similarity_score": 1.0,
+        "similarity_score": 1.0,
+        "threshold_applied_score": 1.0,
+        "weight": weight,
+    }
+
+
+def _create_false_alarm_result(weight: float) -> Dict[str, Any]:
+    """Ground truth is null/empty but the prediction has data."""
+    return {
+        "overall": {"tp": 0, "fa": 1, "fd": 0, "fp": 1, "tn": 0, "fn": 0},
+        "fields": {},
+        "raw_similarity_score": 0.0,
+        "similarity_score": 0.0,
+        "threshold_applied_score": 0.0,
+        "weight": weight,
+    }
+
+
+def _create_false_negative_result(weight: float) -> Dict[str, Any]:
+    """Ground truth has data but the prediction is null/empty."""
+    return {
+        "overall": {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 1},
+        "fields": {},
+        "raw_similarity_score": 0.0,
+        "similarity_score": 0.0,
+        "threshold_applied_score": 0.0,
+        "weight": weight,
+    }
+
+
+def _create_empty_list_result(
+    gt_len: int, pred_len: int, weight: float
+) -> Optional[Dict[str, Any]]:
+    """Result for a list field where at least one side is null/empty.
+
+    Returns None if both sides are non-empty, signaling the caller to
+    continue on to type-based dispatch instead.
+    """
+    match (gt_len, pred_len):
+        case (0, 0):
+            return _create_true_negative_result(weight)
+        case (0, _):
+            return {
+                "overall": {
+                    "tp": 0,
+                    "fa": pred_len,
+                    "fd": 0,
+                    "fp": pred_len,
+                    "tn": 0,
+                    "fn": 0,
+                },
+                "fields": {},
+                "raw_similarity_score": 0.0,
+                "similarity_score": 0.0,
+                "threshold_applied_score": 0.0,
+                "weight": weight,
+            }
+        case (_, 0):
+            return {
+                "overall": {
+                    "tp": 0,
+                    "fa": 0,
+                    "fd": 0,
+                    "fp": 0,
+                    "tn": 0,
+                    "fn": gt_len,
+                },
+                "fields": {},
+                "raw_similarity_score": 0.0,
+                "similarity_score": 0.0,
+                "threshold_applied_score": 0.0,
+                "weight": weight,
+            }
+        case _:
+            return None
 
 
 class ComparisonDispatcher:
@@ -157,13 +239,13 @@ class ComparisonDispatcher:
             match (gt_effectively_null_prim, pred_effectively_null_prim):
                 case (True, True):
                     # Both null → True Negative
-                    return ResultHelper.create_true_negative_result(weight)
+                    return _create_true_negative_result(weight)
                 case (True, False):
                     # GT null, Pred non-null → False Alarm
-                    return ResultHelper.create_false_alarm_result(weight)
+                    return _create_false_alarm_result(weight)
                 case (False, True):
                     # GT non-null, Pred null → False Negative
-                    return ResultHelper.create_false_negative_result(weight)
+                    return _create_false_negative_result(weight)
                 case _:
                     # Both non-null, continue to type-based dispatch
                     pass
@@ -259,23 +341,23 @@ class ComparisonDispatcher:
             case (True, True):
                 # CASE 1: Both None or empty lists → True Negative
                 # This is a perfect match - both sides agree there's no data
-                return ResultHelper.create_true_negative_result(weight)
+                return _create_true_negative_result(weight)
             case (True, False):
                 # CASE 2: GT=None/empty, Pred=populated list → False Alarm
                 # The prediction has data that shouldn't be there
-                # Use ResultHelper for list-specific handling with counts
+                # Compute counts for the list-specific result below
                 pred_list = pred_val if isinstance(pred_val, list) else []
                 gt_len = 0
                 pred_len = len(pred_list) if pred_list else 1
-                return ResultHelper.create_empty_list_result(gt_len, pred_len, weight)
+                return _create_empty_list_result(gt_len, pred_len, weight)
             case (False, True):
                 # CASE 3: GT=populated list, Pred=None/empty → False Negative
                 # The prediction is missing data that should be there
-                # Use ResultHelper for list-specific handling with counts
+                # Compute counts for the list-specific result below
                 gt_list = gt_val if isinstance(gt_val, list) else []
                 gt_len = len(gt_list) if gt_list else 1
                 pred_len = 0
-                return ResultHelper.create_empty_list_result(gt_len, pred_len, weight)
+                return _create_empty_list_result(gt_len, pred_len, weight)
             case _:
                 # CASE 4: Both non-null and non-empty
                 # Return None to signal that we should continue to type-based dispatch

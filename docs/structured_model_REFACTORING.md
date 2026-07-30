@@ -70,7 +70,7 @@ Specialized Components (selected — ~36 modules total in models/):
 └── Pre-existing helpers
     ├── HungarianHelper, MetricsHelper, ConfigurationHelper, ComparisonHelper
     ├── ThresholdHelper, RichValueHelper, NonMatchesHelper, FieldHelper
-    ├── ResultHelper, NullHelper, TypeResolver, ComparatorRegistry
+    ├── NullHelper, TypeResolver, ComparatorRegistry
     └── PostComparisonAccumulator, ComparisonInfo, ComparisonHelperBase
 ```
 
