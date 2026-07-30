@@ -6,11 +6,20 @@ to appropriate handlers based on field type and null states.
 
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from .null_helper import NullHelper
 from .result_helper import ResultHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
+
+
+def _is_effectively_null_for_primitives(val: Any) -> bool:
+    """A primitive value is effectively null if it's None or an empty string."""
+    return val is None or (isinstance(val, str) and val == "")
+
+
+def _is_effectively_null_for_lists(val: Any) -> bool:
+    """A list value is effectively null if it's None or an empty list."""
+    return val is None or (isinstance(val, list) and len(val) == 0)
 
 
 class ComparisonDispatcher:
@@ -151,8 +160,8 @@ class ComparisonDispatcher:
         # - GT non-null, Pred null → FN (False Negative)
         # - Both non-null → Continue to type-based dispatch
         if not (gt_needs_hierarchy or pred_needs_hierarchy):
-            gt_effectively_null_prim = NullHelper.is_effectively_null_for_primitives(gt_val)
-            pred_effectively_null_prim = NullHelper.is_effectively_null_for_primitives(pred_val)
+            gt_effectively_null_prim = _is_effectively_null_for_primitives(gt_val)
+            pred_effectively_null_prim = _is_effectively_null_for_primitives(pred_val)
 
             match (gt_effectively_null_prim, pred_effectively_null_prim):
                 case (True, True):
@@ -250,8 +259,8 @@ class ComparisonDispatcher:
         # Check if lists are effectively null (None or empty)
         # This is different from primitive null checking because empty lists
         # are semantically meaningful for list fields
-        gt_effectively_null = NullHelper.is_effectively_null_for_lists(gt_val)
-        pred_effectively_null = NullHelper.is_effectively_null_for_lists(pred_val)
+        gt_effectively_null = _is_effectively_null_for_lists(gt_val)
+        pred_effectively_null = _is_effectively_null_for_lists(pred_val)
 
         # Use match statement for clear, traceable dispatch logic
         # Leverage helper methods to avoid code duplication

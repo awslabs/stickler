@@ -9,6 +9,13 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Changed
+
+- Inline `NullHelper`'s effectively-null checks for primitives/lists directly
+  into `ComparisonDispatcher`, their only caller, and remove the now-empty
+  `null_helper.py`. `is_truly_null` had no callers at all and is simply gone.
+  First step of the `models/` helper-module consolidation (#134, PR TBD)
+
 ## [0.6.0] - 2026-07-30
 
 ### Added
