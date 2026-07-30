@@ -20,7 +20,7 @@ StructuredModel
 ├── compare_with()            # Public API entry point
 │   └── ComparisonEngine      # Orchestrator — single-traversal loop
 │       ├── ComparisonDispatcher        # 5-step field routing
-│       │   ├── NullHelper              # Null/empty detection
+│       │   ├── (inline) effectively-null checks for primitives/lists
 │       │   ├── ResultHelper            # Standard result factories
 │       │   ├── FieldComparator         # Primitives & nested models
 │       │   ├── PrimitiveListComparator # List[str/int/float]
@@ -50,7 +50,6 @@ StructuredModel
 | NonMatchCollector | `models/non_match_collector.py` |
 | FieldComparisonCollector | `models/field_comparison_collector.py` |
 | ConfusionMatrixBuilder | `models/confusion_matrix_builder.py` |
-| NullHelper | `models/null_helper.py` |
 | ResultHelper | `models/result_helper.py` |
 | ThresholdHelper | `models/threshold_helper.py` |
 | MetricsHelper | `models/metrics_helper.py` |
@@ -133,7 +132,7 @@ The dispatcher routes each field comparison through a 5-step decision tree:
 | 5. **Type-based dispatch** | Route by runtime types to specialized comparator | Terminal |
 
 ```python
-# See: comparison_dispatcher.py:65-225
+# See: comparison_dispatcher.py:74-234
 # Step 5 type routing:
 #   (str|int|float, str|int|float) → FieldComparator
 #   (list, list) where list[0] is StructuredModel → StructuredListComparator
@@ -147,7 +146,7 @@ The dispatcher routes each field comparison through a 5-step decision tree:
 Both `ComparisonEngine` and `ComparisonDispatcher` use `@property` with `None`-guard patterns to lazily create sub-components. This avoids circular imports between `structured_model.py` and the helper modules.
 
 ```python
-# See: comparison_dispatcher.py:41-63
+# See: comparison_dispatcher.py:50-72
 @property
 def field_comparator(self):
     if self._field_comparator is None:
@@ -161,7 +160,7 @@ def field_comparator(self):
 Null cases use Python 3.10+ `match` statements for clarity:
 
 ```python
-# See: comparison_dispatcher.py:157-169
+# See: comparison_dispatcher.py:166-178
 match (gt_effectively_null, pred_effectively_null):
     case (True, True):   return ResultHelper.create_true_negative_result(weight)
     case (True, False):  return ResultHelper.create_false_alarm_result(weight)
@@ -316,7 +315,7 @@ The Hungarian algorithm runs in **O(n³)** time. For `StructuredListComparator`,
 From `ComparisonDispatcher` source:
 
 ```python
-# See: comparison_dispatcher.py:177-184
+# See: comparison_dispatcher.py:186-193
 # TODO: Refactor to use a cleaner match-based dispatch pattern that separates
 #       list handling from singleton handling more explicitly.
 ```
