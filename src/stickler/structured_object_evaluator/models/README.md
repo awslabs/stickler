@@ -26,8 +26,11 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
 - `field_comparison_collector.py` / `field_comparison_helper.py` — produce the
   `field_comparisons` rows (each carries a GT-side `expected_key` and a
   prediction-side `actual_key`, which diverge for reordered list items).
-- `non_match_collector.py`, `null_helper.py`, `result_helper.py`,
-  `evaluator_format_helper.py` — result shaping.
+- `non_match_collector.py`, `null_helper.py`,
+  `evaluator_format_helper.py` — result shaping. Standard result-dict factories
+  (true negative / false alarm / false negative / empty-list cases) are inlined
+  as private functions in `comparison_dispatcher.py` (their only caller) rather
+  than a separate helper module.
 
 **Metrics**
 - `confusion_matrix_builder.py`, `confusion_matrix_calculator.py`,
