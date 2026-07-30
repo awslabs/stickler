@@ -9,18 +9,55 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-30
+
+### Added
+
+- Zero-config evaluation of vanilla Pydantic models: `stickler.evaluate()`,
+  `stickler.eval_for()`, `EvalSpec`, `EvalResult`, and
+  `StructuredModel.from_pydantic()`. Scores a plain `BaseModel` (for example a
+  Strands agent `response_model`) with no `StructuredModel` subclass,
+  comparators, thresholds, or schema, inferring a comparator per field from the
+  live Python type plus field-name hints. `EvalResult.explain()` reports the
+  comparator, threshold, weight, and provenance behind every field decision
+  ([#176](https://github.com/awslabs/stickler/pull/176))
+
 ### Fixed
 
+- Support JSON Schema list-form nullable types (`"type": ["string", "null"]`)
+  ([#127](https://github.com/awslabs/stickler/pull/127))
+- Guard `None` elements in nullable object list comparison paths, which
+  previously raised `AttributeError` on `List[Optional[Model]]`
+  ([#181](https://github.com/awslabs/stickler/pull/181))
 - Register `BERTComparator` under the correct name in the comparator registry
   ([#157](https://github.com/awslabs/stickler/pull/157))
+- Guard non-finite values in `NumericComparator` tolerance comparisons, which
+  previously raised `decimal.InvalidOperation` on NaN and infinite inputs
+  ([#176](https://github.com/awslabs/stickler/pull/176))
 - Resolve ASH security scan findings: top-level workflow permissions, bandit
   exec suppression ([#156](https://github.com/awslabs/stickler/pull/156))
 
 ### Changed
 
+- Pin GitHub Actions to commit SHAs and add a uv dependency cooldown
+  ([#170](https://github.com/awslabs/stickler/pull/170))
+- Raise the `[llm]` extra floor to `strands-agents>=1.14.0`: the documented
+  `structured_output_model=` keyword landed in 1.14.0, and on 1.0 to 1.13 it is
+  silently swallowed by `**kwargs`
+  ([#176](https://github.com/awslabs/stickler/pull/176))
 - Dependency bumps via dependabot
   ([#167](https://github.com/awslabs/stickler/pull/167),
   [#168](https://github.com/awslabs/stickler/pull/168))
+
+### Documentation
+
+- Add maintainer handoff artifacts: `MAINTAINERS`, `CODEOWNERS`, `RELEASING`,
+  `CHANGELOG`, and a maintainer's guide
+  ([#175](https://github.com/awslabs/stickler/pull/175))
+- Add the Ultra Quick Start page and an "Evaluating a Strands Agent" guide for
+  the zero-config path ([#176](https://github.com/awslabs/stickler/pull/176))
+- Add `CLAUDE.md` importing `AGENTS.md` for Claude Code
+  ([#169](https://github.com/awslabs/stickler/pull/169))
 
 ## [0.5.0] - 2026-06-26
 
@@ -134,7 +171,8 @@ Initial public release: structured JSON comparison with configurable
 comparators, Hungarian-algorithm list matching, confusion-matrix metrics, and
 HTML reporting.
 
-[Unreleased]: https://github.com/awslabs/stickler/compare/v0.5.0...dev
+[Unreleased]: https://github.com/awslabs/stickler/compare/v0.6.0...dev
+[0.6.0]: https://github.com/awslabs/stickler/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/awslabs/stickler/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/awslabs/stickler/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/awslabs/stickler/compare/v0.2.0...v0.3.0
