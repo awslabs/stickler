@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 from stickler.comparators.base import BaseComparator
 
 from .hungarian_helper import HungarianHelper
-from .threshold_helper import ThresholdHelper
+from .thresholds import is_above_threshold
 
 
 class ComparisonHelper:
@@ -127,8 +127,8 @@ class ComparisonHelper:
         fd = 0  # False discoveries (score < threshold, including 0)
 
         for i, j, score in matched_pairs:
-            # Use ThresholdHelper for consistent threshold checking
-            if ThresholdHelper.is_above_threshold(score, classification_threshold):
+            # Use is_above_threshold for consistent threshold checking
+            if is_above_threshold(score, classification_threshold):
                 tp += 1
             else:
                 # All matches below threshold are False Discoveries, including 0.0 scores
@@ -151,8 +151,8 @@ class ComparisonHelper:
             # Apply threshold to each similarity score (same logic as individual comparison)
             threshold_applied_similarities = []
             for _, _, score in matched_pairs:
-                # Use ThresholdHelper for consistent threshold checking
-                if ThresholdHelper.is_above_threshold(score, classification_threshold):
+                # Use is_above_threshold for consistent threshold checking
+                if is_above_threshold(score, classification_threshold):
                     threshold_applied_similarities.append(score)
                 else:
                     # Below threshold gets 0.0 (same as individual comparison clipping)

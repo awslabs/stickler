@@ -69,7 +69,7 @@ Specialized Components (selected — ~36 modules total in models/):
 │       used when compare_with(add_confidence_metrics=True, ...)
 └── Pre-existing helpers
     ├── HungarianHelper, MetricsHelper, ConfigurationHelper, ComparisonHelper
-    ├── ThresholdHelper, RichValueHelper, NonMatchesHelper, FieldHelper
+    ├── RichValueHelper, NonMatchesHelper, FieldHelper
     ├── ResultHelper, NullHelper, TypeResolver, ComparatorRegistry
     └── PostComparisonAccumulator, ComparisonInfo, ComparisonHelperBase
 ```

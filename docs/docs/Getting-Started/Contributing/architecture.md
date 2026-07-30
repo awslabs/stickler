@@ -32,7 +32,8 @@ StructuredModel
 │       └── ConfusionMatrixBuilder      # Aggregate metrics
 │
 ├── ComparisonHelper          # List metrics & Hungarian integration
-│   └── ThresholdHelper       # Threshold comparison logic
+│   └── is_above_threshold()  # thresholds.py — floating-point-tolerant check,
+│                              also used directly by ConfusionMatrixCalculator
 └── MetricsHelper             # Also used directly for score→metrics conversion
 ```
 
@@ -52,7 +53,7 @@ StructuredModel
 | ConfusionMatrixBuilder | `models/confusion_matrix_builder.py` |
 | NullHelper | `models/null_helper.py` |
 | ResultHelper | `models/result_helper.py` |
-| ThresholdHelper | `models/threshold_helper.py` |
+| `is_above_threshold()` | `models/thresholds.py` |
 | MetricsHelper | `models/metrics_helper.py` |
 | ComparisonHelper | `models/comparison_helper.py` |
 | ComparableField (function) | `models/comparable_field.py` |
