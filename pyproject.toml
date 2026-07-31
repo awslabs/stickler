@@ -57,7 +57,14 @@ llm = [
     # docs and examples landed in 1.14.0. On 1.0-1.13 __call__ swallows it via
     # **kwargs, so no structured output is requested and the call fails later
     # with AttributeError on .structured_output.
-    "strands-agents>=1.14.0,<=1.16.0"
+    #
+    # No upper bound below 2.0: LLMComparator only uses Agent(model=,
+    # system_prompt=, callback_handler=) and strands.models.Model, all verified
+    # present through 1.50.2. A ceiling should name a real incompatibility, not
+    # the newest release that existed when it was written. Capping at <2.0.0
+    # made stickler[llm] uninstallable alongside strands-agents-evals, which
+    # requires >=1.42.0.
+    "strands-agents>=1.14.0,<2.0.0"
 ]
 bert = [
     "evaluate>=0.4.0",
