@@ -11,6 +11,8 @@ the suite installs every extra, so the import still succeeds here while a
 default install breaks for users.
 """
 
+import json
+import os
 import subprocess
 import sys
 
@@ -40,8 +42,6 @@ def _modules_after_importing_stickler() -> set:
     result = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, check=True
     )
-    import json
-
     return set(json.loads(result.stdout))
 
 
@@ -67,4 +67,104 @@ def test_core_import_stays_small():
     assert len(loaded) < 900, (
         f"`import stickler` now loads {len(loaded)} modules. Something heavy "
         f"joined the core import path; check for a new module-level import."
+    )
+
+
+def test_optional_comparator_resolves_on_access():
+    """A lazily-exported comparator imports its dependency only when accessed.
+
+    This is the other half of the guard above: deferring the import is only
+    correct if the comparator still works. Skips when the extra is absent,
+    since there is nothing to resolve.
+    """
+    code = (
+        "import sys, json;"
+        " import stickler;"
+        " before = 'torch' in sys.modules;"
+        " available = 'BERTComparator' in stickler.__all__;"
+        " cls = getattr(stickler, 'BERTComparator', None) if available else None;"
+        " print(json.dumps({"
+        "  'available': available,"
+        "  'before': before,"
+        "  'after': 'torch' in sys.modules,"
+        "  'name': getattr(cls, '__name__', None)}))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        pytest.skip(f"could not probe optional comparator: {result.stderr[-200:]}")
+
+    data = json.loads(result.stdout.strip().splitlines()[-1])
+    if not data["available"]:
+        pytest.skip("bert extra not installed")
+
+    assert data["before"] is False, (
+        "torch was already loaded at `import stickler`, so the lazy export is "
+        "not actually deferring the import."
+    )
+    assert data["name"] == "BERTComparator", (
+        "accessing stickler.BERTComparator did not resolve to the class; the "
+        "lazy __getattr__ is broken."
+    )
+    assert data["after"] is True, (
+        "accessing stickler.BERTComparator did not import torch, which means "
+        "the probe did not exercise the real module."
+    )
+
+
+def test_broken_extra_does_not_break_import(tmp_path):
+    """An installed-but-broken extra must not take down `import stickler`.
+
+    A version-skewed transitive dependency raises plain ImportError rather than
+    ModuleNotFoundError. `import stickler` has to survive that and surface the
+    failure at first use, naming the extra.
+    """
+    code = "import sys, json; import stickler; print(json.dumps(sorted(stickler.__all__)))"
+    baseline = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True
+    )
+    if baseline.returncode != 0 or "BERTComparator" not in json.loads(
+        baseline.stdout.strip().splitlines()[-1]
+    ):
+        pytest.skip("bert extra not installed")
+
+    # Shadow a transitive dependency of the bert extra so importing it fails.
+    shim = tmp_path / "datasets.py"
+    shim.write_text('raise ImportError("simulated version-skewed dependency")\n')
+
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(tmp_path) + os.pathsep + env.get("PYTHONPATH", "")
+
+    probe = (
+        "import stickler;"
+        " print('IMPORT_OK');"
+        " import sys;"
+        " sys.stdout.flush();"
+        " err = None\n"
+        "try:\n"
+        "    stickler.BERTComparator\n"
+        "except Exception as exc:\n"
+        "    err = f'{type(exc).__name__}: {exc}'\n"
+        "print(f'ACCESS={err}')"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, env=env
+    )
+
+    assert "IMPORT_OK" in result.stdout, (
+        "`import stickler` failed with a broken optional extra. It must "
+        f"survive and defer the failure. stderr: {result.stderr[-400:]}"
+    )
+    access_line = [
+        line for line in result.stdout.splitlines() if line.startswith("ACCESS=")
+    ]
+    assert access_line, f"probe did not report access result: {result.stdout!r}"
+    detail = access_line[0]
+    assert "None" not in detail, (
+        "accessing a broken extra's comparator unexpectedly succeeded"
+    )
+    assert "bert" in detail, (
+        f"the error should name the owning extra so the user knows what to "
+        f"fix, got: {detail}"
     )
