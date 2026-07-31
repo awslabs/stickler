@@ -28,7 +28,7 @@ from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
-from .rich_value_helper import RichValueHelper
+from .rich_value import process_rich_values as unwrap_rich_values
 
 
 class StructuredModel(BaseModel):
@@ -372,7 +372,7 @@ class StructuredModel(BaseModel):
         if process_rich_values:
             # Only process rich values on the top-level call
             processed_data, confidences, extras = (
-                RichValueHelper.process_rich_values(json_data)
+                unwrap_rich_values(json_data)
             )
             instance = ConfigurationHelper.from_json(cls, processed_data)
             if confidences:

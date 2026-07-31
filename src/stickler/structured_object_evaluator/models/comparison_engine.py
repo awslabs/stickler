@@ -428,7 +428,7 @@ class ComparisonEngine:
             result["prediction_raw"] = other.__stickler_raw_json__
 
         # Pre-extract confidences so the bulk path doesn't re-walk
-        # prediction_raw via RichValueHelper.process_rich_values().
+        # prediction_raw via process_rich_values().
         if hasattr(other, "get_all_confidences"):
             confidences = other.get_all_confidences()
             if confidences:

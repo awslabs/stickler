@@ -9,6 +9,12 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Changed
+
+- Demote `RichValueHelper` to module-level functions in a new
+  `rich_value.py`. Part of the `models/` helper-module consolidation
+  towards #134 ([#195](https://github.com/awslabs/stickler/pull/195))
+
 ## [0.6.0] - 2026-07-30
 
 ### Added

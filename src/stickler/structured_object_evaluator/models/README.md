@@ -34,7 +34,7 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   `derived_metrics_calculator.py`, `aggregate_metrics_calculator.py`,
   `metrics_helper.py`, `threshold_helper.py` — confusion-matrix and derived/
   aggregate metric rollups.
-- `rich_value_helper.py` — unwraps the Rich Value Pattern
+- `rich_value.py` — `process_rich_values()` unwraps the Rich Value Pattern
   (`{"_value": ..., "_confidence": ..., "_bbox": ...}`) during `from_json()`,
   returning `(data, confidences, extras)`.
 - `post_comparison_accumulator.py` — `PostComparisonAccumulator`, the interface
@@ -48,5 +48,5 @@ calculator (the math) and a `PostComparisonAccumulator` (bulk aggregation):
 - `confidence/` — confidence calibration metrics (AUROC, Brier, ECE, ...).
 - `bbox/` — bounding-box localization via mean Average Precision (mAP).
 
-Both consume metadata extracted by `rich_value_helper.py` and plug into bulk
+Both consume metadata extracted by `rich_value.py` and plug into bulk
 evaluation through `post_comparison_accumulator.py`.

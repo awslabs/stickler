@@ -265,7 +265,7 @@ class TestUpdateFromComparisonResultConfidence:
         Simulates a comparison_result captured before the
         ``prediction_confidences`` cache existed. The accumulator must
         fall back to walking ``prediction_raw`` via
-        ``RichValueHelper.process_rich_values`` and still emit
+        ``process_rich_values`` and still emit
         confidence metrics.
         """
         gt = Product(name="Widget", price=29.99, sku="ABC123")
