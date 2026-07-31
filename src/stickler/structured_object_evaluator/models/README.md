@@ -21,8 +21,8 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   matrix, non-matches, field comparisons, and optional metrics.
 - `comparison_dispatcher.py`, `field_comparator.py`,
   `primitive_list_comparator.py`, `structured_list_comparator.py`,
-  `hungarian_helper.py` — dispatch and per-type comparison, including Hungarian
-  matching for lists.
+  `hungarian_matching.py` — dispatch and per-type comparison, including
+  Hungarian matching for lists.
 - `field_comparison_collector.py` / `field_comparison_helper.py` — produce the
   `field_comparisons` rows (each carries a GT-side `expected_key` and a
   prediction-side `actual_key`, which diverge for reordered list items).

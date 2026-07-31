@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Dict, List
 
 from .comparable_field import ComparableField
 from .comparison_helper import ComparisonHelper
-from .hungarian_helper import HungarianHelper
+from .hungarian_matching import HungarianMatching
 from .metrics_helper import MetricsHelper
 
 if TYPE_CHECKING:
@@ -125,7 +125,7 @@ class StructuredListComparator:
             Tuple of (object_metrics_dict, matched_pairs, matched_gt_indices, matched_pred_indices)
         """
         # Use Hungarian matching for OBJECT-LEVEL counts
-        hungarian_helper = HungarianHelper()
+        hungarian_helper = HungarianMatching()
         hungarian_info = hungarian_helper.get_complete_matching_info(gt_list, pred_list)
         matched_pairs = hungarian_info["matched_pairs"]
 

@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 
 from stickler.comparators.base import BaseComparator
 
-from .hungarian_helper import HungarianHelper
+from .hungarian_matching import HungarianMatching
 from .threshold_helper import ThresholdHelper
 
 
@@ -38,8 +38,8 @@ class ComparisonHelper:
         """
         # Empty lists are handled early on immediately.
    
-        # Use HungarianHelper for Hungarian matching operations
-        hungarian_helper = HungarianHelper()
+        # Use HungarianMatching for Hungarian matching operations
+        hungarian_helper = HungarianMatching()
         from .structured_model import StructuredModel
 
         # Use the appropriate comparator based on item types
@@ -49,7 +49,7 @@ class ComparisonHelper:
             isinstance(item, StructuredModel) for item in pred_list[:1]
         ):
             # For StructuredModel lists, we need to use individual comparison scoring for consistency
-            # Use HungarianHelper to get optimal pairings - OPTIMIZED: Single call gets all info
+            # Use HungarianMatching to get optimal pairings - OPTIMIZED: Single call gets all info
             hungarian_info = hungarian_helper.get_complete_matching_info(gt_list, pred_list)
             matched_pairs = hungarian_info["matched_pairs"]
 

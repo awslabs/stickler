@@ -7,7 +7,7 @@ confusion matrix metrics (TP, FP, TN, FN, FD, FA) for field comparisons.
 from typing import TYPE_CHECKING, Any, Dict, List
 
 from .field_helper import FieldHelper
-from .hungarian_helper import HungarianHelper
+from .hungarian_matching import HungarianMatching
 from .metrics_helper import MetricsHelper
 from .non_matches_helper import NonMatchesHelper
 
@@ -318,10 +318,10 @@ class ConfusionMatrixCalculator:
             # Initialize aggregated counts for this nested field
             total_tp = total_fa = total_fd = total_fp = total_tn = total_fn = 0
 
-            # Use HungarianHelper for Hungarian matching operations - OPTIMIZED: Single call gets all info
-            hungarian_helper = HungarianHelper()
+            # Use HungarianMatching for Hungarian matching operations - OPTIMIZED: Single call gets all info
+            hungarian_helper = HungarianMatching()
 
-            # Use HungarianHelper to get optimal assignments with similarity scores
+            # Use HungarianMatching to get optimal assignments with similarity scores
             assignments = []
             matched_pairs_with_scores = []
             if gt_list and pred_list:
