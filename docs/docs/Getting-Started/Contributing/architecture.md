@@ -31,7 +31,7 @@ StructuredModel
 │       ├── FieldComparisonCollector    # Field-level comparison docs
 │       └── ConfusionMatrixBuilder      # Aggregate metrics
 │
-├── ComparisonHelper          # List metrics & Hungarian integration
+├── unordered_list_comparison # List metrics & Hungarian integration
 │   └── ThresholdHelper       # Threshold comparison logic
 └── MetricsHelper             # Also used directly for score→metrics conversion
 ```
@@ -54,7 +54,7 @@ StructuredModel
 | ResultHelper | `models/result_helper.py` |
 | ThresholdHelper | `models/threshold_helper.py` |
 | MetricsHelper | `models/metrics_helper.py` |
-| ComparisonHelper | `models/comparison_helper.py` |
+| unordered_list_comparison | `models/unordered_list_comparison.py` |
 | ComparableField (function) | `models/comparable_field.py` |
 
 All paths are relative to `src/stickler/structured_object_evaluator/`.
