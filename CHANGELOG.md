@@ -9,6 +9,13 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Changed
+
+- Demote `ComparisonHelper` to module-level functions in a new
+  `unordered_list_comparison.py`. Part of the `models/` helper-module
+  consolidation towards #134
+  ([#197](https://github.com/awslabs/stickler/pull/197))
+
 ## [0.6.0] - 2026-07-30
 
 ### Added

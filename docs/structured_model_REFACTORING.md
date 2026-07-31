@@ -68,7 +68,7 @@ Specialized Components (selected — ~36 modules total in models/):
 │   └── models/confidence/            - AUROC and other calibration metrics
 │       used when compare_with(add_confidence_metrics=True, ...)
 └── Pre-existing helpers
-    ├── HungarianHelper, MetricsHelper, ConfigurationHelper, ComparisonHelper
+    ├── HungarianHelper, MetricsHelper, ConfigurationHelper
     ├── ThresholdHelper, RichValueHelper, NonMatchesHelper, FieldHelper
     ├── ResultHelper, NullHelper, TypeResolver, ComparatorRegistry
     └── PostComparisonAccumulator, ComparisonInfo, ComparisonHelperBase

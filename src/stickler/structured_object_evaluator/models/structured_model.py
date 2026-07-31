@@ -23,12 +23,12 @@ from stickler.comparators.base import BaseComparator
 from stickler.utils.deprecation import warn_once
 
 from .comparable_field import ComparableField
-from .comparison_helper import ComparisonHelper
 from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
 from .rich_value_helper import RichValueHelper
+from .unordered_list_comparison import compare_field_raw, compare_unordered_lists
 
 
 class StructuredModel(BaseModel):
@@ -124,7 +124,7 @@ class StructuredModel(BaseModel):
     - HungarianHelper: Hungarian algorithm for list matching
     - MetricsHelper: Derived metrics calculation formulas
     - ConfigurationHelper: Field configuration management
-    - ComparisonHelper: Comparison utility methods
+    - unordered_list_comparison: Comparison utility functions
     - EvaluatorFormatHelper: Output formatting for evaluators
     - NonMatchesHelper: Non-match collection utilities
     - FieldHelper: Field type and null checking utilities
@@ -877,7 +877,7 @@ class StructuredModel(BaseModel):
             - fp: Total false positives (fd + fa)
             - overall_score: Similarity score for backward compatibility
         """
-        return ComparisonHelper.compare_unordered_lists(
+        return compare_unordered_lists(
             gt_list, pred_list, comparator, threshold
         )
 
@@ -911,7 +911,7 @@ class StructuredModel(BaseModel):
             return comparison_result["overall_score"]
 
         # For non-StructuredModel fields, use existing logic
-        return ComparisonHelper.compare_field_raw(self, field_name, other_value)
+        return compare_field_raw(self, field_name, other_value)
 
     def compare_recursive(self, other: "StructuredModel") -> dict:
         """The ONE clean recursive function that handles everything.
