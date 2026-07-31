@@ -9,6 +9,12 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Fixed
+
+- Import Pydantic v2 JSON Schemas whose `Optional` fields use nullable
+  two-branch `anyOf`, and infer nested object schemas when `type: object` is
+  omitted ([#198](https://github.com/awslabs/stickler/pull/198))
+
 ## [0.6.0] - 2026-07-30
 
 ### Added

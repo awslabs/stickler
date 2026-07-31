@@ -1394,3 +1394,244 @@ class TestNullableTypeListForm:
         assert get_origin(field_type) is Union
         assert type(None) in get_args(field_type)
         assert str in get_args(field_type)
+
+
+class TestNullableAnyOfAndImplicitObjects:
+    """Tests for nullable ``anyOf`` and object schemas inferred from properties."""
+
+    @pytest.mark.parametrize(
+        "branches",
+        [
+            [{"type": "string"}, {"type": "null"}],
+            [{"type": "null"}, {"type": "string"}],
+        ],
+    )
+    def test_nullable_anyof_primitive_accepts_value_and_none(self, branches):
+        """Either nullable ``anyOf`` branch order creates a required Optional field."""
+        from pydantic import ValidationError
+
+        from stickler import StructuredModel
+
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "description": {
+                        "anyOf": branches,
+                        "description": "Optional description",
+                        "x-aws-stickler-weight": 2.0,
+                    }
+                },
+                "required": ["description"],
+            }
+        )
+
+        assert Model(description="ready").description == "ready"
+        assert Model(description=None).description is None
+        assert Model.model_fields["description"].description == "Optional description"
+        assert Model.model_fields["description"].json_schema_extra._weight == 2.0
+        with pytest.raises(ValidationError):
+            Model()
+
+    def test_nullable_anyof_object_creates_optional_nested_model(self):
+        """A non-null object branch is converted before the field is made nullable."""
+        from stickler import StructuredModel
+
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "metadata": {
+                        "anyOf": [
+                            {
+                                "type": "object",
+                                "properties": {"label": {"type": "string"}},
+                                "required": ["label"],
+                            },
+                            {"type": "null"},
+                        ]
+                    }
+                },
+                "required": ["metadata"],
+            }
+        )
+
+        assert Model(metadata=None).metadata is None
+        assert Model(metadata={"label": "invoice"}).metadata.label == "invoice"
+
+    def test_nullable_anyof_array_accepts_list_and_none(self):
+        """The normalized non-null branch may use the existing array path."""
+        from stickler import StructuredModel
+
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "tags": {
+                        "anyOf": [
+                            {"type": "array", "items": {"type": "string"}},
+                            {"type": "null"},
+                        ]
+                    }
+                },
+                "required": ["tags"],
+            }
+        )
+
+        assert Model(tags=["one", "two"]).tags == ["one", "two"]
+        assert Model(tags=None).tags is None
+
+    def test_nullable_anyof_resolves_non_null_ref_branch(self):
+        """A selected non-null branch keeps the converter's existing $ref support."""
+        from stickler import StructuredModel
+
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "metadata": {
+                        "anyOf": [
+                            {"$ref": "#/$defs/Metadata"},
+                            {"type": "null"},
+                        ],
+                        "description": "Optional metadata",
+                        "x-aws-stickler-weight": 2.0,
+                    }
+                },
+                "required": ["metadata"],
+                "$defs": {
+                    "Metadata": {
+                        "type": "object",
+                        "properties": {"label": {"type": "string"}},
+                        "required": ["label"],
+                    }
+                },
+            }
+        )
+
+        assert Model(metadata=None).metadata is None
+        assert Model(metadata={"label": "invoice"}).metadata.label == "invoice"
+        assert Model.model_fields["metadata"].description == "Optional metadata"
+        assert Model.model_fields["metadata"].json_schema_extra._weight == 2.0
+
+    def test_nullable_anyof_array_items_resolve_ref_branch(self):
+        """Array items share nullable anyOf and reference normalization."""
+        from stickler import StructuredModel
+
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "anyOf": [
+                                {"$ref": "#/$defs/Item"},
+                                {"type": "null"},
+                            ]
+                        },
+                    }
+                },
+                "required": ["items"],
+                "$defs": {
+                    "Item": {
+                        "type": "object",
+                        "properties": {"identifier": {"type": "string"}},
+                        "required": ["identifier"],
+                    }
+                },
+            }
+        )
+
+        instance = Model(items=[None, {"identifier": "item-1"}])
+        assert instance.items[0] is None
+        assert instance.items[1].identifier == "item-1"
+
+    def test_implicit_nested_object_preserves_nullable_children(self):
+        """``properties`` without ``type: object`` still creates a nested model."""
+        from stickler import StructuredModel
+
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "runtimeCycles": {
+                        "properties": {
+                            "qualifier": {"type": "string"},
+                            "value": {"type": ["integer", "null"]},
+                        },
+                        "required": ["qualifier", "value"],
+                    }
+                },
+                "required": ["runtimeCycles"],
+            }
+        )
+
+        instance = Model(
+            runtimeCycles={"qualifier": "less-than", "value": None}
+        )
+        assert instance.runtimeCycles.qualifier == "less-than"
+        assert instance.runtimeCycles.value is None
+
+    def test_implicit_object_array_items_create_nested_models(self):
+        """Object inference is shared by property and array-item conversion."""
+        from stickler import StructuredModel
+
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "properties": {"identifier": {"type": "string"}},
+                            "required": ["identifier"],
+                        },
+                    }
+                },
+                "required": ["items"],
+            }
+        )
+
+        instance = Model(items=[{"identifier": "item-1"}])
+        assert instance.items[0].identifier == "item-1"
+
+    @pytest.mark.parametrize(
+        "branches",
+        [
+            [{"type": "string"}, {"type": "integer"}],
+            [{"type": "string"}, {"type": "null"}, {"type": "integer"}],
+        ],
+    )
+    def test_other_anyof_shapes_remain_unsupported(self, branches):
+        """The converter does not guess among multiple non-null alternatives."""
+        schema = {
+            "type": "object",
+            "properties": {"value": {"anyOf": branches}},
+            "required": ["value"],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        with pytest.raises(ValueError, match="nullable anyOf"):
+            converter.convert_properties_to_fields(
+                schema["properties"], schema["required"]
+            )
+
+    def test_nullable_anyof_rejects_constraining_sibling_type(self):
+        """A sibling type would make the null branch invalid under JSON Schema AND."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "value": {
+                    "type": "string",
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                }
+            },
+            "required": ["value"],
+        }
+
+        converter = JsonSchemaFieldConverter(schema)
+        with pytest.raises(ValueError, match="sibling schema keywords"):
+            converter.convert_properties_to_fields(
+                schema["properties"], schema["required"]
+            )
