@@ -7,7 +7,7 @@ compatibility and calculating list item metrics.
 from typing import Any, Dict, List
 
 from .hungarian_helper import HungarianHelper
-from .metrics_helper import MetricsHelper
+from .scoring_formulas import convert_score_to_binary_metrics
 
 
 class EvaluatorFormatHelper:
@@ -53,8 +53,7 @@ class EvaluatorFormatHelper:
             }
         else:
             # Fallback to binary conversion if no confusion matrix
-            metrics_helper = MetricsHelper()
-            overall_metrics = metrics_helper.convert_score_to_binary_metrics(
+            overall_metrics = convert_score_to_binary_metrics(
                 overall_score
             )
 
@@ -71,9 +70,8 @@ class EvaluatorFormatHelper:
         for field_name, score in field_scores.items():
             if field_name in list_fields:
                 # This is a list field - create nested structure expected by tests
-                metrics_helper = MetricsHelper()
                 overall_metrics_for_list = (
-                    metrics_helper.convert_score_to_binary_metrics(score)
+                    convert_score_to_binary_metrics(score)
                 )
 
                 # Get individual item metrics by comparing list items
@@ -90,9 +88,8 @@ class EvaluatorFormatHelper:
                 }
             else:
                 # Regular field
-                metrics_helper = MetricsHelper()
                 field_metrics[field_name] = (
-                    metrics_helper.convert_score_to_binary_metrics(score)
+                    convert_score_to_binary_metrics(score)
                 )
 
         # Flatten confusion matrix fields for evaluator compatibility

@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Dict, List
 from .comparable_field import ComparableField
 from .comparison_helper import ComparisonHelper
 from .hungarian_helper import HungarianHelper
-from .metrics_helper import MetricsHelper
+from .scoring_formulas import calculate_derived_metrics
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -449,12 +449,11 @@ class StructuredListComparator:
 
     def _add_derived_metrics_recursively(self, metrics_dict: Dict[str, Any]) -> None:
         """Recursively add derived metrics to all levels of the structure."""
-        metrics_helper = MetricsHelper()
 
         # Add derived metrics to overall if present
         if "overall" in metrics_dict:
             metrics_dict["overall"]["derived"] = (
-                metrics_helper.calculate_derived_metrics(metrics_dict["overall"])
+                calculate_derived_metrics(metrics_dict["overall"])
             )
 
         # Recursively process fields
@@ -463,12 +462,12 @@ class StructuredListComparator:
                 if "overall" in field_data:
                     # Hierarchical structure - add derived and recurse
                     field_data["overall"]["derived"] = (
-                        metrics_helper.calculate_derived_metrics(field_data["overall"])
+                        calculate_derived_metrics(field_data["overall"])
                     )
                     self._add_derived_metrics_recursively(field_data)  # RECURSIVE CALL
                 elif "tp" in field_data:
                     # Flat structure with metrics - add derived metrics directly
-                    field_data["derived"] = metrics_helper.calculate_derived_metrics(
+                    field_data["derived"] = calculate_derived_metrics(
                         field_data
                     )
                 # If neither "overall" nor "tp" is present, it might be an empty structure - skip
