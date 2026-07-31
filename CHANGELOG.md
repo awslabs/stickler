@@ -9,6 +9,12 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Changed
+
+- Demote `EvaluatorFormatHelper` to module-level functions in a new
+  `evaluator_output.py`. Part of the `models/` helper-module consolidation
+  towards #134 ([#196](https://github.com/awslabs/stickler/pull/196))
+
 ## [0.6.0] - 2026-07-30
 
 ### Added

@@ -371,7 +371,7 @@ The Structured Object Evaluator has been optimized to eliminate redundant Hungar
 - `structured_model.py`: Updated to use single Hungarian matching call
 - `structured_list_comparator.py`: Optimized list comparison logic
 - `comparison_helper.py`: Updated helper methods
-- `evaluator_format_helper.py`: Updated evaluator formatting
+- `evaluator_output.py` (then `evaluator_format_helper.py`): Updated evaluator formatting
 
 **Testing**: All 374 existing tests pass, ensuring no regression in functionality.
 

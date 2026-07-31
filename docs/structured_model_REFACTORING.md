@@ -63,7 +63,7 @@ Specialized Components (selected — ~36 modules total in models/):
 ├── Reporting
 │   ├── NonMatchCollector             - Object- and field-level non-matches
 │   ├── FieldComparisonCollector      - document_field_comparisons output
-│   └── EvaluatorFormatHelper         - evaluator_format output
+│   └── evaluator_output              - evaluator_format output
 ├── Confidence (v0.4.0+)
 │   └── models/confidence/            - AUROC and other calibration metrics
 │       used when compare_with(add_confidence_metrics=True, ...)
@@ -252,7 +252,7 @@ See the docstring on `StructuredModel` (`structured_model.py`) for the in-code c
 - `StructuredListComparator` - lists of StructuredModels via Hungarian + threshold-gated nested analysis
 - `ConfusionMatrixBuilder` / `ConfusionMatrixCalculator` / `AggregateMetricsCalculator` / `DerivedMetricsCalculator`
 - `NonMatchCollector` and `FieldComparisonCollector`
-- `EvaluatorFormatHelper`
+- `evaluator_output` (`format_for_evaluator`, `calculate_list_item_metrics`)
 - `models/confidence/` - the confidence-calibration pipeline used when `compare_with(add_confidence_metrics=True, ...)`
 
 ## Extending the System
@@ -380,7 +380,7 @@ These methods still exist on `StructuredModel` as thin delegating shims for back
 | `_calculate_single_nested_field_metrics` | `ConfusionMatrixCalculator.calculate_single_nested_field_metrics` |
 | `_add_derived_metrics_to_result`      | `DerivedMetricsCalculator.add_derived_metrics_to_result`         |
 | `_collect_enhanced_non_matches`       | `NonMatchCollector.collect_enhanced_non_matches`                 |
-| `_format_for_evaluator`               | `EvaluatorFormatHelper.format_for_evaluator`                     |
+| `_format_for_evaluator`               | `evaluator_output.format_for_evaluator`                          |
 
 ## Performance Considerations
 

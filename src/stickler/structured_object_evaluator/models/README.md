@@ -27,7 +27,7 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   `field_comparisons` rows (each carries a GT-side `expected_key` and a
   prediction-side `actual_key`, which diverge for reordered list items).
 - `non_match_collector.py`, `null_helper.py`, `result_helper.py`,
-  `evaluator_format_helper.py` — result shaping.
+  `evaluator_output.py` — result shaping.
 
 **Metrics**
 - `confusion_matrix_builder.py`, `confusion_matrix_calculator.py`,
