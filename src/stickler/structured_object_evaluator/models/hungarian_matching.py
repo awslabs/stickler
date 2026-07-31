@@ -1,4 +1,4 @@
-"""Hungarian matching helper for StructuredModel comparisons."""
+"""Hungarian matching for StructuredModel list comparisons."""
 
 from typing import Any, Dict, List
 
@@ -6,8 +6,8 @@ from stickler.algorithms.hungarian import HungarianMatcher
 from stickler.comparators.structured import StructuredModelComparator
 
 
-class HungarianHelper:
-    """Helper class for Hungarian matching operations with StructuredModel objects."""
+class HungarianMatching:
+    """Optimal bipartite matching between two lists of StructuredModel objects."""
 
     def __init__(self):
         self.hungarian = HungarianMatcher(StructuredModelComparator())

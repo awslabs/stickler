@@ -513,11 +513,11 @@ class ComparisonEngine:
             ):
                 # Check if list contains StructuredModel instances
                 if gt_val and isinstance(gt_val[0], StructuredModel) and isinstance(gt_val[0].__class__, StructuredModel):
-                    # Import HungarianHelper for matching
-                    from .hungarian_helper import HungarianHelper
+                    # Import HungarianMatching for matching
+                    from .hungarian_matching import HungarianMatching
                     
                     # For lists, we need to match them up properly using Hungarian matching
-                    hungarian_helper = HungarianHelper()
+                    hungarian_helper = HungarianMatching()
                     hungarian_info = hungarian_helper.get_complete_matching_info(
                         gt_val, pred_val
                     )

@@ -9,6 +9,13 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Changed
+
+- Rename `HungarianHelper` to `HungarianMatching` in a file renamed
+  `hungarian_helper.py` -> `hungarian_matching.py`. Part of the `models/`
+  helper-module consolidation towards #134
+  ([#194](https://github.com/awslabs/stickler/pull/194))
+
 ## [0.6.0] - 2026-07-30
 
 ### Added

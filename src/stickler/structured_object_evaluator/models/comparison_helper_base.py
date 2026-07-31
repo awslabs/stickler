@@ -4,7 +4,7 @@ import math
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
-from .hungarian_helper import HungarianHelper
+from .hungarian_matching import HungarianMatching
 
 DEFAULT_MATCH_THRESHOLD = 0.7
 
@@ -12,7 +12,7 @@ class ComparisonHelperBase(ABC):
     """Base class for collecting and formatting comparison data in StructuredModel comparisons."""
 
     def __init__(self):
-        self.hungarian_helper = HungarianHelper()
+        self.hungarian_helper = HungarianMatching()
 
     @abstractmethod
     def create_entry(self, *args, **kwargs) -> Dict[str, Any]:

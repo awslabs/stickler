@@ -25,7 +25,7 @@ StructuredModel
 │       │   ├── FieldComparator         # Primitives & nested models
 │       │   ├── PrimitiveListComparator # List[str/int/float]
 │       │   └── StructuredListComparator  # List[StructuredModel]
-│       │       ├── HungarianHelper     # Optimal bipartite matching
+│       │       ├── HungarianMatching   # Optimal bipartite matching
 │       │       └── MetricsHelper       # Derived metrics (precision, recall, F1)
 │       ├── NonMatchCollector           # Non-match documentation
 │       ├── FieldComparisonCollector    # Field-level comparison docs
@@ -46,7 +46,7 @@ StructuredModel
 | FieldComparator | `models/field_comparator.py` |
 | PrimitiveListComparator | `models/primitive_list_comparator.py` |
 | StructuredListComparator | `models/structured_list_comparator.py` |
-| HungarianHelper | `models/hungarian_helper.py` |
+| HungarianMatching | `models/hungarian_matching.py` |
 | NonMatchCollector | `models/non_match_collector.py` |
 | FieldComparisonCollector | `models/field_comparison_collector.py` |
 | ConfusionMatrixBuilder | `models/confusion_matrix_builder.py` |

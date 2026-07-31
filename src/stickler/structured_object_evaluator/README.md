@@ -367,7 +367,7 @@ The Structured Object Evaluator has been optimized to eliminate redundant Hungar
 - **Backward Compatibility**: All existing APIs maintained, optimization is transparent to users
 
 **Files Modified:**
-- `hungarian_helper.py`: Added unified `get_complete_matching_info()` method
+- `hungarian_matching.py` (then `hungarian_helper.py`): Added unified `get_complete_matching_info()` method
 - `structured_model.py`: Updated to use single Hungarian matching call
 - `structured_list_comparator.py`: Optimized list comparison logic
 - `comparison_helper.py`: Updated helper methods

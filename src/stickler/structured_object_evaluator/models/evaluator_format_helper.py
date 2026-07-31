@@ -6,7 +6,7 @@ compatibility and calculating list item metrics.
 
 from typing import Any, Dict, List
 
-from .hungarian_helper import HungarianHelper
+from .hungarian_matching import HungarianMatching
 from .metrics_helper import MetricsHelper
 
 
@@ -186,10 +186,10 @@ class EvaluatorFormatHelper:
         from .structured_model import StructuredModel
 
         if gt_list and isinstance(gt_list[0], StructuredModel):
-            # Use HungarianHelper for Hungarian matching operations
-            hungarian_helper = HungarianHelper()
+            # Use HungarianMatching for Hungarian matching operations
+            hungarian_helper = HungarianMatching()
 
-            # Use HungarianHelper to get optimal assignments - OPTIMIZED: Single call gets all info
+            # Use HungarianMatching to get optimal assignments - OPTIMIZED: Single call gets all info
             hungarian_info = hungarian_helper.get_complete_matching_info(
                 gt_list, pred_list
             )
