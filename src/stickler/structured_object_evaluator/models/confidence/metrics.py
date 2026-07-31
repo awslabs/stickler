@@ -14,7 +14,6 @@ from math import isfinite
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, field_validator
-from sklearn.metrics import roc_auc_score
 
 
 class ConfidencePair(BaseModel):
@@ -95,6 +94,18 @@ class AUROCMetric(ConfidenceMetric):
     def compute(self, pairs: ConfidencePairs) -> Dict[str, Any]:
         if not pairs or len(set(p.is_match for p in pairs)) < 2:
             return {"value": None}
+        # Imported here, not at module scope: scikit-learn is the single
+        # heaviest optional dependency and AUROC is the only thing that needs
+        # it. A module-level import would put it on the `import stickler` path
+        # and force every user to install it.
+        try:
+            from sklearn.metrics import roc_auc_score
+        except ImportError as exc:  # pragma: no cover - exercised by the extras gate
+            raise ImportError(
+                "AUROCMetric requires scikit-learn. Install it with: "
+                'pip install "stickler-eval[confidence]"'
+            ) from exc
+
         y_true = [1 if p.is_match else 0 for p in pairs]
         y_scores = [p.confidence for p in pairs]
         # float() defends against numpy scalars from future ndarray callers.

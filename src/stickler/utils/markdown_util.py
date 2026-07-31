@@ -1,6 +1,7 @@
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
-import pandas as pd
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import pandas as pd
 
 
 class MarkdownUtil:
@@ -84,7 +85,7 @@ class MarkdownUtil:
         return table
 
     @staticmethod
-    def table_df(df: pd.DataFrame) -> str:
+    def table_df(df: "pd.DataFrame") -> str:
         """
         Creates a markdown table from a pandas DataFrame.
 

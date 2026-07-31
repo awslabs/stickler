@@ -17,6 +17,20 @@ Whether you're extracting data from documents, performing ETL transformations, e
 pip install stickler-eval
 ```
 
+That installs the comparison engine, which is everything you need to score structured output: comparators, list matching, and per-field metrics. Optional features declare their own extras, so a default install stays light and does not pull a scientific-computing stack:
+
+| Extra | Adds | For |
+|---|---|---|
+| `[semantic]` | boto3, scipy | `SemanticComparator` (Bedrock embeddings) |
+| `[llm]` | strands-agents, jinja2 | `LLMComparator` (LLM-as-judge comparison) |
+| `[bert]` | evaluate, torch, bert-score | `BERTComparator` (BERTScore similarity) |
+| `[confidence]` | scikit-learn | Confidence calibration metrics (AUROC) |
+| `[docsplit]` | pandas, scipy, scikit-learn | Document packet splitting metrics |
+| `[reporting]` | pandas | Confusion-matrix tables in HTML reports |
+| `[all]` | all of the above except the ML stack | Convenience |
+
+Importing a feature without its extra raises an error naming the extra to install.
+
 ## Already have a Pydantic model? Evaluate with zero config
 
 If you have a plain [Pydantic](https://docs.pydantic.dev/) model (for example, the `response_model` a Strands agent produces structured output with), you can score it as-is. No `StructuredModel` subclass, no comparators, no thresholds, no schema. Stickler infers a sensible comparator and threshold per field from the model itself, then shows you exactly what it chose.

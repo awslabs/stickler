@@ -15,23 +15,26 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 
+# The comparison engine and nothing else. Peripheral modules (document
+# splitting, HTML reporting, confidence metrics) declare their own extras
+# below, so `pip install stickler-eval` does not pull a scientific-computing
+# stack to compare two objects.
 dependencies = [
     "pydantic>=2.11.0,<3.0.0",
     "rapidfuzz>=3.4.0,<4.0.0",
     "munkres>=1.1.4",
     "numpy>=1.26.0,<3.0.0",
-    "scipy>=1.12.0,<2.0.0",
-    "psutil>=5.9.6,<7.0.0",
-    "pandas>=2.1.1,<3.0.0",
     "jsonschema>=4.17.3,<5.0.0",
-    "scikit-learn>=1.8.0,<2.0.0",
-    "jinja2>=3.1.6,<3.2.0",
     "python-dateutil>=2.8.2,<3.0.0"
 ]
 
@@ -43,6 +46,15 @@ dev = [
     "pytest-xdist>=3.0.0",
     "coverage>=7.0.0",
     "beautifulsoup4>=4.14.2",
+    # Used by the memory-measurement assertions in the stress and deep-nesting
+    # tests. Not imported anywhere in src/.
+    "psutil>=5.9.6,<7.0.0",
+    # The suite exercises every optional module, so it needs every extra's
+    # dependencies even though they are not required at runtime.
+    "jinja2>=3.1.6,<3.2.0",
+    "pandas>=2.1.1,<3.0.0",
+    "scipy>=1.12.0,<2.0.0",
+    "scikit-learn>=1.7.2,<2.0.0",
     "ruff>=0.14.10",
     "mkdocs",
     "mkdocs-material",
@@ -57,7 +69,9 @@ llm = [
     # docs and examples landed in 1.14.0. On 1.0-1.13 __call__ swallows it via
     # **kwargs, so no structured output is requested and the call fails later
     # with AttributeError on .structured_output.
-    "strands-agents>=1.14.0,<=1.16.0"
+    "strands-agents>=1.14.0,<=1.16.0",
+    # LLMComparator renders its prompt with a jinja2 Template.
+    "jinja2>=3.1.6,<3.2.0",
 ]
 bert = [
     "evaluate>=0.4.0",
@@ -66,6 +80,29 @@ bert = [
 ]
 semantic = [
     "boto3>=1.28.0",
+    # SemanticComparator's cosine similarity uses scipy.spatial.
+    "scipy>=1.12.0,<2.0.0",
+]
+# Confidence calibration metrics (AUROC needs scikit-learn).
+confidence = [
+    "scikit-learn>=1.7.2,<2.0.0",
+]
+# Document packet splitting: clustering and agreement metrics.
+docsplit = [
+    "pandas>=2.1.1,<3.0.0",
+    "scipy>=1.12.0,<2.0.0",
+    "scikit-learn>=1.7.2,<2.0.0",
+]
+# HTML reporting: ProcessEvaluation renders markdown tables from DataFrames.
+reporting = [
+    "pandas>=2.1.1,<3.0.0",
+]
+# Everything, for users who would rather not think about extras.
+all = [
+    "jinja2>=3.1.6,<3.2.0",
+    "pandas>=2.1.1,<3.0.0",
+    "scipy>=1.12.0,<2.0.0",
+    "scikit-learn>=1.7.2,<2.0.0",
 ]
 
 [project.urls]
@@ -103,8 +140,17 @@ test = [
     "pytest-xdist>=3.0.0",
     "coverage>=7.0.0",
     "beautifulsoup4>=4.14.2",
+    # Used by the memory-measurement assertions in the stress and deep-nesting
+    # tests. Not imported anywhere in src/.
+    "psutil>=5.9.6,<7.0.0",
     # Used by examples/notebooks/Review_Efficiency_Exploration.ipynb.
     "matplotlib>=3.8.0",
+    # The suite exercises every optional module, so it needs every extra's
+    # dependencies even though they are not required at runtime.
+    "jinja2>=3.1.6,<3.2.0",
+    "pandas>=2.1.1,<3.0.0",
+    "scipy>=1.12.0,<2.0.0",
+    "scikit-learn>=1.7.2,<2.0.0",
 ]
 lint = [
     "ruff>=0.14.10",
