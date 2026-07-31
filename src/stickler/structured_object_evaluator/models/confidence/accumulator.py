@@ -14,8 +14,8 @@ from stickler.structured_object_evaluator.models.confidence.metrics import (
 from stickler.structured_object_evaluator.models.post_comparison_accumulator import (
     PostComparisonAccumulator,
 )
-from stickler.structured_object_evaluator.models.rich_value_helper import (
-    RichValueHelper,
+from stickler.structured_object_evaluator.models.rich_value import (
+    process_rich_values,
 )
 
 
@@ -60,7 +60,7 @@ class ConfidenceAccumulator(PostComparisonAccumulator):
         if confidences is None:
             if prediction_raw is not None:
                 _unwrapped, confidences, _extras = (
-                    RichValueHelper.process_rich_values(prediction_raw)
+                    process_rich_values(prediction_raw)
                 )
             else:
                 confidences = {}

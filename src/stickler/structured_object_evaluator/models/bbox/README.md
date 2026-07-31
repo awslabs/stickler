@@ -6,7 +6,7 @@ Precision (mAP) over bounding boxes.
 This module consumes bounding-box data carried by the **Rich Value Pattern**. A
 rich value is any JSON dict with a `"_value"` key; a bounding box rides alongside
 under `"_bbox"` (e.g., `{"_value": "Acme", "_bbox": [[10, 20], [200, 50]], "_confidence": 0.9}`).
-`RichValueHelper` unwraps these during `from_json()`, and the box lands in the
+`process_rich_values()` (in `models/rich_value.py`) unwraps these during `from_json()`, and the box lands in the
 instance extras (`get_all_extras()`); this module evaluates the localization
 slice. Boxes are optional; fields without a `_bbox` are skipped for mAP but still
 counted toward coverage.

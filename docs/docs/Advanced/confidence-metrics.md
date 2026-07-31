@@ -339,7 +339,7 @@ print(result.accumulator_metrics["field_count"])      # from FieldCountAccumulat
 - `comparison_result["confusion_matrix"]` — overall and per-field TP/FP/TN/FN counts.
 - `prediction_raw` — the prediction's original JSON tree before rich value unwrapping. `None` for predictions built without `from_json()` (no rich value data was ever supplied). This is where you reach for custom metadata like `_bbox` or `_source_span`.
 
-Use `RichValueHelper.process_rich_values(prediction_raw)` to walk `prediction_raw` and pick out your metadata key the same way `ConfidenceAccumulator` picks out `_confidence`.
+Use `process_rich_values(prediction_raw)` (from `stickler.structured_object_evaluator.models.rich_value`) to walk `prediction_raw` and pick out your metadata key the same way `ConfidenceAccumulator` picks out `_confidence`.
 
 ### Errors are isolated
 

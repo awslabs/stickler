@@ -2,7 +2,7 @@
 Tests for the Rich Value Pattern.
 
 A rich value is a dict with a "_value" key plus optional metadata keys
-(_confidence, _bbox, etc.). The RichValueHelper unwraps these during
+(_confidence, _bbox, etc.). process_rich_values() unwraps these during
 from_json(), extracting the value for the model field and storing
 metadata separately.
 
@@ -26,8 +26,10 @@ from stickler.comparators import (
     NumericComparator,
 )
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.structured_object_evaluator.models.rich_value_helper import (
-    RichValueHelper,
+from stickler.structured_object_evaluator.models.rich_value import (
+    _is_legacy_rich_value,
+    _is_rich_value,
+    process_rich_values,
 )
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
@@ -54,32 +56,32 @@ class Customer(StructuredModel):
 
 class TestRichValueDetection:
     def test_value_plus_confidence_is_rich(self):
-        assert RichValueHelper._is_rich_value({"_value": "Widget", "_confidence": 0.9})
+        assert _is_rich_value({"_value": "Widget", "_confidence": 0.9})
 
     def test_value_only_is_rich(self):
         """A dict with just '_value' is treated as a rich value."""
-        assert RichValueHelper._is_rich_value({"_value": "Widget"})
+        assert _is_rich_value({"_value": "Widget"})
 
     def test_value_plus_bbox_is_rich(self):
         """Future metadata types are detected as rich values."""
-        assert RichValueHelper._is_rich_value({"_value": "Widget", "_bbox": [0.1, 0.2, 0.3, 0.4]})
+        assert _is_rich_value({"_value": "Widget", "_bbox": [0.1, 0.2, 0.3, 0.4]})
 
     def test_value_plus_multiple_metadata_is_rich(self):
-        assert RichValueHelper._is_rich_value({
+        assert _is_rich_value({
             "_value": "Widget", "_confidence": 0.9, "_bbox": [0.1, 0.2, 0.3, 0.4]
         })
 
     def test_no_value_key_is_not_rich(self):
-        assert not RichValueHelper._is_rich_value({"name": "Widget", "_confidence": 0.9})
+        assert not _is_rich_value({"name": "Widget", "_confidence": 0.9})
 
     def test_plain_string_is_not_rich(self):
-        assert not RichValueHelper._is_rich_value("Widget")
+        assert not _is_rich_value("Widget")
 
     def test_plain_number_is_not_rich(self):
-        assert not RichValueHelper._is_rich_value(42)
+        assert not _is_rich_value(42)
 
     def test_empty_dict_is_not_rich(self):
-        assert not RichValueHelper._is_rich_value({})
+        assert not _is_rich_value({})
 
 
 # ── Unwrapping tests ──
@@ -87,34 +89,34 @@ class TestRichValueDetection:
 class TestRichValueUnwrapping:
     def test_value_with_confidence_unwraps(self):
         data = {"name": {"_value": "Widget", "_confidence": 0.9}, "price": 29.99}
-        unwrapped, confidences, _extras = RichValueHelper.process_rich_values(data)
+        unwrapped, confidences, _extras = process_rich_values(data)
         assert unwrapped == {"name": "Widget", "price": 29.99}
         assert confidences == {"name": 0.9}
 
     def test_value_only_unwraps_no_confidence(self):
         """Rich value with just '_value' unwraps but produces no confidence entry."""
         data = {"name": {"_value": "Widget"}, "price": 29.99}
-        unwrapped, confidences, _extras = RichValueHelper.process_rich_values(data)
+        unwrapped, confidences, _extras = process_rich_values(data)
         assert unwrapped == {"name": "Widget", "price": 29.99}
         assert confidences == {}
 
     def test_value_with_bbox_only_unwraps_no_confidence(self):
         """Rich value with _bbox but no _confidence produces no confidence entry."""
         data = {"name": {"_value": "Widget", "_bbox": [0.1, 0.2, 0.3, 0.4]}}
-        unwrapped, confidences, _extras = RichValueHelper.process_rich_values(data)
+        unwrapped, confidences, _extras = process_rich_values(data)
         assert unwrapped == {"name": "Widget"}
         assert confidences == {}
 
     def test_value_with_confidence_and_bbox_extracts_confidence(self):
         """When both _confidence and _bbox are present, confidence is extracted."""
         data = {"name": {"_value": "Widget", "_confidence": 0.9, "_bbox": [0.1, 0.2, 0.3, 0.4]}}
-        unwrapped, confidences, _extras = RichValueHelper.process_rich_values(data)
+        unwrapped, confidences, _extras = process_rich_values(data)
         assert unwrapped == {"name": "Widget"}
         assert confidences == {"name": 0.9}
 
     def test_plain_values_pass_through(self):
         data = {"name": "Widget", "price": 29.99}
-        unwrapped, confidences, _extras = RichValueHelper.process_rich_values(data)
+        unwrapped, confidences, _extras = process_rich_values(data)
         assert unwrapped == data
         assert confidences == {}
 
@@ -126,7 +128,7 @@ class TestRichValueUnwrapping:
                 "city": "Boston",
             },
         }
-        unwrapped, confidences, _extras = RichValueHelper.process_rich_values(data)
+        unwrapped, confidences, _extras = process_rich_values(data)
         assert unwrapped == {"name": "Jane", "address": {"street": "123 Main", "city": "Boston"}}
         assert confidences == {"name": 0.95, "address.street": 0.85}
 
@@ -138,7 +140,7 @@ class TestRichValueUnwrapping:
                 "PlainItem",
             ]
         }
-        unwrapped, confidences, _extras = RichValueHelper.process_rich_values(data)
+        unwrapped, confidences, _extras = process_rich_values(data)
         assert unwrapped == {"items": ["Widget", "Gadget", "PlainItem"]}
         assert confidences == {"items[0]": 0.9}
 
@@ -296,21 +298,21 @@ class TestLegacyRichValueShim:
     release, with a DeprecationWarning emitted per occurrence."""
 
     def test_legacy_value_confidence_detected(self):
-        assert RichValueHelper._is_legacy_rich_value(
+        assert _is_legacy_rich_value(
             {"value": "Widget", "confidence": 0.9}
         )
 
     def test_legacy_not_detected_when_new_shape_present(self):
         """If _value is present, the new-shape detector wins."""
         d = {"_value": "Widget", "_confidence": 0.9}
-        assert RichValueHelper._is_rich_value(d)
-        assert not RichValueHelper._is_legacy_rich_value(d)
+        assert _is_rich_value(d)
+        assert not _is_legacy_rich_value(d)
 
     def test_legacy_format_unwraps_with_deprecation_warning(self):
         """Legacy dicts unwrap and emit a DeprecationWarning naming the field."""
         data = {"name": {"value": "Widget", "confidence": 0.9}}
         with pytest.warns(DeprecationWarning, match="name"):
-            unwrapped, confidences, extras = RichValueHelper.process_rich_values(
+            unwrapped, confidences, extras = process_rich_values(
                 data
             )
         assert unwrapped == {"name": "Widget"}
@@ -342,7 +344,7 @@ class TestLegacyRichValueShim:
         data = {"name": {"value": "Widget"}}
         with warnings.catch_warnings():
             warnings.simplefilter("error")  # any warning becomes an exception
-            unwrapped, confidences, extras = RichValueHelper.process_rich_values(
+            unwrapped, confidences, extras = process_rich_values(
                 data
             )
         # The dict survives intact — no unwrapping, no warning.
@@ -361,7 +363,7 @@ class TestLegacyRichValueShim:
         data = {"price": {"currency": "USD", "value": 100}}
         with warnings.catch_warnings():
             warnings.simplefilter("error")
-            unwrapped, confidences, extras = RichValueHelper.process_rich_values(
+            unwrapped, confidences, extras = process_rich_values(
                 data
             )
         assert unwrapped == {"price": {"currency": "USD", "value": 100}}
@@ -373,7 +375,7 @@ class TestLegacyRichValueShim:
         present, so existing JSONL corpora continue to round-trip cleanly."""
         data = {"name": {"value": "Widget", "confidence": 0.9}}
         with pytest.warns(DeprecationWarning, match="name"):
-            unwrapped, confidences, extras = RichValueHelper.process_rich_values(
+            unwrapped, confidences, extras = process_rich_values(
                 data
             )
         assert unwrapped == {"name": "Widget"}
