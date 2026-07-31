@@ -9,6 +9,13 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Changed
+
+- Rename `MetricsHelper` to module-level functions in a new
+  `scoring_formulas.py`; drop 4 of its 6 methods that had zero callers
+  anywhere. Part of the `models/` helper-module consolidation towards #134
+  ([#193](https://github.com/awslabs/stickler/pull/193))
+
 ## [0.6.0] - 2026-07-30
 
 ### Added
