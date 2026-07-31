@@ -27,8 +27,8 @@ from .comparison_helper import ComparisonHelper
 from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
-from .metrics_helper import MetricsHelper
 from .rich_value_helper import RichValueHelper
+from .scoring_formulas import convert_score_to_binary_metrics
 
 
 class StructuredModel(BaseModel):
@@ -107,7 +107,7 @@ class StructuredModel(BaseModel):
     - DerivedMetricsCalculator: Calculates derived metrics
       - Computes precision, recall, F1, accuracy
       - Supports both traditional and FD-inclusive recall
-      - Delegates to MetricsHelper for calculations
+      - Delegates to scoring_formulas for calculations
 
     - ConfusionMatrixBuilder: Orchestrates all metrics calculation
       - Coordinates between the three calculator classes
@@ -122,7 +122,7 @@ class StructuredModel(BaseModel):
 
     **Existing Helpers (Pre-Refactoring):**
     - HungarianHelper: Hungarian algorithm for list matching
-    - MetricsHelper: Derived metrics calculation formulas
+    - scoring_formulas: Derived metrics calculation formulas
     - ConfigurationHelper: Field configuration management
     - ComparisonHelper: Comparison utility methods
     - EvaluatorFormatHelper: Output formatting for evaluators
@@ -1219,7 +1219,7 @@ class StructuredModel(BaseModel):
     def _convert_score_to_binary_metrics(
         self, score: float, threshold: float = 0.5
     ) -> Dict[str, float]:
-        """Convert similarity score to binary classification metrics using MetricsHelper.
+        """Convert similarity score to binary classification metrics.
 
         Args:
             score: Similarity score [0-1]
@@ -1228,8 +1228,7 @@ class StructuredModel(BaseModel):
         Returns:
             Dictionary with TP, FP, FN, TN counts converted to metrics
         """
-        metrics_helper = MetricsHelper()
-        return metrics_helper.convert_score_to_binary_metrics(score, threshold)
+        return convert_score_to_binary_metrics(score, threshold)
 
     def _format_for_evaluator(
         self,

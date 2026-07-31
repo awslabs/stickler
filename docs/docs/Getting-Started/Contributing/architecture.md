@@ -26,14 +26,14 @@ StructuredModel
 │       │   ├── PrimitiveListComparator # List[str/int/float]
 │       │   └── StructuredListComparator  # List[StructuredModel]
 │       │       ├── HungarianHelper     # Optimal bipartite matching
-│       │       └── MetricsHelper       # Derived metrics (precision, recall, F1)
+│       │       └── scoring_formulas.calculate_derived_metrics()
 │       ├── NonMatchCollector           # Non-match documentation
 │       ├── FieldComparisonCollector    # Field-level comparison docs
 │       └── ConfusionMatrixBuilder      # Aggregate metrics
 │
 ├── ComparisonHelper          # List metrics & Hungarian integration
 │   └── ThresholdHelper       # Threshold comparison logic
-└── MetricsHelper             # Also used directly for score→metrics conversion
+└── scoring_formulas.convert_score_to_binary_metrics()  # Also used directly
 ```
 
 ### File Path Reference
@@ -53,7 +53,7 @@ StructuredModel
 | NullHelper | `models/null_helper.py` |
 | ResultHelper | `models/result_helper.py` |
 | ThresholdHelper | `models/threshold_helper.py` |
-| MetricsHelper | `models/metrics_helper.py` |
+| scoring_formulas (calculate_derived_metrics, convert_score_to_binary_metrics) | `models/scoring_formulas.py` |
 | ComparisonHelper | `models/comparison_helper.py` |
 | ComparableField (function) | `models/comparable_field.py` |
 

@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any, Dict, List
 
 from .field_helper import FieldHelper
 from .hungarian_helper import HungarianHelper
-from .metrics_helper import MetricsHelper
 from .non_matches_helper import NonMatchesHelper
+from .scoring_formulas import calculate_derived_metrics
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -172,8 +172,7 @@ class ConfusionMatrixCalculator:
                 result["fn"] += field_metrics["fn"]
 
         # Add derived metrics
-        metrics_helper = MetricsHelper()
-        result["derived"] = metrics_helper.calculate_derived_metrics(result)
+        result["derived"] = calculate_derived_metrics(result)
 
         return result
 
@@ -255,8 +254,7 @@ class ConfusionMatrixCalculator:
             result = {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0}
 
         # Add derived metrics
-        metrics_helper = MetricsHelper()
-        result["derived"] = metrics_helper.calculate_derived_metrics(result)
+        result["derived"] = calculate_derived_metrics(result)
         # Don't include similarity_score in the result as tests don't expect it
 
         return result
@@ -546,7 +544,7 @@ class ConfusionMatrixCalculator:
                 "fp": total_fp,
                 "tn": total_tn,
                 "fn": total_fn,
-                "derived": MetricsHelper().calculate_derived_metrics(
+                "derived": calculate_derived_metrics(
                     {
                         "tp": total_tp,
                         "fa": total_fa,
@@ -561,7 +559,7 @@ class ConfusionMatrixCalculator:
         # Add derived metrics for all deeper nested fields that were collected
         for deeper_path, deeper_metrics in nested_metrics.items():
             if deeper_path != nested_field_path and "derived" not in deeper_metrics:
-                deeper_metrics["derived"] = MetricsHelper().calculate_derived_metrics(
+                deeper_metrics["derived"] = calculate_derived_metrics(
                     {
                         "tp": deeper_metrics["tp"],
                         "fa": deeper_metrics["fa"],
@@ -718,7 +716,7 @@ class ConfusionMatrixCalculator:
             nested_metrics[parent_field_name] = parent_metrics
             # Add derived metrics
             nested_metrics[parent_field_name]["derived"] = (
-                MetricsHelper().calculate_derived_metrics(parent_metrics)
+                calculate_derived_metrics(parent_metrics)
             )
 
         return nested_metrics

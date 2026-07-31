@@ -6,6 +6,8 @@ derived metrics (precision, recall, F1, accuracy) from basic confusion matrix co
 
 from typing import Any, Dict
 
+from .scoring_formulas import calculate_derived_metrics
+
 
 class DerivedMetricsCalculator:
     """Calculates derived metrics from basic confusion matrix counts.
@@ -20,23 +22,24 @@ class DerivedMetricsCalculator:
     
     - ConfusionMatrixCalculator: Calculates basic confusion matrix metrics
     - AggregateMetricsCalculator: Calculates aggregate metrics by rolling up children
-    - MetricsHelper: Provides the actual calculation logic for derived metrics
+    - scoring_formulas.calculate_derived_metrics: The actual calculation logic
     - ConfusionMatrixBuilder: Orchestrates all metrics calculation
-    
+
     The calculator performs a recursive traversal of the comparison result tree,
     adding derived metrics at each level based on the confusion matrix counts.
-    It delegates the actual metric calculations to MetricsHelper to avoid code
-    duplication.
-    
+    It delegates the actual metric calculations to
+    scoring_formulas.calculate_derived_metrics to avoid code duplication.
+
     Features:
     ---------
     - Recursive traversal of comparison result tree
-    - Calculates precision, recall, F1, and accuracy via MetricsHelper
+    - Calculates precision, recall, F1, and accuracy via
+      scoring_formulas.calculate_derived_metrics
     - Supports both traditional and FD-inclusive recall formulas
     - Handles both 'overall' and 'aggregate' metrics
     - Preserves all existing result structure and metadata
-    
-    Formulas (implemented in MetricsHelper):
+
+    Formulas (implemented in scoring_formulas.calculate_derived_metrics):
     -----------------------------------------
     - Precision: TP / (TP + FP) where FP = FA + FD
     - Recall (traditional): TP / (TP + FN)
@@ -135,7 +138,6 @@ class DerivedMetricsCalculator:
         >>> assert "aggregate_derived" in result_with_derived
         >>> assert "cm_precision" in result_with_derived["derived"]
         """
-        from .metrics_helper import MetricsHelper
         
         if not isinstance(result, dict):
             return result
@@ -147,8 +149,7 @@ class DerivedMetricsCalculator:
         if "overall" in result_copy and isinstance(result_copy["overall"], dict):
             overall = result_copy["overall"]
             if self._has_basic_metrics(overall):
-                metrics_helper = MetricsHelper()
-                overall["derived"] = metrics_helper.calculate_derived_metrics(
+                overall["derived"] = calculate_derived_metrics(
                     overall, recall_with_fd
                 )
 
@@ -157,7 +158,7 @@ class DerivedMetricsCalculator:
                     overall["aggregate"]
                 ):
                     overall["aggregate"]["derived"] = (
-                        metrics_helper.calculate_derived_metrics(
+                        calculate_derived_metrics(
                             overall["aggregate"], recall_with_fd
                         )
                     )
@@ -166,9 +167,8 @@ class DerivedMetricsCalculator:
         if "aggregate" in result_copy and self._has_basic_metrics(
             result_copy["aggregate"]
         ):
-            metrics_helper = MetricsHelper()
             result_copy["aggregate"]["derived"] = (
-                metrics_helper.calculate_derived_metrics(
+                calculate_derived_metrics(
                     result_copy["aggregate"], recall_with_fd
                 )
             )
@@ -189,9 +189,8 @@ class DerivedMetricsCalculator:
                     ):
                         # Unified structure field - add derived metrics to overall
                         field_copy = field_result.copy()
-                        metrics_helper = MetricsHelper()
                         field_copy["overall"]["derived"] = (
-                            metrics_helper.calculate_derived_metrics(
+                            calculate_derived_metrics(
                                 field_result["overall"], recall_with_fd
                             )
                         )
@@ -201,7 +200,7 @@ class DerivedMetricsCalculator:
                             field_copy["aggregate"]
                         ):
                             field_copy["aggregate"]["derived"] = (
-                                metrics_helper.calculate_derived_metrics(
+                                calculate_derived_metrics(
                                     field_copy["aggregate"], recall_with_fd
                                 )
                             )
@@ -210,7 +209,6 @@ class DerivedMetricsCalculator:
                     elif self._has_basic_metrics(field_result):
                         # CRITICAL FIX: Legacy leaf field with basic metrics - wrap in "overall" structure
                         field_copy = field_result.copy()
-                        metrics_helper = MetricsHelper()
 
                         # Extract basic metrics and wrap in "overall" structure
                         legacy_metrics = {}
@@ -221,7 +219,7 @@ class DerivedMetricsCalculator:
 
                         # Add derived metrics to the legacy metrics
                         legacy_metrics["derived"] = (
-                            metrics_helper.calculate_derived_metrics(
+                            calculate_derived_metrics(
                                 legacy_metrics, recall_with_fd
                             )
                         )

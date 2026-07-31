@@ -32,8 +32,11 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
 **Metrics**
 - `confusion_matrix_builder.py`, `confusion_matrix_calculator.py`,
   `derived_metrics_calculator.py`, `aggregate_metrics_calculator.py`,
-  `metrics_helper.py`, `threshold_helper.py` — confusion-matrix and derived/
-  aggregate metric rollups.
+  `threshold_helper.py` — confusion-matrix and derived/aggregate metric rollups.
+- `scoring_formulas.py` — `calculate_derived_metrics()` (precision/recall/F1/
+  accuracy from confusion-matrix counts) and `convert_score_to_binary_metrics()`
+  (single-score to binary-classification conversion); previously a
+  `MetricsHelper` class whose other 4 methods had zero callers.
 - `rich_value_helper.py` — unwraps the Rich Value Pattern
   (`{"_value": ..., "_confidence": ..., "_bbox": ...}`) during `from_json()`,
   returning `(data, confidences, extras)`.
