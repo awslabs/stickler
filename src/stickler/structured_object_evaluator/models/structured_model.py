@@ -25,7 +25,7 @@ from stickler.utils.deprecation import warn_once
 from .comparable_field import ComparableField
 from .comparison_helper import ComparisonHelper
 from .configuration_helper import ConfigurationHelper
-from .evaluator_format_helper import EvaluatorFormatHelper
+from .evaluator_output import calculate_list_item_metrics, format_for_evaluator
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
 from .rich_value_helper import RichValueHelper
@@ -125,7 +125,7 @@ class StructuredModel(BaseModel):
     - MetricsHelper: Derived metrics calculation formulas
     - ConfigurationHelper: Field configuration management
     - ComparisonHelper: Comparison utility methods
-    - EvaluatorFormatHelper: Output formatting for evaluators
+    - evaluator_output: Output formatting for evaluators
     - NonMatchesHelper: Non-match collection utilities
     - FieldHelper: Field type and null checking utilities
 
@@ -1247,7 +1247,7 @@ class StructuredModel(BaseModel):
         Returns:
             Dictionary in evaluator format with overall, fields, confusion_matrix
         """
-        return EvaluatorFormatHelper.format_for_evaluator(
+        return format_for_evaluator(
             self, result, other, recall_with_fd
         )
 
@@ -1269,7 +1269,7 @@ class StructuredModel(BaseModel):
         Returns:
             List of metrics dictionaries for each matched item pair
         """
-        return EvaluatorFormatHelper.calculate_list_item_metrics(
+        return calculate_list_item_metrics(
             field_name, gt_list, pred_list, recall_with_fd
         )
 
