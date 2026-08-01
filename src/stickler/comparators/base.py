@@ -20,13 +20,39 @@ class BaseComparator(ABC):
         """
         self.threshold = threshold
 
-    @abstractmethod
     def compare(self, str1: Any, str2: Any) -> float:
         """Compare two values and return a similarity score.
+
+        Applies the shared ``None`` policy -- two missing values are an
+        exact match, a missing value against a present one is a non-match,
+        regardless of what "present" means for a particular comparator --
+        then delegates to :meth:`_compare`.
 
         Args:
             str1: First value
             str2: Second value
+
+        Returns:
+            Similarity score between 0.0 and 1.0
+        """
+        if str1 is None and str2 is None:
+            return 1.0
+
+        if str1 is None or str2 is None:
+            return 0.0
+
+        return self._compare(str1, str2)
+
+    @abstractmethod
+    def _compare(self, str1: Any, str2: Any) -> float:
+        """Compare two present values and return a similarity score.
+
+        Implemented by each comparator. Both arguments are guaranteed not to
+        be ``None`` -- :meth:`compare` handles that before delegating here.
+
+        Args:
+            str1: First value, never None
+            str2: Second value, never None
 
         Returns:
             Similarity score between 0.0 and 1.0

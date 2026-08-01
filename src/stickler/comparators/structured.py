@@ -22,7 +22,7 @@ class StructuredModelComparator(BaseComparator):
         super().__init__(threshold)
         self.strict_types = strict_types
 
-    def compare(self, model1: Any, model2: Any) -> float:
+    def _compare(self, model1: Any, model2: Any) -> float:
         """Compare two structured model instances.
 
         This method uses the built-in compare method of StructuredModel objects
@@ -44,10 +44,6 @@ class StructuredModelComparator(BaseComparator):
             raise TypeError(
                 "StructuredModelComparator can only compare StructuredModel instances"
             )
-
-        # Handle None values
-        if model1 is None or model2 is None:
-            return 1.0 if model1 == model2 else 0.0
 
         # Check if both objects have a compare method (duck typing)
         if hasattr(model1, "compare") and callable(model1.compare):
