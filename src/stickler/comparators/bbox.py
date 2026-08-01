@@ -47,7 +47,7 @@ class BBoxIoUComparator(BaseComparator):
     ):
         super().__init__(threshold=threshold)
 
-    def compare(self, bbox1: Any, bbox2: Any) -> float:
+    def _compare(self, bbox1: Any, bbox2: Any) -> float:
         """Compare two bounding boxes and return their IoU.
 
         Args:
@@ -57,11 +57,6 @@ class BBoxIoUComparator(BaseComparator):
         Returns:
             IoU score between 0.0 and 1.0.
         """
-        if bbox1 is None and bbox2 is None:
-            return 1.0
-        if bbox1 is None or bbox2 is None:
-            return 0.0
-
         coords1 = self._normalize_bbox(bbox1)
         coords2 = self._normalize_bbox(bbox2)
 

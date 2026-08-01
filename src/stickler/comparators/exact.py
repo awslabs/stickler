@@ -34,7 +34,7 @@ class ExactComparator(BaseComparator):
         super().__init__(threshold=threshold)
         self.case_sensitive = case_sensitive
 
-    def compare(self, str1: Any, str2: Any) -> float:
+    def _compare(self, str1: Any, str2: Any) -> float:
         """Compare two values with exact string matching.
 
         Args:
@@ -44,11 +44,6 @@ class ExactComparator(BaseComparator):
         Returns:
             1.0 if the strings match exactly after normalization, 0.0 otherwise
         """
-        if str1 is None and str2 is None:
-            return 1.0
-        if str1 is None or str2 is None:
-            return 0.0
-
         # Convert to strings if they aren't already
         str1 = str(str1)
         str2 = str(str2)

@@ -102,7 +102,7 @@ class SemanticComparator(BaseComparator):
         self.sim_function = sim_function
         self.similarity_function = self.SIMILARITY_FUNCTIONS[self.sim_function]
 
-    def compare(self, str1: str, str2: str) -> float:
+    def _compare(self, str1: str, str2: str) -> float:
         """Compare two values using semantic similarity.
 
         If embedding generation fails, this logs the model ID, embedding function,
@@ -116,9 +116,6 @@ class SemanticComparator(BaseComparator):
         Returns:
             Similarity score between 0.0 and 1.0
         """
-        if str1 is None or str2 is None:
-            return 0.0
-
         try:
             x, y = self.embedding_function(str1), self.embedding_function(str2)
             return self.similarity_function(x, y)

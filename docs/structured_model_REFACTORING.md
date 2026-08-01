@@ -263,7 +263,7 @@ Example: a basic datetime comparator.
 
 #### Step 1: Create the Comparator
 
-`BaseComparator` lives at `src/stickler/comparators/base.py` and exposes a 2-argument `compare(self, str1, str2)` signature. Configuration parameters belong on `__init__`, not on `compare(...)`:
+`BaseComparator` lives at `src/stickler/comparators/base.py`. Implement the 2-argument `_compare(self, str1, str2)`; the public `compare(...)` is a template method on the base class that applies the shared `None` policy and then delegates, so `_compare` never receives `None`. Configuration parameters belong on `__init__`, not on `_compare(...)`:
 
 ```python
 from datetime import datetime
@@ -276,7 +276,7 @@ class DateTimeComparator(BaseComparator):
         super().__init__(threshold=threshold)
         self.max_diff_seconds = max_diff_seconds
 
-    def compare(self, gt: datetime, pred: datetime) -> float:
+    def _compare(self, gt: datetime, pred: datetime) -> float:
         if gt == pred:
             return 1.0
 

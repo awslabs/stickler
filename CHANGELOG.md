@@ -20,6 +20,23 @@ Each release links to full notes on the
   tables). `all` aggregates every extra except `bert`, whose ML stack is large
   enough that installing it unasked is a surprise
 
+### Fixed
+
+- Handle `None` consistently across all comparators. `None` is a missing
+  value and no longer compares equal to an empty string: `(None, "")` now
+  scores `0.0` everywhere, and `(None, None)` scores `1.0` everywhere.
+  Previously `LevenshteinComparator` coerced `None` to `""` and scored
+  `(None, "")` as `1.0`, while `SemanticComparator` and `BERTComparator`
+  scored `(None, None)` as `0.0`.
+
+  **This changes results for code calling comparators directly** --
+  `LevenshteinComparator().compare(None, "")` goes from `1.0` to `0.0`.
+  `compare_with()` is largely unaffected for string fields:
+  `NullHelper.is_effectively_null_for_primitives` treats both `None` and
+  `""` as null and the dispatcher resolves that pair as a true negative
+  before any comparator runs
+  ([#200](https://github.com/awslabs/stickler/issues/200))
+
 ### Changed
 
 - **Breaking:** the peripheral modules now require their extra. `pandas`,
@@ -60,6 +77,21 @@ Each release links to full notes on the
 - Relaxed the `scikit-learn` floor from `>=1.8.0` to `>=1.7.2`. 1.8.0 requires
   Python 3.11+, so the old floor made the 3.10 support above unresolvable. The
   lock pins 1.7.2 below 3.11 and 1.8.0 above
+
+- **Breaking (custom comparators):** the extension point for comparators is
+  now `_compare()` instead of `compare()`. `BaseComparator.compare()` is a
+  template method that applies the shared `None` policy and then delegates
+  to `_compare()`, so the policy is defined once and cannot drift between
+  comparators. Callers are unaffected -- `compare()`, `__call__`, and
+  `binary_compare()` are unchanged.
+
+  Custom comparators that subclass `BaseComparator` must rename their
+  `compare()` to `_compare()` and can delete any `None` handling it
+  contains, since `_compare()` only ever receives present values. A
+  comparator that implements only `compare()` stays abstract and raises
+  `TypeError` on instantiation, so the change surfaces immediately rather
+  than silently bypassing the policy
+  ([#200](https://github.com/awslabs/stickler/issues/200))
 
 ## [0.6.0] - 2026-07-30
 
