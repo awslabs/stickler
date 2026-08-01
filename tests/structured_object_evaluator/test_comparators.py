@@ -156,11 +156,8 @@ class TestSemanticComparator:
 class CustomComparator(BaseComparator):
     """Custom comparator for testing."""
 
-    def compare(self, str1: str, str2: str) -> float:
+    def _compare(self, str1: str, str2: str) -> float:
         """Compare two strings based on length similarity."""
-        if str1 is None or str2 is None:
-            return 1.0 if str1 == str2 else 0.0
-
         len1 = len(str1) if str1 else 0
         len2 = len(str2) if str2 else 0
 

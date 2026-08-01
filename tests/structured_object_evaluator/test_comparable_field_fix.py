@@ -24,7 +24,7 @@ class CustomTestComparator(BaseComparator):
         self.name = "CustomTestComparator"
         self.config = {"test_param": "test_value"}
 
-    def compare(self, str1, str2):
+    def _compare(self, str1, str2):
         """Simple comparison that returns 1.0 if values are equal, 0.0 otherwise."""
         return 1.0 if str(str1) == str(str2) else 0.0
 
@@ -252,7 +252,7 @@ class TestComparableFieldFix:
                 super().__init__()
                 self.name = "AnotherCustomComparator"
 
-            def compare(self, str1, str2):
+            def _compare(self, str1, str2):
                 return 0.5  # Always return 0.5 for testing
 
         class TestModel(StructuredModel):

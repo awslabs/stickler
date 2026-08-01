@@ -178,7 +178,7 @@ class LLMComparator(BaseComparator):
         result = self.agent(prompt)
         return result.message["content"][0]["text"]
 
-    def compare(self, value1: Any, value2: Any) -> float:
+    def _compare(self, value1: Any, value2: Any) -> float:
         """Compare two values using LLM-based semantic analysis.
 
         This method converts both values to strings and uses the configured LLM
@@ -209,12 +209,6 @@ class LLMComparator(BaseComparator):
             >>> comparator.compare(None, None)
             1.0
         """
-        # Handle None values
-        if value1 is None and value2 is None:
-            return 1.0
-        elif value1 is None or value2 is None:
-            return 0.0
-
         # Format the prompt with your values
         formatted_prompt = self.prompt_template.render(
             value1=html.escape(str(value1)),

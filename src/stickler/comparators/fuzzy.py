@@ -76,7 +76,7 @@ class FuzzyComparator(BaseComparator):
         """Return configuration parameters."""
         return {"method": self._method, "normalize": self._normalize}
 
-    def compare(self, value1: Any, value2: Any) -> float:
+    def _compare(self, value1: Any, value2: Any) -> float:
         """Compare two strings using fuzzy matching.
 
         Args:
@@ -86,12 +86,6 @@ class FuzzyComparator(BaseComparator):
         Returns:
             Similarity score between 0.0 and 1.0
         """
-        # Handle None values
-        if value1 is None and value2 is None:
-            return 1.0
-        elif value1 is None or value2 is None:
-            return 0.0
-
         # Convert to strings
         s1 = str(value1)
         s2 = str(value2)

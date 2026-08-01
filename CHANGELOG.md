@@ -9,6 +9,40 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Fixed
+
+- Handle `None` consistently across all comparators. `None` is a missing
+  value and no longer compares equal to an empty string: `(None, "")` now
+  scores `0.0` everywhere, and `(None, None)` scores `1.0` everywhere.
+  Previously `LevenshteinComparator` coerced `None` to `""` and scored
+  `(None, "")` as `1.0`, while `SemanticComparator` and `BERTComparator`
+  scored `(None, None)` as `0.0`.
+
+  **This moves corpus metrics.** Since `str` fields infer to
+  `LevenshteinComparator` by default, any evaluation where predictions omit
+  a field that is `""` in ground truth (or vice versa) previously counted a
+  match and now counts a miss. The change propagates through the confusion
+  matrix into corpus-level precision and recall, so expect scores to shift
+  on affected datasets rather than only on individual fields
+  ([#200](https://github.com/awslabs/stickler/issues/200))
+
+### Changed
+
+- **Breaking (custom comparators):** the extension point for comparators is
+  now `_compare()` instead of `compare()`. `BaseComparator.compare()` is a
+  template method that applies the shared `None` policy and then delegates
+  to `_compare()`, so the policy is defined once and cannot drift between
+  comparators. Callers are unaffected -- `compare()`, `__call__`, and
+  `binary_compare()` are unchanged.
+
+  Custom comparators that subclass `BaseComparator` must rename their
+  `compare()` to `_compare()` and can delete any `None` handling it
+  contains, since `_compare()` only ever receives present values. A
+  comparator that implements only `compare()` stays abstract and raises
+  `TypeError` on instantiation, so the change surfaces immediately rather
+  than silently bypassing the policy
+  ([#200](https://github.com/awslabs/stickler/issues/200))
+
 ## [0.6.0] - 2026-07-30
 
 ### Added

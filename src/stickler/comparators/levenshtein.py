@@ -34,13 +34,13 @@ class LevenshteinComparator(BaseComparator):
         """Return configuration parameters."""
         return {"normalize": self._normalize}
 
-    def compare(self, s1: Any, s2: Any) -> float:
+    def _compare(self, s1: Any, s2: Any) -> float:
         """
         Compare two strings using Levenshtein distance.
 
         Args:
-            s1: First string or value
-            s2: Second string or value
+            s1: First string or value, guaranteed not None
+            s2: Second string or value, guaranteed not None
 
         Returns:
             Similarity score between 0.0 and 1.0, with 1.0 indicating identical
@@ -48,7 +48,9 @@ class LevenshteinComparator(BaseComparator):
         Raises:
             TypeError: If either input is a dictionary, as dictionaries are not suitable
                       for Levenshtein distance comparison and should be handled through
-                      structured models instead.
+                      structured models instead. Both inputs are guaranteed non-None
+                      here (BaseComparator.compare handles None before delegating), so
+                      this only ever fires for an actual dict value.
         """
         # Reject dictionaries - they should be broken down into proper StructuredModel subclasses
         if isinstance(s1, dict) or isinstance(s2, dict):
@@ -57,9 +59,9 @@ class LevenshteinComparator(BaseComparator):
                 "Use a StructuredModel subclass with properly defined fields instead."
             )
 
-        # Convert to strings and handle None values
-        s1 = "" if s1 is None else str(s1)
-        s2 = "" if s2 is None else str(s2)
+        # Convert to strings
+        s1 = str(s1)
+        s2 = str(s2)
 
         # Normalize strings if enabled
         if self._normalize:
