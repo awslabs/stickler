@@ -1,7 +1,6 @@
 """Field operations helper for StructuredModel comparisons."""
 
-import inspect
-from typing import Any, List, Type, get_args, get_origin
+from typing import Any, List, Type
 
 
 class FieldHelper:
@@ -42,48 +41,6 @@ class FieldHelper:
             return len(value) == 0
         elif isinstance(value, (str, bytes, bytearray)):
             return len(value.strip()) == 0
-        return False
-
-    @staticmethod
-    def is_structured_field_type(field_info) -> bool:
-        """Check if a field represents a structured type that needs special handling.
-
-        Args:
-            field_info: Pydantic field info object
-
-        Returns:
-            True if the field is a List[StructuredModel] or StructuredModel type
-        """
-        try:
-            # Get the field annotation
-            annotation = field_info.annotation
-
-            # Handle List[SomeType] annotations
-            if get_origin(annotation) is list:
-                args = get_args(annotation)
-                if args:
-                    # Check if List element type is a StructuredModel subclass
-                    element_type = args[0]
-                    # Import here to avoid circular imports
-                    from .structured_model import StructuredModel
-
-                    if inspect.isclass(element_type) and issubclass(
-                        element_type, StructuredModel
-                    ):
-                        return True
-
-            # Handle direct StructuredModel annotations
-            elif inspect.isclass(annotation):
-                # Import here to avoid circular imports
-                from .structured_model import StructuredModel
-
-                if issubclass(annotation, StructuredModel):
-                    return True
-
-        except (TypeError, AttributeError):
-            # If we can't determine the type, assume it's not structured
-            pass
-
         return False
 
     @staticmethod
