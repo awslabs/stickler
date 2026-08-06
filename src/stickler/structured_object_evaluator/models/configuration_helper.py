@@ -162,6 +162,13 @@ class ConfigurationHelper:
                             ):
                                 return True
 
+                # Handle Optional[StructuredModel] (Union[StructuredModel, NoneType]).
+                # Non-required nested object fields are annotated this way (#149); without
+                # this, optional nested objects inside list items are routed down the
+                # non-hierarchical path and lose their nested metric breakdown.
+                if ConfigurationHelper._is_optional_structured_model(annotation):
+                    return True
+
             # Handle direct StructuredModel annotations
             elif inspect.isclass(annotation):
                 if issubclass(annotation, StructuredModel):

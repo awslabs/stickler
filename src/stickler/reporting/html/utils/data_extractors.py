@@ -3,7 +3,7 @@ Data extraction utilities for HTML reporting.
 Centralizes data access patterns that were previously duplicated across multiple modules.
 """
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, get_args, get_origin
 
 from stickler.utils.process_evaluation import ProcessEvaluation
 
@@ -194,7 +194,19 @@ class DataExtractor:
                 # Handle nested fields
                 field_info = model_schema.__fields__[field_name]
                 field_type = getattr(field_info, 'annotation', None)
-                
+
+                # Unwrap Optional[...] (Union[X, None]) so nested-model and
+                # List[...] detection below also fires for non-required fields,
+                # which are annotated Optional[T] (issue #149). Without this,
+                # nested thresholds vanish from HTML reports for schema-built
+                # models whose nested object / list fields are optional.
+                if get_origin(field_type) is Union:
+                    non_none_args = [
+                        arg for arg in get_args(field_type) if arg is not type(None)
+                    ]
+                    if len(non_none_args) == 1:
+                        field_type = non_none_args[0]
+
                 # Check for nested StructuredModel
                 if field_type and hasattr(field_type, '__fields__'):
                     nested_thresholds = DataExtractor.extract_all_field_thresholds(field_type)
