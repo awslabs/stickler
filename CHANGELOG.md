@@ -85,12 +85,26 @@ Each release links to full notes on the
   comparators. Callers are unaffected -- `compare()`, `__call__`, and
   `binary_compare()` are unchanged.
 
-  Custom comparators that subclass `BaseComparator` must rename their
-  `compare()` to `_compare()` and can delete any `None` handling it
-  contains, since `_compare()` only ever receives present values. A
-  comparator that implements only `compare()` stays abstract and raises
-  `TypeError` on instantiation, so the change surfaces immediately rather
-  than silently bypassing the policy
+  Custom comparators must rename their `compare()` to `_compare()` and can
+  delete any `None` handling it contains, since `_compare()` only ever
+  receives present values.
+
+  How an un-migrated comparator behaves depends on what it subclasses:
+
+  - Extending `BaseComparator` directly (or via a mixin) and implementing
+    only `compare()` leaves `_compare()` unimplemented, so the class is
+    abstract and raises `TypeError` on instantiation.
+  - Extending a *concrete* comparator (e.g. `LevenshteinComparator`) and
+    overriding `compare()` inherits `_compare()` from the parent, so it
+    still constructs, and the override shadows the template method and
+    bypasses the `None` policy. This shape does not announce itself --
+    rename it.
+
+  Note that the pre-fix `(None, "") -> 1.0` result cannot be inherited: the
+  coercion was removed from Levenshtein's algorithm rather than guarded, so
+  an un-migrated subclass that delegates upward gets the corrected score.
+  Only a subclass that reimplemented the coercion in its own `compare()`
+  still returns the old value
   ([#200](https://github.com/awslabs/stickler/issues/200))
 
 ## [0.6.0] - 2026-07-30

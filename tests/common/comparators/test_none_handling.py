@@ -196,9 +196,10 @@ class TestTemplateMethodContract:
         assert comparator.compare(None, "x") == 0.0
         assert comparator.compare("HELLO", "hello") == 1.0
 
-    def test_implementing_only_compare_leaves_the_class_abstract(self):
-        """``_compare`` is the extension point, so getting it wrong fails
-        loudly at construction instead of silently skipping the policy."""
+    def test_subclassing_basecomparator_with_only_compare_is_abstract(self):
+        """Extending ``BaseComparator`` directly and implementing only
+        ``compare()`` fails at construction -- ``_compare`` is unimplemented,
+        so the class stays abstract and the mistake surfaces immediately."""
 
         class WrongMethod(BaseComparator):
             def compare(self, str1, str2):  # not the extension point
@@ -206,3 +207,46 @@ class TestTemplateMethodContract:
 
         with pytest.raises(TypeError, match="_compare"):
             WrongMethod()
+
+
+class TestPreRenameSubclassMigration:
+    """How subclasses written against the old ``compare()`` interface behave.
+
+    The rename is a breaking change, and it does not fail loudly in every
+    shape. These tests pin what actually happens per shape so the migration
+    surface is documented and testable rather than asserted in a changelog.
+    """
+
+    def test_subclassing_a_concrete_comparator_does_not_fail_loudly(self):
+        """The one shape that survives construction: ``_compare`` is
+        inherited from the concrete parent, so the class is not abstract and
+        the legacy ``compare()`` shadows the template, bypassing the policy.
+
+        This is the case that needs the changelog to say "rename", because
+        nothing here raises.
+        """
+
+        class Legacy(LevenshteinComparator):
+            def compare(self, a, b):  # pre-rename interface
+                return 0.42
+
+        comparator = Legacy()  # constructs -- no TypeError
+
+        assert comparator.compare(None, "") == 0.42  # policy bypassed
+        assert type(comparator).compare is not BaseComparator.compare
+
+    def test_the_old_none_coercion_is_gone_from_the_algorithm(self):
+        """The pre-fix `(None, "") -> 1.0` result cannot be inherited.
+
+        The coercion was deleted from Levenshtein's algorithm, not merely
+        guarded, so a legacy subclass that delegates upward gets the
+        corrected answer. Only a subclass that reimplemented the coercion in
+        its own ``compare()`` can still produce the old score.
+        """
+        assert LevenshteinComparator()._compare(None, "") == 0.0
+
+        class LegacyDelegating(LevenshteinComparator):
+            def compare(self, a, b):
+                return super().compare(a, b)
+
+        assert LegacyDelegating().compare(None, "") == 0.0
