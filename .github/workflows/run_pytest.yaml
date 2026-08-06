@@ -9,6 +9,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      # Report every version's real outcome. With fail-fast on (the default),
+      # the first failing version cancels the other four, so a single red
+      # version hides whether the rest passed.
+      fail-fast: false
       matrix:
         # Every version `requires-python` claims to support, so the floor is
         # enforced rather than asserted.

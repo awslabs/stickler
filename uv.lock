@@ -4012,12 +4012,14 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
+    { name = "boto3" },
     { name = "jinja2" },
     { name = "pandas" },
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scikit-learn", version = "1.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "strands-agents" },
 ]
 bert = [
     { name = "bert-score" },
@@ -4121,7 +4123,6 @@ requires-dist = [
     { name = "boto3", marker = "extra == 'semantic'", specifier = ">=1.28.0" },
     { name = "coverage", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "evaluate", marker = "extra == 'bert'", specifier = ">=0.4.0" },
-    { name = "jinja2", marker = "extra == 'all'", specifier = ">=3.1.6,<3.2.0" },
     { name = "jinja2", marker = "extra == 'dev'", specifier = ">=3.1.6,<3.2.0" },
     { name = "jinja2", marker = "extra == 'llm'", specifier = ">=3.1.6,<3.2.0" },
     { name = "jsonschema", specifier = ">=4.17.3,<5.0.0" },
@@ -4132,7 +4133,6 @@ requires-dist = [
     { name = "mkdocstrings-python", marker = "extra == 'dev'" },
     { name = "munkres", specifier = ">=1.1.4" },
     { name = "numpy", specifier = ">=1.26.0,<3.0.0" },
-    { name = "pandas", marker = "extra == 'all'", specifier = ">=2.1.1,<3.0.0" },
     { name = "pandas", marker = "extra == 'dev'", specifier = ">=2.1.1,<3.0.0" },
     { name = "pandas", marker = "extra == 'docsplit'", specifier = ">=2.1.1,<3.0.0" },
     { name = "pandas", marker = "extra == 'reporting'", specifier = ">=2.1.1,<3.0.0" },
@@ -4144,15 +4144,14 @@ requires-dist = [
     { name = "python-dateutil", specifier = ">=2.8.2,<3.0.0" },
     { name = "rapidfuzz", specifier = ">=3.4.0,<4.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.10" },
-    { name = "scikit-learn", marker = "extra == 'all'", specifier = ">=1.7.2,<2.0.0" },
     { name = "scikit-learn", marker = "extra == 'confidence'", specifier = ">=1.7.2,<2.0.0" },
     { name = "scikit-learn", marker = "extra == 'dev'", specifier = ">=1.7.2,<2.0.0" },
     { name = "scikit-learn", marker = "extra == 'docsplit'", specifier = ">=1.7.2,<2.0.0" },
-    { name = "scipy", marker = "extra == 'all'", specifier = ">=1.12.0,<2.0.0" },
     { name = "scipy", marker = "extra == 'dev'", specifier = ">=1.12.0,<2.0.0" },
     { name = "scipy", marker = "extra == 'docsplit'", specifier = ">=1.12.0,<2.0.0" },
     { name = "scipy", marker = "extra == 'semantic'", specifier = ">=1.12.0,<2.0.0" },
-    { name = "strands-agents", marker = "extra == 'llm'", specifier = ">=1.14.0,<=1.16.0" },
+    { name = "stickler-eval", extras = ["llm", "semantic", "confidence", "docsplit", "reporting"], marker = "extra == 'all'" },
+    { name = "strands-agents", marker = "extra == 'llm'", specifier = ">=1.14.0,<2.0.0" },
     { name = "torch", marker = "extra == 'bert'", specifier = ">=2.2.0" },
 ]
 provides-extras = ["dev", "llm", "bert", "semantic", "confidence", "docsplit", "reporting", "all"]

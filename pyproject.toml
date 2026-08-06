@@ -69,7 +69,14 @@ llm = [
     # docs and examples landed in 1.14.0. On 1.0-1.13 __call__ swallows it via
     # **kwargs, so no structured output is requested and the call fails later
     # with AttributeError on .structured_output.
-    "strands-agents>=1.14.0,<=1.16.0",
+    #
+    # No upper bound below 2.0: LLMComparator only uses Agent(model=,
+    # system_prompt=, callback_handler=) and strands.models.Model, all verified
+    # present through 1.50.2. A ceiling should name a real incompatibility, not
+    # the newest release that existed when it was written. Capping at <2.0.0
+    # made stickler[llm] uninstallable alongside strands-agents-evals, which
+    # requires >=1.42.0.
+    "strands-agents>=1.14.0,<2.0.0",
     # LLMComparator renders its prompt with a jinja2 Template.
     "jinja2>=3.1.6,<3.2.0",
 ]
@@ -97,12 +104,11 @@ docsplit = [
 reporting = [
     "pandas>=2.1.1,<3.0.0",
 ]
-# Everything, for users who would rather not think about extras.
+# Everything except `bert`, whose ML stack (torch, transformers) is large
+# enough that pulling it in unasked is a surprise. Written as self-referential
+# extras so it cannot drift out of sync with the extras it aggregates.
 all = [
-    "jinja2>=3.1.6,<3.2.0",
-    "pandas>=2.1.1,<3.0.0",
-    "scipy>=1.12.0,<2.0.0",
-    "scikit-learn>=1.7.2,<2.0.0",
+    "stickler-eval[llm,semantic,confidence,docsplit,reporting]",
 ]
 
 [project.urls]
