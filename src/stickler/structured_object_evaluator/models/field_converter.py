@@ -4,7 +4,7 @@ This module provides utilities for converting JSON field configurations to
 Pydantic Field instances with ComparableField functionality.
 """
 
-from typing import Any, Dict, Tuple, Type
+from typing import Any, Dict, Optional, Tuple, Type
 
 from pydantic import Field
 
@@ -85,6 +85,16 @@ class FieldConverter:
         elif not required and default == ...:
             # If not required and no default specified, use None
             default = None
+
+        # Widen the annotation to Optional[...] whenever the resolved default is
+        # None, so the None default is a valid value. Mirrors the JSON-Schema path
+        # (json_schema_field_converter.py) — issue #149: the rich-value path
+        # round-trips through from_json(...).model_dump(), which materializes the
+        # None default and re-validates it against the annotation. Without this,
+        # a schema -> to_stickler_config -> model_from_json round-trip rebuilds a
+        # broken model.
+        if default is None:
+            field_type = Optional[field_type]
 
         # Create ComparableField
         comparable_field = ComparableField(
