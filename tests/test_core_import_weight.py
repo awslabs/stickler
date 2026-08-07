@@ -61,7 +61,9 @@ def test_core_import_stays_small():
     """Sanity bound on module count, to catch a broad new eager dependency.
 
     The threshold is deliberately loose: it is a tripwire for something large
-    arriving on the core path, not a precise budget.
+    arriving on the core path, not a precise budget. Measured baseline at the
+    time of writing is 463 modules on a core-only install (Python 3.12), so 900
+    leaves roughly 2x headroom.
     """
     loaded = _modules_after_importing_stickler()
     assert len(loaded) < 900, (

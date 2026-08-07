@@ -9,6 +9,53 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Added
+
+- Support for Python 3.10 and 3.11, and testing through 3.14. `requires-python`
+  moves from `>=3.12` to `>=3.10`, with trove classifiers for 3.10-3.14 and a
+  CI matrix covering every version claimed, so the floor is enforced rather
+  than asserted ([#201](https://github.com/awslabs/stickler/issues/201))
+- New extras that scope the peripheral modules: `semantic` (Bedrock
+  embeddings), `confidence` (calibration metrics), `docsplit` (document packet
+  splitting), `reporting` (HTML report tables). `all` aggregates every extra
+  except `bert`, whose ML stack is large enough that installing it unasked is a
+  surprise
+
+### Changed
+
+- **Breaking:** the peripheral modules now require their extra. `pandas`,
+  `scipy`, `scikit-learn`, and `jinja2` are no longer core dependencies, so
+  `pip install stickler-eval` installs the comparison engine and nothing else.
+  Code that used these without installing an extra now raises `ImportError`
+  naming the extra to install:
+
+  | what you were using | now needs |
+  |---|---|
+  | `stickler.doc_split` (raises at import) | `stickler-eval[docsplit]` |
+  | `AUROCMetric.compute()` | `stickler-eval[confidence]` |
+  | `MarkdownUtil.table_df()` | `stickler-eval[reporting]` |
+  | `LLMComparator(...)` | `stickler-eval[llm]` |
+  | `SemanticComparator` cosine similarity | `stickler-eval[semantic]` |
+
+  `pip install "stickler-eval[all]"` restores everything except `bert`.
+
+  Only `stickler.doc_split` fails at import time; the rest fail at first use.
+  `SemanticComparator` still constructs on a core install and raises when the
+  similarity function runs
+  ([#201](https://github.com/awslabs/stickler/issues/201))
+
+- Optional comparators are now imported lazily. `import stickler` no longer
+  pulls a scientific-computing stack: 463 modules on a core install, down from
+  1664, with none of pandas, scipy, scikit-learn, jinja2, torch, transformers,
+  strands, or boto3 on the path. `BERTComparator` no longer loads its model at
+  import time. Accessing an optional comparator whose extra is missing raises
+  `AttributeError`, so `hasattr()` gating keeps working
+  ([#187](https://github.com/awslabs/stickler/issues/187))
+
+- Relaxed the `scikit-learn` floor from `>=1.8.0` to `>=1.7.2`. 1.8.0 requires
+  Python 3.11+, so the old floor made the 3.10 support above unresolvable. The
+  lock pins 1.7.2 below 3.11 and 1.8.0 above
+
 ## [0.6.0] - 2026-07-30
 
 ### Added
