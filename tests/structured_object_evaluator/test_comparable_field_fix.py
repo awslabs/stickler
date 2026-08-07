@@ -130,7 +130,13 @@ class TestComparableFieldFix:
         )
 
     def test_json_schema_serialization(self):
-        """Test that JSON schema generation preserves comparison metadata."""
+        """Comparison config stays on the field; the rendered schema keeps the alias.
+
+        ``model_json_schema()`` describes the shape only (issue #188): the
+        alias still shapes the rendered properties, and the comparison
+        metadata is read from ``json_schema_extra`` the way the engine reads
+        it.
+        """
 
         class TestModel(StructuredModel):
             name: str = ComparableField(
@@ -140,20 +146,20 @@ class TestComparableFieldFix:
                 comparator=ExactComparator(), threshold=1.0, alias="email_address"
             )
 
-        # Generate JSON schema
+        # Generate JSON schema: the alias shapes the rendered property names,
+        # and comparison metadata does not leak into the rendering.
         schema = TestModel.model_json_schema()
+        assert "email_address" in schema.get("properties", {})  # alias honored
+        assert "x-comparison" not in schema["properties"]["name"]
+        assert "x-comparison" not in schema["properties"]["email_address"]
 
-        # Check that comparison metadata is preserved
-        name_field = schema.get("properties", {}).get("name", {})
-        email_field = schema.get("properties", {}).get(
-            "email_address", {}
-        )  # Note: uses alias
+        def comparison_metadata(field_name):
+            extra = {}
+            TestModel.model_fields[field_name].json_schema_extra(extra)
+            return extra["x-comparison"]
 
-        assert "x-comparison" in name_field, "Name field missing comparison metadata"
-        assert "x-comparison" in email_field, "Email field missing comparison metadata"
-
-        name_comp = name_field["x-comparison"]
-        email_comp = email_field["x-comparison"]
+        name_comp = comparison_metadata("name")
+        email_comp = comparison_metadata("email")
 
         assert name_comp.get("comparator_type") == "LevenshteinComparator"
         assert name_comp.get("threshold") == 0.8

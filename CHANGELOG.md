@@ -56,6 +56,27 @@ Each release links to full notes on the
 
 ### Changed
 
+- `model_json_schema()` now describes the model's shape the way an equivalent
+  plain `BaseModel` would, so a configured `StructuredModel` can drive a
+  Strands agent's structured output without degrading the schema the LLM sees:
+  `required` is derived from the annotation (`shipment_id: str` renders
+  required even though `ComparableField` assigns a `None` default for
+  construction tolerance), required fields no longer widen to
+  `["type", "null"]` or carry a contradictory `default: null`, and comparison
+  configuration (`x-comparison`) is no longer emitted. Verified through
+  Strands' `convert_pydantic_to_tool_spec`: a configured `StructuredModel` and
+  its plain-`BaseModel` twin now produce the same tool spec.
+
+  Field-level `description`, `examples`, and `alias` still reach the rendered
+  schema, and the deliberate export path `to_json_schema()` still carries the
+  comparison configuration as `x-aws-stickler-*` extensions. Runtime behavior
+  is unchanged: predictions that omit fields still construct and score.
+
+  Code that read `x-comparison` out of `model_json_schema()` output should
+  read the field's `json_schema_extra` (as the engine does) or use
+  `to_json_schema()`
+  ([#188](https://github.com/awslabs/stickler/issues/188))
+
 - **Breaking:** the peripheral modules now require their extra. `pandas`,
   `scipy`, `scikit-learn`, and `jinja2` are no longer core dependencies, so
   `pip install stickler-eval` installs the comparison engine and nothing else.

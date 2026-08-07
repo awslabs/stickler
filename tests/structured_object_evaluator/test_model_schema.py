@@ -1,11 +1,14 @@
 """
 Test the JSON schema serialization of StructuredModel classes.
-This verifies that structured models can be correctly serialized to JSON schema
-with all comparison metadata intact.
+
+``model_json_schema()`` describes the model's *shape* for external consumers
+(e.g. tool specs sent to an LLM), so it must NOT carry comparison metadata
+(issue #188). The metadata is still attached to every field and reachable via
+``json_schema_extra`` and the deliberate export path ``to_json_schema()``.
 """
 
 import json
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import Field
 
@@ -13,6 +16,17 @@ from stickler.comparators.levenshtein import LevenshteinComparator
 
 # Import from structured_object_evaluator instead of anls_star_lib
 from stickler.structured_object_evaluator import ComparableField, StructuredModel
+
+
+def _comparison_metadata(model_cls, field_name: str) -> Dict[str, Any]:
+    """Read a field's comparison metadata the way the engine does.
+
+    The metadata lives on the field's ``json_schema_extra`` callable; it is
+    deliberately not rendered into ``model_json_schema()``.
+    """
+    extra: Dict[str, Any] = {}
+    model_cls.model_fields[field_name].json_schema_extra(extra)
+    return extra["x-comparison"]
 
 
 class SimpleTestModel(StructuredModel):
@@ -56,7 +70,7 @@ class NestedTestModel(StructuredModel):
 
 
 def test_simple_model_schema():
-    """Test that a simple model can be serialized to JSON schema with comparison metadata."""
+    """The rendered schema describes the shape; comparison config stays off it."""
     # Get the JSON schema for the simple model
     schema = SimpleTestModel.model_json_schema()
 
@@ -64,19 +78,22 @@ def test_simple_model_schema():
     assert "properties" in schema
     assert "text" in schema["properties"]
 
-    # Check that the text property has comparison metadata
+    # Comparison metadata must NOT leak into the rendered schema (issue #188):
+    # it is evaluation config, not part of the shape, and it would ride into
+    # tool specs sent to LLMs.
     text_props = schema["properties"]["text"]
-    assert "x-comparison" in text_props
+    assert "x-comparison" not in text_props
 
-    # Check that comparison metadata has the expected fields
-    comp_info = text_props["x-comparison"]
+    # The metadata is still attached to the field and readable the way the
+    # comparison engine reads it.
+    comp_info = _comparison_metadata(SimpleTestModel, "text")
     assert comp_info["comparator_type"] == "LevenshteinComparator"
     assert comp_info["threshold"] == 0.7
     assert comp_info["weight"] == 1.0
 
 
 def test_complex_model_schema():
-    """Test that a complex model can be serialized to JSON schema with comparison metadata for all fields."""
+    """Every field keeps its metadata off the rendered schema but readable."""
     # Get the JSON schema for the complex model
     schema = ComplexTestModel.model_json_schema()
 
@@ -86,7 +103,6 @@ def test_complex_model_schema():
         field in schema["properties"] for field in ["id", "name", "description", "tags"]
     )
 
-    # Check that each property has comparison metadata
     fields = {
         "id": {"threshold": 0.9, "weight": 2.0},
         "name": {"threshold": 0.7, "weight": 1.0},
@@ -95,10 +111,11 @@ def test_complex_model_schema():
     }
 
     for field_name, expected_values in fields.items():
-        field_props = schema["properties"][field_name]
-        assert "x-comparison" in field_props
+        # Not rendered (issue #188)...
+        assert "x-comparison" not in schema["properties"][field_name]
 
-        comp_info = field_props["x-comparison"]
+        # ...but still configured on the field.
+        comp_info = _comparison_metadata(ComplexTestModel, field_name)
         assert comp_info["threshold"] == expected_values["threshold"]
         assert comp_info["weight"] == expected_values["weight"]
 
@@ -113,10 +130,9 @@ def test_nested_model_schema():
     assert "title" in schema["properties"]
     assert "simple" in schema["properties"]
 
-    # Check that title has comparison metadata
-    title_props = schema["properties"]["title"]
-    assert "x-comparison" in title_props
-    title_comp = title_props["x-comparison"]
+    # title's comparison config stays off the rendered schema but on the field
+    assert "x-comparison" not in schema["properties"]["title"]
+    title_comp = _comparison_metadata(NestedTestModel, "title")
     assert title_comp["threshold"] == 0.8
     assert title_comp["weight"] == 1.5
 
@@ -133,14 +149,60 @@ def test_schema_serialization():
     schema = ComplexTestModel.model_json_schema()
     json_string = json.dumps(schema)
 
-    # Verify it can be parsed back
+    # Verify it can be parsed back, and that no comparison metadata leaked
+    # anywhere in the document (issue #188).
     parsed_schema = json.loads(json_string)
-    assert parsed_schema["properties"]["id"]["x-comparison"]["threshold"] == 0.9
+    assert "x-comparison" not in json_string
+    assert parsed_schema["properties"]["id"]["type"] == "string"
 
     # Test with nested model as well
     nested_schema = NestedTestModel.model_json_schema()
     nested_json = json.dumps(nested_schema)
     json.loads(nested_json)
+    assert "x-comparison" not in nested_json
+
+
+def test_required_follows_annotation():
+    """`required` derives from the annotation, not ComparableField's default.
+
+    ComparableField assigns ``default=None`` so construction tolerates
+    partial predictions, but that is a runtime concern: for schema purposes
+    ``shipment_id: str`` is required and ``notes: Optional[str]`` is not
+    (issue #188). A field with a real default stays optional.
+    """
+
+    class RequirednessModel(StructuredModel):
+        must_have: str = ComparableField()
+        may_skip: Optional[str] = ComparableField(default=None)
+        has_default: str = ComparableField(default="fallback")
+
+    schema = RequirednessModel.model_json_schema()
+
+    assert schema.get("required") == ["must_have"]
+    # The required field renders its bare type, with no contradictory
+    # default:null and no null-widening.
+    must_have = schema["properties"]["must_have"]
+    assert must_have["type"] == "string"
+    assert "default" not in must_have
+    # The genuinely optional field keeps its nullable rendering and default.
+    may_skip = schema["properties"]["may_skip"]
+    assert {"type": "null"} in may_skip.get("anyOf", [])
+    # The defaulted field keeps its default and stays optional.
+    assert schema["properties"]["has_default"]["default"] == "fallback"
+
+    # Schema requiredness must not leak into runtime: partial construction
+    # still works, because the comparison engine builds models from
+    # prediction JSON that may omit fields.
+    instance = RequirednessModel.from_json({"may_skip": "x"})
+    assert instance.must_have is None
+
+
+def test_nested_model_required_in_defs():
+    """Nested models rendered into $defs get the same required treatment."""
+    schema = NestedTestModel.model_json_schema()
+
+    simple_def = schema["$defs"]["SimpleTestModel"]
+    assert simple_def.get("required") == ["text"]
 
 
 def test_schema_validation_compatibility():
@@ -189,10 +251,10 @@ def test_model_defaults():
         for field in ["required_field", "optional_field", "defaulted_field"]
     )
 
-    # Check that required_field has comparison metadata
-    req_props = schema["properties"]["required_field"]
-    assert "x-comparison" in req_props
-    assert req_props["x-comparison"]["threshold"] == 0.8
+    # required_field's comparison config stays off the rendered schema but on
+    # the field (issue #188).
+    assert "x-comparison" not in schema["properties"]["required_field"]
+    assert _comparison_metadata(DefaultTestModel, "required_field")["threshold"] == 0.8
 
     # Check that the default value is present
     default_props = schema["properties"]["defaulted_field"]
