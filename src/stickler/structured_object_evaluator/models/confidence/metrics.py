@@ -94,16 +94,19 @@ class AUROCMetric(ConfidenceMetric):
     def compute(self, pairs: ConfidencePairs) -> Dict[str, Any]:
         if not pairs or len(set(p.is_match for p in pairs)) < 2:
             return {"value": None}
-        # Imported here, not at module scope: scikit-learn is the single
-        # heaviest optional dependency and AUROC is the only thing that needs
-        # it. A module-level import would put it on the `import stickler` path
-        # and force every user to install it.
+        # scikit-learn is a core dependency, so this import is guaranteed to
+        # resolve. It stays function-local rather than at module scope because
+        # this module IS on the `import stickler` path, and importing sklearn
+        # eagerly would put ~33MB of it there for every user whether or not
+        # they compute AUROC. Issue #216 removes the dependency entirely by
+        # implementing the Mann-Whitney form in numpy.
         try:
             from sklearn.metrics import roc_auc_score
-        except ImportError as exc:  # pragma: no cover - exercised by the extras gate
+        except ImportError as exc:  # pragma: no cover - core dep, should not happen
             raise ImportError(
-                "AUROCMetric requires scikit-learn. Install it with: "
-                'pip install "stickler-eval[confidence]"'
+                "AUROCMetric requires scikit-learn, which is a core dependency "
+                "of stickler-eval. Your environment looks broken; reinstall "
+                "with: pip install --force-reinstall stickler-eval"
             ) from exc
 
         y_true = [1 if p.is_match else 0 for p in pairs]

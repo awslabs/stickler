@@ -16,10 +16,9 @@ Each release links to full notes on the
   CI matrix covering every version claimed, so the floor is enforced rather
   than asserted ([#201](https://github.com/awslabs/stickler/issues/201))
 - New extras that scope the peripheral modules: `semantic` (Bedrock
-  embeddings), `confidence` (calibration metrics), `docsplit` (document packet
-  splitting), `reporting` (HTML report tables). `all` aggregates every extra
-  except `bert`, whose ML stack is large enough that installing it unasked is a
-  surprise
+  embeddings), `docsplit` (document packet splitting), `reporting` (HTML report
+  tables). `all` aggregates every extra except `bert`, whose ML stack is large
+  enough that installing it unasked is a surprise
 
 ### Changed
 
@@ -32,10 +31,14 @@ Each release links to full notes on the
   | what you were using | now needs |
   |---|---|
   | `stickler.doc_split` (raises at import) | `stickler-eval[docsplit]` |
-  | `AUROCMetric.compute()` | `stickler-eval[confidence]` |
   | `MarkdownUtil.table_df()` | `stickler-eval[reporting]` |
   | `LLMComparator(...)` | `stickler-eval[llm]` |
   | `SemanticComparator` cosine similarity | `stickler-eval[semantic]` |
+
+  Confidence calibration metrics are **not** affected: `scikit-learn` stays in
+  the core dependency set because calibration is core functionality, not an
+  add-on. The `confidence` extra is now empty and kept only so existing pins
+  keep resolving.
 
   `pip install "stickler-eval[all]"` restores everything except `bert`.
 
@@ -45,11 +48,13 @@ Each release links to full notes on the
   ([#201](https://github.com/awslabs/stickler/issues/201))
 
 - Optional comparators are now imported lazily. `import stickler` no longer
-  pulls a scientific-computing stack: 463 modules on a core install, down from
+  pulls a scientific-computing stack: 421 modules on a core install, down from
   1664, with none of pandas, scipy, scikit-learn, jinja2, torch, transformers,
-  strands, or boto3 on the path. `BERTComparator` no longer loads its model at
-  import time. Accessing an optional comparator whose extra is missing raises
-  `AttributeError`, so `hasattr()` gating keeps working
+  strands, or boto3 on the path. `scikit-learn` is a core dependency but its
+  import stays inside `AUROCMetric.compute()`, so it costs nothing at import
+  time. `BERTComparator` no longer loads its model at import time. Accessing an
+  optional comparator whose extra is missing raises `AttributeError`, so
+  `hasattr()` gating keeps working
   ([#187](https://github.com/awslabs/stickler/issues/187))
 
 - Relaxed the `scikit-learn` floor from `>=1.8.0` to `>=1.7.2`. 1.8.0 requires

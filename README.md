@@ -17,14 +17,13 @@ Whether you're extracting data from documents, performing ETL transformations, e
 pip install stickler-eval
 ```
 
-That installs the comparison engine, which is everything you need to score structured output: comparators, list matching, and per-field metrics. Optional features declare their own extras, so a default install stays light and does not pull a scientific-computing stack:
+That installs the comparison engine and confidence calibration, which is everything you need to score structured output: comparators, list matching, per-field metrics, and calibration metrics (AUROC, Brier score, ECE, error capture at budget). Genuinely optional features declare their own extras, so a default install does not pull an ML stack:
 
 | Extra | Adds | For |
 |---|---|---|
 | `[semantic]` | boto3, scipy | `SemanticComparator` (Bedrock embeddings) |
 | `[llm]` | strands-agents, jinja2 | `LLMComparator` (LLM-as-judge comparison) |
 | `[bert]` | evaluate, torch, bert-score | `BERTComparator` (BERTScore similarity) |
-| `[confidence]` | scikit-learn | Confidence calibration metrics (AUROC) |
 | `[docsplit]` | pandas, scipy, scikit-learn | Document packet splitting metrics |
 | `[reporting]` | pandas | Confusion-matrix tables in HTML reports |
 | `[all]` | all of the above except the ML stack | Convenience |

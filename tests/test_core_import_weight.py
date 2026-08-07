@@ -1,9 +1,14 @@
 """Guards that `import stickler` stays light.
 
-The comparison engine needs only pydantic, rapidfuzz, munkres, numpy, and
-python-dateutil. Everything heavier (pandas, scipy, scikit-learn, jinja2, and
+The comparison engine needs only pydantic, rapidfuzz, munkres, numpy,
+jsonschema, and python-dateutil. Everything heavier (pandas, scipy, jinja2, and
 the ML stack behind the optional comparators) belongs to a peripheral module
 and lives behind an extra.
+
+scikit-learn is the exception: it is a core dependency because confidence
+calibration is core functionality, but only ``AUROCMetric.compute()`` needs it,
+so its import stays function-local and must not appear on the import path
+either. Issue #216 removes the dependency altogether.
 
 These tests fail if a module-level import puts one of those packages back on
 the ``import stickler`` path. That regression is easy to introduce and silent:
@@ -23,7 +28,9 @@ import pytest
 FORBIDDEN_ON_CORE_PATH = {
     "pandas": "docsplit / reporting",
     "scipy": "semantic / docsplit",
-    "sklearn": "confidence / docsplit",
+    # Core dependency, but imported inside AUROCMetric.compute() so it does
+    # not cost every user ~33MB at import time.
+    "sklearn": "core (function-local in AUROCMetric)",
     "jinja2": "llm",
     "torch": "bert",
     "transformers": "bert",
@@ -62,7 +69,7 @@ def test_core_import_stays_small():
 
     The threshold is deliberately loose: it is a tripwire for something large
     arriving on the core path, not a precise budget. Measured baseline at the
-    time of writing is 463 modules on a core-only install (Python 3.12), so 900
+    time of writing is 421 modules on a core-only install (Python 3.12), so 900
     leaves roughly 2x headroom.
     """
     loaded = _modules_after_importing_stickler()

@@ -25,17 +25,23 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 
-# The comparison engine and nothing else. Peripheral modules (document
-# splitting, HTML reporting, confidence metrics) declare their own extras
-# below, so `pip install stickler-eval` does not pull a scientific-computing
-# stack to compare two objects.
+# The comparison engine plus confidence calibration, which is core
+# functionality rather than a peripheral add-on: knowing whether a model's
+# self-reported confidence tracks correctness is part of evaluating it.
+# Genuinely peripheral modules (document splitting, HTML reporting) declare
+# their own extras below.
 dependencies = [
     "pydantic>=2.11.0,<3.0.0",
     "rapidfuzz>=3.4.0,<4.0.0",
     "munkres>=1.1.4",
     "numpy>=1.26.0,<3.0.0",
     "jsonschema>=4.17.3,<5.0.0",
-    "python-dateutil>=2.8.2,<3.0.0"
+    "python-dateutil>=2.8.2,<3.0.0",
+    # AUROC is the only metric that needs it; the other three calibration
+    # metrics are pure Python. Issue #216 replaces this with a numpy
+    # implementation, after which scikit-learn leaves the dependency set.
+    # Floor is 1.7.2 rather than 1.8.0 because 1.8.0 requires Python 3.11+.
+    "scikit-learn>=1.7.2,<2.0.0",
 ]
 
 # pip-compatible extras (for `pip install -e ".[dev]"`)
@@ -90,10 +96,10 @@ semantic = [
     # SemanticComparator's cosine similarity uses scipy.spatial.
     "scipy>=1.12.0,<2.0.0",
 ]
-# Confidence calibration metrics (AUROC needs scikit-learn).
-confidence = [
-    "scikit-learn>=1.7.2,<2.0.0",
-]
+# Confidence calibration is part of the core dependency set, so this extra is
+# empty. Kept as a no-op so `pip install "stickler-eval[confidence]"` keeps
+# working for anyone who already pinned it.
+confidence = []
 # Document packet splitting: clustering and agreement metrics.
 docsplit = [
     "pandas>=2.1.1,<3.0.0",
