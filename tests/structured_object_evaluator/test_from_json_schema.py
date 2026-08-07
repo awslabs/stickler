@@ -137,12 +137,16 @@ class TestFromJsonSchemaValidation:
             StructuredModel.from_json_schema(invalid_schema)
 
     def test_missing_properties_raises_error(self):
-        """Test that schema without properties raises error."""
+        """Test that schema without properties raises an explanatory error.
+
+        The schema is valid JSON Schema; the error should explain that there
+        are no fields to compare rather than imply the schema is malformed.
+        """
         schema = {
             "type": "object"
         }
-        
-        with pytest.raises(ValueError, match="must contain 'properties'"):
+
+        with pytest.raises(ValueError, match="no 'properties'"):
             StructuredModel.from_json_schema(schema)
 
     def test_invalid_model_name_raises_error(self):

@@ -30,6 +30,26 @@ from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
 from .rich_value_helper import RichValueHelper
 
+# Name of the internal field every StructuredModel carries to hold unmatched
+# input keys. It is not part of a model's data contract and must not appear in
+# an exported JSON Schema.
+_EXTRA_FIELDS_KEY = "extra_fields"
+
+
+def _strip_extra_fields_property(schema_obj: Dict[str, Any]) -> None:
+    """Remove the internal ``extra_fields`` property from a schema object.
+
+    Operates in place on a single JSON Schema object (a top-level schema or a
+    ``$defs`` entry): drops it from ``properties`` and from ``required``. A
+    no-op when ``extra_fields`` is absent.
+    """
+    properties = schema_obj.get("properties")
+    if isinstance(properties, dict):
+        properties.pop(_EXTRA_FIELDS_KEY, None)
+    required = schema_obj.get("required")
+    if isinstance(required, list) and _EXTRA_FIELDS_KEY in required:
+        schema_obj["required"] = [r for r in required if r != _EXTRA_FIELDS_KEY]
+
 
 class StructuredModel(BaseModel):
     """Base class for models with structured comparison capabilities.
@@ -675,11 +695,34 @@ class StructuredModel(BaseModel):
         # Ensure schema has properties
         if "properties" not in schema:
             raise ValueError(
-                "JSON Schema must contain 'properties' key for object type"
+                "JSON Schema describes an object but declares no 'properties', "
+                "so there are no fields to compare. Stickler models a fixed set "
+                "of named fields; a free-form object (for example "
+                "'{\"type\": \"object\", \"additionalProperties\": true}') has "
+                "nothing to score. Add a 'properties' object, or nest this under "
+                "a field whose value you do want compared."
             )
 
         properties = schema.get("properties", {})
         required = schema.get("required", [])
+
+        # Older exports (before extra_fields was stripped from
+        # model_json_schema) carry the internal extra_fields property. Drop it
+        # so those schemas re-import, but only when it matches the internal
+        # signature (a propertyless free-form object) rather than a user field
+        # that happens to share the name.
+        extra = properties.get(_EXTRA_FIELDS_KEY)
+        if (
+            isinstance(extra, dict)
+            and extra.get("type") == "object"
+            and "properties" not in extra
+        ):
+            properties = {
+                name: prop
+                for name, prop in properties.items()
+                if name != _EXTRA_FIELDS_KEY
+            }
+            required = [r for r in required if r != _EXTRA_FIELDS_KEY]
 
         # Create converter and convert properties to field definitions
         converter = JsonSchemaFieldConverter(schema, field_path=field_path)
@@ -1287,6 +1330,18 @@ class StructuredModel(BaseModel):
             JSON schema with added comparison metadata
         """
         schema = super().model_json_schema(**kwargs)
+
+        # ``extra_fields`` is internal plumbing (it holds unmatched keys, see
+        # the field definition), not part of the user's data contract. Pydantic
+        # still emits it here because ``exclude=True`` governs serialization,
+        # not schema generation, and it emits it as a propertyless
+        # ``{"type": "object", "additionalProperties": true}`` that
+        # ``from_json_schema`` then rejects. Drop it so the output round-trips
+        # and does not advertise an internal field. Nested models appear under
+        # ``$defs`` with the same leak, so strip it there too.
+        _strip_extra_fields_property(schema)
+        for definition in schema.get("$defs", {}).values():
+            _strip_extra_fields_property(definition)
 
         # Add comparison metadata to each field in the schema
         for field_name, field_info in cls.model_fields.items():

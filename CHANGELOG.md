@@ -9,6 +9,21 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Fixed
+
+- `model_json_schema()` output can be re-imported by `from_json_schema()`. The
+  internal `extra_fields` property is no longer emitted (at the top level or in
+  nested `$defs`), where it previously appeared as a propertyless
+  `{"type": "object"}` that `from_json_schema()` rejected. Schemas exported by
+  earlier versions still import, because `from_json_schema()` skips a top-level
+  `extra_fields` that matches that internal shape; a user field genuinely named
+  `extra_fields` is untouched
+  ([#214](https://github.com/awslabs/stickler/issues/214))
+- `from_json_schema()` now explains why it rejects an object schema with no
+  `properties` (there are no fields to compare) instead of reporting it as an
+  invalid schema, since such a schema is valid JSON Schema
+  ([#214](https://github.com/awslabs/stickler/issues/214))
+
 ## [0.6.0] - 2026-07-30
 
 ### Added
