@@ -8,16 +8,20 @@ import warnings
 from typing import Any, Dict, Optional
 
 from pydantic import Field
+from pydantic.fields import PydanticUndefined
 
 from stickler.comparators.base import BaseComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
+
+# Sentinel to detect "no default provided" vs "default=None"
+_UNSET = PydanticUndefined
 
 
 def ComparableField(
     comparator: Optional[BaseComparator] = None,
     threshold: float = 0.5,
     weight: float = 1.0,
-    default: Any = None,
+    default: Any = _UNSET,
     aggregate: bool = False,
     clip_under_threshold: bool = True,
     # Pydantic Field parameters (all optional, just like Field)
@@ -35,7 +39,8 @@ def ComparableField(
         comparator: Comparator to use for field comparison (default: LevenshteinComparator)
         threshold: Minimum similarity score to consider a match (default: 0.5)
         weight: Weight of this field in overall score calculation (default: 1.0)
-        default: Default value for the field (default: None)
+        default: Default value for the field. If not provided, the field is required.
+            Use ``default=None`` explicitly for optional fields with None default.
         aggregate: DEPRECATED - This parameter is deprecated and will be removed in a future version.
                   Use the new universal 'aggregate' field in compare_with() output instead.
         clip_under_threshold: Whether to zero out scores below threshold (default: True)
@@ -49,8 +54,11 @@ def ComparableField(
 
     Example:
         class MyModel(StructuredModel):
-            # Basic usage (no alias):
+            # Required field (no default):
             name: str = ComparableField(threshold=0.8)
+
+            # Optional field (explicit default=None):
+            nickname: Optional[str] = ComparableField(threshold=0.7, default=None)
 
             # With alias (new feature):
             email: str = ComparableField(
@@ -59,6 +67,12 @@ def ComparableField(
                 description="User's email",
                 examples=["user@example.com"]
             )
+
+    .. versionchanged:: 0.7.0
+        Fields without an explicit ``default=`` are now required, following
+        standard Pydantic semantics. Previously all fields defaulted to None.
+        To migrate existing code, add ``default=None`` to fields that should
+        be optional.
     """
     # Issue deprecation warning if aggregate=True is used
     if aggregate:
@@ -135,15 +149,22 @@ def ComparableField(
         k: v for k, v in field_kwargs.items() if k != "json_schema_extra"
     }
 
-    # Create the Field
-    field = Field(
-        default=default,
-        alias=alias,
-        description=description,
-        examples=examples,
-        json_schema_extra=final_json_schema_extra,
+    # Build Field kwargs, only including default if explicitly provided
+    field_kwargs_final = {
+        "alias": alias,
+        "description": description,
+        "examples": examples,
+        "json_schema_extra": final_json_schema_extra,
         **clean_field_kwargs,
-    )
+    }
+
+    # Only pass default if user explicitly provided one
+    # This is the key fix: PydanticUndefined means "required"
+    if default is not _UNSET:
+        field_kwargs_final["default"] = default
+
+    # Create the Field
+    field = Field(**field_kwargs_final)
 
     return field
 

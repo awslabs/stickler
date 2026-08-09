@@ -20,7 +20,7 @@ class Person(StructuredModel):
     )
     age: Optional[int] = Field(None)
     email: Optional[str] = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.9, weight=1.0
+        comparator=LevenshteinComparator(), threshold=0.9, weight=1.0, default=None
     )
 
 

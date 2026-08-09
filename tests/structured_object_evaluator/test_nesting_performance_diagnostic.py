@@ -43,7 +43,7 @@ class Container(StructuredModel):
         comparator=LevenshteinComparator(), threshold=0.8, weight=1.0
     )
     items: List[SimpleItem] = ComparableField(weight=1.0)
-    main_item: Optional[SimpleItem] = ComparableField(threshold=0.8, weight=1.0)
+    main_item: Optional[SimpleItem] = ComparableField(threshold=0.8, weight=1.0, default=None)
 
 
 # Level 3: Contains Level 2
@@ -58,7 +58,7 @@ class Group(StructuredModel):
         comparator=LevenshteinComparator(), threshold=0.8, weight=1.0
     )
     containers: List[Container] = ComparableField(weight=1.0)
-    primary_container: Optional[Container] = ComparableField(threshold=0.8, weight=1.0)
+    primary_container: Optional[Container] = ComparableField(threshold=0.8, weight=1.0, default=None)
 
 
 # Level 4: Contains Level 3
@@ -73,7 +73,7 @@ class Department(StructuredModel):
         comparator=LevenshteinComparator(), threshold=0.8, weight=1.0
     )
     groups: List[Group] = ComparableField(weight=1.0)
-    main_group: Optional[Group] = ComparableField(threshold=0.8, weight=1.0)
+    main_group: Optional[Group] = ComparableField(threshold=0.8, weight=1.0, default=None)
 
 
 def create_simple_item(base_id: int, variation: str = "base") -> SimpleItem:

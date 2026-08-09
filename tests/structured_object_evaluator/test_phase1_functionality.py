@@ -22,7 +22,7 @@ class Phase1TestModel(StructuredModel):
     age: Optional[int] = ComparableField(
         comparator=ExactComparator(),
         threshold=1.0,
-        weight=0.5,
+        weight=0.5, default=None
     )
 
     tags: Optional[List[str]] = ComparableField(

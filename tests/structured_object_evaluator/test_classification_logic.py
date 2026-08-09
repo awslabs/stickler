@@ -20,13 +20,13 @@ class SimpleModel(StructuredModel):
     """Simple model with basic field types for testing classification logic."""
 
     name: Optional[str] = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.7, weight=1.0
+        comparator=LevenshteinComparator(), threshold=0.7, weight=1.0, default=None
     )
     count: Optional[int] = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.9, weight=1.0
+        comparator=LevenshteinComparator(), threshold=0.9, weight=1.0, default=None
     )
     description: Optional[str] = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.7, weight=1.0
+        comparator=LevenshteinComparator(), threshold=0.7, weight=1.0, default=None
     )
 
 
@@ -34,16 +34,16 @@ class NestedModel(StructuredModel):
     """Model with a nested structured model field."""
 
     id: Optional[str] = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.9, weight=1.0
+        comparator=LevenshteinComparator(), threshold=0.9, weight=1.0, default=None
     )
-    details: Optional[SimpleModel] = ComparableField(weight=1.0)
+    details: Optional[SimpleModel] = ComparableField(weight=1.0, default=None)
 
 
 class ListModel(StructuredModel):
     """Model with list fields for testing classification logic."""
 
     id: Optional[str] = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.9, weight=1.0
+        comparator=LevenshteinComparator(), threshold=0.9, weight=1.0, default=None
     )
     tags: Optional[List[str]] = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.7, weight=1.0

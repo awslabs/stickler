@@ -18,10 +18,10 @@ from stickler.structured_object_evaluator.models.structured_model import Structu
 # Define the models for the test
 class Person(StructuredModel):
     Type: Optional[str] = ComparableField(
-        comparator=ExactComparator(), threshold=1.0, weight=1.0
+        comparator=ExactComparator(), threshold=1.0, weight=1.0, default=None
     )
     Name: Optional[str] = ComparableField(
-        comparator=ExactComparator(), threshold=1.0, weight=1.0
+        comparator=ExactComparator(), threshold=1.0, weight=1.0, default=None
     )
 
     match_threshold = 0.8
@@ -29,13 +29,13 @@ class Person(StructuredModel):
 
 class BookInfo(StructuredModel):
     pages: Optional[str] = ComparableField(
-        comparator=ExactComparator(), threshold=1.0, weight=1.0
+        comparator=ExactComparator(), threshold=1.0, weight=1.0, default=None
     )
     author: Optional[str] = ComparableField(
-        comparator=ExactComparator(), threshold=1.0, weight=1.0
+        comparator=ExactComparator(), threshold=1.0, weight=1.0, default=None
     )
     weight: Optional[str] = ComparableField(
-        comparator=ExactComparator(), threshold=1.0, weight=1.0
+        comparator=ExactComparator(), threshold=1.0, weight=1.0, default=None
     )
 
     match_threshold = 0.8
@@ -43,13 +43,13 @@ class BookInfo(StructuredModel):
 
 class Reference(StructuredModel):
     Volume: Optional[str] = ComparableField(
-        comparator=ExactComparator(), threshold=1.0, weight=1.0
+        comparator=ExactComparator(), threshold=1.0, weight=1.0, default=None
     )
     Page: Optional[str] = ComparableField(
-        comparator=ExactComparator(), threshold=1.0, weight=1.0
+        comparator=ExactComparator(), threshold=1.0, weight=1.0, default=None
     )
     Publication: Optional[str] = ComparableField(
-        comparator=ExactComparator(), threshold=1.0, weight=1.0
+        comparator=ExactComparator(), threshold=1.0, weight=1.0, default=None
     )
 
     match_threshold = 0.8
@@ -57,7 +57,7 @@ class Reference(StructuredModel):
 
 class PublicationRecord(StructuredModel):
     record_id: Optional[str] = ComparableField(
-        comparator=ExactComparator(), threshold=1.0, weight=1.0
+        comparator=ExactComparator(), threshold=1.0, weight=1.0, default=None
     )
 
     people: Optional[List[Person]] = ComparableField(weight=1.0)
@@ -67,27 +67,27 @@ class PublicationRecord(StructuredModel):
     references: Optional[List[Reference]] = ComparableField(weight=1.0)
 
     State: Optional[str] = ComparableField(
-        comparator=ExactComparator(), threshold=1.0, weight=1.0
+        comparator=ExactComparator(), threshold=1.0, weight=1.0, default=None
     )
 
     County: Optional[str] = ComparableField(
-        comparator=ExactComparator(), threshold=1.0, weight=1.0
+        comparator=ExactComparator(), threshold=1.0, weight=1.0, default=None
     )
 
     Edition: Optional[str] = ComparableField(
-        comparator=ExactComparator(), threshold=1.0, weight=1.0
+        comparator=ExactComparator(), threshold=1.0, weight=1.0, default=None
     )
 
     Title: Optional[str] = ComparableField(
-        comparator=ExactComparator(), threshold=1.0, weight=1.0
+        comparator=ExactComparator(), threshold=1.0, weight=1.0, default=None
     )
 
     Date: Optional[str] = ComparableField(
-        comparator=ExactComparator(), threshold=1.0, weight=1.0
+        comparator=ExactComparator(), threshold=1.0, weight=1.0, default=None
     )
 
     Price: Optional[str] = ComparableField(
-        comparator=ExactComparator(), threshold=1.0, weight=1.0
+        comparator=ExactComparator(), threshold=1.0, weight=1.0, default=None
     )
 
 

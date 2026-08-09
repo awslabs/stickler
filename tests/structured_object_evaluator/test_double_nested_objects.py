@@ -23,7 +23,7 @@ class ContactInfo(StructuredModel):
 
     email: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.9)
     phone: Optional[str] = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.9
+        comparator=LevenshteinComparator(), threshold=0.9, default=None
     )
 
 
@@ -36,9 +36,9 @@ class Address(StructuredModel):
     city: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.9)
     state: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.9)
     zip_code: Optional[str] = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.9
+        comparator=LevenshteinComparator(), threshold=0.9, default=None
     )
-    contact_info: Optional[ContactInfo] = ComparableField()  # Double-nested field
+    contact_info: Optional[ContactInfo] = ComparableField(default=None)  # Double-nested field
 
 
 class Person(StructuredModel):

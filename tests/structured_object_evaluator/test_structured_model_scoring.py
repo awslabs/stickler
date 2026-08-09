@@ -18,7 +18,7 @@ class SimpleModel(StructuredModel):
     """Simple model to test basic scoring."""
 
     text: Optional[str] = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.7, weight=1.0
+        comparator=LevenshteinComparator(), threshold=0.7, weight=1.0, default=None
     )
 
 

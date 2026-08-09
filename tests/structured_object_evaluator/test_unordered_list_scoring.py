@@ -18,7 +18,7 @@ class SimpleItem(StructuredModel):
     name: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.7)
 
     value: Optional[str] = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.7
+        comparator=LevenshteinComparator(), threshold=0.7, default=None
     )
 
 

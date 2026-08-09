@@ -34,7 +34,7 @@ class SimpleModel(StructuredModel):
         comparator=ExactComparator(), threshold=1.0, weight=1.0
     )
     score: Optional[float] = ComparableField(
-        comparator=NumericComparator(absolute_tolerance=0.02), threshold=1.0, weight=1.5
+        comparator=NumericComparator(absolute_tolerance=0.02), threshold=1.0, weight=1.5, default=None
     )
 
 

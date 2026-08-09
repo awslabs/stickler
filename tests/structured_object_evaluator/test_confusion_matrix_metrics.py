@@ -23,10 +23,10 @@ class SimpleModel(StructuredModel):
         comparator=LevenshteinComparator(), threshold=0.7, weight=1.0
     )
     count: Optional[int] = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.9, weight=1.0
+        comparator=LevenshteinComparator(), threshold=0.9, weight=1.0, default=None
     )
     description: Optional[str] = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.7, weight=1.0
+        comparator=LevenshteinComparator(), threshold=0.7, weight=1.0, default=None
     )
 
 
@@ -38,7 +38,7 @@ class NestedModel(StructuredModel):
     id: str = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.9, weight=1.0
     )
-    details: Optional[SimpleModel] = ComparableField(threshold=0.7, weight=1.0)
+    details: Optional[SimpleModel] = ComparableField(threshold=0.7, weight=1.0, default=None)
 
 
 class ListModel(StructuredModel):

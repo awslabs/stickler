@@ -25,7 +25,7 @@ class Address(StructuredModel):
     city: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.9)
     state: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.9)
     zip_code: Optional[str] = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.9
+        comparator=LevenshteinComparator(), threshold=0.9, default=None
     )
 
 

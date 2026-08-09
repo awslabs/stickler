@@ -32,7 +32,7 @@ class ComplexTestModel(StructuredModel):
     )
 
     description: Optional[str] = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.5, weight=0.5
+        comparator=LevenshteinComparator(), threshold=0.5, weight=0.5, default=None
     )
 
     tags: List[str] = ComparableField(

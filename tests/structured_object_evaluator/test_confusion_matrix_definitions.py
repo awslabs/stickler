@@ -35,7 +35,7 @@ class SimpleModel(StructuredModel):
     """Simple model with basic field types for testing confusion matrix metrics."""
 
     name: Optional[str] = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.7, weight=1.0
+        comparator=LevenshteinComparator(), threshold=0.7, weight=1.0, default=None
     )
     count: Optional[int] = ComparableField(
         default=None, comparator=ExactComparator(), threshold=1.0, weight=1.0
@@ -51,7 +51,7 @@ class NestedModel(StructuredModel):
     id: str = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.9, weight=1.0
     )
-    details: Optional[SimpleModel] = ComparableField(threshold=0.7, weight=1.0)
+    details: Optional[SimpleModel] = ComparableField(threshold=0.7, weight=1.0, default=None)
 
 
 class ListModel(StructuredModel):

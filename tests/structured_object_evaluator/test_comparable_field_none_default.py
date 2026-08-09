@@ -15,8 +15,8 @@ from stickler.structured_object_evaluator.models.structured_model import Structu
 
 
 class TwoFieldModel(StructuredModel):
-    code: Optional[str] = ComparableField(weight=1.0)
-    description: Optional[str] = ComparableField(weight=1.0)
+    code: Optional[str] = ComparableField(weight=1.0, default=None)
+    description: Optional[str] = ComparableField(weight=1.0, default=None)
 
 
 def test_first_field_none_stays_none():

@@ -41,7 +41,7 @@ class Subtask(StructuredModel):
         comparator=LevenshteinComparator(), threshold=0.8, weight=1.5
     )
     description: Optional[str] = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.7, weight=1.0
+        comparator=LevenshteinComparator(), threshold=0.7, weight=1.0, default=None
     )
     completed: bool = ComparableField(
         comparator=ExactComparator(), threshold=1.0, weight=1.0
@@ -70,7 +70,7 @@ class Task(StructuredModel):
         comparator=ExactComparator(), threshold=1.0, weight=1.0
     )
     subtasks: List[Subtask] = ComparableField(weight=1.0)
-    main_subtask: Optional[Subtask] = ComparableField(threshold=0.8, weight=1.0)
+    main_subtask: Optional[Subtask] = ComparableField(threshold=0.8, weight=1.0, default=None)
 
 
 # Level 4: Project
@@ -92,7 +92,7 @@ class Project(StructuredModel):
         comparator=LevenshteinComparator(), threshold=0.9, weight=1.0
     )
     tasks: List[Task] = ComparableField(weight=1.5)
-    critical_task: Optional[Task] = ComparableField(threshold=0.8, weight=2.0)
+    critical_task: Optional[Task] = ComparableField(threshold=0.8, weight=2.0, default=None)
 
 
 # Level 3: Team
@@ -112,7 +112,7 @@ class Team(StructuredModel):
         comparator=LevenshteinComparator(), threshold=0.8, weight=1.0
     )
     projects: List[Project] = ComparableField(weight=2.0)
-    flagship_project: Optional[Project] = ComparableField(threshold=0.8, weight=2.0)
+    flagship_project: Optional[Project] = ComparableField(threshold=0.8, weight=2.0, default=None)
 
 
 # Level 2: Department
@@ -134,7 +134,7 @@ class Department(StructuredModel):
         comparator=ExactComparator(), threshold=0.95, weight=2.0
     )
     teams: List[Team] = ComparableField(weight=2.0)
-    primary_team: Optional[Team] = ComparableField(threshold=0.8, weight=2.0)
+    primary_team: Optional[Team] = ComparableField(threshold=0.8, weight=2.0, default=None)
 
 
 # Level 1: Company (top level)
@@ -156,7 +156,7 @@ class Company(StructuredModel):
         comparator=LevenshteinComparator(), threshold=0.8, weight=1.0
     )
     departments: List[Department] = ComparableField(weight=2.0)
-    main_department: Optional[Department] = ComparableField(threshold=0.8, weight=2.0)
+    main_department: Optional[Department] = ComparableField(threshold=0.8, weight=2.0, default=None)
 
 
 class TestDeepNesting6Levels:

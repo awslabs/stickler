@@ -53,7 +53,7 @@ class DocumentField(StructuredModel):
         comparator=LevenshteinComparator(), threshold=0.9
     )
     total_amount: Optional[float] = ComparableField(
-        comparator=NumericComparator(), threshold=0.95
+        comparator=NumericComparator(), threshold=0.95, default=None
     )
 
 

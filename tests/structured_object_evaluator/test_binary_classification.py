@@ -24,19 +24,19 @@ class SimpleModel(StructuredModel):
     high_threshold_field: Optional[str] = ComparableField(
         comparator=LevenshteinComparator(),
         threshold=0.9,  # High threshold requires close match
-        weight=1.0,
+        weight=1.0, default=None
     )
 
     # Low threshold field - even partial matches count
     low_threshold_field: Optional[str] = ComparableField(
         comparator=LevenshteinComparator(),
         threshold=0.5,  # Low threshold allows partial matches
-        weight=1.0,
+        weight=1.0, default=None
     )
 
     # Regular field - moderate threshold
     regular_field: Optional[str] = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.7, weight=1.0
+        comparator=LevenshteinComparator(), threshold=0.7, weight=1.0, default=None
     )
 
 
