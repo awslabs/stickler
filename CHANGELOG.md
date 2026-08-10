@@ -37,6 +37,23 @@ Each release links to full notes on the
   before any comparator runs
   ([#200](https://github.com/awslabs/stickler/issues/200))
 
+- Restore per-comparator method documentation on the published API reference.
+  mkdocstrings hides single-underscore members by default, so moving the
+  extension point to `_compare()` dropped every comparator's `Args`, `Returns`
+  and `Raises` detail from the site, leaving only the base class. The
+  comparator page now renders all 12 `_compare` entries again
+  ([#228](https://github.com/awslabs/stickler/issues/228))
+
+- Fix the documentation build, which failed on `mkdocs build` with
+  `Could not collect 'stickler.comparators.BERTComparator'`. `BERTComparator`
+  and `LLMComparator` are exposed lazily through the package `__getattr__` so
+  that `import stickler` does not pull `torch`/`transformers` or
+  `strands`/`boto3`; griffe resolves identifiers statically and cannot see a
+  name that exists only at attribute-access time. The API reference now
+  addresses both by their defining module. This broke the docs deploy for any
+  push to `main` touching `src/` or `docs/`
+  ([#228](https://github.com/awslabs/stickler/issues/228))
+
 ### Changed
 
 - **Breaking:** the peripheral modules now require their extra. `pandas`,
