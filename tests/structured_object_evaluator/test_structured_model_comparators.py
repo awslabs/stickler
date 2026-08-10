@@ -22,17 +22,14 @@ class CaseInsensitiveComparator(LevenshteinComparator):
         """Return the name of the comparator."""
         return "case_insensitive"
 
-    def compare(self, a: Any, b: Any) -> float:
+    def _compare(self, a: Any, b: Any) -> float:
         """Compare strings in a case-insensitive way."""
-        if a is None or b is None:
-            return 1.0 if a == b else 0.0
-
         # Convert both to strings and lowercase
         a_str = str(a).lower()
         b_str = str(b).lower()
 
         # Use the parent Levenshtein implementation
-        return super().compare(a_str, b_str)
+        return super()._compare(a_str, b_str)
 
 
 # Define a stricter comparator that preserves case
@@ -44,11 +41,8 @@ class StrictCaseComparator(BaseComparator):
         """Return the name of the comparator."""
         return "strict_case"
 
-    def compare(self, a: Any, b: Any) -> float:
+    def _compare(self, a: Any, b: Any) -> float:
         """Compare strings with case sensitivity."""
-        if a is None or b is None:
-            return 1.0 if a == b else 0.0
-
         # Convert to strings but preserve case
         a_str = str(a)
         b_str = str(b)

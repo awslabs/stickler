@@ -20,6 +20,23 @@ Each release links to full notes on the
   tables). `all` aggregates every extra except `bert`, whose ML stack is large
   enough that installing it unasked is a surprise
 
+### Fixed
+
+- Handle `None` consistently across all comparators. `None` is a missing
+  value and no longer compares equal to an empty string: `(None, "")` now
+  scores `0.0` everywhere, and `(None, None)` scores `1.0` everywhere.
+  Previously `LevenshteinComparator` coerced `None` to `""` and scored
+  `(None, "")` as `1.0`, while `SemanticComparator` and `BERTComparator`
+  scored `(None, None)` as `0.0`.
+
+  **This changes results for code calling comparators directly** --
+  `LevenshteinComparator().compare(None, "")` goes from `1.0` to `0.0`.
+  `compare_with()` is largely unaffected for string fields:
+  `NullHelper.is_effectively_null_for_primitives` treats both `None` and
+  `""` as null and the dispatcher resolves that pair as a true negative
+  before any comparator runs
+  ([#200](https://github.com/awslabs/stickler/issues/200))
+
 ### Changed
 
 - **Breaking:** the peripheral modules now require their extra. `pandas`,
@@ -60,6 +77,36 @@ Each release links to full notes on the
 - Relaxed the `scikit-learn` floor from `>=1.8.0` to `>=1.7.2`. 1.8.0 requires
   Python 3.11+, so the old floor made the 3.10 support above unresolvable. The
   lock pins 1.7.2 below 3.11 and 1.8.0 above
+
+- **Deprecated (custom comparators):** the extension point for comparators is
+  now `_compare()` instead of `compare()`. `BaseComparator.compare()` is a
+  template method that applies the shared `None` policy and then delegates
+  to `_compare()`, so the policy is defined once and cannot drift between
+  comparators. Callers are unaffected -- `compare()`, `__call__`, and
+  `binary_compare()` are unchanged.
+
+  Custom comparators must rename their `compare()` to `_compare()` and can
+  delete any `None` handling it contains, since `_compare()` only ever
+  receives present values.
+
+  This is not a hard break. A deprecation shim keeps pre-rename comparators
+  working: one that implements `compare()` still constructs and behaves
+  exactly as written, and emits a `DeprecationWarning` naming the rename.
+  That holds whether it extends `BaseComparator` directly, extends a
+  concrete comparator, or inherits `compare()` from a mixin.
+
+  An un-migrated comparator does **not** receive the `None` policy, because
+  its `compare()` shadows the template method, so the rename is still
+  required. The shim is removed in 0.8.0, after which such a comparator
+  raises `TypeError` at construction
+  ([#215](https://github.com/awslabs/stickler/issues/215)).
+
+  Note that the pre-fix `(None, "") -> 1.0` result cannot be inherited: the
+  coercion was removed from Levenshtein's algorithm rather than guarded, so
+  an un-migrated subclass that delegates upward gets the corrected score.
+  Only a subclass that reimplemented the coercion in its own `compare()`
+  still returns the old value
+  ([#200](https://github.com/awslabs/stickler/issues/200))
 
 ## [0.6.0] - 2026-07-30
 
