@@ -70,6 +70,12 @@ class ComparatorRegistry:
             return None
         module_path, _, _ = spec
         try:
+            # `module_path` is a literal from `_BUILTINS`, not the caller's
+            # `name`. An unregistered `name` misses `_pending` and returns None
+            # above, so a caller-supplied string is only ever a dict key and
+            # never an import path. Semgrep's taint rule cannot see through the
+            # dict lookup.
+            # nosemgrep: python.lang.security.audit.non-literal-import.non-literal-import
             module = importlib.import_module(module_path)
         except ImportError:
             return None

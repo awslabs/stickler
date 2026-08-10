@@ -54,6 +54,15 @@ Each release links to full notes on the
   push to `main` touching `src/` or `docs/`
   ([#228](https://github.com/awslabs/stickler/issues/228))
 
+- Clear three `non-literal-import` findings from the ASH security scan, at the
+  two package `__getattr__` hooks and `ComparatorRegistry._resolve`. All three
+  are false positives: the imported path is a literal from a module-level
+  allowlist and the caller's string is only ever a dict key, so an
+  unrecognized name is rejected before any import is attempted. Annotated with
+  `# nosemgrep` plus the reasoning, and pinned by
+  `tests/test_lazy_import_allowlists.py`, which spies on `import_module` to
+  assert no import is attempted for a hostile name. No behavior change
+
 ### Changed
 
 - **Breaking:** the peripheral modules now require their extra. `pandas`,
