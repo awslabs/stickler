@@ -25,11 +25,12 @@ Example:
 """
 
 import html
-from typing import Any, Dict, Union
-
-from jinja2 import Template
+from typing import TYPE_CHECKING, Any, Dict, Union
 
 from stickler.comparators.base import BaseComparator
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from jinja2 import Template
 
 try:
     from botocore.exceptions import NoCredentialsError
@@ -137,13 +138,27 @@ class LLMComparator(BaseComparator):
         """
         return "You are a helpful assistant that compares two values and determines if they are equivalent. Only return one word: 'true' or 'false'."
 
-    def _default_prompt_template(self) -> Template:
+    def _default_prompt_template(self) -> "Template":
         """Generate the default Jinja2 template for comparison prompts.
 
         Returns:
             Template: Jinja2 template that formats comparison prompts with values
                 and optional evaluation guidelines.
+
+        Raises:
+            ImportError: If jinja2 is not installed.
         """
+        # Imported here rather than at module scope: jinja2 is only needed to
+        # render this prompt, and a module-level import would put it on the
+        # `import stickler` path via the comparator registry.
+        try:
+            from jinja2 import Template
+        except ImportError as exc:  # pragma: no cover - exercised by the extras gate
+            raise ImportError(
+                "LLMComparator requires jinja2. Install it with: "
+                'pip install "stickler-eval[llm]"'
+            ) from exc
+
         prompt_template = """
             Compare these two values and determine if they are equivalent:
 
