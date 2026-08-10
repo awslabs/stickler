@@ -35,6 +35,17 @@ Each matched pair is classified using `StructuredModel.match_threshold`:
 | GT item unmatched | **FN** | No |
 | Pred item unmatched | **FA** | No |
 
+The threshold splits matched pairs into TP and FD; it does not un-match them.
+A pair the algorithm assigned is a match, so **similarity magnitude never
+changes the classification** -- a pair at similarity `0.0` is still an assigned
+pair and is therefore FD, not FN + FA. Only items with no partner at all
+become FN or FA. This holds identically for a one-item list and a hundred-item
+one; see `tests/common/algorithms/test_hungarian_path_parity.py`.
+
+Whether an FD counts against recall is a separate decision, controlled by
+`recall_with_fd` (see
+[Understanding Results](../Guides/Evaluation/understanding-results.md)).
+
 ## Concrete Example: Transaction Matching
 
 ### Model Definition
