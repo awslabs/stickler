@@ -13,12 +13,29 @@ from stickler.comparators.base import BaseComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 
 
+class _Unset:
+    """Sentinel distinguishing "argument omitted" from "argument passed".
+
+    Needed because ``aggregate=False`` is both the historical default and a
+    value a user may pass explicitly. Only the explicit case should warn.
+    """
+
+    def __bool__(self) -> bool:  # pragma: no cover - defensive
+        return False
+
+    def __repr__(self) -> str:  # pragma: no cover - defensive
+        return "<unset>"
+
+
+_UNSET = _Unset()
+
+
 def ComparableField(
     comparator: Optional[BaseComparator] = None,
     threshold: float = 0.5,
     weight: float = 1.0,
     default: Any = None,
-    aggregate: bool = False,
+    aggregate: Any = _UNSET,
     clip_under_threshold: bool = True,
     # Pydantic Field parameters (all optional, just like Field)
     alias: Optional[str] = None,
@@ -36,8 +53,13 @@ def ComparableField(
         threshold: Minimum similarity score to consider a match (default: 0.5)
         weight: Weight of this field in overall score calculation (default: 1.0)
         default: Default value for the field (default: None)
-        aggregate: DEPRECATED - This parameter is deprecated and will be removed in a future version.
-                  Use the new universal 'aggregate' field in compare_with() output instead.
+        aggregate: DEPRECATED, has no effect, and will be removed in 0.8.0.
+                  Passing it at all (either value) emits a DeprecationWarning.
+                  Aggregation is applied at the comparison layer: every node in
+                  compare_with() output already carries an 'aggregate' block
+                  summing the primitive field metrics below it. Remove the
+                  argument; there is no replacement to adopt.
+                  See https://github.com/awslabs/stickler/issues/226
         clip_under_threshold: Whether to zero out scores below threshold (default: True)
         alias: Pydantic field alias for serialization (default: None)
         description: Field description for documentation (default: None)
@@ -60,15 +82,25 @@ def ComparableField(
                 examples=["user@example.com"]
             )
     """
-    # Issue deprecation warning if aggregate=True is used
-    if aggregate:
+    # Warn on ANY explicit use, not just aggregate=True. Passing False was
+    # silent before, so those callers had no signal that the parameter is going
+    # away; they would have met a bare TypeError on upgrade. The value itself
+    # has no effect either way: aggregation is applied at the comparison layer
+    # and every node in compare_with() output carries an `aggregate` block.
+    if aggregate is not _UNSET:
         warnings.warn(
-            "The 'aggregate' parameter in ComparableField is deprecated and will be removed "
-            "in a future version. All nodes now automatically include an 'aggregate' field "
-            "in the compare_with() output that sums primitive field metrics below that node.",
+            "The 'aggregate' parameter in ComparableField is deprecated, has no "
+            "effect, and will be removed in 0.8.0. All nodes automatically "
+            "include an 'aggregate' field in the compare_with() output that "
+            "sums primitive field metrics below that node. Remove the argument; "
+            "no replacement is needed. See "
+            "https://github.com/awslabs/stickler/issues/226",
             DeprecationWarning,
             stacklevel=2,
         )
+        aggregate = bool(aggregate)
+    else:
+        aggregate = False
 
     # Create the actual comparator instance
     actual_comparator = comparator or LevenshteinComparator()

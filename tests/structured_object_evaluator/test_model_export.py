@@ -4,6 +4,7 @@ This module tests the to_json_schema() and to_stickler_config() methods
 that export StructuredModel configurations for serialization.
 """
 
+import warnings
 from typing import List, Optional
 
 from stickler.comparators.levenshtein import LevenshteinComparator
@@ -204,15 +205,24 @@ def test_to_stickler_config_primitive_list():
 
 
 def test_export_preserves_metadata():
-    """Test that all comparison metadata is preserved in export."""
-    
-    class DetailedModel(StructuredModel):
-        field1: str = ComparableField(
-            threshold=0.75,
-            weight=1.5,
-            clip_under_threshold=False,
-            aggregate=True
-        )
+    """Test that all comparison metadata is preserved in export.
+
+    Still exercises the deprecated ``aggregate`` parameter on purpose: it is
+    part of the serialized export format, so the round trip has to keep working
+    until the field is removed in 0.8.0 (issue #226). The warning is expected
+    here and suppressed rather than silenced globally.
+    """
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+
+        class DetailedModel(StructuredModel):
+            field1: str = ComparableField(
+                threshold=0.75,
+                weight=1.5,
+                clip_under_threshold=False,
+                aggregate=True
+            )
     
     # Test JSON Schema export
     schema = DetailedModel.to_json_schema()

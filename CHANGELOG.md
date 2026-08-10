@@ -125,6 +125,18 @@ Each release links to full notes on the
   still returns the old value
   ([#200](https://github.com/awslabs/stickler/issues/200))
 
+- `ComparableField(aggregate=...)` now emits a `DeprecationWarning` for *any*
+  explicit use, where previously only `aggregate=True` warned and
+  `aggregate=False` was silent. The parameter has no effect: aggregation is
+  applied at the comparison layer, and every node in `compare_with()` output
+  already carries an `aggregate` block summing the primitive field metrics
+  below it.
+
+  Callers passing `aggregate=False` had no signal the parameter was going away
+  and would have met a bare `TypeError` on removal. Remove the argument; there
+  is no replacement to adopt. Scheduled for removal in 0.8.0
+  ([#226](https://github.com/awslabs/stickler/issues/226))
+
 ## [0.6.0] - 2026-07-30
 
 ### Added

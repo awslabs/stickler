@@ -1,11 +1,16 @@
 
 
-"""Comprehensive test coverage for aggregate=False behavior.
+"""Comprehensive coverage for non-rolled-up nested metrics.
 
-This test suite ensures that StructuredModel fields with aggregate=False behave correctly:
+Ensures that nested StructuredModel fields behave correctly:
 - Object-level metrics count objects, not nested field rollups
 - Nested field details are preserved for debugging
 - Confusion matrix counts are bounded by max objects being compared
+
+Historically these models passed ``aggregate=False`` explicitly. That
+parameter is deprecated and has no effect (see issue #226) -- the behavior
+asserted here is simply how nested metrics work, so the argument was dropped
+rather than the tests changed.
 """
 
 from typing import List, Optional
@@ -34,7 +39,6 @@ class SimpleOwner(StructuredModel):
         comparator=ExactComparator(),
         threshold=1.0,
         weight=1.0,
-        aggregate=False,  # KEY: This should NOT rollup nested field metrics
     )
 
 
@@ -59,7 +63,6 @@ class DetailedContact(StructuredModel):
         comparator=ExactComparator(),
         threshold=1.0,
         weight=1.0,
-        aggregate=False,  # Double-nested aggregate=False
     )
 
 
@@ -69,7 +72,6 @@ class DetailedOwner(StructuredModel):
         comparator=ExactComparator(),
         threshold=1.0,
         weight=1.0,
-        aggregate=False,  # Single-nested aggregate=False
     )
 
 
@@ -93,7 +95,6 @@ class Order(StructuredModel):
     )
     products: List[Product] = ComparableField(
         weight=1.0,
-        aggregate=False,  # List with aggregate=False
     )
 
 
@@ -358,7 +359,7 @@ def test_list_aggregate_false():
 
 
 def test_mixed_aggregate_settings():
-    """Test mixed  and aggregate=False in same model."""
+    """Test a model mixing primitive, nested, and list fields."""
 
     class MixedModel(StructuredModel):
         simple_field: str = ComparableField(
@@ -374,7 +375,6 @@ def test_mixed_aggregate_settings():
             comparator=ExactComparator(),
             threshold=1.0,
             weight=1.0,
-            aggregate=False,  # This should count as single object
         )
 
     true_model = MixedModel(

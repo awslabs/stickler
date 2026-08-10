@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional, Tuple, Type
 
 from pydantic import Field
 
-from .comparable_field import ComparableField
+from .comparable_field import _UNSET, ComparableField
 from .comparator_registry import create_comparator
 from .type_resolver import resolve_type_string
 
@@ -69,7 +69,9 @@ class FieldConverter:
         threshold = field_config.get("threshold", 0.5)
         weight = field_config.get("weight", 1.0)
         clip_under_threshold = field_config.get("clip_under_threshold", True)
-        aggregate = field_config.get("aggregate", False)
+        # Forward the sentinel when absent so a config without "aggregate"
+        # does not trip ComparableField's deprecation warning (issue #226).
+        aggregate = field_config.get("aggregate", _UNSET)
 
         # Extract Pydantic field parameters
         default = field_config.get("default", ...)  # Use Ellipsis for required fields
@@ -172,7 +174,9 @@ class FieldConverter:
         # Extract threshold and weight from field configuration
         weight = field_config.get("weight", 1.0)  # Default weight
         clip_under_threshold = field_config.get("clip_under_threshold", True)
-        aggregate = field_config.get("aggregate", False)
+        # Forward the sentinel when absent so a config without "aggregate"
+        # does not trip ComparableField's deprecation warning (issue #226).
+        aggregate = field_config.get("aggregate", _UNSET)
 
         # For list_structured_model, don't set threshold (Hungarian matching uses model's match_threshold)
         # For single structured_model, use threshold from config
