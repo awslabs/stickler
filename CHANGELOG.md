@@ -78,7 +78,7 @@ Each release links to full notes on the
   Python 3.11+, so the old floor made the 3.10 support above unresolvable. The
   lock pins 1.7.2 below 3.11 and 1.8.0 above
 
-- **Breaking (custom comparators):** the extension point for comparators is
+- **Deprecated (custom comparators):** the extension point for comparators is
   now `_compare()` instead of `compare()`. `BaseComparator.compare()` is a
   template method that applies the shared `None` policy and then delegates
   to `_compare()`, so the policy is defined once and cannot drift between
@@ -89,16 +89,17 @@ Each release links to full notes on the
   delete any `None` handling it contains, since `_compare()` only ever
   receives present values.
 
-  How an un-migrated comparator behaves depends on what it subclasses:
+  This is not a hard break. A deprecation shim keeps pre-rename comparators
+  working: one that implements `compare()` still constructs and behaves
+  exactly as written, and emits a `DeprecationWarning` naming the rename.
+  That holds whether it extends `BaseComparator` directly, extends a
+  concrete comparator, or inherits `compare()` from a mixin.
 
-  - Extending `BaseComparator` directly (or via a mixin) and implementing
-    only `compare()` leaves `_compare()` unimplemented, so the class is
-    abstract and raises `TypeError` on instantiation.
-  - Extending a *concrete* comparator (e.g. `LevenshteinComparator`) and
-    overriding `compare()` inherits `_compare()` from the parent, so it
-    still constructs, and the override shadows the template method and
-    bypasses the `None` policy. This shape does not announce itself --
-    rename it.
+  An un-migrated comparator does **not** receive the `None` policy, because
+  its `compare()` shadows the template method, so the rename is still
+  required. The shim is removed in 0.8.0, after which such a comparator
+  raises `TypeError` at construction
+  ([#215](https://github.com/awslabs/stickler/issues/215)).
 
   Note that the pre-fix `(None, "") -> 1.0` result cannot be inherited: the
   coercion was removed from Levenshtein's algorithm rather than guarded, so

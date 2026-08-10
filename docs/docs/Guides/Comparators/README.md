@@ -351,7 +351,9 @@ Every comparator treats `None` uniformly: two `None` values are an exact match (
 The policy lives in `BaseComparator.compare` and nowhere else. You don't write any `None`-handling code in your comparator -- by the time `_compare` runs, both arguments are guaranteed not to be `None`.
 
 !!! warning "Implement `_compare`, not `compare`"
-    Overriding `compare` directly bypasses the `None` policy and reintroduces exactly the divergence this design prevents. Implement `_compare`; if you forget and define only `compare`, the class stays abstract and raises `TypeError` on instantiation.
+    Overriding `compare` directly bypasses the `None` policy and reintroduces exactly the divergence this design prevents. Implement `_compare`.
+
+    A comparator written against the older interface — implementing `compare` — still constructs and behaves exactly as written, and emits a `DeprecationWarning` naming the rename. It does **not** receive the `None` policy, since its `compare` shadows the template method. That shim is removed in 0.8.0 ([#215](https://github.com/awslabs/stickler/issues/215)), after which such a comparator raises `TypeError` at construction.
 
 ### Example: Custom RegexComparator
 

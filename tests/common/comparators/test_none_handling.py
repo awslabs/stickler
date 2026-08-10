@@ -13,6 +13,7 @@ the truth table, the originally-reported Levenshtein bug, and the template
 method contract that makes the policy impossible to bypass.
 """
 
+import warnings
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -196,41 +197,108 @@ class TestTemplateMethodContract:
         assert comparator.compare(None, "x") == 0.0
         assert comparator.compare("HELLO", "hello") == 1.0
 
-    def test_subclassing_basecomparator_with_only_compare_is_abstract(self):
-        """Extending ``BaseComparator`` directly and implementing only
-        ``compare()`` fails at construction -- ``_compare`` is unimplemented,
-        so the class stays abstract and the mistake surfaces immediately."""
+    def test_migrated_subclass_gets_the_policy_and_no_warning(self):
+        """The migrated shape is untouched by the deprecation shim: the
+        policy applies and nothing is deprecated."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
 
-        class WrongMethod(BaseComparator):
-            def compare(self, str1, str2):  # not the extension point
-                return 1.0
+            class Migrated(LevenshteinComparator):
+                def _compare(self, str1, str2):
+                    return super()._compare(str(str1).lower(), str(str2).lower())
 
-        with pytest.raises(TypeError, match="_compare"):
-            WrongMethod()
+        comparator = Migrated()
+
+        assert comparator.compare(None, None) == 1.0
+        assert comparator.compare(None, "") == 0.0
+        assert comparator.compare("HELLO", "hello") == 1.0
 
 
 class TestPreRenameSubclassMigration:
-    """How subclasses written against the old ``compare()`` interface behave.
+    """The deprecation shim in ``BaseComparator.__init_subclass__``.
 
-    The rename is a breaking change, and it does not fail loudly in every
-    shape. These tests pin what actually happens per shape so the migration
-    surface is documented and testable rather than asserted in a changelog.
+    A comparator written against the pre-rename interface keeps working and
+    is left exactly as written -- its ``compare()`` still overrides the
+    template method, so its behavior is unchanged and it does **not** get the
+    ``None`` policy. The shim only fills the ``_compare`` slot when nothing
+    in the MRO provides one, so the class is not abstract, and warns that the
+    rename is needed.
+
+    That is why the shim is temporary: it buys an upgrade path, not
+    correctness. Removed in 0.8.0 (issue #215), after which these shapes go
+    back to raising ``TypeError`` at construction.
     """
 
-    def test_subclassing_a_concrete_comparator_does_not_fail_loudly(self):
-        """The one shape that survives construction: ``_compare`` is
-        inherited from the concrete parent, so the class is not abstract and
-        the legacy ``compare()`` shadows the template, bypassing the policy.
+    def test_subclassing_basecomparator_with_only_compare_still_works(self):
+        """Extending ``BaseComparator`` directly with only ``compare()``
+        constructs and runs, with a ``DeprecationWarning``."""
+        with pytest.warns(DeprecationWarning, match="_compare"):
 
-        This is the case that needs the changelog to say "rename", because
-        nothing here raises.
+            class PreRename(BaseComparator):
+                def compare(self, str1, str2):  # pre-rename interface
+                    if str1 is None or str2 is None:
+                        return 0.0
+                    return 1.0 if str(str1) == str(str2) else 0.0
+
+        comparator = PreRename()  # constructs -- no TypeError
+
+        # Their algorithm is untouched.
+        assert comparator.compare("a", "a") == 1.0
+        assert comparator.compare("a", "b") == 0.0
+
+    def test_pre_rename_subclass_delegating_upward_does_not_recurse(self):
+        """The shape that makes rewriting ``compare`` to ``_compare`` unsafe.
+
+        A pre-rename subclass of a *concrete* comparator whose body calls
+        ``super().compare(...)`` must keep working. Moving its ``compare`` to
+        ``_compare`` would leave the parent without a real ``compare``, so the
+        call would land on the template method and dispatch straight back into
+        the caller. Both pre-rename subclasses that existed in this suite were
+        exactly this shape.
         """
+        with pytest.warns(DeprecationWarning, match="_compare"):
 
-        class Legacy(LevenshteinComparator):
-            def compare(self, a, b):  # pre-rename interface
-                return 0.42
+            class PreRenameCaseInsensitive(LevenshteinComparator):
+                def compare(self, str1, str2):
+                    return super().compare(str(str1).lower(), str(str2).lower())
 
-        comparator = Legacy()  # constructs -- no TypeError
+        comparator = PreRenameCaseInsensitive()
+
+        # Would raise RecursionError if the shim rewired compare().
+        assert comparator.compare("HELLO", "hello") == 1.0
+        assert comparator.compare("kitten", "sitting") == pytest.approx(
+            0.5714, abs=1e-4
+        )
+
+    def test_pre_rename_subclass_via_mixin_is_not_abstract(self):
+        """A ``compare()`` inherited from a non-BaseComparator mixin is still
+        the old interface, even though it is not on the subclass itself."""
+
+        class LegacyMixin:
+            def compare(self, str1, str2):
+                return 1.0 if str1 == str2 else 0.0
+
+        with pytest.warns(DeprecationWarning, match="_compare"):
+
+            class ViaMixin(LegacyMixin, BaseComparator):
+                pass
+
+        assert ViaMixin().compare("a", "a") == 1.0
+
+    def test_pre_rename_subclass_does_not_receive_the_none_policy(self):
+        """The cost of not breaking them, pinned explicitly.
+
+        The legacy ``compare()`` shadows the template method, so the shared
+        policy never runs for this class. This is the reason the shim is
+        scheduled for removal rather than kept.
+        """
+        with pytest.warns(DeprecationWarning, match="_compare"):
+
+            class Legacy(LevenshteinComparator):
+                def compare(self, a, b):  # pre-rename interface
+                    return 0.42
+
+        comparator = Legacy()
 
         assert comparator.compare(None, "") == 0.42  # policy bypassed
         assert type(comparator).compare is not BaseComparator.compare
@@ -245,8 +313,10 @@ class TestPreRenameSubclassMigration:
         """
         assert LevenshteinComparator()._compare(None, "") == 0.0
 
-        class LegacyDelegating(LevenshteinComparator):
-            def compare(self, a, b):
-                return super().compare(a, b)
+        with pytest.warns(DeprecationWarning, match="_compare"):
+
+            class LegacyDelegating(LevenshteinComparator):
+                def compare(self, a, b):
+                    return super().compare(a, b)
 
         assert LegacyDelegating().compare(None, "") == 0.0
