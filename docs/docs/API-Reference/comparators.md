@@ -33,7 +33,12 @@
     options:
       heading_level: 2
 
-::: stickler.comparators.BERTComparator
+<!-- BERTComparator and LLMComparator are addressed by their defining module
+     rather than through the package. Both are exposed lazily via the package
+     __getattr__ so that importing stickler does not pull torch/transformers or
+     strands/boto3, and griffe resolves identifiers statically, so it cannot
+     see a name that only exists at attribute-access time. -->
+::: stickler.comparators.bert.BERTComparator
     options:
       heading_level: 2
 
@@ -41,7 +46,7 @@
     options:
       heading_level: 2
 
-::: stickler.comparators.LLMComparator
+::: stickler.comparators.llm.LLMComparator
     options:
       heading_level: 2
 

@@ -211,7 +211,6 @@ class LLMComparator(BaseComparator):
                 - 0.0 if an error occurs during comparison
 
         Note:
-            - None values: Returns 1.0 if both are None, 0.0 if only one is None
             - Error handling: Returns 0.0 for any exceptions during LLM calls
             - Cost consideration: Each call incurs API costs and latency
 
@@ -221,8 +220,6 @@ class LLMComparator(BaseComparator):
             1.0
             >>> comparator.compare("apple", "orange")
             0.0
-            >>> comparator.compare(None, None)
-            1.0
         """
         # Format the prompt with your values
         formatted_prompt = self.prompt_template.render(
