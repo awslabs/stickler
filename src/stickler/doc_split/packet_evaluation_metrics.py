@@ -25,12 +25,22 @@ import logging
 from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
-import pandas as pd
-from scipy.stats import kendalltau
-from sklearn.metrics import (
-    homogeneity_completeness_v_measure,
-    rand_score,
-)
+
+# pandas, scipy, and scikit-learn are only needed by this module, so they live
+# behind the `docsplit` extra rather than in the core dependency set. Raise an
+# actionable error naming the extra instead of a bare ModuleNotFoundError.
+try:
+    import pandas as pd
+    from scipy.stats import kendalltau
+    from sklearn.metrics import (
+        homogeneity_completeness_v_measure,
+        rand_score,
+    )
+except ImportError as exc:  # pragma: no cover - exercised by the extras gate
+    raise ImportError(
+        "stickler.doc_split requires pandas, scipy, and scikit-learn. Install "
+        'them with: pip install "stickler-eval[docsplit]"'
+    ) from exc
 
 logger = logging.getLogger(__name__)
 
