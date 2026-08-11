@@ -200,6 +200,23 @@ class HungarianMatcher:
                 - precision: Precision score
                 - recall: Recall score
                 - f1: F1 score
+
+        Note:
+            ``fn`` and ``fp`` here are **threshold-based, not
+            partnering-based**: they are ``len(list) - tp``, so a pair that
+            appears in ``matched_pairs`` but scored below ``match_threshold``
+            is counted in both. A below-threshold pair is therefore reported
+            as matched *and* as fn/fp by this function, at every list length.
+
+            The FD split -- "matched but below threshold" as distinct from
+            "no partner at all" -- happens downstream in
+            :class:`StructuredListComparator`, which reads ``matched_pairs``
+            and reclassifies. Callers wanting FD semantics should do the same
+            rather than reading ``fn``/``fp`` from here.
+
+            ``match_threshold=0.0`` is used elsewhere as a capture-all
+            sentinel. Every score satisfies ``>= 0.0``, so ``tp`` then counts
+            pairs rather than true positives and must not be read.
         """
         # Prepare lists
         prepared_list1, prepared_list2 = self._prepare_lists(list1, list2)
@@ -216,6 +233,11 @@ class HungarianMatcher:
         # (StructuredListComparator) classifies a below-threshold matched pair
         # as FD. Whether an FD counts against recall is the `recall_with_fd`
         # knob's job, not this function's.
+        #
+        # `fn`/`fp` below mirror the general path's `len(list) - tp`, which
+        # means a below-threshold pair is reported as matched and as fn/fp at
+        # the same time. That is pre-existing at every list length, not a
+        # property of this shortcut; see the Note in the docstring above.
         if len(prepared_list1) == 1 and len(prepared_list2) == 1:
             # Directly compare the single items
             if hasattr(self.comparator, "compare"):

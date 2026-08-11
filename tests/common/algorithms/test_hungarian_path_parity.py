@@ -53,7 +53,21 @@ class TestZeroSimilarityIsAMatchedPair:
 
     @pytest.mark.parametrize("n", [1, 2, 3])
     def test_zero_similarity_counts_are_length_independent(self, n):
-        """n unrelated pairs produce the same per-pair counts at any n."""
+        """n unrelated pairs produce the same per-pair counts at any n.
+
+        The ``fp``/``fn`` values here are **descriptive of today, not the
+        intended contract**. ``calculate_metrics`` derives them as
+        ``len(list) - tp``, so a pair that is present in ``matched_pairs``
+        is also counted in ``fn`` -- matched and missing at the same time.
+        That is pre-existing at every list length and is what this test
+        holds constant across ``n``.
+
+        What #224 is about is the *length independence*, not the values: a
+        1-item list must not classify differently from a 2-item one. If the
+        ``fn`` semantics are ever separated from the threshold (an explicit
+        ``fd`` key, as ``ComparisonHelper.unordered_list_metrics``
+        produces), update these numbers -- do not read them as a guarantee.
+        """
         result = _matcher(0.5).calculate_metrics(
             DISSIMILAR_GT[:n], DISSIMILAR_PRED[:n]
         )
@@ -90,7 +104,7 @@ class TestFastPathHonorsMatchThreshold:
 
         assert result["tp"] == 1
 
-    @pytest.mark.parametrize("threshold", [0.1, 0.5, 0.66, 0.7, 0.9, 1.0])
+    @pytest.mark.parametrize("threshold", [0.0, 0.1, 0.5, 0.66, 0.7, 0.9, 1.0])
     def test_single_and_multi_item_agree_across_thresholds(self, threshold):
         """Same pair, same verdict, whether or not a second pair is present.
 
@@ -109,6 +123,28 @@ class TestFastPathHonorsMatchThreshold:
 
         assert identical["matched_pairs"][0][2] == 1.0
         assert identical["tp"] == 1
+
+    @pytest.mark.parametrize("n", [1, 2, 3])
+    def test_threshold_zero_makes_every_pair_a_true_positive(self, n):
+        """``match_threshold=0.0`` is a capture-all sentinel, at any length.
+
+        Because the gate is ``>=``, a zero-similarity pair satisfies a zero
+        threshold, so ``tp`` counts *pairs* rather than true positives. This
+        pins that the shortcut and the general path agree on the boundary --
+        the point of #224 -- and documents the trap.
+
+        ``ComparisonHelper.compare_unordered_lists`` builds a matcher this way
+        deliberately to capture all pairs for scoring, and reads only
+        ``matched_pairs``, reclassifying against its own
+        ``classification_threshold``. Nothing should read ``tp`` from a
+        matcher constructed with ``0.0``.
+        """
+        result = _matcher(0.0).calculate_metrics(DISSIMILAR_GT[:n], DISSIMILAR_PRED[:n])
+
+        assert all(score == 0.0 for _, _, score in result["matched_pairs"])
+        assert result["tp"] == n, "every pair clears a zero threshold"
+        assert result["fp"] == 0
+        assert result["fn"] == 0
 
 
 class TestUnmatchedItemsAreFnAndFa:

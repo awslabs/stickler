@@ -91,7 +91,13 @@ class ComparisonHelper:
             from stickler.algorithms.hungarian import HungarianMatcher
 
             # CRITICAL FIX: Use match_threshold=0.0 to capture ALL matches, not just those above threshold
-            # This allows us to keep track of partial matches for scoring
+            # This allows us to keep track of partial matches for scoring.
+            #
+            # `0.0` is a capture-all sentinel: only `matched_pairs` is read
+            # below, and classification happens against
+            # `classification_threshold` instead. Do not read `tp`/`fp`/`fn`
+            # from a matcher built this way -- every pair satisfies
+            # `score >= 0.0`, so its `tp` counts pairs, not true positives.
             hungarian = HungarianMatcher(comparator, match_threshold=0.0)
             classification_threshold = threshold
 

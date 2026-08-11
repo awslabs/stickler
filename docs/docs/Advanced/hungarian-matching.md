@@ -42,9 +42,30 @@ pair and is therefore FD, not FN + FA. Only items with no partner at all
 become FN or FA. This holds identically for a one-item list and a hundred-item
 one; see `tests/common/algorithms/test_hungarian_path_parity.py`.
 
+### FD and recall
+
 Whether an FD counts against recall is a separate decision, controlled by
 `recall_with_fd` (see
 [Understanding Results](../Guides/Evaluation/understanding-results.md)).
+
+This is worth understanding before comparing recall across versions or
+thresholds, because **the default excludes FD from the recall denominator**:
+
+| `recall_with_fd` | recall | effect |
+|---|---|---|
+| `False` (default) | `TP / (TP + FN)` | an FD is invisible to recall |
+| `True` | `TP / (TP + FN + FD)` | an FD counts as a miss |
+
+A wrong-but-paired prediction is an FD, not an FN, so under the default it is
+absent from the recall denominator entirely. The effect shows up when a
+document mixes right and wrong fields: three single-item list fields with one
+wholly wrong scores recall `0.667` if that field is FN + FA, but `1.000` if it
+is an FD, because the FD leaves both numerator and denominator untouched.
+Precision is unaffected either way, since FD is part of FP.
+
+Raising `match_threshold` moves pairs from TP to FD, which *raises* default
+recall while lowering precision. If you track recall over time, set
+`recall_with_fd=True` so that a false discovery counts against it.
 
 ## Concrete Example: Transaction Matching
 

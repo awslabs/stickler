@@ -223,16 +223,19 @@ def test_simple_list_alongside_primitive_field():
 
 
 def test_empty_simple_list_within_structured_list():
-    """Empty simple lists on both sides — the pair is matched, below threshold.
+    """Empty simple lists on both sides — the pair is assigned, not unmatched.
 
-    Pre-existing oddity, unchanged by issue #224: an object whose only field is
-    an empty list gets list-path similarity 0.0, even though comparing the two
-    objects directly scores 1.0 (they are identical). Because similarity is
-    below ``match_threshold``, the assigned pair classifies as FD.
+    This asserts only the #224 property: an assigned pair is not reported as
+    FN + FA. It deliberately does *not* pin how the pair is classified.
 
-    The FD-vs-FN+FA part is the #224 convention. The 0.0 similarity for two
-    identical objects is a separate bug and is deliberately not addressed here;
-    when it is fixed this pair should become a TP (or a list-level TN).
+    An object whose only field is an empty list gets list-path similarity 0.0
+    even though the two objects are identical, which is a separate pre-existing
+    bug. That leaves the result internally contradictory here -- the comparison
+    reports ``overall_score == 1.0`` (a perfect match) while the pair scores
+    below ``match_threshold`` and so classifies as FD. Pinning ``fd == 1``
+    would cement that contradiction into the suite and have to be undone when
+    the similarity bug is fixed, at which point this pair should become a TP or
+    a list-level TN.
     """
     gt = Invoice(LineItems=[LineItemsInfo(LineItemDays=[])])
     pred = Invoice(LineItems=[LineItemsInfo(LineItemDays=[])])
@@ -240,10 +243,12 @@ def test_empty_simple_list_within_structured_list():
     result = gt.compare_with(pred, include_confusion_matrix=True)
     obj_metrics = _overall(result["confusion_matrix"], "LineItems")
 
-    # One assigned pair, below threshold: FD, not unmatched.
-    assert obj_metrics["fd"] == 1
+    # The #224 property: the pair is assigned, so neither side is orphaned.
     assert obj_metrics["fn"] == 0
     assert obj_metrics["fa"] == 0
+
+    # Whichever way the pair is classified, it is counted exactly once.
+    assert obj_metrics["tp"] + obj_metrics["fd"] + obj_metrics["tn"] == 1
 
 
 # ---------------------------------------------------------------------------
