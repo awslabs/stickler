@@ -58,10 +58,14 @@ class TestFieldThreshold:
         message = str(record[0].message)
         assert "Doc.vendor" in message, "the warning must say which field"
         assert "0.01" in message, "the warning must suggest a usable alternative"
-        # Must point somewhere that actually explains the cliff. The old target
-        # was a docs page whose only mention of zero was "raw similarity score
-        # (0.0 -- 1.0)", so a reader who followed it learned nothing.
-        assert THRESHOLD_DOCS_URL in message, "the warning must link an explanation"
+        # Assert the literal target, not `THRESHOLD_DOCS_URL in message` --
+        # that compares the constant to itself and passes for any value,
+        # including a URL that explains nothing. The old target was a docs page
+        # whose only mention of zero was "raw similarity score (0.0 -- 1.0)".
+        assert "github.com/awslabs/stickler/issues/234" in message, (
+            "the warning must link somewhere that explains the zero-threshold cliff"
+        )
+        assert THRESHOLD_DOCS_URL in message, "the constant must be what is emitted"
 
     def test_message_claims_no_metric_outcome(self):
         """The message names the invariant, not precision or recall.
@@ -372,6 +376,73 @@ class TestJsonConfigPath:
             StructuredModel.model_from_json(config)
 
         assert _user_warnings(recorded) == []
+
+
+class TestCoverageOfEveryEntryPoint:
+    """Every way a user can configure a threshold, and whether it warns."""
+
+    def test_from_json_schema_field_threshold_warns(self):
+        schema = {
+            "type": "object",
+            "properties": {"v": {"type": "string", "x-aws-stickler-threshold": 0.0}},
+        }
+
+        with pytest.warns(UserWarning, match="threshold=0.0"):
+            StructuredModel.from_json_schema(schema)
+
+    def test_from_json_schema_match_threshold_warns(self):
+        schema = {
+            "type": "object",
+            "x-aws-stickler-match-threshold": 0.0,
+            "properties": {"v": {"type": "string"}},
+        }
+
+        with pytest.warns(UserWarning, match="match_threshold=0.0"):
+            StructuredModel.from_json_schema(schema)
+
+    def test_create_model_from_fields_warns(self):
+        """The second ModelFactory entry point, not just create_model_from_json."""
+        from stickler.structured_object_evaluator.models.model_factory import (
+            ModelFactory,
+        )
+
+        with pytest.warns(UserWarning, match="match_threshold=0.0"):
+            ModelFactory.create_model_from_fields(
+                "FromFields",
+                {"v": (str, ComparableField(comparator=ExactComparator()))},
+                match_threshold=0.0,
+            )
+
+    def test_subclass_setting_its_own_zero_warns(self):
+        """Inheriting silently is right; choosing 0.0 yourself is not."""
+
+        class Parent(StructuredModel):
+            v: str = ComparableField(comparator=ExactComparator())
+
+        with pytest.warns(UserWarning, match="match_threshold=0.0"):
+
+            class Child(Parent):
+                match_threshold = 0.0
+
+    def test_post_hoc_setattr_is_a_known_gap(self):
+        """Documents a limitation rather than asserting desired behaviour.
+
+        The checks run at class creation and config conversion, so assigning
+        the attribute afterwards is invisible to them. Catching it would need a
+        metaclass ``__setattr__``. If this ever starts warning, that is an
+        improvement -- update this test rather than treating it as a break.
+        """
+
+        class Line(StructuredModel):
+            v: str = ComparableField(comparator=ExactComparator())
+
+        with warnings.catch_warnings(record=True) as recorded:
+            warnings.simplefilter("always")
+            Line.match_threshold = 0.0
+
+        assert _user_warnings(recorded) == [], (
+            "if this now warns, the coverage gap is closed -- update the docstring"
+        )
 
 
 class TestInternalSentinelIsUnaffected:
