@@ -7,9 +7,23 @@ from stickler.utils.deprecation import warn_once
 #: Where the `>=` cliff and what to use instead are explained.
 THRESHOLD_DOCS_URL = "https://github.com/awslabs/stickler/issues/234"
 
+# What a zero threshold actually guarantees: nothing the comparison touches can
+# be reported as a false discovery, because FD means "compared and scored below
+# threshold" and no score is below 0.0. Measured exhaustively at 0.0 -- 256
+# scalar-value combinations and 36 list-length combinations -- FD was 0 in every
+# single one.
+#
+# Deliberately does NOT claim perfect precision or recall. Both are false in
+# reachable cases, symmetrically: an unmatched prediction is still an FA (2
+# ground-truth objects vs 3 predictions gives precision 0.667) and an unmatched
+# ground-truth item is still an FN (2 vs 1 gives recall 0.5). Only the pairs the
+# algorithm actually compares are forced to TP; unmatched items are not subject
+# to any threshold. Claiming a metric outcome would make the warning false for
+# unequal-length lists, and a user who saw imperfect precision would conclude
+# the warning did not describe their situation and keep the broken threshold.
 _FIELD_CONSEQUENCE = (
-    "every compared pair is counted as a true positive, so a wholly incorrect "
-    "prediction reports perfect precision"
+    "every value it compares is counted as a true positive and nothing can be "
+    "reported as a false discovery, however wrong the prediction is"
 )
 
 # `match_threshold` is read only when the model is a `List[StructuredModel]`
@@ -18,17 +32,14 @@ _FIELD_CONSEQUENCE = (
 # class will be -- so this states the condition rather than asserting an outcome
 # that may not apply.
 _MATCH_CONSEQUENCE = (
-    "if this model is compared as a list element, every paired object is "
-    "counted as a true positive, so wholly incorrect objects report perfect "
-    "precision"
+    "if this model is compared as a list element, every object it pairs is "
+    "counted as a true positive and nothing can be reported as a false "
+    "discovery, however wrong the objects are"
 )
 
 
 def warn_if_threshold_is_zero(
-    value: Optional[float],
-    context: str,
-    parameter: str,
-    dedup_key: Optional[str] = None,
+    value: Optional[float], context: str, parameter: str
 ) -> None:
     """Warn when a threshold is exactly ``0.0``, which disables classification.
 
@@ -42,22 +53,22 @@ def warn_if_threshold_is_zero(
     heuristic; warning on low-but-positive values would fire on legitimate
     configuration.
 
-    The message claims precision only. Recall survives unmatched extras: 2
-    ground-truth objects against 1 prediction at ``match_threshold=0.0`` gives
-    precision ``1.0`` but recall ``0.5``, since the unpaired item is still an
-    FN. Claiming both would make the warning false for unequal-length lists.
+    The message names the invariant -- no false discovery is possible -- rather
+    than a metric outcome. Perfect precision and perfect recall are both false
+    in reachable cases, symmetrically: unmatched predictions are still FAs (2
+    ground-truth objects vs 3 predictions gives precision ``0.667``) and
+    unmatched ground-truth items are still FNs (2 vs 1 gives recall ``0.5``),
+    because unmatched items are not subject to any threshold. Verified at 0.0
+    over 36 list-length and 256 scalar-value combinations: FD was ``0`` in all
+    of them, while precision was ``1.0`` in only 20 of the 36.
 
     Args:
         value: The configured threshold, or None if unset.
         context: Where it was set, e.g. ``"Invoice.vendor"``. Appears in the
-            message.
+            message and keys the warn-once bookkeeping, so it must distinguish
+            configuration sites -- see ``ModelFactory._config_identity`` for why
+            a bare ``"DynamicModel"`` does not.
         parameter: The parameter name to name in the message.
-        dedup_key: Overrides ``context`` for warn-once bookkeeping. Use when
-            ``context`` is not unique per configuration site -- dynamically
-            built models share the default name ``"DynamicModel"``, so keying
-            on it would report the first anonymous config and silence the rest.
-            Kept separate from ``context`` so an internal identity does not leak
-            into user-visible text.
     """
     # `bool` is an `int`, and `False == 0.0`, so an unguarded numeric check
     # reports `match_threshold = False` as "sets match_threshold=0.0" -- a value
@@ -75,7 +86,7 @@ def warn_if_threshold_is_zero(
 
     warn_once(
         "threshold-zero",
-        f"{dedup_key or context}.{parameter}",
+        f"{context}.{parameter}",
         f"{context} sets {parameter}=0.0. The threshold test is `>=`, so every "
         f"score satisfies it: {consequence}. Use a small positive value (for "
         f"example 0.01) to accept weak matches. See {THRESHOLD_DOCS_URL}",

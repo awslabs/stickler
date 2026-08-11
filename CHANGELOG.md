@@ -18,10 +18,14 @@ Each release links to full notes on the
   and the numbers look ideal, which makes it the hardest misconfiguration to
   notice.
 
-  The warning claims precision only. Recall survives unmatched extras, since
-  an unpaired ground-truth item is still an FN: 2 ground-truth objects against
-  1 prediction at `match_threshold=0.0` gives precision `1.0` but recall
-  `0.5`. For a `match_threshold` the message is also conditional, because the
+  The warning names what is invariant -- no false discovery can be reported,
+  since FD means "compared and scored below threshold" and nothing scores below
+  `0.0` -- rather than claiming a metric outcome. Perfect precision and perfect
+  recall are both false in reachable cases, symmetrically: an unmatched
+  prediction is still an FA (2 ground-truth objects vs 3 predictions gives
+  precision `0.667`) and an unmatched ground-truth item is still an FN (2 vs 1
+  gives recall `0.5`), because unmatched items are not subject to any
+  threshold. For a `match_threshold` the message is also conditional, since the
   value is only read when the model is compared as a `List[StructuredModel]`
   element and is inert otherwise.
 

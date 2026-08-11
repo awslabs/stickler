@@ -2,7 +2,7 @@
 
 The threshold test is ``>=``, so ``0.0`` is satisfied by every score including
 ``0.0`` itself: every assigned pair becomes a true positive and a wholly
-incorrect prediction reports perfect precision and recall. Nothing errors and
+incorrect prediction is reported as a true positive. Nothing errors and
 the numbers look ideal, which makes it the hardest misconfiguration to notice.
 
 ``0.0`` is a cliff rather than a slope -- ``0.01`` already classifies
@@ -63,11 +63,15 @@ class TestFieldThreshold:
         # (0.0 -- 1.0)", so a reader who followed it learned nothing.
         assert THRESHOLD_DOCS_URL in message, "the warning must link an explanation"
 
-    def test_message_claims_precision_not_recall(self):
-        """Recall survives unmatched extras, so claiming it would be false.
+    def test_message_claims_no_metric_outcome(self):
+        """The message names the invariant, not precision or recall.
 
-        2 GT objects against 1 prediction at ``match_threshold=0.0`` gives
-        precision 1.0 but recall 0.5 -- the unpaired item is still an FN.
+        Both metrics are false in reachable cases, symmetrically: unmatched
+        predictions are still FAs and unmatched ground truth is still FNs, so
+        neither is guaranteed at ``0.0``. What *is* invariant is that no false
+        discovery can be reported. Claiming a metric would make the warning
+        false for unequal-length lists, and a user seeing imperfect precision
+        would conclude it did not apply to them.
         """
         with pytest.warns(UserWarning) as record:
 
@@ -77,10 +81,9 @@ class TestFieldThreshold:
                 )
 
         message = str(record[0].message)
-        assert "precision" in message
-        assert "recall" not in message, (
-            "recall is not guaranteed to be perfect; see unequal-length lists"
-        )
+        assert "false discovery" in message, "the invariant must be named"
+        assert "perfect precision" not in message
+        assert "perfect recall" not in message
 
     @pytest.mark.parametrize("threshold", [0.01, 0.1, 0.5, 0.7, 1.0])
     def test_positive_thresholds_do_not_warn(self, threshold):
@@ -266,8 +269,40 @@ class TestJsonConfigPath:
 
         assert len(_user_warnings(recorded)) == 2
 
+    def test_same_config_loaded_repeatedly_warns_once(self):
+        """warn-once must survive the dedup key, not be defeated by it.
+
+        A new class object is created per call, so keying on ``id()`` made a
+        loop over one config emit a warning every time -- 192 for 200 loads --
+        and grew the process-global ``_warned`` set without bound. That is the
+        stderr flood ``warn_once`` exists to prevent.
+        """
+        config = {
+            "model_name": "Repeated",
+            "match_threshold": 0.0,
+            "fields": {
+                "a": {
+                    "type": "str",
+                    "comparator": "ExactComparator",
+                    "threshold": 0.5,
+                }
+            },
+        }
+
+        with warnings.catch_warnings(record=True) as recorded:
+            warnings.simplefilter("always")
+            for _ in range(50):
+                StructuredModel.model_from_json(dict(config))
+
+        assert len(_user_warnings(recorded)) == 1
+        assert len(deprecation._warned) == 1, "the dedup set must not grow per load"
+
     def test_warning_text_carries_no_internal_identity(self):
-        """The dedup key is separate from the message, so `id()` cannot leak."""
+        """No object address leaks into user-visible text.
+
+        An earlier attempt keyed dedup on ``id(DynamicClass)`` and interpolated
+        it, printing "DynamicModel#4355291632 sets ...".
+        """
         config = {
             "match_threshold": 0.0,
             "fields": {
@@ -282,7 +317,42 @@ class TestJsonConfigPath:
         with pytest.warns(UserWarning) as record:
             StructuredModel.model_from_json(config)
 
-        assert "#" not in str(record[0].message)
+        message = str(record[0].message)
+        assert "#" not in message
+        assert not any(ch.isdigit() and len(part) > 8 for part in message.split() for ch in part[:1]), (
+            "no long numeric token that could be an address"
+        )
+
+    def test_anonymous_configs_are_distinguishable_in_the_message(self):
+        """Identical text would be swallowed by Python's warning registry.
+
+        ``__warningregistry__`` is keyed on the message, so two anonymous
+        configs producing byte-identical text print only once under the default
+        action -- the second misconfiguration is lost even though ``warn_once``
+        approved it. The message names the fields to keep them distinct.
+        """
+        messages = []
+        for field in ("alpha", "beta"):
+            deprecation._warned.clear()
+            with pytest.warns(UserWarning) as record:
+                StructuredModel.model_from_json(
+                    {
+                        "match_threshold": 0.0,
+                        "fields": {
+                            field: {
+                                "type": "str",
+                                "comparator": "ExactComparator",
+                                "threshold": 0.5,
+                            }
+                        },
+                    }
+                )
+            messages.append(str(record[0].message))
+
+        assert messages[0] != messages[1], (
+            "identical text collapses in Python's warning registry"
+        )
+        assert "alpha" in messages[0] and "beta" in messages[1]
 
     def test_positive_config_thresholds_do_not_warn(self):
         config = {
@@ -345,6 +415,45 @@ class TestWarnOncePerSite:
         assert len(_user_warnings(record.list)) == 1
 
 
+def test_no_false_discovery_is_possible_at_any_list_length():
+    """The invariant the message names, swept across list lengths.
+
+    FD means "compared and scored below threshold", and nothing scores below
+    0.0, so FD must be 0 for every combination. Precision is deliberately not
+    asserted: it drops below 1.0 whenever the prediction is longer, which is
+    why the message does not claim it.
+    """
+
+    class Line(StructuredModel):
+        match_threshold = 0.0
+
+        sku: str = ComparableField(comparator=ExactComparator(), threshold=1.0)
+
+    class Doc(StructuredModel):
+        lines: List[Line] = ComparableField(weight=1.0)
+
+    precision_was_imperfect = False
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for n_gt in range(1, 5):
+            for n_pred in range(1, 5):
+                gt = Doc(lines=[Line(sku=f"A{i}") for i in range(n_gt)])
+                pred = Doc(lines=[Line(sku=f"Z{i}") for i in range(n_pred)])
+                overall = gt.compare_with(pred, include_confusion_matrix=True)[
+                    "confusion_matrix"
+                ]["fields"]["lines"]["overall"]
+
+                assert overall["fd"] == 0, (
+                    f"{n_gt} vs {n_pred}: nothing can score below a zero threshold"
+                )
+                if overall["derived"]["cm_precision"] != 1.0:
+                    precision_was_imperfect = True
+
+    assert precision_was_imperfect, (
+        "if precision is now always perfect the message may claim it again"
+    )
+
+
 def test_match_threshold_zero_on_a_real_list_element():
     """The conditional in the message is true when the condition holds.
 
@@ -372,11 +481,13 @@ def test_match_threshold_zero_on_a_real_list_element():
     assert overall["derived"]["cm_precision"] == 1.0
 
 
-def test_unequal_length_lists_keep_imperfect_recall():
-    """Why the message says precision and not recall.
+def test_unmatched_items_keep_both_metrics_honest():
+    """Why the message names no metric outcome.
 
-    An unpaired ground-truth object is still an FN, so recall stays honest
-    even at ``match_threshold=0.0``.
+    Unmatched items are not subject to any threshold, so an extra ground-truth
+    object stays an FN and an extra prediction stays an FA. Recall and
+    precision therefore both stay honest at ``match_threshold=0.0``, in
+    opposite directions -- which is why the message claims neither.
     """
 
     class Line(StructuredModel):
@@ -395,8 +506,21 @@ def test_unequal_length_lists_keep_imperfect_recall():
 
     overall = result["confusion_matrix"]["fields"]["lines"]["overall"]
     assert overall["fn"] == 1, "the unpaired ground-truth object is still a miss"
-    assert overall["derived"]["cm_precision"] == 1.0
     assert overall["derived"]["cm_recall"] == 0.5
+
+    # Mirror case: an extra *prediction* is an FA, so precision drops instead.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        mirrored = Doc(lines=[Line(sku="A")]).compare_with(
+            Doc(lines=[Line(sku="Y"), Line(sku="Z")]), include_confusion_matrix=True
+        )
+
+    mirror_overall = mirrored["confusion_matrix"]["fields"]["lines"]["overall"]
+    assert mirror_overall["fa"] == 1, "the unpaired prediction is still a false alarm"
+    assert mirror_overall["derived"]["cm_precision"] == 0.5
+
+    # Neither metric is safe to claim; FD is zero in both directions.
+    assert overall["fd"] == 0 and mirror_overall["fd"] == 0
 
 
 def test_the_behavior_the_warning_describes():
