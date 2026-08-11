@@ -5,7 +5,7 @@ with comparison configuration parameters.
 """
 
 import warnings
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from pydantic import Field
 
@@ -18,6 +18,13 @@ class _Unset:
 
     Needed because ``aggregate=False`` is both the historical default and a
     value a user may pass explicitly. Only the explicit case should warn.
+
+    Detection is by identity (``is not _UNSET``). That is sound within one
+    import namespace; a codebase importing stickler under two names (say
+    ``stickler.x`` and ``src.stickler.x``) creates two distinct sentinels, and
+    handing one namespace's to the other would read as an explicit argument.
+    Harmless -- the result is a spurious deprecation warning about a parameter
+    that is going away regardless.
     """
 
     def __bool__(self) -> bool:  # pragma: no cover - defensive
@@ -35,7 +42,7 @@ def ComparableField(
     threshold: float = 0.5,
     weight: float = 1.0,
     default: Any = None,
-    aggregate: Any = _UNSET,
+    aggregate: Union[bool, _Unset] = _UNSET,
     clip_under_threshold: bool = True,
     # Pydantic Field parameters (all optional, just like Field)
     alias: Optional[str] = None,

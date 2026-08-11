@@ -69,9 +69,13 @@ class FieldConverter:
         threshold = field_config.get("threshold", 0.5)
         weight = field_config.get("weight", 1.0)
         clip_under_threshold = field_config.get("clip_under_threshold", True)
-        # Forward the sentinel when absent so a config without "aggregate"
-        # does not trip ComparableField's deprecation warning (issue #226).
-        aggregate = field_config.get("aggregate", _UNSET)
+        # Never forward a config's "aggregate": the value provably has no
+        # effect, and `to_stickler_config()` writes the key for every field, so
+        # reading it would warn on every exported-config round trip -- blaming
+        # this frame for a key the caller never wrote, and hard-failing under
+        # `-W error::DeprecationWarning`. Reading a config is not an explicit
+        # use of the parameter (issue #226).
+        aggregate = _UNSET
 
         # Extract Pydantic field parameters
         default = field_config.get("default", ...)  # Use Ellipsis for required fields
@@ -174,9 +178,13 @@ class FieldConverter:
         # Extract threshold and weight from field configuration
         weight = field_config.get("weight", 1.0)  # Default weight
         clip_under_threshold = field_config.get("clip_under_threshold", True)
-        # Forward the sentinel when absent so a config without "aggregate"
-        # does not trip ComparableField's deprecation warning (issue #226).
-        aggregate = field_config.get("aggregate", _UNSET)
+        # Never forward a config's "aggregate": the value provably has no
+        # effect, and `to_stickler_config()` writes the key for every field, so
+        # reading it would warn on every exported-config round trip -- blaming
+        # this frame for a key the caller never wrote, and hard-failing under
+        # `-W error::DeprecationWarning`. Reading a config is not an explicit
+        # use of the parameter (issue #226).
+        aggregate = _UNSET
 
         # For list_structured_model, don't set threshold (Hungarian matching uses model's match_threshold)
         # For single structured_model, use threshold from config

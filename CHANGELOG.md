@@ -134,7 +134,13 @@ Each release links to full notes on the
 
   Callers passing `aggregate=False` had no signal the parameter was going away
   and would have met a bare `TypeError` on removal. Remove the argument; there
-  is no replacement to adopt. Scheduled for removal in 0.8.0
+  is no replacement to adopt. Scheduled for removal in 0.8.0.
+
+  Reading a config does **not** count as explicit use: `to_stickler_config()`
+  writes the `aggregate` key for every field, so `model_from_json()` ignores it
+  rather than warning. Otherwise every exported-config round trip would warn
+  once per field, blaming stickler's own frame for a key the caller never
+  wrote, and would fail outright under `-W error::DeprecationWarning`
   ([#226](https://github.com/awslabs/stickler/issues/226))
 
 ## [0.6.0] - 2026-07-30

@@ -358,41 +358,43 @@ def test_list_aggregate_false():
     )
 
 
-def test_mixed_aggregate_settings():
-    """Test a model mixing primitive, nested, and list fields."""
+def test_two_identically_configured_nested_fields_agree():
+    """Two nested fields with the same config produce the same metric shape.
+
+    Previously this compared an ``aggregate=True`` field against an
+    ``aggregate=False`` one. With the parameter gone the two definitions are
+    identical, so what is left worth asserting is that identical configuration
+    gives identical treatment -- each nested object counted once, at the object
+    level, independent of the other field alongside it.
+    """
 
     class MixedModel(StructuredModel):
         simple_field: str = ComparableField(
             comparator=ExactComparator(), threshold=1.0, weight=1.0
         )
-        contact_aggregated: SimpleContact = ComparableField(
-            comparator=ExactComparator(),
-            threshold=1.0,
-            weight=1.0,
-            # This should rollup nested metrics
+        first_contact: SimpleContact = ComparableField(
+            comparator=ExactComparator(), threshold=1.0, weight=1.0
         )
-        contact_not_aggregated: SimpleContact = ComparableField(
-            comparator=ExactComparator(),
-            threshold=1.0,
-            weight=1.0,
+        second_contact: SimpleContact = ComparableField(
+            comparator=ExactComparator(), threshold=1.0, weight=1.0
         )
 
     true_model = MixedModel(
         **{
             "simple_field": "test",
-            "contact_aggregated": {"phone": "555-1111"},
-            "contact_not_aggregated": {"phone": "555-2222"},
+            "first_contact": {"phone": "555-1111"},
+            "second_contact": {"phone": "555-2222"},
         }
     )
 
     pred_model = MixedModel(
         **{
             "simple_field": "test",
-            "contact_aggregated": {
+            "first_contact": {
                 "phone": "555-9999",  # Different phone
                 "email": "test@example.com",  # Extra email
             },
-            "contact_not_aggregated": {
+            "second_contact": {
                 "phone": "555-8888",  # Different phone
                 "email": "test2@example.com",  # Extra email
             },
@@ -400,36 +402,18 @@ def test_mixed_aggregate_settings():
     )
 
     result = true_model.compare_with(pred_model, include_confusion_matrix=True)
+    fields = result["confusion_matrix"]["fields"]
 
-    #  contact should potentially rollup nested field metrics (current behavior)
-    agg_cm = result["confusion_matrix"]["fields"]["contact_aggregated"]["overall"]
+    first = {k: fields["first_contact"]["overall"][k] for k in ("tp", "fa", "fd", "fp")}
+    second = {
+        k: fields["second_contact"]["overall"][k] for k in ("tp", "fa", "fd", "fp")
+    }
 
-    # aggregate=False contact should count as single object
-    non_agg_cm = result["confusion_matrix"]["fields"]["contact_not_aggregated"][
-        "overall"
-    ]
+    # Same configuration, same data shape, so the same verdict.
+    assert first == second
 
-    print("\nMixed aggregate settings:")
-    print(
-        f"Aggregated contact: tp={agg_cm['tp']}, fa={agg_cm['fa']}, fd={agg_cm['fd']}, fp={agg_cm['fp']}"
-    )
-    print(
-        f"Non-aggregated contact: tp={non_agg_cm['tp']}, fa={non_agg_cm['fa']}, fd={non_agg_cm['fd']}, fp={non_agg_cm['fp']}"
-    )
-
-    # The non-aggregated contact should always be bounded by 1 object
-    assert non_agg_cm["tp"] == 0, (
-        f"Non-aggregated: Expected 0 TP, got {non_agg_cm['tp']}"
-    )
-    assert non_agg_cm["fa"] == 0, (
-        f"Non-aggregated: Expected 0 FA, got {non_agg_cm['fa']}"
-    )
-    assert non_agg_cm["fd"] == 1, (
-        f"Non-aggregated: Expected 1 FD, got {non_agg_cm['fd']}"
-    )
-    assert non_agg_cm["fp"] == 1, (
-        f"Non-aggregated: Expected 1 FP, got {non_agg_cm['fp']}"
-    )
+    # Each nested object is counted once: one FD, bounded by the single object.
+    assert first == {"tp": 0, "fa": 0, "fd": 1, "fp": 1}
 
 
 def test_null_handling_aggregate_false():
