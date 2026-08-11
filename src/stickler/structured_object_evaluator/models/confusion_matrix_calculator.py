@@ -147,29 +147,17 @@ class ConfusionMatrixCalculator:
                 )
                 result["nested_fields"] = nested_metrics
 
-        # For List[StructuredModel], we should NOT aggregate nested fields to list level
-        # List level metrics represent object-level matches from Hungarian algorithm
-        # Nested field metrics represent field-level matches within those objects
-        # They are separate concerns and should not be aggregated
-
-        # Only aggregate if this is explicitly marked as an aggregate field AND it's not a list
-        is_aggregate = self.model.__class__._is_aggregate_field(field_name)
-        if is_aggregate and not isinstance(gt_list, list):
-            # Initialize top-level confusion matrix values to 0
-            result["tp"] = 0
-            result["fa"] = 0
-            result["fd"] = 0
-            result["fp"] = 0
-            result["tn"] = 0
-            result["fn"] = 0
-            # Sum up the confusion matrix values from nested fields
-            for field, field_metrics in result["nested_fields"].items():
-                result["tp"] += field_metrics["tp"]
-                result["fa"] += field_metrics["fa"]
-                result["fd"] += field_metrics["fd"]
-                result["fp"] += field_metrics["fp"]
-                result["tn"] += field_metrics["tn"]
-                result["fn"] += field_metrics["fn"]
+        # List-level metrics count object matches from the Hungarian algorithm;
+        # nested field metrics count field matches within those objects. They are
+        # separate concerns and are deliberately not rolled together here.
+        #
+        # A branch used to zero these and re-sum them from nested_fields when
+        # `_is_aggregate_field(field_name)` was true and `gt_list` was not a
+        # list. It was dead by construction -- this method is only ever called
+        # with a list, so the guard was self-contradictory (instrumented the
+        # whole suite: 0 calls with a non-list). It is removed here rather than
+        # left as a path keyed on a flag that is deprecated and has no other
+        # effect (#226).
 
         # Add derived metrics
         metrics_helper = MetricsHelper()

@@ -187,6 +187,30 @@ def ComparableField(
     return field
 
 
+
+def _restore_deprecated_aggregate(field: Any, value: Any) -> None:
+    """Set a field's stored ``aggregate`` value without emitting a warning.
+
+    Reading an exported config is not an explicit use of the deprecated
+    parameter, so ``ComparableField`` is called with the sentinel and the value
+    is written afterwards. That keeps ``to_stickler_config()`` faithful --
+    export -> import -> export is unchanged, including for ``aggregate=True``
+    -- while the warning stays reserved for code a user can actually edit.
+
+    Internal, and removed with the parameter in 0.8.0
+    (https://github.com/awslabs/stickler/issues/226).
+    """
+    if not isinstance(value, bool):
+        return
+    extra = getattr(field, "json_schema_extra", None)
+    if extra is None or not callable(extra):
+        return
+    extra._aggregate = value
+    metadata = getattr(extra, "_comparison_metadata", None)
+    if isinstance(metadata, dict):
+        metadata["aggregate"] = value
+
+
 def _reconstruct_comparator_from_type(
     comparator_type: str, config: Optional[Dict[str, Any]] = None
 ) -> BaseComparator:
