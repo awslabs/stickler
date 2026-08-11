@@ -52,11 +52,21 @@ class ComparatorRegistry:
 
     @staticmethod
     def _builtin_is_available(spec) -> bool:
-        """Whether a built-in's dependency is installed, without importing it."""
+        """Whether a built-in's dependency is installed, without importing it.
+
+        ``find_spec`` raises rather than returning None for a ``sys.modules``
+        entry with no ``__spec__`` (``ValueError: <name>.__spec__ is not set``),
+        which is what a test injecting a ``MagicMock`` produces. Treat any
+        probe failure as "unavailable" -- the same guard the two package-level
+        ``_dependency_available`` helpers already carry.
+        """
         _, probe, _ = spec
         if probe is None:
             return True
-        return importlib.util.find_spec(probe) is not None
+        try:
+            return importlib.util.find_spec(probe) is not None
+        except (ImportError, ValueError):
+            return False
 
     def _resolve(self, name: str) -> Optional[Type[BaseComparator]]:
         """Import and cache a pending built-in. Returns None if unavailable.
@@ -73,8 +83,8 @@ class ComparatorRegistry:
             # `module_path` is a literal from `_BUILTINS`, not the caller's
             # `name`. An unregistered `name` misses `_pending` and returns None
             # above, so a caller-supplied string is only ever a dict key and
-            # never an import path. Semgrep's taint rule cannot see through the
-            # dict lookup.
+            # never an import path. Semgrep matches a non-literal first
+            # argument and does not follow the dict lookup.
             # nosemgrep: python.lang.security.audit.non-literal-import.non-literal-import
             module = importlib.import_module(module_path)
         except ImportError:

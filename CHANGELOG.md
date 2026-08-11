@@ -60,8 +60,17 @@ Each release links to full notes on the
   allowlist and the caller's string is only ever a dict key, so an
   unrecognized name is rejected before any import is attempted. Annotated with
   `# nosemgrep` plus the reasoning, and pinned by
-  `tests/test_lazy_import_allowlists.py`, which spies on `import_module` to
-  assert no import is attempted for a hostile name. No behavior change
+  `tests/test_lazy_import_allowlists.py`, which imports a canary module to
+  assert nothing is imported for a rejected name, whatever spelling the call
+  site uses. No behavior change
+
+- `ComparatorRegistry` construction no longer raises when an optional
+  dependency is present in `sys.modules` without a `__spec__`, which
+  `importlib.util.find_spec` reports as `ValueError` rather than a missing
+  module. A test that injects a mock for an optional extra could take
+  registry construction down with it. Any probe failure is now treated as
+  "unavailable", matching the guard the two package-level
+  `_dependency_available` helpers already carried
 
 ### Changed
 

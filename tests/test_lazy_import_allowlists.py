@@ -6,14 +6,18 @@ dependencies off the ``import stickler`` path: the two package
 caller's string up in a module-level dict and imports the *value*, so the
 caller's string is only ever a key.
 
-ASH/semgrep flags all three as `non-literal-import` because its taint rule
-cannot see through the dict lookup. These tests pin the property the
-suppressions claim, so the claim is enforced rather than asserted in a
-comment. A future change that passed a caller-supplied string to
-``import_module`` would fail here.
+ASH/semgrep flags all three as `non-literal-import` because its pattern match
+sees a non-literal first argument and cannot follow the dict lookup. These
+tests pin the property the suppressions claim, so the claim is enforced rather
+than asserted in a comment. A change that passed a caller-supplied string to
+the import machinery would fail here, whatever spelling it used.
 """
 
 import importlib
+import importlib.util
+import sys
+import types
+from unittest import mock
 
 import pytest
 
@@ -59,57 +63,96 @@ def test_registry_rejects_names_outside_the_allowlist(name):
 
 # The rejection tests above check the exception. These check the side effect
 # that actually matters: importing a module executes its top-level code, so a
-# hostile name must never reach `import_module` at all, whatever is raised
-# afterwards. Spying on the import is what makes these load-bearing.
+# hostile name must never reach the import machinery at all, whatever is raised
+# afterwards. Recording attempted imports is what makes these load-bearing.
 
 
-@pytest.mark.parametrize("name", HOSTILE_NAMES)
-def test_registry_never_imports_a_caller_supplied_name(name, monkeypatch):
-    """No import is attempted for a name outside `_BUILTINS`."""
-    calls = []
-    real = importlib.import_module
+CANARY = "stickler_import_canary"
 
-    def spy(path, *args, **kwargs):
-        calls.append(path)
-        return real(path, *args, **kwargs)
 
-    monkeypatch.setattr(
-        "stickler.structured_object_evaluator.models.comparator_registry"
-        ".importlib.import_module",
-        spy,
+@pytest.fixture
+def canary(tmp_path, monkeypatch):
+    """A real importable module that records the fact of being imported.
+
+    Spying on ``import_module`` is not sufficient here, for two reasons found by
+    measurement:
+
+    1. ``stickler._il``, ``stickler.comparators._il`` and the registry's
+       ``importlib`` are all the *same module object*, so patching one is
+       process-wide rather than scoped to a single hook -- there is no per-hook
+       isolation to be had by that route.
+    2. It only covers one spelling. Code doing
+       ``from importlib import import_module as f`` binds the real function at
+       its own import time, before any patch, so ``f(name)`` is invisible to a
+       spy on the attribute. Patching ``builtins.__import__`` does not close
+       this either, since it does not fire for a module already in
+       ``sys.modules`` -- which every plausible hostile name (``os``, ``sys``,
+       ``builtins``) already is.
+
+    Importing a module *executes its top-level code*, and that side effect is
+    the actual hazard. So this writes a module whose body appends to a shared
+    list: if anything imports it by any spelling, the list is non-empty. It
+    cannot be evaded by rebinding, and it needs no patching.
+    """
+    witness = []
+    monkeypatch.setitem(
+        sys.modules,
+        "_canary_witness",
+        types.ModuleType("_canary_witness"),
     )
+    sys.modules["_canary_witness"].hits = witness
+
+    (tmp_path / f"{CANARY}.py").write_text(
+        "import _canary_witness\n_canary_witness.hits.append('imported')\n"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.delitem(sys.modules, CANARY, raising=False)
+    importlib.invalidate_caches()
+
+    yield witness
+
+    sys.modules.pop(CANARY, None)
+
+
+def test_the_canary_is_wired_up(canary):
+    """Guard the guard: an actual import must register, or the tests below lie."""
+    importlib.import_module(CANARY)
+
+    assert canary == ["imported"], "the canary fixture is not detecting imports"
+
+
+def test_registry_never_imports_a_caller_supplied_name(canary):
+    """A name outside `_BUILTINS` never reaches the import machinery."""
+    with pytest.raises(KeyError):
+        ComparatorRegistry().get(CANARY)
+
+    assert canary == [], "the rejected name was imported"
+
+
+@pytest.mark.parametrize("module", [stickler, sc], ids=["stickler", "comparators"])
+def test_package_getattr_never_imports_a_caller_supplied_name(module, canary):
+    """Same guarantee for both package ``__getattr__`` hooks."""
+    with pytest.raises(AttributeError):
+        getattr(module, CANARY)
+
+    assert canary == [], "the rejected name was imported"
+
+
+def test_no_spelling_of_import_reaches_a_caller_supplied_name(canary):
+    """Every entry point, one canary: nothing imports it, however it is called.
+
+    Because the canary observes the *effect* rather than one function, this
+    holds for `importlib.import_module`, a rebound
+    `from importlib import import_module as f`, `__import__`, or `exec`.
+    """
+    for target in (stickler, sc):
+        with pytest.raises(AttributeError):
+            getattr(target, CANARY)
 
     with pytest.raises(KeyError):
-        ComparatorRegistry().get(name)
+        ComparatorRegistry().get(CANARY)
 
-    assert calls == [], f"attempted import(s) for a rejected name: {calls}"
-
-
-@pytest.mark.parametrize(
-    "module, module_name",
-    [(stickler, "stickler"), (sc, "stickler.comparators")],
-    ids=["stickler", "comparators"],
-)
-@pytest.mark.parametrize("name", HOSTILE_NAMES)
-def test_package_getattr_never_imports_a_caller_supplied_name(
-    module, module_name, name, monkeypatch
-):
-    """Same guarantee for both package ``__getattr__`` hooks."""
-    calls = []
-    real = importlib.import_module
-
-    def spy(path, *args, **kwargs):
-        calls.append(path)
-        return real(path, *args, **kwargs)
-
-    # Patch the `_il` alias each package imported, so only imports made by the
-    # hook under test are recorded.
-    monkeypatch.setattr(f"{module_name}._il.import_module", spy)
-
-    with pytest.raises(AttributeError):
-        getattr(module, name)
-
-    assert calls == [], f"attempted import(s) for a rejected name: {calls}"
+    assert canary == [], "a rejected name was imported by some path"
 
 
 @pytest.mark.parametrize(
@@ -139,6 +182,23 @@ def test_registry_builtin_paths_are_literals_under_stickler():
         assert module_path.startswith("stickler.comparators."), (
             f"{name} resolves to {module_path!r}, outside stickler.comparators"
         )
+
+
+def test_registry_constructs_when_a_dependency_is_mocked():
+    """A ``sys.modules`` entry with no ``__spec__`` must not break construction.
+
+    ``find_spec`` raises ``ValueError: <name>.__spec__ is not set`` rather than
+    returning None for a mock injection, which is how the suite simulates an
+    optional dependency being present. Both package-level
+    ``_dependency_available`` helpers already guard this; the registry did not,
+    so constructing one while a mock was installed raised.
+    """
+    with mock.patch.dict(sys.modules, {"strands": mock.MagicMock()}):
+        registry = ComparatorRegistry()
+
+        # The probe failed, so the strands-gated comparator is simply absent
+        # rather than taking construction down with it.
+        assert "LevenshteinComparator" in registry._pending
 
 
 def test_registered_comparators_cannot_redirect_the_import_path():
