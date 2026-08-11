@@ -11,6 +11,13 @@ sees a non-literal first argument and cannot follow the dict lookup. These
 tests pin the property the suppressions claim, so the claim is enforced rather
 than asserted in a comment. A change that passed a caller-supplied string to
 the import machinery would fail here, whatever spelling it used.
+
+``HOSTILE_NAMES`` sweeps the *rejection* tests, which assert the exception. The
+side-effect tests use a single canary name instead, because a canary is the only
+name whose import can be observed -- every other plausible hostile name is
+already in ``sys.modules``, so importing it is a no-op that nothing can detect.
+Path-shaped and empty-string inputs are therefore covered for rejection but not
+for import side effects.
 """
 
 import importlib
@@ -196,9 +203,15 @@ def test_registry_constructs_when_a_dependency_is_mocked():
     with mock.patch.dict(sys.modules, {"strands": mock.MagicMock()}):
         registry = ComparatorRegistry()
 
-        # The probe failed, so the strands-gated comparator is simply absent
-        # rather than taking construction down with it.
         assert "LevenshteinComparator" in registry._pending
+
+        # A mock counts as available, matching the package-level
+        # `_dependency_available` helpers. Returning False here instead would
+        # make two public entry points disagree in one process:
+        # `stickler.LLMComparator` would resolve while `registry.get(...)`
+        # reported the comparator does not exist.
+        assert "LLMComparator" in registry._pending
+        assert stickler._dependency_available("strands") is True
 
 
 def test_registered_comparators_cannot_redirect_the_import_path():
@@ -228,7 +241,7 @@ def test_allowlisted_name_still_resolves():
 
     # A lazily-imported name resolves when its extra is installed, and raises
     # AttributeError (not ImportError) when it is not, so `hasattr` stays False.
-    if importlib.util.find_spec("strands") is not None:
+    if stickler._dependency_available("strands"):
         assert stickler.LLMComparator.__name__ == "LLMComparator"
     else:
         assert not hasattr(stickler, "LLMComparator")

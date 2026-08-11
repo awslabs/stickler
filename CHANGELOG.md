@@ -67,10 +67,12 @@ Each release links to full notes on the
 - `ComparatorRegistry` construction no longer raises when an optional
   dependency is present in `sys.modules` without a `__spec__`, which
   `importlib.util.find_spec` reports as `ValueError` rather than a missing
-  module. A test that injects a mock for an optional extra could take
-  registry construction down with it. Any probe failure is now treated as
-  "unavailable", matching the guard the two package-level
-  `_dependency_available` helpers already carried
+  module. A test that injects a mock for an optional extra could take registry
+  construction down with it. The availability probe now consults `sys.modules`
+  before the filesystem, mirroring the package-level `_dependency_available`
+  helpers, so a mocked dependency counts as available in both places rather
+  than having `stickler.LLMComparator` resolve while
+  `registry.get("LLMComparator")` reports it missing
 
 ### Changed
 
