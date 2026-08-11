@@ -12,7 +12,7 @@ Stickler provides three methods for exporting model schemas. Two support round-t
 |--------|--------|-----------|------------|----------|
 | `to_json_schema()` | JSON Schema + `x-aws-stickler-*` | Yes | `from_json_schema()` | Interoperability, OpenAPI |
 | `to_stickler_config()` | Custom Stickler JSON | Yes | `model_from_json()` | Hand-editing, version control |
-| `model_json_schema()` | Pydantic JSON Schema + `x-comparison` | No | N/A | API docs, runtime inspection |
+| `model_json_schema()` | Pydantic JSON Schema | No | N/A | API docs, LLM tool specs, runtime inspection |
 
 ## Common Workflow: Export, Customize, Re-import
 
@@ -100,11 +100,24 @@ config = Product.to_stickler_config()
 
 ## model_json_schema()
 
-Inherited from Pydantic, extended by Stickler to include `x-comparison` metadata. This method is **not** round-trip compatible -- use it for API documentation and runtime introspection only.
+Inherited from Pydantic. Describes the model's *shape* only: no comparison
+configuration is emitted, so the output matches what an equivalent plain
+`BaseModel` would produce. That is what makes a configured `StructuredModel`
+usable directly as an LLM structured-output schema.
+
+This method is **not** round-trip compatible. It parses without error, but the
+rebuilt model carries default thresholds, weights and comparators rather than
+the original's, because the shape alone does not describe them -- see
+[#214](https://github.com/awslabs/stickler/issues/214). Use `to_json_schema()`
+or `to_stickler_config()` when you need the configuration back.
 
 ```python
 schema = Product.model_json_schema()
-# schema["properties"]["name"]["x-comparison"]["threshold"]  -> 0.8
+# schema["properties"]["name"]["type"]  -> "string"
+
+# For comparison configuration, read the field or use the export methods:
+Product.model_fields["name"].json_schema_extra  # carries the config
+Product.to_json_schema()                        # x-aws-stickler-* extensions
 ```
 
 ## Nested Models and Lists

@@ -74,7 +74,16 @@ Each release links to full notes on the
 
   Code that read `x-comparison` out of `model_json_schema()` output should
   read the field's `json_schema_extra` (as the engine does) or use
-  `to_json_schema()`
+  `to_json_schema()`.
+
+  Note a side effect: dropping the internal `extra_fields` property means
+  `from_json_schema(M.model_json_schema())` now parses instead of raising
+  `ValueError`. It still does **not** round-trip -- the rebuilt model carries
+  default thresholds, weights and comparators, because a shape-only schema does
+  not describe them. `model_json_schema()` remains documented as not
+  round-trip-capable; use `to_json_schema()` or `to_stickler_config()` to
+  preserve configuration. Tracked in
+  [#214](https://github.com/awslabs/stickler/issues/214)
   ([#188](https://github.com/awslabs/stickler/issues/188))
 
 - **Breaking:** the peripheral modules now require their extra. `pandas`,
