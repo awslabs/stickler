@@ -29,6 +29,7 @@ from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
 from .rich_value_helper import RichValueHelper
+from .threshold_helper import warn_if_threshold_is_zero as _warn_if_threshold_is_zero
 
 
 class StructuredModel(BaseModel):
@@ -245,6 +246,23 @@ class StructuredModel(BaseModel):
                                     f"'comparator' parameter in ComparableField. Object comparison uses each "
                                     f"StructuredModel's individual field comparators instead."
                                 )
+                    else:
+                        continue
+
+                    _warn_if_threshold_is_zero(
+                        temp_schema["x-comparison"].get("threshold"),
+                        f"{cls.__name__}.{field_name}",
+                        "threshold",
+                    )
+
+        # `match_threshold` is a plain class attribute rather than a field, so
+        # it is not covered by the loop above.
+        if "match_threshold" in cls.__dict__:
+            _warn_if_threshold_is_zero(
+                cls.__dict__["match_threshold"],
+                cls.__name__,
+                "match_threshold",
+            )
 
     def model_post_init(self, __context):
         """Initialize confidence storage after model creation."""

@@ -14,6 +14,7 @@ from .field_converter import (
     get_global_converter,
     validate_fields_config,
 )
+from .threshold_helper import warn_if_threshold_is_zero
 
 
 class ModelFactory:
@@ -164,8 +165,11 @@ class ModelFactory:
         except Exception as e:
             raise ValueError(f"Error creating dynamic model: {e}")
 
-        # Set class-level attributes
+        # Set class-level attributes. Assigned after create_model, so
+        # StructuredModel.__init_subclass__ has already run and cannot see it --
+        # check here too or a config-driven match_threshold=0.0 warns nowhere.
         DynamicClass.match_threshold = match_threshold
+        warn_if_threshold_is_zero(match_threshold, model_name, "match_threshold")
 
         # Add configuration metadata for debugging/introspection
         DynamicClass._model_config = config
@@ -279,8 +283,11 @@ class ModelFactory:
         except Exception as e:
             raise ValueError(f"Error creating dynamic model: {e}")
 
-        # Set class-level attributes
+        # Set class-level attributes. Assigned after create_model, so
+        # StructuredModel.__init_subclass__ has already run and cannot see it --
+        # check here too or a config-driven match_threshold=0.0 warns nowhere.
         DynamicClass.match_threshold = match_threshold
+        warn_if_threshold_is_zero(match_threshold, model_name, "match_threshold")
 
         return DynamicClass
 

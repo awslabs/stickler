@@ -11,6 +11,25 @@ Each release links to full notes on the
 
 ### Added
 
+- A `UserWarning` when a field `threshold` or a model `match_threshold` is set
+  to exactly `0.0`. The threshold test is `>=`, so `0.0` is satisfied by every
+  score including `0.0` itself: every compared pair counts as a true positive
+  and a wholly incorrect prediction reports perfect precision, recall, F1 and
+  accuracy. Nothing errors and the numbers look ideal, which makes it the
+  hardest misconfiguration to notice.
+
+  Only exactly `0.0` warns. `0.01` already classifies correctly, so this is a
+  single misbehaving value rather than a "low thresholds are risky" heuristic.
+  The warning names the site, suggests a small positive value, and links to the
+  threshold documentation. It fires once per configured site, so a bulk run
+  does not emit one per document.
+
+  Covers hand-written classes and config-driven models, including
+  `match_threshold` supplied through `model_from_json()`, which the factory
+  assigns after class creation. Stickler's own internal use of
+  `match_threshold=0.0` as a capture-all sentinel does not warn
+  ([#234](https://github.com/awslabs/stickler/issues/234))
+
 - Support for Python 3.10 and 3.11, and testing through 3.14. `requires-python`
   moves from `>=3.12` to `>=3.10`, with trove classifiers for 3.10-3.14 and a
   CI matrix covering every version claimed, so the floor is enforced rather

@@ -1,6 +1,53 @@
 """Threshold checking helper for StructuredModel comparisons."""
 
-from typing import Any
+from typing import Any, Optional
+
+from stickler.utils.deprecation import warn_once
+
+#: Documentation for what a threshold does and how it reaches reported metrics.
+THRESHOLD_DOCS_URL = (
+    "https://awslabs.github.io/stickler/Advanced/threshold-gated-evaluation/"
+)
+
+
+def warn_if_threshold_is_zero(
+    value: Optional[float], context: str, parameter: str
+) -> None:
+    """Warn when a threshold is exactly ``0.0``, which disables classification.
+
+    The threshold test is ``>=``, so ``0.0`` is satisfied by every score
+    including ``0.0`` itself. Every pair the algorithm assigns becomes a true
+    positive, and a wholly incorrect prediction reports perfect precision,
+    recall, F1 and accuracy -- the hardest failure direction to notice, because
+    nothing errors and the numbers look ideal.
+
+    Only exactly ``0.0`` is flagged. ``0.01`` already classifies correctly, so
+    this is a single misbehaving value rather than a "low thresholds are risky"
+    heuristic; warning on low-but-positive values would fire on legitimate
+    configuration.
+
+    Args:
+        value: The configured threshold, or None if unset.
+        context: Where it was set, e.g. ``"Invoice.vendor"``, used to key the
+            warning so a bulk run warns once per site rather than per document.
+        parameter: The parameter name to name in the message.
+    """
+    if value is None or not isinstance(value, (int, float)):
+        return
+    if value != 0.0:
+        return
+
+    warn_once(
+        "threshold-zero",
+        f"{context}.{parameter}",
+        f"{context} sets {parameter}=0.0. The threshold test is `>=`, so every "
+        f"score satisfies it and every compared pair is counted as a true "
+        f"positive -- a wholly incorrect prediction will report perfect "
+        f"precision and recall. Use a small positive value (for example 0.01) "
+        f"to accept weak matches. See {THRESHOLD_DOCS_URL}",
+        category=UserWarning,
+        stacklevel=4,
+    )
 
 
 class ThresholdHelper:
