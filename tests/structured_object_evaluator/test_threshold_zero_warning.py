@@ -12,6 +12,7 @@ thresholds are left alone.
 See https://github.com/awslabs/stickler/issues/234
 """
 
+import gc
 import warnings
 from typing import List
 
@@ -300,6 +301,67 @@ class TestJsonConfigPath:
 
         assert len(_user_warnings(recorded)) == 1
         assert len(deprecation._warned) == 1, "the dedup set must not grow per load"
+
+    def test_configs_still_warn_when_each_class_is_collected(self):
+        """The key must survive garbage collection, not just co-existence.
+
+        An earlier attempt keyed on ``id(DynamicClass)``. CPython recycles an
+        address once the class is freed, so a batch loop that builds, uses and
+        drops each model collided on the same key and dropped most of its
+        warnings (measured: 19 of 50). The previous version of this test held
+        every class alive at once, which is exactly the shape that hides the
+        bug.
+        """
+        with warnings.catch_warnings(record=True) as recorded:
+            warnings.simplefilter("always")
+            for i in range(25):
+                model = StructuredModel.model_from_json(
+                    {
+                        "match_threshold": 0.0,
+                        "fields": {
+                            f"f{i}": {
+                                "type": "str",
+                                "comparator": "ExactComparator",
+                                "threshold": 0.5,
+                            }
+                        },
+                    }
+                )
+                del model
+                gc.collect()
+
+        assert len(_user_warnings(recorded)) == 25, (
+            "a recyclable key silently drops warnings for collected classes"
+        )
+
+    def test_anonymous_configs_sharing_a_field_name_each_warn(self):
+        """Field names like `amount`, `date`, `id` recur across schemas.
+
+        The field path keyed on `f"{cls.__name__}.{field_name}"`, which is
+        `DynamicModel.amount` for every anonymous config, so the second config
+        with a zero-threshold `amount` was silent.
+        """
+        with warnings.catch_warnings(record=True) as recorded:
+            warnings.simplefilter("always")
+            for other in ("alpha", "beta"):
+                StructuredModel.model_from_json(
+                    {
+                        "fields": {
+                            "amount": {
+                                "type": "str",
+                                "comparator": "ExactComparator",
+                                "threshold": 0.0,
+                            },
+                            other: {
+                                "type": "str",
+                                "comparator": "ExactComparator",
+                                "threshold": 0.5,
+                            },
+                        }
+                    }
+                )
+
+        assert len(_user_warnings(recorded)) == 2
 
     def test_warning_text_carries_no_internal_identity(self):
         """No object address leaks into user-visible text.

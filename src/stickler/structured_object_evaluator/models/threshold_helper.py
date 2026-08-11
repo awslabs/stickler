@@ -38,6 +38,34 @@ _MATCH_CONSEQUENCE = (
 )
 
 
+
+def model_identity(model_name: str, field_names: Any = ()) -> str:
+    """Name a model so that distinct configurations are distinguishable.
+
+    Dynamically built models all default to ``"DynamicModel"``, so the name
+    alone identifies nothing. That matters twice over: it is unhelpful to a
+    reader, and Python's ``__warningregistry__`` is keyed on the message text,
+    so two configs producing identical text mean the interpreter prints only the
+    first under its default "once per location" action -- silently swallowing
+    the second misconfiguration even though ``warn_once`` approved it.
+
+    Object identity would distinguish them but is unusable as a key. It is
+    unstable (a new class per call, so repeated loads of one config each warn --
+    measured 192 warnings for 200 loads, with the process-global ``_warned`` set
+    growing without bound) and it is *reused*: CPython recycles the address once
+    a class is collected, so a batch loop that builds, uses and drops each model
+    collides on the same key and drops most of its warnings.
+
+    Field names are stable across repeated loads of one config, distinct between
+    different configs, and cannot be recycled. Named models are left alone,
+    since their own name already distinguishes them.
+    """
+    if model_name != "DynamicModel":
+        return model_name
+    joined = ",".join(sorted(field_names))
+    return f"{model_name}(fields: {joined})" if joined else model_name
+
+
 def warn_if_threshold_is_zero(
     value: Optional[float], context: str, parameter: str
 ) -> None:

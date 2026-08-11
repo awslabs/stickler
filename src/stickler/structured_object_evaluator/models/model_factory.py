@@ -14,30 +14,7 @@ from .field_converter import (
     get_global_converter,
     validate_fields_config,
 )
-from .threshold_helper import warn_if_threshold_is_zero
-
-
-def _config_identity(model_name: str, field_definitions: Dict[str, Any]) -> str:
-    """Name a dynamically built model in a way that distinguishes configs.
-
-    Dynamically built models share the default name ``"DynamicModel"``, so the
-    name alone identifies nothing: two different configs produce byte-identical
-    warning text. That matters twice over. It is unhelpful to a reader, and
-    Python's own ``__warningregistry__`` is keyed on the message, so identical
-    text means the interpreter prints only the first one under the default
-    "once per location" action -- silently swallowing the second
-    misconfiguration even though ``warn_once`` approved it.
-
-    Object identity would distinguish them but is unstable: every call builds a
-    new class, so repeated loads of one config would each warn (measured: 200
-    loads, 192 warnings) and grow the process-global ``_warned`` set without
-    bound. Field names are stable across loads of one config and differ between
-    configs, so they serve for both the message and the dedup key.
-    """
-    fields = ",".join(sorted(field_definitions))
-    if model_name != "DynamicModel":
-        return model_name
-    return f"{model_name}(fields: {fields})" if fields else model_name
+from .threshold_helper import model_identity, warn_if_threshold_is_zero
 
 
 class ModelFactory:
@@ -202,7 +179,7 @@ class ModelFactory:
         # stable across repeated loads of one config and differ between configs.
         warn_if_threshold_is_zero(
             match_threshold,
-            _config_identity(model_name, field_definitions),
+            model_identity(model_name, field_definitions),
             "match_threshold",
         )
 
@@ -332,7 +309,7 @@ class ModelFactory:
         # stable across repeated loads of one config and differ between configs.
         warn_if_threshold_is_zero(
             match_threshold,
-            _config_identity(model_name, field_definitions),
+            model_identity(model_name, field_definitions),
             "match_threshold",
         )
 

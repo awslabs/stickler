@@ -30,6 +30,7 @@ from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
 from .rich_value_helper import RichValueHelper
 from .threshold_helper import THRESHOLD_DOCS_URL
+from .threshold_helper import model_identity as _model_identity
 from .threshold_helper import warn_if_threshold_is_zero as _warn_if_threshold_is_zero
 
 
@@ -263,9 +264,14 @@ class StructuredModel(BaseModel):
                     else:
                         continue
 
+                    # Same identity scheme as the match_threshold check below:
+                    # a dynamically built model is named "DynamicModel", so two
+                    # anonymous configs that share a field name (amount, date,
+                    # id -- these recur constantly across document schemas)
+                    # would otherwise collide and the second would be silent.
                     _warn_if_threshold_is_zero(
                         temp_schema["x-comparison"].get("threshold"),
-                        f"{cls.__name__}.{field_name}",
+                        f"{_model_identity(cls.__name__, cls.__annotations__)}.{field_name}",
                         "threshold",
                     )
 
@@ -274,7 +280,7 @@ class StructuredModel(BaseModel):
         if "match_threshold" in cls.__dict__:
             _warn_if_threshold_is_zero(
                 cls.__dict__["match_threshold"],
-                cls.__name__,
+                _model_identity(cls.__name__, cls.__annotations__),
                 "match_threshold",
             )
 
