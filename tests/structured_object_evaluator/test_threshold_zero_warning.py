@@ -20,6 +20,9 @@ import pytest
 from stickler.comparators.exact import ExactComparator
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+from stickler.structured_object_evaluator.models.threshold_helper import (
+    THRESHOLD_DOCS_URL,
+)
 from stickler.utils import deprecation
 
 
@@ -55,7 +58,29 @@ class TestFieldThreshold:
         message = str(record[0].message)
         assert "Doc.vendor" in message, "the warning must say which field"
         assert "0.01" in message, "the warning must suggest a usable alternative"
-        assert "https://" in message, "the warning must link to an explanation"
+        # Must point somewhere that actually explains the cliff. The old target
+        # was a docs page whose only mention of zero was "raw similarity score
+        # (0.0 -- 1.0)", so a reader who followed it learned nothing.
+        assert THRESHOLD_DOCS_URL in message, "the warning must link an explanation"
+
+    def test_message_claims_precision_not_recall(self):
+        """Recall survives unmatched extras, so claiming it would be false.
+
+        2 GT objects against 1 prediction at ``match_threshold=0.0`` gives
+        precision 1.0 but recall 0.5 -- the unpaired item is still an FN.
+        """
+        with pytest.warns(UserWarning) as record:
+
+            class Doc(StructuredModel):
+                vendor: str = ComparableField(
+                    comparator=ExactComparator(), threshold=0.0
+                )
+
+        message = str(record[0].message)
+        assert "precision" in message
+        assert "recall" not in message, (
+            "recall is not guaranteed to be perfect; see unequal-length lists"
+        )
 
     @pytest.mark.parametrize("threshold", [0.01, 0.1, 0.5, 0.7, 1.0])
     def test_positive_thresholds_do_not_warn(self, threshold):
@@ -89,6 +114,24 @@ class TestModelMatchThreshold:
 
                 sku: str = ComparableField(comparator=ExactComparator())
 
+    def test_match_threshold_message_is_conditional(self):
+        """`match_threshold` is inert unless the model is a list element.
+
+        The hook cannot know at class-definition time which it will be, and
+        the value provably changes nothing for a standalone model -- verified
+        identical output at None, 0.0 and 0.7. So the message states the
+        condition rather than asserting an outcome that may not apply.
+        """
+        with pytest.warns(UserWarning) as record:
+
+            class Line(StructuredModel):
+                match_threshold = 0.0
+
+                sku: str = ComparableField(comparator=ExactComparator())
+
+        message = str(record[0].message)
+        assert "if this model is compared as a list element" in message
+
     def test_warning_names_the_model(self):
         with pytest.warns(UserWarning) as record:
 
@@ -106,6 +149,24 @@ class TestModelMatchThreshold:
 
             class Line(StructuredModel):
                 match_threshold = threshold
+
+                sku: str = ComparableField(comparator=ExactComparator())
+
+        assert _user_warnings(recorded) == []
+
+    @pytest.mark.parametrize("wrong_type", [False, True])
+    def test_bool_is_not_reported_as_a_zero_threshold(self, wrong_type):
+        """`bool` is an `int` and `False == 0.0`, so an unguarded check lies.
+
+        Reporting "sets match_threshold=0.0" for `match_threshold = False`
+        names a value the user never wrote. A wrong type is a different
+        problem from a zero threshold.
+        """
+        with warnings.catch_warnings(record=True) as recorded:
+            warnings.simplefilter("always")
+
+            class Line(StructuredModel):
+                match_threshold = wrong_type
 
                 sku: str = ComparableField(comparator=ExactComparator())
 
@@ -176,6 +237,53 @@ class TestJsonConfigPath:
         with pytest.warns(UserWarning, match="match_threshold=0.0"):
             StructuredModel.model_from_json(config)
 
+    def test_distinct_anonymous_configs_each_warn(self):
+        """`model_name` defaults to "DynamicModel", so name keying collides.
+
+        A process building models from several configs -- a service per
+        request, a batch job over a directory -- would report the first
+        misconfiguration and swallow every later one, which is the gap this
+        call site exists to close.
+        """
+        configs = [
+            {
+                "match_threshold": 0.0,
+                "fields": {
+                    name: {
+                        "type": "str",
+                        "comparator": "ExactComparator",
+                        "threshold": 0.5,
+                    }
+                },
+            }
+            for name in ("alpha", "beta")
+        ]
+
+        with warnings.catch_warnings(record=True) as recorded:
+            warnings.simplefilter("always")
+            for config in configs:
+                StructuredModel.model_from_json(config)
+
+        assert len(_user_warnings(recorded)) == 2
+
+    def test_warning_text_carries_no_internal_identity(self):
+        """The dedup key is separate from the message, so `id()` cannot leak."""
+        config = {
+            "match_threshold": 0.0,
+            "fields": {
+                "a": {
+                    "type": "str",
+                    "comparator": "ExactComparator",
+                    "threshold": 0.5,
+                }
+            },
+        }
+
+        with pytest.warns(UserWarning) as record:
+            StructuredModel.model_from_json(config)
+
+        assert "#" not in str(record[0].message)
+
     def test_positive_config_thresholds_do_not_warn(self):
         config = {
             "model_name": "FineFromConfig",
@@ -235,6 +343,60 @@ class TestWarnOncePerSite:
                 Doc(tags=["x"]).compare_with(Doc(tags=["y"]))
 
         assert len(_user_warnings(record.list)) == 1
+
+
+def test_match_threshold_zero_on_a_real_list_element():
+    """The conditional in the message is true when the condition holds.
+
+    Equal-length lists at ``match_threshold=0.0``: every object pairs, every
+    pair clears the threshold, so wholly wrong objects are all true positives.
+    """
+
+    class Line(StructuredModel):
+        match_threshold = 0.0
+
+        sku: str = ComparableField(comparator=ExactComparator(), threshold=1.0)
+
+    class Doc(StructuredModel):
+        lines: List[Line] = ComparableField(weight=1.0)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = Doc(lines=[Line(sku="A"), Line(sku="B")]).compare_with(
+            Doc(lines=[Line(sku="Y"), Line(sku="Z")]), include_confusion_matrix=True
+        )
+
+    overall = result["confusion_matrix"]["fields"]["lines"]["overall"]
+    assert overall["tp"] == 2, "every paired object clears a zero threshold"
+    assert overall["fd"] == 0
+    assert overall["derived"]["cm_precision"] == 1.0
+
+
+def test_unequal_length_lists_keep_imperfect_recall():
+    """Why the message says precision and not recall.
+
+    An unpaired ground-truth object is still an FN, so recall stays honest
+    even at ``match_threshold=0.0``.
+    """
+
+    class Line(StructuredModel):
+        match_threshold = 0.0
+
+        sku: str = ComparableField(comparator=ExactComparator(), threshold=1.0)
+
+    class Doc(StructuredModel):
+        lines: List[Line] = ComparableField(weight=1.0)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = Doc(lines=[Line(sku="A"), Line(sku="B")]).compare_with(
+            Doc(lines=[Line(sku="Z")]), include_confusion_matrix=True
+        )
+
+    overall = result["confusion_matrix"]["fields"]["lines"]["overall"]
+    assert overall["fn"] == 1, "the unpaired ground-truth object is still a miss"
+    assert overall["derived"]["cm_precision"] == 1.0
+    assert overall["derived"]["cm_recall"] == 0.5
 
 
 def test_the_behavior_the_warning_describes():

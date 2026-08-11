@@ -29,6 +29,7 @@ from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
 from .rich_value_helper import RichValueHelper
+from .threshold_helper import THRESHOLD_DOCS_URL
 from .threshold_helper import warn_if_threshold_is_zero as _warn_if_threshold_is_zero
 
 
@@ -227,11 +228,24 @@ class StructuredModel(BaseModel):
                             # Threshold validation - only flag if explicitly set to non-default value
                             threshold = comparison_config.get("threshold", 0.5)
                             if threshold != 0.5:  # Default threshold value
+                                # Do not echo 0.0 back as advice: the threshold
+                                # test is `>=`, so `match_threshold = 0.0` makes
+                                # every paired object a true positive. Telling a
+                                # user to set it would walk them straight into
+                                # the misconfiguration warn_if_threshold_is_zero
+                                # exists to flag.
+                                remedy = (
+                                    "Set a positive 'match_threshold' on the list element "
+                                    "class (0.0 would classify every paired object as a "
+                                    f"true positive). See {THRESHOLD_DOCS_URL}"
+                                    if threshold == 0.0
+                                    else f"Set 'match_threshold = {threshold}' on the list element class."
+                                )
                                 raise ValueError(
                                     f"Field '{field_name}' is a List[StructuredModel] and cannot have a "
                                     f"'threshold' parameter in ComparableField. Hungarian matching uses each "
                                     f"StructuredModel's 'match_threshold' class attribute instead. "
-                                    f"Set 'match_threshold = {threshold}' on the list element class."
+                                    f"{remedy}"
                                 )
 
                             # Comparator validation - only flag if explicitly set to non-default type

@@ -4,49 +4,88 @@ from typing import Any, Optional
 
 from stickler.utils.deprecation import warn_once
 
-#: Documentation for what a threshold does and how it reaches reported metrics.
-THRESHOLD_DOCS_URL = (
-    "https://awslabs.github.io/stickler/Advanced/threshold-gated-evaluation/"
+#: Where the `>=` cliff and what to use instead are explained.
+THRESHOLD_DOCS_URL = "https://github.com/awslabs/stickler/issues/234"
+
+_FIELD_CONSEQUENCE = (
+    "every compared pair is counted as a true positive, so a wholly incorrect "
+    "prediction reports perfect precision"
+)
+
+# `match_threshold` is read only when the model is a `List[StructuredModel]`
+# element (see structured_list_comparator.py). On a standalone model the value
+# changes nothing, and the hook cannot know at class-definition time which the
+# class will be -- so this states the condition rather than asserting an outcome
+# that may not apply.
+_MATCH_CONSEQUENCE = (
+    "if this model is compared as a list element, every paired object is "
+    "counted as a true positive, so wholly incorrect objects report perfect "
+    "precision"
 )
 
 
 def warn_if_threshold_is_zero(
-    value: Optional[float], context: str, parameter: str
+    value: Optional[float],
+    context: str,
+    parameter: str,
+    dedup_key: Optional[str] = None,
 ) -> None:
     """Warn when a threshold is exactly ``0.0``, which disables classification.
 
     The threshold test is ``>=``, so ``0.0`` is satisfied by every score
-    including ``0.0`` itself. Every pair the algorithm assigns becomes a true
-    positive, and a wholly incorrect prediction reports perfect precision,
-    recall, F1 and accuracy -- the hardest failure direction to notice, because
-    nothing errors and the numbers look ideal.
+    including ``0.0`` itself. Everything the algorithm compares is then a true
+    positive -- the hardest failure direction to notice, because nothing errors
+    and the numbers look ideal.
 
     Only exactly ``0.0`` is flagged. ``0.01`` already classifies correctly, so
     this is a single misbehaving value rather than a "low thresholds are risky"
     heuristic; warning on low-but-positive values would fire on legitimate
     configuration.
 
+    The message claims precision only. Recall survives unmatched extras: 2
+    ground-truth objects against 1 prediction at ``match_threshold=0.0`` gives
+    precision ``1.0`` but recall ``0.5``, since the unpaired item is still an
+    FN. Claiming both would make the warning false for unequal-length lists.
+
     Args:
         value: The configured threshold, or None if unset.
-        context: Where it was set, e.g. ``"Invoice.vendor"``, used to key the
-            warning so a bulk run warns once per site rather than per document.
+        context: Where it was set, e.g. ``"Invoice.vendor"``. Appears in the
+            message.
         parameter: The parameter name to name in the message.
+        dedup_key: Overrides ``context`` for warn-once bookkeeping. Use when
+            ``context`` is not unique per configuration site -- dynamically
+            built models share the default name ``"DynamicModel"``, so keying
+            on it would report the first anonymous config and silence the rest.
+            Kept separate from ``context`` so an internal identity does not leak
+            into user-visible text.
     """
+    # `bool` is an `int`, and `False == 0.0`, so an unguarded numeric check
+    # reports `match_threshold = False` as "sets match_threshold=0.0" -- a value
+    # the user never wrote. A wrong type is not this function's business.
+    if isinstance(value, bool):
+        return
     if value is None or not isinstance(value, (int, float)):
         return
     if value != 0.0:
         return
 
+    consequence = (
+        _MATCH_CONSEQUENCE if parameter == "match_threshold" else _FIELD_CONSEQUENCE
+    )
+
     warn_once(
         "threshold-zero",
-        f"{context}.{parameter}",
+        f"{dedup_key or context}.{parameter}",
         f"{context} sets {parameter}=0.0. The threshold test is `>=`, so every "
-        f"score satisfies it and every compared pair is counted as a true "
-        f"positive -- a wholly incorrect prediction will report perfect "
-        f"precision and recall. Use a small positive value (for example 0.01) "
-        f"to accept weak matches. See {THRESHOLD_DOCS_URL}",
+        f"score satisfies it: {consequence}. Use a small positive value (for "
+        f"example 0.01) to accept weak matches. See {THRESHOLD_DOCS_URL}",
         category=UserWarning,
-        stacklevel=4,
+        # stacklevel=1 attributes the warning to this module. The call sites sit
+        # behind __init_subclass__ / ABCMeta.__new__ / ModelMetaclass.__new__ and
+        # a C frame, at differing depths, so no single value reaches user code --
+        # 4 landed inside `<frozen abc>`, which is worse than honest. The message
+        # names the exact site instead.
+        stacklevel=1,
     )
 
 

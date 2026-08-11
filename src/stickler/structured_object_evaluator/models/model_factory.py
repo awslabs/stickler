@@ -169,7 +169,16 @@ class ModelFactory:
         # StructuredModel.__init_subclass__ has already run and cannot see it --
         # check here too or a config-driven match_threshold=0.0 warns nowhere.
         DynamicClass.match_threshold = match_threshold
-        warn_if_threshold_is_zero(match_threshold, model_name, "match_threshold")
+        # Dedup on class identity, not name: `model_name` defaults to
+        # "DynamicModel", so keying by name means a process that loads several
+        # anonymous configs warns for the first and silences the rest -- exactly
+        # the gap this call site was added to close.
+        warn_if_threshold_is_zero(
+            match_threshold,
+            model_name,
+            "match_threshold",
+            dedup_key=f"{model_name}#{id(DynamicClass)}",
+        )
 
         # Add configuration metadata for debugging/introspection
         DynamicClass._model_config = config
@@ -287,7 +296,16 @@ class ModelFactory:
         # StructuredModel.__init_subclass__ has already run and cannot see it --
         # check here too or a config-driven match_threshold=0.0 warns nowhere.
         DynamicClass.match_threshold = match_threshold
-        warn_if_threshold_is_zero(match_threshold, model_name, "match_threshold")
+        # Dedup on class identity, not name: `model_name` defaults to
+        # "DynamicModel", so keying by name means a process that loads several
+        # anonymous configs warns for the first and silences the rest -- exactly
+        # the gap this call site was added to close.
+        warn_if_threshold_is_zero(
+            match_threshold,
+            model_name,
+            "match_threshold",
+            dedup_key=f"{model_name}#{id(DynamicClass)}",
+        )
 
         return DynamicClass
 

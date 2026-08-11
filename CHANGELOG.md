@@ -13,10 +13,17 @@ Each release links to full notes on the
 
 - A `UserWarning` when a field `threshold` or a model `match_threshold` is set
   to exactly `0.0`. The threshold test is `>=`, so `0.0` is satisfied by every
-  score including `0.0` itself: every compared pair counts as a true positive
-  and a wholly incorrect prediction reports perfect precision, recall, F1 and
-  accuracy. Nothing errors and the numbers look ideal, which makes it the
-  hardest misconfiguration to notice.
+  score including `0.0` itself: every compared pair counts as a true positive,
+  and a wholly incorrect prediction reports perfect precision. Nothing errors
+  and the numbers look ideal, which makes it the hardest misconfiguration to
+  notice.
+
+  The warning claims precision only. Recall survives unmatched extras, since
+  an unpaired ground-truth item is still an FN: 2 ground-truth objects against
+  1 prediction at `match_threshold=0.0` gives precision `1.0` but recall
+  `0.5`. For a `match_threshold` the message is also conditional, because the
+  value is only read when the model is compared as a `List[StructuredModel]`
+  element and is inert otherwise.
 
   Only exactly `0.0` warns. `0.01` already classifies correctly, so this is a
   single misbehaving value rather than a "low thresholds are risky" heuristic.

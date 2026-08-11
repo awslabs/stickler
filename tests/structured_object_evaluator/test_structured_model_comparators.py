@@ -197,8 +197,10 @@ def test_fuzzy_comparator_variants():
 
     # Create models with different fuzzy comparator methods
     class FuzzyVariantsModel(StructuredModel):
-        match_threshold = 0.0
-
+        # No `match_threshold`: this model is compared directly, never as a
+        # `List[StructuredModel]` element, so the attribute is never read. It
+        # previously carried 0.0, which is inert here but trips the
+        # zero-threshold warning (issue #234).
         ratio: str = ComparableField(
             comparator=FuzzyComparator(method="ratio"), threshold=0.5
         )
