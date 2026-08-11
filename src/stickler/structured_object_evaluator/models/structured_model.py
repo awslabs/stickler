@@ -29,6 +29,9 @@ from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
 from .rich_value_helper import RichValueHelper
+from .threshold_helper import THRESHOLD_DOCS_URL
+from .threshold_helper import model_identity as _model_identity
+from .threshold_helper import warn_if_threshold_is_zero as _warn_if_threshold_is_zero
 
 
 class StructuredModel(BaseModel):
@@ -226,11 +229,24 @@ class StructuredModel(BaseModel):
                             # Threshold validation - only flag if explicitly set to non-default value
                             threshold = comparison_config.get("threshold", 0.5)
                             if threshold != 0.5:  # Default threshold value
+                                # Do not echo 0.0 back as advice: the threshold
+                                # test is `>=`, so `match_threshold = 0.0` makes
+                                # every paired object a true positive. Telling a
+                                # user to set it would walk them straight into
+                                # the misconfiguration warn_if_threshold_is_zero
+                                # exists to flag.
+                                remedy = (
+                                    "Set a positive 'match_threshold' on the list element "
+                                    "class (0.0 would classify every paired object as a "
+                                    f"true positive). See {THRESHOLD_DOCS_URL}"
+                                    if threshold == 0.0
+                                    else f"Set 'match_threshold = {threshold}' on the list element class."
+                                )
                                 raise ValueError(
                                     f"Field '{field_name}' is a List[StructuredModel] and cannot have a "
                                     f"'threshold' parameter in ComparableField. Hungarian matching uses each "
                                     f"StructuredModel's 'match_threshold' class attribute instead. "
-                                    f"Set 'match_threshold = {threshold}' on the list element class."
+                                    f"{remedy}"
                                 )
 
                             # Comparator validation - only flag if explicitly set to non-default type
@@ -245,6 +261,28 @@ class StructuredModel(BaseModel):
                                     f"'comparator' parameter in ComparableField. Object comparison uses each "
                                     f"StructuredModel's individual field comparators instead."
                                 )
+                    else:
+                        continue
+
+                    # Same identity scheme as the match_threshold check below:
+                    # a dynamically built model is named "DynamicModel", so two
+                    # anonymous configs that share a field name (amount, date,
+                    # id -- these recur constantly across document schemas)
+                    # would otherwise collide and the second would be silent.
+                    _warn_if_threshold_is_zero(
+                        temp_schema["x-comparison"].get("threshold"),
+                        f"{_model_identity(cls.__name__, cls.__annotations__)}.{field_name}",
+                        "threshold",
+                    )
+
+        # `match_threshold` is a plain class attribute rather than a field, so
+        # it is not covered by the loop above.
+        if "match_threshold" in cls.__dict__:
+            _warn_if_threshold_is_zero(
+                cls.__dict__["match_threshold"],
+                _model_identity(cls.__name__, cls.__annotations__),
+                "match_threshold",
+            )
 
     def model_post_init(self, __context):
         """Initialize confidence storage after model creation."""
