@@ -54,10 +54,38 @@ Each release links to full notes on the
   becoming consistent rather than a new policy. Set `recall_with_fd=True` to
   count false discoveries against recall.
 
-  A 1-vs-1 list whose pair falls below threshold also no longer emits
-  sub-field entries under `confusion_matrix.fields.<list>.fields`, matching
-  what multi-item lists already did. Code reading a nested sub-field key
-  should treat it as absent rather than assuming it exists
+  **Two result shapes change for a below-threshold 1-vs-1 list**, both to
+  match what multi-item lists already produced:
+
+  `confusion_matrix.fields.<list>.fields` is now empty, where it previously
+  carried an entry per sub-field. Reading a sub-field key directly raises
+  `KeyError`:
+
+  ```python
+  cm["fields"]["lines"]["fields"]["sku"]   # KeyError: 'sku'
+  ```
+
+  Use `.get()`, or read the object-level counts at
+  `cm["fields"]["lines"]["overall"]`, which record the FD. This follows the
+  documented threshold-gating rule: below the threshold the pairing is
+  spurious, so no field-by-field breakdown is generated
+  ([Threshold-gated evaluation](https://awslabs.github.io/stickler/Advanced/threshold-gated-evaluation/)).
+
+  `non_matches` (from `document_non_matches=True`) changes in the opposite
+  direction, from two object-level records to one field-level record per
+  sub-field:
+
+  | | before | after |
+  |---|---|---|
+  | `field_path` | `lines[0]`, `lines[0]` | `lines[0].sku`, `lines[0].desc` |
+  | `non_match_type` | `false_negative`, `false_alarm` | `false_discovery` (both) |
+  | `ground_truth_value` | the whole object dict | the scalar field value |
+  | `similarity_score` | `None` | the pair's score |
+
+  Code that groups non-matches by `non_match_type` to count misses, or that
+  parses `field_path` expecting an object-level path for FN/FA records, needs
+  updating: a single-line-item document that previously produced one FN and
+  one FA now produces false discoveries at the field level
   ([#224](https://github.com/awslabs/stickler/issues/224))
 
 - Handle `None` consistently across all comparators. `None` is a missing

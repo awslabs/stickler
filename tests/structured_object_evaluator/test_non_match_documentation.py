@@ -7,6 +7,9 @@ functionality, which captures detailed information about false positives and fal
 
 from typing import List, Optional
 
+import pytest
+
+from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator import (
     ComparableField,
@@ -133,3 +136,78 @@ def test_non_match_documentation_disabled():
     assert "non_matches" not in result or len(result.get("non_matches", [])) == 0, (
         "Expected no non-matches to be documented"
     )
+
+
+# ---------------------------------------------------------------------------
+# Result-shape parity across list length (#224)
+# ---------------------------------------------------------------------------
+#
+# A below-threshold pair in a List[StructuredModel] must be documented the
+# same way whether the list holds one item or several. Before #224 the 1-vs-1
+# case was the odd one out: the fast path dropped the pair, so it surfaced as
+# an object-level FN plus an object-level FA instead of field-level false
+# discoveries. These pin the shape at n=1 against n=2 so the two cannot drift
+# apart again.
+
+
+class _Line(StructuredModel):
+    match_threshold = 0.7
+
+    sku: str = ComparableField(comparator=ExactComparator(), threshold=1.0, weight=1.0)
+    desc: str = ComparableField(comparator=ExactComparator(), threshold=1.0, weight=1.0)
+
+
+class _Invoice(StructuredModel):
+    lines: List[_Line] = ComparableField(weight=1.0)
+
+
+def _wholly_wrong(n: int):
+    """n line items, none of which match on any field."""
+    gt = _Invoice(lines=[_Line(sku=f"A{i}", desc=f"Widget{i}") for i in range(n)])
+    pred = _Invoice(lines=[_Line(sku=f"Z{i}", desc=f"Gadget{i}") for i in range(n)])
+    return gt, pred
+
+
+@pytest.mark.parametrize("n", [1, 2, 3])
+def test_below_threshold_pairs_are_field_level_false_discoveries(n):
+    """Every sub-field of every below-threshold pair is documented as an FD."""
+    gt, pred = _wholly_wrong(n)
+
+    non_matches = gt.compare_with(pred, document_non_matches=True)["non_matches"]
+
+    # One record per sub-field per pair -- not one per object.
+    assert len(non_matches) == 2 * n
+    assert all(
+        nm["non_match_type"] == NonMatchType.FALSE_DISCOVERY for nm in non_matches
+    ), "an assigned pair below threshold is a false discovery, not FN + FA"
+
+    # Paths address the field, not the object: `lines[0].sku`, not `lines[0]`.
+    assert {nm["field_path"] for nm in non_matches} == {
+        f"lines[{i}].{field}" for i in range(n) for field in ("sku", "desc")
+    }
+
+    # Scalars, not the whole object dict.
+    assert all(
+        isinstance(nm["ground_truth_value"], str) for nm in non_matches
+    ), "field-level records carry the field value"
+
+
+def test_non_match_shape_is_independent_of_list_length():
+    """The per-pair record shape at n=1 matches n=2 exactly.
+
+    This is the #224 property: classification must not depend on how many
+    items happen to be in the list.
+    """
+    keys_by_n = {}
+    for n in (1, 2):
+        gt, pred = _wholly_wrong(n)
+        non_matches = gt.compare_with(pred, document_non_matches=True)["non_matches"]
+
+        # Compare the first pair's records, which both cases share.
+        first_pair = [nm for nm in non_matches if nm["field_path"].startswith("lines[0]")]
+        keys_by_n[n] = sorted(
+            (nm["field_path"], nm["non_match_type"], sorted(nm.keys()))
+            for nm in first_pair
+        )
+
+    assert keys_by_n[1] == keys_by_n[2]

@@ -63,9 +63,23 @@ wholly wrong scores recall `0.667` if that field is FN + FA, but `1.000` if it
 is an FD, because the FD leaves both numerator and denominator untouched.
 Precision is unaffected either way, since FD is part of FP.
 
-Raising `match_threshold` moves pairs from TP to FD, which *raises* default
-recall while lowering precision. If you track recall over time, set
-`recall_with_fd=True` so that a false discovery counts against it.
+Two different moves are easy to conflate here, and they push recall in
+opposite directions:
+
+| move | numerator | denominator | default recall |
+|---|---|---|---|
+| TP → FD (raise `match_threshold`) | `-1` | `-1` | falls, or stays equal |
+| FN → FD (what changed for 1-vs-1 lists) | unchanged | `-1` | **rises** |
+
+Raising `match_threshold` moves pairs from TP to FD, which lowers both default
+recall and precision. The move that *raises* default recall is reclassifying an
+unmatched item (FN) as a matched-but-below-threshold pair (FD), because that
+drops a denominator term while leaving the numerator alone. That is the change
+1-vs-1 lists saw in
+[#224](https://github.com/awslabs/stickler/issues/224).
+
+Either way an FD is invisible to default recall, which is the reason to set
+`recall_with_fd=True` if you track recall over time.
 
 ## Concrete Example: Transaction Matching
 
