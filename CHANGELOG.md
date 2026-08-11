@@ -52,6 +52,72 @@ Each release links to full notes on the
 
 ### Fixed
 
+- The Hungarian single-item shortcut now classifies pairs the same way the
+  general multi-item path does, so a confusion-matrix result no longer depends
+  on how many items happen to be in a list. Previously a 1-vs-1 comparison at
+  zero similarity was reported as FN + FA where a 2-vs-2 reported FD, and the
+  shortcut gated on `score > 0` instead of `match_threshold`, so any non-zero
+  similarity counted as a true positive however far below threshold it was.
+
+  This makes the 1-vs-1 case follow the two documented rules it was the sole
+  violator of: a pair the algorithm assigns is a match, and `match_threshold`
+  splits matched pairs into TP and FD without un-matching them
+  ([Hungarian matching](https://awslabs.github.io/stickler/Advanced/hungarian-matching/));
+  and a below-threshold pair is treated as atomic, with no field-by-field
+  breakdown
+  ([Threshold-gated evaluation](https://awslabs.github.io/stickler/Advanced/threshold-gated-evaluation/)).
+
+  **This moves metrics, and the default moves them upward.** A 1-vs-1 list
+  that is completely wrong now reports FD where it previously reported
+  FN + FA. `recall_with_fd` defaults to `False`, which excludes FD from the
+  recall denominator, so reclassifying FN as FD *raises* reported recall for
+  an unchanged prediction:
+
+  | three single-item list fields, one wholly wrong | before | after |
+  |---|---|---|
+  | `tp` / `fa` / `fd` / `fn` | 2 / 1 / 0 / 1 | 2 / 0 / 1 / 0 |
+  | `cm_recall` | 0.667 | **1.000** |
+  | `cm_f1` | 0.667 | 0.800 |
+  | `cm_accuracy` | 0.500 | 0.667 |
+
+  Multi-item lists already behaved this way, so this is the 1-vs-1 case
+  becoming consistent rather than a new policy. Set `recall_with_fd=True` to
+  count false discoveries against recall.
+
+  **Two result shapes change for a below-threshold 1-vs-1 list**, both to
+  match what multi-item lists already produced:
+
+  `confusion_matrix.fields.<list>.fields` is now empty, where it previously
+  carried an entry per sub-field. Reading a sub-field key directly raises
+  `KeyError`:
+
+  ```python
+  cm["fields"]["lines"]["fields"]["sku"]   # KeyError: 'sku'
+  ```
+
+  Use `.get()`, or read the object-level counts at
+  `cm["fields"]["lines"]["overall"]`, which record the FD. This follows the
+  documented threshold-gating rule: below the threshold the pairing is
+  spurious, so no field-by-field breakdown is generated
+  ([Threshold-gated evaluation](https://awslabs.github.io/stickler/Advanced/threshold-gated-evaluation/)).
+
+  `non_matches` (from `document_non_matches=True`) changes in the opposite
+  direction, from two object-level records to one field-level record per
+  sub-field:
+
+  | | before | after |
+  |---|---|---|
+  | `field_path` | `lines[0]`, `lines[0]` | `lines[0].sku`, `lines[0].desc` |
+  | `non_match_type` | `false_negative`, `false_alarm` | `false_discovery` (both) |
+  | `ground_truth_value` | the whole object dict | the scalar field value |
+  | `similarity_score` | `None` | the pair's score |
+
+  Code that groups non-matches by `non_match_type` to count misses, or that
+  parses `field_path` expecting an object-level path for FN/FA records, needs
+  updating: a single-line-item document that previously produced one FN and
+  one FA now produces false discoveries at the field level
+  ([#224](https://github.com/awslabs/stickler/issues/224))
+
 - Handle `None` consistently across all comparators. `None` is a missing
   value and no longer compares equal to an empty string: `(None, "")` now
   scores `0.0` everywhere, and `(None, None)` scores `1.0` everywhere.
