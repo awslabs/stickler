@@ -105,11 +105,18 @@ configuration is emitted, so the output matches what an equivalent plain
 `BaseModel` would produce. That is what makes a configured `StructuredModel`
 usable directly as an LLM structured-output schema.
 
-This method is **not** round-trip compatible. It parses without error, but the
-rebuilt model carries default thresholds, weights and comparators rather than
-the original's, because the shape alone does not describe them -- see
-[#214](https://github.com/awslabs/stickler/issues/214). Use `to_json_schema()`
-or `to_stickler_config()` when you need the configuration back.
+This method is **not** round-trip compatible. Use `to_json_schema()` or
+`to_stickler_config()` when you need the configuration back.
+
+Feeding its output to `from_json_schema()` fails or misleads depending on the
+model. A model whose fields are all required parses, but the rebuilt model
+carries default thresholds, weights and comparators, because the shape alone
+does not describe them
+([#214](https://github.com/awslabs/stickler/issues/214)). A model with any
+`Optional` field raises `ValueError: Unsupported JSON Schema type: None`,
+because `Optional` renders as `anyOf: [{"type": ...}, {"type": "null"}]` with
+no top-level `type`
+([#198](https://github.com/awslabs/stickler/pull/198) addresses that gap).
 
 ```python
 schema = Product.model_json_schema()

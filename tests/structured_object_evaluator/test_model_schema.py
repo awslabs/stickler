@@ -11,6 +11,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 from pydantic import Field
+from pydantic.json_schema import GenerateJsonSchema
 
 from stickler.comparators.levenshtein import LevenshteinComparator
 
@@ -264,3 +265,53 @@ def test_model_defaults():
     # Check that description is properly set
     assert "description" in default_props
     assert default_props["description"] == "A field with default value"
+
+
+# ---------------------------------------------------------------------------
+# schema_generator composition (#188)
+# ---------------------------------------------------------------------------
+#
+# `schema_generator` is a documented public parameter of
+# `BaseModel.model_json_schema()`. The annotation-driven requiredness rule is a
+# mixin overriding only `field_is_required`, so a caller's generator must be
+# composed with rather than deferred to -- `setdefault` would leave theirs in
+# place and silently drop `required` entirely, which is the bug #188 fixes.
+
+
+class _CallerGenerator(GenerateJsonSchema):
+    """A caller's own generator, standing in for a framework's."""
+
+    def generate(self, schema, mode="validation"):
+        rendered = super().generate(schema, mode=mode)
+        rendered["x-caller-marker"] = True
+        return rendered
+
+
+def test_caller_supplied_generator_keeps_the_requiredness_rule():
+    """The fix must survive a caller passing their own generator."""
+    schema = SimpleTestModel.model_json_schema(schema_generator=_CallerGenerator)
+
+    assert schema.get("required") == ["text"], (
+        "a caller's generator must not silently drop the requiredness derivation"
+    )
+
+
+def test_caller_supplied_generator_is_still_applied():
+    """Composition, not replacement: the caller's customisation survives too."""
+    schema = SimpleTestModel.model_json_schema(schema_generator=_CallerGenerator)
+
+    assert schema.get("x-caller-marker") is True
+
+
+def test_generator_already_carrying_the_rule_is_used_unchanged():
+    """No pointless synthesised subclass when the caller already has the mixin."""
+    from stickler.structured_object_evaluator.models.structured_model import (
+        _AnnotationDrivenJsonSchema,
+        _compose_schema_generator,
+    )
+
+    class Already(_AnnotationDrivenJsonSchema):
+        pass
+
+    assert _compose_schema_generator(Already) is Already
+    assert _compose_schema_generator(None) is _AnnotationDrivenJsonSchema

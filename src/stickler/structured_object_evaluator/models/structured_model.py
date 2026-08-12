@@ -87,6 +87,29 @@ class _AnnotationDrivenJsonSchema(GenerateJsonSchema):
         return not _core_schema_is_nullable(wrapped.get("schema", {}))
 
 
+
+def _compose_schema_generator(
+    supplied: Optional[Type[GenerateJsonSchema]],
+) -> Type[GenerateJsonSchema]:
+    """Mix the annotation-driven requiredness rule into a caller's generator.
+
+    Returns the mixin alone when nothing was supplied, the caller's class
+    unchanged when it already carries the rule, and otherwise a synthesised
+    subclass putting the mixin first so its ``field_is_required`` wins while
+    every other customisation (``$ref`` templates, naming conventions) is
+    preserved.
+    """
+    if supplied is None:
+        return _AnnotationDrivenJsonSchema
+    if issubclass(supplied, _AnnotationDrivenJsonSchema):
+        return supplied
+    return type(
+        f"AnnotationDriven{supplied.__name__}",
+        (_AnnotationDrivenJsonSchema, supplied),
+        {},
+    )
+
+
 def _strip_x_comparison(node: Any) -> None:
     """Recursively remove ``x-comparison`` keys from a rendered schema.
 
@@ -1412,7 +1435,15 @@ class StructuredModel(BaseModel):
         Returns:
             JSON schema describing the model's shape
         """
-        kwargs.setdefault("schema_generator", _AnnotationDrivenJsonSchema)
+        # Compose with a caller-supplied generator rather than deferring to it.
+        # `schema_generator` is a documented public parameter, and
+        # `setdefault` would leave a caller's class in place -- silently
+        # dropping the requiredness derivation and rendering `required` as
+        # absent again, which is the bug this method exists to fix. The mixin
+        # only overrides `field_is_required`, so it composes with anything.
+        kwargs["schema_generator"] = _compose_schema_generator(
+            kwargs.get("schema_generator")
+        )
         schema = super().model_json_schema(**kwargs)
 
         # `json_schema_extra` attaches `x-comparison` during generation, so the
