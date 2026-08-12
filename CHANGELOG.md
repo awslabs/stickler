@@ -241,6 +241,32 @@ Each release links to full notes on the
   still returns the old value
   ([#200](https://github.com/awslabs/stickler/issues/200))
 
+- `ComparableField(aggregate=...)` now emits a `DeprecationWarning` for *any*
+  explicit use, where previously only `aggregate=True` warned and
+  `aggregate=False` was silent. The parameter has no effect: aggregation is
+  applied at the comparison layer, and every node in `compare_with()` output
+  already carries an `aggregate` block summing the primitive field metrics
+  below it.
+
+  Callers passing `aggregate=False` had no signal the parameter was going away
+  and would have met a bare `TypeError` on removal. Remove the argument; there
+  is no replacement to adopt. Scheduled for removal in 0.8.0.
+
+  Reading a config does **not** count as explicit use: `to_stickler_config()`
+  writes the `aggregate` key for every field, so `model_from_json()` restores
+  the value without warning. Otherwise every exported-config round trip would
+  warn once per field, blaming stickler's own frame for a key the caller never
+  wrote, and would fail outright under `-W error::DeprecationWarning`. The
+  export format is unchanged and stays idempotent: `export -> import -> export`
+  reproduces the original, including for `aggregate=True`.
+
+  Also removed a dead branch in `ConfusionMatrixCalculator` that zeroed and
+  re-summed a list field's confusion matrix when the flag was set. It was
+  unreachable by construction -- guarded on the argument *not* being a list, in
+  a method only ever called with one (instrumented the whole suite: 0 calls) --
+  and left a live-looking code path keyed on a parameter that is going away
+  ([#226](https://github.com/awslabs/stickler/issues/226))
+
 ## [0.6.0] - 2026-07-30
 
 ### Added

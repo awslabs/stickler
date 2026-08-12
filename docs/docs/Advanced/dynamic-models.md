@@ -101,7 +101,6 @@ The `x-aws-stickler-*` extensions control comparison behavior on each property:
 | `x-aws-stickler-threshold` | Match threshold (0.0--1.0) | `0.8` |
 | `x-aws-stickler-weight` | Field importance weight | `2.0` |
 | `x-aws-stickler-clip-under-threshold` | Zero out scores below threshold | `true` |
-| `x-aws-stickler-aggregate` | Include in aggregate metrics | `true` |
 | `x-aws-stickler-model-name` | Class name (object-level) | `"Invoice"` |
 | `x-aws-stickler-match-threshold` | Hungarian match threshold (object-level) | `0.75` |
 
@@ -206,7 +205,6 @@ Person = StructuredModel.model_from_json(person_config)
     "weight": 1.0,
     "required": true,
     "default": null,
-    "aggregate": false,
     "clip_under_threshold": true
 }
 ```

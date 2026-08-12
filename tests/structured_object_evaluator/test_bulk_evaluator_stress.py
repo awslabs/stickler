@@ -45,7 +45,7 @@ class BankStatement(StructuredModel):
     contact: Contact = ComparableField(
         comparator=ExactComparator(), threshold=1.0, weight=1.0
     )
-    transactions: List[Transaction] = ComparableField(aggregate=False, weight=1.0)
+    transactions: List[Transaction] = ComparableField(weight=1.0)
 
 
 @pytest.fixture
