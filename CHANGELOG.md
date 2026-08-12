@@ -52,6 +52,20 @@ Each release links to full notes on the
 
 ### Fixed
 
+- Accept an explicit `null` for an optional field built from a JSON Schema.
+  `from_json({"note": None})` raised `ValidationError` for a `{"type":
+  "string"}` property absent from `required`; it now constructs and scores.
+  Required fields are unaffected and still reject `None`. Only reproduced for
+  fields nested at least one level down, and only on the
+  `process_rich_values=True` path, which is why plain `ModelClass(**data)`
+  appeared to work ([#159](https://github.com/awslabs/stickler/pull/159))
+
+- `ConfigurationHelper.is_structured_field_type()` now recognises
+  `Optional[SomeStructuredModel]`, where it previously returned `False`. This
+  affects hand-written `StructuredModel` classes as well as schema-built ones,
+  so a nullable nested model is now dispatched as a structured field rather
+  than a primitive ([#159](https://github.com/awslabs/stickler/pull/159))
+
 - The Hungarian single-item shortcut now classifies pairs the same way the
   general multi-item path does, so a confusion-matrix result no longer depends
   on how many items happen to be in a list. Previously a 1-vs-1 comparison at
@@ -171,6 +185,21 @@ Each release links to full notes on the
   `registry.get("LLMComparator")` reports it missing
 
 ### Changed
+
+- Optional fields built from a JSON Schema are now annotated `Optional[T]`
+  rather than `T`, so `to_json_schema()` exports them with a nullable type:
+
+  | | before | after |
+  |---|---|---|
+  | `to_json_schema()` | `{"type": "string"}` | `{"type": ["string", "null"]}` |
+  | `model_json_schema()` | `{"type": "string"}` | `{"anyOf": [{"type": "string"}, {"type": "null"}]}` |
+
+  The two spellings differ because `model_json_schema()` is Pydantic's own
+  rendering of `Optional[T]`, while `to_json_schema()` uses the list form.
+  Meaning is preserved and re-import is idempotent, but the exported bytes
+  differ from the input schema, which matters when feeding our output into a
+  validator or a codegen tool. `required` membership is unchanged
+  ([#159](https://github.com/awslabs/stickler/pull/159))
 
 - **Breaking:** the peripheral modules now require their extra. `pandas`,
   `scipy`, `scikit-learn`, and `jinja2` are no longer core dependencies, so

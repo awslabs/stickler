@@ -34,6 +34,8 @@ Fixes #[issue_number]
 - [ ] Code follows the project's coding standards
 - [ ] Self-review of code completed
 - [ ] Documentation updated (if applicable)
+- [ ] `CHANGELOG.md` entry added under `[Unreleased]`, or not needed because
+      nothing user-visible changed (see [RELEASING.md](../../RELEASING.md))
 - [ ] Tests added/updated for new functionality
 - [ ] All CI checks are passing
 - [ ] Ready for review
