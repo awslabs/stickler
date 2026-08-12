@@ -6,6 +6,7 @@ enabling configuration-based comparator selection in model_from_json().
 
 import importlib
 import importlib.util
+import sys
 from typing import Any, Dict, List, Optional, Type
 
 from stickler.comparators.base import BaseComparator
@@ -52,11 +53,35 @@ class ComparatorRegistry:
 
     @staticmethod
     def _builtin_is_available(spec) -> bool:
-        """Whether a built-in's dependency is installed, without importing it."""
+        """Whether a built-in's dependency is installed, without importing it.
+
+        Mirrors the package-level ``_dependency_available`` helpers: consult
+        ``sys.modules`` before the filesystem, so a test-injected mock counts as
+        available. Diverging would make two public entry points disagree in one
+        process -- ``stickler.LLMComparator`` resolving while
+        ``registry.get("LLMComparator")`` reports the comparator does not exist.
+
+        The ``find_spec`` fallback is guarded because it raises rather than
+        returning None for a ``sys.modules`` entry with no ``__spec__``
+        (``ValueError: <name>.__spec__ is not set``).
+        """
         _, probe, _ = spec
         if probe is None:
             return True
-        return importlib.util.find_spec(probe) is not None
+
+        module = sys.modules.get(probe, False)
+        if module is not None and module is not False:
+            # Present in sys.modules, including a test-injected mock.
+            return True
+        if module is None:
+            # Explicitly blocked (sys.modules[probe] = None), which is how tests
+            # simulate a missing dependency.
+            return False
+
+        try:
+            return importlib.util.find_spec(probe) is not None
+        except (ImportError, ValueError):
+            return False
 
     def _resolve(self, name: str) -> Optional[Type[BaseComparator]]:
         """Import and cache a pending built-in. Returns None if unavailable.
@@ -70,6 +95,12 @@ class ComparatorRegistry:
             return None
         module_path, _, _ = spec
         try:
+            # `module_path` is a literal from `_BUILTINS`, not the caller's
+            # `name`. An unregistered `name` misses `_pending` and returns None
+            # above, so a caller-supplied string is only ever a dict key and
+            # never an import path. Semgrep matches a non-literal first
+            # argument and does not follow the dict lookup.
+            # nosemgrep: python.lang.security.audit.non-literal-import.non-literal-import
             module = importlib.import_module(module_path)
         except ImportError:
             return None

@@ -150,6 +150,26 @@ Each release links to full notes on the
   push to `main` touching `src/` or `docs/`
   ([#228](https://github.com/awslabs/stickler/issues/228))
 
+- Clear three `non-literal-import` findings from the ASH security scan, at the
+  two package `__getattr__` hooks and `ComparatorRegistry._resolve`. All three
+  are false positives: the imported path is a literal from a module-level
+  allowlist and the caller's string is only ever a dict key, so an
+  unrecognized name is rejected before any import is attempted. Annotated with
+  `# nosemgrep` plus the reasoning, and pinned by
+  `tests/test_lazy_import_allowlists.py`, which imports a canary module to
+  assert nothing is imported for a rejected name, whatever spelling the call
+  site uses. No behavior change
+
+- `ComparatorRegistry` construction no longer raises when an optional
+  dependency is present in `sys.modules` without a `__spec__`, which
+  `importlib.util.find_spec` reports as `ValueError` rather than a missing
+  module. A test that injects a mock for an optional extra could take registry
+  construction down with it. The availability probe now consults `sys.modules`
+  before the filesystem, mirroring the package-level `_dependency_available`
+  helpers, so a mocked dependency counts as available in both places rather
+  than having `stickler.LLMComparator` resolve while
+  `registry.get("LLMComparator")` reports it missing
+
 ### Changed
 
 - **Breaking:** the peripheral modules now require their extra. `pandas`,

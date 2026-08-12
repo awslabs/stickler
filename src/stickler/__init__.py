@@ -109,6 +109,11 @@ def __getattr__(name: str):
         )
 
     try:
+        # `module_path` is a literal from `_LAZY_COMPARATORS`, not the caller's
+        # `name`: an unrecognized `name` raises AttributeError above and never
+        # reaches here. Semgrep matches a non-literal first argument and does not
+        # follow the dict lookup.
+        # nosemgrep: python.lang.security.audit.non-literal-import.non-literal-import
         module = _il.import_module(module_path, __name__)
     except ImportError as exc:
         # Installed but broken (a version-skewed transitive dependency raising
