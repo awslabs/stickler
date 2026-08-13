@@ -624,8 +624,9 @@ class TestFromPydantic:
         Edited = StructuredModel.model_from_json(config)
         gt = Edited.from_json({"name": "x", "note": "Hello World"})
         pred = Edited.from_json({"name": "x", "note": "hello, world"})
-        # ExactComparator normalizes case/punctuation: still a match.
-        assert gt.compare_with(pred)["field_scores"]["note"] == pytest.approx(1.0)
+        # ExactComparator (0.7.0+) is truly exact: no case/punctuation normalization.
+        # These strings differ, so score is 0.0.
+        assert gt.compare_with(pred)["field_scores"]["note"] == pytest.approx(0.0)
 
     def test_evaluate_and_from_pydantic_agree(self):
         """The facade and the constructor produce identical scores."""

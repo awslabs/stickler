@@ -186,6 +186,96 @@ Each release links to full notes on the
 
 ### Changed
 
+- **Breaking:** `ExactComparator` is now truly exact. The default is
+  `case_sensitive=True` (was `False`), and punctuation/whitespace stripping
+  has been removed entirely. This fixes
+  [#199](https://github.com/awslabs/stickler/issues/199), where
+  `"SHP-2024-001"` incorrectly matched `"shp 2024 001"`.
+
+  **This lowers scores** on existing evaluation sets, and it reaches you even if
+  you never named `ExactComparator`. The zero-config path (`stickler.evaluate()`,
+  `eval_for()`, `from_pydantic()`) infers `ExactComparator` for id-shaped,
+  code-shaped, email, zip and boolean fields, so on a typical extraction model
+  it covers roughly half the fields:
+
+  ```python
+  class Invoice(BaseModel):           # plain pydantic, no stickler config
+      invoice_id: str                 # inferred -> ExactComparator
+      sku: str                        # inferred -> ExactComparator
+      email: str                      # inferred -> ExactComparator
+      zip_code: str                   # inferred -> ExactComparator
+      vendor_name: str                # inferred -> LevenshteinComparator
+  ```
+
+  With predictions differing only in case and punctuation
+  (`"SHP-2024-001"` vs `"shp 2024 001"`, `"98101-1234"` vs `"98101 1234"`):
+
+  | | before | after |
+  |---|---|---|
+  | the four inferred-Exact fields | 1.0 each | **0.0 each** |
+  | `overall_score` | 1.0 | **0.20** |
+
+  That is the intended correction -- those pairs are not equal, and reporting
+  them as perfect matches is the bug -- but if you track a metric across
+  releases, expect a step change at this version rather than a drift.
+
+  | what changed | before | after |
+  |---|---|---|
+  | `ExactComparator().compare("Hello", "hello")` | 1.0 | **0.0** |
+  | `ExactComparator().compare("ID-123", "ID 123")` | 1.0 | **0.0** |
+  | `ExactComparator().compare("SHP-2024-001", "shp 2024 001")` | 1.0 | **0.0** |
+
+  **Migration:** For case-insensitive matching, pass `case_sensitive=False`.
+
+  For punctuation or whitespace differences, `ExactComparator` is the wrong
+  tool. Use a similarity comparator with a threshold tuned to your data:
+
+  ```python
+  vendor: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.8)
+  ```
+
+  Note that a threshold of `1.0` will **not** work here: `"ID-123"` vs
+  `"ID 123"` scores `0.833`, so requiring a perfect score still rejects it. Pick
+  a threshold below the score your real data produces, or write a comparator
+  that normalizes the way your domain requires.
+
+  The `case_sensitive=False` path now uses `str.casefold()` (Unicode case
+  folding) instead of `str.lower()`, correctly handling cases like
+  `"STRASSE"` vs `"straße"` ([#199](https://github.com/awslabs/stickler/issues/199))
+
+- `model_json_schema()` now describes the model's shape the way an equivalent
+  plain `BaseModel` would, so a configured `StructuredModel` can drive a
+  Strands agent's structured output without degrading the schema the LLM sees:
+  `required` is derived from the annotation (`shipment_id: str` renders
+  required even though `ComparableField` assigns a `None` default for
+  construction tolerance), required fields no longer widen to
+  `["type", "null"]` or carry a contradictory `default: null`, and comparison
+  configuration (`x-comparison`) is no longer emitted. Verified through
+  Strands' `convert_pydantic_to_tool_spec`: a configured `StructuredModel` and
+  its plain-`BaseModel` twin now produce the same tool spec.
+
+  Field-level `description`, `examples`, and `alias` still reach the rendered
+  schema, and the deliberate export path `to_json_schema()` still carries the
+  comparison configuration as `x-aws-stickler-*` extensions. Runtime behavior
+  is unchanged: predictions that omit fields still construct and score.
+
+  Code that read `x-comparison` out of `model_json_schema()` output should
+  read the field's `json_schema_extra` (as the engine does) or use
+  `to_json_schema()`.
+
+  Note a side effect: dropping the internal `extra_fields` property means
+  `from_json_schema(M.model_json_schema())` now parses for a model whose fields
+  are all required, where it previously raised `ValueError`. It still does
+  **not** round-trip -- the rebuilt model carries default thresholds, weights
+  and comparators, because a shape-only schema does not describe them. A model
+  with any `Optional` field still raises, on the nullable `anyOf` gap that
+  [#198](https://github.com/awslabs/stickler/pull/198) addresses, so most real
+  models are unaffected either way. `model_json_schema()` remains documented as
+  not round-trip-capable; use `to_json_schema()` or `to_stickler_config()` to
+  preserve configuration. Tracked in
+  [#214](https://github.com/awslabs/stickler/issues/214)
+  ([#188](https://github.com/awslabs/stickler/issues/188))
+
 - Optional fields built from a JSON Schema are now annotated `Optional[T]`
   rather than `T`, so `to_json_schema()` exports them with a nullable type:
 
