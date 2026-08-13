@@ -111,3 +111,8 @@ print(f"Aggregate F1:   {result.metrics['cm_f1']:.3f}")
 
 `metrics["weighted_overall_score"]` is the weight-aware dataset headline -- the mean of each document's per-field-weighted `overall_score`. Prefer it over `cm_f1` whenever your schema assigns non-uniform `weight=...` values, since `cm_f1` treats every field-match equally regardless of business importance. See [Bulk Evaluation](../Guides/Evaluation/bulk-evaluation.md#weighted-overall-score) for the full guide.
 
+## Learn More
+
+- [Thresholds and Metrics](thresholds-and-metrics.md) — understand the four thresholds (comparator, field, model, runtime) and how to read confusion-matrix metrics
+- [Installation](installation.md) — installation options and optional extras
+
