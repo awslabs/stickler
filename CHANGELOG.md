@@ -106,6 +106,20 @@ Each release links to full notes on the
   US and UK comparator and an assessment of the available third-party libraries
   ([#242](https://github.com/awslabs/stickler/issues/242))
 
+- Accept an explicit `null` for an optional field built from a JSON Schema.
+  `from_json({"note": None})` raised `ValidationError` for a `{"type":
+  "string"}` property absent from `required`; it now constructs and scores.
+  Required fields are unaffected and still reject `None`. Only reproduced for
+  fields nested at least one level down, and only on the
+  `process_rich_values=True` path, which is why plain `ModelClass(**data)`
+  appeared to work ([#159](https://github.com/awslabs/stickler/pull/159))
+
+- `ConfigurationHelper.is_structured_field_type()` now recognises
+  `Optional[SomeStructuredModel]`, where it previously returned `False`. This
+  affects hand-written `StructuredModel` classes as well as schema-built ones,
+  so a nullable nested model is now dispatched as a structured field rather
+  than a primitive ([#159](https://github.com/awslabs/stickler/pull/159))
+
 - The Hungarian single-item shortcut now classifies pairs the same way the
   general multi-item path does, so a confusion-matrix result no longer depends
   on how many items happen to be in a list. Previously a 1-vs-1 comparison at
@@ -282,6 +296,54 @@ Each release links to full notes on the
   The `case_sensitive=False` path now uses `str.casefold()` (Unicode case
   folding) instead of `str.lower()`, correctly handling cases like
   `"STRASSE"` vs `"straße"` ([#199](https://github.com/awslabs/stickler/issues/199))
+
+- `model_json_schema()` now describes the model's shape the way an equivalent
+  plain `BaseModel` would, so a configured `StructuredModel` can drive a
+  Strands agent's structured output without degrading the schema the LLM sees:
+  `required` is derived from the annotation (`shipment_id: str` renders
+  required even though `ComparableField` assigns a `None` default for
+  construction tolerance), required fields no longer widen to
+  `["type", "null"]` or carry a contradictory `default: null`, and comparison
+  configuration (`x-comparison`) is no longer emitted. Verified through
+  Strands' `convert_pydantic_to_tool_spec`: a configured `StructuredModel` and
+  its plain-`BaseModel` twin now produce the same tool spec.
+
+  Field-level `description`, `examples`, and `alias` still reach the rendered
+  schema, and the deliberate export path `to_json_schema()` still carries the
+  comparison configuration as `x-aws-stickler-*` extensions. Runtime behavior
+  is unchanged: predictions that omit fields still construct and score.
+
+  Code that read `x-comparison` out of `model_json_schema()` output should
+  read the field's `json_schema_extra` (as the engine does) or use
+  `to_json_schema()`.
+
+  Note a side effect: dropping the internal `extra_fields` property means
+  `from_json_schema(M.model_json_schema())` now parses for a model whose fields
+  are all required, where it previously raised `ValueError`. It still does
+  **not** round-trip -- the rebuilt model carries default thresholds, weights
+  and comparators, because a shape-only schema does not describe them. A model
+  with any `Optional` field still raises, on the nullable `anyOf` gap that
+  [#198](https://github.com/awslabs/stickler/pull/198) addresses, so most real
+  models are unaffected either way. `model_json_schema()` remains documented as
+  not round-trip-capable; use `to_json_schema()` or `to_stickler_config()` to
+  preserve configuration. Tracked in
+  [#214](https://github.com/awslabs/stickler/issues/214)
+  ([#188](https://github.com/awslabs/stickler/issues/188))
+
+- Optional fields built from a JSON Schema are now annotated `Optional[T]`
+  rather than `T`, so `to_json_schema()` exports them with a nullable type:
+
+  | | before | after |
+  |---|---|---|
+  | `to_json_schema()` | `{"type": "string"}` | `{"type": ["string", "null"]}` |
+  | `model_json_schema()` | `{"type": "string"}` | `{"anyOf": [{"type": "string"}, {"type": "null"}]}` |
+
+  The two spellings differ because `model_json_schema()` is Pydantic's own
+  rendering of `Optional[T]`, while `to_json_schema()` uses the list form.
+  Meaning is preserved and re-import is idempotent, but the exported bytes
+  differ from the input schema, which matters when feeding our output into a
+  validator or a codegen tool. `required` membership is unchanged
+  ([#159](https://github.com/awslabs/stickler/pull/159))
 
 - **Breaking:** the peripheral modules now require their extra. `pandas`,
   `scipy`, `scikit-learn`, and `jinja2` are no longer core dependencies, so
