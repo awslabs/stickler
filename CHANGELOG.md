@@ -189,9 +189,19 @@ Each release links to full notes on the
   | `ExactComparator().compare("ID-123", "ID 123")` | 1.0 | **0.0** |
   | `ExactComparator().compare("SHP-2024-001", "shp 2024 001")` | 1.0 | **0.0** |
 
-  **Migration:** If you need the old case-insensitive behavior, pass
-  `case_sensitive=False`. If you need punctuation normalization, use
-  `LevenshteinComparator(threshold=1.0)` or `FuzzyComparator`.
+  **Migration:** For case-insensitive matching, pass `case_sensitive=False`.
+
+  For punctuation or whitespace differences, `ExactComparator` is the wrong
+  tool. Use a similarity comparator with a threshold tuned to your data:
+
+  ```python
+  vendor: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.8)
+  ```
+
+  Note that a threshold of `1.0` will **not** work here: `"ID-123"` vs
+  `"ID 123"` scores `0.833`, so requiring a perfect score still rejects it. Pick
+  a threshold below the score your real data produces, or write a comparator
+  that normalizes the way your domain requires.
 
   The `case_sensitive=False` path now uses `str.casefold()` (Unicode case
   folding) instead of `str.lower()`, correctly handling cases like
