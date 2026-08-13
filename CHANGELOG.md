@@ -25,9 +25,17 @@ Each release links to full notes on the
   prediction is still an FA (2 ground-truth objects vs 3 predictions gives
   precision `0.667`) and an unmatched ground-truth item is still an FN (2 vs 1
   gives recall `0.5`), because unmatched items are not subject to any
-  threshold. For a `match_threshold` the message is also conditional, since the
-  value is only read when the model is compared as a `List[StructuredModel]`
-  element and is inert otherwise.
+  threshold.
+
+  `match_threshold=0.0` warns unconditionally, because the value reaches the
+  comparison two ways: as the object-matching threshold for a
+  `List[StructuredModel]` element, *and* as the default field threshold for any
+  field with no explicit config of its own. A plainly annotated `name: str`
+  inherits it, so a standalone model at `0.0` reports precision and recall
+  `1.0` for a wholly incorrect prediction with no list involved. (Declaring the
+  field with `ComparableField()` takes an earlier branch and gets a hardcoded
+  `0.5`, which is why the value can look inert when probed that way -- see
+  [#237](https://github.com/awslabs/stickler/issues/237).)
 
   Only exactly `0.0` warns. `0.01` already classifies correctly, so this is a
   single misbehaving value rather than a "low thresholds are risky" heuristic.

@@ -122,13 +122,14 @@ class TestModelMatchThreshold:
 
                 sku: str = ComparableField(comparator=ExactComparator())
 
-    def test_match_threshold_message_is_conditional(self):
-        """`match_threshold` is inert unless the model is a list element.
+    def test_match_threshold_message_is_unconditional(self):
+        """The consequence is not conditional on being a list element.
 
-        The hook cannot know at class-definition time which it will be, and
-        the value provably changes nothing for a standalone model -- verified
-        identical output at None, 0.0 and 0.7. So the message states the
-        condition rather than asserting an outcome that may not apply.
+        `match_threshold` also serves as the default field threshold for any
+        field with no explicit config, so a standalone model is affected too.
+        An earlier version of this message hedged with "if this model is
+        compared as a list element", which told exactly the affected users that
+        it did not apply to them (#237).
         """
         with pytest.warns(UserWarning) as record:
 
@@ -138,7 +139,73 @@ class TestModelMatchThreshold:
                 sku: str = ComparableField(comparator=ExactComparator())
 
         message = str(record[0].message)
-        assert "if this model is compared as a list element" in message
+        assert "if this model is compared as a list element" not in message
+        assert "inherits this value" in message, (
+            "the message must name the field-threshold route, not only lists"
+        )
+
+    def test_the_value_is_not_inert_on_a_standalone_model(self):
+        """The behaviour the message now describes, measured.
+
+        A plainly annotated field (no ComparableField) inherits
+        `match_threshold` as its own threshold, so a wholly wrong prediction
+        scores as a true positive with no list involved. Probing with
+        `ComparableField()` hides this -- that path takes an earlier branch and
+        gets a hardcoded 0.5.
+        """
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+
+            class Zero(StructuredModel):
+                match_threshold = 0.0
+
+                name: str
+
+            class Normal(StructuredModel):
+                match_threshold = 0.7
+
+                name: str
+
+            def overall(model_cls):
+                return model_cls(name="Acme Corporation").compare_with(
+                    model_cls(name="zzzzzzzz"), include_confusion_matrix=True
+                )["confusion_matrix"]["overall"]
+
+            zero, normal = overall(Zero), overall(Normal)
+
+        # At 0.0 a wholly wrong value is a true positive with perfect metrics.
+        assert zero["tp"] == 1 and zero["fd"] == 0
+        assert zero["derived"]["cm_precision"] == 1.0
+        assert zero["derived"]["cm_recall"] == 1.0
+
+        # At a normal threshold the same comparison is a false discovery.
+        assert normal["tp"] == 0 and normal["fd"] == 1
+
+    def test_a_comparable_field_does_not_inherit_match_threshold(self):
+        """Why the inertness claim looked true: this path ignores the value.
+
+        Documents the asymmetry that made the original message wrong, so a
+        future reader probing with ComparableField is not misled the same way.
+        """
+        from stickler.structured_object_evaluator.models.configuration_helper import (
+            ConfigurationHelper,
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+
+            class Explicit(StructuredModel):
+                match_threshold = 0.0
+
+                n: str = ComparableField(comparator=ExactComparator())
+
+            class Plain(StructuredModel):
+                match_threshold = 0.0
+
+                n: str
+
+        assert ConfigurationHelper.get_comparison_info(Explicit, "n").threshold == 0.5
+        assert ConfigurationHelper.get_comparison_info(Plain, "n").threshold == 0.0
 
     def test_warning_names_the_model(self):
         with pytest.warns(UserWarning) as record:
