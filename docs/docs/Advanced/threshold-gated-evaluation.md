@@ -25,6 +25,26 @@ For each matched pair, compare the similarity score against `StructuredModel.mat
 - **similarity >= threshold** -- **TP**: recurse into nested fields
 - **similarity < threshold** -- **FD**: stop recursion, treat as atomic
 
+!!! warning "Do not set a list field's `threshold` to `0.0`"
+    The comparison is `>=`, so a threshold of `0.0` is satisfied by *every*
+    score including `0.0` itself. Every pair the algorithm assigns becomes a
+    true positive, and a wholly wrong prediction reports perfect metrics:
+
+    ```python
+    class Doc(StructuredModel):
+        tags: List[str] = ComparableField(comparator=ExactComparator(), threshold=0.0)
+
+    Doc(tags=["X"]).compare_with(Doc(tags=["A"]), include_confusion_matrix=True)
+    # tp=1, fa=0, fn=0 -- recall, precision, F1 and accuracy all 1.000
+    ```
+
+    Use a small positive threshold instead if the intent is "accept weak
+    matches." `0.0` means "accept everything," which is rarely what a
+    threshold is for. Note that Stickler uses `match_threshold=0.0`
+    internally as a deliberate capture-all sentinel when it needs every pair
+    for scoring, and reclassifies those pairs itself rather than reading
+    their `tp`.
+
 ### 3. Unmatched Items
 
 - **GT extras** -- **FN**: stop recursion

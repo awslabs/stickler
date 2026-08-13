@@ -42,7 +42,7 @@ class BERTComparator(BaseComparator):
                 "BERTScore model could not be loaded. Please install 'evaluate' package."
             )
 
-    def compare(self, str1: Any, str2: Any) -> float:
+    def _compare(self, str1: Any, str2: Any) -> float:
         """Compare two strings using BERT semantic similarity.
 
         Args:
@@ -52,9 +52,6 @@ class BERTComparator(BaseComparator):
         Returns:
             Similarity score between 0.0 and 1.0 based on BERTScore f1
         """
-        if str1 is None or str2 is None:
-            return 0.0
-
         # Convert to strings if they aren't already
         str1 = str(str1)
         str2 = str(str2)

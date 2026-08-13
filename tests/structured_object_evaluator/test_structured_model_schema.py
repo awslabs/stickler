@@ -1,15 +1,29 @@
 """
 Test the JSON schema serialization of StructuredModel classes.
-This verifies that structured models can be correctly serialized to JSON schema
-with all comparison metadata intact.
+
+``model_json_schema()`` describes the model's *shape* for external consumers
+(e.g. tool specs sent to an LLM), so it must NOT carry comparison metadata
+(issue #188). The metadata is still attached to every field and reachable via
+``json_schema_extra`` and the deliberate export path ``to_json_schema()``.
 """
 
 import json
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
+
+
+def _comparison_metadata(model_cls, field_name: str) -> Dict[str, Any]:
+    """Read a field's comparison metadata the way the engine does.
+
+    The metadata lives on the field's ``json_schema_extra`` callable; it is
+    deliberately not rendered into ``model_json_schema()``.
+    """
+    extra: Dict[str, Any] = {}
+    model_cls.model_fields[field_name].json_schema_extra(extra)
+    return extra["x-comparison"]
 
 
 class SimpleTestModel(StructuredModel):
@@ -61,12 +75,12 @@ def test_simple_model_schema():
     assert "properties" in schema
     assert "text" in schema["properties"]
 
-    # Check that the text property has comparison metadata
+    # Comparison metadata must NOT leak into the rendered schema (issue #188).
     text_props = schema["properties"]["text"]
-    assert "x-comparison" in text_props
+    assert "x-comparison" not in text_props
 
-    # Check that comparison metadata has the expected fields
-    comp_info = text_props["x-comparison"]
+    # It is still attached to the field, read the way the engine reads it.
+    comp_info = _comparison_metadata(SimpleTestModel, "text")
     assert comp_info["comparator_type"] == "LevenshteinComparator"
     assert comp_info["threshold"] == 0.7
     assert comp_info["weight"] == 1.0
@@ -92,10 +106,10 @@ def test_complex_model_schema():
     }
 
     for field_name, expected_values in fields.items():
-        field_props = schema["properties"][field_name]
-        assert "x-comparison" in field_props
+        # Not rendered (issue #188), but still configured on the field.
+        assert "x-comparison" not in schema["properties"][field_name]
 
-        comp_info = field_props["x-comparison"]
+        comp_info = _comparison_metadata(ComplexTestModel, field_name)
         assert comp_info["threshold"] == expected_values["threshold"]
         assert comp_info["weight"] == expected_values["weight"]
 
@@ -110,10 +124,9 @@ def test_nested_model_schema():
     assert "title" in schema["properties"]
     assert "simple" in schema["properties"]
 
-    # Check that title has comparison metadata
-    title_props = schema["properties"]["title"]
-    assert "x-comparison" in title_props
-    title_comp = title_props["x-comparison"]
+    # title's comparison config stays off the rendered schema but on the field
+    assert "x-comparison" not in schema["properties"]["title"]
+    title_comp = _comparison_metadata(NestedTestModel, "title")
     assert title_comp["threshold"] == 0.8
     assert title_comp["weight"] == 1.5
 
@@ -130,9 +143,11 @@ def test_schema_serialization():
     schema = ComplexTestModel.model_json_schema()
     json_string = json.dumps(schema)
 
-    # Verify it can be parsed back
+    # Verify it can be parsed back, and that no comparison metadata leaked
+    # anywhere in the document (issue #188).
     parsed_schema = json.loads(json_string)
-    assert parsed_schema["properties"]["id"]["x-comparison"]["threshold"] == 0.9
+    assert "x-comparison" not in json_string
+    assert parsed_schema["properties"]["id"]["type"] == "string"
 
     # Test with nested model as well
     nested_schema = NestedTestModel.model_json_schema()

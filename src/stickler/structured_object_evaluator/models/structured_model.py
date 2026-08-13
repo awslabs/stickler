@@ -18,6 +18,7 @@ from typing import (
 )
 
 from pydantic import BaseModel, Field
+from pydantic.json_schema import GenerateJsonSchema
 
 from stickler.comparators.base import BaseComparator
 from stickler.utils.deprecation import warn_once
@@ -29,6 +30,138 @@ from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
 from .rich_value_helper import RichValueHelper
+from .threshold_helper import THRESHOLD_DOCS_URL
+from .threshold_helper import model_identity as _model_identity
+from .threshold_helper import warn_if_threshold_is_zero as _warn_if_threshold_is_zero
+
+# Name of the internal field every StructuredModel carries to hold unmatched
+# input keys. It is not part of a model's data contract and must not appear in
+# an exported JSON Schema.
+_EXTRA_FIELDS_KEY = "extra_fields"
+
+# Core-schema wrappers that sit between a field's `default` wrapper and its
+# actual type. Unwrapped when deciding whether an annotation is Optional.
+_CORE_SCHEMA_WRAPPERS = frozenset(
+    {"function-after", "function-before", "function-wrap", "function-plain"}
+)
+
+
+def _core_schema_is_nullable(schema: Dict[str, Any]) -> bool:
+    """Whether a pydantic core schema describes an Optional annotation."""
+    while schema.get("type") in _CORE_SCHEMA_WRAPPERS:
+        schema = schema.get("schema", {})
+    return schema.get("type") == "nullable"
+
+
+class _AnnotationDrivenJsonSchema(GenerateJsonSchema):
+    """Schema generator that derives `required` from the annotation.
+
+    ``ComparableField`` gives every field ``default=None`` so that model
+    construction tolerates partial predictions (the comparison engine builds
+    instances from prediction JSON that may omit fields). Pydantic reads that
+    default as "optional", so a rendered schema claims nothing is required and
+    downstream consumers (e.g. Strands' ``convert_pydantic_to_tool_spec``)
+    tell the LLM every field may be omitted or null.
+
+    The annotation already says what the user meant: ``shipment_id: str`` is
+    required, ``notes: Optional[str]`` is not. This generator restores that
+    reading for schema purposes only -- a field is required when its
+    annotation is non-Optional and it carries no real default -- without
+    changing runtime construction. Running at generation time (rather than
+    post-processing) means nested models rendered into ``$defs`` get the same
+    treatment.
+    """
+
+    def field_is_required(self, field, total: bool) -> bool:
+        if super().field_is_required(field, total):
+            return True
+        wrapped = field.get("schema", {})
+        if wrapped.get("type") != "default":
+            return False
+        if "default_factory" in wrapped:
+            # A real default (e.g. extra_fields' dict factory): optional.
+            return False
+        if wrapped.get("default") is not None:
+            # An explicit, meaningful default: optional.
+            return False
+        # default=None on a non-Optional annotation is ComparableField's
+        # construction-tolerance sentinel, not a statement that the field is
+        # optional.
+        return not _core_schema_is_nullable(wrapped.get("schema", {}))
+
+
+
+def _compose_schema_generator(
+    supplied: Optional[Type[GenerateJsonSchema]],
+) -> Type[GenerateJsonSchema]:
+    """Mix the annotation-driven requiredness rule into a caller's generator.
+
+    Returns the mixin alone when nothing was supplied, the caller's class
+    unchanged when it already carries the rule, and otherwise a synthesised
+    subclass putting the mixin first so its ``field_is_required`` wins while
+    every other customisation (``$ref`` templates, naming conventions) is
+    preserved.
+    """
+    if supplied is None:
+        return _AnnotationDrivenJsonSchema
+    if issubclass(supplied, _AnnotationDrivenJsonSchema):
+        return supplied
+    return type(
+        f"AnnotationDriven{supplied.__name__}",
+        (_AnnotationDrivenJsonSchema, supplied),
+        {},
+    )
+
+
+def _strip_x_comparison(node: Any) -> None:
+    """Recursively remove ``x-comparison`` keys from a rendered schema.
+
+    Comparison configuration (comparator, threshold, weight) is evaluation
+    metadata, not part of the shape ``model_json_schema()`` describes. Leaving
+    it in bloats tool specs sent to LLMs and shows the model the rubric it is
+    about to be graded against. The deliberate export path,
+    ``to_json_schema()``, still carries the configuration as
+    ``x-aws-stickler-*`` extensions.
+    """
+    if isinstance(node, dict):
+        node.pop("x-comparison", None)
+        for value in node.values():
+            _strip_x_comparison(value)
+    elif isinstance(node, list):
+        for item in node:
+            _strip_x_comparison(item)
+
+
+def _drop_null_defaults_for_required(schema_obj: Dict[str, Any]) -> None:
+    """Remove ``default: null`` from properties listed in ``required``.
+
+    Once a field is marked required, a leftover ``default: null`` is
+    contradictory, and schema flatteners (Strands' among them) read it as
+    permission to widen the type to nullable.
+    """
+    required = schema_obj.get("required")
+    properties = schema_obj.get("properties")
+    if not (isinstance(required, list) and isinstance(properties, dict)):
+        return
+    for name in required:
+        prop = properties.get(name)
+        if isinstance(prop, dict) and prop.get("default", ...) is None:
+            del prop["default"]
+
+
+def _strip_extra_fields_property(schema_obj: Dict[str, Any]) -> None:
+    """Remove the internal ``extra_fields`` property from a schema object.
+
+    Operates in place on a single JSON Schema object (a top-level schema or a
+    ``$defs`` entry): drops it from ``properties`` and from ``required``. A
+    no-op when ``extra_fields`` is absent.
+    """
+    properties = schema_obj.get("properties")
+    if isinstance(properties, dict):
+        properties.pop(_EXTRA_FIELDS_KEY, None)
+    required = schema_obj.get("required")
+    if isinstance(required, list) and _EXTRA_FIELDS_KEY in required:
+        schema_obj["required"] = [r for r in required if r != _EXTRA_FIELDS_KEY]
 
 
 class StructuredModel(BaseModel):
@@ -226,11 +359,24 @@ class StructuredModel(BaseModel):
                             # Threshold validation - only flag if explicitly set to non-default value
                             threshold = comparison_config.get("threshold", 0.5)
                             if threshold != 0.5:  # Default threshold value
+                                # Do not echo 0.0 back as advice: the threshold
+                                # test is `>=`, so `match_threshold = 0.0` makes
+                                # every paired object a true positive. Telling a
+                                # user to set it would walk them straight into
+                                # the misconfiguration warn_if_threshold_is_zero
+                                # exists to flag.
+                                remedy = (
+                                    "Set a positive 'match_threshold' on the list element "
+                                    "class (0.0 would classify every paired object as a "
+                                    f"true positive). See {THRESHOLD_DOCS_URL}"
+                                    if threshold == 0.0
+                                    else f"Set 'match_threshold = {threshold}' on the list element class."
+                                )
                                 raise ValueError(
                                     f"Field '{field_name}' is a List[StructuredModel] and cannot have a "
                                     f"'threshold' parameter in ComparableField. Hungarian matching uses each "
                                     f"StructuredModel's 'match_threshold' class attribute instead. "
-                                    f"Set 'match_threshold = {threshold}' on the list element class."
+                                    f"{remedy}"
                                 )
 
                             # Comparator validation - only flag if explicitly set to non-default type
@@ -245,6 +391,28 @@ class StructuredModel(BaseModel):
                                     f"'comparator' parameter in ComparableField. Object comparison uses each "
                                     f"StructuredModel's individual field comparators instead."
                                 )
+                    else:
+                        continue
+
+                    # Same identity scheme as the match_threshold check below:
+                    # a dynamically built model is named "DynamicModel", so two
+                    # anonymous configs that share a field name (amount, date,
+                    # id -- these recur constantly across document schemas)
+                    # would otherwise collide and the second would be silent.
+                    _warn_if_threshold_is_zero(
+                        temp_schema["x-comparison"].get("threshold"),
+                        f"{_model_identity(cls.__name__, cls.__annotations__)}.{field_name}",
+                        "threshold",
+                    )
+
+        # `match_threshold` is a plain class attribute rather than a field, so
+        # it is not covered by the loop above.
+        if "match_threshold" in cls.__dict__:
+            _warn_if_threshold_is_zero(
+                cls.__dict__["match_threshold"],
+                _model_identity(cls.__name__, cls.__annotations__),
+                "match_threshold",
+            )
 
     def model_post_init(self, __context):
         """Initialize confidence storage after model creation."""
@@ -1277,41 +1445,56 @@ class StructuredModel(BaseModel):
 
     @classmethod
     def model_json_schema(cls, **kwargs):
-        """Override to add model-level comparison metadata.
+        """Render the model's shape for external consumers.
 
-        Extends the standard Pydantic JSON schema with comparison metadata
-        at the field level.
+        This is Pydantic's contract for "describe this shape", and it is what
+        schema consumers such as Strands' ``convert_pydantic_to_tool_spec``
+        call. Three corrections are applied to the standard rendering so a
+        configured ``StructuredModel`` describes the same shape as the plain
+        ``BaseModel`` a developer would otherwise write (issue #188):
+
+        - ``required`` is derived from the annotation, so ``shipment_id: str``
+          renders required even though ``ComparableField`` assigns
+          ``default=None`` for construction tolerance, and required fields do
+          not carry a contradictory ``default: null``.
+        - Comparison configuration (``x-comparison``) is not emitted.
+          Evaluation config is not part of the shape; the deliberate export
+          path ``to_json_schema()`` still carries it as ``x-aws-stickler-*``
+          extensions.
+        - The internal ``extra_fields`` property is not emitted (top level or
+          nested ``$defs``); it holds unmatched input keys and is not part of
+          the data contract. This also lets the output round-trip through
+          ``from_json_schema()`` (issue #214).
+
+        Field-level ``description``, ``examples``, and ``alias`` pass through
+        untouched, since those are genuinely useful to a schema consumer.
 
         Args:
             **kwargs: Arguments to pass to the parent method
 
         Returns:
-            JSON schema with added comparison metadata
+            JSON schema describing the model's shape
         """
+        # Compose with a caller-supplied generator rather than deferring to it.
+        # `schema_generator` is a documented public parameter, and
+        # `setdefault` would leave a caller's class in place -- silently
+        # dropping the requiredness derivation and rendering `required` as
+        # absent again, which is the bug this method exists to fix. The mixin
+        # only overrides `field_is_required`, so it composes with anything.
+        kwargs["schema_generator"] = _compose_schema_generator(
+            kwargs.get("schema_generator")
+        )
         schema = super().model_json_schema(**kwargs)
 
-        # Add comparison metadata to each field in the schema
-        for field_name, field_info in cls.model_fields.items():
-            if field_name == "extra_fields":
-                continue
-
-            # Get the schema property for this field
-            if field_name not in schema.get("properties", {}):
-                continue
-
-            field_props = schema["properties"][field_name]
-
-            # Since ComparableField is now always a function, check for json_schema_extra
-            if hasattr(field_info, "json_schema_extra") and callable(
-                field_info.json_schema_extra
-            ):
-                # Fallback: Check for json_schema_extra function
-                temp_schema = {}
-                field_info.json_schema_extra(temp_schema)
-
-                if "x-comparison" in temp_schema:
-                    # Copy the comparison metadata from the temp schema to the real schema
-                    field_props["x-comparison"] = temp_schema["x-comparison"]
+        # `json_schema_extra` attaches `x-comparison` during generation, so the
+        # strip below removes it rather than declining to add it. Comparison
+        # config is stickler's own bookkeeping and has no meaning to a schema
+        # consumer; `to_json_schema()` is the export that deliberately carries
+        # it, as `x-aws-stickler-*`.
+        for schema_obj in (schema, *schema.get("$defs", {}).values()):
+            _strip_extra_fields_property(schema_obj)
+            _drop_null_defaults_for_required(schema_obj)
+        _strip_x_comparison(schema)
 
         return schema
 

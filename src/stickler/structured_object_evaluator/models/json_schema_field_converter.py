@@ -222,6 +222,17 @@ class JsonSchemaFieldConverter:
                 "writeOnly",
             }
 
+            def is_stickler_keyword(key: str) -> bool:
+                """Extensions stickler itself writes into a schema.
+
+                ``x-aws-stickler-*`` is the current export vocabulary.
+                ``x-comparison`` is what ``model_json_schema()`` emitted up to
+                and including 0.6.0, so a schema saved by an earlier version
+                still carries it -- rejecting it would blame the user's file for
+                a key we wrote (see #198 review).
+                """
+                return key.startswith("x-aws-stickler-") or key == "x-comparison"
+
             def is_explicit_null_branch(branch: Any) -> bool:
                 return (
                     isinstance(branch, dict)
@@ -229,7 +240,7 @@ class JsonSchemaFieldConverter:
                     and all(
                         key == "type"
                         or key in annotation_keywords
-                        or key.startswith("x-aws-stickler-")
+                        or is_stickler_keyword(key)
                         for key in branch
                     )
                 )
@@ -268,8 +279,7 @@ class JsonSchemaFieldConverter:
             unsupported_siblings = [
                 key
                 for key in sibling_keywords
-                if key not in annotation_keywords
-                and not key.startswith("x-aws-stickler-")
+                if key not in annotation_keywords and not is_stickler_keyword(key)
             ]
             if unsupported_siblings:
                 raise ValueError(

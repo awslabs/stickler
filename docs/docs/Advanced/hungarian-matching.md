@@ -35,6 +35,52 @@ Each matched pair is classified using `StructuredModel.match_threshold`:
 | GT item unmatched | **FN** | No |
 | Pred item unmatched | **FA** | No |
 
+The threshold splits matched pairs into TP and FD; it does not un-match them.
+A pair the algorithm assigned is a match, so **similarity magnitude never
+changes the classification** -- a pair at similarity `0.0` is still an assigned
+pair and is therefore FD, not FN + FA. Only items with no partner at all
+become FN or FA. This holds identically for a one-item list and a hundred-item
+one; see `tests/common/algorithms/test_hungarian_path_parity.py`.
+
+### FD and recall
+
+Whether an FD counts against recall is a separate decision, controlled by
+`recall_with_fd` (see
+[Understanding Results](../Guides/Evaluation/understanding-results.md)).
+
+This is worth understanding before comparing recall across versions or
+thresholds, because **the default excludes FD from the recall denominator**:
+
+| `recall_with_fd` | recall | effect |
+|---|---|---|
+| `False` (default) | `TP / (TP + FN)` | an FD is invisible to recall |
+| `True` | `TP / (TP + FN + FD)` | an FD counts as a miss |
+
+A wrong-but-paired prediction is an FD, not an FN, so under the default it is
+absent from the recall denominator entirely. The effect shows up when a
+document mixes right and wrong fields: three single-item list fields with one
+wholly wrong scores recall `0.667` if that field is FN + FA, but `1.000` if it
+is an FD, because the FD leaves both numerator and denominator untouched.
+Precision is unaffected either way, since FD is part of FP.
+
+Two different moves are easy to conflate here, and they push recall in
+opposite directions:
+
+| move | numerator | denominator | default recall |
+|---|---|---|---|
+| TP → FD (raise `match_threshold`) | `-1` | `-1` | falls, or stays equal |
+| FN → FD (what changed for 1-vs-1 lists) | unchanged | `-1` | **rises** |
+
+Raising `match_threshold` moves pairs from TP to FD, which lowers both default
+recall and precision. The move that *raises* default recall is reclassifying an
+unmatched item (FN) as a matched-but-below-threshold pair (FD), because that
+drops a denominator term while leaving the numerator alone. That is the change
+1-vs-1 lists saw in
+[#224](https://github.com/awslabs/stickler/issues/224).
+
+Either way an FD is invisible to default recall, which is the reason to set
+`recall_with_fd=True` if you track recall over time.
+
 ## Concrete Example: Transaction Matching
 
 ### Model Definition

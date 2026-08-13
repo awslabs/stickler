@@ -4,6 +4,22 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from stickler.utils import deprecation as _deprecation
+
+
+@pytest.fixture(autouse=True)
+def _reset_deprecation_sentinels():
+    """Clear ``warn_once`` sentinels so each test sees fresh DeprecationWarnings.
+
+    ``warn_once`` remembers ``(deprecation_id, context)`` per process, so a
+    ``pytest.warns(DeprecationWarning)`` assertion would silently fail if a
+    peer test had already tripped the same sentinel. Mirrors the fixture in
+    ``tests/structured_object_evaluator/conftest.py``.
+    """
+    _deprecation._warned.clear()
+    yield
+    _deprecation._warned.clear()
+
 
 @pytest.fixture(scope="module", autouse=True)
 def mock_strands_module():

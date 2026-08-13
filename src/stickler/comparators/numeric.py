@@ -65,7 +65,7 @@ class NumericComparator(BaseComparator):
             config["absolute_tolerance"] = self.absolute_tolerance
         return config or None
 
-    def compare(self, str1: Any, str2: Any) -> float:
+    def _compare(self, str1: Any, str2: Any) -> float:
         """Compare two values numerically.
 
         Args:
@@ -75,11 +75,6 @@ class NumericComparator(BaseComparator):
         Returns:
             1.0 if the numbers match within tolerance, 0.0 otherwise
         """
-        if str1 is None and str2 is None:
-            return 1.0
-        if str1 is None or str2 is None:
-            return 0.0
-
         # Extract numeric values
         num1 = self._extract_number(str1)
         num2 = self._extract_number(str2)

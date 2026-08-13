@@ -51,6 +51,21 @@ git push origin dev
 Also add a `## [X.Y.Z] - YYYY-MM-DD` section to `CHANGELOG.md` (move entries
 out of `[Unreleased]`) in the same commit.
 
+### What belongs in the changelog
+
+Entries are for changes a user can observe. A PR needs one when it changes
+behaviour, an exported format, a public signature, a default, or a dependency,
+and when it fixes a bug someone could have hit.
+
+Internal refactors with no runtime change do **not** get an entry: dead-code
+removal, moving a private helper, renaming something not exported. `git log` is
+the record for those. This is the existing convention, made explicit here
+because it had been applied by default rather than by decision
+([#213](https://github.com/awslabs/stickler/issues/213)).
+
+When in doubt, ask whether a user reading the release notes could act on it. If
+not, leave it out.
+
 ## 3. Open the release PR
 
 ```bash

@@ -1635,3 +1635,73 @@ class TestNullableAnyOfAndImplicitObjects:
             converter.convert_properties_to_fields(
                 schema["properties"], schema["required"]
             )
+
+
+class TestSticklerEmittedSiblingKeywords:
+    """A schema stickler exported must re-import, whatever vocabulary it used.
+
+    `model_json_schema()` emitted `x-comparison` up to and including 0.6.0, so a
+    schema saved by an earlier version carries it alongside a nullable `anyOf`.
+    Rejecting it blamed the user's file for a key stickler wrote itself.
+
+    #218 removed `x-comparison` from current `model_json_schema()` output, so
+    the freshly-exported case no longer reproduces -- but files on disk from
+    0.6.0 still do, which is why the allowlist entry stays.
+
+    See the #198 review.
+    """
+
+    def test_x_comparison_alongside_nullable_anyof_imports(self):
+        schema = {
+            "title": "Legacy",
+            "type": "object",
+            "properties": {
+                "opt": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "x-comparison": {
+                        "comparator_type": "LevenshteinComparator",
+                        "threshold": 0.5,
+                    },
+                }
+            },
+        }
+
+        model = StructuredModel.from_json_schema(schema)
+
+        assert model.model_fields["opt"].annotation == typing.Optional[str]
+
+    def test_x_comparison_inside_the_null_branch_imports(self):
+        """The null branch has its own keyword check, with the same allowlist."""
+        schema = {
+            "title": "Legacy",
+            "type": "object",
+            "properties": {
+                "opt": {
+                    "anyOf": [
+                        {"type": "string"},
+                        {"type": "null", "x-comparison": {"threshold": 0.5}},
+                    ]
+                }
+            },
+        }
+
+        model = StructuredModel.from_json_schema(schema)
+
+        assert model.model_fields["opt"].annotation == typing.Optional[str]
+
+    def test_a_genuinely_unsupported_sibling_still_raises(self):
+        """The allowlist widened, it did not open."""
+        schema = {
+            "title": "Bad",
+            "type": "object",
+            "properties": {
+                "opt": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "allOf": [{"minLength": 2}],
+                }
+            },
+        }
+
+        with pytest.raises(ValueError, match="sibling schema keywords"):
+            StructuredModel.from_json_schema(schema)

@@ -8,19 +8,16 @@ from stickler.comparators.base import BaseComparator
 class MockComparator(BaseComparator):
     """Mock implementation of BaseComparator for testing."""
 
-    def compare(self, str1: Any, str2: Any) -> float:
+    def _compare(self, str1: Any, str2: Any) -> float:
         """Compare two values and return a similarity score.
 
         For testing, this implementation returns:
         - 1.0 if strings are identical
         - 0.5 if one string is contained within the other
         - 0.0 otherwise
-        """
-        if str1 is None and str2 is None:
-            return 1.0
-        if str1 is None or str2 is None:
-            return 0.0
 
+        None never reaches here -- BaseComparator.compare handles it.
+        """
         str1 = str(str1)
         str2 = str(str2)
 

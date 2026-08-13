@@ -25,7 +25,6 @@ class Owner(StructuredModel):
         comparator=ExactComparator(),
         threshold=1.0,
         weight=1.0,
-        aggregate=False,  # Let's test with aggregate=False first
     )
 
 

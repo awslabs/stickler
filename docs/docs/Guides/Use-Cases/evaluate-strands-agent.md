@@ -15,9 +15,19 @@ invoice = result.structured_output
 # `invoice` is a validated Invoice instance
 ```
 
-The question this guide answers: **how accurate is that output, and do the errors matter?** With `stickler.evaluate` the integration is a single line. You do not write a `StructuredModel`, pick comparators, or annotate anything.
+The question this guide answers: **how accurate is that output, and do the errors matter?**
 
-## The whole integration
+There are two supported ways to wire Stickler into this, and neither is second-class:
+
+| | Flow 1: plain Pydantic | Flow 2: configured `StructuredModel` |
+|---|---|---|
+| agent gets | your existing `BaseModel` | your `StructuredModel`, directly |
+| evaluation | `stickler.evaluate()` infers comparators | your explicit comparators, thresholds, weights |
+| choose it when | you want a baseline in one line | you need per-field control over scoring |
+
+Start with Flow 1; graduate to Flow 2 when you outgrow the inferred defaults. With Flow 1 the integration is a single line — you do not write a `StructuredModel`, pick comparators, or annotate anything.
+
+## Flow 1: the whole integration
 
 ```python
 import stickler
@@ -149,7 +159,51 @@ result.explain()["vendor_name"]
 #  'verdict': 'raw 0.56 < threshold 0.85 -> clipped to 0.0', 'why': [...]}
 ```
 
-"Acme Corporation" vs "Acme Corp" fell below the `0.85` similarity threshold Stickler chose for a name field. If that is too strict for your use case, graduate to a hand-authored [`StructuredModel`](../../Getting-Started/README.md) where you set the comparator, threshold, and weight per field explicitly. `stickler.evaluate` gets you a defensible baseline in one line; the full API is there when you outgrow it.
+"Acme Corporation" vs "Acme Corp" fell below the `0.85` similarity threshold Stickler chose for a name field. If that is too strict for your use case, graduate to a hand-authored [`StructuredModel`](../../Getting-Started/README.md) where you set the comparator, threshold, and weight per field explicitly. `stickler.evaluate` gets you a defensible baseline in one line; the full API is there when you outgrow it. That graduation is Flow 2, below.
+
+## Flow 2: one configured class, two jobs
+
+Because `StructuredModel` extends `pydantic.BaseModel`, the class that carries your comparison configuration can *also* be the agent's `structured_output_model`. Define it once; it drives extraction and evaluation:
+
+```python
+from typing import List, Optional
+
+from stickler import (
+    ComparableField,
+    ExactComparator,
+    NumericComparator,
+    StructuredModel,
+)
+
+
+class LineItem(StructuredModel):
+    product: str = ComparableField()
+    qty: int = ComparableField()
+
+
+class Invoice(StructuredModel):
+    shipment_id: str = ComparableField(
+        comparator=ExactComparator(),                 # IDs must match exactly
+        weight=3.0,                                   # and matter most
+        description="The carrier shipment tracking identifier",
+        examples=["1Z999AA10123456784"],
+    )
+    amount: float = ComparableField(comparator=NumericComparator())
+    line_items: List[LineItem] = ComparableField()
+    notes: Optional[str] = ComparableField(default=None)
+
+
+# The SAME class drives the agent...
+prediction = agent(prompt, structured_output_model=Invoice).structured_output
+
+# ...and the evaluation, with your configured comparators.
+result = ground_truth.compare_with(prediction)
+print(result["overall_score"], result["field_scores"])
+```
+
+The schema the agent receives is clean: `shipment_id`, `amount`, and `line_items` are `required` exactly as a plain `BaseModel` twin would declare them, no comparison metadata rides along, and `description` / `examples` / `alias` reach the model, where they genuinely help extraction. Requiredness in the schema follows your annotations — `notes: Optional[str]` is optional, everything else is required — while evaluation stays tolerant: a prediction that omits a field still constructs and scores, it just scores as missing.
+
+Which fields are required is decided by the **annotation**, so write `Optional[...]` on fields the model may legitimately skip and leave the rest bare. This is ordinary Pydantic; there is nothing Stickler-specific to learn.
 
 ## Requirements
 
