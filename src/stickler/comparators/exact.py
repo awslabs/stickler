@@ -1,38 +1,76 @@
 """Exact string comparison comparator."""
 
-from typing import Any
+from typing import Any, Dict, Optional
 
 from stickler.comparators.base import BaseComparator
-from stickler.utils.text_normalizers import lowercase, strip_punctuation_space
 
 
 class ExactComparator(BaseComparator):
-    """Comparator that checks for exact string matching.
+    """Comparator that checks for exact string equality.
 
-    This comparator removes whitespace and punctuation before comparison.
-    It returns 1.0 for exact matches and 0.0 otherwise.
+    Returns 1.0 if the two values are identical, 0.0 otherwise. By default,
+    comparison is case-sensitive: ``"Hello"`` does not match ``"hello"``.
+    Set ``case_sensitive=False`` for case-insensitive matching using Unicode
+    case folding.
+
+    No normalization (punctuation or whitespace stripping) is performed.
+    ``"SHP-2024-001"`` does not match ``"SHP 2024 001"`` — they are different
+    strings. This is the correct behavior for identifiers, codes, and any
+    field where the exact character sequence matters.
 
     Example:
         ```python
+        # Default: case-sensitive exact matching
         comparator = ExactComparator()
+        comparator.compare("Hello", "Hello")  # Returns 1.0
+        comparator.compare("Hello", "hello")  # Returns 0.0
+        comparator.compare("ID-123", "ID 123")  # Returns 0.0
 
-        # Returns 1.0 (exact match after normalization)
-        comparator.compare("hello, world!", "hello world")
-
-        # Returns 0.0 (different strings)
-        comparator.compare("hello", "goodbye")
+        # Case-insensitive matching (uses Unicode casefold)
+        ci = ExactComparator(case_sensitive=False)
+        ci.compare("Hello", "hello")  # Returns 1.0
+        ci.compare("STRASSE", "straße")  # Returns 1.0 (casefold handles this)
         ```
+
+    Args:
+        threshold: Similarity threshold (default 1.0). Since this comparator
+            only returns 0.0 or 1.0, values below 1.0 effectively accept any
+            non-null value as a match.
+        case_sensitive: If True (default), comparison distinguishes case.
+            If False, uses ``str.casefold()`` for Unicode-aware case folding.
+
+    .. versionchanged:: 0.7.0
+        Default changed to ``case_sensitive=True``. Punctuation and whitespace
+        stripping removed — use ``LevenshteinComparator`` or ``FuzzyComparator``
+        for normalized text matching. This makes ``ExactComparator`` truly exact,
+        fixing #199 where ``"SHP-2024-001"`` incorrectly matched ``"shp 2024 001"``.
     """
 
-    def __init__(self, threshold: float = 1.0, case_sensitive: bool = False):
+    def __init__(self, threshold: float = 1.0, case_sensitive: bool = True):
         """Initialize the comparator.
 
         Args:
             threshold: Similarity threshold (default 1.0)
-            case_sensitive: Whether comparison is case sensitive (default False)
+            case_sensitive: Whether comparison is case sensitive (default True)
         """
         super().__init__(threshold=threshold)
         self.case_sensitive = case_sensitive
+
+    @property
+    def name(self) -> str:
+        """Return the name of the comparator."""
+        return "exact"
+
+    @property
+    def config(self) -> Optional[Dict[str, Any]]:
+        """Return configuration parameters for serialization.
+
+        Only includes non-default values to keep serialized output minimal.
+        """
+        cfg: Dict[str, Any] = {}
+        if not self.case_sensitive:
+            cfg["case_sensitive"] = False
+        return cfg if cfg else None
 
     def _compare(self, str1: Any, str2: Any) -> float:
         """Compare two values with exact string matching.
@@ -42,20 +80,22 @@ class ExactComparator(BaseComparator):
             str2: Second value
 
         Returns:
-            1.0 if the strings match exactly after normalization, 0.0 otherwise
+            1.0 if the strings match exactly, 0.0 otherwise
         """
         # Convert to strings if they aren't already
         str1 = str(str1)
         str2 = str(str2)
 
-        # Apply case normalization if needed
+        # Apply case folding if case-insensitive
         if not self.case_sensitive:
-            str1 = lowercase(str1)
-            str2 = lowercase(str2)
+            str1 = str1.casefold()
+            str2 = str2.casefold()
 
-        # Remove whitespace and punctuation
-        normalized1 = strip_punctuation_space(str1)
-        normalized2 = strip_punctuation_space(str2)
+        return 1.0 if str1 == str2 else 0.0
 
-        # Compare normalized strings
-        return 1.0 if normalized1 == normalized2 else 0.0
+    def __repr__(self) -> str:
+        """Detailed string representation."""
+        parts = [f"threshold={self.threshold}"]
+        if not self.case_sensitive:
+            parts.append("case_sensitive=False")
+        return f"ExactComparator({', '.join(parts)})"

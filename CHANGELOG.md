@@ -172,6 +172,31 @@ Each release links to full notes on the
 
 ### Changed
 
+- **Breaking:** `ExactComparator` is now truly exact. The default is
+  `case_sensitive=True` (was `False`), and punctuation/whitespace stripping
+  has been removed entirely. This fixes
+  [#199](https://github.com/awslabs/stickler/issues/199), where
+  `"SHP-2024-001"` incorrectly matched `"shp 2024 001"`.
+
+  **This can lower scores** on existing evaluation sets. Any field using
+  `ExactComparator` (explicitly or via inference) that previously matched
+  due to case folding or punctuation stripping will now score 0.0 if the
+  raw strings differ.
+
+  | what changed | before | after |
+  |---|---|---|
+  | `ExactComparator().compare("Hello", "hello")` | 1.0 | **0.0** |
+  | `ExactComparator().compare("ID-123", "ID 123")` | 1.0 | **0.0** |
+  | `ExactComparator().compare("SHP-2024-001", "shp 2024 001")` | 1.0 | **0.0** |
+
+  **Migration:** If you need the old case-insensitive behavior, pass
+  `case_sensitive=False`. If you need punctuation normalization, use
+  `LevenshteinComparator(threshold=1.0)` or `FuzzyComparator`.
+
+  The `case_sensitive=False` path now uses `str.casefold()` (Unicode case
+  folding) instead of `str.lower()`, correctly handling cases like
+  `"STRASSE"` vs `"straße"` ([#199](https://github.com/awslabs/stickler/issues/199))
+
 - **Breaking:** the peripheral modules now require their extra. `pandas`,
   `scipy`, `scikit-learn`, and `jinja2` are no longer core dependencies, so
   `pip install stickler-eval` installs the comparison engine and nothing else.
