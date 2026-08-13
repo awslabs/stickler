@@ -12,9 +12,9 @@ Each release links to full notes on the
 ### Added
 
 - `PhoneComparator`, which compares phone numbers by the number they dial rather
-  than as strings. `"555-123-4567"`, `"(555) 123-4567"`, `"+1-555-123-4567"` and
-  `"5551234567"` all compare equal; extensions are reconciled
-  (`"+1 (555) 123-4567 ext. 89"` matches `"+15551234567x89"`); a one-digit
+  than as strings. `"206-555-0100"`, `"(206) 555-0100"`, `"+1-206-555-0100"` and
+  `"2065550100"` all compare equal; extensions are reconciled
+  (`"+1 (206) 555-0100 ext. 89"` matches `"+12065550100x89"`); a one-digit
   difference does not match. Pass `region=` for numbers written without an
   international prefix (default `"US"`).
 
@@ -23,13 +23,30 @@ Each release links to full notes on the
   No string comparator can do this. `ExactComparator` scores a reformatted
   number `0.0`, `NumericComparator` strips non-digits and also reports `0.0`,
   and edit distance ranks the cases backwards -- a *different* number
-  (`555-123-4568`) scores `0.917` while the same number reformatted scores
+  (`206-555-0101`) scores `0.917` while the same number reformatted scores
   `0.786`, so no threshold separates them.
 
-  Unparseable input scores `0.0`, including when both sides are equally
-  unparseable: `"N/A"` on both sides is a field that was not extracted, not a
-  phone number that matched. Genuinely absent values are unaffected, since the
-  shared `None` policy resolves those before any comparator runs.
+  Unparseable **or invalid** input scores `0.0`, including when both sides are
+  identical. libphonenumber parses `"0000000000"` and renders it as E164, so a
+  parse-only check would report a placeholder on both sides as a successful
+  match; validity is checked with `is_valid_number`. `"N/A"` on both sides is a
+  field that was not extracted, not a phone number that matched. Genuinely
+  absent values are unaffected, since the shared `None` policy resolves those
+  before any comparator runs.
+
+  Note that `is_valid_number` rejects `555` as an *area code*, which NANP
+  reserves to dial nothing, so `"555-123-4567"` scores `0.0` even against
+  itself. Fictional numbers for fixtures and documentation need a real area code
+  with the `555` exchange, for example `"206-555-0100"`.
+
+  Extensions are compared separately, because E164 omits them:
+  `"+12065550100x89"` and `"+12065550100x90"` reach different people and do not
+  match.
+
+  An unrecognised `region` raises `ValueError` at construction. `region="UK"`
+  (the ISO code is `"GB"`) would otherwise make every national-format number
+  score `0.0` with no error, which reads as total extraction failure rather than
+  a typo.
 
   This adds `phonenumberslite` to the core dependencies: the metadata-only build
   of the libphonenumber port, 450 KB, zero dependencies, Apache-2.0
@@ -80,8 +97,8 @@ Each release links to full notes on the
   `email`, `url` and `phone` fields as complete mismatches. The name-token
   inference rules route those fields to comparators chosen for them, and when
   `ExactComparator` became strict the rules silently inherited the change:
-  `A.Buyer@Example.COM` vs `a.buyer@example.com`, and `555-123-4567` vs
-  `(555) 123-4567`, went from `1.0` to `0.0` through plain
+  `A.Buyer@Example.COM` vs `a.buyer@example.com`, and `206-555-0100` vs
+  `(206) 555-0100`, went from `1.0` to `0.0` through plain
   `stickler.evaluate()` with no configuration involved.
 
   `email`, `url` and `uri` now pass `case_sensitive=False` explicitly, since

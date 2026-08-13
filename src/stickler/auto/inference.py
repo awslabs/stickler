@@ -161,37 +161,14 @@ class _TokenRule:
 # (type/state/number/key/level/num/...) are intentionally absent so they stay
 # at the safe type default.
 _NAME_TOKEN_RULES: List[_TokenRule] = [
-    # Identifiers stay case-sensitive on purpose: an ID that differs in case may
-    # well be a different ID, which is what #199 is about. Stated here rather
-    # than inherited from ExactComparator's default, so reading this table tells
-    # you what these rules mean. (The value does not appear in an exported
-    # config -- ExactComparator only serializes `case_sensitive` when it is
-    # False -- so an exported model still tracks the constructor default.)
-    _TokenRule(
-        frozenset({"id", "uuid", "guid", "sku", "code", "ref", "isbn", "ssn"}),
-        "ExactComparator",
-        {"case_sensitive": True},
-        1.0,
-        3.0,
-        frozenset({_STRINGY, _NUMERIC}),
-    ),
-    # Email and URL are case-insensitive by specification -- a domain is
-    # case-insensitive, and extraction routinely varies the casing of both. So
-    # these compare case-insensitively but are otherwise exact: `a@b.com` and
-    # `a@c.com` must still be a non-match, which a similarity comparator does
-    # not give (Levenshtein scores that pair 0.857).
-    #
-    # A URL path *is* case-sensitive, so this over-normalizes it. Accepted for
-    # now: host casing is the drift that actually occurs, and the alternative is
-    # scoring every host-case difference 0.0.
-    _TokenRule(
-        frozenset({"email", "url", "uri"}),
-        "ExactComparator",
-        {"case_sensitive": False},
-        1.0,
-        1.5,
-        frozenset({_STRINGY}),
-    ),
+    # Phone and postal rules precede the identifier rule deliberately.
+    # `_match_name_token` returns the first matching rule, and the identifier
+    # token set contains "code" -- so "zip_code" and "postal_code" (tokens
+    # {zip, code} and {postal, code}) would match the identifier rule first and
+    # never reach the rule written for them. Scoring was unaffected (both are
+    # case-sensitive Exact@1.0) but the weight hint and the provenance trail
+    # were wrong, and the postal rule silently never fired for the two names it
+    # most obviously targets (#243 review).
     # Phone numbers differ by punctuation and country-code prefix rather than
     # case, so PhoneComparator parses both sides instead of comparing strings.
     # Ahead of the numeric rules deliberately: NumericComparator strips
@@ -222,6 +199,37 @@ _NAME_TOKEN_RULES: List[_TokenRule] = [
         frozenset({"zip", "postal", "postcode"}),
         "ExactComparator",
         {"case_sensitive": True},
+        1.0,
+        1.5,
+        frozenset({_STRINGY}),
+    ),
+    # Identifiers stay case-sensitive on purpose: an ID that differs in case may
+    # well be a different ID, which is what #199 is about. Stated here rather
+    # than inherited from ExactComparator's default, so reading this table tells
+    # you what these rules mean. (The value does not appear in an exported
+    # config -- ExactComparator only serializes `case_sensitive` when it is
+    # False -- so an exported model still tracks the constructor default.)
+    _TokenRule(
+        frozenset({"id", "uuid", "guid", "sku", "code", "ref", "isbn", "ssn"}),
+        "ExactComparator",
+        {"case_sensitive": True},
+        1.0,
+        3.0,
+        frozenset({_STRINGY, _NUMERIC}),
+    ),
+    # Email and URL are case-insensitive by specification -- a domain is
+    # case-insensitive, and extraction routinely varies the casing of both. So
+    # these compare case-insensitively but are otherwise exact: `a@b.com` and
+    # `a@c.com` must still be a non-match, which a similarity comparator does
+    # not give (Levenshtein scores that pair 0.857).
+    #
+    # A URL path *is* case-sensitive, so this over-normalizes it. Accepted for
+    # now: host casing is the drift that actually occurs, and the alternative is
+    # scoring every host-case difference 0.0.
+    _TokenRule(
+        frozenset({"email", "url", "uri"}),
+        "ExactComparator",
+        {"case_sensitive": False},
         1.0,
         1.5,
         frozenset({_STRINGY}),

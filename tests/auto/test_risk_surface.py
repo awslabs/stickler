@@ -156,7 +156,13 @@ class TestIdentityInvariant:
             ("updated_by", str, "Jane Smith"),
             ("days_past_due", int, -5),
             ("fee_applied", bool, True),
-            ("phone_num", str, "(555) 123-4567"),
+            # 206 area code, 555 exchange: fictional but valid. The 555 *area*
+            # code is reserved to dial nothing, so PhoneComparator rejects it as
+            # invalid and would score it 0.0 even against itself -- deliberately,
+            # since a placeholder on both sides is not a successful extraction
+            # (#243 review). This case tests token/type conflict resolution, not
+            # phone validity, so it uses a number that is actually dialable.
+            ("phone_num", str, "(206) 555-0100"),
             ("isbn13", str, "978-3-16-148410-0"),
             ("created", bool, True),
         ],

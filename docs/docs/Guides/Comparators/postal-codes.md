@@ -161,8 +161,8 @@ decide it for you:
 Stickler *does* normalize phone numbers, via
 [`PhoneComparator`](README.md), because
 [libphonenumber](https://github.com/google/libphonenumber) encodes every
-country's rules in 450 KB with no dependencies. `"555-123-4567"`,
-`"(555) 123-4567"` and `"+1-555-123-4567"` all compare equal.
+country's rules in 450 KB with no dependencies. `"206-555-0100"`,
+`"(206) 555-0100"` and `"+1-206-555-0100"` all compare equal.
 
 There is no equivalent for postal codes at that weight, which is the whole
 reason this page exists rather than a comparator.

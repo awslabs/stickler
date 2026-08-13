@@ -99,10 +99,10 @@ class TestPhoneIsParsedNotCompared:
     @pytest.mark.parametrize(
         "gt, pred",
         [
-            ("555-123-4567", "(555) 123-4567"),
-            ("+1-555-123-4567", "5551234567"),
-            ("555.123.4567", "555-123-4567"),
-            ("+1 (555) 123-4567 ext. 89", "+15551234567x89"),
+            ("206-555-0100", "(206) 555-0100"),
+            ("+1-206-555-0100", "2065550100"),
+            ("206.555.0100", "206-555-0100"),
+            ("+1 (206) 555-0100 ext. 89", "+12065550100x89"),
         ],
     )
     def test_formatting_only_difference_matches(self, gt, pred):
@@ -113,7 +113,7 @@ class TestPhoneIsParsedNotCompared:
     def test_a_different_number_is_still_a_non_match(self):
         model = type("M", (BaseModel,), {"__annotations__": {"phone_num": str}})
 
-        assert _score(model, "phone_num", "555-123-4567", "555-123-4568") == 0.0
+        assert _score(model, "phone_num", "206-555-0100", "206-555-0101") == 0.0
 
     def test_the_rule_selects_the_phone_comparator(self):
         model = type("M", (BaseModel,), {"__annotations__": {"phone_num": str}})

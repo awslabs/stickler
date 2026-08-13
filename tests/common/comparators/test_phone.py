@@ -16,13 +16,13 @@ class TestFormattingIsNotMeaning:
     @pytest.mark.parametrize(
         "gt, pred",
         [
-            ("555-123-4567", "(555) 123-4567"),
-            ("555-123-4567", "555.123.4567"),
-            ("555-123-4567", "555 123 4567"),
-            ("555-123-4567", "5551234567"),
-            ("+1-555-123-4567", "5551234567"),
-            ("+1 (555) 123-4567", "555-123-4567"),
-            ("  555-123-4567  ", "5551234567"),
+            ("206-555-0100", "(206) 555-0100"),
+            ("206-555-0100", "206.555.0100"),
+            ("206-555-0100", "206 555 0100"),
+            ("206-555-0100", "2065550100"),
+            ("+1-206-555-0100", "2065550100"),
+            ("+1 (206) 555-0100", "206-555-0100"),
+            ("  206-555-0100  ", "2065550100"),
         ],
     )
     def test_same_number_written_differently_matches(self, gt, pred):
@@ -30,16 +30,16 @@ class TestFormattingIsNotMeaning:
 
     def test_extensions_are_reconciled(self):
         assert (
-            PhoneComparator().compare("+1 (555) 123-4567 ext. 89", "+15551234567x89")
+            PhoneComparator().compare("+1 (206) 555-0100 ext. 89", "+12065550100x89")
             == 1.0
         )
 
     @pytest.mark.parametrize(
         "gt, pred",
         [
-            ("555-123-4567", "555-123-4568"),
-            ("555-123-4567", "555-124-4567"),
-            ("+1-555-123-4567", "+1-555-123-4568"),
+            ("206-555-0100", "206-555-0101"),
+            ("206-555-0100", "206-556-0100"),
+            ("+1-206-555-0100", "+1-206-555-0101"),
         ],
     )
     def test_a_different_number_does_not_match(self, gt, pred):
@@ -62,7 +62,7 @@ class TestRegion:
     def test_e164_is_region_independent(self):
         """Both sides in E164 carry their own country code."""
         assert (
-            PhoneComparator(region="GB").compare("+15551234567", "+1 555 123 4567")
+            PhoneComparator(region="GB").compare("+12065550100", "+1 206 555 0100")
             == 1.0
         )
 
@@ -81,11 +81,11 @@ class TestUnparseableInput:
         assert PhoneComparator().compare(value, value) == 0.0
 
     def test_one_side_unparseable_does_not_match(self):
-        assert PhoneComparator().compare("555-123-4567", "N/A") == 0.0
-        assert PhoneComparator().compare("N/A", "555-123-4567") == 0.0
+        assert PhoneComparator().compare("206-555-0100", "N/A") == 0.0
+        assert PhoneComparator().compare("N/A", "206-555-0100") == 0.0
 
     def test_a_valid_number_is_unaffected(self):
-        assert PhoneComparator().compare("555-123-4567", "5551234567") == 1.0
+        assert PhoneComparator().compare("206-555-0100", "2065550100") == 1.0
 
 
 class TestNoStringComparatorCanDoThis:
@@ -95,10 +95,10 @@ class TestNoStringComparatorCanDoThis:
         from stickler.comparators.levenshtein import LevenshteinComparator
 
         same_number = LevenshteinComparator().compare(
-            "555-123-4567", "(555) 123-4567"
+            "206-555-0100", "(206) 555-0100"
         )
         different_number = LevenshteinComparator().compare(
-            "555-123-4567", "555-123-4568"
+            "206-555-0100", "206-555-0101"
         )
 
         # A different number scores HIGHER than the same number reformatted, so
@@ -107,16 +107,16 @@ class TestNoStringComparatorCanDoThis:
 
         # PhoneComparator gets both right.
         phone = PhoneComparator()
-        assert phone.compare("555-123-4567", "(555) 123-4567") == 1.0
-        assert phone.compare("555-123-4567", "555-123-4568") == 0.0
+        assert phone.compare("206-555-0100", "(206) 555-0100") == 1.0
+        assert phone.compare("206-555-0100", "206-555-0101") == 0.0
 
     def test_numeric_and_exact_both_fail_the_formatting_case(self):
         from stickler.comparators.exact import ExactComparator
         from stickler.comparators.numeric import NumericComparator
 
-        assert ExactComparator().compare("555-123-4567", "(555) 123-4567") == 0.0
-        assert NumericComparator().compare("555-123-4567", "(555) 123-4567") == 0.0
-        assert PhoneComparator().compare("555-123-4567", "(555) 123-4567") == 1.0
+        assert ExactComparator().compare("206-555-0100", "(206) 555-0100") == 0.0
+        assert NumericComparator().compare("206-555-0100", "(206) 555-0100") == 0.0
+        assert PhoneComparator().compare("206-555-0100", "(206) 555-0100") == 1.0
 
 
 class TestNonePolicyAndSerialization:
@@ -124,8 +124,8 @@ class TestNonePolicyAndSerialization:
         phone = PhoneComparator()
 
         assert phone.compare(None, None) == 1.0
-        assert phone.compare(None, "555-123-4567") == 0.0
-        assert phone.compare("555-123-4567", None) == 0.0
+        assert phone.compare(None, "206-555-0100") == 0.0
+        assert phone.compare("206-555-0100", None) == 0.0
 
     def test_default_config_serializes_to_nothing(self):
         assert PhoneComparator().config is None
@@ -147,3 +147,109 @@ class TestNonePolicyAndSerialization:
     def test_repr_names_a_non_default_region(self):
         assert "GB" in repr(PhoneComparator(region="GB"))
         assert "region" not in repr(PhoneComparator())
+
+class TestValidityNotJustParseability:
+    """libphonenumber parses strings that are not real numbers.
+
+    `parse` accepts "0000000000" and formats it as E164, so a parse-only check
+    scores it 1.0 against itself -- a placeholder reported as a successful
+    extraction, inflating precision and recall in zero-config runs. Raised in
+    review of #243.
+    """
+
+    @pytest.mark.parametrize(
+        "sentinel",
+        ["0000000000", "1234567", "1111111111", "5555555555", "999-999-9999"],
+    )
+    def test_numeric_placeholders_do_not_match_themselves(self, sentinel):
+        assert PhoneComparator().compare(sentinel, sentinel) == 0.0
+
+    def test_those_sentinels_really_do_parse(self):
+        """Guard the guard: if they stopped parsing, the test above is vacuous."""
+        import phonenumbers
+
+        parsed = phonenumbers.parse("0000000000", "US")
+
+        # Parses and formats cleanly...
+        assert phonenumbers.format_number(
+            parsed, phonenumbers.PhoneNumberFormat.E164
+        ) == "+10000000000"
+        # ...but is not a real number, which is what the guard checks.
+        assert phonenumbers.is_valid_number(parsed) is False
+
+    def test_the_555_area_code_is_not_valid(self):
+        """Why examples use 206-555-0100 rather than 555-123-4567.
+
+        NANP reserves 555 as an *area code* that dials nothing, so
+        `is_valid_number` rejects it. A real area code with the 555 exchange is
+        both fictional and valid.
+        """
+        phone = PhoneComparator()
+
+        assert phone.compare("555-123-4567", "555-123-4567") == 0.0
+        assert phone.compare("206-555-0100", "206-555-0100") == 1.0
+
+
+class TestExtensionsAreSignificant:
+    """E164 omits extensions, so comparing E164 alone loses them.
+
+    Two extensions behind one switchboard reach different people, so they are
+    compared separately. Raised in review of #243.
+    """
+
+    def test_different_extensions_do_not_match(self):
+        assert (
+            PhoneComparator().compare("+12065550100x89", "+12065550100x90") == 0.0
+        )
+
+    def test_same_extension_matches(self):
+        assert (
+            PhoneComparator().compare("+12065550100x89", "+12065550100x89") == 1.0
+        )
+
+    def test_extension_versus_no_extension_does_not_match(self):
+        assert PhoneComparator().compare("+12065550100x89", "+12065550100") == 0.0
+
+    def test_extension_formatting_still_normalizes(self):
+        """The extension is compared, but how it is written is not."""
+        assert (
+            PhoneComparator().compare(
+                "+1 (206) 555-0100 ext. 89", "+12065550100x89"
+            )
+            == 1.0
+        )
+
+    def test_e164_alone_would_have_missed_this(self):
+        """Guard the guard: E164 really does drop the extension."""
+        import phonenumbers
+
+        with_ext = phonenumbers.parse("+12065550100x89", "US")
+
+        assert phonenumbers.format_number(
+            with_ext, phonenumbers.PhoneNumberFormat.E164
+        ) == "+12065550100"
+        assert with_ext.extension == "89"
+
+
+class TestRegionIsValidated:
+    """A plausible typo must fail loudly, not silently zero everything.
+
+    `region="UK"` (the ISO code is "GB") made every national-format number fail
+    to parse and score 0.0, which reads as total extraction failure. E164 inputs
+    kept working, hiding it further. Raised in review of #243.
+    """
+
+    @pytest.mark.parametrize("bad", ["UK", "EN", "usa", "", "ZZ"])
+    def test_an_unknown_region_raises(self, bad):
+        with pytest.raises(ValueError, match="region"):
+            PhoneComparator(region=bad)
+
+    def test_the_message_names_the_gb_confusion(self):
+        with pytest.raises(ValueError) as excinfo:
+            PhoneComparator(region="UK")
+
+        assert "GB" in str(excinfo.value)
+
+    @pytest.mark.parametrize("good", ["US", "GB", "NL", "BR", "JP"])
+    def test_known_regions_are_accepted(self, good):
+        assert PhoneComparator(region=good).region == good
