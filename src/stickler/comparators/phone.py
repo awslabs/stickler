@@ -34,10 +34,17 @@ class PhoneComparator(BaseComparator):
     placeholder on both sides reported as a successful match. Validity is
     checked with ``is_valid_number``, which rejects them.
 
-    Note that ``is_valid_number`` also rejects ``555`` as an *area code*
-    (``"555-123-4567"``), because NANP reserves it to dial nothing. Fictional
-    numbers for documentation and tests need a real area code with the ``555``
-    exchange, for example ``"206-555-0100"``.
+    This also rejects the number most documentation reaches for.
+    ``"555-123-4567"`` puts **555 in the area-code position**, and 555 is not a
+    real area code -- NANP has never assigned it, which is exactly why writers
+    use it. libphonenumber is correct to call it invalid.
+
+    What *is* usable for fixtures is a real area code with the ``555``
+    **exchange**: ``"206-555-0100"`` is fictional by long-standing convention
+    (555-01xx is the range set aside for fiction) while being structurally
+    valid, so it parses, validates, and compares. Note libphonenumber does not
+    enforce the 01xx line range -- ``"206-555-1234"`` validates too -- so the
+    convention is yours to keep, not something the library checks.
 
     Unparseable or invalid input scores ``0.0``, including when both sides are
     identical. ``"N/A"`` on both sides is not a phone number that matched, it is

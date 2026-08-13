@@ -177,12 +177,15 @@ class TestValidityNotJustParseability:
         # ...but is not a real number, which is what the guard checks.
         assert phonenumbers.is_valid_number(parsed) is False
 
-    def test_the_555_area_code_is_not_valid(self):
+    def test_555_in_the_area_code_position_is_not_valid(self):
         """Why examples use 206-555-0100 rather than 555-123-4567.
 
-        NANP reserves 555 as an *area code* that dials nothing, so
-        `is_valid_number` rejects it. A real area code with the 555 exchange is
-        both fictional and valid.
+        "555-123-4567" puts 555 where the area code goes, and 555 has never
+        been assigned as an area code -- which is why documentation uses it.
+        libphonenumber is right to reject it.
+
+        A real area code with the 555 *exchange* is fictional by convention and
+        structurally valid, so it is what fixtures should use.
         """
         phone = PhoneComparator()
 

@@ -34,10 +34,12 @@ Each release links to full notes on the
   absent values are unaffected, since the shared `None` policy resolves those
   before any comparator runs.
 
-  Note that `is_valid_number` rejects `555` as an *area code*, which NANP
-  reserves to dial nothing, so `"555-123-4567"` scores `0.0` even against
-  itself. Fictional numbers for fixtures and documentation need a real area code
-  with the `555` exchange, for example `"206-555-0100"`.
+  This rejects the number most documentation reaches for. `"555-123-4567"` puts
+  **555 in the area-code position**, and 555 is not a real area code -- NANP has
+  never assigned it, which is precisely why writers use it -- so it scores `0.0`
+  even against itself. Fixtures want a real area code with the `555`
+  **exchange** instead: `"206-555-0100"` is fictional by convention (555-01xx is
+  set aside for fiction) while being structurally valid.
 
   Extensions are compared separately, because E164 omits them:
   `"+12065550100x89"` and `"+12065550100x90"` reach different people and do not
