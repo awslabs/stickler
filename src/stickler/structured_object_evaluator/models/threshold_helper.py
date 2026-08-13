@@ -26,15 +26,28 @@ _FIELD_CONSEQUENCE = (
     "reported as a false discovery, however wrong the prediction is"
 )
 
-# `match_threshold` is read only when the model is a `List[StructuredModel]`
-# element (see structured_list_comparator.py). On a standalone model the value
-# changes nothing, and the hook cannot know at class-definition time which the
-# class will be -- so this states the condition rather than asserting an outcome
-# that may not apply.
+# `match_threshold` reaches the comparison two ways, which is why this states
+# the consequence unconditionally rather than hedging on list membership:
+#
+#   1. as the object-matching threshold for a `List[StructuredModel]` element
+#      (structured_list_comparator.py), and
+#   2. as the *default field threshold* for any field with no explicit
+#      comparison config -- `ConfigurationHelper.get_comparison_info` falls back
+#      to `getattr(cls, "match_threshold", 0.5)`, so a plainly annotated
+#      `name: str` inherits it.
+#
+# Route 2 is easy to miss because a field declared with `ComparableField()`
+# takes an earlier branch and gets a hardcoded 0.5 instead, so probing with
+# ComparableField makes the value look inert. It is not: a plain-annotated model
+# at 0.0 reports precision and recall 1.0 for a wholly wrong prediction, with no
+# list anywhere. An earlier version of this message said "if this model is
+# compared as a list element", which told exactly the users who were affected
+# that it did not apply to them (#237).
 _MATCH_CONSEQUENCE = (
-    "if this model is compared as a list element, every object it pairs is "
-    "counted as a true positive and nothing can be reported as a false "
-    "discovery, however wrong the objects are"
+    "every value it compares is counted as a true positive and nothing can be "
+    "reported as a false discovery, however wrong the prediction is. This "
+    "applies both to object matching when the model is a list element, and to "
+    "any field with no explicit threshold of its own, which inherits this value"
 )
 
 
