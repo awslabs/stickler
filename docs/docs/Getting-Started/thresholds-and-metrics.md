@@ -222,12 +222,12 @@ gt = Invoice(
 
 pred = Invoice(
     invoice_id="INV-001",           # Exact match
-    vendor="Acme Corp",             # ~0.72 similarity (below 0.8 threshold)
+    vendor="Acme Corp",             # 0.5625 similarity (below 0.8 threshold)
     notes=None,                     # Missing
     line_items=[
         LineItem(sku="SKU-A", description="Widget Alpha"),  # Match
         LineItem(sku="SKU-B", description="Widget Bet"),    # SKU match, desc ~0.9
-        LineItem(sku="SKU-X", description="New Item"),      # No GT match
+        LineItem(sku="SKU-X", description="New Item"),      # Pairs with SKU-C, far below threshold
     ]
 )
 ```
@@ -237,7 +237,7 @@ pred = Invoice(
 | Field | GT Value | Pred Value | Similarity | Threshold | Classification |
 |-------|----------|------------|------------|-----------|----------------|
 | `invoice_id` | "INV-001" | "INV-001" | 1.0 | 1.0 | **TP** |
-| `vendor` | "Acme Corporation" | "Acme Corp" | 0.72 | 0.8 | **FD** |
+| `vendor` | "Acme Corporation" | "Acme Corp" | 0.5625 | 0.8 | **FD** |
 | `notes` | "Net 30" | null | — | 0.6 | **FN** |
 
 ### List Matching (line_items)
@@ -248,10 +248,19 @@ Hungarian algorithm pairs:
 |---------|-----------|-------------------|--------------------------|--------|
 | SKU-A, "Widget Alpha" | SKU-A, "Widget Alpha" | 1.0 | ≥ 0.7 | **TP** → recurse |
 | SKU-B, "Widget Beta" | SKU-B, "Widget Bet" | ~0.95 | ≥ 0.7 | **TP** → recurse |
-| SKU-C, "Widget Gamma" | (unmatched) | — | — | **FN** |
-| (unmatched) | SKU-X, "New Item" | — | — | **FA** |
+| SKU-C, "Widget Gamma" | SKU-X, "New Item" | 0.083 | < 0.7 | **FD** → atomic |
 
-Within each matched pair, the fields (sku, description) are evaluated and contribute to the aggregate counts.
+Both lists hold three items, so the Hungarian algorithm pairs every one of them and
+no item is left over. **FN and FA are impossible for an equal-length list** --
+`SKU-C` does not go missing, it gets paired with the only prediction left, scores
+`0.083`, and lands below `match_threshold` as a false discovery. Unmatched items
+appear only when the two lists differ in length.
+
+Within each matched pair that *meets* the threshold, the fields (sku, description)
+are evaluated and contribute to the aggregate counts. A below-threshold pair is
+treated as atomic and contributes one FD at the object level, with no field-level
+breakdown -- see
+[Threshold-Gated Evaluation](../Advanced/threshold-gated-evaluation.md).
 
 ### Aggregate Confusion Matrix
 
