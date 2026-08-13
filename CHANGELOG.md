@@ -178,10 +178,32 @@ Each release links to full notes on the
   [#199](https://github.com/awslabs/stickler/issues/199), where
   `"SHP-2024-001"` incorrectly matched `"shp 2024 001"`.
 
-  **This can lower scores** on existing evaluation sets. Any field using
-  `ExactComparator` (explicitly or via inference) that previously matched
-  due to case folding or punctuation stripping will now score 0.0 if the
-  raw strings differ.
+  **This lowers scores** on existing evaluation sets, and it reaches you even if
+  you never named `ExactComparator`. The zero-config path (`stickler.evaluate()`,
+  `eval_for()`, `from_pydantic()`) infers `ExactComparator` for id-shaped,
+  code-shaped, email, zip and boolean fields, so on a typical extraction model
+  it covers roughly half the fields:
+
+  ```python
+  class Invoice(BaseModel):           # plain pydantic, no stickler config
+      invoice_id: str                 # inferred -> ExactComparator
+      sku: str                        # inferred -> ExactComparator
+      email: str                      # inferred -> ExactComparator
+      zip_code: str                   # inferred -> ExactComparator
+      vendor_name: str                # inferred -> LevenshteinComparator
+  ```
+
+  With predictions differing only in case and punctuation
+  (`"SHP-2024-001"` vs `"shp 2024 001"`, `"98101-1234"` vs `"98101 1234"`):
+
+  | | before | after |
+  |---|---|---|
+  | the four inferred-Exact fields | 1.0 each | **0.0 each** |
+  | `overall_score` | 1.0 | **0.20** |
+
+  That is the intended correction -- those pairs are not equal, and reporting
+  them as perfect matches is the bug -- but if you track a metric across
+  releases, expect a step change at this version rather than a drift.
 
   | what changed | before | after |
   |---|---|---|
