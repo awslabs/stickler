@@ -81,6 +81,15 @@ JSON_TYPE_TO_DEFAULT_COMPARATOR = {
 # model would declare a fresh Enum subclass per field), while re-visiting the
 # same field on repeated calls (e.g. round-trip export/re-import in tests)
 # returns the same class object rather than a stream of near-duplicates.
+#
+# Growth bound: entries accumulate over process lifetime, one per unique
+# ``(field_path, values)`` tuple ever synthesized. In practice this is bounded
+# by the number of distinct enum fields across all schemas a process loads --
+# a batch job that reloads the same schema in a loop is a cache hit, and even
+# a process that loads thousands of distinct schemas typically shares field
+# names and value sets. No eviction is warranted for the observed use cases;
+# if a caller ever needs to reset the cache (long-lived tests that assert on
+# class identity across generations), clearing the dict is safe.
 _ENUM_CLASS_CACHE: Dict[Tuple[str, Tuple[Any, ...]], Type[enum.Enum]] = {}
 
 

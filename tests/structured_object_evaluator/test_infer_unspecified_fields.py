@@ -244,6 +244,45 @@ class TestModelFromJsonFlagOn:
         # would raise this value to 0.3 for a ``notes`` field.
         assert _field_weight(Model, "notes") == pytest.approx(1.0)
 
+    def test_flag_propagates_through_nested_structured_model(self):
+        """Mirror of ``test_flag_propagates_through_nested_object`` on the
+        ``model_from_json`` path: un-annotated leaves inside a nested
+        ``type: structured_model`` block must inherit the parent's flag
+        setting so ``_convert_nested_model_field`` doesn't drop it on the
+        recursive call."""
+        config = {
+            "model_name": "M",
+            "fields": {
+                "invoice_id": {"type": "str"},
+                "address": {
+                    "type": "structured_model",
+                    "fields": {
+                        "zip_code": {"type": "str"},
+                        "state": {"type": "str"},
+                    },
+                },
+            },
+        }
+        Model = StructuredModel.model_from_json(config, infer_unspecified_fields=True)
+
+        # Top-level inferred.
+        assert isinstance(_field_comparator(Model, "invoice_id"), ExactComparator)
+
+        # Reach into the nested model class and check its fields too.
+        AddressModel = Model.model_fields["address"].annotation
+        from typing import get_args, get_origin
+
+        if get_origin(AddressModel) is not None:
+            args = [a for a in get_args(AddressModel) if a is not type(None)]
+            if args:
+                AddressModel = args[0]
+
+        # Nested un-annotated fields also went through inference (i.e.,
+        # the flag threaded through the ``_convert_nested_model_field``
+        # recursive call at ``field_converter.py:225``).
+        assert _field_provenance(AddressModel, "zip_code") is not None
+        assert _field_provenance(AddressModel, "state") is not None
+
     def test_per_parameter_merge_weight_wins_over_inferred(self):
         """Same as threshold merge but on the weight parameter — makes
         sure the merge is uniform across all three parameters. The
@@ -482,6 +521,70 @@ class TestFromJsonSchemaFlagOn:
 
         assert isinstance(_field_comparator(Model, "notes"), FuzzyComparator)
         assert _field_threshold(Model, "notes") == pytest.approx(0.9)
+
+    def test_list_of_format_date_enriches_element_type(self):
+        """The enrichment gating in ``_handle_array_type`` must apply to
+        primitive array items too: an array of ``format: date`` strings
+        under the flag becomes ``List[datetime.date]`` bound to a
+        ``DateComparator``, not ``List[str]`` with Levenshtein. Without
+        this test the item-level enrichment branch would be untested."""
+        from typing import get_args, get_origin
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "invoice_dates": {
+                    "type": "array",
+                    "items": {"type": "string", "format": "date"},
+                },
+            },
+        }
+        Model = StructuredModel.from_json_schema(schema, infer_unspecified_fields=True)
+
+        annotation = Model.model_fields["invoice_dates"].annotation
+        # Field is Optional[List[datetime.date]] (non-required default None).
+        if get_origin(annotation) is not None:
+            args = [a for a in get_args(annotation) if a is not type(None)]
+            if args:
+                annotation = args[0]
+        assert get_origin(annotation) is list
+        (element_type,) = get_args(annotation)
+        assert element_type is datetime.date
+
+        assert isinstance(_field_comparator(Model, "invoice_dates"), DateComparator)
+
+        # Pydantic actually coerces the string items into ``date`` objects.
+        instance = Model(invoice_dates=["2024-05-15", "2024-06-01"])
+        assert all(isinstance(d, datetime.date) for d in instance.invoice_dates)
+
+    def test_format_date_with_explicit_comparator_keeps_type_enrichment(self):
+        """Type enrichment happens BEFORE comparator selection, so an
+        explicit ``x-aws-stickler-comparator`` doesn't undo the ``format:
+        date`` → ``datetime.date`` type change. Pydantic still coerces
+        the string into a ``date`` object; the operator's chosen
+        comparator (here ``LevenshteinComparator``) runs against the
+        stringified date at compare time. Pinning this so a future
+        change doesn't accidentally couple enrichment to comparator
+        absence."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "issued": {
+                    "type": "string",
+                    "format": "date",
+                    "x-aws-stickler-comparator": "LevenshteinComparator",
+                },
+            },
+        }
+        Model = StructuredModel.from_json_schema(schema, infer_unspecified_fields=True)
+
+        # Author's comparator wins.
+        assert isinstance(_field_comparator(Model, "issued"), LevenshteinComparator)
+        # No provenance — inference didn't fire.
+        assert _field_provenance(Model, "issued") is None
+        # Type enrichment still happened.
+        instance = Model(issued="2024-05-15")
+        assert isinstance(instance.issued, datetime.date)
 
     def test_flag_propagates_through_nested_object(self):
         """Un-annotated leaves inside a nested object must inherit the

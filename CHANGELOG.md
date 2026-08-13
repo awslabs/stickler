@@ -25,8 +25,17 @@ Each release links to full notes on the
   `format: date-time` fields into `datetime.date` / `datetime.datetime` types
   and `enum` string fields into synthesized `Enum` subclasses, so downstream
   inference picks `DateComparator` and `ExactComparator` rather than the
-  character-edit-distance default. Enabling the flag will shift metrics for
-  any field it fires on relative to the pre-flag `LevenshteinComparator @ 0.5`
+  character-edit-distance default. The enrichment also flows through
+  `List[primitive]` items — an array of `format: date` strings becomes
+  `List[datetime.date]` under the flag. One side effect worth noting: once
+  a field's annotation becomes `datetime.date` (or a synthesized `Enum`),
+  Pydantic validates values at model construction — a data instance with
+  an invalid ISO date string, or an enum value outside the declared set,
+  now raises where the pre-flag pipeline coerced the raw string. This is
+  the intended tightening, but callers whose fixtures include malformed
+  dates or enum values should expect stricter validation once they flip
+  the flag on. Enabling the flag will also shift metrics for any field it
+  fires on relative to the pre-flag `LevenshteinComparator @ 0.5`
   fallback — that's the point of the flag, but callers should re-baseline
   when they turn it on. On the `model_from_json` path, the flag also relaxes
   the existing `"primitive fields require a 'comparator'"` validation gate
