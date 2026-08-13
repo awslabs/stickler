@@ -49,7 +49,7 @@ When defining a `StructuredModel` subclass in Python, each field is declared wit
 | `threshold` | `float` (0.0--1.0) | `0.5` | Minimum similarity score required for a field to be classified as a match. |
 | `weight` | `float` (> 0.0) | `1.0` | Relative importance of this field when computing aggregate scores. |
 | `clip_under_threshold` | `bool` | `True` | When `True`, scores below `threshold` are zeroed out before contributing to the weighted average. |
-| `aggregate` | `bool` | `False` | *Deprecated.* Previously controlled inclusion in parent-level metrics. All nodes now include an automatic `aggregate` field in the confusion matrix output. |
+| `aggregate` | `bool` | `False` | **Deprecated, removed in 0.8.0.** Has no effect: every node already carries an `aggregate` block in the `compare_with()` output summing the primitive field metrics below it. Passing it at all emits a `DeprecationWarning`; remove the argument, there is no replacement to adopt ([#226](https://github.com/awslabs/stickler/issues/226)). |
 
 ### How Each Parameter Affects Scoring
 
