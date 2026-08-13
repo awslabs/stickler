@@ -4,6 +4,8 @@ This module provides utilities for converting JSON Schema properties to
 Pydantic Field instances with ComparableField functionality.
 """
 
+import datetime
+import enum
 from typing import Any, Dict, List, Optional, Tuple, Type, Union, get_args, get_origin
 
 from pydantic.fields import FieldInfo
@@ -19,12 +21,36 @@ JSON_TYPE_TO_PYTHON_TYPE = {
     "boolean": bool,
 }
 
+# String-format enrichment. When a JSON Schema property is ``type: string``
+# with a recognized ``format`` hint, we return the richer Python type so
+# downstream comparator selection (and Stickler's auto-inference, if the
+# caller has enabled ``infer_unspecified_fields``) can pick a type-aware
+# comparator — ``DateComparator`` for date-shaped values rather than the
+# character-edit-distance default. Only the two calendar formats are honored
+# for now; other JSON Schema formats (uuid, email, uri, etc.) still resolve
+# to plain ``str`` because we don't yet have first-class comparators for
+# them and rich strings still evaluate correctly under the string default.
+STRING_FORMAT_TO_PYTHON_TYPE = {
+    "date": datetime.date,
+    "date-time": datetime.datetime,
+}
+
 # Bidirectional type mappings for export
 PYTHON_TYPE_TO_JSON_TYPE = {
     str: "string",
     int: "integer",
     float: "number",
     bool: "boolean",
+    datetime.date: "string",
+    datetime.datetime: "string",
+}
+
+# Format hint emitted alongside ``type: string`` on export so the round
+# trip re-imports as the richer type — otherwise export would silently
+# downgrade a ``datetime.date`` field to plain ``str``.
+PYTHON_TYPE_TO_STRING_FORMAT = {
+    datetime.date: "date",
+    datetime.datetime: "date-time",
 }
 
 PYTHON_TYPE_TO_STICKLER_TYPE = {
@@ -32,9 +58,15 @@ PYTHON_TYPE_TO_STICKLER_TYPE = {
     int: "int",
     float: "float",
     bool: "bool",
+    datetime.date: "date",
+    datetime.datetime: "datetime",
 }
 
-# Default comparator mapping from JSON Schema types to comparator class names
+# Default comparator mapping from JSON Schema types to comparator class names.
+# Used only when the caller did not pass ``x-aws-stickler-comparator`` AND the
+# ``infer_unspecified_fields`` flag is OFF — this is the legacy flat-default
+# fallback. When the flag is ON, ``stickler.auto.inference`` decides based on
+# type + name and this table is bypassed.
 JSON_TYPE_TO_DEFAULT_COMPARATOR = {
     "string": "LevenshteinComparator",
     "number": "NumericComparator",
@@ -43,24 +75,121 @@ JSON_TYPE_TO_DEFAULT_COMPARATOR = {
 }
 
 
+# Cache of Enum classes we've synthesized from JSON Schema ``enum`` values.
+# Keyed by ``(field_path, tuple(enum_values))`` so distinct fields with the
+# same value set still get distinct Enum classes (mirroring how a hand-authored
+# model would declare a fresh Enum subclass per field), while re-visiting the
+# same field on repeated calls (e.g. round-trip export/re-import in tests)
+# returns the same class object rather than a stream of near-duplicates.
+_ENUM_CLASS_CACHE: Dict[Tuple[str, Tuple[Any, ...]], Type[enum.Enum]] = {}
+
+
+def _resolve_python_type(
+    json_type: str, property_schema: Dict[str, Any], field_path: str = ""
+) -> Any:
+    """Resolve a JSON Schema property to its richest Python type.
+
+    Order of precedence:
+    1. ``type: string`` with ``format: date`` / ``date-time`` → ``datetime.date`` / ``datetime.datetime``.
+    2. ``type: string`` with an ``enum`` list of strings → a synthesized ``Enum`` subclass.
+    3. Fallback to the primitive ``JSON_TYPE_TO_PYTHON_TYPE`` mapping (``str``,
+       ``int``, ``float``, ``bool``).
+
+    Enum synthesis: builds a Python ``Enum`` class named after the field
+    path (sanitized) whose members map ``UPPERCASED_VALUE`` → the original
+    string. Numeric / mixed-type enums fall through to the primitive
+    mapping — Stickler's inference layer picks ``ExactComparator`` for
+    those via the general ``_is_literal`` check when the schema value is
+    homogeneous, but non-string enums are less common and we don't try to
+    build heterogeneous Enum classes here.
+    """
+    # Format-hinted string first (calendar types).
+    if json_type == "string":
+        fmt = property_schema.get("format")
+        if isinstance(fmt, str) and fmt in STRING_FORMAT_TO_PYTHON_TYPE:
+            return STRING_FORMAT_TO_PYTHON_TYPE[fmt]
+
+        # String enum: build (or retrieve) a synthesized Enum class. Only
+        # done when the schema declares an ``enum`` and all values are
+        # strings; heterogeneous enums still resolve to ``str``.
+        enum_values = property_schema.get("enum")
+        if (
+            isinstance(enum_values, list)
+            and enum_values
+            and all(isinstance(v, str) for v in enum_values)
+        ):
+            cache_key = (field_path or "", tuple(enum_values))
+            cached = _ENUM_CLASS_CACHE.get(cache_key)
+            if cached is not None:
+                return cached
+            # Enum class name: derived from the field path so the generated
+            # class is greppable. Sanitize aggressively — a JSON Schema
+            # field path can contain dots, brackets, spaces, etc.
+            sanitized = "".join(
+                c if c.isalnum() else "_" for c in (field_path or "Field")
+            )
+            if not sanitized or sanitized[0].isdigit():
+                sanitized = f"_{sanitized}"
+            class_name = f"{sanitized}Enum"
+            # Member names: uppercased value with non-alphanumerics folded
+            # to ``_``; collisions on the sanitized member name would
+            # otherwise raise, so append a numeric suffix if needed.
+            member_names: Dict[str, str] = {}
+            for value in enum_values:
+                name = "".join(c if c.isalnum() else "_" for c in value.upper())
+                if not name or name[0].isdigit():
+                    name = f"_{name}"
+                original = name
+                suffix = 1
+                while name in member_names:
+                    name = f"{original}_{suffix}"
+                    suffix += 1
+                member_names[name] = value
+            enum_cls = enum.Enum(class_name, member_names)  # type: ignore[call-overload]
+            _ENUM_CLASS_CACHE[cache_key] = enum_cls
+            return enum_cls
+
+    if json_type not in JSON_TYPE_TO_PYTHON_TYPE:
+        raise ValueError(
+            f"Unsupported JSON Schema type: {json_type}. "
+            f"Supported types: {list(JSON_TYPE_TO_PYTHON_TYPE.keys())}"
+        )
+    return JSON_TYPE_TO_PYTHON_TYPE[json_type]
+
+
 class JsonSchemaFieldConverter:
     """Converter for JSON Schema properties to/from Pydantic fields with comparison capabilities.
-    
+
     This class handles bidirectional conversion:
     - Import: JSON Schema → Pydantic Field (existing functionality)
     - Export: Pydantic Field → JSON Schema (new functionality)
-    
+
     It extracts x-aws-stickler-* extensions and calls ComparableField() to create Pydantic Fields.
     """
 
-    def __init__(self, schema: Dict[str, Any], field_path: str = ""):
+    def __init__(
+        self,
+        schema: Dict[str, Any],
+        field_path: str = "",
+        *,
+        infer_unspecified_fields: bool = False,
+    ):
         """Initialize with a JSON Schema document.
-        
+
         Args:
             schema: JSON Schema document (already validated)
             field_path: Current field path for error messages (e.g., "address.street")
+            infer_unspecified_fields: When True, fields whose schema has no
+                ``x-aws-stickler-comparator`` extension route through
+                ``stickler.auto.inference`` for a type + name-aware comparator
+                pick (with per-parameter override — the operator's explicit
+                ``x-aws-stickler-threshold`` / ``-weight`` still win). Also
+                enables ``format: date`` / ``format: date-time`` / ``enum``
+                type enrichment on primitive property mapping. Off by default;
+                the pre-existing flat-default behavior is preserved.
         """
         self.schema = schema
+        self.infer_unspecified_fields = infer_unspecified_fields
         self.definitions = schema.get("definitions", {})
         self.defs = schema.get("$defs", {})  # JSON Schema draft 2019-09+
         self.field_path = field_path
@@ -69,13 +198,13 @@ class JsonSchemaFieldConverter:
         self, properties: Dict[str, Any], required: List[str]
     ) -> Dict[str, Tuple[Type, Any]]:
         """Convert JSON Schema properties to Pydantic field definitions.
-        
+
         This is the main entry point, similar to FieldConverter.convert_fields_config().
-        
+
         Args:
             properties: JSON Schema properties object
             required: List of required field names
-            
+
         Returns:
             Dictionary mapping field names to (type, Field) tuples for create_model()
         """
@@ -83,7 +212,9 @@ class JsonSchemaFieldConverter:
         for field_name, property_schema in properties.items():
             is_required = field_name in required
             # Build field path for nested error messages
-            current_path = f"{self.field_path}.{field_name}" if self.field_path else field_name
+            current_path = (
+                f"{self.field_path}.{field_name}" if self.field_path else field_name
+            )
             try:
                 field_type, field = self.convert_property_to_field(
                     field_name, property_schema, is_required, current_path
@@ -97,18 +228,22 @@ class JsonSchemaFieldConverter:
         return field_definitions
 
     def convert_property_to_field(
-        self, field_name: str, property_schema: Dict[str, Any], is_required: bool, field_path: str = None
+        self,
+        field_name: str,
+        property_schema: Dict[str, Any],
+        is_required: bool,
+        field_path: str = None,
     ) -> Tuple[Type, Any]:
         """Convert a single JSON Schema property to a Pydantic field.
-        
+
         Similar to FieldConverter.convert_field_config(), but reads JSON Schema format.
-        
+
         Args:
             field_name: Name of the field
             property_schema: JSON Schema for this property
             is_required: Whether this field is required
             field_path: Full path to this field for error messages
-            
+
         Returns:
             Tuple of (field_type, pydantic_field) where pydantic_field is from ComparableField()
         """
@@ -150,19 +285,69 @@ class JsonSchemaFieldConverter:
                 field_name, property_schema, is_required, field_path
             )
         else:
-            # Handle primitive types
-            field_type = self._map_json_type_to_python_type(json_type)
+            # Handle primitive types. Type enrichment (``format: date`` →
+            # ``datetime.date``, ``enum`` → synthesized ``Enum``) is gated
+            # on ``self.infer_unspecified_fields`` — enrichment changes
+            # the Pydantic value coercion (a date string becomes a
+            # ``date`` object; an enum value becomes an Enum member), so
+            # applying it unconditionally would be a silent behavior
+            # change to schemas that today declare ``format``/``enum``
+            # for documentation only. Flag off = plain-primitive types
+            # exactly as before; flag on = the richer types Stickler's
+            # inference layer can act on.
+            enrich = getattr(self, "infer_unspecified_fields", False)
+            field_type = self._map_json_type_to_python_type(
+                json_type,
+                property_schema if enrich else None,
+                field_path,
+            )
 
             # Extract x-aws-stickler-* extensions
             extensions = self._extract_stickler_extensions(property_schema, field_path)
 
-            # Get comparator (from extension or default)
-            comparator = extensions.get("comparator") or self._get_default_comparator_for_type(json_type)
+            # Comparator selection. Three paths merge here:
+            #   1. ``x-aws-stickler-comparator`` extension is present —
+            #      honor the author's choice verbatim.
+            #   2. Flag is ON and no comparator extension — route through
+            #      ``stickler.auto.inference``. The InferredSpec provides
+            #      defaults for comparator / threshold / weight /
+            #      clip_under_threshold that the author's other
+            #      extensions can still override per-parameter.
+            #   3. Flag is OFF and no comparator extension — legacy
+            #      flat-default fallback (Levenshtein for string, Numeric
+            #      for number/integer, Exact for boolean).
+            inferred_spec = None
+            if extensions.get("comparator") is not None:
+                comparator = extensions["comparator"]
+            elif enrich:
+                from ...auto.inference import infer_field_config
 
-            # Get other parameters
-            threshold = extensions.get("threshold", 0.5)
-            weight = extensions.get("weight", 1.0)
-            clip_under_threshold = extensions.get("clip_under_threshold", True)
+                inferred_spec = infer_field_config(
+                    field_name, FieldInfo(annotation=field_type)
+                )
+                comparator = create_comparator(
+                    inferred_spec.comparator_name,
+                    inferred_spec.comparator_config,
+                )
+            else:
+                comparator = self._get_default_comparator_for_type(
+                    json_type, field_type if enrich else None
+                )
+
+            # Per-parameter merge: when inference fired, its InferredSpec
+            # provides the fallback for each remaining parameter that the
+            # author didn't specify via an extension. When inference did
+            # NOT fire, fall back to the pre-existing flat defaults.
+            if inferred_spec is not None:
+                threshold = extensions.get("threshold", inferred_spec.threshold)
+                weight = extensions.get("weight", inferred_spec.weight)
+                clip_under_threshold = extensions.get(
+                    "clip_under_threshold", inferred_spec.clip_under_threshold
+                )
+            else:
+                threshold = extensions.get("threshold", 0.5)
+                weight = extensions.get("weight", 1.0)
+                clip_under_threshold = extensions.get("clip_under_threshold", True)
 
             # Get Pydantic field parameters (``default`` resolved above, where
             # the widening decision needed it).
@@ -177,8 +362,15 @@ class JsonSchemaFieldConverter:
                 clip_under_threshold=clip_under_threshold,
                 default=default,
                 description=description,
-                examples=examples
+                examples=examples,
             )
+
+            # Attach provenance for retrieval (see FieldConverter for the
+            # same channel on the model_from_json path).
+            if inferred_spec is not None:
+                extra = field.json_schema_extra
+                if extra is not None:
+                    extra._provenance = list(inferred_spec.provenance)
 
         if widen_to_optional:
             field_type = Optional[field_type]
@@ -224,34 +416,83 @@ class JsonSchemaFieldConverter:
             )
         return non_null[0], True
 
-    def _map_json_type_to_python_type(self, json_type: str) -> Type:
-        """Map JSON Schema type to Python type.
-        
-        Args:
-            json_type: JSON Schema type string
-            
-        Returns:
-            Python type
-            
-        Raises:
-            ValueError: If json_type is not supported
-        """
-        if json_type not in JSON_TYPE_TO_PYTHON_TYPE:
-            raise ValueError(
-                f"Unsupported JSON Schema type: {json_type}. "
-                f"Supported types: {list(JSON_TYPE_TO_PYTHON_TYPE.keys())}"
-            )
-        return JSON_TYPE_TO_PYTHON_TYPE[json_type]
+    def _map_json_type_to_python_type(
+        self,
+        json_type: str,
+        property_schema: Optional[Dict[str, Any]] = None,
+        field_path: str = "",
+    ) -> Type:
+        """Map a JSON Schema property to the richest Python type it represents.
 
-    def _get_default_comparator_for_type(self, json_type: str):
-        """Get default comparator instance for a JSON Schema type.
-        
+        When ``property_schema`` is passed and carries a ``format`` hint
+        (``date`` / ``date-time``) or an ``enum`` list of strings, the return
+        type is enriched accordingly — ``datetime.date`` / ``datetime.datetime``
+        for the calendar formats, or a synthesized ``Enum`` subclass for
+        string enums. This is what lets downstream comparator selection (and
+        ``stickler.auto.inference`` when ``infer_unspecified_fields`` is on)
+        pick a type-aware comparator such as ``DateComparator`` for date-shaped
+        strings, rather than the character-edit-distance default.
+
         Args:
             json_type: JSON Schema type string
-            
+            property_schema: Full property subschema. Optional for backward
+                compatibility — callers on the old signature still get the
+                primitive mapping without format/enum enrichment.
+            field_path: Full path to this field, used for naming synthesized
+                Enum classes.
+
+        Returns:
+            Python type (possibly enriched).
+
+        Raises:
+            ValueError: If json_type is not supported.
+        """
+        if property_schema is None:
+            # Legacy call sites — retain original behavior for backward
+            # compatibility with anything importing the class externally.
+            if json_type not in JSON_TYPE_TO_PYTHON_TYPE:
+                raise ValueError(
+                    f"Unsupported JSON Schema type: {json_type}. "
+                    f"Supported types: {list(JSON_TYPE_TO_PYTHON_TYPE.keys())}"
+                )
+            return JSON_TYPE_TO_PYTHON_TYPE[json_type]
+        return _resolve_python_type(json_type, property_schema, field_path)
+
+    def _get_default_comparator_for_type(
+        self, json_type: str, python_type: Optional[Type] = None
+    ):
+        """Get default comparator instance for a JSON Schema type.
+
+        Called only when no comparator extension is present AND the caller
+        did not enable ``infer_unspecified_fields``. Keeps the historical
+        type-only flat-default table intact for the primitive JSON types
+        (``string`` / ``number`` / ``integer`` / ``boolean``).
+
+        For the enriched Python types (``datetime.date`` / ``datetime.datetime``
+        / synthesized ``Enum`` subclasses), returns ``DateComparator`` and
+        ``ExactComparator`` respectively — otherwise the format/enum
+        enrichment above would silently pair with a plain-string comparator
+        and defeat its own purpose.
+
+        Args:
+            json_type: JSON Schema type string.
+            python_type: Optional richer Python type resolved by
+                ``_resolve_python_type``. When provided and it maps to a
+                calendar type or ``Enum`` subclass, its comparator wins over
+                the primitive-type default.
+
         Returns:
             Comparator instance
         """
+        if python_type is not None:
+            if isinstance(python_type, type):
+                if issubclass(python_type, enum.Enum):
+                    return create_comparator("ExactComparator", {})
+                # datetime.datetime is a subclass of datetime.date, so this
+                # order-independent check picks Date for both.
+                if issubclass(python_type, datetime.date):
+                    return create_comparator("DateComparator", {})
+
         comparator_name = JSON_TYPE_TO_DEFAULT_COMPARATOR.get(
             json_type, "LevenshteinComparator"
         )
@@ -261,31 +502,35 @@ class JsonSchemaFieldConverter:
         self, property_schema: Dict[str, Any], field_path: str = ""
     ) -> Dict[str, Any]:
         """Extract x-aws-stickler-* extensions from property schema.
-        
+
         Args:
             property_schema: JSON Schema property object
             field_path: Full path to this field for error messages
-            
+
         Returns:
             Dictionary with extracted comparison configuration
-            
+
         Raises:
             ValueError: If extension values are invalid
         """
         extensions = {}
-        
+
         # Extract comparator
         if "x-aws-stickler-comparator" in property_schema:
             comparator_name = property_schema["x-aws-stickler-comparator"]
-            comparator_config = property_schema.get("x-aws-stickler-comparator-config", {})
+            comparator_config = property_schema.get(
+                "x-aws-stickler-comparator-config", {}
+            )
             try:
-                extensions["comparator"] = create_comparator(comparator_name, comparator_config)
+                extensions["comparator"] = create_comparator(
+                    comparator_name, comparator_config
+                )
             except Exception as e:
                 field_info = f" in field '{field_path}'" if field_path else ""
                 raise ValueError(
                     f"Invalid x-aws-stickler-comparator '{comparator_name}'{field_info}: {e}"
                 )
-        
+
         # Extract and validate threshold
         if "x-aws-stickler-threshold" in property_schema:
             threshold = property_schema["x-aws-stickler-threshold"]
@@ -295,7 +540,7 @@ class JsonSchemaFieldConverter:
                     f"x-aws-stickler-threshold must be a number between 0.0 and 1.0{field_info}, got: {threshold}"
                 )
             extensions["threshold"] = threshold
-        
+
         # Extract and validate weight
         if "x-aws-stickler-weight" in property_schema:
             weight = property_schema["x-aws-stickler-weight"]
@@ -305,7 +550,7 @@ class JsonSchemaFieldConverter:
                     f"x-aws-stickler-weight must be a positive number{field_info}, got: {weight}"
                 )
             extensions["weight"] = weight
-        
+
         # Extract boolean parameters
         if "x-aws-stickler-clip-under-threshold" in property_schema:
             clip_value = property_schema["x-aws-stickler-clip-under-threshold"]
@@ -315,7 +560,7 @@ class JsonSchemaFieldConverter:
                     f"x-aws-stickler-clip-under-threshold must be a boolean{field_info}, got: {type(clip_value).__name__}"
                 )
             extensions["clip_under_threshold"] = clip_value
-        
+
         if "x-aws-stickler-aggregate" in property_schema:
             aggregate_value = property_schema["x-aws-stickler-aggregate"]
             if not isinstance(aggregate_value, bool):
@@ -324,18 +569,18 @@ class JsonSchemaFieldConverter:
                     f"x-aws-stickler-aggregate must be a boolean{field_info}, got: {type(aggregate_value).__name__}"
                 )
             extensions["aggregate"] = aggregate_value
-        
+
         return extensions
 
     def _resolve_ref(self, ref: str) -> Dict[str, Any]:
         """Resolve a $ref reference within the schema.
-        
+
         Args:
             ref: Reference string (e.g., "#/definitions/Address")
-            
+
         Returns:
             Resolved schema object
-            
+
         Raises:
             ValueError: If reference format is unsupported or reference not found
         """
@@ -363,26 +608,30 @@ class JsonSchemaFieldConverter:
             )
 
     def _handle_nested_object(
-        self, field_name: str, property_schema: Dict[str, Any], is_required: bool, field_path: str = None
+        self,
+        field_name: str,
+        property_schema: Dict[str, Any],
+        is_required: bool,
+        field_path: str = None,
     ) -> Tuple[Type, Any]:
         """Handle nested object type (creates nested StructuredModel).
-        
+
         Args:
             field_name: Name of the field
             property_schema: JSON Schema for the nested object
             is_required: Whether this field is required
             field_path: Full path to this field for error messages
-            
+
         Returns:
             Tuple of (NestedModel, ComparableField)
         """
         if field_path is None:
             field_path = field_name
-        
+
         # Recursively create nested model from the nested schema
         # Import here to avoid circular dependency
         from .structured_model import StructuredModel
-        
+
         # CRITICAL: Pass parent schema's definitions/defs to nested schema
         # so that nested $refs can be resolved
         enriched_schema = dict(property_schema)
@@ -390,31 +639,36 @@ class JsonSchemaFieldConverter:
             enriched_schema["definitions"] = self.definitions
         if self.defs and "$defs" not in enriched_schema:
             enriched_schema["$defs"] = self.defs
-        
+
         try:
-            NestedModel = StructuredModel._from_json_schema_internal(enriched_schema, field_path=field_path)
+            NestedModel = StructuredModel._from_json_schema_internal(
+                enriched_schema,
+                field_path=field_path,
+                infer_unspecified_fields=self.infer_unspecified_fields,
+            )
         except ValueError:
             # Nested errors already have field path context
             raise
-        
+
         # Extract extensions for the field itself
         extensions = self._extract_stickler_extensions(property_schema, field_path)
         weight = extensions.get("weight", 1.0)
         clip_under_threshold = extensions.get("clip_under_threshold", True)
-        
+
         # Get default value
         default = property_schema.get("default", ... if is_required else None)
         description = property_schema.get("description")
-        
+
         # Create ComparableField with dummy comparator (not used for StructuredModel)
         from stickler.comparators.levenshtein import LevenshteinComparator
+
         field = ComparableField(
             comparator=LevenshteinComparator(),  # Not used for nested models
             threshold=0.7,  # Use model's match_threshold instead
             weight=weight,
             clip_under_threshold=clip_under_threshold,
             default=default,
-            description=description
+            description=description,
         )
 
         # Annotation widening (Optional[...]) is decided once by the caller
@@ -422,29 +676,33 @@ class JsonSchemaFieldConverter:
         return NestedModel, field
 
     def _handle_array_type(
-        self, field_name: str, property_schema: Dict[str, Any], is_required: bool, field_path: str = None
+        self,
+        field_name: str,
+        property_schema: Dict[str, Any],
+        is_required: bool,
+        field_path: str = None,
     ) -> Tuple[Type, Any]:
         """Handle array type (creates List field).
-        
+
         Args:
             field_name: Name of the field
             property_schema: JSON Schema for the array
             is_required: Whether this field is required
             field_path: Full path to this field for error messages
-            
+
         Returns:
             Tuple of (List[ElementType], ComparableField)
         """
         if field_path is None:
             field_path = field_name
         from typing import List
-        
+
         items_schema = property_schema.get("items", {})
-        
+
         # Handle $ref in items
         if "$ref" in items_schema:
             items_schema = self._resolve_ref(items_schema["$ref"])
-        
+
         items_type, items_nullable = self._normalize_type(
             items_schema.get("type"), f"{field_path}[]"
         )
@@ -452,8 +710,13 @@ class JsonSchemaFieldConverter:
         # Array of objects -> List[StructuredModel]
         if items_type == "object":
             from .structured_model import StructuredModel
+
             try:
-                ElementModel = StructuredModel._from_json_schema_internal(items_schema, field_path=f"{field_path}[]")
+                ElementModel = StructuredModel._from_json_schema_internal(
+                    items_schema,
+                    field_path=f"{field_path}[]",
+                    infer_unspecified_fields=self.infer_unspecified_fields,
+                )
             except ValueError:
                 # Nested errors already have field path context
                 raise
@@ -462,24 +725,35 @@ class JsonSchemaFieldConverter:
             # Use default comparator for the element type
             comparator = self._get_default_comparator_for_type("string")
         else:
-            # Array of primitives -> List[primitive]
-            element_type = self._map_json_type_to_python_type(items_type)
+            # Array of primitives -> List[primitive]. Same enrichment
+            # gating as ``convert_property_to_field`` above — flag off
+            # keeps element type as plain primitive, flag on enriches to
+            # ``datetime.date`` / synthesized ``Enum`` when the items
+            # schema declares a matching ``format`` / ``enum``.
+            enrich = getattr(self, "infer_unspecified_fields", False)
+            element_type = self._map_json_type_to_python_type(
+                items_type,
+                items_schema if enrich else None,
+                f"{field_path}[]",
+            )
             if items_nullable:
                 element_type = Optional[element_type]
             field_type = List[element_type]
-            # Use default comparator for the element type
-            comparator = self._get_default_comparator_for_type(items_type)
-        
+            # Element-type default comparator — same enrichment gating.
+            comparator = self._get_default_comparator_for_type(
+                items_type, element_type if enrich else None
+            )
+
         # Extract extensions from the array property itself
         extensions = self._extract_stickler_extensions(property_schema, field_path)
         # Override comparator if specified in extensions
         if "comparator" in extensions:
             comparator = extensions["comparator"]
-        
+
         threshold = extensions.get("threshold", 0.5)
         weight = extensions.get("weight", 1.0)
         clip_under_threshold = extensions.get("clip_under_threshold", True)
-        
+
         # Get default
         default = property_schema.get("default", ... if is_required else None)
         description = property_schema.get("description")
@@ -491,14 +765,13 @@ class JsonSchemaFieldConverter:
             weight=weight,
             clip_under_threshold=clip_under_threshold,
             default=default,
-            description=description
+            description=description,
         )
 
         # Annotation widening (Optional[...]) is decided once by the caller
         # convert_property_to_field; this handler returns the bare List[...].
         return field_type, field
 
-    
     def field_to_property(
         self, field_type: Type, field_info: FieldInfo, is_nullable: bool = False
     ) -> Dict[str, Any]:
@@ -526,12 +799,14 @@ class JsonSchemaFieldConverter:
 
         json_type = PYTHON_TYPE_TO_JSON_TYPE.get(field_type, "string")
         property_schema = {"type": [json_type, "null"] if is_nullable else json_type}
-        
+
         # Extract metadata and build extensions using consolidated helper
         metadata = self._extract_field_metadata(field_info)
-        extensions = self._build_comparison_extensions(metadata, output_format="json_schema")
+        extensions = self._build_comparison_extensions(
+            metadata, output_format="json_schema"
+        )
         property_schema.update(extensions)
-        
+
         # Add Pydantic field params
         if field_info.description:
             property_schema["description"] = field_info.description
@@ -539,30 +814,34 @@ class JsonSchemaFieldConverter:
             property_schema["alias"] = field_info.alias
         if field_info.examples:
             property_schema["examples"] = field_info.examples
-        
+
         return property_schema
-    
-    def field_to_stickler_config(self, field_type: Type, field_info: FieldInfo) -> Dict[str, Any]:
+
+    def field_to_stickler_config(
+        self, field_type: Type, field_info: FieldInfo
+    ) -> Dict[str, Any]:
         """Convert Pydantic field to Stickler config format.
-        
+
         Extracts comparison metadata and formats it as custom Stickler configuration
         compatible with model_from_json().
-        
+
         Args:
             field_type: Python type annotation (e.g., str, int, float)
             field_info: Pydantic FieldInfo object containing field metadata
-            
+
         Returns:
             Stickler field config dict with type, comparator, threshold, etc.
         """
         stickler_type = PYTHON_TYPE_TO_STICKLER_TYPE.get(field_type, "str")
         field_config = {"type": stickler_type}
-        
+
         # Extract metadata and build extensions using consolidated helper
         metadata = self._extract_field_metadata(field_info)
-        extensions = self._build_comparison_extensions(metadata, output_format="stickler_config")
+        extensions = self._build_comparison_extensions(
+            metadata, output_format="stickler_config"
+        )
         field_config.update(extensions)
-        
+
         # Add Pydantic field params
         field_config["required"] = field_info.is_required()
         if not field_info.is_required():
@@ -573,88 +852,96 @@ class JsonSchemaFieldConverter:
             field_config["alias"] = field_info.alias
         if field_info.examples:
             field_config["examples"] = field_info.examples
-        
+
         return field_config
-    
+
     def _build_comparison_extensions(
-        self, 
-        metadata: Dict[str, Any], 
-        output_format: str = "json_schema"
+        self, metadata: Dict[str, Any], output_format: str = "json_schema"
     ) -> Dict[str, Any]:
         """Build comparison extensions in specified format.
-        
+
         Consolidates duplicate logic from field_to_property() and field_to_stickler_config().
-        
+
         Args:
             metadata: Extracted field metadata from _extract_field_metadata()
             output_format: Output format - "json_schema" or "stickler_config"
-        
+
         Returns:
             Dictionary with comparison extensions in the specified format
         """
         extensions = {}
         if output_format not in ("json_schema", "stickler_config"):
-            raise ValueError(f"Unsupported format: {output_format!r}. Use 'json_schema' or 'stickler_config'.")
+            raise ValueError(
+                f"Unsupported format: {output_format!r}. Use 'json_schema' or 'stickler_config'."
+            )
         prefix = "x-aws-stickler-" if output_format == "json_schema" else ""
-        
+
         # Export comparator class name and configuration
         if metadata.get("comparator"):
             comparator = metadata["comparator"]
             extensions[f"{prefix}comparator"] = comparator.__class__.__name__
-            
+
             # Export comparator configuration (e.g., tolerance, case_sensitive)
             if hasattr(comparator, "config") and comparator.config:
-                config_key = f"{prefix}comparator-config" if output_format == "json_schema" else "comparator_config"
+                config_key = (
+                    f"{prefix}comparator-config"
+                    if output_format == "json_schema"
+                    else "comparator_config"
+                )
                 extensions[config_key] = comparator.config
-        
+
         # Export comparison parameters
         if "threshold" in metadata:
             extensions[f"{prefix}threshold"] = metadata["threshold"]
         if "weight" in metadata:
             extensions[f"{prefix}weight"] = metadata["weight"]
         if metadata.get("clip_under_threshold") is not None:
-            clip_key = f"{prefix}clip-under-threshold" if output_format == "json_schema" else "clip_under_threshold"
+            clip_key = (
+                f"{prefix}clip-under-threshold"
+                if output_format == "json_schema"
+                else "clip_under_threshold"
+            )
             extensions[clip_key] = metadata["clip_under_threshold"]
         if metadata.get("aggregate") is not None:
             extensions[f"{prefix}aggregate"] = metadata["aggregate"]
-        
+
         return extensions
-    
+
     def _extract_field_metadata(self, field_info: FieldInfo) -> Dict[str, Any]:
         """Extract comparison metadata from field's json_schema_extra.
-        
+
         Only includes attributes that are explicitly set (no default values).
-        
+
         Args:
             field_info: Pydantic FieldInfo object
-            
+
         Returns:
             Dictionary with explicitly set comparator, threshold, weight, etc.
             Empty dict if no metadata found.
         """
         if not hasattr(field_info, "json_schema_extra"):
             return {}
-        
+
         json_func = field_info.json_schema_extra
         if not callable(json_func):
             return {}
-        
+
         # Only include attributes that are explicitly set
         metadata = {}
-        
+
         if hasattr(json_func, "_comparator_instance"):
             metadata["comparator"] = json_func._comparator_instance
-        
+
         if hasattr(json_func, "_threshold"):
             metadata["threshold"] = json_func._threshold
-        
+
         if hasattr(json_func, "_weight"):
             metadata["weight"] = json_func._weight
-        
+
         if hasattr(json_func, "_clip_under_threshold"):
             metadata["clip_under_threshold"] = json_func._clip_under_threshold
-        
+
         if hasattr(json_func, "_aggregate"):
             metadata["aggregate"] = json_func._aggregate
-        
+
         return metadata

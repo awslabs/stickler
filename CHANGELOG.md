@@ -11,6 +11,46 @@ Each release links to full notes on the
 
 ### Added
 
+- Opt-in `infer_unspecified_fields` flag on `StructuredModel.model_from_json`
+  and `StructuredModel.from_json_schema` that routes fields without a
+  comparator through `stickler.auto.inference` for a type + name-aware pick.
+  Off by default; on preserves existing behavior for fields that DO declare a
+  comparator and, on the JSON Schema path, for fields whose schema carries an
+  `x-aws-stickler-comparator` extension. When the flag fires, the four
+  parameters (`comparator`, `threshold`, `weight`, `clip_under_threshold`)
+  merge per-parameter: the author's explicit values win over the inferred
+  defaults for that specific parameter, so a config that specifies only
+  `threshold` gets that threshold paired with an inferred comparator. On the
+  JSON Schema path, the flag additionally enriches `format: date` /
+  `format: date-time` fields into `datetime.date` / `datetime.datetime` types
+  and `enum` string fields into synthesized `Enum` subclasses, so downstream
+  inference picks `DateComparator` and `ExactComparator` rather than the
+  character-edit-distance default. Enabling the flag will shift metrics for
+  any field it fires on relative to the pre-flag `LevenshteinComparator @ 0.5`
+  fallback — that's the point of the flag, but callers should re-baseline
+  when they turn it on. On the `model_from_json` path, the flag also relaxes
+  the existing `"primitive fields require a 'comparator'"` validation gate
+  (which stays intact when the flag is off); when the flag is on, an omitted
+  comparator is filled in by inference rather than raising.
+
+  Provenance for every inferred field is retrievable via
+  `model.model_fields[field_name].json_schema_extra._provenance` — a list of
+  ordered rule-application strings such as
+  `["type:str -> LevenshteinComparator@0.7",
+    "name-token:invoice_id -> ExactComparator@1.0"]`. Absence of the attribute
+  (or an empty list) signals an author-configured field. This channel is the
+  same one that already carries `_comparator_instance` / `_threshold` /
+  `_weight` metadata, so no new schema-extension key is introduced. Reads no
+  worse than one extra attribute lookup per field.
+
+  Hand-written `StructuredModel` subclasses (fields declared with a bare
+  annotation and no `ComparableField`) remain on the pre-existing
+  `ConfigurationHelper.get_comparison_info` fallback — the same defect they
+  had before this PR. That path has no natural opt-in surface (it lives in
+  Python code, not config) and warrants its own opt-in mechanism; filed as a
+  follow-up ([#239](https://github.com/awslabs/stickler/issues/239) mentions
+  this scope decision explicitly).
+
 - A `UserWarning` when a field `threshold` or a model `match_threshold` is set
   to exactly `0.0`. The threshold test is `>=`, so `0.0` is satisfied by every
   score including `0.0` itself: every compared pair counts as a true positive,

@@ -21,13 +21,26 @@ class FieldConverter:
         pass
 
     def convert_field_config(
-        self, field_name: str, field_config: Dict[str, Any]
+        self,
+        field_name: str,
+        field_config: Dict[str, Any],
+        *,
+        infer_unspecified_fields: bool = False,
     ) -> Tuple[Type, Any]:
         """Convert a JSON field configuration to a Pydantic field definition.
 
         Args:
             field_name: Name of the field
             field_config: JSON configuration for the field
+            infer_unspecified_fields: When True, a field without a
+                ``comparator`` key routes through ``stickler.auto.inference``
+                to pick a type + name-aware default (with the operator's
+                explicit ``threshold`` / ``weight`` still winning per
+                parameter). Off by default; when off, this method's behavior
+                is unchanged from before the flag (the pre-existing
+                Levenshtein fallback stays in place, though in practice the
+                validation step at ``validate_nested_field_schema`` rejects
+                missing-comparator configs before this method sees them).
 
         Returns:
             Tuple of (field_type, pydantic_field)
@@ -46,7 +59,11 @@ class FieldConverter:
             "list_structured_model",
             "optional_structured_model",
         ]:
-            return self._convert_nested_model_field(field_name, field_config)
+            return self._convert_nested_model_field(
+                field_name,
+                field_config,
+                infer_unspecified_fields=infer_unspecified_fields,
+            )
 
         # Handle primitive fields (existing logic)
         # Resolve the type
@@ -55,9 +72,34 @@ class FieldConverter:
         except ValueError as e:
             raise ValueError(f"Invalid type for field '{field_name}': {e}")
 
-        # Extract comparator configuration
-        comparator_name = field_config.get("comparator", "LevenshteinComparator")
-        comparator_config = field_config.get("comparator_config", {})
+        # Comparator selection. Three paths merge here:
+        #   1. Author declared ``comparator`` — honor it verbatim.
+        #   2. ``infer_unspecified_fields`` is ON and ``comparator`` is
+        #      absent — route through ``stickler.auto.inference``. The
+        #      resulting InferredSpec provides defaults for ``comparator``,
+        #      ``threshold``, ``weight``, and ``clip_under_threshold`` that
+        #      the author can still override per-parameter below.
+        #   3. Flag is OFF and ``comparator`` is absent — legacy behavior:
+        #      Levenshtein. In practice validate_nested_field_schema
+        #      rejects this before we get here, so path 3 is only
+        #      reachable when the caller bypassed validation.
+        inferred_spec = None
+        if "comparator" in field_config:
+            comparator_name = field_config["comparator"]
+            comparator_config = field_config.get("comparator_config", {})
+        elif infer_unspecified_fields:
+            from pydantic.fields import FieldInfo as _AutoFieldInfo
+
+            from ...auto.inference import infer_field_config
+
+            inferred_spec = infer_field_config(
+                field_name, _AutoFieldInfo(annotation=field_type)
+            )
+            comparator_name = inferred_spec.comparator_name
+            comparator_config = inferred_spec.comparator_config
+        else:
+            comparator_name = "LevenshteinComparator"
+            comparator_config = field_config.get("comparator_config", {})
 
         # Create comparator instance
         try:
@@ -65,10 +107,21 @@ class FieldConverter:
         except (KeyError, TypeError) as e:
             raise ValueError(f"Invalid comparator for field '{field_name}': {e}")
 
-        # Extract other field parameters
-        threshold = field_config.get("threshold", 0.5)
-        weight = field_config.get("weight", 1.0)
-        clip_under_threshold = field_config.get("clip_under_threshold", True)
+        # Extract other field parameters. When inference fired, each
+        # parameter falls back to the InferredSpec value if the author
+        # didn't declare it — per-parameter merge, matching Decision 2.
+        # When inference didn't fire, fall back to the historical flat
+        # defaults (0.5 / 1.0 / True).
+        if inferred_spec is not None:
+            threshold = field_config.get("threshold", inferred_spec.threshold)
+            weight = field_config.get("weight", inferred_spec.weight)
+            clip_under_threshold = field_config.get(
+                "clip_under_threshold", inferred_spec.clip_under_threshold
+            )
+        else:
+            threshold = field_config.get("threshold", 0.5)
+            weight = field_config.get("weight", 1.0)
+            clip_under_threshold = field_config.get("clip_under_threshold", True)
         # Reading a config is not an explicit use of the deprecated `aggregate`
         # parameter: `to_stickler_config()` writes the key for every field, so
         # passing it through would warn on every round trip -- blaming this
@@ -118,10 +171,25 @@ class FieldConverter:
 
         _restore_deprecated_aggregate(comparable_field, config_aggregate)
 
+        # Attach provenance for retrieval when inference fired. Consumers
+        # read ``model.model_fields[name].json_schema_extra._provenance``
+        # to see the ordered rule trace, e.g.
+        # ``["type:str -> LevenshteinComparator@0.7",
+        #    "name-token:invoice_id -> ExactComparator@1.0"]``. Missing
+        # attribute (or empty list) = author-configured comparator.
+        if inferred_spec is not None:
+            extra = comparable_field.json_schema_extra
+            if extra is not None:
+                extra._provenance = list(inferred_spec.provenance)
+
         return field_type, comparable_field
 
     def _convert_nested_model_field(
-        self, field_name: str, field_config: Dict[str, Any]
+        self,
+        field_name: str,
+        field_config: Dict[str, Any],
+        *,
+        infer_unspecified_fields: bool = False,
     ) -> Tuple[Type, Any]:
         """Convert a nested structured model field configuration.
 
@@ -137,7 +205,6 @@ class FieldConverter:
         """
         from typing import List, Optional
 
-
         type_string = field_config["type"]
         nested_fields_config = field_config["fields"]
 
@@ -151,8 +218,12 @@ class FieldConverter:
             "match_threshold": field_config.get("match_threshold", 0.7),
         }
 
-        # Create the nested model class
-        NestedModelClass = StructuredModel.model_from_json(nested_config)
+        # Create the nested model class. Thread the flag through so
+        # nested un-annotated fields inherit the caller's inference choice.
+        NestedModelClass = StructuredModel.model_from_json(
+            nested_config,
+            infer_unspecified_fields=infer_unspecified_fields,
+        )
 
         # Determine the field type based on the type string
         if type_string == "structured_model":
@@ -222,12 +293,16 @@ class FieldConverter:
         return field_type, comparable_field
 
     def convert_fields_config(
-        self, fields_config: Dict[str, Dict[str, Any]]
+        self,
+        fields_config: Dict[str, Dict[str, Any]],
+        *,
+        infer_unspecified_fields: bool = False,
     ) -> Dict[str, Tuple[Type, Field]]:
         """Convert multiple field configurations.
 
         Args:
             fields_config: Dictionary of field configurations
+            infer_unspecified_fields: Threaded through to ``convert_field_config``.
 
         Returns:
             Dictionary mapping field names to (type, field) tuples
@@ -240,7 +315,9 @@ class FieldConverter:
         for field_name, field_config in fields_config.items():
             try:
                 field_type, pydantic_field = self.convert_field_config(
-                    field_name, field_config
+                    field_name,
+                    field_config,
+                    infer_unspecified_fields=infer_unspecified_fields,
                 )
                 field_definitions[field_name] = (field_type, pydantic_field)
             except ValueError as e:
@@ -249,7 +326,11 @@ class FieldConverter:
         return field_definitions
 
     def validate_field_config(
-        self, field_name: str, field_config: Dict[str, Any]
+        self,
+        field_name: str,
+        field_config: Dict[str, Any],
+        *,
+        infer_unspecified_fields: bool = False,
     ) -> None:
         """Validate a field configuration without converting it.
 
@@ -308,20 +389,34 @@ class FieldConverter:
                         f"Field '{field_name}' parameter '{param}' must be boolean, got {type(value)}"
                     )
 
-    def validate_fields_config(self, fields_config: Dict[str, Dict[str, Any]]) -> None:
+    def validate_fields_config(
+        self,
+        fields_config: Dict[str, Dict[str, Any]],
+        *,
+        infer_unspecified_fields: bool = False,
+    ) -> None:
         """Validate multiple field configurations.
 
         Args:
             fields_config: Dictionary of field configurations
+            infer_unspecified_fields: Threaded through to ``validate_field_config``.
 
         Raises:
             ValueError: If any field configuration is invalid
         """
         for field_name, field_config in fields_config.items():
-            self.validate_field_config(field_name, field_config)
+            self.validate_field_config(
+                field_name,
+                field_config,
+                infer_unspecified_fields=infer_unspecified_fields,
+            )
 
     def validate_nested_field_schema(
-        self, field_name: str, field_config: Dict[str, Any]
+        self,
+        field_name: str,
+        field_config: Dict[str, Any],
+        *,
+        infer_unspecified_fields: bool = False,
     ) -> None:
         """Validate schema for nested structured model fields.
 
@@ -364,7 +459,9 @@ class FieldConverter:
             # Validate each nested field
             for nested_field_name, nested_field_config in nested_fields.items():
                 self.validate_nested_field_schema(
-                    f"{field_name}.{nested_field_name}", nested_field_config
+                    f"{field_name}.{nested_field_name}",
+                    nested_field_config,
+                    infer_unspecified_fields=infer_unspecified_fields,
                 )
 
         else:
@@ -375,8 +472,13 @@ class FieldConverter:
                     "Only structured_model types can have nested fields."
                 )
 
-            # Primitive fields must have comparators
-            if "comparator" not in field_config:
+            # Primitive fields must have comparators — unless the caller
+            # opted into ``infer_unspecified_fields``, in which case an
+            # absent comparator is filled in by ``stickler.auto.inference``
+            # at convert time (see ``convert_field_config``). Flag off
+            # preserves the original strict behavior, so every existing
+            # test at ``test_model_from_json.py:792-804`` still passes.
+            if "comparator" not in field_config and not infer_unspecified_fields:
                 raise ValueError(
                     f"Field '{field_name}' with primitive type '{field_type}' requires a 'comparator'. "
                     "Primitive fields need comparators to define how they should be compared."
@@ -397,54 +499,52 @@ def get_global_converter() -> FieldConverter:
 
 
 def convert_field_config(
-    field_name: str, field_config: Dict[str, Any]
+    field_name: str,
+    field_config: Dict[str, Any],
+    *,
+    infer_unspecified_fields: bool = False,
 ) -> Tuple[Type, Field]:
-    """Convert a field configuration using the global converter.
-
-    Args:
-        field_name: Name of the field
-        field_config: JSON configuration for the field
-
-    Returns:
-        Tuple of (field_type, pydantic_field)
-    """
-    return _global_converter.convert_field_config(field_name, field_config)
+    """Convert a field configuration using the global converter."""
+    return _global_converter.convert_field_config(
+        field_name,
+        field_config,
+        infer_unspecified_fields=infer_unspecified_fields,
+    )
 
 
 def convert_fields_config(
     fields_config: Dict[str, Dict[str, Any]],
+    *,
+    infer_unspecified_fields: bool = False,
 ) -> Dict[str, Tuple[Type, Field]]:
-    """Convert multiple field configurations using the global converter.
-
-    Args:
-        fields_config: Dictionary of field configurations
-
-    Returns:
-        Dictionary mapping field names to (type, field) tuples
-    """
-    return _global_converter.convert_fields_config(fields_config)
+    """Convert multiple field configurations using the global converter."""
+    return _global_converter.convert_fields_config(
+        fields_config,
+        infer_unspecified_fields=infer_unspecified_fields,
+    )
 
 
-def validate_field_config(field_name: str, field_config: Dict[str, Any]) -> None:
-    """Validate a field configuration using the global converter.
+def validate_field_config(
+    field_name: str,
+    field_config: Dict[str, Any],
+    *,
+    infer_unspecified_fields: bool = False,
+) -> None:
+    """Validate a field configuration using the global converter."""
+    _global_converter.validate_field_config(
+        field_name,
+        field_config,
+        infer_unspecified_fields=infer_unspecified_fields,
+    )
 
-    Args:
-        field_name: Name of the field
-        field_config: JSON configuration for the field
 
-    Raises:
-        ValueError: If configuration is invalid
-    """
-    _global_converter.validate_field_config(field_name, field_config)
-
-
-def validate_fields_config(fields_config: Dict[str, Dict[str, Any]]) -> None:
-    """Validate multiple field configurations using the global converter.
-
-    Args:
-        fields_config: Dictionary of field configurations
-
-    Raises:
-        ValueError: If any field configuration is invalid
-    """
-    _global_converter.validate_fields_config(fields_config)
+def validate_fields_config(
+    fields_config: Dict[str, Dict[str, Any]],
+    *,
+    infer_unspecified_fields: bool = False,
+) -> None:
+    """Validate multiple field configurations using the global converter."""
+    _global_converter.validate_fields_config(
+        fields_config,
+        infer_unspecified_fields=infer_unspecified_fields,
+    )

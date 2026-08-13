@@ -409,8 +409,8 @@ class StructuredModel(BaseModel):
 
         if process_rich_values:
             # Only process rich values on the top-level call
-            processed_data, confidences, extras = (
-                RichValueHelper.process_rich_values(json_data)
+            processed_data, confidences, extras = RichValueHelper.process_rich_values(
+                json_data
             )
             instance = ConfigurationHelper.from_json(cls, processed_data)
             if confidences:
@@ -428,7 +428,12 @@ class StructuredModel(BaseModel):
         return instance
 
     @classmethod
-    def model_from_json(cls, config: Dict[str, Any]) -> Type["StructuredModel"]:
+    def model_from_json(
+        cls,
+        config: Dict[str, Any],
+        *,
+        infer_unspecified_fields: bool = False,
+    ) -> Type["StructuredModel"]:
         """Create a StructuredModel subclass from JSON configuration using Pydantic's create_model().
 
         This method leverages Pydantic's native dynamic model creation capabilities to ensure
@@ -502,10 +507,19 @@ class StructuredModel(BaseModel):
         # Delegate to ModelFactory for dynamic model creation
         from .model_factory import ModelFactory
 
-        return ModelFactory.create_model_from_json(config, base_class=cls)
+        return ModelFactory.create_model_from_json(
+            config,
+            base_class=cls,
+            infer_unspecified_fields=infer_unspecified_fields,
+        )
 
     @classmethod
-    def from_json_schema(cls, schema: Dict[str, Any]) -> Type["StructuredModel"]:
+    def from_json_schema(
+        cls,
+        schema: Dict[str, Any],
+        *,
+        infer_unspecified_fields: bool = False,
+    ) -> Type["StructuredModel"]:
         """Create a StructuredModel subclass from a JSON Schema document.
 
         This method accepts standard JSON Schema documents and creates fully functional
@@ -597,7 +611,11 @@ class StructuredModel(BaseModel):
             >>> # name field has weight=2.0, price field clips scores below 0.95
         """
 
-        return cls._from_json_schema_internal(schema, field_path="")
+        return cls._from_json_schema_internal(
+            schema,
+            field_path="",
+            infer_unspecified_fields=infer_unspecified_fields,
+        )
 
     @classmethod
     def from_pydantic(
@@ -657,7 +675,11 @@ class StructuredModel(BaseModel):
 
     @classmethod
     def _from_json_schema_internal(
-        cls, schema: Dict[str, Any], field_path: str
+        cls,
+        schema: Dict[str, Any],
+        field_path: str,
+        *,
+        infer_unspecified_fields: bool = False,
     ) -> Type["StructuredModel"]:
         """Internal method for creating StructuredModel from JSON Schema with field path tracking.
 
@@ -719,8 +741,15 @@ class StructuredModel(BaseModel):
         properties = schema.get("properties", {})
         required = schema.get("required", [])
 
-        # Create converter and convert properties to field definitions
-        converter = JsonSchemaFieldConverter(schema, field_path=field_path)
+        # Create converter and convert properties to field definitions.
+        # ``infer_unspecified_fields`` is stored on the converter (not passed
+        # per-property) so recursive nested-object / array handlers pick it
+        # up automatically when they build their own converter internally.
+        converter = JsonSchemaFieldConverter(
+            schema,
+            field_path=field_path,
+            infer_unspecified_fields=infer_unspecified_fields,
+        )
         field_definitions = converter.convert_properties_to_fields(properties, required)
 
         # Create the model using ModelFactory
@@ -1412,7 +1441,9 @@ class StructuredModel(BaseModel):
                 property_schema = field_type.to_json_schema()
                 metadata = converter._extract_field_metadata(field_info)
                 metadata.pop("comparator", None)
-                extensions = converter._build_comparison_extensions(metadata, output_format="json_schema")
+                extensions = converter._build_comparison_extensions(
+                    metadata, output_format="json_schema"
+                )
                 property_schema.update(extensions)
             elif get_origin(field_type) is list:
                 # Handle List[StructuredModel] or List[primitive]
@@ -1433,7 +1464,9 @@ class StructuredModel(BaseModel):
                     }
                     metadata = converter._extract_field_metadata(field_info)
                     metadata.pop("comparator", None)
-                    extensions = converter._build_comparison_extensions(metadata, output_format="json_schema")
+                    extensions = converter._build_comparison_extensions(
+                        metadata, output_format="json_schema"
+                    )
                     property_schema.update(extensions)
                 else:
                     # Primitive list - build array schema manually
@@ -1557,14 +1590,19 @@ class StructuredModel(BaseModel):
             # Check if nested StructuredModel - use "structured_model" type
             if cls._is_structured_model_type(field_type):
                 nested_config = field_type.to_stickler_config()
-                field_config = {"type": "structured_model", "fields": nested_config["fields"]}
+                field_config = {
+                    "type": "structured_model",
+                    "fields": nested_config["fields"],
+                }
                 if nested_config.get("model_name"):
                     field_config["model_name"] = nested_config["model_name"]
                 if nested_config.get("match_threshold") is not None:
                     field_config["match_threshold"] = nested_config["match_threshold"]
                 metadata = converter._extract_field_metadata(field_info)
                 metadata.pop("comparator", None)
-                extensions = converter._build_comparison_extensions(metadata, output_format="stickler_config")
+                extensions = converter._build_comparison_extensions(
+                    metadata, output_format="stickler_config"
+                )
                 field_config.update(extensions)
             elif get_origin(field_type) is list:
                 # Handle List[StructuredModel] or List[primitive]
@@ -1579,14 +1617,21 @@ class StructuredModel(BaseModel):
 
                 if cls._is_structured_model_type(element_type):
                     nested_config = element_type.to_stickler_config()
-                    field_config = {"type": "list_structured_model", "fields": nested_config["fields"]}
+                    field_config = {
+                        "type": "list_structured_model",
+                        "fields": nested_config["fields"],
+                    }
                     if nested_config.get("model_name"):
                         field_config["model_name"] = nested_config["model_name"]
                     if nested_config.get("match_threshold") is not None:
-                        field_config["match_threshold"] = nested_config["match_threshold"]
+                        field_config["match_threshold"] = nested_config[
+                            "match_threshold"
+                        ]
                     metadata = converter._extract_field_metadata(field_info)
                     metadata.pop("comparator", None)
-                    extensions = converter._build_comparison_extensions(metadata, output_format="stickler_config")
+                    extensions = converter._build_comparison_extensions(
+                        metadata, output_format="stickler_config"
+                    )
                     field_config.update(extensions)
                 else:
                     # Primitive list - pass element type, then fix up type string
