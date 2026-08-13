@@ -172,6 +172,63 @@ Each release links to full notes on the
 
 ### Changed
 
+- **Breaking:** `ExactComparator` is now truly exact. The default is
+  `case_sensitive=True` (was `False`), and punctuation/whitespace stripping
+  has been removed entirely. This fixes
+  [#199](https://github.com/awslabs/stickler/issues/199), where
+  `"SHP-2024-001"` incorrectly matched `"shp 2024 001"`.
+
+  **This lowers scores** on existing evaluation sets, and it reaches you even if
+  you never named `ExactComparator`. The zero-config path (`stickler.evaluate()`,
+  `eval_for()`, `from_pydantic()`) infers `ExactComparator` for id-shaped,
+  code-shaped, email, zip and boolean fields, so on a typical extraction model
+  it covers roughly half the fields:
+
+  ```python
+  class Invoice(BaseModel):           # plain pydantic, no stickler config
+      invoice_id: str                 # inferred -> ExactComparator
+      sku: str                        # inferred -> ExactComparator
+      email: str                      # inferred -> ExactComparator
+      zip_code: str                   # inferred -> ExactComparator
+      vendor_name: str                # inferred -> LevenshteinComparator
+  ```
+
+  With predictions differing only in case and punctuation
+  (`"SHP-2024-001"` vs `"shp 2024 001"`, `"98101-1234"` vs `"98101 1234"`):
+
+  | | before | after |
+  |---|---|---|
+  | the four inferred-Exact fields | 1.0 each | **0.0 each** |
+  | `overall_score` | 1.0 | **0.20** |
+
+  That is the intended correction -- those pairs are not equal, and reporting
+  them as perfect matches is the bug -- but if you track a metric across
+  releases, expect a step change at this version rather than a drift.
+
+  | what changed | before | after |
+  |---|---|---|
+  | `ExactComparator().compare("Hello", "hello")` | 1.0 | **0.0** |
+  | `ExactComparator().compare("ID-123", "ID 123")` | 1.0 | **0.0** |
+  | `ExactComparator().compare("SHP-2024-001", "shp 2024 001")` | 1.0 | **0.0** |
+
+  **Migration:** For case-insensitive matching, pass `case_sensitive=False`.
+
+  For punctuation or whitespace differences, `ExactComparator` is the wrong
+  tool. Use a similarity comparator with a threshold tuned to your data:
+
+  ```python
+  vendor: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.8)
+  ```
+
+  Note that a threshold of `1.0` will **not** work here: `"ID-123"` vs
+  `"ID 123"` scores `0.833`, so requiring a perfect score still rejects it. Pick
+  a threshold below the score your real data produces, or write a comparator
+  that normalizes the way your domain requires.
+
+  The `case_sensitive=False` path now uses `str.casefold()` (Unicode case
+  folding) instead of `str.lower()`, correctly handling cases like
+  `"STRASSE"` vs `"straße"` ([#199](https://github.com/awslabs/stickler/issues/199))
+
 - **Breaking:** the peripheral modules now require their extra. `pandas`,
   `scipy`, `scikit-learn`, and `jinja2` are no longer core dependencies, so
   `pip install stickler-eval` installs the comparison engine and nothing else.
