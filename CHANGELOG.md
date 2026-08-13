@@ -229,6 +229,39 @@ Each release links to full notes on the
   folding) instead of `str.lower()`, correctly handling cases like
   `"STRASSE"` vs `"straße"` ([#199](https://github.com/awslabs/stickler/issues/199))
 
+- `model_json_schema()` now describes the model's shape the way an equivalent
+  plain `BaseModel` would, so a configured `StructuredModel` can drive a
+  Strands agent's structured output without degrading the schema the LLM sees:
+  `required` is derived from the annotation (`shipment_id: str` renders
+  required even though `ComparableField` assigns a `None` default for
+  construction tolerance), required fields no longer widen to
+  `["type", "null"]` or carry a contradictory `default: null`, and comparison
+  configuration (`x-comparison`) is no longer emitted. Verified through
+  Strands' `convert_pydantic_to_tool_spec`: a configured `StructuredModel` and
+  its plain-`BaseModel` twin now produce the same tool spec.
+
+  Field-level `description`, `examples`, and `alias` still reach the rendered
+  schema, and the deliberate export path `to_json_schema()` still carries the
+  comparison configuration as `x-aws-stickler-*` extensions. Runtime behavior
+  is unchanged: predictions that omit fields still construct and score.
+
+  Code that read `x-comparison` out of `model_json_schema()` output should
+  read the field's `json_schema_extra` (as the engine does) or use
+  `to_json_schema()`.
+
+  Note a side effect: dropping the internal `extra_fields` property means
+  `from_json_schema(M.model_json_schema())` now parses for a model whose fields
+  are all required, where it previously raised `ValueError`. It still does
+  **not** round-trip -- the rebuilt model carries default thresholds, weights
+  and comparators, because a shape-only schema does not describe them. A model
+  with any `Optional` field still raises, on the nullable `anyOf` gap that
+  [#198](https://github.com/awslabs/stickler/pull/198) addresses, so most real
+  models are unaffected either way. `model_json_schema()` remains documented as
+  not round-trip-capable; use `to_json_schema()` or `to_stickler_config()` to
+  preserve configuration. Tracked in
+  [#214](https://github.com/awslabs/stickler/issues/214)
+  ([#188](https://github.com/awslabs/stickler/issues/188))
+
 - **Breaking:** the peripheral modules now require their extra. `pandas`,
   `scipy`, `scikit-learn`, and `jinja2` are no longer core dependencies, so
   `pip install stickler-eval` installs the comparison engine and nothing else.
