@@ -444,19 +444,23 @@ class TestInferenceInternals:
     """Guard behaviors that end-to-end tests don't exercise."""
 
     def test_phone_token_beats_numeric_token_order(self):
-        """A str field named 'phone_num' resolves to Exact, not Numeric.
+        """A str field named 'phone_num' resolves to Phone, not Numeric.
 
-        'num' and 'phone' both tokenize; the email/phone rule must precede the
-        quantity rule. NumericComparator would strip formatting and score
-        distinct formatted phone numbers as equal (and identical ones fine but
-        for the wrong reason). Kills the rule-reorder mutation.
+        'num' and 'phone' both tokenize; the phone rule must precede the
+        quantity rule. NumericComparator strips non-digits, so it would report a
+        reformatted number as 0.0 while claiming a numeric comparison. Kills the
+        rule-reorder mutation.
+
+        The expected comparator changed in 0.7.0 (it was ExactComparator, which
+        only worked while Exact silently normalized punctuation -- see #242).
+        The property under test is the rule *ordering*, which is unchanged.
         """
         from pydantic.fields import FieldInfo
 
         from stickler.auto.inference import infer_field_config
 
         spec = infer_field_config("phone_num", FieldInfo(annotation=str))
-        assert spec.comparator_name == "ExactComparator"
+        assert spec.comparator_name == "PhoneComparator"
 
     def test_gate_degrades_unregistered_comparator(self):
         """_gate falls back and records provenance for an unavailable comparator."""

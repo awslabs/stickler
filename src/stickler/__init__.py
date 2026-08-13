@@ -19,6 +19,7 @@ from .comparators.exact import ExactComparator
 from .comparators.fuzzy import FuzzyComparator
 from .comparators.levenshtein import LevenshteinComparator
 from .comparators.numeric import NumericComparator
+from .comparators.phone import PhoneComparator
 from .comparators.semantic import SemanticComparator
 from .comparators.structured import StructuredModelComparator
 from .structured_object_evaluator import (
@@ -152,6 +153,7 @@ __all__ = [
     # Comparators (always available)
     "BaseComparator",
     "ExactComparator",
+    "PhoneComparator",
     "FuzzyComparator",
     "LevenshteinComparator",
     "NumericComparator",

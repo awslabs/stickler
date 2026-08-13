@@ -239,6 +239,13 @@ def _reconstruct_comparator_from_type(
         pass
 
     try:
+        from stickler.comparators.phone import PhoneComparator
+
+        comparator_map["PhoneComparator"] = PhoneComparator
+    except ImportError:
+        pass
+
+    try:
         from stickler.comparators.numeric import NumericComparator
 
         comparator_map["NumericComparator"] = NumericComparator

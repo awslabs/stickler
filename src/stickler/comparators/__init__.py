@@ -15,6 +15,7 @@ from stickler.comparators.date import DateComparator
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.numeric import NumericComparator, NumericExactC
+from stickler.comparators.phone import PhoneComparator
 from stickler.comparators.semantic import SemanticComparator
 from stickler.comparators.structured import StructuredModelComparator
 from stickler.comparators.utils import generate_bedrock_embedding
@@ -113,6 +114,7 @@ __all__ = [
     "NumericComparator",
     "NumericExactC",
     "ExactComparator",
+    "PhoneComparator",
     "DateComparator",
     "StructuredModelComparator",
     "SemanticComparator",

@@ -42,6 +42,12 @@ dependencies = [
     # implementation, after which scikit-learn leaves the dependency set.
     # Floor is 1.7.2 rather than 1.8.0 because 1.8.0 requires Python 3.11+.
     "scikit-learn>=1.7.2,<2.0.0",
+    # Phone number equality needs per-country rules that cannot be reproduced
+    # with string normalization: "+1-555-123-4567" and "5551234567" are the same
+    # number, while a one-digit change is not, and edit distance ranks those the
+    # wrong way round. `phonenumberslite` is the metadata-only build of the
+    # libphonenumber port -- 450 KB, zero dependencies, Apache-2.0 (issue #242).
+    "phonenumberslite>=8.13.0,<10.0.0",
 ]
 
 # pip-compatible extras (for `pip install -e ".[dev]"`)
