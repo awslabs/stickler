@@ -37,13 +37,24 @@ inside the release squash.
 git checkout dev && git pull origin dev --ff-only
 ```
 
-Edit **both** files (they must always match):
+Edit **all three** files (they must always match):
 
 - `pyproject.toml` → `version = "X.Y.Z"`
 - `src/stickler/__init__.py` → `__version__ = "X.Y.Z"`
+- `uv.lock` → the `version` line in the `name = "stickler-eval"` entry
+
+The lockfile records this package's own version, not just its dependencies, so
+leaving it behind fails CI: `uv lock --check` reports "the lockfile needs to be
+updated", and every workflow runs `uv sync --frozen`.
+
+Patch that one line **by hand**. Do not run `uv lock` to pick it up: in this
+repo it also rewrites `exclude-newer` to `0001-01-01` and strips platform
+markers from the CUDA and nvidia entries. See
+[AGENTS.md](./AGENTS.md#dependencies-and-uvlock).
 
 ```bash
-git add pyproject.toml src/stickler/__init__.py
+uv lock --check          # must pass before committing
+git add pyproject.toml src/stickler/__init__.py uv.lock
 git commit -m "chore: bump version to X.Y.Z for release"
 git push origin dev
 ```
