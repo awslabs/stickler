@@ -134,7 +134,7 @@ def __dir__() -> list:
     """Include lazily-available comparators in `dir(stickler)`."""
     return sorted(set(globals()) | set(__all__))
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 __all__ = [
     # Models and evaluation
     "StructuredModel",

@@ -9,6 +9,8 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-14
+
 ### Added
 
 - `PhoneComparator`, which compares phone numbers by the number they dial rather
@@ -100,6 +102,210 @@ Each release links to full notes on the
   embeddings), `docsplit` (document packet splitting), `reporting` (HTML report
   tables). `all` aggregates every extra except `bert`, whose ML stack is large
   enough that installing it unasked is a surprise
+
+### Changed
+
+- **Breaking:** `ExactComparator` is now truly exact. The default is
+  `case_sensitive=True` (was `False`), and punctuation/whitespace stripping
+  has been removed entirely. This fixes
+  [#199](https://github.com/awslabs/stickler/issues/199), where
+  `"SHP-2024-001"` incorrectly matched `"shp 2024 001"`.
+
+  **This lowers scores** on existing evaluation sets, and it reaches you even if
+  you never named `ExactComparator`. The zero-config path (`stickler.evaluate()`,
+  `eval_for()`, `from_pydantic()`) infers `ExactComparator` for id-shaped,
+  code-shaped, email, zip and boolean fields, so on a typical extraction model
+  it covers roughly half the fields:
+
+  ```python
+  class Invoice(BaseModel):           # plain pydantic, no stickler config
+      invoice_id: str                 # inferred -> ExactComparator
+      sku: str                        # inferred -> ExactComparator
+      email: str                      # inferred -> ExactComparator
+      zip_code: str                   # inferred -> ExactComparator
+      vendor_name: str                # inferred -> LevenshteinComparator
+  ```
+
+  With predictions differing only in case and punctuation
+  (`"SHP-2024-001"` vs `"shp 2024 001"`, `"98101-1234"` vs `"98101 1234"`):
+
+  | | before | after |
+  |---|---|---|
+  | the four inferred-Exact fields | 1.0 each | **0.0 each** |
+  | `overall_score` | 1.0 | **0.20** |
+
+  That is the intended correction -- those pairs are not equal, and reporting
+  them as perfect matches is the bug -- but if you track a metric across
+  releases, expect a step change at this version rather than a drift.
+
+  | what changed | before | after |
+  |---|---|---|
+  | `ExactComparator().compare("Hello", "hello")` | 1.0 | **0.0** |
+  | `ExactComparator().compare("ID-123", "ID 123")` | 1.0 | **0.0** |
+  | `ExactComparator().compare("SHP-2024-001", "shp 2024 001")` | 1.0 | **0.0** |
+
+  **Migration:** For case-insensitive matching, pass `case_sensitive=False`.
+
+  For punctuation or whitespace differences, `ExactComparator` is the wrong
+  tool. Use a similarity comparator with a threshold tuned to your data:
+
+  ```python
+  vendor: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.8)
+  ```
+
+  Note that a threshold of `1.0` will **not** work here: `"ID-123"` vs
+  `"ID 123"` scores `0.833`, so requiring a perfect score still rejects it. Pick
+  a threshold below the score your real data produces, or write a comparator
+  that normalizes the way your domain requires.
+
+  The `case_sensitive=False` path now uses `str.casefold()` (Unicode case
+  folding) instead of `str.lower()`, correctly handling cases like
+  `"STRASSE"` vs `"straße"` ([#199](https://github.com/awslabs/stickler/issues/199))
+
+- `model_json_schema()` now describes the model's shape the way an equivalent
+  plain `BaseModel` would, so a configured `StructuredModel` can drive a
+  Strands agent's structured output without degrading the schema the LLM sees:
+  `required` is derived from the annotation (`shipment_id: str` renders
+  required even though `ComparableField` assigns a `None` default for
+  construction tolerance), required fields no longer widen to
+  `["type", "null"]` or carry a contradictory `default: null`, and comparison
+  configuration (`x-comparison`) is no longer emitted. Verified through
+  Strands' `convert_pydantic_to_tool_spec`: a configured `StructuredModel` and
+  its plain-`BaseModel` twin now produce the same tool spec.
+
+  Field-level `description`, `examples`, and `alias` still reach the rendered
+  schema, and the deliberate export path `to_json_schema()` still carries the
+  comparison configuration as `x-aws-stickler-*` extensions. Runtime behavior
+  is unchanged: predictions that omit fields still construct and score.
+
+  Code that read `x-comparison` out of `model_json_schema()` output should
+  read the field's `json_schema_extra` (as the engine does) or use
+  `to_json_schema()`.
+
+  Note a side effect: dropping the internal `extra_fields` property means
+  `from_json_schema(M.model_json_schema())` now parses for a model whose fields
+  are all required, where it previously raised `ValueError`. It still does
+  **not** round-trip -- the rebuilt model carries default thresholds, weights
+  and comparators, because a shape-only schema does not describe them. A model
+  with any `Optional` field still raises, on the nullable `anyOf` gap that
+  [#198](https://github.com/awslabs/stickler/pull/198) addresses, so most real
+  models are unaffected either way. `model_json_schema()` remains documented as
+  not round-trip-capable; use `to_json_schema()` or `to_stickler_config()` to
+  preserve configuration. Tracked in
+  [#214](https://github.com/awslabs/stickler/issues/214)
+  ([#188](https://github.com/awslabs/stickler/issues/188))
+
+- Optional fields built from a JSON Schema are now annotated `Optional[T]`
+  rather than `T`, so `to_json_schema()` exports them with a nullable type:
+
+  | | before | after |
+  |---|---|---|
+  | `to_json_schema()` | `{"type": "string"}` | `{"type": ["string", "null"]}` |
+  | `model_json_schema()` | `{"type": "string"}` | `{"anyOf": [{"type": "string"}, {"type": "null"}]}` |
+
+  The two spellings differ because `model_json_schema()` is Pydantic's own
+  rendering of `Optional[T]`, while `to_json_schema()` uses the list form.
+  Meaning is preserved and re-import is idempotent, but the exported bytes
+  differ from the input schema, which matters when feeding our output into a
+  validator or a codegen tool. `required` membership is unchanged
+  ([#159](https://github.com/awslabs/stickler/pull/159))
+
+- **Breaking:** the peripheral modules now require their extra. `pandas`,
+  `scipy`, `scikit-learn`, and `jinja2` are no longer core dependencies, so
+  `pip install stickler-eval` installs the comparison engine and nothing else.
+  Code that used these without installing an extra now raises `ImportError`
+  naming the extra to install:
+
+  | what you were using | now needs |
+  |---|---|
+  | `stickler.doc_split` (raises at import) | `stickler-eval[docsplit]` |
+  | `MarkdownUtil.table_df()` | `stickler-eval[reporting]` |
+  | `LLMComparator(...)` | `stickler-eval[llm]` |
+  | `SemanticComparator` cosine similarity | `stickler-eval[semantic]` |
+
+  Confidence calibration metrics are **not** affected: `scikit-learn` stays in
+  the core dependency set because calibration is core functionality, not an
+  add-on. The `confidence` extra is now empty and kept only so existing pins
+  keep resolving.
+
+  `pip install "stickler-eval[all]"` restores everything except `bert`.
+
+  Only `stickler.doc_split` fails at import time; the rest fail at first use.
+  `SemanticComparator` still constructs on a core install and raises when the
+  similarity function runs
+  ([#201](https://github.com/awslabs/stickler/issues/201))
+
+- Optional comparators are now imported lazily. `import stickler` no longer
+  pulls a scientific-computing stack: 421 modules on a core install, down from
+  1664, with none of pandas, scipy, scikit-learn, jinja2, torch, transformers,
+  strands, or boto3 on the path. `scikit-learn` is a core dependency but its
+  import stays inside `AUROCMetric.compute()`, so it costs nothing at import
+  time. `BERTComparator` no longer loads its model at import time. Accessing an
+  optional comparator whose extra is missing raises `AttributeError`, so
+  `hasattr()` gating keeps working
+  ([#187](https://github.com/awslabs/stickler/issues/187))
+
+- Relaxed the `scikit-learn` floor from `>=1.8.0` to `>=1.7.2`. 1.8.0 requires
+  Python 3.11+, so the old floor made the 3.10 support above unresolvable. The
+  lock pins 1.7.2 below 3.11 and 1.8.0 above
+
+### Deprecated
+
+- **Custom comparators:** the extension point for comparators is now
+  `_compare()` instead of `compare()`. `BaseComparator.compare()` is a
+  template method that applies the shared `None` policy and then delegates
+  to `_compare()`, so the policy is defined once and cannot drift between
+  comparators. Callers are unaffected -- `compare()`, `__call__`, and
+  `binary_compare()` are unchanged.
+
+  Custom comparators must rename their `compare()` to `_compare()` and can
+  delete any `None` handling it contains, since `_compare()` only ever
+  receives present values.
+
+  This is not a hard break. A deprecation shim keeps pre-rename comparators
+  working: one that implements `compare()` still constructs and behaves
+  exactly as written, and emits a `DeprecationWarning` naming the rename.
+  That holds whether it extends `BaseComparator` directly, extends a
+  concrete comparator, or inherits `compare()` from a mixin.
+
+  An un-migrated comparator does **not** receive the `None` policy, because
+  its `compare()` shadows the template method, so the rename is still
+  required. The shim is removed in 0.8.0, after which such a comparator
+  raises `TypeError` at construction
+  ([#215](https://github.com/awslabs/stickler/issues/215)).
+
+  Note that the pre-fix `(None, "") -> 1.0` result cannot be inherited: the
+  coercion was removed from Levenshtein's algorithm rather than guarded, so
+  an un-migrated subclass that delegates upward gets the corrected score.
+  Only a subclass that reimplemented the coercion in its own `compare()`
+  still returns the old value
+  ([#200](https://github.com/awslabs/stickler/issues/200))
+
+- `ComparableField(aggregate=...)` now emits a `DeprecationWarning` for *any*
+  explicit use, where previously only `aggregate=True` warned and
+  `aggregate=False` was silent. The parameter has no effect: aggregation is
+  applied at the comparison layer, and every node in `compare_with()` output
+  already carries an `aggregate` block summing the primitive field metrics
+  below it.
+
+  Callers passing `aggregate=False` had no signal the parameter was going away
+  and would have met a bare `TypeError` on removal. Remove the argument; there
+  is no replacement to adopt. Scheduled for removal in 0.8.0.
+
+  Reading a config does **not** count as explicit use: `to_stickler_config()`
+  writes the `aggregate` key for every field, so `model_from_json()` restores
+  the value without warning. Otherwise every exported-config round trip would
+  warn once per field, blaming stickler's own frame for a key the caller never
+  wrote, and would fail outright under `-W error::DeprecationWarning`. The
+  export format is unchanged and stays idempotent: `export -> import -> export`
+  reproduces the original, including for `aggregate=True`.
+
+  Also removed a dead branch in `ConfusionMatrixCalculator` that zeroed and
+  re-summed a list field's confusion matrix when the flag was set. It was
+  unreachable by construction -- guarded on the argument *not* being a list, in
+  a method only ever called with one (instrumented the whole suite: 0 calls) --
+  and left a live-looking code path keyed on a parameter that is going away
+  ([#226](https://github.com/awslabs/stickler/issues/226))
 
 ### Fixed
 
@@ -264,210 +470,6 @@ Each release links to full notes on the
   helpers, so a mocked dependency counts as available in both places rather
   than having `stickler.LLMComparator` resolve while
   `registry.get("LLMComparator")` reports it missing
-
-### Changed
-
-- **Breaking:** `ExactComparator` is now truly exact. The default is
-  `case_sensitive=True` (was `False`), and punctuation/whitespace stripping
-  has been removed entirely. This fixes
-  [#199](https://github.com/awslabs/stickler/issues/199), where
-  `"SHP-2024-001"` incorrectly matched `"shp 2024 001"`.
-
-  **This lowers scores** on existing evaluation sets, and it reaches you even if
-  you never named `ExactComparator`. The zero-config path (`stickler.evaluate()`,
-  `eval_for()`, `from_pydantic()`) infers `ExactComparator` for id-shaped,
-  code-shaped, email, zip and boolean fields, so on a typical extraction model
-  it covers roughly half the fields:
-
-  ```python
-  class Invoice(BaseModel):           # plain pydantic, no stickler config
-      invoice_id: str                 # inferred -> ExactComparator
-      sku: str                        # inferred -> ExactComparator
-      email: str                      # inferred -> ExactComparator
-      zip_code: str                   # inferred -> ExactComparator
-      vendor_name: str                # inferred -> LevenshteinComparator
-  ```
-
-  With predictions differing only in case and punctuation
-  (`"SHP-2024-001"` vs `"shp 2024 001"`, `"98101-1234"` vs `"98101 1234"`):
-
-  | | before | after |
-  |---|---|---|
-  | the four inferred-Exact fields | 1.0 each | **0.0 each** |
-  | `overall_score` | 1.0 | **0.20** |
-
-  That is the intended correction -- those pairs are not equal, and reporting
-  them as perfect matches is the bug -- but if you track a metric across
-  releases, expect a step change at this version rather than a drift.
-
-  | what changed | before | after |
-  |---|---|---|
-  | `ExactComparator().compare("Hello", "hello")` | 1.0 | **0.0** |
-  | `ExactComparator().compare("ID-123", "ID 123")` | 1.0 | **0.0** |
-  | `ExactComparator().compare("SHP-2024-001", "shp 2024 001")` | 1.0 | **0.0** |
-
-  **Migration:** For case-insensitive matching, pass `case_sensitive=False`.
-
-  For punctuation or whitespace differences, `ExactComparator` is the wrong
-  tool. Use a similarity comparator with a threshold tuned to your data:
-
-  ```python
-  vendor: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.8)
-  ```
-
-  Note that a threshold of `1.0` will **not** work here: `"ID-123"` vs
-  `"ID 123"` scores `0.833`, so requiring a perfect score still rejects it. Pick
-  a threshold below the score your real data produces, or write a comparator
-  that normalizes the way your domain requires.
-
-  The `case_sensitive=False` path now uses `str.casefold()` (Unicode case
-  folding) instead of `str.lower()`, correctly handling cases like
-  `"STRASSE"` vs `"straße"` ([#199](https://github.com/awslabs/stickler/issues/199))
-
-- `model_json_schema()` now describes the model's shape the way an equivalent
-  plain `BaseModel` would, so a configured `StructuredModel` can drive a
-  Strands agent's structured output without degrading the schema the LLM sees:
-  `required` is derived from the annotation (`shipment_id: str` renders
-  required even though `ComparableField` assigns a `None` default for
-  construction tolerance), required fields no longer widen to
-  `["type", "null"]` or carry a contradictory `default: null`, and comparison
-  configuration (`x-comparison`) is no longer emitted. Verified through
-  Strands' `convert_pydantic_to_tool_spec`: a configured `StructuredModel` and
-  its plain-`BaseModel` twin now produce the same tool spec.
-
-  Field-level `description`, `examples`, and `alias` still reach the rendered
-  schema, and the deliberate export path `to_json_schema()` still carries the
-  comparison configuration as `x-aws-stickler-*` extensions. Runtime behavior
-  is unchanged: predictions that omit fields still construct and score.
-
-  Code that read `x-comparison` out of `model_json_schema()` output should
-  read the field's `json_schema_extra` (as the engine does) or use
-  `to_json_schema()`.
-
-  Note a side effect: dropping the internal `extra_fields` property means
-  `from_json_schema(M.model_json_schema())` now parses for a model whose fields
-  are all required, where it previously raised `ValueError`. It still does
-  **not** round-trip -- the rebuilt model carries default thresholds, weights
-  and comparators, because a shape-only schema does not describe them. A model
-  with any `Optional` field still raises, on the nullable `anyOf` gap that
-  [#198](https://github.com/awslabs/stickler/pull/198) addresses, so most real
-  models are unaffected either way. `model_json_schema()` remains documented as
-  not round-trip-capable; use `to_json_schema()` or `to_stickler_config()` to
-  preserve configuration. Tracked in
-  [#214](https://github.com/awslabs/stickler/issues/214)
-  ([#188](https://github.com/awslabs/stickler/issues/188))
-
-- Optional fields built from a JSON Schema are now annotated `Optional[T]`
-  rather than `T`, so `to_json_schema()` exports them with a nullable type:
-
-  | | before | after |
-  |---|---|---|
-  | `to_json_schema()` | `{"type": "string"}` | `{"type": ["string", "null"]}` |
-  | `model_json_schema()` | `{"type": "string"}` | `{"anyOf": [{"type": "string"}, {"type": "null"}]}` |
-
-  The two spellings differ because `model_json_schema()` is Pydantic's own
-  rendering of `Optional[T]`, while `to_json_schema()` uses the list form.
-  Meaning is preserved and re-import is idempotent, but the exported bytes
-  differ from the input schema, which matters when feeding our output into a
-  validator or a codegen tool. `required` membership is unchanged
-  ([#159](https://github.com/awslabs/stickler/pull/159))
-
-- **Breaking:** the peripheral modules now require their extra. `pandas`,
-  `scipy`, `scikit-learn`, and `jinja2` are no longer core dependencies, so
-  `pip install stickler-eval` installs the comparison engine and nothing else.
-  Code that used these without installing an extra now raises `ImportError`
-  naming the extra to install:
-
-  | what you were using | now needs |
-  |---|---|
-  | `stickler.doc_split` (raises at import) | `stickler-eval[docsplit]` |
-  | `MarkdownUtil.table_df()` | `stickler-eval[reporting]` |
-  | `LLMComparator(...)` | `stickler-eval[llm]` |
-  | `SemanticComparator` cosine similarity | `stickler-eval[semantic]` |
-
-  Confidence calibration metrics are **not** affected: `scikit-learn` stays in
-  the core dependency set because calibration is core functionality, not an
-  add-on. The `confidence` extra is now empty and kept only so existing pins
-  keep resolving.
-
-  `pip install "stickler-eval[all]"` restores everything except `bert`.
-
-  Only `stickler.doc_split` fails at import time; the rest fail at first use.
-  `SemanticComparator` still constructs on a core install and raises when the
-  similarity function runs
-  ([#201](https://github.com/awslabs/stickler/issues/201))
-
-- Optional comparators are now imported lazily. `import stickler` no longer
-  pulls a scientific-computing stack: 421 modules on a core install, down from
-  1664, with none of pandas, scipy, scikit-learn, jinja2, torch, transformers,
-  strands, or boto3 on the path. `scikit-learn` is a core dependency but its
-  import stays inside `AUROCMetric.compute()`, so it costs nothing at import
-  time. `BERTComparator` no longer loads its model at import time. Accessing an
-  optional comparator whose extra is missing raises `AttributeError`, so
-  `hasattr()` gating keeps working
-  ([#187](https://github.com/awslabs/stickler/issues/187))
-
-- Relaxed the `scikit-learn` floor from `>=1.8.0` to `>=1.7.2`. 1.8.0 requires
-  Python 3.11+, so the old floor made the 3.10 support above unresolvable. The
-  lock pins 1.7.2 below 3.11 and 1.8.0 above
-
-- **Deprecated (custom comparators):** the extension point for comparators is
-  now `_compare()` instead of `compare()`. `BaseComparator.compare()` is a
-  template method that applies the shared `None` policy and then delegates
-  to `_compare()`, so the policy is defined once and cannot drift between
-  comparators. Callers are unaffected -- `compare()`, `__call__`, and
-  `binary_compare()` are unchanged.
-
-  Custom comparators must rename their `compare()` to `_compare()` and can
-  delete any `None` handling it contains, since `_compare()` only ever
-  receives present values.
-
-  This is not a hard break. A deprecation shim keeps pre-rename comparators
-  working: one that implements `compare()` still constructs and behaves
-  exactly as written, and emits a `DeprecationWarning` naming the rename.
-  That holds whether it extends `BaseComparator` directly, extends a
-  concrete comparator, or inherits `compare()` from a mixin.
-
-  An un-migrated comparator does **not** receive the `None` policy, because
-  its `compare()` shadows the template method, so the rename is still
-  required. The shim is removed in 0.8.0, after which such a comparator
-  raises `TypeError` at construction
-  ([#215](https://github.com/awslabs/stickler/issues/215)).
-
-  Note that the pre-fix `(None, "") -> 1.0` result cannot be inherited: the
-  coercion was removed from Levenshtein's algorithm rather than guarded, so
-  an un-migrated subclass that delegates upward gets the corrected score.
-  Only a subclass that reimplemented the coercion in its own `compare()`
-  still returns the old value
-  ([#200](https://github.com/awslabs/stickler/issues/200))
-
-- `ComparableField(aggregate=...)` now emits a `DeprecationWarning` for *any*
-  explicit use, where previously only `aggregate=True` warned and
-  `aggregate=False` was silent. The parameter has no effect: aggregation is
-  applied at the comparison layer, and every node in `compare_with()` output
-  already carries an `aggregate` block summing the primitive field metrics
-  below it.
-
-  Callers passing `aggregate=False` had no signal the parameter was going away
-  and would have met a bare `TypeError` on removal. Remove the argument; there
-  is no replacement to adopt. Scheduled for removal in 0.8.0.
-
-  Reading a config does **not** count as explicit use: `to_stickler_config()`
-  writes the `aggregate` key for every field, so `model_from_json()` restores
-  the value without warning. Otherwise every exported-config round trip would
-  warn once per field, blaming stickler's own frame for a key the caller never
-  wrote, and would fail outright under `-W error::DeprecationWarning`. The
-  export format is unchanged and stays idempotent: `export -> import -> export`
-  reproduces the original, including for `aggregate=True`.
-
-  Also removed a dead branch in `ConfusionMatrixCalculator` that zeroed and
-  re-summed a list field's confusion matrix when the flag was set. It was
-  unreachable by construction -- guarded on the argument *not* being a list, in
-  a method only ever called with one (instrumented the whole suite: 0 calls) --
-  and left a live-looking code path keyed on a parameter that is going away
-  ([#226](https://github.com/awslabs/stickler/issues/226))
-
-### Fixed
 
 - Import Pydantic v2 JSON Schemas whose `Optional` fields use nullable
   two-branch `anyOf`, and infer nested object schemas when `type: object` is
@@ -635,7 +637,8 @@ Initial public release: structured JSON comparison with configurable
 comparators, Hungarian-algorithm list matching, confusion-matrix metrics, and
 HTML reporting.
 
-[Unreleased]: https://github.com/awslabs/stickler/compare/v0.6.0...dev
+[Unreleased]: https://github.com/awslabs/stickler/compare/v0.7.0...dev
+[0.7.0]: https://github.com/awslabs/stickler/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/awslabs/stickler/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/awslabs/stickler/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/awslabs/stickler/compare/v0.3.0...v0.4.0
