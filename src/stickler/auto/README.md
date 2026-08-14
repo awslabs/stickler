@@ -15,11 +15,11 @@ result.explain()   # per-field {comparator, threshold, weight, source, why}
 
 ## Why it exists
 
-The two pre-existing entry points fail on real pydantic models:
+The two pre-existing entry points lose information from real pydantic models:
 
-- `StructuredModel.from_json_schema(Model.model_json_schema())` **crashes** on
-  `Optional`/`Union` (`anyOf` with no `type`), and silently degrades enums and
-  `datetime` to bare strings.
+- `StructuredModel.from_json_schema(Model.model_json_schema())` supports
+  nullable `Optional` schemas, but not general multi-type unions, and silently
+  degrades enums and `datetime` to bare strings.
 - Unannotated `StructuredModel` fields fall through
   `configuration_helper.py`'s type-blind default and get compared with
   `LevenshteinComparator`, which is wrong for `float`, `bool`, `date`.

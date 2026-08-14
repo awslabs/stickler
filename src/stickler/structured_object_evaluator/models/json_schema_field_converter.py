@@ -118,12 +118,10 @@ class JsonSchemaFieldConverter:
         if "$ref" in property_schema:
             property_schema = self._resolve_ref(property_schema["$ref"])
 
-        # Get JSON Schema type. Normalize list-form ``type: ["X", "null"]`` to
-        # a scalar non-null type and remember that the field is nullable. This
-        # is the JSON Schema draft-07/2020-12 idiom for an optional value and
-        # is also accepted by ``Draft7Validator.check_schema``.
-        json_type, is_nullable = self._normalize_type(
-            property_schema.get("type"), field_path
+        # Normalize the supported nullable spellings and infer nested objects
+        # from ``properties`` before routing to a conversion branch.
+        property_schema, json_type, is_nullable = self._normalize_schema_shape(
+            property_schema, field_path
         )
 
         # Decide annotation widening ONCE here, in the sole dispatcher (also the
@@ -131,7 +129,8 @@ class JsonSchemaFieldConverter:
         # nullable annotation, folded into one condition:
         #   - it is not required, so it carries a None default (issue #149);
         #   - it declares an explicit ``"default": null`` even while required;
-        #   - it declares explicit nullability as ``type: ["X", "null"]`` (#127).
+        #   - it declares explicit nullability as ``type: ["X", "null"]`` (#127)
+        #     or as a two-branch ``anyOf`` with one explicit null branch (#105).
         # Both leave a None that the rich-value path materializes via
         # from_json(...).model_dump() and re-validates against the annotation.
         # Keeping this in one place means the nested-object / array handlers
@@ -184,6 +183,135 @@ class JsonSchemaFieldConverter:
             field_type = Optional[field_type]
 
         return field_type, field
+
+    def _normalize_schema_shape(
+        self, property_schema: Dict[str, Any], field_path: str = ""
+    ) -> Tuple[Dict[str, Any], Optional[str], bool]:
+        """Normalize supported JSON Schema shapes for field conversion.
+
+        In addition to scalar and list-form ``type`` values, Stickler accepts
+        the common nullable ``anyOf`` spelling with one explicit null branch
+        and one non-null branch. A schema with ``properties`` and no explicit
+        type is treated as an object for model construction.
+
+        Args:
+            property_schema: JSON Schema for one property or array item.
+            field_path: Field path used in error messages.
+
+        Returns:
+            Tuple of ``(effective_schema, non_null_type, is_nullable)``.
+
+        Raises:
+            ValueError: If ``anyOf`` is not the supported nullable two-branch
+                shape or combines it with unsupported sibling constraints.
+        """
+        normalized_schema = dict(property_schema)
+        nullable_from_any_of = False
+
+        if "anyOf" in normalized_schema:
+            branches = normalized_schema["anyOf"]
+            field_info = f" for field '{field_path}'" if field_path else ""
+            annotation_keywords = {
+                "$comment",
+                "default",
+                "deprecated",
+                "description",
+                "examples",
+                "readOnly",
+                "title",
+                "writeOnly",
+            }
+
+            def is_stickler_keyword(key: str) -> bool:
+                """Extensions stickler itself writes into a schema.
+
+                ``x-aws-stickler-*`` is the current export vocabulary.
+                ``x-comparison`` is what ``model_json_schema()`` emitted up to
+                and including 0.6.0, so a schema saved by an earlier version
+                still carries it -- rejecting it would blame the user's file for
+                a key we wrote (see #198 review).
+                """
+                return key.startswith("x-aws-stickler-") or key == "x-comparison"
+
+            def is_explicit_null_branch(branch: Any) -> bool:
+                return (
+                    isinstance(branch, dict)
+                    and branch.get("type") == "null"
+                    and all(
+                        key == "type"
+                        or key in annotation_keywords
+                        or is_stickler_keyword(key)
+                        for key in branch
+                    )
+                )
+
+            if not isinstance(branches, list) or len(branches) != 2:
+                raise ValueError(
+                    f"Unsupported nullable anyOf{field_info}: expected exactly "
+                    "one non-null schema and one {'type': 'null'} branch."
+                )
+
+            null_branches = [
+                branch
+                for branch in branches
+                if is_explicit_null_branch(branch)
+            ]
+            non_null_branches = [
+                branch
+                for branch in branches
+                if not is_explicit_null_branch(branch)
+            ]
+            if (
+                len(null_branches) != 1
+                or len(non_null_branches) != 1
+                or not isinstance(non_null_branches[0], dict)
+            ):
+                raise ValueError(
+                    f"Unsupported nullable anyOf{field_info}: expected exactly "
+                    "one non-null schema and one {'type': 'null'} branch."
+                )
+
+            sibling_keywords = {
+                key: value
+                for key, value in normalized_schema.items()
+                if key != "anyOf"
+            }
+            unsupported_siblings = [
+                key
+                for key in sibling_keywords
+                if key not in annotation_keywords and not is_stickler_keyword(key)
+            ]
+            if unsupported_siblings:
+                raise ValueError(
+                    f"Unsupported nullable anyOf{field_info}: sibling schema "
+                    f"keywords are not supported: {sorted(unsupported_siblings)}."
+                )
+
+            non_null_schema = dict(non_null_branches[0])
+            if "$ref" in non_null_schema:
+                # JSON Schema Draft 7 treats siblings of ``$ref`` as ignored.
+                # Resolve the selected branch first, then apply annotations and
+                # Stickler extensions from outside ``anyOf`` to the field.
+                non_null_schema = dict(
+                    self._resolve_ref(non_null_schema["$ref"])
+                )
+
+            normalized_schema = non_null_schema
+            normalized_schema.update(sibling_keywords)
+            nullable_from_any_of = True
+
+        json_type, nullable_from_type = self._normalize_type(
+            normalized_schema.get("type"), field_path
+        )
+        if json_type is None and "properties" in normalized_schema:
+            json_type = "object"
+            normalized_schema["type"] = "object"
+
+        return (
+            normalized_schema,
+            json_type,
+            nullable_from_any_of or nullable_from_type,
+        )
 
     def _normalize_type(
         self, raw_type: Any, field_path: str = ""
@@ -445,8 +573,8 @@ class JsonSchemaFieldConverter:
         if "$ref" in items_schema:
             items_schema = self._resolve_ref(items_schema["$ref"])
         
-        items_type, items_nullable = self._normalize_type(
-            items_schema.get("type"), f"{field_path}[]"
+        items_schema, items_type, items_nullable = self._normalize_schema_shape(
+            items_schema, f"{field_path}[]"
         )
 
         # Array of objects -> List[StructuredModel]

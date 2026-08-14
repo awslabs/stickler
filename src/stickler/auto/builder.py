@@ -8,10 +8,9 @@ delegates the actual class creation to the existing
 ``ModelFactory.create_model_from_fields``.
 
 Why walk ``model_fields`` instead of ``model_json_schema()``? The JSON-schema
-path is lossy and crashes on real models: ``Optional[str]`` becomes an
-``anyOf`` with no ``type`` (raising "Unsupported JSON Schema type: None"),
-enums degrade to bare strings, and ``datetime`` loses its type. The live
-annotations keep every signal inference needs.
+path is lossy: it does not support general multi-type unions, enums degrade to
+bare strings, and ``datetime`` loses its type. The live annotations keep every
+signal inference needs.
 
 Wire form: fields whose JSON form is not a scalar (dict, tuple, set, Any,
 multi-arm unions, unparameterized containers, Decimal) are declared with a
