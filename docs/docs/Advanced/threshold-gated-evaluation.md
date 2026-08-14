@@ -1,10 +1,16 @@
 ---
-title: Threshold-Gated Recursive Evaluation
+title: How Below-Threshold Pairs Are Classified
 ---
 
-# Threshold-Gated Recursive Evaluation
+# How Below-Threshold Pairs Are Classified
 
 When comparing `List[StructuredModel]` fields, Stickler only performs detailed nested-field analysis on object pairs whose overall similarity meets a configurable threshold. Pairs that fall below the threshold are classified as False Discovery (FD) and treated as atomic units -- no field-by-field breakdown is generated for them.
+
+> **New to thresholds?** Start with
+> [Thresholds and Metrics](../Getting-Started/thresholds-and-metrics.md), which
+> explains all four thresholds, which one wins where, and what each confusion-matrix
+> category means. This page is the mechanism reference for the gating behaviour
+> itself: what happens to a pair once it falls below the threshold.
 
 ## Core Principle
 
@@ -171,6 +177,7 @@ The `all_fields_matched` flag is `True` only when every field's raw similarity m
 
 ## See Also
 
+- [Thresholds and Metrics](../Getting-Started/thresholds-and-metrics.md) -- the explainer: all four thresholds, precedence, the metrics glossary, and the zero-threshold trap
 - [Hungarian Matching](hungarian-matching.md) -- the assignment algorithm that produces pairings
 - [Classification Logic](classification-logic.md) -- full definitions of TP, FD, FA, FN, TN
 - [Aggregate Metrics](aggregate-metrics.md) -- how metrics roll up through the result tree

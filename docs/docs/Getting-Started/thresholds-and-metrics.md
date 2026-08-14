@@ -181,6 +181,86 @@ With FD:       Recall = TP / (TP + FN + FD)
 result = gt.compare_with(pred, recall_with_fd=True)
 ```
 
+#### Two moves that push recall in opposite directions
+
+Because the default excludes FD from the recall denominator, *becoming* an FD
+affects recall differently depending on what the pair was before. These two are
+easy to conflate, and they go opposite ways:
+
+| move | numerator | denominator | default recall |
+|---|---|---|---|
+| TP → FD (you raised `match_threshold`) | `-1` | `-1` | falls, or stays equal |
+| FN → FD (the pair got matched instead of missed) | unchanged | `-1` | **rises** |
+
+A TP that becomes an FD loses a correct answer, so recall falls. An FN that
+becomes an FD was never in the numerator to begin with, so removing it from the
+denominator only makes the remaining hits look better.
+
+The practical consequence: **raising `match_threshold` does not reliably lower
+reported recall.** Checked exhaustively over `tp ∈ 1..4` and `fn ∈ 0..3`, a
+TP → FD move raised recall in 0 cases, left it equal in 6, and lowered it in 34.
+But an FN → FD move raises it. If you track recall across releases or across
+threshold changes, set `recall_with_fd=True` so both moves count against you and
+the number means one thing.
+
+---
+
+## The Zero-Threshold Trap
+
+Setting a `threshold` or `match_threshold` to exactly `0.0` reports perfect
+scores for wholly incorrect output. Stickler emits a `UserWarning` when it sees
+one.
+
+The threshold test is `>=`, so `0.0` is satisfied by **every** score, including
+`0.0` itself. Every compared pair becomes a true positive:
+
+```python
+class Doc(StructuredModel):
+    match_threshold = 0.0          # UserWarning
+    name: str
+
+gt   = Doc(name="Acme Corporation")
+pred = Doc(name="totally wrong")
+
+result = gt.compare_with(pred, include_confusion_matrix=True)
+# precision 1.0, recall 1.0, f1 1.0 -- for an answer that is entirely wrong
+```
+
+Nothing errors and the numbers look ideal, which makes this the hardest
+misconfiguration to notice.
+
+**It is a cliff, not a slope.** `0.01` classifies correctly; only exactly `0.0`
+misbehaves. This is one broken value rather than a "low thresholds are risky"
+heuristic, which is why the warning fires only for `0.0`.
+
+What is genuinely invariant at `0.0` is that **no false discovery can ever be
+reported**, since FD means "compared and scored below threshold" and nothing
+scores below `0.0`. Perfect precision and recall are *not* invariant, and it is
+worth knowing why, because it is easy to over-claim here. Unmatched items are not
+subject to any threshold, so:
+
+- 2 ground-truth objects against 3 predictions still yields an FA, giving
+  precision `0.667`
+- 2 against 1 still yields an FN, giving recall `0.5`
+
+**`match_threshold = 0.0` warns unconditionally**, because the value is used two
+ways: as the object-matching threshold for a `List[StructuredModel]` element,
+*and* as the default field threshold for any field with no explicit config. A
+plainly annotated `name: str` inherits it, so a standalone model with no list
+anywhere still reports `1.0` across the board. Declaring the field with
+`ComparableField()` instead takes an earlier branch that supplies a hardcoded
+`0.5`, which is why the value can look inert when probed that way (see
+[#237](https://github.com/awslabs/stickler/issues/237)).
+
+**Fix:** use a small positive value.
+
+```python
+match_threshold = 0.01    # accepts weak matches, still classifies correctly
+```
+
+The warning fires once per configured site, so a bulk run over many documents
+does not emit one per document.
+
 ---
 
 ## Worked Example
@@ -309,5 +389,5 @@ Recall (with FD) = TP / (TP + FN + FD) = 5 / (5 + 1 + 1) = 0.714
 ## See Also
 
 - [Classification Logic](../Advanced/classification-logic.md) — detailed definitions
-- [Threshold-Gated Evaluation](../Advanced/threshold-gated-evaluation.md) — how recursion works
+- [How Below-Threshold Pairs Are Classified](../Advanced/threshold-gated-evaluation.md) — the gating mechanism in detail
 - [Hungarian Matching](../Advanced/hungarian-matching.md) — list pairing algorithm

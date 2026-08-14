@@ -4,8 +4,16 @@ from typing import Any, Optional
 
 from stickler.utils.deprecation import warn_once
 
-#: Where the `>=` cliff and what to use instead are explained.
-THRESHOLD_DOCS_URL = "https://github.com/awslabs/stickler/issues/234"
+#: Where the `>=` cliff and what to use instead are explained. Points at the
+#: docs rather than issue #234, which was the interim target while the section
+#: did not exist yet ([#235](https://github.com/awslabs/stickler/issues/235)).
+#: The anchor is load-bearing: `tests/.../test_threshold_zero_warning.py`
+#: asserts the literal, and `docs/.../thresholds-and-metrics.md` must keep a
+#: heading that slugifies to `the-zero-threshold-trap`.
+THRESHOLD_DOCS_URL = (
+    "https://awslabs.github.io/stickler/Getting-Started/"
+    "thresholds-and-metrics/#the-zero-threshold-trap"
+)
 
 # What a zero threshold actually guarantees: nothing the comparison touches can
 # be reported as a false discovery, because FD means "compared and scored below
