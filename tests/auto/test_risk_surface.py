@@ -156,7 +156,14 @@ class TestIdentityInvariant:
             ("updated_by", str, "Jane Smith"),
             ("days_past_due", int, -5),
             ("fee_applied", bool, True),
-            ("phone_num", str, "(555) 123-4567"),
+            # Real area code (206) with the fictional 555 exchange. "555" in the
+            # area-code position was never assigned by NANP, so PhoneComparator
+            # rejects such a number as invalid and scores it 0.0 even against
+            # itself -- deliberately, since a placeholder on both sides is not a
+            # successful extraction (#243 review). This case tests token/type
+            # conflict resolution rather than phone validity, so it uses a number
+            # that is structurally real.
+            ("phone_num", str, "(206) 555-0100"),
             ("isbn13", str, "978-3-16-148410-0"),
             ("created", bool, True),
         ],
@@ -444,19 +451,23 @@ class TestInferenceInternals:
     """Guard behaviors that end-to-end tests don't exercise."""
 
     def test_phone_token_beats_numeric_token_order(self):
-        """A str field named 'phone_num' resolves to Exact, not Numeric.
+        """A str field named 'phone_num' resolves to Phone, not Numeric.
 
-        'num' and 'phone' both tokenize; the email/phone rule must precede the
-        quantity rule. NumericComparator would strip formatting and score
-        distinct formatted phone numbers as equal (and identical ones fine but
-        for the wrong reason). Kills the rule-reorder mutation.
+        'num' and 'phone' both tokenize; the phone rule must precede the
+        quantity rule. NumericComparator strips non-digits, so it would report a
+        reformatted number as 0.0 while claiming a numeric comparison. Kills the
+        rule-reorder mutation.
+
+        The expected comparator changed in 0.7.0 (it was ExactComparator, which
+        only worked while Exact silently normalized punctuation -- see #242).
+        The property under test is the rule *ordering*, which is unchanged.
         """
         from pydantic.fields import FieldInfo
 
         from stickler.auto.inference import infer_field_config
 
         spec = infer_field_config("phone_num", FieldInfo(annotation=str))
-        assert spec.comparator_name == "ExactComparator"
+        assert spec.comparator_name == "PhoneComparator"
 
     def test_gate_degrades_unregistered_comparator(self):
         """_gate falls back and records provenance for an unavailable comparator."""

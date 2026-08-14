@@ -11,6 +11,49 @@ Each release links to full notes on the
 
 ### Added
 
+- `PhoneComparator`, which compares phone numbers by the number they dial rather
+  than as strings. `"206-555-0100"`, `"(206) 555-0100"`, `"+1-206-555-0100"` and
+  `"2065550100"` all compare equal; extensions are reconciled
+  (`"+1 (206) 555-0100 ext. 89"` matches `"+12065550100x89"`); a one-digit
+  difference does not match. Pass `region=` for numbers written without an
+  international prefix (default `"US"`).
+
+  Zero-config evaluation routes `phone`-shaped field names here automatically.
+
+  No string comparator can do this. `ExactComparator` scores a reformatted
+  number `0.0`, `NumericComparator` strips non-digits and also reports `0.0`,
+  and edit distance ranks the cases backwards -- a *different* number
+  (`206-555-0101`) scores `0.917` while the same number reformatted scores
+  `0.786`, so no threshold separates them.
+
+  Unparseable **or invalid** input scores `0.0`, including when both sides are
+  identical. libphonenumber parses `"0000000000"` and renders it as E164, so a
+  parse-only check would report a placeholder on both sides as a successful
+  match; validity is checked with `is_valid_number`. `"N/A"` on both sides is a
+  field that was not extracted, not a phone number that matched. Genuinely
+  absent values are unaffected, since the shared `None` policy resolves those
+  before any comparator runs.
+
+  This rejects the number most documentation reaches for. `"555-123-4567"` puts
+  **555 in the area-code position**, and 555 is not a real area code -- NANP has
+  never assigned it, which is precisely why writers use it -- so it scores `0.0`
+  even against itself. Fixtures want a real area code with the `555`
+  **exchange** instead: `"206-555-0100"` is fictional by convention (555-01xx is
+  set aside for fiction) while being structurally valid.
+
+  Extensions are compared separately, because E164 omits them:
+  `"+12065550100x89"` and `"+12065550100x90"` reach different people and do not
+  match.
+
+  An unrecognised `region` raises `ValueError` at construction. `region="UK"`
+  (the ISO code is `"GB"`) would otherwise make every national-format number
+  score `0.0` with no error, which reads as total extraction failure rather than
+  a typo.
+
+  This adds `phonenumberslite` to the core dependencies: the metadata-only build
+  of the libphonenumber port, 450 KB, zero dependencies, Apache-2.0
+  ([#242](https://github.com/awslabs/stickler/issues/242))
+
 - A `UserWarning` when a field `threshold` or a model `match_threshold` is set
   to exactly `0.0`. The threshold test is `>=`, so `0.0` is satisfied by every
   score including `0.0` itself: every compared pair counts as a true positive,
@@ -59,6 +102,36 @@ Each release links to full notes on the
   enough that installing it unasked is a surprise
 
 ### Fixed
+
+- Zero-config evaluation no longer scores formatting-only differences in
+  `email`, `url` and `phone` fields as complete mismatches. The name-token
+  inference rules route those fields to comparators chosen for them, and when
+  `ExactComparator` became strict the rules silently inherited the change:
+  `A.Buyer@Example.COM` vs `a.buyer@example.com`, and `206-555-0100` vs
+  `(206) 555-0100`, went from `1.0` to `0.0` through plain
+  `stickler.evaluate()` with no configuration involved.
+
+  `email`, `url` and `uri` now pass `case_sensitive=False` explicitly, since
+  both are case-insensitive by specification. They stay otherwise exact:
+  `a@b.com` vs `a@c.com` is still `0.0`, where a similarity comparator reports
+  `0.857`.
+
+  Every rule that selects `ExactComparator` now states its case sensitivity
+  rather than inheriting it, so a future change to a comparator default cannot
+  silently redefine what inference means. Identifier tokens (`id`, `sku`,
+  `code`, `ref`, `uuid`, `isbn`, `ssn`) remain deliberately case-sensitive.
+
+  **Postal codes stay exact, deliberately.** `98101-1234` does not match
+  `98101 1234`. A generic normalizer would be right for the US and wrong
+  elsewhere -- a UK postcode's internal space is significant (`SW1A 1AA`), and
+  Dutch codes mix letters and digits -- so applying US rules everywhere would
+  produce failures that look like successes. A similarity comparator is not a
+  fallback either: `98101-1234` scores `0.9` against both `98101 1234` (same
+  code) and `98102-1234` (different code), so no threshold separates them. The
+  new [Postal Codes and Addresses](https://awslabs.github.io/stickler/Guides/Comparators/postal-codes/)
+  guide covers how to handle this for a specific country, including a worked
+  US and UK comparator and an assessment of the available third-party libraries
+  ([#242](https://github.com/awslabs/stickler/issues/242))
 
 - Accept an explicit `null` for an optional field built from a JSON Schema.
   `from_json({"note": None})` raised `ValidationError` for a `{"type":
