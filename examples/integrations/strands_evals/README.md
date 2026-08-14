@@ -44,6 +44,25 @@ report = experiment.run_evaluations(
 print(report.overall_score, report.reasons)
 ```
 
+## Field-level rollup across a dataset
+
+`EvaluationOutput` carries only four scalar fields, and Strands Evals has no
+post-evaluation aggregation hook, so the per-field rollup that is the point of
+this integration cannot cross the harness boundary. The evaluator exposes it
+directly via `aggregate()`, which keeps that logic in the class rather than an
+inline loop in the caller:
+
+```python
+evaluator = StructuredOutputEvaluator(Invoice)
+rollup = evaluator.aggregate((gt, pred) for gt, pred in pairs)
+# {field: {mean, worst, perfect, count, below_threshold, comparator}}, worst mean first
+```
+
+This is a temporary shape: the `TODO` in `aggregate()` marks migration to
+stickler's stateful bulk path (`BulkStructuredModelEvaluator` /
+`aggregate_from_comparisons`), which accumulates a confusion matrix
+incrementally instead of holding every per-field score in memory.
+
 ## Proposed upstream shape
 
 - Module lands at `src/strands_evals/evaluators/stickler.py`, gated behind an

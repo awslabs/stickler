@@ -31,7 +31,9 @@ Usage:
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Type
+import statistics
+from collections import defaultdict
+from typing import Any, Dict, Iterable, Optional, Type
 
 from pydantic import BaseModel
 from strands_evals.evaluators import Evaluator
@@ -118,6 +120,54 @@ class StructuredOutputEvaluator(Evaluator):
         deciding which fields to configure explicitly.
         """
         return self.spec.explain()
+
+    def aggregate(
+        self, pairs: Iterable[tuple[Any, Any]]
+    ) -> Dict[str, Dict[str, Any]]:
+        """Roll up per-field scores across a dataset of (expected, actual) pairs.
+
+        Strands Evals has no post-evaluation aggregation hook, and ``EvaluationOutput``
+        carries only four scalar fields, so the field-level rollup that is the whole
+        point of this integration cannot cross the harness boundary. This method keeps
+        that rollup inside the evaluator instead of forcing callers to re-loop over
+        results, returning per field: ``mean``, ``worst``, ``perfect`` (count scoring
+        1.0), ``count``, ``below_threshold`` (count under the field's threshold), and
+        the chosen ``comparator``.
+
+        TODO: replace this bespoke loop with stickler's stateful bulk path
+        (``stickler.structured_object_evaluator.BulkStructuredModelEvaluator`` /
+        ``aggregate_from_comparisons``), which accumulates a confusion matrix
+        incrementally instead of holding every per-field score in memory. Kept inline
+        for now because that path returns confusion-matrix metrics rather than the
+        mean/worst/perfect view this demo reports.
+        """
+        config = self.spec.explain()
+        scores: Dict[str, list] = defaultdict(list)
+        below_threshold: Dict[str, int] = defaultdict(int)
+
+        for expected, actual in pairs:
+            result = self.spec.evaluate(
+                self._coerce(expected, "expected_output"),
+                self._coerce(actual, "actual_output"),
+            )
+            for field, score in result.field_scores.items():
+                scores[field].append(score)
+            for field, entry in result.explain().items():
+                if "score" in entry and entry["score"] < entry["threshold"]:
+                    below_threshold[field] += 1
+
+        rollup = {}
+        for field, field_scores in scores.items():
+            rollup[field] = {
+                "mean": statistics.mean(field_scores),
+                "worst": min(field_scores),
+                "perfect": sum(1 for s in field_scores if s == 1.0),
+                "count": len(field_scores),
+                "below_threshold": below_threshold[field],
+                "comparator": config.get(field, {}).get("comparator", "unknown"),
+            }
+        # Sort worst mean first: the fields an engineer should look at.
+        return dict(sorted(rollup.items(), key=lambda kv: kv[1]["mean"]))
 
     def _coerce(self, value: Any, which: str) -> BaseModel:
         """Accept a model instance, a dict, or a JSON string."""
