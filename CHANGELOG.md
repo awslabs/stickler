@@ -13,6 +13,12 @@ Each release links to full notes on the
 
 ### Added
 
+- `DateComparator` and `BBoxIoUComparator` are now exported from the top-level
+  `stickler` namespace, alongside every other comparator. Both were reachable
+  only as `from stickler.comparators import DateComparator`, an inconsistency
+  dating from when each was added. No import-weight change: both are core and
+  were already imported eagerly by `stickler.comparators`.
+
 - `stickler.integrations.strands_evals.StructuredOutputEvaluator`, a
   [Strands Evals](https://github.com/strands-agents/evals) `Evaluator` that
   scores an agent's structured output field by field. Their deterministic option
