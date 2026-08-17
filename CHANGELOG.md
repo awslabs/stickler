@@ -309,6 +309,18 @@ Each release links to full notes on the
 
 ### Fixed
 
+- `explain()` now describes how a nested `StructuredModel` field is actually
+  compared, instead of reporting an inert comparator. On a configured
+  `StructuredModel`, a `List[StructuredModel]` field reported
+  `LevenshteinComparator` and a single nested-model field did the same, both
+  taken from the `ComparableField` default that the engine never consults (and
+  that the field is forbidden from setting). They now report
+  `"Hungarian (per-element StructuredModel)"` and
+  `"recursive (nested StructuredModel)"` respectively, matching the labels the
+  zero-config inference path already used. Scores are unaffected; only the audit
+  trail was wrong. Plain `BaseModel` classes routed through inference were
+  already correct.
+
 - Zero-config evaluation no longer scores formatting-only differences in
   `email`, `url` and `phone` fields as complete mismatches. The name-token
   inference rules route those fields to comparators chosen for them, and when

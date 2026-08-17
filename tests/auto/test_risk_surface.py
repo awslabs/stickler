@@ -366,6 +366,43 @@ class TestExplainContract:
         # not a fallback derived from the list annotation itself.
         assert ex["prices"]["comparator"] == "NumericComparator"
 
+    def test_structured_model_fields_report_how_they_compare(self):
+        """A StructuredModel field has no single comparator, and explain() on a
+        configured StructuredModel must say so rather than reporting the inert
+        ComparableField default (which the field is forbidden from setting).
+
+        The pre-fix bug reported LevenshteinComparator for both a nested model
+        and a List[StructuredModel], describing a comparator the engine never
+        runs. See the two explain paths in auto/facade.py.
+        """
+        from stickler import ComparableField, ExactComparator, StructuredModel
+
+        class Line(StructuredModel):
+            sku: str = ComparableField(comparator=ExactComparator())
+
+        class Addr(StructuredModel):
+            city: str = ComparableField(comparator=ExactComparator())
+
+        class Order(StructuredModel):
+            order_id: str = ComparableField(comparator=ExactComparator())
+            addr: Addr = ComparableField()
+            opt_addr: Optional[Addr] = ComparableField()
+            items: List[Line] = ComparableField()
+
+        ex = stickler.eval_for(Order).explain()
+
+        # A real leaf comparator is still named.
+        assert ex["order_id"]["comparator"] == "ExactComparator"
+        # A List[StructuredModel] is matched element-by-element, then recursed.
+        assert ex["items"]["comparator"] == "Hungarian (per-element StructuredModel)"
+        # A single nested model recurses into its own fields.
+        assert ex["addr"]["comparator"] == "recursive (nested StructuredModel)"
+        assert ex["opt_addr"]["comparator"] == "recursive (nested StructuredModel)"
+        # Whatever the label, it must never be the inert default the field
+        # cannot legally carry.
+        for structured_field in ("items", "addr", "opt_addr"):
+            assert ex[structured_field]["comparator"] != "LevenshteinComparator"
+
     def test_every_explained_comparator_is_instantiable(self):
         from stickler.structured_object_evaluator.models.comparator_registry import (
             get_global_registry,

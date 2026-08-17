@@ -22,6 +22,9 @@ from typing import Any, Dict, Type, Union
 
 from pydantic import BaseModel
 
+from ..structured_object_evaluator.models.configuration_helper import (
+    ConfigurationHelper,
+)
 from ..structured_object_evaluator.models.structured_model import StructuredModel
 from .builder import specs_for, structured_model_for
 
@@ -170,13 +173,12 @@ class EvalSpec:
     def _explain_structured(self) -> Dict[str, Dict[str, Any]]:
         """Explain a passthrough StructuredModel from its explicit config."""
         out: Dict[str, Dict[str, Any]] = {}
-        for name in self.source_cls.model_fields:
+        for name, field in self.source_cls.model_fields.items():
             if name == "extra_fields":
                 continue
             info = self.source_cls._get_comparison_info(name)
-            comparator = getattr(info, "comparator", None)
             out[name] = {
-                "comparator": type(comparator).__name__ if comparator else "default",
+                "comparator": self._structured_comparator_label(name, field, info),
                 "threshold": info.threshold,
                 "weight": info.weight,
                 "clip_under_threshold": info.clip_under_threshold,
@@ -184,6 +186,26 @@ class EvalSpec:
                 "why": ["explicit: configured on the StructuredModel class"],
             }
         return out
+
+    def _structured_comparator_label(self, name: str, field: Any, info: Any) -> str:
+        """Name what actually compares this field.
+
+        A ``StructuredModel`` field has no single comparator: nested models
+        recurse into their own fields, and a ``List[StructuredModel]`` is
+        matched element-by-element with the Hungarian algorithm and then
+        compared recursively. The ``comparator`` on its ``ComparableField`` is
+        an inert default the engine never consults (and one the field is
+        forbidden from setting), so reporting it would misdescribe the
+        comparison. Mirror the labels :mod:`.builder` uses for the inferred
+        path so both explains read the same.
+        """
+        annotation = field.annotation
+        if self.source_cls._is_list_of_structured_model_type(annotation):
+            return "Hungarian (per-element StructuredModel)"
+        if ConfigurationHelper.is_structured_field_type(field):
+            return "recursive (nested StructuredModel)"
+        comparator = getattr(info, "comparator", None)
+        return type(comparator).__name__ if comparator else "default"
 
 
 def eval_for(
