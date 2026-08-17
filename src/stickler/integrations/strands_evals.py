@@ -68,6 +68,45 @@ class _CaseResult:
     raw: Dict[str, Any] = field(default_factory=dict)
 
 
+def _distinct_names(classes: Mapping[type, Any]) -> Dict[type, str]:
+    """Map each class to a display name, unique within this set.
+
+    Keyed on ``__name__`` normally, because that is what a caller wants to read.
+    Two distinct classes can share a name, though -- two modules each defining an
+    ``Invoice`` is ordinary -- and a plain ``__name__`` key silently collapses
+    them, with the later one overwriting the earlier rollup entirely rather than
+    merging it.
+
+    Colliding names fall back to ``module.QualName``, then to a numeric suffix.
+    The second fallback is not paranoia: classes built with ``type()`` in one
+    module, which is how dynamic models are made, share both ``__module__`` and
+    ``__qualname__``, so qualifying alone does not separate them.
+    """
+    ordered = list(classes)
+
+    def bucket(key_of):
+        counts: Dict[str, int] = {}
+        for cls in ordered:
+            counts[key_of(cls)] = counts.get(key_of(cls), 0) + 1
+        return counts
+
+    plain = bucket(lambda c: c.__name__)
+    qualified = bucket(lambda c: f"{c.__module__}.{c.__qualname__}")
+
+    names: Dict[type, str] = {}
+    seen: Dict[str, int] = {}
+    for cls in ordered:
+        if plain[cls.__name__] == 1:
+            name = cls.__name__
+        else:
+            name = f"{cls.__module__}.{cls.__qualname__}"
+            if qualified[name] > 1:
+                seen[name] = seen.get(name, 0) + 1
+                name = f"{name}#{seen[name]}"
+        names[cls] = name
+    return names
+
+
 def _require_strands_evals() -> None:
     if not STRANDS_EVALS_AVAILABLE:
         raise ImportError(
@@ -191,9 +230,9 @@ class StructuredOutputEvaluator(Evaluator):
         by_cls: Dict[type, List[Dict[str, Any]]] = {}
         for case in list(self._results):
             by_cls.setdefault(case.model_cls, []).append(case.raw)
+        keys = _distinct_names(by_cls)
         return {
-            cls.__name__: aggregate_from_comparisons(raws)
-            for cls, raws in by_cls.items()
+            keys[cls]: aggregate_from_comparisons(raws) for cls, raws in by_cls.items()
         }
 
     def per_case(self) -> List[Mapping[str, Any]]:
@@ -210,10 +249,11 @@ class StructuredOutputEvaluator(Evaluator):
         because stickler emits no per-leaf score for them; use :meth:`metrics`
         for those, which reports their counts and precision/recall/F1.
         """
+        keys = _distinct_names({case.model_cls: None for case in self._results})
         return [
             {
                 "case": case.name,
-                "model": case.model_cls.__name__,
+                "model": keys[case.model_cls],
                 "overall_score": case.overall_score,
                 "matched": case.matched,
                 "field_scores": dict(case.field_scores),
@@ -256,7 +296,14 @@ class StructuredOutputEvaluator(Evaluator):
     def _resolve_cls(self, evaluation_case: "EvaluationData") -> Type[BaseModel]:
         if self.declared_cls is not None:
             return self.declared_cls
-        for value in (evaluation_case.actual_output, evaluation_case.expected_output):
+        # expected_output first, deliberately. Ground truth defines the fields
+        # being measured; the agent's output does not get to narrow that. If it
+        # is inferred from `actual_output` instead, an agent returning a model
+        # with fewer fields silently drops the missing ones from the comparison
+        # and scores 1.0 -- a perfect result for output that omitted a field,
+        # which is the exact failure this evaluator exists to catch. Preferring
+        # expected makes `_coerce` raise on that input instead.
+        for value in (evaluation_case.expected_output, evaluation_case.actual_output):
             if isinstance(value, BaseModel):
                 return type(value)
         raise TypeError(

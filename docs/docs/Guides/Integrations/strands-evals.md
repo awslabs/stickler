@@ -182,6 +182,19 @@ accepted **silently**, and it unions their field paths. A field present in only
 half the documents then reports its counts against the full document count and
 reads as though the extractor missed it in the rest.
 
+Two details the implementation has to get right for that to hold.
+
+The schema is resolved from **`expected_output`**, not `actual_output`. Ground
+truth defines the fields being measured, and the agent's output does not get to
+narrow that. Inferring from the prediction let a model with fewer fields drop the
+missing ones from the comparison and score `1.0`, a perfect result for output
+that omitted a field.
+
+Rollup keys fall back to `module.QualName` when two classes share a `__name__`,
+and to a numeric suffix when even that collides, which it does for classes built
+with `type()` in one module. A plain `__name__` key silently *overwrote* one
+rollup with the other rather than merging it.
+
 `model_cls` is therefore optional:
 
 - **Pass it** and every case is coerced to that class, with anything that will

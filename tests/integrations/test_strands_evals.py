@@ -264,6 +264,60 @@ class TestMixedSchemas:
         with pytest.raises(RuntimeError, match="ambiguous"):
             evaluator.explain()
 
+    def test_a_narrower_actual_does_not_score_perfectly(self):
+        """Ground truth defines the fields, not the agent's output.
+
+        Inferring the schema from `actual_output` let an agent returning a model
+        with fewer fields drop the missing ones from the comparison entirely and
+        score 1.0 -- a perfect result for output that omitted a field, which is
+        the exact failure this evaluator exists to catch. Resolving from
+        `expected_output` instead makes the coercion raise.
+        """
+        class Narrower(BaseModel):
+            invoice_id: str
+
+        evaluator = StructuredOutputEvaluator()          # inferred
+        with pytest.raises(Exception):
+            evaluator.evaluate(_data(_invoice(), Narrower(invoice_id="INV-1")))
+
+    def test_schema_is_resolved_from_expected_not_actual(self):
+        evaluator = StructuredOutputEvaluator()
+        evaluator.evaluate(_data(_invoice(), _invoice()))
+
+        assert evaluator.per_case()[0]["model"] == "Invoice"
+
+    def test_classes_sharing_a_name_get_separate_rollups(self):
+        """Two modules each defining `Invoice` is ordinary.
+
+        Keying the rollup on `__name__` alone collapsed them, and because it was
+        built by a dict comprehension the later class *overwrote* the earlier
+        rather than merging it, losing those documents silently. Same-module
+        classes built with `type()` share `__module__` and `__qualname__` too, so
+        qualifying alone is not enough either.
+        """
+        def make(fields):
+            return type("Invoice", (BaseModel,), {"__annotations__": fields})
+
+        first, second = make({"a": str}), make({"b": str})
+        evaluator = StructuredOutputEvaluator()
+        _run(evaluator, {
+            "one": (first(a="x"), first(a="x")),
+            "two": (second(b="y"), second(b="ZZ")),
+        })
+
+        metrics = evaluator.metrics()
+        assert len(metrics) == 2, f"rollups collapsed: {list(metrics)}"
+        assert all(pe.document_count == 1 for pe in metrics.values())
+        assert {tuple(sorted(pe.field_metrics)) for pe in metrics.values()} == {("a",), ("b",)}
+
+    def test_a_unique_class_name_stays_unqualified(self):
+        """Disambiguation must not make the common case ugly."""
+        evaluator = StructuredOutputEvaluator(Invoice)
+        _run(evaluator, {"a": (_invoice(), _invoice())})
+
+        assert list(evaluator.metrics()) == ["Invoice"]
+        assert evaluator.per_case()[0]["model"] == "Invoice"
+
     def test_inference_needs_a_model_instance(self):
         evaluator = StructuredOutputEvaluator()
 
