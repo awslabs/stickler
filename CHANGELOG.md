@@ -9,6 +9,8 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-14
+
 ### Added
 
 - `stickler.integrations.strands_evals.StructuredOutputEvaluator`, a
@@ -39,12 +41,6 @@ Each release links to full notes on the
   Design rationale, including how to read nested rows under threshold gating, is
   in [Guides > Integrations > Strands Evals](https://awslabs.github.io/stickler/Guides/Integrations/strands-evals/)
   ([#310](https://github.com/strands-agents/evals/issues/310))
-
-- A `strands-evals` extra, and `strands-evals` joins the `all` aggregate.
-
-## [0.7.0] - 2026-08-14
-
-### Added
 
 - `PhoneComparator`, which compares phone numbers by the number they dial rather
   than as strings. `"206-555-0100"`, `"(206) 555-0100"`, `"+1-206-555-0100"` and
@@ -133,8 +129,9 @@ Each release links to full notes on the
   than asserted ([#201](https://github.com/awslabs/stickler/issues/201))
 - New extras that scope the peripheral modules: `semantic` (Bedrock
   embeddings), `docsplit` (document packet splitting), `reporting` (HTML report
-  tables). `all` aggregates every extra except `bert`, whose ML stack is large
-  enough that installing it unasked is a surprise
+  tables), `strands-evals` (the evaluator above). `all` aggregates every extra
+  except `bert`, whose ML stack is large enough that installing it unasked is a
+  surprise
 
 ### Changed
 
