@@ -1,0 +1,322 @@
+"""Field-level structured-output evaluation for Strands Evals.
+
+Strands Evals' deterministic evaluators compare structured output with
+``Equals``: whole-object ``==``, scoring 0.0 or 1.0. An extraction that gets
+nine of ten fields right is indistinguishable from one that gets none right,
+and a reordered list counts as wrong. This evaluator compares field by field
+with type-aware comparators, order-independent list matching and per-field
+thresholds, so the score reflects how wrong the output is and names which
+field to fix.
+
+Requires the ``strands-evals`` extra::
+
+    pip install "stickler-eval[strands-evals]"
+
+Usage::
+
+    from strands_evals import Case, Experiment
+    from stickler.integrations.strands_evals import StructuredOutputEvaluator
+
+    evaluator = StructuredOutputEvaluator(Invoice)
+    report = Experiment(cases=cases, evaluators=[evaluator]).run_evaluations(task)
+
+    report.overall_score          # weighted mean across the dataset
+    report.detailed_results[0]    # per-field EvaluationOutputs for case 0
+    evaluator.metrics()           # per-field confusion matrix across the dataset
+
+The design choices, and the two upstream gaps this works around, are written up
+in ``docs/docs/Guides/Integrations/strands-evals.md``.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Type
+
+from pydantic import BaseModel
+
+from .. import aggregate_from_comparisons, eval_for
+
+try:
+    from strands_evals.evaluators import Evaluator
+    from strands_evals.types.evaluation import EvaluationData, EvaluationOutput
+
+    STRANDS_EVALS_AVAILABLE = True
+except ImportError as exc:  # pragma: no cover - exercised by the extras gate
+    STRANDS_EVALS_AVAILABLE = False
+    _IMPORT_ERROR = exc
+
+    class Evaluator:  # type: ignore[no-redef]
+        """Placeholder so the module imports without the extra installed."""
+
+
+def _require_strands_evals() -> None:
+    if not STRANDS_EVALS_AVAILABLE:
+        raise ImportError(
+            "StructuredOutputEvaluator requires the 'strands-agents-evals' "
+            'package. Install it with: pip install "stickler-eval[strands-evals]"'
+        ) from _IMPORT_ERROR
+
+
+class StructuredOutputEvaluator(Evaluator):
+    """Score structured output against ground truth, field by field.
+
+    Deterministic and offline: no LLM judge, no credentials, no per-call cost.
+    Comparison configuration is inferred from the Pydantic model itself, the
+    same model the agent already passes as ``structured_output_model``, so no
+    schema or annotation work is required. Every inferred decision is
+    inspectable via :meth:`explain`.
+
+    Returns **one ``EvaluationOutput`` per top-level field**. The harness keeps
+    them all in ``report.detailed_results``, which is how per-field detail
+    reaches the report without a side channel, and collapses them into the
+    case's single score through :meth:`_aggregate_case`.
+
+    Nested fields are absent from the per-case outputs by necessity: stickler
+    emits no score for leaves inside a ``List[StructuredModel]``, only
+    confusion-matrix counts, so there is no per-case number to report for them.
+    They do appear in :meth:`metrics` with counts and precision/recall/F1.
+
+    Args:
+        model_cls: The Pydantic model the agent emits. Optional. When given,
+            every case is coerced to it and anything that will not validate
+            raises, which is what a single-schema suite wants. When omitted,
+            the class is inferred per case and :meth:`metrics` partitions its
+            rollup by class, so a suite mixing output types stays readable.
+        match_threshold: Similarity at or above which an object counts as a
+            match. Drives ``test_pass`` and the per-element matching of
+            ``List[Model]`` fields.
+        weight_hints: When True, weight fields by name-based importance
+            heuristics (ids and amounts count for more). Off by default so
+            weights stay uniform and metrics are not skewed by guessed
+            business criticality.
+        name: Optional evaluator name, forwarded to ``Evaluator``.
+
+    Raises:
+        ImportError: If the ``strands-evals`` extra is not installed.
+    """
+
+    def __init__(
+        self,
+        model_cls: Optional[Type[BaseModel]] = None,
+        *,
+        match_threshold: float = 0.7,
+        weight_hints: bool = False,
+        name: Optional[str] = None,
+    ) -> None:
+        _require_strands_evals()
+        super().__init__(name=name)
+        self.declared_cls = model_cls
+        self.match_threshold = match_threshold
+        self.weight_hints = weight_hints
+
+        self._specs: Dict[type, Any] = {}
+        self._weights: Dict[type, Dict[str, float]] = {}
+        # (model_cls, raw compare_with dict) per evaluated case. Appended to and
+        # never read during a run. `list.append` is atomic under the GIL, so
+        # this needs no lock even though the harness calls evaluate() from up to
+        # `max_workers` threads via asyncio.to_thread (default 10). Aggregation
+        # happens in metrics(), after the run, on one thread.
+        self._results: List[Tuple[type, Dict[str, Any]]] = []
+
+        self.aggregator = self._aggregate_case
+
+    # ---------------------------------------------------------------- per case
+
+    def evaluate(self, evaluation_case: "EvaluationData") -> List["EvaluationOutput"]:
+        """Compare one case's actual output against its expected output."""
+        cls = self._resolve_cls(evaluation_case)
+        spec = self._spec_for(cls)
+
+        expected = self._coerce(evaluation_case.expected_output, cls, "expected_output")
+        actual = self._coerce(evaluation_case.actual_output, cls, "actual_output")
+
+        result = spec.evaluate(expected, actual)
+
+        # `prediction_raw` is dropped: only the confidence accumulators consume
+        # it, and they need `field_comparisons` alongside it. Keeping it without
+        # them makes aggregate_from_comparisons warn on every call, and it is the
+        # bulkiest part of the result. field_metrics is identical without it.
+        self._results.append(
+            (cls, {k: v for k, v in result.raw.items() if k != "prediction_raw"})
+        )
+
+        config = spec.explain()
+        return [
+            EvaluationOutput(
+                score=score,
+                test_pass=score >= config.get(field, {}).get("threshold", 0.0),
+                reason=self._field_reason(score, config.get(field, {})),
+                label=field,
+            )
+            for field, score in result.field_scores.items()
+        ]
+
+    def _aggregate_case(
+        self, outputs: Sequence["EvaluationOutput"]
+    ) -> Tuple[float, bool, str]:
+        """Collapse per-field outputs into the case's score, pass and reason.
+
+        The framework default takes an *unweighted* mean of the outputs. That
+        happens to equal stickler's ``overall_score`` when weights are uniform
+        (the default), but diverges as soon as they are not: with
+        ``weight_hints=True`` on a three-field model the unweighted mean was
+        ``0.333`` against stickler's ``0.429``. Since ``EvaluationOutput``
+        carries no weight, the weights are looked up here by field name.
+        """
+        if not outputs:  # pragma: no cover - defensive
+            return 0.0, False, "no fields compared"
+
+        weights = self._weights_for([o.label for o in outputs if o.label])
+        if weights is None:
+            total_weight = float(len(outputs))
+            weighted = sum(o.score for o in outputs)
+        else:
+            per_output = [weights.get(o.label or "", 1.0) for o in outputs]
+            total_weight = sum(per_output) or float(len(outputs))
+            weighted = sum(o.score * w for o, w in zip(outputs, per_output))
+
+        return (
+            weighted / total_weight,
+            all(o.test_pass for o in outputs),
+            self._weakest(outputs),
+        )
+
+    # ------------------------------------------------------------- cross case
+
+    def metrics(self) -> Dict[str, Any]:
+        """Per-field metrics across every case evaluated so far.
+
+        Keyed by model class name, so a suite mixing output types gets one
+        rollup per type. Feeding two schemas into a single rollup is accepted
+        silently by the bulk evaluator and unions their field paths, which makes
+        a field present in half the documents read as missed in the rest.
+
+        Each value is a ``ProcessEvaluation``. Its ``field_metrics`` is keyed by
+        dotted path (``line_items.sku``) and carries the five-category counts
+        (tp/tn/fn/fa/fd) plus precision, recall, F1 and accuracy.
+
+        Read after the run. A nested path's counts only cover documents whose
+        parent pair scored at or above ``match_threshold``: below that,
+        threshold gating treats the pair as atomic and emits no field breakdown,
+        so a nested field has a smaller denominator than the document count.
+        """
+        by_cls: Dict[type, List[Dict[str, Any]]] = {}
+        for cls, raw in list(self._results):
+            by_cls.setdefault(cls, []).append(raw)
+        return {
+            cls.__name__: aggregate_from_comparisons(raws)
+            for cls, raws in by_cls.items()
+        }
+
+    def reset(self) -> None:
+        """Drop accumulated results.
+
+        Evaluator instances are shared across cases and may be reused across
+        experiments, so a stateful evaluator needs an explicit way to clear.
+        """
+        self._results.clear()
+
+    def explain(self) -> Dict[str, Dict[str, Any]]:
+        """Per-field comparison config and why it was chosen.
+
+        Keyed by dotted path, so nested decisions are auditable too. Needs
+        either a declared ``model_cls`` or at least one evaluated case, since
+        the config comes from the model.
+        """
+        if self.declared_cls is not None:
+            return self._spec_for(self.declared_cls).explain()
+        if not self._specs:
+            raise RuntimeError(
+                "explain() needs a model: pass model_cls to the constructor, or "
+                "evaluate at least one case first."
+            )
+        if len(self._specs) > 1:
+            names = ", ".join(sorted(c.__name__ for c in self._specs))
+            raise RuntimeError(
+                f"explain() is ambiguous across {len(self._specs)} inferred "
+                f"schemas ({names}). Pass model_cls to select one."
+            )
+        return next(iter(self._specs.values())).explain()
+
+    # ---------------------------------------------------------------- internal
+
+    def _resolve_cls(self, evaluation_case: "EvaluationData") -> Type[BaseModel]:
+        if self.declared_cls is not None:
+            return self.declared_cls
+        for value in (evaluation_case.actual_output, evaluation_case.expected_output):
+            if isinstance(value, BaseModel):
+                return type(value)
+        raise TypeError(
+            f"{type(self).__name__} could not infer a model class from this case. "
+            f"Pass model_cls to the constructor, or supply outputs as Pydantic "
+            f"model instances rather than dicts or JSON strings."
+        )
+
+    def _spec_for(self, cls: Type[BaseModel]) -> Any:
+        spec = self._specs.get(cls)
+        if spec is None:
+            spec = eval_for(
+                cls,
+                match_threshold=self.match_threshold,
+                weight_hints=self.weight_hints,
+            )
+            self._specs[cls] = spec
+            self._weights[cls] = {
+                path: cfg.get("weight", 1.0)
+                for path, cfg in spec.explain().items()
+                if "." not in path
+            }
+        return spec
+
+    def _weights_for(self, labels: Sequence[str]) -> Optional[Dict[str, float]]:
+        """Field weights for the schema these labels came from, or None.
+
+        With one schema in play this is unambiguous. With several, the label set
+        selects it. If nothing matches exactly (two schemas sharing field names
+        but weighted differently), returns None and the caller falls back to an
+        unweighted mean rather than applying the wrong weights.
+        """
+        if len(self._weights) == 1:
+            return next(iter(self._weights.values()))
+        wanted = set(labels)
+        matches = [w for w in self._weights.values() if set(w) == wanted]
+        return matches[0] if len(matches) == 1 else None
+
+    def _coerce(self, value: Any, cls: Type[BaseModel], which: str) -> BaseModel:
+        """Accept a model instance, a dict, or a JSON string."""
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, BaseModel):
+            # A different model class carrying the same fields.
+            return cls.model_validate(value.model_dump())
+        if isinstance(value, dict):
+            return cls.model_validate(value)
+        if isinstance(value, str):
+            return cls.model_validate_json(value)
+        raise TypeError(
+            f"{type(self).__name__} needs {which} as a {cls.__name__} instance, "
+            f"dict, or JSON string; got {type(value).__name__}"
+        )
+
+    @staticmethod
+    def _field_reason(score: float, config: Dict[str, Any]) -> str:
+        comparator = config.get("comparator", "unknown")
+        threshold = config.get("threshold")
+        if threshold is None:
+            return f"{comparator} scored {score:.2f}"
+        verdict = "met" if score >= threshold else "below"
+        return f"{comparator} scored {score:.2f}, {verdict} threshold {threshold}"
+
+    @staticmethod
+    def _weakest(outputs: Sequence["EvaluationOutput"], limit: int = 4) -> str:
+        """Name the weakest fields so a low case score is actionable."""
+        imperfect = sorted(
+            ((o.label or "?", o.score) for o in outputs if o.score < 1.0),
+            key=lambda pair: pair[1],
+        )
+        if not imperfect:
+            return "all fields matched"
+        listed = "; ".join(f"{field}={score:.2f}" for field, score in imperfect[:limit])
+        if len(imperfect) > limit:
+            listed += f"; (+{len(imperfect) - limit} more)"
+        return f"weakest fields: {listed}"

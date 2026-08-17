@@ -1,79 +1,49 @@
 # Stickler as a Strands Evals evaluator
 
-Reference implementation of the integration requested in
-[strands-agents/evals#310](https://github.com/strands-agents/evals/issues/310),
-proposed in [stickler discussion #164](https://github.com/awslabs/stickler/discussions/164).
+The evaluator now ships as part of stickler. It used to live in this directory as
+a loose module that notebooks imported through a `sys.path` hack.
 
-## What is here
-
-| File | Purpose |
-|---|---|
-| `stickler_evaluator.py` | `StructuredOutputEvaluator`, a `strands_evals.evaluators.Evaluator` subclass that scores structured output field by field via stickler. Written in the shape it would take upstream as `src/strands_evals/evaluators/stickler.py`. |
-| `../../notebooks/Strands_Evals_Integration.ipynb` | Runnable demo: imports this module, runs it in the stock `Case`/`Experiment` harness, contrasts it with `Equals`, and shows the audit trail. Offline (stub agent), no credentials needed. |
-
-## The gap it fills
-
-Strands Evals' deterministic evaluators compare structured output with
-`Equals`: whole-object `==`, scoring 0.0 or 1.0. An extraction that gets nine
-of ten fields right scores the same as one that gets none right, and a
-reordered list counts as wrong.
-
-Stickler compares field by field: dates as dates, amounts as numbers, free
-text fuzzily, lists matched order-independently (Hungarian), with per-field
-thresholds. Same determinism, no LLM judge, no credentials, no per-call cost,
-but the score reflects how wrong the output actually is and names which fields
-to look at.
-
-## Try it
+**Code:** [`src/stickler/integrations/strands_evals.py`](../../../src/stickler/integrations/strands_evals.py)
+**Docs:** [Guides > Integrations > Strands Evals](../../../docs/docs/Guides/Integrations/strands-evals.md)
+**Tests:** [`tests/integrations/test_strands_evals.py`](../../../tests/integrations/test_strands_evals.py)
 
 ```bash
-pip install "stickler-eval>=0.5.0" strands-agents-evals
+pip install "stickler-eval[strands-evals]"
 ```
 
 ```python
-from strands_evals import Case, Experiment
-from stickler_evaluator import StructuredOutputEvaluator
-
-experiment = Experiment(
-    cases=[Case(name="doc-1", input=document, expected_output=labeled_invoice)],
-    evaluators=[StructuredOutputEvaluator(Invoice)],
-)
-report = experiment.run_evaluations(
-    lambda case: agent(case.input, structured_output_model=Invoice).structured_output
-)
-print(report.overall_score, report.reasons)
+from stickler.integrations.strands_evals import StructuredOutputEvaluator
 ```
 
-## Field-level rollup across a dataset
+## Notebooks
 
-`EvaluationOutput` carries only four scalar fields, and Strands Evals has no
-post-evaluation aggregation hook, so the per-field rollup that is the point of
-this integration cannot cross the harness boundary. The evaluator exposes it
-directly via `aggregate()`, which keeps that logic in the class rather than an
-inline loop in the caller:
+| Notebook | Needs credentials |
+|---|---|
+| [`Strands_Evals_Evaluator.ipynb`](../../notebooks/Strands_Evals_Evaluator.ipynb) | No. Offline and deterministic; the reference example. |
+| [`Strands_Evals_FCC_Two_Schemas.ipynb`](../../notebooks/Strands_Evals_FCC_Two_Schemas.ipynb) | Yes. Live Bedrock extraction of real FCC invoices, scored against a hand-written model and against one built from the dataset's own JSON Schema. |
 
-```python
-evaluator = StructuredOutputEvaluator(Invoice)
-rollup = evaluator.aggregate((gt, pred) for gt, pred in pairs)
-# {field: {mean, worst, perfect, count, below_threshold, comparator}}, worst mean first
-```
+## Why it moved
 
-This is a temporary shape: the `TODO` in `aggregate()` marks migration to
-stickler's stateful bulk path (`BulkStructuredModelEvaluator` /
-`aggregate_from_comparisons`), which accumulates a confusion matrix
-incrementally instead of holding every per-field score in memory.
+As an examples file it was not importable by users, not covered by CI, and not
+versioned. That showed: its docstring cited a stale version, its `TODO` named an
+import path that did not exist, and the per-field rollup it described re-ran
+every comparison a second time.
 
-## Proposed upstream shape
+As a package module it is exercised on every Python version the project claims,
+breakage surfaces as a red build rather than a user report, and it can be
+installed with `pip`.
 
-- Module lands at `src/strands_evals/evaluators/stickler.py`, gated behind an
-  optional extra (`stickler = ["stickler-eval>=0.5.0"]`), matching the existing
-  `langfuse` / `langchain` extras pattern. The guarded import and the
-  actionable `ImportError` are already written for that.
-- Deterministic-only, extending the direction of the deterministic-evaluators
-  epic ([evals#109](https://github.com/strands-agents/evals/issues/109)).
-- Stickler-side prerequisites for a frictionless install are already handled:
-  the `strands-agents` upper pin is lifted, so `stickler-eval[llm]` and
-  `strands-agents-evals` co-install. Stickler's `requires-python` is `>=3.12`
-  against their `>=3.10`; the suite passes unmodified on 3.11, so lowering the
-  floor to 3.11 is available if they want it (3.10 is blocked by
-  `scikit-learn>=1.8`).
+## Upstream
+
+The intended end state is still a PR into
+[strands-agents/evals](https://github.com/strands-agents/evals), per
+[evals#310](https://github.com/strands-agents/evals/issues/310) and
+[stickler discussion #164](https://github.com/awslabs/stickler/discussions/164),
+landing at `src/strands_evals/evaluators/stickler.py` behind a `stickler` extra
+to match their existing `providers/` and `mappers/` pattern.
+
+Two things are worth having upstream first, both covered in the
+[design doc](../../../docs/docs/Guides/Integrations/strands-evals.md): the
+multi-output `evaluate()` contract and `Evaluator.aggregator` need documenting,
+and a post-run aggregation hook would let dataset-level metrics land in
+`EvaluationReport` instead of being a method the caller invokes.
