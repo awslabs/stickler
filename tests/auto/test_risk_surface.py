@@ -369,16 +369,18 @@ class TestExplainContract:
     def test_structured_model_fields_report_how_they_compare(self):
         """A StructuredModel field has no single comparator, and explain() on a
         configured StructuredModel must say so rather than reporting the inert
-        ComparableField default (which the field is forbidden from setting).
+        ComparableField default.
 
         The pre-fix bug reported LevenshteinComparator for both a nested model
         and a List[StructuredModel], describing a comparator the engine never
-        runs. See the two explain paths in auto/facade.py.
+        runs.
         """
         from stickler import ComparableField, ExactComparator, StructuredModel
 
         class Line(StructuredModel):
             sku: str = ComparableField(comparator=ExactComparator())
+
+            match_threshold = 0.85
 
         class Addr(StructuredModel):
             city: str = ComparableField(comparator=ExactComparator())
@@ -393,15 +395,105 @@ class TestExplainContract:
 
         # A real leaf comparator is still named.
         assert ex["order_id"]["comparator"] == "ExactComparator"
-        # A List[StructuredModel] is matched element-by-element, then recursed.
+        # Structural rows use the SAME strings builder.py emits for the inferred
+        # path, so explain() reads the same either way. Inventing new labels here
+        # would create a divergence in the audit trail, and would also slip past
+        # test_every_explained_comparator_is_instantiable below, whose skip-list
+        # knows only these two.
         assert ex["items"]["comparator"] == "Hungarian (per-element StructuredModel)"
-        # A single nested model recurses into its own fields.
-        assert ex["addr"]["comparator"] == "recursive (nested StructuredModel)"
-        assert ex["opt_addr"]["comparator"] == "recursive (nested StructuredModel)"
-        # Whatever the label, it must never be the inert default the field
-        # cannot legally carry.
+        assert ex["addr"]["comparator"] == "StructuredModelComparator"
+        assert ex["opt_addr"]["comparator"] == "StructuredModelComparator"
         for structured_field in ("items", "addr", "opt_addr"):
             assert ex[structured_field]["comparator"] != "LevenshteinComparator"
+
+    def test_structured_rows_report_the_threshold_that_actually_gates(self):
+        """threshold and clip_under_threshold must not be inert defaults either.
+
+        Replacing only the comparator left these two reading off the same
+        ComparableField the engine ignores: a user setting match_threshold=0.85
+        on the element class saw threshold 0.5, and clip_under_threshold=True was
+        contradicted by behaviour, since a below-threshold list score percolates
+        up rather than being clipped to 0.
+        """
+        from stickler import ComparableField, ExactComparator, StructuredModel
+
+        class Line(StructuredModel):
+            sku: str = ComparableField(comparator=ExactComparator())
+
+            match_threshold = 0.85
+
+        class Order(StructuredModel):
+            items: List[Line] = ComparableField()
+
+        row = stickler.eval_for(Order).explain()["items"]
+
+        assert row["threshold"] == 0.85, "must be the element's real gate"
+        assert row["clip_under_threshold"] is False
+
+    def test_nested_rows_agree_across_both_explain_paths(self):
+        """The configured and inferred paths must describe one behaviour once.
+
+        This is the whole point of the change: a caller diffing explain() across
+        a tuned StructuredModel and a plain BaseModel of the same shape should
+        not see two names for the same comparison.
+        """
+        from stickler import ComparableField, ExactComparator, StructuredModel
+
+        class SLine(StructuredModel):
+            sku: str = ComparableField(comparator=ExactComparator())
+
+        class SAddr(StructuredModel):
+            city: str = ComparableField(comparator=ExactComparator())
+
+        class SOrder(StructuredModel):
+            addr: SAddr = ComparableField()
+            items: List[SLine] = ComparableField()
+
+        class PLine(BaseModel):
+            sku: str
+
+        class PAddr(BaseModel):
+            city: str
+
+        class POrder(BaseModel):
+            addr: PAddr
+            items: List[PLine]
+
+        configured = stickler.eval_for(SOrder).explain()
+        inferred = stickler.eval_for(POrder).explain()
+
+        for path in ("addr", "items"):
+            assert configured[path]["comparator"] == inferred[path]["comparator"], path
+            assert (
+                configured[path]["clip_under_threshold"]
+                == inferred[path]["clip_under_threshold"]
+            ), path
+
+    def test_an_ignored_comparator_on_a_nested_field_is_still_visible(self):
+        """A comparator on a single nested-model field is accepted and ignored.
+
+        __init_subclass__ rejects one on a List[StructuredModel] but not on a
+        single nested model, where the engine silently disregards it. Reporting a
+        generic structural label removed the only trace of that dead setting, so
+        the provenance trail now names it.
+        """
+        from stickler import BaseComparator, ComparableField, StructuredModel
+
+        class Always37(BaseComparator):
+            def _compare(self, value1, value2):
+                return 0.37
+
+        class Child(StructuredModel):
+            city: str = ComparableField()
+
+        class Parent(StructuredModel):
+            child: Child = ComparableField(comparator=Always37())
+
+        row = stickler.eval_for(Parent).explain()["child"]
+
+        assert row["comparator"] == "StructuredModelComparator"
+        assert any("Always37" in reason for reason in row["why"]), row["why"]
+        assert any("ignored" in reason for reason in row["why"]), row["why"]
 
     def test_every_explained_comparator_is_instantiable(self):
         from stickler.structured_object_evaluator.models.comparator_registry import (

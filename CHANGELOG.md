@@ -310,16 +310,37 @@ Each release links to full notes on the
 ### Fixed
 
 - `explain()` now describes how a nested `StructuredModel` field is actually
-  compared, instead of reporting an inert comparator. On a configured
-  `StructuredModel`, a `List[StructuredModel]` field reported
-  `LevenshteinComparator` and a single nested-model field did the same, both
-  taken from the `ComparableField` default that the engine never consults (and
-  that the field is forbidden from setting). They now report
-  `"Hungarian (per-element StructuredModel)"` and
-  `"recursive (nested StructuredModel)"` respectively, matching the labels the
-  zero-config inference path already used. Scores are unaffected; only the audit
-  trail was wrong. Plain `BaseModel` classes routed through inference were
-  already correct.
+  compared. On a configured `StructuredModel`, both a `List[StructuredModel]`
+  field and a single nested-model field reported `LevenshteinComparator`, taken
+  from a `ComparableField` default the engine never consults. Three values on
+  those rows were inert, not just the comparator:
+
+  | reported | actual |
+  |---|---|
+  | `comparator: LevenshteinComparator` | never runs; the element's own fields are compared |
+  | `threshold: 0.5` | the element class's `match_threshold` is the real gate |
+  | `clip_under_threshold: True` | a below-threshold list score is not clipped |
+
+  All three now describe the comparison, using the same labels and values the
+  zero-config inference path emits, so `explain()` reads the same whether the
+  model was configured or inferred: `"Hungarian (per-element StructuredModel)"`
+  for a list, `"StructuredModelComparator"` for a single nested model, the
+  element's `match_threshold`, and `clip_under_threshold: False`.
+
+  A comparator on a *single* nested-model field is accepted rather than rejected
+  (only the list form raises) and then ignored, so the `why` trail now names it.
+  Otherwise the structural label would hide a dead setting that the old,
+  incorrect label at least made visible.
+
+  The inference path had one of the same inaccuracies: its `model_list` rows
+  reported `clip_under_threshold: True`, where its own `model` rows correctly
+  said `False`. Corrected, so the two agree.
+
+  Scores are unaffected throughout; only the audit trail was wrong.
+
+  Still outstanding: `explain()` omits the nested dotted paths (`items.sku`) for
+  a configured `StructuredModel`, where the inference path includes them
+  ([#254](https://github.com/awslabs/stickler/issues/254)).
 
 - Zero-config evaluation no longer scores formatting-only differences in
   `email`, `url` and `phone` fields as complete mismatches. The name-token

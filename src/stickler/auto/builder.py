@@ -166,6 +166,11 @@ def _collect_specs(
                 result[path] = InferredSpec(
                     comparator_name="Hungarian (per-element StructuredModel)",
                     threshold=match_threshold,
+                    # Nested comparisons are never clipped, the same as the
+                    # `model` branch above. Leaving the default True reported a
+                    # flag the engine contradicts: a list scoring below the
+                    # threshold percolates its score up rather than becoming 0.
+                    clip_under_threshold=False,
                     provenance=["type:List[BaseModel] -> Hungarian object matching"],
                 )
                 element, _ = unwrap_optional(_list_element(annotation))
