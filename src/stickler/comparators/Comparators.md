@@ -3,6 +3,8 @@
 ## Overview
 The comparator system provides a flexible framework for measuring similarity between values, with each comparator returning a score between 0.0 and 1.0. All comparators inherit from the BaseComparator class, which provides common functionality like thresholding and binary comparison capabilities.
 
+`BaseComparator.compare()` is a template method: it applies the shared `None` policy (see Best Practices below) and then delegates to `_compare()`. Comparators implement `_compare()` and never receive `None`.
+
 ## Available Comparators
 
 ### 1. Basic Comparators
@@ -140,7 +142,10 @@ comparator = BBoxIoUComparator(threshold=0.5)
    - Consider your use case's precision/recall requirements
 
 3. **Error Handling**
-   - All comparators handle None values gracefully
+   - `None` is handled once, in `BaseComparator.compare()`, for every
+     comparator: `(None, None)` scores 1.0, and `None` against a present
+     value scores 0.0. `None` is a *missing* value and never equals `""`,
+     which is a *present but empty* one
    - Most provide fallback behavior if primary comparison fails
    - Check return values for expected range (0.0-1.0)
 

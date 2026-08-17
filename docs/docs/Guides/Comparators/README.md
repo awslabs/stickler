@@ -304,9 +304,11 @@ When you do not specify a comparator in `ComparableField`, Stickler assigns one 
 
 ## Custom Comparators
 
-You can create your own comparator by extending `BaseComparator`. The only requirement is implementing the `compare` method, which takes two values and returns a float between 0.0 and 1.0.
+You can create your own comparator by extending `BaseComparator`. The only requirement is implementing the `_compare` method, which takes two values and returns a float between 0.0 and 1.0.
 
 ### The BaseComparator Interface
+
+`compare` is a template method: it applies the shared `None` policy, then delegates to `_compare`. You implement `_compare`; callers call `compare`.
 
 ```python
 from stickler import BaseComparator
@@ -315,13 +317,21 @@ class BaseComparator(ABC):
     def __init__(self, threshold: float = 0.7):
         self.threshold = threshold
 
-    @abstractmethod
     def compare(self, str1: Any, str2: Any) -> float:
-        """Compare two values and return a similarity score.
+        """Apply the shared None policy, then delegate to _compare."""
+        if str1 is None and str2 is None:
+            return 1.0
+        if str1 is None or str2 is None:
+            return 0.0
+        return self._compare(str1, str2)
+
+    @abstractmethod
+    def _compare(self, str1: Any, str2: Any) -> float:
+        """Compare two present values. Neither argument is ever None.
 
         Args:
-            str1: First value
-            str2: Second value
+            str1: First value, never None
+            str2: Second value, never None
 
         Returns:
             Similarity score between 0.0 and 1.0
@@ -333,6 +343,17 @@ class BaseComparator(ABC):
 
 - `__call__` -- makes the comparator callable directly (delegates to `compare`).
 - `binary_compare` -- converts the continuous similarity score to a `(tp, fp)` tuple based on the threshold.
+
+### None Handling
+
+Every comparator treats `None` uniformly: two `None` values are an exact match (`1.0`); a `None` compared against a present value is a non-match (`0.0`). `None` is a *missing* value and never equals an empty string, which is a *present but empty* one.
+
+The policy lives in `BaseComparator.compare` and nowhere else. You don't write any `None`-handling code in your comparator -- by the time `_compare` runs, both arguments are guaranteed not to be `None`.
+
+!!! warning "Implement `_compare`, not `compare`"
+    Overriding `compare` directly bypasses the `None` policy and reintroduces exactly the divergence this design prevents. Implement `_compare`.
+
+    A comparator written against the older interface — implementing `compare` — still constructs and behaves exactly as written, and emits a `DeprecationWarning` naming the rename. It does **not** receive the `None` policy, since its `compare` shadows the template method. That shim is removed in 0.8.0 ([#215](https://github.com/awslabs/stickler/issues/215)), after which such a comparator raises `TypeError` at construction.
 
 ### Example: Custom RegexComparator
 
@@ -347,9 +368,8 @@ class RegexComparator(BaseComparator):
     def __init__(self, threshold: float = 1.0):
         super().__init__(threshold=threshold)
 
-    def compare(self, pattern: Any, value: Any) -> float:
-        if pattern is None or value is None:
-            return 0.0
+    def _compare(self, pattern: Any, value: Any) -> float:
+        # pattern and value are never None here -- BaseComparator handles that.
         try:
             return 1.0 if re.fullmatch(str(pattern), str(value)) else 0.0
         except re.error:

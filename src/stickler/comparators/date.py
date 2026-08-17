@@ -272,13 +272,8 @@ class DateComparator(BaseComparator):
     # Public API
     # ------------------------------------------------------------------
 
-    def compare(self, str1: Any, str2: Any) -> float:
+    def _compare(self, str1: Any, str2: Any) -> float:
         """Score two date values per the tier system documented above."""
-        if str1 is None and str2 is None:
-            return 1.0
-        if str1 is None or str2 is None:
-            return 0.0
-
         # Resolve dayfirst pairwise. ``None`` means "try both
         # interpretations and take the best score" — that way a string
         # whose layout is genuinely ambiguous in isolation can still

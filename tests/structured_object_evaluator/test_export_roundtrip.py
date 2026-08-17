@@ -231,7 +231,15 @@ def test_optional_field_roundtrip():
     schema = OptionalModel.to_json_schema()
     Reconstructed = StructuredModel.from_json_schema(schema)
 
-    # Test with non-None values (Optional nature is not preserved in round-trip — known limitation)
+    # The Optional nature now survives the JSON-Schema round-trip (issue #149):
+    # the reconstructed optional field is annotated Optional[str] and accepts None.
+    import typing
+
+    recon_note = Reconstructed.model_fields["note"].annotation
+    assert typing.get_origin(recon_note) is typing.Union
+    assert type(None) in typing.get_args(recon_note)
+    assert Reconstructed(name="Test", note=None).note is None
+
     o1 = OptionalModel(name="Test", note="hello")
     r1 = Reconstructed(name="Test", note="hello")
 

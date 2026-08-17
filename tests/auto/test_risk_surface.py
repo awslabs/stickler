@@ -156,7 +156,14 @@ class TestIdentityInvariant:
             ("updated_by", str, "Jane Smith"),
             ("days_past_due", int, -5),
             ("fee_applied", bool, True),
-            ("phone_num", str, "(555) 123-4567"),
+            # Real area code (206) with the fictional 555 exchange. "555" in the
+            # area-code position was never assigned by NANP, so PhoneComparator
+            # rejects such a number as invalid and scores it 0.0 even against
+            # itself -- deliberately, since a placeholder on both sides is not a
+            # successful extraction (#243 review). This case tests token/type
+            # conflict resolution rather than phone validity, so it uses a number
+            # that is structurally real.
+            ("phone_num", str, "(206) 555-0100"),
             ("isbn13", str, "978-3-16-148410-0"),
             ("created", bool, True),
         ],
@@ -205,7 +212,33 @@ class TestWireContract:
             meta: Dict[str, str]
 
         r = stickler.evaluate(M(meta={"a": "1"}), M(meta={"a": "TOTALLY DIFFERENT"}))
-        assert r.field_scores["meta"] < 1.0
+        # Exact over the canonical JSON string: a substantively different dict
+        # scores 0.0, not the ~0.95 edit distance on the JSON blob would give.
+        # Asserting the exact score and comparator (rather than just < 1.0) is
+        # what makes this able to detect a change to the exotic-type fallback.
+        assert r.field_scores["meta"] == pytest.approx(0.0)
+        assert r.explain()["meta"]["comparator"] == "ExactComparator"
+
+    def test_set_wire_form_is_sorted(self):
+        """Pin the canonical wire string, not just that two set literals agree.
+
+        Two ``set`` literals built in one process iterate in the same order, so
+        a score-only assertion passes even without the sort. The documented
+        dataset path is ``from_json`` on rows whose array order is whatever the
+        producer wrote, so compare differently-ordered JSON lists.
+        """
+        from stickler import StructuredModel
+
+        class M(BaseModel):
+            tags: Set[str]
+
+        MEval = StructuredModel.from_pydantic(M)
+        assert MEval.from_json({"tags": ["gamma", "alpha", "beta"]}).tags == (
+            '["alpha", "beta", "gamma"]'
+        )
+        a = MEval.from_json({"tags": ["alpha", "beta", "gamma"]})
+        b = MEval.from_json({"tags": ["gamma", "alpha", "beta"]})
+        assert a.compare_with(b)["overall_score"] == pytest.approx(1.0)
 
     def test_any_field_accepts_none(self):
         class M(BaseModel):
@@ -418,19 +451,23 @@ class TestInferenceInternals:
     """Guard behaviors that end-to-end tests don't exercise."""
 
     def test_phone_token_beats_numeric_token_order(self):
-        """A str field named 'phone_num' resolves to Exact, not Numeric.
+        """A str field named 'phone_num' resolves to Phone, not Numeric.
 
-        'num' and 'phone' both tokenize; the email/phone rule must precede the
-        quantity rule. NumericComparator would strip formatting and score
-        distinct formatted phone numbers as equal (and identical ones fine but
-        for the wrong reason). Kills the rule-reorder mutation.
+        'num' and 'phone' both tokenize; the phone rule must precede the
+        quantity rule. NumericComparator strips non-digits, so it would report a
+        reformatted number as 0.0 while claiming a numeric comparison. Kills the
+        rule-reorder mutation.
+
+        The expected comparator changed in 0.7.0 (it was ExactComparator, which
+        only worked while Exact silently normalized punctuation -- see #242).
+        The property under test is the rule *ordering*, which is unchanged.
         """
         from pydantic.fields import FieldInfo
 
         from stickler.auto.inference import infer_field_config
 
         spec = infer_field_config("phone_num", FieldInfo(annotation=str))
-        assert spec.comparator_name == "ExactComparator"
+        assert spec.comparator_name == "PhoneComparator"
 
     def test_gate_degrades_unregistered_comparator(self):
         """_gate falls back and records provenance for an unavailable comparator."""
@@ -598,8 +635,9 @@ class TestFromPydantic:
         Edited = StructuredModel.model_from_json(config)
         gt = Edited.from_json({"name": "x", "note": "Hello World"})
         pred = Edited.from_json({"name": "x", "note": "hello, world"})
-        # ExactComparator normalizes case/punctuation: still a match.
-        assert gt.compare_with(pred)["field_scores"]["note"] == pytest.approx(1.0)
+        # ExactComparator (0.7.0+) is truly exact: no case/punctuation normalization.
+        # These strings differ, so score is 0.0.
+        assert gt.compare_with(pred)["field_scores"]["note"] == pytest.approx(0.0)
 
     def test_evaluate_and_from_pydantic_agree(self):
         """The facade and the constructor produce identical scores."""
@@ -692,6 +730,50 @@ class TestNumericEdgeCases:
         assert stickler.eval_for(M).explain()["price"]["comparator"] == (
             "NumericComparator"
         )
+
+    def test_decimal_type_branch_without_a_name_token(self):
+        """Decimal must infer Numeric on its type alone.
+
+        The two tests above use ``total_amount`` and ``price``, which both hit
+        the money name-token rule and reinstall NumericComparator on top of
+        whatever the type branch returned. A token-free name is what actually
+        pins the Decimal type dispatch. Decimal is the money type: comparing it
+        as a string would score Decimal('100') vs Decimal('100.00') as 0.0.
+        """
+        from decimal import Decimal
+
+        class M(BaseModel):
+            val: Decimal
+
+        assert stickler.eval_for(M).explain()["val"]["comparator"] == (
+            "NumericComparator"
+        )
+        r = stickler.evaluate(M(val=Decimal("100")), M(val=Decimal("100.00")))
+        assert r.field_scores["val"] == pytest.approx(1.0)
+
+    def test_decimal_money_token_applies_relative_tolerance(self):
+        """The Decimal -> numeric token-family mapping carries the tolerance.
+
+        Both existing Decimal pairs (100 vs 100.00, 100 vs 200) match or miss
+        under any tolerance, so neither observes the money rule's relative
+        tolerance. These land inside and outside the band.
+        """
+        from decimal import Decimal
+
+        class M(BaseModel):
+            total_amount: Decimal
+
+        assert stickler.eval_for(M).explain()["total_amount"]["threshold"] == (
+            pytest.approx(0.95)
+        )
+        inside = stickler.evaluate(
+            M(total_amount=Decimal("100")), M(total_amount=Decimal("100.05"))
+        )
+        assert inside.field_scores["total_amount"] == pytest.approx(1.0)
+        outside = stickler.evaluate(
+            M(total_amount=Decimal("100")), M(total_amount=Decimal("101"))
+        )
+        assert outside.field_scores["total_amount"] == pytest.approx(0.0)
 
 
 class TestDumpModeEquivalence:

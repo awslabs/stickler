@@ -22,17 +22,14 @@ class CaseInsensitiveComparator(LevenshteinComparator):
         """Return the name of the comparator."""
         return "case_insensitive"
 
-    def compare(self, a: Any, b: Any) -> float:
+    def _compare(self, a: Any, b: Any) -> float:
         """Compare strings in a case-insensitive way."""
-        if a is None or b is None:
-            return 1.0 if a == b else 0.0
-
         # Convert both to strings and lowercase
         a_str = str(a).lower()
         b_str = str(b).lower()
 
         # Use the parent Levenshtein implementation
-        return super().compare(a_str, b_str)
+        return super()._compare(a_str, b_str)
 
 
 # Define a stricter comparator that preserves case
@@ -44,11 +41,8 @@ class StrictCaseComparator(BaseComparator):
         """Return the name of the comparator."""
         return "strict_case"
 
-    def compare(self, a: Any, b: Any) -> float:
+    def _compare(self, a: Any, b: Any) -> float:
         """Compare strings with case sensitivity."""
-        if a is None or b is None:
-            return 1.0 if a == b else 0.0
-
         # Convert to strings but preserve case
         a_str = str(a)
         b_str = str(b)
@@ -203,8 +197,10 @@ def test_fuzzy_comparator_variants():
 
     # Create models with different fuzzy comparator methods
     class FuzzyVariantsModel(StructuredModel):
-        match_threshold = 0.0
-
+        # No `match_threshold`: this model is compared directly, never as a
+        # `List[StructuredModel]` element, so the attribute is never read. It
+        # previously carried 0.0, which is inert here but trips the
+        # zero-threshold warning (issue #234).
         ratio: str = ComparableField(
             comparator=FuzzyComparator(method="ratio"), threshold=0.5
         )
@@ -332,16 +328,28 @@ def test_threshold_effects():
 
 
 def test_custom_comparator_in_schema():
-    """Test that custom comparators are correctly reflected in the schema."""
-    # Get schema for model with custom comparator
+    """Custom comparators are recorded on the field, not the rendered schema.
+
+    ``model_json_schema()`` describes the shape only (issue #188); the
+    comparison config is read from ``json_schema_extra`` the way the engine
+    reads it.
+    """
+    # The rendered schema must not leak comparison config
     schema = SpecializedComparatorModel.model_json_schema()
+    assert "x-comparison" not in schema["properties"]["standard_field"]
+    assert "x-comparison" not in schema["properties"]["insensitive_field"]
+
+    def comparison_metadata(field_name):
+        extra = {}
+        SpecializedComparatorModel.model_fields[field_name].json_schema_extra(extra)
+        return extra["x-comparison"]
 
     # Check standard field
-    std_comp_info = schema["properties"]["standard_field"]["x-comparison"]
+    std_comp_info = comparison_metadata("standard_field")
     assert std_comp_info["comparator_type"] == "LevenshteinComparator"
     assert std_comp_info["comparator_name"] == "levenshtein"
 
     # Check case insensitive field
-    case_comp_info = schema["properties"]["insensitive_field"]["x-comparison"]
+    case_comp_info = comparison_metadata("insensitive_field")
     assert case_comp_info["comparator_type"] == "CaseInsensitiveComparator"
     assert case_comp_info["comparator_name"] == "case_insensitive"

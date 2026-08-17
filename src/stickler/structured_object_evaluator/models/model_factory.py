@@ -14,6 +14,7 @@ from .field_converter import (
     get_global_converter,
     validate_fields_config,
 )
+from .threshold_helper import model_identity, warn_if_threshold_is_zero
 
 
 class ModelFactory:
@@ -164,8 +165,23 @@ class ModelFactory:
         except Exception as e:
             raise ValueError(f"Error creating dynamic model: {e}")
 
-        # Set class-level attributes
+        # Set class-level attributes. Assigned after create_model, so
+        # StructuredModel.__init_subclass__ has already run and cannot see it --
+        # check here too or a config-driven match_threshold=0.0 warns nowhere.
         DynamicClass.match_threshold = match_threshold
+        # Dedup on name plus field names, not on `id(DynamicClass)`. `model_name`
+        # defaults to "DynamicModel", so keying on the name alone would report
+        # the first anonymous config and silence every later one. But keying on
+        # object identity is worse: a new class object is created per call, so
+        # loading the same config in a loop floods stderr (measured: 200 loads,
+        # 192 warnings) and grows the process-global `_warned` set without bound
+        # -- the exact behaviour `warn_once` exists to prevent. Field names are
+        # stable across repeated loads of one config and differ between configs.
+        warn_if_threshold_is_zero(
+            match_threshold,
+            model_identity(model_name, field_definitions),
+            "match_threshold",
+        )
 
         # Add configuration metadata for debugging/introspection
         DynamicClass._model_config = config
@@ -279,8 +295,23 @@ class ModelFactory:
         except Exception as e:
             raise ValueError(f"Error creating dynamic model: {e}")
 
-        # Set class-level attributes
+        # Set class-level attributes. Assigned after create_model, so
+        # StructuredModel.__init_subclass__ has already run and cannot see it --
+        # check here too or a config-driven match_threshold=0.0 warns nowhere.
         DynamicClass.match_threshold = match_threshold
+        # Dedup on name plus field names, not on `id(DynamicClass)`. `model_name`
+        # defaults to "DynamicModel", so keying on the name alone would report
+        # the first anonymous config and silence every later one. But keying on
+        # object identity is worse: a new class object is created per call, so
+        # loading the same config in a loop floods stderr (measured: 200 loads,
+        # 192 warnings) and grows the process-global `_warned` set without bound
+        # -- the exact behaviour `warn_once` exists to prevent. Field names are
+        # stable across repeated loads of one config and differ between configs.
+        warn_if_threshold_is_zero(
+            match_threshold,
+            model_identity(model_name, field_definitions),
+            "match_threshold",
+        )
 
         return DynamicClass
 

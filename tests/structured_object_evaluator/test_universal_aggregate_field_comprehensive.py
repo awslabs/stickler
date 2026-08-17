@@ -157,19 +157,34 @@ class TestUniversalAggregateField:
             ],
         }
 
-    def test_deprecation_warning_for_legacy_aggregate_parameter(self):
-        """Test that using aggregate=True triggers deprecation warning."""
+    @pytest.mark.parametrize("value", [True, False])
+    def test_deprecation_warning_for_legacy_aggregate_parameter(self, value):
+        """Passing 'aggregate' at all warns, whichever value is given.
+
+        aggregate=False used to be silent, so those callers had no signal the
+        parameter is going away and would have met a bare TypeError on the
+        0.8.0 removal (issue #226). The value has no effect either way.
+        """
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
 
-            # This should trigger a deprecation warning
-            ComparableField(aggregate=True)
+            ComparableField(aggregate=value)
 
-            # Verify warning was triggered
             assert len(w) == 1
             assert issubclass(w[0].category, DeprecationWarning)
-            assert "aggregate" in str(w[0].message)
-            assert "deprecated" in str(w[0].message)
+            message = str(w[0].message)
+            assert "aggregate" in message
+            assert "deprecated" in message
+            assert "0.8.0" in message, "the warning should name the removal version"
+
+    def test_no_warning_when_aggregate_is_omitted(self):
+        """The common case stays quiet."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+
+            ComparableField(threshold=0.8)
+
+            assert [x for x in w if issubclass(x.category, DeprecationWarning)] == []
 
     def test_universal_aggregate_field_presence(self):
         """Test that aggregate fields are present at every level."""

@@ -158,9 +158,272 @@ class TestEndToEndWorkflow:
         # Test exact match
         score = emp1.compare(emp2)
         assert score == 1.0
-        
+
         result = emp1.compare_with(emp2)
         assert result["overall_score"] == 1.0
+
+
+class TestOptionalFieldNoneFromJson:
+    """Regression tests for issue #149.
+
+    from_json(process_rich_values=True) must accept models where an OPTIONAL
+    JSON-Schema field (absent from ``required``) is omitted from the payload.
+
+    Before the fix, from_json_schema() built optional fields with
+    ``default=None`` but a NON-nullable annotation (bare ``str``). The
+    rich-value path round-trips nested objects through
+    ``from_json(...).model_dump()``, which materializes the ``None`` default
+    and re-validates it against ``str`` -> ValidationError. Plain
+    ``ModelClass(**data)`` never hit this because it does not re-validate the
+    dumped ``None``.
+    """
+
+    def test_optional_nested_field_none_via_from_json_rich_values(self):
+        """Nested object with an OPTIONAL inner field round-trips via from_json.
+
+        Both ``M(**data)`` and ``M.from_json(data, process_rich_values=True)``
+        must succeed and agree when the optional inner field is omitted.
+        """
+        schema = {
+            "type": "object",
+            "properties": {
+                "C": {
+                    "type": "object",
+                    "properties": {
+                        "A": {"type": "string"},
+                        "B": {"type": "string"},  # OPTIONAL (not in required)
+                    },
+                    "required": ["A"],
+                },
+            },
+            "required": ["C"],
+        }
+
+        M = StructuredModel.from_json_schema(schema)
+
+        data = {"C": {"A": "x"}}
+
+        # Plain construction accepts the missing optional field.
+        plain = M(**data)
+        assert plain.C.A == "x"
+        assert plain.C.B is None
+
+        # from_json with rich-value processing must also accept it (the bug).
+        rich = M.from_json(data, process_rich_values=True)
+        assert rich.C.A == "x"
+        assert rich.C.B is None
+
+        # The two paths must agree.
+        assert plain.model_dump() == rich.model_dump()
+
+    def test_optional_primitive_nested_in_object_none_via_from_json_rich_values(self):
+        """OPTIONAL primitive INSIDE a nested object round-trips via from_json.
+
+        This nests the optional primitive one level down so it travels the real
+        bug path: ConfigurationHelper._process_nested_structured_data round-trips
+        the nested object through from_json(...).model_dump(), which materializes
+        the None default and re-validates it. A *top-level* optional primitive
+        never re-validates its default, so it would pass even without the fix and
+        would not pin the bug (per @adiadd's review).
+        """
+        schema = {
+            "type": "object",
+            "properties": {
+                "meta": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "note": {"type": "string"},  # OPTIONAL inner primitive
+                    },
+                    "required": ["id"],
+                },
+            },
+            "required": ["meta"],
+        }
+
+        M = StructuredModel.from_json_schema(schema)
+        data = {"meta": {"id": "x"}}
+
+        plain = M(**data)
+        rich = M.from_json(data, process_rich_values=True)
+        assert plain.meta.note is None
+        assert rich.meta.note is None
+        assert plain.model_dump() == rich.model_dump()
+
+    def test_optional_array_nested_in_object_none_via_from_json_rich_values(self):
+        """OPTIONAL array INSIDE a nested object round-trips via from_json.
+
+        Nested so it exercises the re-validation path that genuinely failed
+        pre-fix; a top-level optional array would pass regardless of the fix.
+        """
+        schema = {
+            "type": "object",
+            "properties": {
+                "container": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        # OPTIONAL inner array
+                        "tags": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["id"],
+                },
+            },
+            "required": ["container"],
+        }
+
+        M = StructuredModel.from_json_schema(schema)
+        data = {"container": {"id": "x"}}
+
+        plain = M(**data)
+        rich = M.from_json(data, process_rich_values=True)
+        assert plain.container.tags is None
+        assert rich.container.tags is None
+        assert plain.model_dump() == rich.model_dump()
+
+    def test_required_field_with_explicit_null_default_round_trips(self):
+        """A REQUIRED field carrying an explicit ``"default": null`` round-trips.
+
+        Per @adiadd's review: the invariant being repaired is "a None default
+        needs a nullable annotation". Keying the widening off ``is_required``
+        alone misses a field that is in ``required`` but declares
+        ``"default": null`` — it keeps a bare annotation + None default and
+        crashes the same way through the rich-value path. The widening condition
+        must therefore be ``not is_required or default is None``.
+        """
+        schema = {
+            "type": "object",
+            "properties": {
+                "C": {
+                    "type": "object",
+                    "properties": {
+                        "A": {"type": "string"},
+                        # REQUIRED, but explicit null default.
+                        "B": {"type": "string", "default": None},
+                    },
+                    "required": ["A", "B"],
+                },
+            },
+            "required": ["C"],
+        }
+
+        M = StructuredModel.from_json_schema(schema)
+        data = {"C": {"A": "x"}}  # B omitted -> its null default materializes
+
+        plain = M(**data)
+        rich = M.from_json(data, process_rich_values=True)
+        assert plain.C.B is None
+        assert rich.C.B is None
+        assert plain.model_dump() == rich.model_dump()
+
+
+class TestOptionalFieldExplicitNullContract:
+    """Documents an intentional, externally observable contract change (#149).
+
+    Widening non-required fields to ``Optional[T]`` means an EXPLICIT ``null``
+    for an optional typed field is now accepted where it previously raised. This
+    is more permissive than strict JSON-Schema semantics (``null`` is invalid for
+    ``"type": "string"``), but it is deliberate: LLM predictions emit explicit
+    nulls, and those should score as a value rather than crash evaluation. The
+    field's ``model_json_schema()`` correspondingly emits ``anyOf: [T, null]``.
+
+    These tests pin that contract so a future change can't silently revert it.
+    """
+
+    def _schema(self):
+        return {
+            "type": "object",
+            "properties": {
+                "a": {"type": "string"},
+                "b": {"type": "string"},  # OPTIONAL
+            },
+            "required": ["a"],
+        }
+
+    def test_explicit_null_accepted_via_plain_construction(self):
+        M = StructuredModel.from_json_schema(self._schema())
+        m = M(**{"a": "x", "b": None})
+        assert m.b is None
+
+    def test_explicit_null_accepted_via_from_json_rich_values(self):
+        M = StructuredModel.from_json_schema(self._schema())
+        m = M.from_json({"a": "x", "b": None}, process_rich_values=True)
+        assert m.b is None
+
+    def test_optional_field_emits_anyof_null_in_model_json_schema(self):
+        M = StructuredModel.from_json_schema(self._schema())
+        b_schema = M.model_json_schema()["properties"]["b"]
+        assert "anyOf" in b_schema
+        types = {entry.get("type") for entry in b_schema["anyOf"]}
+        assert types == {"string", "null"}
+
+
+class TestOptionalNestedBreakdownPreserved:
+    """Regression for issue #149 review (@adiadd): the Optional[T] widening must
+    not silently degrade the comparison metric tree.
+
+    An OPTIONAL nested object inside a list of objects is annotated
+    ``Optional[NestedModel]``. ``is_structured_field_type`` must recognize that
+    shape so ``compare_recursive`` keeps the full nested ``fields`` breakdown for
+    the optional object, rather than collapsing it to flat counts.
+    """
+
+    def test_optional_nested_object_in_list_keeps_nested_breakdown(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "people": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "addr": {  # OPTIONAL nested object (absent from required)
+                                "type": "object",
+                                "properties": {
+                                    "city": {"type": "string"},
+                                    "country": {"type": "string"},
+                                },
+                                "required": ["city"],
+                            },
+                        },
+                        "required": ["id"],
+                    },
+                },
+            },
+            "required": ["people"],
+        }
+
+        M = StructuredModel.from_json_schema(schema)
+
+        gt = M(
+            **{
+                "people": [
+                    {"id": "1", "addr": {"city": "NYC", "country": "USA"}},
+                    {"id": "2", "addr": {"city": "LA", "country": "USA"}},
+                ]
+            }
+        )
+        pred = M(
+            **{
+                "people": [
+                    {"id": "1", "addr": {"city": "New York", "country": "USA"}},
+                    {"id": "2", "addr": {"city": "Los Angeles", "country": "USA"}},
+                ]
+            }
+        )
+
+        result = gt.compare_recursive(pred)
+
+        # The optional nested object must retain its per-field breakdown, not
+        # collapse to flat counts.
+        addr = result["fields"]["people"]["fields"]["addr"]
+        assert "fields" in addr, (
+            "optional nested object 'addr' lost its nested breakdown "
+            "(Optional[NestedModel] not recognized as structured)"
+        )
+        assert "city" in addr["fields"]
+        assert "country" in addr["fields"]
 
 
 class TestComplexNestedStructures:

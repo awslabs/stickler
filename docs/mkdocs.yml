@@ -62,6 +62,11 @@ plugins:
               docstring_style: google
               show_root_heading: true
               show_source: true
+              # mkdocstrings hides single-underscore members by default, which
+              # would drop every comparator's `_compare` -- the method whose
+              # docstring carries the per-comparator Args, Returns and Raises.
+              # Keep the default exclusion and re-admit that one name.
+              filters: ["!^_[^_]", "^_compare$"]
 
 extra_javascript:
   # Workaround for site_url breaking mermaid rendering; see the following for more info:
