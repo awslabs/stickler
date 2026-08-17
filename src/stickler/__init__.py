@@ -15,8 +15,6 @@ from .auto import EvalResult, EvalSpec, eval_for, evaluate
 
 # Always-available comparators (core deps)
 from .comparators.base import BaseComparator
-from .comparators.bbox import BBoxIoUComparator
-from .comparators.date import DateComparator
 from .comparators.exact import ExactComparator
 from .comparators.fuzzy import FuzzyComparator
 from .comparators.levenshtein import LevenshteinComparator
@@ -156,8 +154,6 @@ __all__ = [
     "BaseComparator",
     "ExactComparator",
     "PhoneComparator",
-    "DateComparator",
-    "BBoxIoUComparator",
     "FuzzyComparator",
     "LevenshteinComparator",
     "NumericComparator",
