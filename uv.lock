@@ -9,7 +9,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-07-07T13:31:42.498833Z"
+exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
 exclude-newer-span = "P7D"
 
 [[package]]
@@ -219,6 +219,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/9a/8e/82a0fe20a541c03148528be8cac2408564a6c9a0cc7e9171802bc1d26985/attrs-26.1.0.tar.gz", hash = "sha256:d03ceb89cb322a8fd706d4fb91940737b6642aa36998fe130a9bc96c985eff32", size = 952055, upload-time = "2026-03-19T14:22:25.026Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/64/b4/17d4b0b2a2dc85a6df63d1157e028ed19f90d4cd97c36717afef2bc2f395/attrs-26.1.0-py3-none-any.whl", hash = "sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309", size = 67548, upload-time = "2026-03-19T14:22:23.645Z" },
+]
+
+[[package]]
+name = "aws-requests-auth"
+version = "0.4.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/54/b2/455c0bfcbd772dafd4c9e93c4b713e36790abf9ccbca9b8e661968b29798/aws-requests-auth-0.4.3.tar.gz", hash = "sha256:33593372018b960a31dbbe236f89421678b885c35f0b6a7abfae35bb77e069b2", size = 10096, upload-time = "2020-05-27T23:10:34.742Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/af/11/5dc8be418e1d54bed15eaf3a7461797e5ebb9e6a34869ad750561f35fa5b/aws_requests_auth-0.4.3-py2.py3-none-any.whl", hash = "sha256:646bc37d62140ea1c709d20148f5d43197e6bd2d63909eb36fa4bb2345759977", size = 6838, upload-time = "2020-05-27T23:10:33.658Z" },
 ]
 
 [[package]]
@@ -866,7 +878,7 @@ name = "cuda-bindings"
 version = "13.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cuda-pathfinder", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "cuda-pathfinder" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1a/fe/7351d7e586a8b4c9f89731bfe4cf0148223e8f9903ff09571f78b3fb0682/cuda_bindings-13.2.0-cp310-cp310-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:08b395f79cb89ce0cd8effff07c4a1e20101b873c256a1aeb286e8fd7bd0f556", size = 5744254, upload-time = "2026-03-11T00:12:29.798Z" },
@@ -901,34 +913,34 @@ wheels = [
 
 [package.optional-dependencies]
 cudart = [
-    { name = "nvidia-cuda-runtime", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-cuda-runtime" },
 ]
 cufft = [
-    { name = "nvidia-cufft", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-cufft" },
 ]
 cufile = [
-    { name = "nvidia-cufile", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-cufile" },
 ]
 cupti = [
-    { name = "nvidia-cuda-cupti", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-cuda-cupti" },
 ]
 curand = [
-    { name = "nvidia-curand", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-curand" },
 ]
 cusolver = [
-    { name = "nvidia-cusolver", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-cusolver" },
 ]
 cusparse = [
-    { name = "nvidia-cusparse", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-cusparse" },
 ]
 nvjitlink = [
-    { name = "nvidia-nvjitlink", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-nvjitlink" },
 ]
 nvrtc = [
-    { name = "nvidia-cuda-nvrtc", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-cuda-nvrtc" },
 ]
 nvtx = [
-    { name = "nvidia-nvtx", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-nvtx" },
 ]
 
 [[package]]
@@ -1297,7 +1309,7 @@ version = "1.0.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
-    { name = "h11", marker = "sys_platform != 'emscripten'" },
+    { name = "h11" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/06/94/82699a10bca87a5556c9c59b5963f2d039dbd239f25bc2a63907a05a14cb/httpcore-1.0.9.tar.gz", hash = "sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8", size = 85484, upload-time = "2025-04-24T22:06:22.219Z" }
 wheels = [
@@ -1581,6 +1593,19 @@ wheels = [
 ]
 
 [[package]]
+name = "markdownify"
+version = "1.2.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "beautifulsoup4" },
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/92/ab/d1297139c0e2ceb151ae564c8c4f57ac0155d8f1f8b4cbd5d6523c82ea36/markdownify-1.2.3.tar.gz", hash = "sha256:1a176f05522c8a2cb1dd3ab9d307dcdadbed5c26ae717855bfc42b3b6d38d937", size = 18852, upload-time = "2026-06-30T20:27:39.06Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/04/10/fa543d484e8b1199243fe20eedd02cc5af050edebce98a7293a5773df592/markdownify-1.2.3-py3-none-any.whl", hash = "sha256:a189a0bedfd14009030fde5f85bb6f77c56897cb839b5c25315dd7d4e3e290ba", size = 15732, upload-time = "2026-06-30T20:27:38.094Z" },
+]
+
+[[package]]
 name = "markupsafe"
 version = "3.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1788,7 +1813,7 @@ name = "mkdocs"
 version = "1.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click", marker = "sys_platform != 'emscripten'" },
+    { name = "click" },
     { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "ghp-import" },
     { name = "jinja2" },
@@ -2319,7 +2344,7 @@ name = "nvidia-cudnn-cu13"
 version = "9.20.0.48"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "nvidia-cublas" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/56/c5/83384d846b2fd17c44bd499b36c75a45ed4f095fbbb2252294e89cea5c5c/nvidia_cudnn_cu13-9.20.0.48-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:e31454ae00094b0c55319d9d15b6fa2fc50a9e1c0f5c8c80fb75258234e731e1", size = 444574296, upload-time = "2026-03-09T19:28:27.751Z" },
@@ -2331,7 +2356,7 @@ name = "nvidia-cufft"
 version = "12.0.0.61"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "nvidia-nvjitlink" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8b/ae/f417a75c0259e85c1d2f83ca4e960289a5f814ed0cea74d18c353d3e989d/nvidia_cufft-12.0.0.61-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:2708c852ef8cd89d1d2068bdbece0aa188813a0c934db3779b9b1faa8442e5f5", size = 214053554, upload-time = "2025-09-04T08:31:38.196Z" },
@@ -2361,9 +2386,9 @@ name = "nvidia-cusolver"
 version = "12.0.4.66"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "nvidia-cusparse", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "nvidia-nvjitlink", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "nvidia-cublas" },
+    { name = "nvidia-cusparse" },
+    { name = "nvidia-nvjitlink" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c8/c3/b30c9e935fc01e3da443ec0116ed1b2a009bb867f5324d3f2d7e533e776b/nvidia_cusolver-12.0.4.66-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:02c2457eaa9e39de20f880f4bd8820e6a1cfb9f9a34f820eb12a155aa5bc92d2", size = 223467760, upload-time = "2025-09-04T08:33:04.222Z" },
@@ -2375,7 +2400,7 @@ name = "nvidia-cusparse"
 version = "12.6.3.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "nvidia-nvjitlink" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f8/94/5c26f33738ae35276672f12615a64bd008ed5be6d1ebcb23579285d960a9/nvidia_cusparse-12.6.3.3-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:80bcc4662f23f1054ee334a15c72b8940402975e0eab63178fc7e670aa59472c", size = 162155568, upload-time = "2025-09-04T08:33:42.864Z" },
@@ -2708,6 +2733,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
+]
+
+[[package]]
+name = "prompt-toolkit"
+version = "3.0.53"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "wcwidth" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7d/ea/39b988c938f75cb75d7045b5c69f8bfed47ee2152c8837fb403de29d6fb8/prompt_toolkit-3.0.53.tar.gz", hash = "sha256:9ec8a0ad96d5c56148b3f914aa79c1564c3fde5d2e6b876e7bc327e353cf8fa6", size = 435492, upload-time = "2026-07-26T20:56:14.758Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/54/6f/84908cad2d6aa5144abcf7b42709fe4fdb459bc640ec7ac5786e7693dabc/prompt_toolkit-3.0.53-py3-none-any.whl", hash = "sha256:01c0891d7f9237d5e339f7d3e42cdae80b7534abb1c7c0e3352efba6231492f2", size = 392288, upload-time = "2026-07-26T20:56:12.512Z" },
 ]
 
 [[package]]
@@ -3971,6 +4008,27 @@ wheels = [
 ]
 
 [[package]]
+name = "slack-bolt"
+version = "1.30.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "slack-sdk" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e3/4f/5ba15533d66da2e7174334cc0e2805142e5390c9f4c5f31633df78b17006/slack_bolt-1.30.0.tar.gz", hash = "sha256:af38258d41f801ad9c74503090e0f39accd66c49f667f7e55c97fcdb0e51b886", size = 131180, upload-time = "2026-07-15T20:47:33.679Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2f/ee/1a7a286cf98fa3f4eeffaabc090e82f58f058ab4812aa1d7421d92c2637a/slack_bolt-1.30.0-py2.py3-none-any.whl", hash = "sha256:81f5bc46e79516d23d5e2a31dded6304dd1b8b6b72c0083f2f31d5d801e262c4", size = 235341, upload-time = "2026-07-15T20:47:32.113Z" },
+]
+
+[[package]]
+name = "slack-sdk"
+version = "3.43.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/13/75/a4964eb771a0c74d79ee7a3bee6fb5d9718909dd1b675e80d62a6a0ad90a/slack_sdk-3.43.0.tar.gz", hash = "sha256:0553152e46c4259eb69f7464cdadc35ba4802ca10f9f5a849c92cf03d6c2ba07", size = 252769, upload-time = "2026-06-30T18:04:41.59Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e4/55/42141b8338d46323d5b3c6095201b044c670c20f898643b322ea9b1543a1/slack_sdk-3.43.0-py2.py3-none-any.whl", hash = "sha256:4b6557c65577fc172f685af218b811f9f3b4909e24cddd839ada09565f10c585", size = 315866, upload-time = "2026-06-30T18:04:39.636Z" },
+]
+
+[[package]]
 name = "soupsieve"
 version = "2.8.4"
 source = { registry = "https://pypi.org/simple" }
@@ -4014,6 +4072,7 @@ dependencies = [
     { name = "munkres" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "phonenumberslite" },
     { name = "pydantic" },
     { name = "python-dateutil" },
     { name = "rapidfuzz" },
@@ -4031,6 +4090,7 @@ all = [
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "strands-agents" },
+    { name = "strands-agents-evals" },
 ]
 bert = [
     { name = "bert-score" },
@@ -4056,6 +4116,7 @@ dev = [
     { name = "scikit-learn", version = "1.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "strands-agents-evals" },
 ]
 docsplit = [
     { name = "pandas" },
@@ -4075,6 +4136,9 @@ semantic = [
     { name = "boto3" },
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+strands-evals = [
+    { name = "strands-agents-evals" },
 ]
 
 [package.dev-dependencies]
@@ -4158,11 +4222,13 @@ requires-dist = [
     { name = "scipy", marker = "extra == 'dev'", specifier = ">=1.12.0,<2.0.0" },
     { name = "scipy", marker = "extra == 'docsplit'", specifier = ">=1.12.0,<2.0.0" },
     { name = "scipy", marker = "extra == 'semantic'", specifier = ">=1.12.0,<2.0.0" },
-    { name = "stickler-eval", extras = ["llm", "semantic", "confidence", "docsplit", "reporting"], marker = "extra == 'all'" },
+    { name = "stickler-eval", extras = ["llm", "semantic", "confidence", "docsplit", "reporting", "strands-evals"], marker = "extra == 'all'" },
     { name = "strands-agents", marker = "extra == 'llm'", specifier = ">=1.14.0,<2.0.0" },
+    { name = "strands-agents-evals", marker = "extra == 'dev'", specifier = ">=1.1.0,<2.0.0" },
+    { name = "strands-agents-evals", marker = "extra == 'strands-evals'", specifier = ">=1.1.0,<2.0.0" },
     { name = "torch", marker = "extra == 'bert'", specifier = ">=2.2.0" },
 ]
-provides-extras = ["dev", "llm", "bert", "semantic", "confidence", "docsplit", "reporting", "all"]
+provides-extras = ["dev", "llm", "bert", "semantic", "confidence", "docsplit", "reporting", "strands-evals", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -4206,25 +4272,75 @@ test = [
 
 [[package]]
 name = "strands-agents"
-version = "1.16.0"
+version = "1.51.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "boto3" },
     { name = "botocore" },
     { name = "docstring-parser" },
+    { name = "httpx" },
     { name = "jsonschema" },
     { name = "mcp" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-instrumentation-threading" },
     { name = "opentelemetry-sdk" },
-    { name = "phonenumberslite" },
     { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "typing-extensions" },
     { name = "watchdog" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e0/bd/160ad34c1b635ee534f0dd8de009097fff849101a847a0ae160b73f7aa41/strands_agents-1.16.0.tar.gz", hash = "sha256:661e1fcf7e86e11277b5b15c827ca5abe00dfc425bb39036f85c0ebffedd11d7", size = 512502, upload-time = "2025-11-12T21:11:17.753Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1a/07/cb77bb1773d885e96dc0412920c620cdc660ef5113e9b61c3cd026240102/strands_agents-1.51.0.tar.gz", hash = "sha256:4cbd0b183aad0bb60ac7c6043d29841c8933937c97228e91669d2d97fc40776d", size = 1285092, upload-time = "2026-08-07T18:07:43.833Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/93/a3/f5a2f9810f51f7d204ec395d6ba324680b5d4b3c6589b22ebd4082bcba0b/strands_agents-1.16.0-py3-none-any.whl", hash = "sha256:6668771902b26fdd40ee616f9ba023199defc5d2e0b084c3705c918b6788c507", size = 253753, upload-time = "2025-11-12T21:11:15.549Z" },
+    { url = "https://files.pythonhosted.org/packages/99/4c/937595709a56e966bc471d2fe14071910b2f57d1975a7fd701da18eedabe/strands_agents-1.51.0-py3-none-any.whl", hash = "sha256:1e0a8d125652d7a863cae8fd717b22e4fa5c7983b499438d1f0f50bf328e8832", size = 663778, upload-time = "2026-08-07T18:07:42.253Z" },
+]
+
+[[package]]
+name = "strands-agents-evals"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "boto3" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-instrumentation-threading" },
+    { name = "opentelemetry-sdk" },
+    { name = "pydantic" },
+    { name = "rich" },
+    { name = "strands-agents" },
+    { name = "strands-agents-tools" },
+    { name = "tenacity" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ff/52/a2d0b449bbcee64b1001f43ef84000874b66df646c55f35034eb052cba7f/strands_agents_evals-1.1.0.tar.gz", hash = "sha256:9cc7de1243018613611fb46ad6d7d4e051de32a1db42ae9996333d44f0f1ad0f", size = 502700, upload-time = "2026-08-07T18:08:31.772Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1d/88/c9ff2db9d6a60f374f3c0a610ce5952d22be542dfae57fa939da59d69a29/strands_agents_evals-1.1.0-py3-none-any.whl", hash = "sha256:889141af4c3d4d937306bc2e661d651c742cfcd5346f7bd086e85dc5751fff82", size = 364962, upload-time = "2026-08-07T18:08:29.963Z" },
+]
+
+[[package]]
+name = "strands-agents-tools"
+version = "0.8.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "aws-requests-auth" },
+    { name = "botocore" },
+    { name = "dill" },
+    { name = "markdownify" },
+    { name = "pillow" },
+    { name = "prompt-toolkit" },
+    { name = "pyjwt" },
+    { name = "requests" },
+    { name = "rich" },
+    { name = "slack-bolt" },
+    { name = "strands-agents" },
+    { name = "sympy" },
+    { name = "tenacity" },
+    { name = "typing-extensions" },
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
+    { name = "watchdog" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/bd/fc/63031f0d5483a036eb732ae52624e6429ed1385d9c68515763c323da00fd/strands_agents_tools-0.8.6.tar.gz", hash = "sha256:3cdafd706909be6e8cab5411067cdc5af269bec29f1903788629e3f092d9e8aa", size = 533539, upload-time = "2026-08-07T18:09:03.432Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9e/32/36ff3b19528430d68f740bf61d6fe1f4afbf670f69a2ca204ae1f04139e2/strands_agents_tools-0.8.6-py3-none-any.whl", hash = "sha256:ed87ef1c405c635164e7e85e1cb0a1560bd30156b54b3c6cb11574e67d111d5c", size = 338989, upload-time = "2026-08-07T18:09:01.549Z" },
 ]
 
 [[package]]
@@ -4237,6 +4353,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/83/d3/803453b36afefb7c2bb238361cd4ae6125a569b4db67cd9e79846ba2d68c/sympy-1.14.0.tar.gz", hash = "sha256:d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517", size = 7793921, upload-time = "2025-04-27T18:05:01.611Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a2/09/77d55d46fd61b4a135c444fc97158ef34a095e5681d0a6c10b75bf356191/sympy-1.14.0-py3-none-any.whl", hash = "sha256:e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5", size = 6299353, upload-time = "2025-04-27T18:04:59.103Z" },
+]
+
+[[package]]
+name = "tenacity"
+version = "9.1.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/47/c6/ee486fd809e357697ee8a44d3d69222b344920433d3b6666ccd9b374630c/tenacity-9.1.4.tar.gz", hash = "sha256:adb31d4c263f2bd041081ab33b498309a57c77f9acf2db65aadf0898179cf93a", size = 49413, upload-time = "2026-02-07T10:45:33.841Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d7/c1/eb8f9debc45d3b7918a32ab756658a0904732f75e555402972246b0b8e71/tenacity-9.1.4-py3-none-any.whl", hash = "sha256:6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55", size = 28926, upload-time = "2026-02-07T10:45:32.24Z" },
 ]
 
 [[package]]
@@ -4543,6 +4668,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/79/3e/c0bdc27cf06f4e47680bd5803a07cb3dfd17de84cde92dd217dcb9e05253/wcmatch-10.1.tar.gz", hash = "sha256:f11f94208c8c8484a16f4f48638a85d771d9513f4ab3f37595978801cb9465af", size = 117421, upload-time = "2025-06-22T19:14:02.49Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/eb/d8/0d1d2e9d3fabcf5d6840362adcf05f8cf3cd06a73358140c3a97189238ae/wcmatch-10.1-py3-none-any.whl", hash = "sha256:5848ace7dbb0476e5e55ab63c6bbd529745089343427caa5537f230cc01beb8a", size = 39854, upload-time = "2025-06-22T19:14:00.978Z" },
+]
+
+[[package]]
+name = "wcwidth"
+version = "0.8.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/34/74/c6428f875774288bec1396f5bfcbc2d925700a4dad61727fd5f2b12f249d/wcwidth-0.8.2.tar.gz", hash = "sha256:91fbef97204b96a3d4d421609b80340b760cf33e26da123ff243d76b1fda8dda", size = 1466253, upload-time = "2026-06-29T18:11:11.601Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/96/42/3e5985a0a7e57de470b320c6d6a1a67c844f6737a587f3d44dd13d1819e7/wcwidth-0.8.2-py3-none-any.whl", hash = "sha256:d63947694a0539a1d51e01eda7caf800c291020e6cdd7e28ad7b14dd33ad4f85", size = 323166, upload-time = "2026-06-29T18:11:09.888Z" },
 ]
 
 [[package]]

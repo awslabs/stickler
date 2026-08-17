@@ -13,6 +13,35 @@ Each release links to full notes on the
 
 ### Added
 
+- `stickler.integrations.strands_evals.StructuredOutputEvaluator`, a
+  [Strands Evals](https://github.com/strands-agents/evals) `Evaluator` that
+  scores an agent's structured output field by field. Their deterministic option
+  for structured output is `Equals` (whole-object `==`, so 0.0 or 1.0), which on
+  real documents collapses to a near-constant near-zero and cannot rank two
+  extractors or say which field broke. Install with
+  `pip install "stickler-eval[strands-evals]"`.
+
+  Returns one `EvaluationOutput` per top-level field rather than one per case,
+  so per-field detail reaches `report.detailed_results` natively instead of
+  through a side channel, and installs its own aggregator so the case score
+  stays weight-aware (the framework default takes an unweighted mean, which
+  diverges from `overall_score` as soon as weights are not uniform).
+
+  `metrics()` returns the five-category confusion matrix per field path,
+  including nested paths, with no extra comparisons: each case is compared once
+  and its raw result is kept for aggregation at read time. That also makes the
+  evaluator safe at the harness's default `max_workers=10` without holding a
+  lock, since it only appends during a run.
+
+  `model_cls` is optional. Passed, every case is coerced to it and a foreign
+  shape raises. Omitted, the class is inferred per case and `metrics()`
+  partitions its rollup by class, because feeding two schemas into one rollup is
+  accepted silently and unions their field paths.
+
+  Design rationale, including how to read nested rows under threshold gating, is
+  in [Guides > Integrations > Strands Evals](https://awslabs.github.io/stickler/Guides/Integrations/strands-evals/)
+  ([#310](https://github.com/strands-agents/evals/issues/310))
+
 - `PhoneComparator`, which compares phone numbers by the number they dial rather
   than as strings. `"206-555-0100"`, `"(206) 555-0100"`, `"+1-206-555-0100"` and
   `"2065550100"` all compare equal; extensions are reconciled
@@ -100,8 +129,9 @@ Each release links to full notes on the
   than asserted ([#201](https://github.com/awslabs/stickler/issues/201))
 - New extras that scope the peripheral modules: `semantic` (Bedrock
   embeddings), `docsplit` (document packet splitting), `reporting` (HTML report
-  tables). `all` aggregates every extra except `bert`, whose ML stack is large
-  enough that installing it unasked is a surprise
+  tables), `strands-evals` (the evaluator above). `all` aggregates every extra
+  except `bert`, whose ML stack is large enough that installing it unasked is a
+  surprise
 
 ### Changed
 
