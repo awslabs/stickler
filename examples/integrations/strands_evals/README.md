@@ -20,7 +20,7 @@ from stickler.integrations.strands_evals import StructuredOutputEvaluator
 | Notebook | Needs credentials |
 |---|---|
 | [`Strands_Evals_Evaluator.ipynb`](../../notebooks/Strands_Evals_Evaluator.ipynb) | No. Offline and deterministic; the reference example. |
-| [`Strands_Evals_FCC_Two_Schemas.ipynb`](../../notebooks/Strands_Evals_FCC_Two_Schemas.ipynb) | Yes. Live Bedrock extraction of real FCC invoices, scored against a hand-written model and against one built from the dataset's own JSON Schema. |
+| [`Strands_Evals_FCC_Live_Agent.ipynb`](../../notebooks/Strands_Evals_FCC_Live_Agent.ipynb) | Yes. Live Bedrock extraction of real FCC invoices, with the agent call inside the `@eval_task()` function. Also shows binding a configured `StructuredModel` as `structured_output_model`. |
 
 ## Why it moved
 

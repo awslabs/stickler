@@ -228,11 +228,12 @@ design rather than from configuration, so there is no need to pin
 - [`Strands_Evals_Evaluator.ipynb`](https://github.com/awslabs/stickler/blob/dev/examples/notebooks/Strands_Evals_Evaluator.ipynb)
   is the reference. Offline and deterministic, no credentials, covers every
   feature above on six invoices broken six different ways.
-- [`Strands_Evals_FCC_Two_Schemas.ipynb`](https://github.com/awslabs/stickler/blob/dev/examples/notebooks/Strands_Evals_FCC_Two_Schemas.ipynb)
-  runs the same evaluator on five real FCC invoices extracted live by Claude
-  Haiku, scored two ways: against a hand-written model, and against a model
-  built from the dataset's own `json_schema` column with nothing hand-written.
-  Requires AWS credentials with Bedrock access.
+- [`Strands_Evals_FCC_Live_Agent.ipynb`](https://github.com/awslabs/stickler/blob/dev/examples/notebooks/Strands_Evals_FCC_Live_Agent.ipynb)
+  runs the same evaluator against a live agent: five real FCC invoices extracted
+  by Claude Haiku through Bedrock, with the Bedrock call inside the `@eval_task()`
+  function. Its last section shows the other supported path, binding a configured
+  `StructuredModel` as the agent's `structured_output_model`. Requires AWS
+  credentials with Bedrock access.
 
 ## One gap upstream
 
