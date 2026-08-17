@@ -13,6 +13,20 @@ Each release links to full notes on the
 
 ### Added
 
+- `DateComparator` and `BBoxIoUComparator` are now exported from the top-level
+  `stickler` namespace, alongside every other comparator. Both were reachable
+  only as `from stickler.comparators import DateComparator`, so the obvious
+  import failed with an `ImportError` that gave no hint the name existed one
+  level down. Neither had ever been exported from the package root, dating from
+  when each was added ([#141](https://github.com/awslabs/stickler/pull/141) and
+  [#151](https://github.com/awslabs/stickler/pull/151)).
+
+  Purely additive: both are core and were already imported eagerly by
+  `stickler.comparators`, so `import stickler` is unchanged at 523 modules.
+  `tests/test_top_level_exports.py` now derives the expected set from
+  `stickler.comparators` rather than a hand-maintained list, which is what let
+  the gap survive ([#252](https://github.com/awslabs/stickler/issues/252))
+
 - `PhoneComparator`, which compares phone numbers by the number they dial rather
   than as strings. `"206-555-0100"`, `"(206) 555-0100"`, `"+1-206-555-0100"` and
   `"2065550100"` all compare equal; extensions are reconciled
