@@ -141,18 +141,40 @@ def _collect_specs(
         return
     _visiting.add(cls)
     try:
+        is_structured = isinstance(cls, type) and issubclass(cls, StructuredModel)
         for name, field_info in cls.model_fields.items():
+            if name in _RESERVED_FIELD_NAMES:
+                continue
             path = f"{prefix}{name}"
             annotation, _ = unwrap_optional(field_info.annotation)
             kind = _field_kind(annotation)
-            if kind == "model":
+            if is_structured:
+                info = cls._get_comparison_info(name)
+                comparator = getattr(info, "comparator", None)
+                if kind == "model":
+                    comp_name = (
+                        type(comparator).__name__
+                        if comparator
+                        else "StructuredModelComparator"
+                    )
+                elif kind == "model_list":
+                    comp_name = (
+                        type(comparator).__name__
+                        if comparator
+                        else "Hungarian (per-element StructuredModel)"
+                    )
+                else:
+                    comp_name = (
+                        type(comparator).__name__ if comparator else "default"
+                    )
                 result[path] = InferredSpec(
-                    comparator_name="StructuredModelComparator",
-                    threshold=match_threshold,
-                    clip_under_threshold=False,
-                    provenance=["type:nested BaseModel -> recursive comparison"],
+                    comparator_name=comp_name,
+                    threshold=info.threshold,
+                    weight=info.weight,
+                    clip_under_threshold=info.clip_under_threshold,
+                    provenance=["explicit: configured on the StructuredModel class"],
                 )
-                if not issubclass(annotation, StructuredModel):
+                if kind == "model":
                     _collect_specs(
                         annotation,
                         f"{path}.",
@@ -162,14 +184,8 @@ def _collect_specs(
                         result,
                         _visiting,
                     )
-            elif kind == "model_list":
-                result[path] = InferredSpec(
-                    comparator_name="Hungarian (per-element StructuredModel)",
-                    threshold=match_threshold,
-                    provenance=["type:List[BaseModel] -> Hungarian object matching"],
-                )
-                element, _ = unwrap_optional(_list_element(annotation))
-                if not issubclass(element, StructuredModel):
+                elif kind == "model_list":
+                    element, _ = unwrap_optional(_list_element(annotation))
                     _collect_specs(
                         element,
                         f"{path}.",
@@ -179,6 +195,38 @@ def _collect_specs(
                         result,
                         _visiting,
                     )
+            elif kind == "model":
+                result[path] = InferredSpec(
+                    comparator_name="StructuredModelComparator",
+                    threshold=match_threshold,
+                    clip_under_threshold=False,
+                    provenance=["type:nested BaseModel -> recursive comparison"],
+                )
+                _collect_specs(
+                    annotation,
+                    f"{path}.",
+                    weight_hints,
+                    match_threshold,
+                    registry,
+                    result,
+                    _visiting,
+                )
+            elif kind == "model_list":
+                result[path] = InferredSpec(
+                    comparator_name="Hungarian (per-element StructuredModel)",
+                    threshold=match_threshold,
+                    provenance=["type:List[BaseModel] -> Hungarian object matching"],
+                )
+                element, _ = unwrap_optional(_list_element(annotation))
+                _collect_specs(
+                    element,
+                    f"{path}.",
+                    weight_hints,
+                    match_threshold,
+                    registry,
+                    result,
+                    _visiting,
+                )
             elif kind == "primitive_list":
                 # Report the element spec (the same one _field_definition
                 # installs) so the audit trail matches the built model.
