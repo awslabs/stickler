@@ -12,16 +12,27 @@ pip install "stickler-eval[strands-evals]"
 ```
 
 ```python
-from strands_evals import Case, Experiment
+from strands import Agent
+from strands_evals import Case, Experiment, eval_task
 from stickler.integrations.strands_evals import StructuredOutputEvaluator
 
+@eval_task()
+def extract(case):
+    agent = Agent(system_prompt="You extract invoice data.", callback_handler=None)
+    result = agent(case.input, structured_output_model=Invoice)
+    # A dict passes through EvalTaskHandler untouched; anything else is str()'d,
+    # which would flatten the structured output into text.
+    return {"output": result.structured_output}
+
+cases = [Case[str, Invoice](name="doc-1", input=ocr_text, expected_output=label)]
 evaluator = StructuredOutputEvaluator(Invoice)
-report = Experiment(cases=cases, evaluators=[evaluator]).run_evaluations(task)
+report = Experiment[str, Invoice](cases=cases, evaluators=[evaluator]).run_evaluations(extract)
 
 report.overall_score          # weighted mean across the dataset
 report.scores                 # one weighted score per case
 evaluator.per_case()          # per-document field scores
 evaluator.metrics()           # per-field confusion matrix across the dataset
+report.display()              # rich table; run_display() is the interactive variant
 ```
 
 ## Why it exists
