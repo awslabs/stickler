@@ -475,6 +475,29 @@ Each release links to full notes on the
   two-branch `anyOf`, and infer nested object schemas when `type: object` is
   omitted ([#198](https://github.com/awslabs/stickler/pull/198))
 
+- The zero-threshold `UserWarning` now links to documentation instead of to an
+  issue tracker. Its target was
+  `github.com/awslabs/stickler/issues/234`, an interim placeholder chosen
+  because no docs section explained the cliff; the warning now points at
+  [The Zero-Threshold Trap](https://awslabs.github.io/stickler/Getting-Started/thresholds-and-metrics/#the-zero-threshold-trap),
+  written for it.
+
+  That section also records what is and is not invariant at `0.0`, since the
+  distinction is easy to overstate: no false discovery can ever be reported,
+  because FD means "compared and scored below threshold" and nothing scores
+  below `0.0`, but precision and recall are *not* both `1.0` in general, because
+  unmatched items are not subject to any threshold.
+
+  Two further threshold gaps are closed. `recall_with_fd` now documents that
+  **TP → FD and FN → FD move recall in opposite directions**, so raising
+  `match_threshold` does not reliably lower reported recall (checked
+  exhaustively: 0 cases raised, 6 equal, 34 fell). And
+  `Advanced/threshold-gated-evaluation.md` is retitled "How Below-Threshold
+  Pairs Are Classified", since it covers classification rather than only
+  recursion, and now defers to the Getting-Started explainer instead of
+  restating threshold semantics. The page URL is unchanged
+  ([#235](https://github.com/awslabs/stickler/issues/235))
+
 ## [0.6.0] - 2026-07-30
 
 ### Added

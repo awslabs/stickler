@@ -202,4 +202,4 @@ ELSE:
 ## See Also
 
 - [Classification Logic](classification-logic.md) -- full definitions of TP, FD, FA, FN, TN
-- [Threshold-Gated Evaluation](threshold-gated-evaluation.md) -- the recursive evaluation model in detail
+- [How Below-Threshold Pairs Are Classified](threshold-gated-evaluation.md) -- the recursive evaluation model in detail

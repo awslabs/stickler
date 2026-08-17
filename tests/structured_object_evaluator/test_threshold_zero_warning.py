@@ -13,6 +13,7 @@ See https://github.com/awslabs/stickler/issues/234
 """
 
 import gc
+import re
 import warnings
 from typing import List
 
@@ -61,11 +62,13 @@ class TestFieldThreshold:
         assert "0.01" in message, "the warning must suggest a usable alternative"
         # Assert the literal target, not `THRESHOLD_DOCS_URL in message` --
         # that compares the constant to itself and passes for any value,
-        # including a URL that explains nothing. The old target was a docs page
-        # whose only mention of zero was "raw similarity score (0.0 -- 1.0)".
-        assert "github.com/awslabs/stickler/issues/234" in message, (
-            "the warning must link somewhere that explains the zero-threshold cliff"
-        )
+        # including a URL that explains nothing. This now points at the docs
+        # section written for it in #235; before that section existed the target
+        # was issue #234, because the only docs mention of zero was "raw
+        # similarity score (0.0 -- 1.0)", which explains nothing.
+        assert (
+            "thresholds-and-metrics/#the-zero-threshold-trap" in message
+        ), "the warning must link somewhere that explains the zero-threshold cliff"
         assert THRESHOLD_DOCS_URL in message, "the constant must be what is emitted"
 
     def test_message_claims_no_metric_outcome(self):
@@ -435,6 +438,12 @@ class TestJsonConfigPath:
 
         An earlier attempt keyed dedup on ``id(DynamicClass)`` and interpolated
         it, printing "DynamicModel#4355291632 sets ...".
+
+        The docs URL is stripped before the check rather than the check being
+        relaxed: it legitimately contains a ``#`` fragment
+        (``...#the-zero-threshold-trap``), and a blanket "no ``#``" assertion
+        over the whole message would have to be dropped to accommodate it,
+        which would stop catching the ``Name#address`` pattern this guards.
         """
         config = {
             "match_threshold": 0.0,
@@ -450,10 +459,11 @@ class TestJsonConfigPath:
         with pytest.warns(UserWarning) as record:
             StructuredModel.model_from_json(config)
 
-        message = str(record[0].message)
-        assert "#" not in message
-        assert not any(ch.isdigit() and len(part) > 8 for part in message.split() for ch in part[:1]), (
-            "no long numeric token that could be an address"
+        prose = str(record[0].message).replace(THRESHOLD_DOCS_URL, "")
+
+        assert "#" not in prose, "an object address may be interpolated as Name#id"
+        assert not re.search(r"\d{6,}", prose), (
+            "a long digit run in user-visible text is probably an object address"
         )
 
     def test_anonymous_configs_are_distinguishable_in_the_message(self):

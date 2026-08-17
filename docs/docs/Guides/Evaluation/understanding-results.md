@@ -133,6 +133,8 @@ Of all the values that should have been found, what fraction did the model find 
 
 Note: When `recall_with_fd=True` is passed to `compare_with()`, the formula changes to `TP / (TP + FN + FD)`, penalizing incorrect values in addition to missing ones.
 
+Under the default (`recall_with_fd=False`), be aware that a pair *becoming* an FD moves recall in opposite directions depending on what it was before: a TP that becomes an FD lowers recall, while an FN that becomes an FD **raises** it. See [Two moves that push recall in opposite directions](../../Getting-Started/thresholds-and-metrics.md#two-moves-that-push-recall-in-opposite-directions) before comparing recall across releases or threshold changes.
+
 ### F1 Score
 
 ```

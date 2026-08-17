@@ -108,4 +108,4 @@ print_metrics(result['confusion_matrix'])
 ## See Also
 
 - [Classification Logic](classification-logic.md) -- definitions of TP, FD, FA, FN, TN
-- [Threshold-Gated Evaluation](threshold-gated-evaluation.md) -- how list comparisons feed into aggregation
+- [How Below-Threshold Pairs Are Classified](threshold-gated-evaluation.md) -- how list comparisons feed into aggregation

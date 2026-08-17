@@ -221,7 +221,7 @@ good_matched_pairs = [
 ]
 ```
 
-For user-facing threshold-gated evaluation documentation, see [Advanced > Threshold-Gated Evaluation](../../Advanced/threshold-gated-evaluation.md).
+For user-facing threshold-gated evaluation documentation, see [Advanced > How Below-Threshold Pairs Are Classified](../../Advanced/threshold-gated-evaluation.md).
 
 ## Score Aggregation
 
