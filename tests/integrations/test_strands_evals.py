@@ -1,9 +1,10 @@
 """StructuredOutputEvaluator adapts stickler to the Strands Evals harness.
 
 The tests that matter here are the ones covering claims the harness itself does
-not enforce: that per-field detail reaches the report, that the case score stays
-weight-aware, that a mixed-schema suite does not produce a merged rollup, and
-that the evaluator is safe at the harness's default concurrency.
+not enforce: that the case score is stickler's weighted score rather than a mean,
+that per-field detail is available without a second comparison pass, that a
+mixed-schema suite does not produce a merged rollup, and that the evaluator is
+safe at the harness's default concurrency.
 
 See docs/docs/Guides/Integrations/strands-evals.md for the design rationale.
 """
@@ -17,7 +18,7 @@ from pydantic import BaseModel, Field
 pytest.importorskip("strands_evals", reason="requires the strands-evals extra")
 
 from strands_evals import Case, Experiment  # noqa: E402
-from strands_evals.evaluators import Equals  # noqa: E402
+from strands_evals.evaluators import Equals, Evaluator  # noqa: E402
 from strands_evals.types.evaluation import EvaluationData  # noqa: E402
 
 from stickler.integrations.strands_evals import (  # noqa: E402
@@ -72,62 +73,85 @@ def _data(expected, actual):
     )
 
 
-class TestPerFieldOutputs:
-    """Field detail must reach the report, not a side channel."""
+class TestPerCaseOutput:
+    """One output per case, carrying stickler's weighted score."""
 
-    def test_one_output_per_top_level_field(self):
+    def test_one_output_per_case(self):
         evaluator = StructuredOutputEvaluator(Invoice)
         outputs = evaluator.evaluate(_data(_invoice(), _invoice()))
 
-        assert {o.label for o in outputs} == set(Invoice.model_fields)
+        assert len(outputs) == 1
+        assert outputs[0].label == "Invoice"
 
-    def test_detailed_results_carries_the_per_field_outputs(self):
-        evaluator = StructuredOutputEvaluator(Invoice)
-        report = _run(evaluator, {"a": (_invoice(), _invoice(vendor="Acme Corp"))})
+    def test_score_is_sticklers_weighted_overall(self):
+        """Not a mean of per-field scores; the weighted score stickler computed.
 
-        labels = {o.label for o in report.detailed_results[0]}
-        assert "vendor_name" in labels and "invoice_id" in labels
-
-    def test_no_synthetic_row_is_emitted(self):
-        """Every output must correspond to a real field.
-
-        An earlier draft added an `__overall__` row to smuggle the weighted
-        score past the aggregator. It is not needed: the aggregator is a bound
-        method and can look the weights up itself.
+        An earlier draft emitted one output per field and installed a custom
+        aggregator to recombine them, which required looking weights up by field
+        name because EvaluationOutput carries none. Reporting overall_score
+        directly removes that whole mechanism.
         """
-        evaluator = StructuredOutputEvaluator(Invoice)
-        outputs = evaluator.evaluate(_data(_invoice(), _invoice()))
+        evaluator = StructuredOutputEvaluator(Invoice, weight_hints=True)
+        gt, pred = _invoice(), _invoice(iid="INV-9", vendor="Acme Corp")
 
-        for output in outputs:
-            assert output.label in Invoice.model_fields
+        expected = evaluator._spec_for(Invoice).evaluate(gt, pred).overall_score
+        outputs = evaluator.evaluate(_data(gt, pred))
 
-    def test_field_reason_names_comparator_and_threshold(self):
+        assert outputs[0].score == pytest.approx(expected)
+
+    def test_reason_names_the_weakest_fields(self):
         evaluator = StructuredOutputEvaluator(Invoice)
         outputs = evaluator.evaluate(_data(_invoice(), _invoice(iid="INV-9")))
 
-        reason = next(o.reason for o in outputs if o.label == "invoice_id")
-        assert "ExactComparator" in reason and "threshold" in reason
+        assert "invoice_id" in (outputs[0].reason or "")
 
+    def test_no_custom_aggregator_is_installed(self):
+        """The framework default is correct for a single output, so leave it.
 
-class TestCaseScoreIsWeightAware:
-    """The framework default is an unweighted mean; stickler's score is not."""
-
-    def test_uniform_weights_match_the_unweighted_mean(self):
+        Overriding it was only necessary while several outputs per case had to be
+        recombined.
+        """
         evaluator = StructuredOutputEvaluator(Invoice)
-        outputs = evaluator.evaluate(_data(_invoice(), _invoice(vendor="Acme Corp")))
 
-        score, _, _ = evaluator.aggregator(outputs)
-        assert score == pytest.approx(sum(o.score for o in outputs) / len(outputs))
+        assert evaluator.aggregator is Evaluator._default_aggregator
 
-    def test_weight_hints_diverge_from_the_unweighted_mean(self):
-        """With non-uniform weights the framework default would be wrong."""
-        weighted = StructuredOutputEvaluator(Invoice, weight_hints=True)
-        outputs = weighted.evaluate(_data(_invoice(), _invoice(iid="INV-9")))
 
-        score, _, _ = weighted.aggregator(outputs)
-        unweighted = sum(o.score for o in outputs) / len(outputs)
-        assert score != pytest.approx(unweighted)
+class TestPerCaseDetail:
+    """Field detail comes from the evaluator, not from EvaluationOutput."""
 
+    def test_per_case_carries_field_scores(self):
+        evaluator = StructuredOutputEvaluator(Invoice)
+        _run(evaluator, {"doc-a": (_invoice(), _invoice(vendor="Acme Corp"))})
+
+        (entry,) = evaluator.per_case()
+        assert entry["case"] == "doc-a"
+        assert entry["model"] == "Invoice"
+        assert set(entry["field_scores"]) == set(Invoice.model_fields)
+
+    def test_per_case_preserves_the_case_name(self):
+        evaluator = StructuredOutputEvaluator(Invoice)
+        _run(evaluator, {f"doc-{i}": (_invoice(), _invoice()) for i in range(3)})
+
+        assert {e["case"] for e in evaluator.per_case()} == {"doc-0", "doc-1", "doc-2"}
+
+    def test_per_case_runs_no_extra_comparisons(self):
+        evaluator = StructuredOutputEvaluator(Invoice)
+        _run(evaluator, {"a": (_invoice(), _invoice())})
+
+        before = len(evaluator._results)
+        evaluator.per_case()
+        evaluator.per_case()
+        assert len(evaluator._results) == before
+
+    def test_per_case_is_empty_after_reset(self):
+        evaluator = StructuredOutputEvaluator(Invoice)
+        _run(evaluator, {"a": (_invoice(), _invoice())})
+        evaluator.reset()
+
+        assert evaluator.per_case() == []
+
+
+class TestCaseScore:
     def test_case_score_equals_stickler_overall_score(self):
         evaluator = StructuredOutputEvaluator(Invoice, weight_hints=True)
         gt, pred = _invoice(), _invoice(iid="INV-9", vendor="Acme Corp")
@@ -136,12 +160,6 @@ class TestCaseScoreIsWeightAware:
         report = _run(evaluator, {"a": (gt, pred)})
 
         assert report.scores[0] == pytest.approx(expected)
-
-    def test_reason_names_the_weakest_fields(self):
-        evaluator = StructuredOutputEvaluator(Invoice)
-        report = _run(evaluator, {"a": (_invoice(), _invoice(iid="INV-9"))})
-
-        assert "invoice_id" in report.reasons[0]
 
     def test_perfect_match_says_so(self):
         evaluator = StructuredOutputEvaluator(Invoice)
@@ -288,7 +306,7 @@ class TestCoercion:
             _data(Invoice(invoice_id="INV-1", vendor_name="Acme Corporation"), actual)
         )
 
-        assert next(o.score for o in outputs if o.label == "invoice_id") == 1.0
+        assert outputs[0].score == pytest.approx(1.0)
 
     def test_rejects_an_unusable_type(self):
         evaluator = StructuredOutputEvaluator(Invoice)

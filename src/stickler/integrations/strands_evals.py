@@ -21,7 +21,8 @@ Usage::
     report = Experiment(cases=cases, evaluators=[evaluator]).run_evaluations(task)
 
     report.overall_score          # weighted mean across the dataset
-    report.detailed_results[0]    # per-field EvaluationOutputs for case 0
+    report.scores                 # one weighted score per case
+    evaluator.per_case()          # per-document field scores
     evaluator.metrics()           # per-field confusion matrix across the dataset
 
 The design choices, and the two upstream gaps this works around, are written up
@@ -30,7 +31,8 @@ in ``docs/docs/Guides/Integrations/strands-evals.md``.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Type
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Mapping, Optional, Type
 
 from pydantic import BaseModel
 
@@ -47,6 +49,23 @@ except ImportError as exc:  # pragma: no cover - exercised by the extras gate
 
     class Evaluator:  # type: ignore[no-redef]
         """Placeholder so the module imports without the extra installed."""
+
+
+@dataclass(frozen=True)
+class _CaseResult:
+    """What one comparison produced, kept for reading after the run.
+
+    ``EvaluationOutput`` carries four scalars, so it cannot express a per-field
+    breakdown. Keeping the comparison here instead means :meth:`per_case` can
+    return the real numbers rather than a reconstruction.
+    """
+
+    name: Optional[str]
+    model_cls: type
+    overall_score: float
+    matched: bool
+    field_scores: Dict[str, float] = field(default_factory=dict)
+    raw: Dict[str, Any] = field(default_factory=dict)
 
 
 def _require_strands_evals() -> None:
@@ -66,15 +85,12 @@ class StructuredOutputEvaluator(Evaluator):
     schema or annotation work is required. Every inferred decision is
     inspectable via :meth:`explain`.
 
-    Returns **one ``EvaluationOutput`` per top-level field**. The harness keeps
-    them all in ``report.detailed_results``, which is how per-field detail
-    reaches the report without a side channel, and collapses them into the
-    case's single score through :meth:`_aggregate_case`.
-
-    Nested fields are absent from the per-case outputs by necessity: stickler
-    emits no score for leaves inside a ``List[StructuredModel]``, only
-    confusion-matrix counts, so there is no per-case number to report for them.
-    They do appear in :meth:`metrics` with counts and precision/recall/F1.
+    Returns one ``EvaluationOutput`` per case, carrying stickler's weighted
+    ``overall_score``. Field-level detail is read from the evaluator rather than
+    squeezed through that type, which has only four scalar fields:
+    :meth:`per_case` for per-document field scores, :meth:`metrics` for the
+    dataset-wide confusion matrix. Both read comparisons already performed, so
+    neither runs anything twice.
 
     Args:
         model_cls: The Pydantic model the agent emits. Optional. When given,
@@ -110,15 +126,12 @@ class StructuredOutputEvaluator(Evaluator):
         self.weight_hints = weight_hints
 
         self._specs: Dict[type, Any] = {}
-        self._weights: Dict[type, Dict[str, float]] = {}
-        # (model_cls, raw compare_with dict) per evaluated case. Appended to and
-        # never read during a run. `list.append` is atomic under the GIL, so
-        # this needs no lock even though the harness calls evaluate() from up to
-        # `max_workers` threads via asyncio.to_thread (default 10). Aggregation
-        # happens in metrics(), after the run, on one thread.
-        self._results: List[Tuple[type, Dict[str, Any]]] = []
-
-        self.aggregator = self._aggregate_case
+        # One _CaseResult per evaluated case. Appended to and never read during a
+        # run. `list.append` is atomic under the GIL, so this needs no lock even
+        # though the harness calls evaluate() from up to `max_workers` threads
+        # via asyncio.to_thread (default 10). Everything is read afterwards, on
+        # one thread, by metrics() and per_case().
+        self._results: List[_CaseResult] = []
 
     # ---------------------------------------------------------------- per case
 
@@ -137,49 +150,24 @@ class StructuredOutputEvaluator(Evaluator):
         # them makes aggregate_from_comparisons warn on every call, and it is the
         # bulkiest part of the result. field_metrics is identical without it.
         self._results.append(
-            (cls, {k: v for k, v in result.raw.items() if k != "prediction_raw"})
+            _CaseResult(
+                name=evaluation_case.name,
+                model_cls=cls,
+                overall_score=result.overall_score,
+                matched=result.matched,
+                field_scores=dict(result.field_scores),
+                raw={k: v for k, v in result.raw.items() if k != "prediction_raw"},
+            )
         )
 
-        config = spec.explain()
         return [
             EvaluationOutput(
-                score=score,
-                test_pass=score >= config.get(field, {}).get("threshold", 0.0),
-                reason=self._field_reason(score, config.get(field, {})),
-                label=field,
+                score=result.overall_score,
+                test_pass=result.matched,
+                reason=self._weakest(result.field_scores),
+                label=cls.__name__,
             )
-            for field, score in result.field_scores.items()
         ]
-
-    def _aggregate_case(
-        self, outputs: Sequence["EvaluationOutput"]
-    ) -> Tuple[float, bool, str]:
-        """Collapse per-field outputs into the case's score, pass and reason.
-
-        The framework default takes an *unweighted* mean of the outputs. That
-        happens to equal stickler's ``overall_score`` when weights are uniform
-        (the default), but diverges as soon as they are not: with
-        ``weight_hints=True`` on a three-field model the unweighted mean was
-        ``0.333`` against stickler's ``0.429``. Since ``EvaluationOutput``
-        carries no weight, the weights are looked up here by field name.
-        """
-        if not outputs:  # pragma: no cover - defensive
-            return 0.0, False, "no fields compared"
-
-        weights = self._weights_for([o.label for o in outputs if o.label])
-        if weights is None:
-            total_weight = float(len(outputs))
-            weighted = sum(o.score for o in outputs)
-        else:
-            per_output = [weights.get(o.label or "", 1.0) for o in outputs]
-            total_weight = sum(per_output) or float(len(outputs))
-            weighted = sum(o.score * w for o, w in zip(outputs, per_output))
-
-        return (
-            weighted / total_weight,
-            all(o.test_pass for o in outputs),
-            self._weakest(outputs),
-        )
 
     # ------------------------------------------------------------- cross case
 
@@ -201,12 +189,37 @@ class StructuredOutputEvaluator(Evaluator):
         so a nested field has a smaller denominator than the document count.
         """
         by_cls: Dict[type, List[Dict[str, Any]]] = {}
-        for cls, raw in list(self._results):
-            by_cls.setdefault(cls, []).append(raw)
+        for case in list(self._results):
+            by_cls.setdefault(case.model_cls, []).append(case.raw)
         return {
             cls.__name__: aggregate_from_comparisons(raws)
             for cls, raws in by_cls.items()
         }
+
+    def per_case(self) -> List[Mapping[str, Any]]:
+        """Per-document field scores, in the order the cases completed.
+
+        ``EvaluationOutput`` has four scalar fields, so the harness's
+        ``report.detailed_results`` can only ever echo what ``evaluate()``
+        returned. Reading from the retained comparison instead means the real
+        per-field numbers are available without squeezing them through that
+        shape, and without a second comparison pass.
+
+        Each entry has ``case``, ``model``, ``overall_score``, ``matched`` and
+        ``field_scores``. Nested list children are absent from ``field_scores``
+        because stickler emits no per-leaf score for them; use :meth:`metrics`
+        for those, which reports their counts and precision/recall/F1.
+        """
+        return [
+            {
+                "case": case.name,
+                "model": case.model_cls.__name__,
+                "overall_score": case.overall_score,
+                "matched": case.matched,
+                "field_scores": dict(case.field_scores),
+            }
+            for case in list(self._results)
+        ]
 
     def reset(self) -> None:
         """Drop accumulated results.
@@ -261,26 +274,7 @@ class StructuredOutputEvaluator(Evaluator):
                 weight_hints=self.weight_hints,
             )
             self._specs[cls] = spec
-            self._weights[cls] = {
-                path: cfg.get("weight", 1.0)
-                for path, cfg in spec.explain().items()
-                if "." not in path
-            }
         return spec
-
-    def _weights_for(self, labels: Sequence[str]) -> Optional[Dict[str, float]]:
-        """Field weights for the schema these labels came from, or None.
-
-        With one schema in play this is unambiguous. With several, the label set
-        selects it. If nothing matches exactly (two schemas sharing field names
-        but weighted differently), returns None and the caller falls back to an
-        unweighted mean rather than applying the wrong weights.
-        """
-        if len(self._weights) == 1:
-            return next(iter(self._weights.values()))
-        wanted = set(labels)
-        matches = [w for w in self._weights.values() if set(w) == wanted]
-        return matches[0] if len(matches) == 1 else None
 
     def _coerce(self, value: Any, cls: Type[BaseModel], which: str) -> BaseModel:
         """Accept a model instance, a dict, or a JSON string."""
@@ -299,24 +293,15 @@ class StructuredOutputEvaluator(Evaluator):
         )
 
     @staticmethod
-    def _field_reason(score: float, config: Dict[str, Any]) -> str:
-        comparator = config.get("comparator", "unknown")
-        threshold = config.get("threshold")
-        if threshold is None:
-            return f"{comparator} scored {score:.2f}"
-        verdict = "met" if score >= threshold else "below"
-        return f"{comparator} scored {score:.2f}, {verdict} threshold {threshold}"
-
-    @staticmethod
-    def _weakest(outputs: Sequence["EvaluationOutput"], limit: int = 4) -> str:
+    def _weakest(field_scores: Mapping[str, float], limit: int = 4) -> str:
         """Name the weakest fields so a low case score is actionable."""
         imperfect = sorted(
-            ((o.label or "?", o.score) for o in outputs if o.score < 1.0),
+            ((name, score) for name, score in field_scores.items() if score < 1.0),
             key=lambda pair: pair[1],
         )
         if not imperfect:
             return "all fields matched"
-        listed = "; ".join(f"{field}={score:.2f}" for field, score in imperfect[:limit])
+        listed = "; ".join(f"{name}={score:.2f}" for name, score in imperfect[:limit])
         if len(imperfect) > limit:
             listed += f"; (+{len(imperfect) - limit} more)"
         return f"weakest fields: {listed}"

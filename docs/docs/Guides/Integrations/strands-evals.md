@@ -19,7 +19,8 @@ evaluator = StructuredOutputEvaluator(Invoice)
 report = Experiment(cases=cases, evaluators=[evaluator]).run_evaluations(task)
 
 report.overall_score          # weighted mean across the dataset
-report.detailed_results[0]    # per-field outputs for case 0
+report.scores                 # one weighted score per case
+evaluator.per_case()          # per-document field scores
 evaluator.metrics()           # per-field confusion matrix across the dataset
 ```
 
@@ -46,18 +47,22 @@ capitalisation.
 
 ### Per case
 
-`evaluate()` returns **one `EvaluationOutput` per top-level field**. The harness
-keeps all of them in `report.detailed_results`, so field detail reaches the
-report without a side channel:
+`evaluate()` returns one `EvaluationOutput` carrying stickler's weighted
+`overall_score`, and `reason` names the weakest fields. Field-level detail comes
+from `per_case()` rather than from that type:
 
 ```python
-for output in report.detailed_results[3]:
-    print(output.label, output.score, output.reason)
-# invoice_id    1.00  ExactComparator scored 1.00, met threshold 1.0
-# vendor_name   1.00  LevenshteinComparator scored 1.00, met threshold 0.85
-# invoice_date  0.00  DateComparator scored 0.00, below threshold 0.95
-# total_amount  1.00  NumericComparator scored 1.00, met threshold 0.95
+for entry in evaluator.per_case():
+    print(entry["case"], entry["overall_score"], entry["field_scores"])
+# doc-4  0.80  {'invoice_id': 1.0, 'vendor_name': 1.0,
+#               'invoice_date': 0.0, 'total_amount': 1.0}
 ```
+
+`EvaluationOutput` has four scalar fields, so `report.detailed_results` can only
+ever echo what `evaluate()` returned. Reading the retained comparison instead
+gives the real per-field numbers with no second comparison pass, and leaves room
+to expose thresholds and classifications later without contorting them into a
+score-and-two-strings shape.
 
 ### Across the dataset
 
@@ -79,52 +84,49 @@ Those need different fixes, and `Equals` reports all three as the same 0.0.
 
 ## Design choices
 
-### Multiple outputs rather than a side channel
+### Field detail is read from the evaluator, not squeezed through the harness
 
 `EvaluationOutput` has four scalar fields (`score`, `test_pass`, `reason`,
-`label`) with no metadata dict and no extra fields, and `Evaluator` has no
-post-run hook. The obvious reading is that per-field detail cannot cross the
-harness boundary, and an earlier draft of this integration concluded exactly
-that, exposing the rollup through a separate `aggregate()` method that re-ran
-every comparison.
+`label`), no metadata dict and no extra fields, and `Evaluator` has no post-run
+hook. Two earlier drafts both got this wrong in opposite directions.
 
-That was wrong. `evaluate()` returns a **list**, and the harness stores the
-whole list per case in `EvaluationReport.detailed_results`, typed
-`list[list[EvaluationOutput]]`. So the field-level view is native to the report;
-it just needs one output per field instead of one per case.
+The first concluded field detail could not cross the boundary at all and exposed
+a separate `aggregate()` method that **re-ran every comparison**, so each
+document was compared twice with nothing guaranteeing the two passes agreed.
 
-The cost of getting this wrong was doubled work. The old shape compared every
-document twice, once for the harness and once for the rollup, with nothing
-guaranteeing the two passes agreed.
+The second noticed that `evaluate()` returns a *list*, and that the harness keeps
+the whole list per case in `EvaluationReport.detailed_results`. So it emitted one
+output per field. That works, but it costs more than it buys: `label` gets
+repurposed from a grouping tag into a field path, the case score has to be
+recombined from the parts by a custom aggregator, and it leans on two behaviours
+that are undocumented in the framework's README and docs site.
 
-### `label` carries the field path
+What it bought was per-case field detail as structured data. But the evaluator
+already retains every comparison in order to build the dataset rollup, so that
+detail was already in hand. `per_case()` serves it from there, and can carry more
+than four scalars per field.
 
-This is a deliberate stretch. The framework's own example uses `label` as a
-grouping tag (`label="compliant"`). We put a dotted field path in it, because it
-is the only string slot that identifies which field an output describes.
+So: one output per case, `per_case()` for per-document detail, `metrics()` for the
+dataset rollup. No aggregator override, `label` stays the model name, and the
+only framework contract relied on is `evaluate()` returning a list.
 
-If Strands Evals later adds a structured field for this, that is the better home.
+### The case score is stickler's, not a mean of the parts
 
-### The case score is weight-aware
+`EvaluationOutput.score` is `overall_score` directly, which is weighted by each
+field's `weight`.
 
-The framework's default aggregator takes an **unweighted** mean of the outputs.
-That coincidentally equals stickler's `overall_score` when weights are uniform,
-which is the default, but diverges as soon as they are not:
+This is worth stating because the alternative is subtly wrong. The framework's
+default aggregator takes an **unweighted** mean of a case's outputs. With one
+output per case that is a no-op, so the default is correct and is left in place.
+With several it silently discards weights:
 
 | | unweighted mean | stickler `overall_score` |
 |---|---|---|
 | `weight_hints=False` | 0.333333 | 0.333333 |
 | `weight_hints=True` | 0.333333 | **0.428571** |
 
-`EvaluationOutput` carries no weight, so the aggregator cannot recover it from
-the outputs alone. The evaluator installs its own aggregator, a bound method,
-which looks the weights up by field name from the compiled spec. A field's
-`weight` therefore means what it says.
-
-With several inferred schemas in play, the label set selects which weights
-apply. If two schemas share field names but weight them differently, the
-aggregator falls back to an unweighted mean rather than applying the wrong
-weights.
+The uniform-weight case agrees, which is what makes the divergence easy to miss:
+it only appears once someone turns weights on.
 
 ### Aggregation appends, then aggregates once
 
@@ -145,10 +147,10 @@ Three options:
 | one accumulator per thread, `merge_state()` at the end | yes | needs a thread registry, because `threading.local()` cannot be enumerated to merge |
 | **append raw results, aggregate at read time** | yes | holds one result dict per document |
 
-The third is what this uses. `evaluate()` appends a `(model_cls, raw_result)`
-tuple to a list, which is a single atomic operation under the GIL, so no lock is
-held on the hot path and nothing is lost. `metrics()` then groups and calls
-`aggregate_from_comparisons` once, on one thread, after the run.
+The third is what this uses. `evaluate()` appends one record per case to a list,
+which is a single atomic operation under the GIL, so no lock is held on the hot
+path and nothing is lost. `metrics()` and `per_case()` then read that list after
+the run, on one thread, and `metrics()` calls `aggregate_from_comparisons` once.
 
 The tradeoff is memory: O(documents) rather than O(fields). For evaluation
 suites that is the right trade, and `prediction_raw` is dropped from each stored
@@ -221,19 +223,19 @@ design rather than from configuration, so there is no need to pin
   built from the dataset's own `json_schema` column with nothing hand-written.
   Requires AWS credentials with Bedrock access.
 
-## Two gaps upstream
+## One gap upstream
 
-Both are things this integration works around rather than blockers.
-
-**Multi-output and `aggregator` are undocumented.** `evaluate()` returning
-`list[EvaluationOutput]` appears in the Strands Evals repo's `AGENTS.md`, but
-neither the README nor the docs site covers returning more than one, and
-`Evaluator.aggregator` is documented nowhere. This integration depends on both.
-They exist and the framework uses them internally, so this is a docs gap rather
-than a feature request.
-
-**There is no post-run aggregation hook.** No mechanism lets an evaluator
-contribute dataset-level metrics, which is why `metrics()` is a method the caller
-invokes rather than something that appears in `EvaluationReport`. A hook called
+**There is no post-run aggregation hook.** Nothing lets an evaluator contribute
+dataset-level metrics, which is why `metrics()` and `per_case()` are methods the
+caller invokes rather than data that appears in `EvaluationReport`. A hook called
 once after all cases would let field-level rollups land in the report directly,
 and would help any evaluator wanting corpus-level output, not just this one.
+
+That is the only thing this integration cannot do from the outside. Everything
+else it needs is in the documented contract: `evaluate()` returning a
+`list[EvaluationOutput]` is specified in the repo's `AGENTS.md`.
+
+An earlier draft also needed `Evaluator.aggregator`, which is undocumented, and
+multi-output `evaluate()`, which the README and docs site do not cover even
+though `AGENTS.md` states the return type. Emitting one output per case removed
+both dependencies, so those are no longer asks.
