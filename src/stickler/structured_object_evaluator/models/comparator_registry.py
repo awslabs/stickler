@@ -90,8 +90,12 @@ class ComparatorRegistry:
         A dependency that is installed but broken (a version-skewed transitive
         dep raising plain ImportError) is treated as unavailable rather than
         propagating, matching the previous try/except behavior.
+
+        A failed import leaves the name in ``_pending``, so a later call retries
+        and nothing the registry reports changes as a side effect of the
+        failure. The entry is consumed only once the class is in hand.
         """
-        spec = self._pending.pop(name, None)
+        spec = self._pending.get(name)
         if spec is None:
             return None
         module_path, _, _ = spec
@@ -104,8 +108,15 @@ class ComparatorRegistry:
             # nosemgrep: python.lang.security.audit.non-literal-import.non-literal-import
             module = importlib.import_module(module_path)
         except ImportError:
+            # Leave the entry in `_pending`. A broken extra is unavailable now,
+            # but the name is still a built-in, so `is_registered()` and
+            # `list_available()` must not change as a side effect of a failed
+            # lookup, and `register()` -- which rejects a name only when it is
+            # in `_registry` or `_pending` -- must keep rejecting it rather than
+            # letting a caller silently shadow a built-in (#260).
             return None
         comparator_class = getattr(module, name)
+        self._pending.pop(name, None)
         self._registry[name] = comparator_class
         return comparator_class
 
