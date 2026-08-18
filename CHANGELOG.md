@@ -391,12 +391,15 @@ Each release links to full notes on the
 
 - HTML reports no longer drop nested thresholds for a field annotated
   `Addr | None`. Threshold extraction unwrapped `Optional[X]` and
-  `Union[X, None]` but tested only for the `typing.Union` origin, and a PEP 604
-  union's origin is `types.UnionType`, so that spelling was never unwrapped and
-  the nested-model and list branches never fired. The same class of bug fixed for
-  `Optional[X]` in 0.6.0, left half-done -- and far more reachable now that 0.7.0
-  raises the floor to Python 3.10, where `X | None` is the idiomatic spelling. A
-  genuine multi-arm union is still left alone
+  `Union[X, None]` but tested only for the `typing.Union` origin, and on Python
+  3.10 through 3.13 a PEP 604 union's origin is `types.UnionType` instead, so
+  that spelling was never unwrapped and the nested-model and list branches never
+  fired. (Python 3.14 unifies the two, which is why the widened check has an arm
+  that cannot fail there.) The `Optional[X]` and `X | None` spellings are both
+  handled as of this release; the second was missed when the first was fixed, and
+  is the more reachable of the two now that 0.7.0 raises the floor to Python
+  3.10 where `X | None` is idiomatic. A genuine multi-arm union is still left
+  alone
   ([#162](https://github.com/awslabs/stickler/issues/162))
 
 - Zero-config evaluation no longer scores formatting-only differences in

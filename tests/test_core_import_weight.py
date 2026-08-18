@@ -18,10 +18,15 @@ default install breaks for users.
 
 import json
 import os
+import re
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
+
+# The repository root, for reading pyproject.toml and uv.lock as text.
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Packages that must not be imported as a side effect of `import stickler`,
 # mapped to the extra that owns them.
@@ -177,3 +182,95 @@ def test_broken_extra_does_not_break_import(tmp_path):
         f"the error should name the owning extra so the user knows what to "
         f"fix, got: {detail}"
     )
+
+
+class TestTheLockfileInstallsEveryCoreDependency:
+    """`uv sync --frozen` must produce an environment where stickler imports.
+
+    The lockfile records a core dependency in three places: its own
+    ``[[package]]`` entry, ``[package.metadata].requires-dist``, and the resolved
+    ``dependencies`` array of the ``stickler-eval`` package. Only the third
+    decides what ``uv sync`` installs.
+
+    ``phonenumberslite`` was present in the first two and absent from the third,
+    so a bare ``uv sync --frozen`` produced an environment where
+    ``import stickler`` raised ``ModuleNotFoundError: No module named
+    'phonenumbers'`` -- a hard failure rather than a degraded extra, because
+    ``comparators/phone.py`` imports it at module scope and
+    ``comparators/__init__.py`` imports phone eagerly.
+
+    Nothing caught it. ``uv lock --check`` validates ``requires-dist`` against
+    ``pyproject.toml`` and never reads the resolved array. CI stayed green
+    because ``run_pytest.yaml`` syncs with ``--extra llm --extra bert``, which
+    happen to pull the package in transitively, so the one job that imports
+    stickler was the one job not exercising the gap. The published wheel was
+    unaffected either way: its metadata comes from ``pyproject.toml``.
+
+    The cost landed on contributors, who follow CONTRIBUTING.md's plain
+    ``uv sync`` and get an unimportable package.
+
+    This parses rather than runs ``uv``, so it needs no network and no uv binary.
+    """
+
+    @staticmethod
+    def _core_dependency_names():
+        """The `[project].dependencies` names from pyproject.toml."""
+        pyproject = REPO_ROOT / "pyproject.toml"
+        text = pyproject.read_text()
+        block = re.search(r"^dependencies = \[(.*?)^\]", text, re.MULTILINE | re.DOTALL)
+        assert block, "could not find [project].dependencies in pyproject.toml"
+        names = re.findall(r'^\s*"([A-Za-z0-9._-]+)', block.group(1), re.MULTILINE)
+        assert names, "parsed no dependency names out of pyproject.toml"
+        return {name.lower().replace("_", "-") for name in names}
+
+    @staticmethod
+    def _locked_dependency_names():
+        """Names in the resolved `dependencies` array of the stickler-eval package."""
+        lock = REPO_ROOT / "uv.lock"
+        text = lock.read_text()
+        package = re.search(
+            r'^\[\[package\]\]\nname = "stickler-eval"\n(.*?)^\[package\.',
+            text,
+            re.MULTILINE | re.DOTALL,
+        )
+        assert package, "could not find the stickler-eval package block in uv.lock"
+        block = re.search(
+            r"^dependencies = \[(.*?)^\]", package.group(1), re.MULTILINE | re.DOTALL
+        )
+        assert block, "stickler-eval has no resolved dependencies array in uv.lock"
+        names = re.findall(r'\{ name = "([A-Za-z0-9._-]+)"', block.group(1))
+        return {name.lower().replace("_", "-") for name in names}
+
+    def test_every_core_dependency_is_in_the_resolved_lock_array(self):
+        declared = self._core_dependency_names()
+        locked = self._locked_dependency_names()
+
+        missing = declared - locked
+
+        assert not missing, (
+            f"declared in pyproject.toml [project].dependencies but absent from "
+            f"uv.lock's resolved `dependencies` array for stickler-eval: "
+            f"{sorted(missing)}. `uv sync --frozen` will not install these, so a "
+            f"default contributor environment cannot import stickler. Add "
+            f'`{{ name = "<pkg>" }}` to that array; `uv lock --check` does not '
+            f"catch this because it only validates requires-dist."
+        )
+
+    def test_the_lock_does_not_claim_dependencies_the_project_dropped(self):
+        """The inverse: a removed dependency must not linger as an install.
+
+        Same array, opposite direction. A stale entry would silently keep
+        installing a package the project no longer declares, which is how a
+        dependency stays alive after its last import is deleted.
+        """
+        declared = self._core_dependency_names()
+        locked = self._locked_dependency_names()
+
+        extra = locked - declared
+
+        assert not extra, (
+            f"in uv.lock's resolved `dependencies` array for stickler-eval but "
+            f"not declared in pyproject.toml [project].dependencies: "
+            f"{sorted(extra)}. Either restore the declaration or drop the lock "
+            f"entry."
+        )
