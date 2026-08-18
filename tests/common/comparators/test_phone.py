@@ -68,21 +68,75 @@ class TestRegion:
 
 
 class TestUnparseableInput:
-    """Sentinel strings are not phone numbers that matched.
+    """When neither side is a usable number, string equality decides.
+
+    This inverts what 0.7.0rc asserted. Rejecting *every* unparseable pair also
+    rejected values that were extracted perfectly -- a UK national number under
+    region="US", an extension fragment, a 555-area-code documentation number --
+    and reported two identical strings as maximally different, deflating
+    precision and recall with no signal why. The fallback is equality, so a
+    placeholder pair still never canonicalizes into a fake number match.
 
     Genuinely absent values never reach here -- BaseComparator resolves None
     first, and the comparison layer treats None/"" on both sides as a true
-    negative. What is left is extraction noise, and reporting it as a true
-    positive would inflate the metric.
+    negative.
+
+    See https://github.com/awslabs/stickler/issues/258
     """
 
     @pytest.mark.parametrize("value", ["N/A", "n/a", "unknown", "not a phone", "-", ""])
-    def test_identical_unparseable_values_do_not_match(self, value):
-        assert PhoneComparator().compare(value, value) == 0.0
+    def test_identical_unparseable_values_match(self, value):
+        assert PhoneComparator().compare(value, value) == 1.0
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "555-123-4567",  # 555 area code: never assigned, so invalid
+            "020 7183 8750",  # UK national format, read under region="US"
+            "ext 4021",  # not a number in any region
+        ],
+    )
+    def test_a_correctly_extracted_but_unusable_number_matches_itself(self, value):
+        """The three shapes issue #258 reported, each scored 0.0 before."""
+        assert PhoneComparator().compare(value, value) == 1.0
+
+    def test_different_unparseable_values_do_not_match(self):
+        """The fallback is equality, not leniency.
+
+        Two values that both failed to extract are not a match just because
+        neither is a phone number.
+        """
+        assert PhoneComparator().compare("N/A", "unknown") == 0.0
+        assert PhoneComparator().compare("ext 4021", "ext 4022") == 0.0
 
     def test_one_side_unparseable_does_not_match(self):
         assert PhoneComparator().compare("206-555-0100", "N/A") == 0.0
         assert PhoneComparator().compare("N/A", "206-555-0100") == 0.0
+
+    def test_one_side_unparseable_does_not_match_in_either_order(self):
+        """Both sides are canonicalized before branching.
+
+        The pre-#258 body returned early on the first side and never inspected
+        the second, so the two argument orders took different code paths.
+        """
+        phone = PhoneComparator()
+
+        for usable in ("206-555-0100", "+12065550100x89"):
+            for unusable in ("N/A", "020 7183 8750", ""):
+                assert phone.compare(usable, unusable) == 0.0
+                assert phone.compare(unusable, usable) == 0.0
+
+    def test_two_empty_strings_match(self):
+        """Recorded explicitly rather than left to fall out of the fallback.
+
+        `BaseComparator.compare` special-cases None but not "", so an empty
+        string reaches `_compare`. It scores 1.0 here, and end-to-end metrics
+        are unaffected either way: the comparison layer resolves
+        empty-on-both-sides as a true negative before scoring. A carve-out
+        would reintroduce the "two identical values score 0.0" branch this
+        change exists to remove.
+        """
+        assert PhoneComparator().compare("", "") == 1.0
 
     def test_a_valid_number_is_unaffected(self):
         assert PhoneComparator().compare("206-555-0100", "2065550100") == 1.0
@@ -151,18 +205,34 @@ class TestNonePolicyAndSerialization:
 class TestValidityNotJustParseability:
     """libphonenumber parses strings that are not real numbers.
 
-    `parse` accepts "0000000000" and formats it as E164, so a parse-only check
-    scores it 1.0 against itself -- a placeholder reported as a successful
-    extraction, inflating precision and recall in zero-config runs. Raised in
-    review of #243.
+    `parse` accepts "0000000000" and formats it as E164. Validity is still
+    checked with `is_valid_number`, so such a value is never treated as a
+    *number*: a placeholder pair matches itself as a string, via the #258
+    fallback, and a placeholder against a real number still scores 0.0. Raised
+    in review of #243.
     """
 
     @pytest.mark.parametrize(
         "sentinel",
         ["0000000000", "1234567", "1111111111", "5555555555", "999-999-9999"],
     )
-    def test_numeric_placeholders_do_not_match_themselves(self, sentinel):
-        assert PhoneComparator().compare(sentinel, sentinel) == 0.0
+    def test_numeric_placeholders_match_themselves_as_strings(self, sentinel):
+        """1.0 by string equality, not by canonicalizing into a fake E164.
+
+        The distinction is load-bearing rather than pedantic: it is why
+        `is_valid_number` stays. A parse-only check would score a placeholder
+        pair 1.0 as a canonical *phone match*, and would also match two
+        *different* placeholders that happen to canonicalize alike.
+        """
+        assert PhoneComparator().compare(sentinel, sentinel) == 1.0
+
+    def test_a_placeholder_against_a_real_number_still_fails(self):
+        """Validity still decides which side counts as a number."""
+        assert PhoneComparator().compare("0000000000", "206-555-0100") == 0.0
+        assert PhoneComparator().compare("206-555-0100", "0000000000") == 0.0
+
+    def test_two_different_placeholders_do_not_match(self):
+        assert PhoneComparator().compare("0000000000", "1111111111") == 0.0
 
     def test_those_sentinels_really_do_parse(self):
         """Guard the guard: if they stopped parsing, the test above is vacuous."""
@@ -177,7 +247,7 @@ class TestValidityNotJustParseability:
         # ...but is not a real number, which is what the guard checks.
         assert phonenumbers.is_valid_number(parsed) is False
 
-    def test_555_in_the_area_code_position_is_not_valid(self):
+    def test_555_in_the_area_code_position_is_not_a_dialable_number(self):
         """Why examples use 206-555-0100 rather than 555-123-4567.
 
         "555-123-4567" puts 555 where the area code goes, and 555 has never
@@ -186,11 +256,17 @@ class TestValidityNotJustParseability:
 
         A real area code with the 555 *exchange* is fictional by convention and
         structurally valid, so it is what fixtures should use.
+
+        Both self-compares score 1.0, by different routes: the valid number
+        matches canonically, the documentation number matches as a string
+        (#258). What the invalidity still buys is the line below -- 555-123-4567
+        never canonicalizes, so it cannot collide with a real number.
         """
         phone = PhoneComparator()
 
-        assert phone.compare("555-123-4567", "555-123-4567") == 0.0
+        assert phone.compare("555-123-4567", "555-123-4567") == 1.0
         assert phone.compare("206-555-0100", "206-555-0100") == 1.0
+        assert phone.compare("555-123-4567", "206-555-0100") == 0.0
 
 
 class TestExtensionsAreSignificant:

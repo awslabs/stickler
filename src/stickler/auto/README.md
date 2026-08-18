@@ -83,7 +83,8 @@ call yields both `field_scores`/`overall_score` **and** precision/recall/f1/accu
    as whole words in the snake/camelCase-split field name; trailing digits are
    shed (`isbn13`→`isbn`) and simple plurals singularized (`ids`→`id`).
    Highlights: `id/sku/code`→Exact (w 3.0), `amount/price/total`→Numeric\@0.95
-   (w 2.5, numeric fields only), `email/url/zip/phone`→Exact,
+   (w 2.5, numeric fields only), `email/url`→Exact,
+   `zip/postal/postcode`→Exact (case-sensitive), `phone`→Phone\@1.0,
    `name/vendor/customer`→Levenshtein\@0.85,
    `date/due/created/...`→Date\@0.95 (date/datetime fields only),
    `address`→Fuzzy(token_sort), `notes/description/summary`→Fuzzy(token_set)\@0.6
@@ -98,6 +99,13 @@ call yields both `field_scores`/`overall_score` **and** precision/recall/f1/accu
    unparseable values silently scores identical strings 0.0, which is the worst
    failure mode a metrics API can have. `bool`/`Enum`/`Literal` are never
    token-refined at all (nothing sharpens an exact match).
+
+   **The gate is on the declared type, not the value.** `phone: str` passes the
+   gate, so the gate cannot catch a *value* that fails to parse -- which is how
+   `PhoneComparator` came to score identical unparseable numbers 0.0 through
+   this path (#258). Any token rule whose comparator can reject an individual
+   value therefore needs a same-value fallback of its own; the type gate is not
+   enough on its own.
 
 Every decision is recorded in `InferredSpec.provenance` and surfaced by
 `EvalResult.explain()` / `EvalSpec.explain()`.

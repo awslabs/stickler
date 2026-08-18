@@ -42,29 +42,37 @@ Each release links to full notes on the
   (`206-555-0101`) scores `0.917` while the same number reformatted scores
   `0.786`, so no threshold separates them.
 
-  Unparseable **or invalid** input scores `0.0`, including when both sides are
-  identical. libphonenumber parses `"0000000000"` and renders it as E164, so a
-  parse-only check would report a placeholder on both sides as a successful
-  match; validity is checked with `is_valid_number`. `"N/A"` on both sides is a
-  field that was not extracted, not a phone number that matched. Genuinely
-  absent values are unaffected, since the shared `None` policy resolves those
-  before any comparator runs.
+  When **neither** side is a usable number, the comparison falls back to exact
+  string equality, so two identical values are never reported as maximally
+  different. Not every correctly extracted phone number is dialable under the
+  configured region: a UK national format read as `"US"`, an extension fragment
+  such as `"ext 4021"`, and any 555-area-code documentation number are all
+  unusable *as numbers* while being exactly what the document said. The fallback
+  is equality, not leniency -- `"N/A"` against `"unknown"` scores `0.0`, and when
+  exactly **one** side is a usable number the score is `0.0`, because one side
+  found a number and the other did not.
 
-  This rejects the number most documentation reaches for. `"555-123-4567"` puts
-  **555 in the area-code position**, and 555 is not a real area code -- NANP has
-  never assigned it, which is precisely why writers use it -- so it scores `0.0`
-  even against itself. Fixtures want a real area code with the `555`
-  **exchange** instead: `"206-555-0100"` is fictional by convention (555-01xx is
-  set aside for fiction) while being structurally valid.
+  Validity is still checked with `is_valid_number` rather than parseability.
+  libphonenumber parses `"0000000000"` and renders it as E164, so a parse-only
+  check would report a placeholder pair as a *canonical phone match* and would
+  match two different placeholders that canonicalize alike. Under the fallback
+  such a pair matches itself as a string instead: the score is the same and the
+  claim behind it is honest. Genuinely absent values are unaffected, since the
+  shared `None` policy resolves those before any comparator runs.
+
+  Fixtures still want a real area code with the `555` **exchange** rather than
+  555 in the area-code position: `"206-555-0100"` is fictional by convention
+  (555-01xx is set aside for fiction) while being structurally valid, so it
+  compares as a number rather than as a string.
 
   Extensions are compared separately, because E164 omits them:
   `"+12065550100x89"` and `"+12065550100x90"` reach different people and do not
   match.
 
   An unrecognised `region` raises `ValueError` at construction. `region="UK"`
-  (the ISO code is `"GB"`) would otherwise make every national-format number
-  score `0.0` with no error, which reads as total extraction failure rather than
-  a typo.
+  (the ISO code is `"GB"`) would otherwise leave every national-format number
+  comparing as a string rather than as a number, with no error -- quieter than a
+  typo has any right to be.
 
   This adds `phonenumberslite` to the core dependencies: the metadata-only build
   of the libphonenumber port, 450 KB, zero dependencies, Apache-2.0
