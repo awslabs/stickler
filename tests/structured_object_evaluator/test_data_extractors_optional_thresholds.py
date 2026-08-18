@@ -19,6 +19,7 @@ So the assertions here compare the two spellings' output for *equality* rather
 than checking that a key exists.
 """
 
+import sys
 import types
 from typing import List, Optional, Union, get_origin
 
@@ -106,12 +107,33 @@ class TestPEP604Spelling:
     spelling itself and so cannot exercise the PEP 604 path.
     """
 
-    def test_pep604_really_has_a_different_origin(self):
-        """Guard the guard: if the two origins ever unified, the tests below
-        would pass for a reason unrelated to what they mean to pin."""
-        assert get_origin(Nested | None) is types.UnionType
-        assert get_origin(Nested | None) is not Union
-        assert get_origin(Optional[Nested]) is Union
+    def test_both_spellings_land_in_the_widened_check(self):
+        """Guard the guard: both origins must be ones the extractor accepts.
+
+        Asserted as tuple membership rather than identity because **Python 3.14
+        unified typing.Union and types.UnionType**: there, ``X | None`` and
+        ``Optional[X]`` have the same origin and the widened check is correct
+        but redundant. Before 3.14 they are distinct, which is what made
+        checking typing.Union alone silently skip ``X | None`` (#162).
+
+        The version-specific half is asserted below so the reason for the tuple
+        is still on the record rather than looking like defensive padding. If
+        the equality tests above ever started passing for an unrelated reason,
+        this is what says which regime they ran in.
+        """
+        accepted = (Union, types.UnionType)
+
+        assert get_origin(Nested | None) in accepted
+        assert get_origin(Optional[Nested]) in accepted
+
+        if sys.version_info < (3, 14):
+            # The defect's precondition: two distinct origins, so the
+            # single-origin check this fix replaced could not see `X | None`.
+            assert get_origin(Nested | None) is types.UnionType
+            assert get_origin(Nested | None) is not Union
+            assert get_origin(Optional[Nested]) is Union
+        else:
+            assert get_origin(Nested | None) is get_origin(Optional[Nested])
 
     def test_optional_and_pep604_nested_object_agree(self):
         class OptionalSpelling(StructuredModel):

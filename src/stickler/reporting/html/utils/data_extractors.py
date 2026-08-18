@@ -206,7 +206,9 @@ class DataExtractor:
                 # than typing.Union, so checking Union alone silently skipped
                 # that spelling -- the same bug, left half-fixed, and more
                 # reachable since 0.7.0 raised the floor to Python 3.10 where
-                # `X | None` is idiomatic (issue #162).
+                # `X | None` is idiomatic (issue #162). Python 3.14 unifies the
+                # two, making the second arm redundant there but still required
+                # for 3.10-3.13.
                 #
                 # stickler.auto.inference.unwrap_optional already handles both
                 # forms and is the reference implementation. It is deliberately
