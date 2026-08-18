@@ -3,6 +3,7 @@ Data extraction utilities for HTML reporting.
 Centralizes data access patterns that were previously duplicated across multiple modules.
 """
 import logging
+import types
 from typing import Any, Dict, List, Optional, Union, get_args, get_origin
 
 from stickler.utils.process_evaluation import ProcessEvaluation
@@ -195,12 +196,26 @@ class DataExtractor:
                 field_info = model_schema.__fields__[field_name]
                 field_type = getattr(field_info, 'annotation', None)
 
-                # Unwrap Optional[...] (Union[X, None]) so nested-model and
-                # List[...] detection below also fires for non-required fields,
-                # which are annotated Optional[T] (issue #149). Without this,
-                # nested thresholds vanish from HTML reports for schema-built
-                # models whose nested object / list fields are optional.
-                if get_origin(field_type) is Union:
+                # Unwrap Optional[X] / Union[X, None] / X | None so nested-model
+                # and List[...] detection below also fires for non-required
+                # fields, which are annotated Optional[T] (issue #149). Without
+                # this, nested thresholds vanish from HTML reports for models
+                # whose nested object / list fields are optional.
+                #
+                # A PEP 604 union (`X | None`) has origin types.UnionType rather
+                # than typing.Union, so checking Union alone silently skipped
+                # that spelling -- the same bug, left half-fixed, and more
+                # reachable since 0.7.0 raised the floor to Python 3.10 where
+                # `X | None` is idiomatic (issue #162). Python 3.14 unifies the
+                # two, making the second arm redundant there but still required
+                # for 3.10-3.13.
+                #
+                # stickler.auto.inference.unwrap_optional already handles both
+                # forms and is the reference implementation. It is deliberately
+                # not imported here: that would make stickler.reporting depend
+                # on the inference machinery and pull pydantic model building
+                # into the report path. The four lines are mirrored instead.
+                if get_origin(field_type) in (Union, types.UnionType):
                     non_none_args = [
                         arg for arg in get_args(field_type) if arg is not type(None)
                     ]
