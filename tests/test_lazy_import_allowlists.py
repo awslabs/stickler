@@ -214,6 +214,47 @@ def test_registry_constructs_when_a_dependency_is_mocked():
         assert stickler._dependency_available("strands") is True
 
 
+def test_a_boto3_shim_without_a_module_spec_does_not_break_the_import():
+    """An optional dependency must never be probed at module scope.
+
+    ``comparators/utils.py`` used to run
+    ``importlib.util.find_spec("boto3")`` at import time, and that module is on
+    the ``import stickler`` path via ``comparators/semantic.py``. ``find_spec``
+    raises ``ValueError`` -- rather than returning None -- for an installed
+    module whose ``__spec__`` is None, which is what a hand-rolled shim looks
+    like, so the whole package became unimportable in such an environment
+    (#257).
+
+    The probe is gone, so this asserts the property rather than the line: with a
+    spec-less boto3 shim installed, reimporting the package succeeds.
+    """
+    shim = types.ModuleType("boto3")
+    shim.__spec__ = None
+
+    with mock.patch.dict(sys.modules, {"boto3": shim}):
+        # The precondition this regresses on: the call the old probe made raises.
+        with pytest.raises(ValueError):
+            importlib.util.find_spec("boto3")
+
+        importlib.reload(stickler)
+        importlib.reload(importlib.import_module("stickler.comparators.utils"))
+
+    # Leave the module registry as the rest of the session found it.
+    importlib.reload(stickler)
+
+
+def test_no_module_scope_boto3_availability_flag_remains():
+    """The removed probe left no successor.
+
+    A module-level flag is the shape of the bug: computing it requires
+    inspecting boto3 at import time. Availability is reported by the
+    ``ImportError`` that ``generate_bedrock_embedding`` raises instead.
+    """
+    import stickler.comparators.utils as utils
+
+    assert not [name for name in vars(utils) if "BOTO3" in name.upper()]
+
+
 def test_registered_comparators_cannot_redirect_the_import_path():
     """A user registering a comparator supplies a class, not a module path.
 

@@ -1,10 +1,4 @@
-import importlib.util
 import json
-
-# Probed rather than imported: boto3 is only needed to call Bedrock, and a
-# module-level import puts it on the `import stickler` path via
-# comparators/semantic.py. The real import happens in the function below.
-_HAS_BOTO3 = importlib.util.find_spec("boto3") is not None
 
 
 def generate_bedrock_embedding(
@@ -25,6 +19,12 @@ def generate_bedrock_embedding(
     Raises:
         Exception: If the embedding generation fails after the maximum number of retries.
     """
+    # Imported here rather than at module scope: boto3 is only needed to call
+    # Bedrock, and this module is on the `import stickler` path via
+    # comparators/semantic.py, so a module-level import would pull boto3 into
+    # every import of the package. Do not probe for it at module scope either --
+    # `importlib.util.find_spec` raises for an installed module whose
+    # `__spec__` is None, which broke `import stickler` outright (#257).
     try:
         import boto3
         from botocore.config import Config
