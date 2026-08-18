@@ -26,12 +26,19 @@ from stickler.comparators import (
     DateComparator,
     ExactComparator,
     LevenshteinComparator,
-    LLMComparator,
     NumericComparator,
     SemanticComparator,
     StructuredModelComparator,
 )
 from stickler.comparators.fuzzy import FuzzyComparator
+
+# Imported from its own module, not from `stickler.comparators`, because the
+# package namespace only exposes the name when the `llm` extra is installed
+# (#259). The module itself always imports, degrading to
+# STRANDS_AVAILABLE=False and raising at instantiation -- and instantiation
+# here goes through a mocked strands (see the fixture below), so the None
+# policy is testable without the extra.
+from stickler.comparators.llm import LLMComparator
 
 # Comparators needing more than a bare constructor get a factory. Everything
 # else is just the class, which is already a zero-argument callable.
