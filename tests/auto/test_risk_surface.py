@@ -156,13 +156,12 @@ class TestIdentityInvariant:
             ("updated_by", str, "Jane Smith"),
             ("days_past_due", int, -5),
             ("fee_applied", bool, True),
-            # Real area code (206) with the fictional 555 exchange. "555" in the
-            # area-code position was never assigned by NANP, so PhoneComparator
-            # rejects such a number as invalid and scores it 0.0 even against
-            # itself -- deliberately, since a placeholder on both sides is not a
-            # successful extraction (#243 review). This case tests token/type
-            # conflict resolution rather than phone validity, so it uses a number
-            # that is structurally real.
+            # Real area code (206) with the fictional 555 exchange, so it is
+            # structurally valid and matches canonically. This case tests
+            # token/type conflict resolution rather than phone validity; values
+            # PhoneComparator cannot parse are covered by
+            # TestPhoneFieldsNeverDeflateTheMetric below, which pins that they
+            # too score 1.0 against themselves (#258).
             ("phone_num", str, "(206) 555-0100"),
             ("isbn13", str, "978-3-16-148410-0"),
             ("created", bool, True),
@@ -181,6 +180,70 @@ class TestIdentityInvariant:
             f"{field_name}: identical value {identical_value!r} scored "
             f"{result.field_scores[field_name]}"
         )
+
+
+class TestPhoneFieldsNeverDeflateTheMetric:
+    """A perfectly extracted phone field scores 1.0, whatever shape it has.
+
+    The `phone` name token routes every *phone*-named str field to
+    PhoneComparator(region="US") at threshold 1.0, and evaluate()/eval_for()
+    take no region or per-field override. So a comparator that scores identical
+    values 0.0 deflated precision and recall on any non-US or extension-bearing
+    corpus, with .explain() reporting the routing as a deliberate choice --
+    which made the cause harder to find rather than easier.
+
+    Unit tests on PhoneComparator alone would not have caught this: the defect
+    is the routing plus the comparator together.
+
+    See https://github.com/awslabs/stickler/issues/258
+    """
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "555-123-4567",  # 555 area code: never assigned, so invalid
+            "020 7183 8750",  # valid UK national format, read under region="US"
+            "ext 4021",  # invalid in every region
+            "+1-206-555-0100",  # valid, E164
+            "(206) 555-0100",  # valid, national format under region="US"
+        ],
+    )
+    def test_an_identical_phone_field_scores_one(self, value):
+        class C(BaseModel):
+            phone: Optional[str] = None
+
+        result = stickler.evaluate(C(phone=value), C(phone=value))
+
+        assert result.field_scores["phone"] == pytest.approx(1.0), (
+            f"identical phone {value!r} scored {result.field_scores['phone']}"
+        )
+
+    def test_the_phone_token_really_is_installing_phone_comparison(self):
+        """Guard the guard: if routing changed, the test above is vacuous.
+
+        It would then pass through ExactComparator, which also scores identical
+        values 1.0, and stop pinning anything about PhoneComparator.
+        """
+
+        class C(BaseModel):
+            phone: Optional[str] = None
+
+        assert "Phone" in stickler.eval_for(C).explain()["phone"]["comparator"]
+
+    def test_a_different_phone_still_does_not_match(self):
+        """The fallback is equality, so real mismatches are still reported."""
+
+        class C(BaseModel):
+            phone: Optional[str] = None
+
+        assert stickler.evaluate(
+            C(phone="206-555-0100"), C(phone="206-555-0101")
+        ).field_scores["phone"] == pytest.approx(0.0)
+
+        # One side extracted a number, the other did not.
+        assert stickler.evaluate(C(phone="206-555-0100"), C(phone="N/A")).field_scores[
+            "phone"
+        ] == pytest.approx(0.0)
 
 
 class TestWireContract:
