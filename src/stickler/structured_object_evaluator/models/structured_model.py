@@ -4,6 +4,8 @@ This module provides the StructuredModel class for defining structured data mode
 with comparison configuration and evaluation capabilities.
 """
 
+import types
+
 from typing import (
     Any,
     ClassVar,
@@ -437,8 +439,11 @@ class StructuredModel(BaseModel):
                 # Use consolidated method for element type check
                 return cls._is_structured_model_type(args[0])
 
-        # Handle Union types (like Optional[List[StructuredModel]])
-        elif origin is Union:
+        # Handle Union types in both typing.Union (Optional[List[...]]) and
+        # PEP 604 (list[X] | None) spellings. get_origin normalizes both, and
+        # the recursive call ignores NoneType, so a single branch keeps them
+        # at parity by construction.
+        elif origin in (Union, types.UnionType):
             args = get_args(field_type)
             for arg in args:
                 if cls._is_list_of_structured_model_type(arg):
@@ -933,18 +938,18 @@ class StructuredModel(BaseModel):
             return False
 
         field_type = field_info.annotation
-        # Handle Optional types and direct List types
-        if hasattr(field_type, "__origin__"):
-            origin = field_type.__origin__
-            if origin is list or origin is List:
-                return True
-            elif origin is Union:  # Optional[List[...]] case
-                args = field_type.__args__
-                for arg in args:
-                    if hasattr(arg, "__origin__") and (
-                        arg.__origin__ is list or arg.__origin__ is List
-                    ):
-                        return True
+        # Handle direct List types
+        origin = get_origin(field_type)
+        if origin is list or origin is List:
+            return True
+        # Handle Optional[List[...]] in both typing.Union and PEP 604
+        # (list[X] | None) spellings. get_origin normalizes both, so a single
+        # branch keeps them at parity: a list arg is detected, a bare `list`
+        # arg is not (matching Optional[list], which also returns False).
+        elif origin in (Union, types.UnionType):
+            for arg in get_args(field_type):
+                if get_origin(arg) in (list, List):
+                    return True
         return False
 
     def _handle_list_field_dispatch(

@@ -5,6 +5,8 @@ JSON processing, and schema generation for StructuredModel instances.
 """
 
 import inspect
+import types
+
 from typing import TYPE_CHECKING, Any, Dict, Union, get_args, get_origin
 
 from stickler.comparators.levenshtein import LevenshteinComparator
@@ -148,11 +150,14 @@ class ConfigurationHelper:
                     ):
                         return True
 
-            # Handle Optional[List[SomeType]] annotations (Union[List[SomeType], NoneType])
-            elif get_origin(annotation) is Union:
-                union_args = get_args(annotation)
-                # Look for List[SomeType] within the Union
-                for union_arg in union_args:
+            # Handle Optional[List[SomeType]] in both typing.Union and PEP 604
+            # (X | None) spellings. get_origin/get_args normalize both, so a
+            # single branch keeps them at parity by construction. Like the
+            # legacy typing.Union branch, this only recognizes list-wrapped
+            # models: a bare Model | None is left to fall through to
+            # LevenshteinComparator, matching Optional[Model] behavior.
+            elif get_origin(annotation) in (Union, types.UnionType):
+                for union_arg in get_args(annotation):
                     if get_origin(union_arg) is list:
                         list_args = get_args(union_arg)
                         if list_args:
@@ -470,13 +475,11 @@ class ConfigurationHelper:
                 ):
                     return True
 
-            # Handle Optional[List[StructuredModel]] annotations (Union[List[StructuredModel], NoneType])
-            elif get_origin(annotation) is Union:
-                union_args = get_args(annotation)
-                none_type = type(None)
-                # Look for List[StructuredModel] within the Union
-                for arg in union_args:
-                    if arg != none_type and get_origin(arg) is list:
+            # Handle Optional[List[StructuredModel]] in both typing.Union and
+            # PEP 604 (list[X] | None) spellings via normalized get_origin.
+            elif get_origin(annotation) in (Union, types.UnionType):
+                for arg in get_args(annotation):
+                    if get_origin(arg) is list:
                         list_args = get_args(arg)
                         if (
                             list_args
@@ -512,12 +515,11 @@ class ConfigurationHelper:
                 ):
                     return args[0]
 
-            # Handle Optional[List[StructuredModel]]
-            elif get_origin(annotation) is Union:
-                union_args = get_args(annotation)
-                none_type = type(None)
-                for arg in union_args:
-                    if arg != none_type and get_origin(arg) is list:
+            # Handle Optional[List[StructuredModel]] in both typing.Union and
+            # PEP 604 (list[X] | None) spellings via normalized get_origin.
+            elif get_origin(annotation) in (Union, types.UnionType):
+                for arg in get_args(annotation):
+                    if get_origin(arg) is list:
                         list_args = get_args(arg)
                         if (
                             list_args
