@@ -430,12 +430,15 @@ class TestExplainContract:
         assert row["threshold"] == 0.85, "must be the element's real gate"
         assert row["clip_under_threshold"] is False
 
-    def test_nested_rows_agree_across_both_explain_paths(self):
-        """The configured and inferred paths must describe one behaviour once.
+    def test_nested_comparator_labels_agree_across_both_explain_paths(self):
+        """Both paths must name the same comparator for the same behaviour.
 
-        This is the whole point of the change: a caller diffing explain() across
-        a tuned StructuredModel and a plain BaseModel of the same shape should
-        not see two names for the same comparison.
+        Scoped to `comparator` deliberately. `threshold` and
+        `clip_under_threshold` are NOT invariant across the paths for a single
+        nested model, and asserting they were would lock in a misreport: the
+        engine reads the field's own values there, and a hand-written
+        `ComparableField()` defaults `clip_under_threshold` to True where
+        `builder.py` installs False. The two differ because the models differ.
         """
         from stickler import ComparableField, ExactComparator, StructuredModel
 
@@ -464,10 +467,72 @@ class TestExplainContract:
 
         for path in ("addr", "items"):
             assert configured[path]["comparator"] == inferred[path]["comparator"], path
-            assert (
-                configured[path]["clip_under_threshold"]
-                == inferred[path]["clip_under_threshold"]
-            ), path
+
+    def test_a_nested_row_predicts_whether_the_score_was_clipped(self):
+        """The nested row's threshold and clip flag must be the ones that ran.
+
+        Generalising the list-only "inert defaults" argument to this branch
+        replaced accurate values with inaccurate ones: the engine does read
+        `info.threshold` and `info.clip_under_threshold` for a single nested
+        model, so a row hardcoding the element's match_threshold and False
+        reported a clip flag the engine contradicted, and left a 0.0 score with
+        no explanation.
+        """
+        from stickler import ComparableField, ExactComparator, StructuredModel
+
+        class Kid(StructuredModel):
+            a: str = ComparableField(comparator=ExactComparator())
+            b: str = ComparableField(comparator=ExactComparator())
+            c: str = ComparableField(comparator=ExactComparator())
+
+            match_threshold = 0.85
+
+        gt_kid = Kid(a="x", b="y", c="z")
+        pred_kid = Kid(a="x", b="Q", c="Q")  # raw similarity 1/3
+
+        for kwargs in (
+            {},
+            {"threshold": 0.3},
+            {"clip_under_threshold": False},
+            {"threshold": 0.9},
+        ):
+            Fam = type(
+                "Fam",
+                (StructuredModel,),
+                {"__annotations__": {"one": Kid}, "one": ComparableField(**kwargs)},
+            )
+            spec = stickler.eval_for(Fam)
+            score = spec.evaluate(Fam(one=gt_kid), Fam(one=pred_kid)).field_scores["one"]
+            row = spec.explain()["one"]
+
+            would_clip = score == 0.0
+            row_says = (1 / 3) < row["threshold"] and row["clip_under_threshold"]
+            assert would_clip == row_says, (
+                f"{kwargs}: score={score}, row reported "
+                f"threshold={row['threshold']} clip={row['clip_under_threshold']}"
+            )
+
+    def test_a_list_row_reports_the_element_gate_and_names_the_other(self):
+        """A list field has two gates and the row must not hide either."""
+        from stickler import ComparableField, ExactComparator, StructuredModel
+
+        class Line(StructuredModel):
+            sku: str = ComparableField(comparator=ExactComparator())
+
+            match_threshold = 0.85
+
+        class Order(StructuredModel):
+            items: List[Line] = ComparableField()
+
+        row = stickler.eval_for(Order).explain()["items"]
+
+        # The element's match_threshold splits TP from FD.
+        assert row["threshold"] == 0.85
+        # Structured lists are never clipped, whatever the field carries.
+        assert row["clip_under_threshold"] is False
+        # The field's own threshold still gates whether per-item rows appear, so
+        # it must not vanish from the trail just because it is not the headline.
+        assert any("gates:" in reason for reason in row["why"]), row["why"]
 
     def test_an_ignored_comparator_on_a_nested_field_is_still_visible(self):
         """A comparator on a single nested-model field is accepted and ignored.
@@ -494,6 +559,22 @@ class TestExplainContract:
         assert row["comparator"] == "StructuredModelComparator"
         assert any("Always37" in reason for reason in row["why"]), row["why"]
         assert any("ignored" in reason for reason in row["why"]), row["why"]
+
+        # ...but it must stay silent when nothing was chosen. ComparableField()
+        # stores a LevenshteinComparator when none is given, and a bare
+        # annotation gets a synthesised StructuredModelComparator, so an
+        # unconditional note would warn about a comparator the user never picked
+        # and, for the bare case, have the row disown the very comparator it
+        # reports.
+        class Quiet(StructuredModel):
+            chosen_nothing: Child = ComparableField()
+            no_field_at_all: Child
+
+        quiet = stickler.eval_for(Quiet).explain()
+        for field_name in ("chosen_nothing", "no_field_at_all"):
+            assert not any(
+                "ignored" in reason for reason in quiet[field_name]["why"]
+            ), f"{field_name}: {quiet[field_name]['why']}"
 
     def test_every_explained_comparator_is_instantiable(self):
         from stickler.structured_object_evaluator.models.comparator_registry import (

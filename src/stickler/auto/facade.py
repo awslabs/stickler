@@ -28,6 +28,12 @@ from ..structured_object_evaluator.models.configuration_helper import (
 from ..structured_object_evaluator.models.structured_model import StructuredModel
 from .builder import specs_for, structured_model_for
 
+#: Comparator names that mean "nothing was chosen". ``ComparableField()`` stores
+#: a ``LevenshteinComparator`` when none is given, and a bare annotation on a
+#: nested model gets a synthesised ``StructuredModelComparator``, so seeing
+#: either says nothing about the author's intent.
+_DEFAULT_COMPARATORS = frozenset({"LevenshteinComparator", "StructuredModelComparator"})
+
 
 class EvalResult:
     """Flat, friendly view over a stickler comparison result.
@@ -183,21 +189,28 @@ class EvalSpec:
     def _structured_row(self, field: Any, info: Any) -> Dict[str, Any]:
         """One explain() row for a field on a configured StructuredModel.
 
-        A nested-model field has no single comparator: the element recurses into
-        its own fields, and a ``List[StructuredModel]`` is matched
-        element-by-element with Hungarian first. The comparator, threshold and
-        clip flag on its ``ComparableField`` are inert defaults the engine never
-        consults, so reporting them describes nothing:
+        Both nested kinds share one fact: there is no single comparator. The
+        element recurses into its own fields, and a ``List[StructuredModel]`` is
+        matched element-by-element with Hungarian first. So the comparator label
+        is structural, and matches what :mod:`.builder` emits for the inferred
+        path.
 
-        - the comparator is unused (and ``__init_subclass__`` rejects one
-          outright on the list form),
-        - the real gate is the *element class's* ``match_threshold``, not the
-          field's ``threshold``, which ``__init_subclass__`` also rejects on the
-          list form and which therefore only ever holds a default,
-        - below-threshold list scores are not clipped, whatever the flag says.
+        They differ in everything else, and the difference is not cosmetic. The
+        engine consults ``threshold`` and ``clip_under_threshold`` for a single
+        nested model but not for a list, so the two branches report different
+        sources for those keys:
 
-        Labels and values mirror :mod:`.builder` exactly, so ``explain()`` reads
-        the same whether the model was configured or inferred.
+        - **Single nested model.** ``ComparisonDispatcher`` reads
+          ``info.threshold`` and hands it to ``FieldComparator``, which clips to
+          0.0 when the raw score falls short and ``info.clip_under_threshold`` is
+          set. Both knobs move the score, so both are reported verbatim.
+        - **List of nested models.** ``__init_subclass__`` rejects a
+          ``threshold`` here, so the field's own value is always an unused
+          default; the element class's ``match_threshold`` is what splits pairs
+          into TP and FD. Structured lists are never clipped
+          (``structured_list_comparator.py``: "For structured lists, we NEVER
+          clip under threshold"), so the flag is reported ``False`` regardless
+          of what the field carries.
         """
         annotation = field.annotation
         is_list = self.source_cls._is_list_of_structured_model_type(annotation)
@@ -214,50 +227,52 @@ class EvalSpec:
                 "why": ["explicit: configured on the StructuredModel class"],
             }
 
-        element = _structured_element(annotation)
         why = ["explicit: configured on the StructuredModel class"]
-        if is_list:
-            comparator_name = "Hungarian (per-element StructuredModel)"
-            why.append("type:List[StructuredModel] -> Hungarian object matching")
-        else:
-            comparator_name = "StructuredModelComparator"
-            why.append("type:nested StructuredModel -> recursive comparison")
 
-        # A comparator on a single nested-model field is accepted by
-        # __init_subclass__ and then ignored by the engine. Say so, rather than
-        # letting the generic label hide a setting that does nothing.
+        if is_list:
+            element = ConfigurationHelper._extract_structured_class_from_list(annotation)
+            why.append("type:List[StructuredModel] -> Hungarian object matching")
+            # Two gates, not one. The element's match_threshold decides TP vs FD;
+            # the field's own threshold decides whether per-item rows are emitted
+            # at all (confusion_matrix_calculator: "Use field's threshold, not
+            # class's match_threshold", then the threshold-gated recursion). A
+            # pair can therefore be recursed into without counting as a match.
+            why.append(
+                f"gates: element match_threshold={element.match_threshold} splits "
+                f"TP from FD; the field's threshold={info.threshold} gates whether "
+                f"per-item rows are produced"
+            )
+            return {
+                "comparator": "Hungarian (per-element StructuredModel)",
+                "threshold": element.match_threshold,
+                "weight": info.weight,
+                "clip_under_threshold": False,
+                "source": "explicit",
+                "why": why,
+            }
+
+        why.append("type:nested StructuredModel -> recursive comparison")
+        # A comparator here is accepted by __init_subclass__ (only the list form
+        # raises) and then ignored by the engine. Naming it keeps a dead setting
+        # visible, which the structural label would otherwise hide. Skip the two
+        # values that mean "nothing was chosen": ComparableField() stores a
+        # LevenshteinComparator when none is given, and a bare annotation gets a
+        # synthesised StructuredModelComparator, so neither indicates intent.
         declared = getattr(info, "comparator", None)
-        if declared is not None and not is_list:
+        if declared is not None and type(declared).__name__ not in _DEFAULT_COMPARATORS:
             why.append(
                 f"ignored: comparator={type(declared).__name__} is not consulted "
                 f"for a nested model; the element's own fields are compared"
             )
-
         return {
-            "comparator": comparator_name,
-            # The element class's own match_threshold is what gates the pairing.
-            "threshold": getattr(element, "match_threshold", self._match_threshold),
+            "comparator": "StructuredModelComparator",
+            # The engine really does read these two for a nested model.
+            "threshold": info.threshold,
             "weight": info.weight,
-            # Nested comparisons are never clipped; the score percolates up.
-            "clip_under_threshold": False,
+            "clip_under_threshold": info.clip_under_threshold,
             "source": "explicit",
             "why": why,
         }
-
-
-def _structured_element(annotation: Any) -> Any:
-    """The StructuredModel class a nested or list-of-nested field holds."""
-    element = ConfigurationHelper._extract_structured_class_from_list(annotation)
-    if element is not None:
-        return element
-    unwrapped, _ = _unwrap_optional_annotation(annotation)
-    return unwrapped
-
-
-def _unwrap_optional_annotation(annotation: Any) -> Any:
-    from .builder import unwrap_optional
-
-    return unwrap_optional(annotation)
 
 
 def eval_for(

@@ -312,29 +312,35 @@ Each release links to full notes on the
 - `explain()` now describes how a nested `StructuredModel` field is actually
   compared. On a configured `StructuredModel`, both a `List[StructuredModel]`
   field and a single nested-model field reported `LevenshteinComparator`, taken
-  from a `ComparableField` default the engine never consults. Three values on
-  those rows were inert, not just the comparator:
+  from a `ComparableField` default the engine never consults. Both now report the
+  structural label the zero-config inference path already used, so `explain()`
+  names the same comparator whichever way the model was built:
+  `"Hungarian (per-element StructuredModel)"` for a list,
+  `"StructuredModelComparator"` for a single nested model.
 
-  | reported | actual |
-  |---|---|
-  | `comparator: LevenshteinComparator` | never runs; the element's own fields are compared |
-  | `threshold: 0.5` | the element class's `match_threshold` is the real gate |
-  | `clip_under_threshold: True` | a below-threshold list score is not clipped |
+  The two kinds report `threshold` and `clip_under_threshold` from different
+  sources, because the engine treats them differently:
 
-  All three now describe the comparison, using the same labels and values the
-  zero-config inference path emits, so `explain()` reads the same whether the
-  model was configured or inferred: `"Hungarian (per-element StructuredModel)"`
-  for a list, `"StructuredModelComparator"` for a single nested model, the
-  element's `match_threshold`, and `clip_under_threshold: False`.
+  | | `threshold` | `clip_under_threshold` |
+  |---|---|---|
+  | single nested model | the field's own, which the dispatcher reads and which does clip | the field's own, which is honoured |
+  | `List[StructuredModel]` | the **element class's** `match_threshold`, since `__init_subclass__` rejects a field threshold here | always `False`; structured lists are never clipped |
+
+  A list field has two gates rather than one, so the `why` trail names both: the
+  element's `match_threshold` splits pairs into TP and FD, while the field's own
+  threshold decides whether per-item rows are produced at all. A pair can be
+  recursed into without counting as a match.
 
   A comparator on a *single* nested-model field is accepted rather than rejected
-  (only the list form raises) and then ignored, so the `why` trail now names it.
-  Otherwise the structural label would hide a dead setting that the old,
-  incorrect label at least made visible.
+  (only the list form raises) and then ignored, so the `why` trail names it,
+  keeping a dead setting visible where the structural label would hide it. It
+  stays silent when nothing was chosen, since `ComparableField()` stores a
+  `LevenshteinComparator` by default and a bare annotation gets a synthesised
+  `StructuredModelComparator`.
 
-  The inference path had one of the same inaccuracies: its `model_list` rows
-  reported `clip_under_threshold: True`, where its own `model` rows correctly
-  said `False`. Corrected, so the two agree.
+  The inference path had a related inaccuracy: its `model_list` rows reported
+  `clip_under_threshold: True`, where its own `model` rows correctly said
+  `False`. Corrected.
 
   Scores are unaffected throughout; only the audit trail was wrong.
 
