@@ -14,10 +14,13 @@ import stickler
 # Mapping of public name -> canonical source module
 ALWAYS_AVAILABLE_EXPORTS = {
     "BaseComparator": "stickler.comparators.base",
+    "BBoxIoUComparator": "stickler.comparators.bbox",
+    "DateComparator": "stickler.comparators.date",
     "ExactComparator": "stickler.comparators.exact",
     "FuzzyComparator": "stickler.comparators.fuzzy",
     "LevenshteinComparator": "stickler.comparators.levenshtein",
     "NumericComparator": "stickler.comparators.numeric",
+    "PhoneComparator": "stickler.comparators.phone",
     "SemanticComparator": "stickler.comparators.semantic",
     "StructuredModelComparator": "stickler.comparators.structured",
 }
@@ -77,6 +80,33 @@ class TestAllConsistency:
         """All always-available comparators must be in __all__."""
         for name in ALWAYS_AVAILABLE_EXPORTS:
             assert name in stickler.__all__
+
+    def test_no_eager_comparator_is_missing_from_the_top_level(self):
+        """The two namespaces must agree, derived rather than hand-listed.
+
+        `ALWAYS_AVAILABLE_EXPORTS` above is maintained by hand, which is why
+        three comparators were absent from it and one of them
+        (`DateComparator`) went unexported from the package root for two
+        releases. `BBoxIoUComparator` had the same gap. This test derives the
+        expectation from `stickler.comparators` instead, so adding a comparator
+        to one namespace and not the other fails rather than passing quietly.
+
+        Scoped to eagerly imported comparators. `BERTComparator` and
+        `LLMComparator` come through the lazy `__getattr__` because they need
+        extras, and `TestOptionalGating` covers those.
+        """
+        import stickler.comparators as comparators
+
+        def comparator_names(namespace):
+            return {n for n in dir(namespace) if n.endswith("Comparator")}
+
+        lazy = {"BERTComparator", "LLMComparator"}
+        missing = comparator_names(comparators) - comparator_names(stickler) - lazy
+
+        assert not missing, (
+            f"in stickler.comparators but not at the top level: {sorted(missing)}. "
+            f"Add the import and the __all__ entry to src/stickler/__init__.py."
+        )
 
     def test_numeric_exact_c_not_in_all(self):
         """NumericExactC is a compat alias - not re-exported at top level."""
