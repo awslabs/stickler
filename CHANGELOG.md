@@ -9,7 +9,7 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
-## [0.7.0] - 2026-08-14
+## [0.7.0] - 2026-08-18
 
 ### Added
 
@@ -330,6 +330,74 @@ Each release links to full notes on the
   ([#226](https://github.com/awslabs/stickler/issues/226))
 
 ### Fixed
+
+- `PhoneComparator` no longer scores two identical values `0.0`. When **neither**
+  side is a usable number the comparison falls back to exact string equality, so
+  a correctly extracted number that is not dialable under the configured region
+  is not reported as a total mismatch against a byte-identical copy of itself. A
+  UK national format read as `"US"`, an extension fragment like `"ext 4021"`, and
+  any 555-area-code documentation number were all affected.
+
+  This was reachable with no configuration at all. The `phone` name token routes
+  every `phone`-shaped `str` field to `PhoneComparator(region="US")` at threshold
+  `1.0`, and `evaluate()`/`eval_for()` take no region override, so a non-US or
+  extension-bearing corpus had its precision and recall deflated with no signal
+  why -- while `explain()` reported the routing as a deliberate choice.
+
+  The fallback is equality, not leniency. `"N/A"` against `"unknown"` scores
+  `0.0`, and when exactly **one** side is a usable number the score is `0.0`,
+  because one side found a number and the other did not. Validity is still
+  checked rather than mere parseability, so a placeholder pair matches itself as
+  a *string* rather than canonicalizing into a plausible E164 and being reported
+  as a phone-number match.
+
+  Scores move **up** for affected corpora; nothing that scored `1.0` before
+  changes. A region or per-field comparator override on the zero-config entry
+  points is deferred to 0.8.0: it would widen the public API inside a release
+  candidate, and it would not have fixed these cases on its own -- `"ext 4021"`
+  is invalid under every region, and no single region works for a mixed corpus
+  ([#258](https://github.com/awslabs/stickler/issues/258))
+
+- `import stickler` no longer fails in environments carrying a boto3 stand-in
+  module. `comparators/utils.py` ran `importlib.util.find_spec("boto3")` at
+  module scope, and that module is on the import path via
+  `comparators/semantic.py`. `find_spec` raises `ValueError` -- rather than
+  returning `None` -- for an installed module whose `__spec__` is `None`, which
+  is what a hand-rolled shim looks like, so the package became unimportable
+  outright. The probe's result had no readers anywhere in the codebase, so it
+  bought nothing; boto3 is still imported inside
+  `generate_bedrock_embedding`, which is what keeps it off the import path
+  ([#257](https://github.com/awslabs/stickler/issues/257))
+
+- `LLMComparator` now resolves the same way from both import paths. Without the
+  `llm` extra, `stickler.comparators.LLMComparator` returned a class that raised
+  at instantiation while `stickler.LLMComparator` raised `AttributeError`, and
+  neither module's `__all__` advertised the name -- so which import worked was a
+  matter of luck. Both now gate on the `strands` probe, matching what `__all__`
+  already did in both modules. Without the extra, both raise `AttributeError` and
+  `hasattr()` is `False`; with it installed, nothing changes
+  ([#259](https://github.com/awslabs/stickler/issues/259))
+
+- A failed import no longer deregisters a built-in comparator.
+  `ComparatorRegistry` removed a pending entry *before* attempting its import, so
+  a broken-but-installed extra was dropped permanently by the first failed
+  lookup: `is_registered()` returned `True` before the first `get()` and `False`
+  after, and `list_available()` shrank as a side effect of a *failed* call. More
+  quietly, `register()` rejects a name only when it is already known, so a failed
+  resolve freed the built-in's name and let a later registration silently shadow
+  it. A broken extra is still reported as unavailable rather than raising
+  `ImportError` at the caller; only the bookkeeping changed
+  ([#260](https://github.com/awslabs/stickler/issues/260))
+
+- HTML reports no longer drop nested thresholds for a field annotated
+  `Addr | None`. Threshold extraction unwrapped `Optional[X]` and
+  `Union[X, None]` but tested only for the `typing.Union` origin, and a PEP 604
+  union's origin is `types.UnionType`, so that spelling was never unwrapped and
+  the nested-model and list branches never fired. The same class of bug fixed for
+  `Optional[X]` in 0.6.0, left half-done -- and far more reachable now that 0.7.0
+  raises the floor to Python 3.10, where `X | None` is the idiomatic spelling. A
+  genuine multi-arm union is still left alone
+  ([#162](https://github.com/awslabs/stickler/issues/162))
 
 - Zero-config evaluation no longer scores formatting-only differences in
   `email`, `url` and `phone` fields as complete mismatches. The name-token
