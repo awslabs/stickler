@@ -22,3 +22,8 @@ dist/
 .working/
 .temp/
 .data/
+
+# Openspec
+openspec/
+.claude/commands/opsx/
+.claude/skills/openspec-*
