@@ -69,10 +69,11 @@ def _dependency_available(name: str) -> bool:
 
 
 # `_HAS_LLM`/`LLM_AVAILABLE` mean "strands-agents is installed", which is what
-# gates __all__ and what tests/test_top_level_exports.py asserts. Note that the
-# MODULE stickler.comparators.llm imports fine without strands (it degrades to
-# STRANDS_AVAILABLE=False and raises at instantiation), so __getattr__ below
-# does not gate on this flag for LLMComparator; only __all__ does.
+# gates both __getattr__ below and __all__, and what
+# tests/test_top_level_exports.py asserts. The flag rather than a trial import
+# is the gate because the MODULE stickler.comparators.llm imports fine without
+# strands: it degrades to STRANDS_AVAILABLE=False and raises at instantiation,
+# so a successful import would prove nothing about availability.
 _HAS_LLM = _dependency_available("strands")
 _HAS_BERT = _dependency_available("evaluate")
 
