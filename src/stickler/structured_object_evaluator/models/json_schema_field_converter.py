@@ -4,12 +4,13 @@ This module provides utilities for converting JSON Schema properties to
 Pydantic Field instances with ComparableField functionality.
 """
 
-from typing import Any, Dict, List, Optional, Tuple, Type, Union, get_args, get_origin
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from pydantic.fields import FieldInfo
 
 from .comparable_field import ComparableField
 from .comparator_registry import create_comparator
+from .optional_annotation import unwrap_optional
 
 # Type mapping from JSON Schema types to Python types
 JSON_TYPE_TO_PYTHON_TYPE = {
@@ -53,17 +54,31 @@ class JsonSchemaFieldConverter:
     It extracts x-aws-stickler-* extensions and calls ComparableField() to create Pydantic Fields.
     """
 
-    def __init__(self, schema: Dict[str, Any], field_path: str = ""):
+    def __init__(
+        self,
+        schema: Dict[str, Any],
+        field_path: str = "",
+        tolerate_missing_fields: bool = False,
+    ):
         """Initialize with a JSON Schema document.
-        
+
         Args:
             schema: JSON Schema document (already validated)
             field_path: Current field path for error messages (e.g., "address.street")
+            tolerate_missing_fields: When True, a required field with no stated
+                default is given ``default=None`` -- ComparableField's
+                construction-tolerance sentinel -- so the built model constructs
+                from a prediction that omits the field and the engine scores a
+                miss instead of raising ``ValidationError``. The annotation stays
+                non-nullable either way, so the field is still reported as
+                required in a rendered schema. Defaults to False, which enforces
+                the schema's ``required`` list at construction time.
         """
         self.schema = schema
         self.definitions = schema.get("definitions", {})
         self.defs = schema.get("$defs", {})  # JSON Schema draft 2019-09+
         self.field_path = field_path
+        self.tolerate_missing_fields = tolerate_missing_fields
 
     def convert_properties_to_fields(
         self, properties: Dict[str, Any], required: List[str]
@@ -136,8 +151,32 @@ class JsonSchemaFieldConverter:
         # Keeping this in one place means the nested-object / array handlers
         # never widen themselves; item-level nullability inside arrays
         # (List[Optional[T]]) is still applied by _handle_array_type.
-        default = property_schema.get("default", ... if is_required else None)
-        widen_to_optional = (not is_required) or (default is None) or is_nullable
+        #
+        # With ``tolerate_missing_fields``, a required field with no stated
+        # default gets ``default=None`` instead of ``...`` -- ComparableField's
+        # construction-tolerance sentinel, so a rebuilt model scores a
+        # prediction that omits the field rather than raising ValidationError.
+        # It must NOT widen the annotation: the sentinel only reads as
+        # "required" while the annotation stays non-nullable (see
+        # _AnnotationDrivenJsonSchema.field_is_required), so widening would drop
+        # the field out of the rendered schema's ``required`` list.
+        #
+        # Hence widening keys off whether the schema *stated* a default rather
+        # than off the resulting value: a None we were given means nullable, a
+        # None we supplied means tolerant, and the two are indistinguishable by
+        # value alone.
+        has_explicit_default = "default" in property_schema
+        if has_explicit_default:
+            default = property_schema["default"]
+        elif is_required:
+            default = None if self.tolerate_missing_fields else ...
+        else:
+            default = None
+        widen_to_optional = (
+            (not is_required)
+            or (has_explicit_default and default is None)
+            or is_nullable
+        )
 
         # Handle nested objects / arrays via their handlers; primitives inline.
         if json_type == "object":
@@ -520,7 +559,14 @@ class JsonSchemaFieldConverter:
             enriched_schema["$defs"] = self.defs
         
         try:
-            NestedModel = StructuredModel._from_json_schema_internal(enriched_schema, field_path=field_path)
+            # Propagate the flag so a nested model's own required fields behave
+            # the same way as the parent's -- tolerance must not stop at the
+            # first level.
+            NestedModel = StructuredModel._from_json_schema_internal(
+                enriched_schema,
+                field_path=field_path,
+                tolerate_missing_fields=self.tolerate_missing_fields,
+            )
         except ValueError:
             # Nested errors already have field path context
             raise
@@ -530,10 +576,15 @@ class JsonSchemaFieldConverter:
         weight = extensions.get("weight", 1.0)
         clip_under_threshold = extensions.get("clip_under_threshold", True)
         
-        # Get default value
-        default = property_schema.get("default", ... if is_required else None)
+        # Get default value. Same tolerance sentinel as the primitive path in
+        # convert_property_to_field, so a required nested object behaves like a
+        # required scalar.
+        default = property_schema.get(
+            "default",
+            ... if (is_required and not self.tolerate_missing_fields) else None,
+        )
         description = property_schema.get("description")
-        
+
         # Create ComparableField with dummy comparator (not used for StructuredModel)
         from stickler.comparators.levenshtein import LevenshteinComparator
         field = ComparableField(
@@ -581,7 +632,11 @@ class JsonSchemaFieldConverter:
         if items_type == "object":
             from .structured_model import StructuredModel
             try:
-                ElementModel = StructuredModel._from_json_schema_internal(items_schema, field_path=f"{field_path}[]")
+                ElementModel = StructuredModel._from_json_schema_internal(
+                    items_schema,
+                    field_path=f"{field_path}[]",
+                    tolerate_missing_fields=self.tolerate_missing_fields,
+                )
             except ValueError:
                 # Nested errors already have field path context
                 raise
@@ -608,8 +663,13 @@ class JsonSchemaFieldConverter:
         weight = extensions.get("weight", 1.0)
         clip_under_threshold = extensions.get("clip_under_threshold", True)
         
-        # Get default
-        default = property_schema.get("default", ... if is_required else None)
+        # Get default. Same tolerance sentinel as the primitive path in
+        # convert_property_to_field, so a required array behaves like a required
+        # scalar.
+        default = property_schema.get(
+            "default",
+            ... if (is_required and not self.tolerate_missing_fields) else None,
+        )
         description = property_schema.get("description")
 
         # Create ComparableField
@@ -646,11 +706,28 @@ class JsonSchemaFieldConverter:
         """
         # Unwrap Optional[T] in case the caller passes the wrapped type so the
         # nullability still survives the round-trip as the ["X", "null"] idiom.
-        if get_origin(field_type) is Union:
-            args = [a for a in get_args(field_type) if a is not type(None)]
-            if len(args) == 1 and type(None) in get_args(field_type):
-                field_type = args[0]
-                is_nullable = True
+        # Every spelling, including `X | None`.
+        unwrapped, was_optional = unwrap_optional(field_type)
+        if was_optional:
+            field_type = unwrapped
+            is_nullable = True
+
+        # A StructuredModel must never reach the scalar fallback below. It has
+        # its own schema -- properties, nested thresholds, comparators -- and
+        # `PYTHON_TYPE_TO_JSON_TYPE.get(..., "string")` would silently discard
+        # all of it, emitting a schema that rebuilds into a structurally
+        # different model. Raise rather than produce a wrong schema quietly.
+        #
+        # Deliberately scoped to StructuredModel, not to every dict miss:
+        # Decimal, UUID and enums legitimately export as "string".
+        from .structured_model import StructuredModel
+
+        if isinstance(field_type, type) and issubclass(field_type, StructuredModel):
+            raise ValueError(
+                f"Cannot export nested model field as a scalar: annotation "
+                f"{field_type!r} is a StructuredModel. Export it via its own "
+                f"to_json_schema() instead of field_to_property()."
+            )
 
         json_type = PYTHON_TYPE_TO_JSON_TYPE.get(field_type, "string")
         property_schema = {"type": [json_type, "null"] if is_nullable else json_type}

@@ -5,9 +5,11 @@ JSON processing, and schema generation for StructuredModel instances.
 """
 
 import inspect
-from typing import TYPE_CHECKING, Any, Dict, Union, get_args, get_origin
+from typing import TYPE_CHECKING, Any, Dict, get_args, get_origin
 
 from stickler.comparators.levenshtein import LevenshteinComparator
+
+from .optional_annotation import is_union, union_args
 
 if TYPE_CHECKING:
     from stickler.structured_object_evaluator.models.comparison_info import (
@@ -148,11 +150,10 @@ class ConfigurationHelper:
                     ):
                         return True
 
-            # Handle Optional[List[SomeType]] annotations (Union[List[SomeType], NoneType])
-            elif get_origin(annotation) is Union:
-                union_args = get_args(annotation)
-                # Look for List[SomeType] within the Union
-                for union_arg in union_args:
+            # Handle Optional[List[SomeType]] annotations, in every spelling.
+            elif is_union(annotation):
+                # Look for List[SomeType] in any arm.
+                for union_arg in union_args(annotation):
                     if get_origin(union_arg) is list:
                         list_args = get_args(union_arg)
                         if list_args:
@@ -166,6 +167,10 @@ class ConfigurationHelper:
                 # Non-required nested object fields are annotated this way (#149); without
                 # this, optional nested objects inside list items are routed down the
                 # non-hierarchical path and lose their nested metric breakdown.
+                #
+                # The spelling does not matter: `Inner | None` reaches here too.
+                # It did not before, so a PEP 604-spelled optional nested object
+                # silently lost exactly the breakdown #149 restored.
                 if ConfigurationHelper._is_optional_structured_model(annotation):
                     return True
 
@@ -402,20 +407,14 @@ class ConfigurationHelper:
         try:
             from .structured_model import StructuredModel
 
-            # Handle Union types (like Optional[StructuredModel])
-            if get_origin(annotation) is Union:
-                union_args = get_args(annotation)
-                # Check if it's a Union with NoneType (Optional pattern)
-                none_type = type(None)
-                if none_type in union_args:
-                    # Look for StructuredModel in the remaining args
-                    for arg in union_args:
-                        if (
-                            arg != none_type
-                            and inspect.isclass(arg)
-                            and issubclass(arg, StructuredModel)
-                        ):
-                            return True
+            # Handle Union types (like Optional[StructuredModel]), in every
+            # spelling including `StructuredModel | None`. The union must
+            # actually include None to be an "optional", but any arm may carry
+            # the model, so a wider union still resolves.
+            if is_union(annotation) and type(None) in get_args(annotation):
+                for arg in union_args(annotation):
+                    if inspect.isclass(arg) and issubclass(arg, StructuredModel):
+                        return True
             return False
         except (TypeError, AttributeError):
             return False
@@ -433,16 +432,9 @@ class ConfigurationHelper:
         try:
             from .structured_model import StructuredModel
 
-            if get_origin(annotation) is Union:
-                union_args = get_args(annotation)
-                none_type = type(None)
-                for arg in union_args:
-                    if (
-                        arg != none_type
-                        and inspect.isclass(arg)
-                        and issubclass(arg, StructuredModel)
-                    ):
-                        return arg
+            for arg in union_args(annotation):
+                if inspect.isclass(arg) and issubclass(arg, StructuredModel):
+                    return arg
             return None
         except (TypeError, AttributeError):
             return None
@@ -470,13 +462,10 @@ class ConfigurationHelper:
                 ):
                     return True
 
-            # Handle Optional[List[StructuredModel]] annotations (Union[List[StructuredModel], NoneType])
-            elif get_origin(annotation) is Union:
-                union_args = get_args(annotation)
-                none_type = type(None)
-                # Look for List[StructuredModel] within the Union
-                for arg in union_args:
-                    if arg != none_type and get_origin(arg) is list:
+            # Handle Optional[List[StructuredModel]], in every spelling.
+            elif is_union(annotation):
+                for arg in union_args(annotation):
+                    if get_origin(arg) is list:
                         list_args = get_args(arg)
                         if (
                             list_args
@@ -512,12 +501,10 @@ class ConfigurationHelper:
                 ):
                     return args[0]
 
-            # Handle Optional[List[StructuredModel]]
-            elif get_origin(annotation) is Union:
-                union_args = get_args(annotation)
-                none_type = type(None)
-                for arg in union_args:
-                    if arg != none_type and get_origin(arg) is list:
+            # Handle Optional[List[StructuredModel]], in every spelling.
+            elif is_union(annotation):
+                for arg in union_args(annotation):
+                    if get_origin(arg) is list:
                         list_args = get_args(arg)
                         if (
                             list_args

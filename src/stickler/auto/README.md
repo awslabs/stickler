@@ -19,7 +19,11 @@ The two pre-existing entry points lose information from real pydantic models:
 
 - `StructuredModel.from_json_schema(Model.model_json_schema())` supports
   nullable `Optional` schemas, but not general multi-type unions, and silently
-  degrades enums and `datetime` to bare strings.
+  degrades enums and `datetime` to bare strings. It also enforces the schema's
+  `required` list at construction, so it rejects a prediction that omits a field
+  unless you pass `tolerate_missing_fields=True` — and a shape-only schema
+  carries no comparison configuration, so the rebuilt model gets default
+  thresholds, weights and comparators.
 - Unannotated `StructuredModel` fields fall through
   `configuration_helper.py`'s type-blind default and get compared with
   `LevenshteinComparator`, which is wrong for `float`, `bool`, `date`.

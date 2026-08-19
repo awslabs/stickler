@@ -43,6 +43,18 @@ class HungarianMatcher:
             size_threshold: Maximum allowable matrix size (rows*cols) before warning
             normalize_values: Whether to normalize string values before comparison
                              (convert strings to lowercase, strip whitespace, etc.)
+
+                             Legacy, and deliberately declined by the evaluator.
+                             This predates comparators owning their own
+                             normalization; since 0.7.0 they do
+                             (``ExactComparator.case_sensitive``,
+                             ``LevenshteinComparator._normalize``,
+                             ``FuzzyComparator._normalize``), so normalizing
+                             here silently overrides the comparator a field
+                             declared. ``ComparisonHelper.compare_unordered_lists``
+                             therefore passes ``False``. The default stays
+                             ``True`` for direct callers who relied on it; do
+                             not "fix" the evaluator's call site back.
             match_threshold: Minimum similarity score to consider a match as TP
         """
         self.comparator = comparator or (lambda x, y: float(x == y))
@@ -52,6 +64,14 @@ class HungarianMatcher:
 
     def _normalize_value(self, value: Any) -> Any:
         """Normalize a value to improve string matching.
+
+        Only reached when ``normalize_values`` is true. Note what it does
+        beyond case folding: it ``str()``-coerces every primitive and maps
+        ``None`` to ``""``. Both are lossy for a comparator that inspects the
+        value -- ``BBoxIoUComparator`` cannot parse ``"[0, 0, 10, 10]"``, and
+        the ``""`` substitution bypasses ``BaseComparator``'s ``None`` policy.
+        See the ``normalize_values`` note in :meth:`__init__` for why the
+        evaluator path opts out.
 
         Args:
             value: Value to normalize

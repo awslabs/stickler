@@ -29,6 +29,7 @@ from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
+from .optional_annotation import union_args, unwrap_optional
 from .rich_value_helper import RichValueHelper
 from .threshold_helper import THRESHOLD_DOCS_URL
 from .threshold_helper import model_identity as _model_identity
@@ -437,10 +438,12 @@ class StructuredModel(BaseModel):
                 # Use consolidated method for element type check
                 return cls._is_structured_model_type(args[0])
 
-        # Handle Union types (like Optional[List[StructuredModel]])
-        elif origin is Union:
-            args = get_args(field_type)
-            for arg in args:
+        # Handle Union types (like Optional[List[StructuredModel]]), in every
+        # spelling -- `list[Model] | None` reaches here too. Searches every arm
+        # rather than requiring a single one, so a wider union such as
+        # `Optional[List[Model]] | Any` still resolves to a list of models.
+        else:
+            for arg in union_args(field_type):
                 if cls._is_list_of_structured_model_type(arg):
                     return True
 
@@ -635,7 +638,11 @@ class StructuredModel(BaseModel):
         return ModelFactory.create_model_from_json(config, base_class=cls)
 
     @classmethod
-    def from_json_schema(cls, schema: Dict[str, Any]) -> Type["StructuredModel"]:
+    def from_json_schema(
+        cls,
+        schema: Dict[str, Any],
+        tolerate_missing_fields: bool = False,
+    ) -> Type["StructuredModel"]:
         """Create a StructuredModel subclass from a JSON Schema document.
 
         This method accepts standard JSON Schema documents and creates fully functional
@@ -677,6 +684,21 @@ class StructuredModel(BaseModel):
 
         Args:
             schema: JSON Schema document as a dictionary
+            tolerate_missing_fields: Whether the built model may be constructed
+                from input that omits fields the schema marks required.
+
+                Defaults to False, which enforces the schema's ``required``
+                list: omitting such a field raises ``ValidationError``.
+
+                Pass True when the model is for *evaluation*. The comparison
+                engine builds instances from predictions, and a prediction that
+                omits a field is the ordinary case the engine exists to score --
+                a hand-written ``ComparableField`` model tolerates it, and with
+                this flag a schema-built model does too, scoring a miss rather
+                than raising. Requiredness is not lost: such a field keeps a
+                non-nullable annotation, so it is still reported as required in
+                ``model_json_schema()`` and exported with a non-nullable type by
+                ``to_json_schema()``.
 
         Returns:
             StructuredModel subclass created from the schema
@@ -729,7 +751,11 @@ class StructuredModel(BaseModel):
             >>> # name field has weight=2.0, price field clips scores below 0.95
         """
 
-        return cls._from_json_schema_internal(schema, field_path="")
+        return cls._from_json_schema_internal(
+            schema,
+            field_path="",
+            tolerate_missing_fields=tolerate_missing_fields,
+        )
 
     @classmethod
     def from_pydantic(
@@ -789,7 +815,10 @@ class StructuredModel(BaseModel):
 
     @classmethod
     def _from_json_schema_internal(
-        cls, schema: Dict[str, Any], field_path: str
+        cls,
+        schema: Dict[str, Any],
+        field_path: str,
+        tolerate_missing_fields: bool = False,
     ) -> Type["StructuredModel"]:
         """Internal method for creating StructuredModel from JSON Schema with field path tracking.
 
@@ -852,7 +881,11 @@ class StructuredModel(BaseModel):
         required = schema.get("required", [])
 
         # Create converter and convert properties to field definitions
-        converter = JsonSchemaFieldConverter(schema, field_path=field_path)
+        converter = JsonSchemaFieldConverter(
+            schema,
+            field_path=field_path,
+            tolerate_missing_fields=tolerate_missing_fields,
+        )
         field_definitions = converter.convert_properties_to_fields(properties, required)
 
         # Create the model using ModelFactory
@@ -933,18 +966,22 @@ class StructuredModel(BaseModel):
             return False
 
         field_type = field_info.annotation
-        # Handle Optional types and direct List types
-        if hasattr(field_type, "__origin__"):
-            origin = field_type.__origin__
-            if origin is list or origin is List:
+
+        # Use get_origin rather than reading `__origin__` directly: a PEP 604
+        # union (`list[T] | None`) has no `__origin__` attribute at all, so the
+        # old `hasattr` guard skipped it entirely and such a field was not
+        # recognised as a list.
+        origin = get_origin(field_type)
+        if origin is list or origin is List:
+            return True
+
+        # Optional[List[...]] case, in every spelling. Any arm being a list is
+        # enough, so a wider union like `Optional[List[str]] | Any` still counts.
+        for arg in union_args(field_type):
+            arg_origin = get_origin(arg)
+            if arg_origin is list or arg_origin is List:
                 return True
-            elif origin is Union:  # Optional[List[...]] case
-                args = field_type.__args__
-                for arg in args:
-                    if hasattr(arg, "__origin__") and (
-                        arg.__origin__ is list or arg.__origin__ is List
-                    ):
-                        return True
+
         return False
 
     def _handle_list_field_dispatch(
@@ -1618,18 +1655,20 @@ class StructuredModel(BaseModel):
     def _unwrap_optional(field_type: Type) -> tuple:
         """Unwrap Optional[T] to (T, True) or return (T, False) if not Optional.
 
+        Recognises every spelling, including ``T | None``. This is load-bearing
+        for ``to_json_schema()``: the nested-model branch, the list branch and
+        the nullability of a primitive property all key off it, so a spelling it
+        fails to recognise falls through to the scalar path and exports as
+        ``{"type": "string"}`` -- silently replacing a nested model, or a whole
+        array of models, with a string.
+
         Args:
             field_type: Type annotation to unwrap
 
         Returns:
             Tuple of (unwrapped_type, is_optional)
         """
-        if get_origin(field_type) is Union:
-            args = get_args(field_type)
-            non_none_args = [arg for arg in args if arg is not type(None)]
-            if len(non_none_args) == 1 and type(None) in args:
-                return non_none_args[0], True
-        return field_type, False
+        return unwrap_optional(field_type)
 
     @staticmethod
     def _is_structured_model_type(field_type: Type) -> bool:
