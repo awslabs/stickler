@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 from stickler.comparators.base import BaseComparator
 
 from .hungarian_helper import HungarianHelper
+from .null_helper import NullHelper
 from .threshold_helper import ThresholdHelper
 
 
@@ -166,7 +167,15 @@ class ComparisonHelper:
         # CRITICAL FIX: Use threshold-applied scores for consistency with individual comparison
         # This ensures list comparison matches the same scoring logic as individual comparison
         if not matched_pairs:
-            overall_score = 0.0
+            # Two empty lists agree perfectly: there is nothing to find and
+            # nothing was found. Scoring that 0.0 made an object whose only
+            # field is an empty list compare as a total mismatch against an
+            # identical object, which then classified as a false discovery even
+            # though `compare_with` reported a perfect match. The dispatcher
+            # already treats both-empty as a true negative with score 1.0; this
+            # keeps the raw path in agreement with it.
+            # See https://github.com/awslabs/stickler/issues/233
+            overall_score = 1.0 if not gt_list and not pred_list else 0.0
         else:
             # Apply threshold to each similarity score (same logic as individual comparison)
             threshold_applied_similarities = []
@@ -225,6 +234,18 @@ class ComparisonHelper:
 
         # Get field value from self
         self_value = getattr(structured_model_instance, field_name)
+
+        # For list fields, None and [] both mean "no items" and so agree with
+        # each other. The dispatcher already scores a both-null list field as a
+        # true negative worth 1.0; without the same rule here the generic None
+        # check below scores `[]` against `None` as 0.0, and the object lands
+        # under `match_threshold` while `compare_with` calls it a perfect match.
+        # See https://github.com/awslabs/stickler/issues/233
+        if structured_model_instance._is_list_field(field_name):
+            self_is_null = NullHelper.is_effectively_null_for_lists(self_value)
+            other_is_null = NullHelper.is_effectively_null_for_lists(other_value)
+            if self_is_null or other_is_null:
+                return 1.0 if self_is_null and other_is_null else 0.0
 
         # Handle None values
         if self_value is None or other_value is None:
