@@ -29,11 +29,15 @@ Each release links to full notes on the
   `required` together with a nullable type still means "must be present, may be
   null", and the flag does not blur those two.
 
-  Requiredness is not traded away: a tolerated field keeps a non-nullable
-  annotation, so it still appears in `model_json_schema()`'s `required` list --
-  the Strands tool spec is unaffected -- and `to_json_schema()` still exports it
-  with a non-nullable type. The flag propagates into nested models and array
-  items, so tolerance does not stop at the first level
+  Requiredness is not traded away. `model_json_schema()` and `to_json_schema()`
+  name exactly the same required fields whether or not the flag is set, so the
+  Strands tool spec is unaffected. For a field that is required and *not*
+  nullable that follows from the annotation staying bare; a field that is
+  required *and* nullable must be annotated `Optional[X]` to accept null, which
+  is indistinguishable from an ordinary optional field by shape alone, so the
+  schema's own answer is recorded on the field and consulted when rendering. The
+  flag propagates into nested models and array items, so neither tolerance nor
+  the requiredness it preserves stops at the first level
   ([#214](https://github.com/awslabs/stickler/issues/214))
 
 - `DateComparator` and `BBoxIoUComparator` are now exported from the top-level
@@ -393,15 +397,31 @@ Each release links to full notes on the
     `[[x1, y1], [x2, y2]]` forms. Such fields now score real IoU.
 
   - **`List[dict]` under `LevenshteinComparator` scored `1.0` by comparing
-    `str(dict)`.** Also pre-existing. It now raises the same `TypeError` a
-    scalar dict field already raises, whose message names modelling the dict as
-    a `StructuredModel` as the fix. Stringifying makes key order significant and
-    the comparison meaningless, so raising is the correction.
+    `str(dict)`.** Also pre-existing. It now raises `TypeError`, whose message
+    names modelling the dict as a `StructuredModel` as the fix. Stringifying
+    makes key order significant and the comparison meaningless, so raising is
+    the correction.
 
-  In every case the new value is what the field's own comparator already
-  returned for the same pair as a scalar; the fix removes a divergence rather
-  than introducing a rule. `HungarianMatcher(normalize_values=...)` is unchanged
-  and still defaults to `True` for direct callers.
+    This one is **not** parity with the scalar spelling, and is the one place
+    where a value scores differently for being in a list. The scalar spelling
+    already raises under `compare()` and `compare_field_raw()`; it returns `0.0`
+    only under `compare_recursive()`, where the dispatcher's type-mismatch case
+    intercepts a scalar dict before the comparator sees it and has no equivalent
+    for a dict item inside a list. Keeping the raise is deliberate: refusing a
+    shape stickler cannot compare beats a silently wrong score, and the scalar
+    `0.0` is the outlier. Two things to know: this is stricter than pre-0.7.0,
+    which returned `1.0`; and `BulkStructuredModelEvaluator` catches per-document
+    exceptions, so an affected document becomes an error entry plus an overall
+    `fn` rather than halting a run. Model the dict as a `StructuredModel` to
+    score it.
+
+  For the first two shapes the new value is what the field's own comparator
+  already returned for the same pair as a scalar, so the fix removes a
+  divergence rather than introducing a rule.
+  `HungarianMatcher(normalize_values=...)` is unchanged and still defaults to
+  `True` for direct callers -- including `HungarianHelper`, which matches
+  `List[StructuredModel]` and still substitutes `""` for `None` when scoring
+  candidate pairs.
 
   One asymmetry is deliberate and remains: `NullHelper.is_effectively_null_for_primitives`
   treats `""` as equivalent to `None` for a scalar primitive field, so a scalar
@@ -513,6 +533,21 @@ Each release links to full notes on the
   `X | None` will see corrected schema exports and *additional* nested rows in
   hierarchical metrics, so expect movement when diffing against a stored baseline
   ([#162](https://github.com/awslabs/stickler/issues/162))
+
+- A field annotated `List[Optional[Model]]` (or `List[Model | None]`) can now be
+  exported. Both `to_json_schema()` and `to_stickler_config()` raised
+  `AttributeError: to_json_schema` on it: the predicate deciding whether the list
+  holds models unwraps the optional wrapper, but the export call it guards did
+  not, so it ran against the `Optional[...]` object itself. Pre-existing and
+  shipped for the `Optional` spelling; the `X | None` spelling reached it only
+  once `#162` made such a field resolve as a list of models at all, having
+  previously exported as an array of strings.
+
+  The element is now exported as the model, offered as nullable. Relatedly,
+  `List[Optional[T]]` for a primitive `T` had its item type exported as
+  `"string"` regardless of `T`, because `Optional[int]` is not a key in the
+  python-to-JSON type table; it now exports `["integer", "null"]` and
+  round-trips ([#256](https://github.com/awslabs/stickler/pull/256))
 
 - Zero-config evaluation no longer scores formatting-only differences in
   `email`, `url` and `phone` fields as complete mismatches. The name-token

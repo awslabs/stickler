@@ -23,7 +23,11 @@ from pydantic.json_schema import GenerateJsonSchema
 from stickler.comparators.base import BaseComparator
 from stickler.utils.deprecation import warn_once
 
-from .comparable_field import ComparableField
+from .comparable_field import (
+    SCHEMA_REQUIRED_ATTR,
+    ComparableField,
+    is_schema_required,
+)
 from .comparison_helper import ComparisonHelper
 from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
@@ -85,6 +89,17 @@ class _AnnotationDrivenJsonSchema(GenerateJsonSchema):
         if wrapped.get("default") is not None:
             # An explicit, meaningful default: optional.
             return False
+        # A field rebuilt from a schema that listed it in `required`, with
+        # tolerance requested. Checked before the nullability test below because
+        # that test cannot see it: a required *nullable* field is annotated
+        # `Optional[X]`, so the sentinel alone is indistinguishable from an
+        # ordinary optional field.
+        if getattr(
+            (field.get("metadata") or {}).get("pydantic_js_extra"),
+            SCHEMA_REQUIRED_ATTR,
+            False,
+        ):
+            return True
         # default=None on a non-Optional annotation is ComparableField's
         # construction-tolerance sentinel, not a statement that the field is
         # optional.
@@ -1607,13 +1622,23 @@ class StructuredModel(BaseModel):
                         f"Field '{field_name}' has unparameterized list type. "
                         f"Use List[str], List[int], etc."
                     )
-                element_type = args[0]
+                # Unwrap an optional element before dispatching on it.
+                # `_is_structured_model_type` unwraps internally, so without this
+                # `List[Optional[Model]]` passed the check and then called
+                # `to_json_schema()` on the `Optional[...]` wrapper, which has no
+                # such attribute -- an AttributeError instead of a schema. The
+                # primitive branch needs it too: `Optional[int]` is not a key in
+                # PYTHON_TYPE_TO_JSON_TYPE, so it fell through to "string".
+                element_type, element_is_nullable = cls._unwrap_optional(args[0])
 
                 if cls._is_structured_model_type(element_type):
                     # List of StructuredModels - recursively export element schema
+                    items_schema = element_type.to_json_schema()
+                    if element_is_nullable:
+                        items_schema = {"anyOf": [items_schema, {"type": "null"}]}
                     property_schema = {
                         "type": "array",
-                        "items": element_type.to_json_schema(),
+                        "items": items_schema,
                     }
                     metadata = converter._extract_field_metadata(field_info)
                     metadata.pop("comparator", None)
@@ -1626,7 +1651,11 @@ class StructuredModel(BaseModel):
                     )
                     property_schema = {
                         "type": "array",
-                        "items": {"type": json_element_type},
+                        "items": {
+                            "type": [json_element_type, "null"]
+                            if element_is_nullable
+                            else json_element_type
+                        },
                     }
                     # Extract and add stickler extensions from field metadata
                     metadata = converter._extract_field_metadata(field_info)
@@ -1645,8 +1674,11 @@ class StructuredModel(BaseModel):
 
             schema["properties"][field_name] = property_schema
 
-            # Add to required if field is required (Pydantic uses is_required())
-            if field_info.is_required():
+            # Add to required if field is required. `is_required()` is False for
+            # anything carrying the construction-tolerance sentinel, so a model
+            # rebuilt with `tolerate_missing_fields=True` needs the schema's own
+            # answer as well or this export reports nothing required at all.
+            if field_info.is_required() or is_schema_required(field_info):
                 schema["required"].append(field_name)
 
         return schema
@@ -1761,7 +1793,12 @@ class StructuredModel(BaseModel):
                         f"Field '{field_name}' has unparameterized list type. "
                         f"Use List[str], List[int], etc."
                     )
-                element_type = args[0]
+                # Unwrap an optional element for the same reason as
+                # to_json_schema()'s list branch: the predicate below unwraps, so
+                # `List[Optional[Model]]` reached `to_stickler_config()` on the
+                # wrapper. The primitive branch below also reads
+                # `element_type.__name__`, which a union does not have.
+                element_type, _ = cls._unwrap_optional(args[0])
 
                 if cls._is_structured_model_type(element_type):
                     nested_config = element_type.to_stickler_config()

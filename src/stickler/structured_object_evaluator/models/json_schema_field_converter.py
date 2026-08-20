@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 
 from pydantic.fields import FieldInfo
 
-from .comparable_field import ComparableField
+from .comparable_field import ComparableField, mark_schema_required
 from .comparator_registry import create_comparator
 from .optional_annotation import unwrap_optional
 
@@ -220,6 +220,17 @@ class JsonSchemaFieldConverter:
 
         if widen_to_optional:
             field_type = Optional[field_type]
+
+        # Tolerating an omission is a construction-time concession, not a claim
+        # that the schema left the field optional. Record the schema's own
+        # answer so a further render still reports it required -- the sentinel
+        # cannot say so by itself once the annotation is nullable, because
+        # `Optional[X]` + `default=None` is also exactly what an optional field
+        # looks like. A field with a stated default is excluded: it is not
+        # relying on tolerance, and treating it as required would change the
+        # strict path's rendering too.
+        if is_required and self.tolerate_missing_fields and not has_explicit_default:
+            mark_schema_required(field)
 
         return field_type, field
 

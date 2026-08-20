@@ -6,15 +6,21 @@ coerced every item to ``str``, lowercased it and collapsed its whitespace
 *before the comparator ever saw it*. The field's declared comparator was
 handed values the caller never wrote.
 
-Three shapes were affected, all of them now scoring the way the same
-comparator already scored the same pair as a scalar:
+Three shapes were affected. Two of them now score the way the same comparator
+already scored the same pair as a scalar; the third deliberately does not:
 
 - ``ExactComparator`` on a case- or whitespace-only difference matched, which
-  silently undid #199 for every list-typed field.
-- ``BBoxIoUComparator`` scored every list ``0.0``, even against identical
-  input, because ``_normalize_bbox`` rejects the stringified coordinates.
+  silently undid #199 for every list-typed field. Now parity.
+- ``BBoxIoUComparator`` scored every list of boxes ``0.0``, even against
+  identical input, because ``_normalize_bbox`` rejects the stringified
+  coordinates. Now real IoU. There is no scalar spelling of a box field to
+  compare against -- a box is itself a list -- so those assertions call the
+  comparator directly instead.
 - ``List[dict]`` under ``LevenshteinComparator`` scored ``1.0`` by comparing
-  ``str(dict)`` instead of raising the comparator's own ``TypeError``.
+  ``str(dict)``; it now raises the comparator's own ``TypeError``. This one is
+  **not** parity with the scalar spelling under ``compare_recursive``, and
+  ``test_dict_items_raise_like_the_scalar_compare_path`` documents the full
+  entry-point matrix.
 
 Most assertions here compare the list path to the scalar path rather than to a
 literal, because parity is the actual requirement: pinning two independent
@@ -207,12 +213,41 @@ class TestItemTypesReachTheComparatorIntact:
         assert list_score == scalar_score
         assert list_score == 1.0
 
-    def test_dict_items_raise_as_a_scalar_dict_does(self):
-        """A stringified dict compared 1.0; the comparator's own guard is right.
+    def test_dict_items_raise_like_the_scalar_compare_path(self):
+        """``List[dict]`` raises. This is the one shape that is not parity.
 
-        ``str(dict)`` makes key order significant and the comparison
-        meaningless, so raising -- with a message naming StructuredModel as the
-        fix -- beats scoring it a perfect match.
+        A stringified dict compared ``1.0``: ``str(dict)`` makes key order
+        significant and the comparison meaningless, so the comparator's own
+        guard -- whose message names modelling the dict as a ``StructuredModel``
+        -- is right to fire. But calling that *parity with the scalar spelling*
+        would be wrong, because the scalar spelling does two different things
+        depending on the entry point:
+
+        =========================  ===========  ============
+        entry point                scalar dict  ``List[dict]``
+        =========================  ===========  ============
+        ``compare()``              TypeError    TypeError
+        ``compare_field_raw()``    TypeError    TypeError
+        ``compare_recursive()``    ``0.0``      TypeError
+        =========================  ===========  ============
+
+        So the raise agrees with ``compare()``, which already refuses a scalar
+        dict, and diverges from ``compare_recursive()``, where
+        ``ComparisonDispatcher``'s type-mismatch case (CASE 4) intercepts a
+        *scalar* dict before the comparator sees it but has no equivalent for a
+        dict *item* inside a list.
+
+        The divergence is deliberate, not parity: raising is the honest answer
+        for a shape stickler cannot compare, and CASE 4's silent ``0.0`` for the
+        scalar spelling is the odd one out. Two consequences a caller should
+        know: this is stricter than pre-0.7.0, which returned ``1.0``; and
+        ``BulkStructuredModelEvaluator`` catches per-document exceptions
+        (``bulk_structured_model_evaluator.py:246``), so an affected document
+        becomes an error entry plus an overall ``fn`` rather than halting a run.
+
+        All four cells are pinned here because the previous version of this test
+        asserted only the ``List[dict]`` raise and described it as parity, which
+        no assertion contradicted.
         """
 
         class ListModel(StructuredModel):
@@ -220,8 +255,26 @@ class TestItemTypesReachTheComparatorIntact:
                 comparator=LevenshteinComparator(), threshold=0.7
             )
 
+        class ScalarModel(StructuredModel):
+            v: Dict[str, Any] = ComparableField(
+                comparator=LevenshteinComparator(), threshold=0.7
+            )
+
         with pytest.raises(TypeError, match="StructuredModel"):
             ListModel(v=[{"a": 1}]).compare_recursive(ListModel(v=[{"a": 1}]))
+        with pytest.raises(TypeError, match="StructuredModel"):
+            ListModel(v=[{"a": 1}]).compare(ListModel(v=[{"a": 1}]))
+
+        # The scalar spelling: refuses under `compare`, scores under
+        # `compare_recursive`. Pinned so the asymmetry cannot drift unnoticed.
+        with pytest.raises(TypeError, match="StructuredModel"):
+            ScalarModel(v={"a": 1}).compare(ScalarModel(v={"a": 1}))
+
+        scalar_recursive = ScalarModel(v={"a": 1}).compare_recursive(
+            ScalarModel(v={"a": 1})
+        )
+        assert scalar_recursive["fields"]["v"]["similarity_score"] == 0.0
+        assert scalar_recursive["fields"]["v"]["overall"]["fd"] == 1
 
 
 class TestMissingValuePolicyOnTheListPath:

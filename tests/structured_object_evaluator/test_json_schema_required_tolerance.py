@@ -28,6 +28,7 @@ Group 1 is characterisation: ``widen_to_optional`` is where #105, #127, #149 and
 #198 all converge, so those behaviors are pinned first and must not move.
 """
 
+import json
 from typing import List, Optional
 
 import pytest
@@ -193,6 +194,127 @@ class TestRequirednessSurvivesTheRebuild:
         assert rebuilt.model_json_schema()["required"] == (
             _Source.model_json_schema()["required"]
         )
+
+
+_NULLABLE_AND_REQUIRED = {
+    "type": "object",
+    "properties": {
+        "nullable_required": {"type": ["string", "null"]},
+        "plain_required": {"type": "string"},
+        "not_required": {"type": "string"},
+        "defaulted_required": {"type": "string", "default": "d"},
+    },
+    "required": ["nullable_required", "plain_required", "defaulted_required"],
+}
+
+
+class TestRequirednessSurvivesForANullableRequiredField:
+    """The shape the construction-tolerance sentinel cannot express on its own.
+
+    On a non-nullable annotation, ``default=None`` *is* the marker for "required
+    but constructible" -- that is what ``field_is_required`` reads. On a nullable
+    annotation it says nothing, because ``Optional[str]`` with ``default=None``
+    is also exactly what an ordinary optional field looks like. So a field the
+    schema declared **required and nullable** was rendered as not required,
+    silently contradicting the invariant the class above pins for the
+    non-nullable case, and re-breaking the tool-spec use case
+    ``_AnnotationDrivenJsonSchema`` exists for.
+    """
+
+    def test_a_required_nullable_field_is_still_reported_required(self):
+        tolerant = StructuredModel.from_json_schema(
+            _NULLABLE_AND_REQUIRED, tolerate_missing_fields=True
+        )
+        assert "nullable_required" in tolerant.model_json_schema()["required"]
+
+    def test_tolerance_does_not_change_the_rendered_required_list_at_all(self):
+        """The strongest form: tolerance is invisible to a schema consumer."""
+        strict = StructuredModel.from_json_schema(_NULLABLE_AND_REQUIRED)
+        tolerant = StructuredModel.from_json_schema(
+            _NULLABLE_AND_REQUIRED, tolerate_missing_fields=True
+        )
+        assert (
+            tolerant.model_json_schema()["required"]
+            == strict.model_json_schema()["required"]
+        )
+
+    def test_the_config_export_reports_required_too(self):
+        """``to_json_schema`` derives ``required`` from ``is_required()``.
+
+        That is ``False`` for anything carrying the tolerance sentinel, so
+        without consulting the schema's own answer this export named nothing
+        required for a tolerantly built model -- and one export/import cycle
+        would then widen every annotation to ``Optional``.
+        """
+        strict = StructuredModel.from_json_schema(_NULLABLE_AND_REQUIRED)
+        tolerant = StructuredModel.from_json_schema(
+            _NULLABLE_AND_REQUIRED, tolerate_missing_fields=True
+        )
+        assert tolerant.to_json_schema()["required"] == (
+            strict.to_json_schema()["required"]
+        )
+        assert "nullable_required" in tolerant.to_json_schema()["required"]
+
+    def test_a_stated_default_still_means_not_required(self):
+        """Excluded deliberately: such a field is not relying on tolerance.
+
+        Marking it would change the strict path's rendering too, which is out of
+        scope. Asserted against the strict render so the two cannot diverge.
+        """
+        for model in (
+            StructuredModel.from_json_schema(_NULLABLE_AND_REQUIRED),
+            StructuredModel.from_json_schema(
+                _NULLABLE_AND_REQUIRED, tolerate_missing_fields=True
+            ),
+        ):
+            required = model.model_json_schema()["required"]
+            assert "defaulted_required" not in required
+            assert "not_required" not in required
+
+    def test_the_nullable_field_still_accepts_null_and_omission(self):
+        """Requiredness is restored to the *render*, not to construction."""
+        tolerant = StructuredModel.from_json_schema(
+            _NULLABLE_AND_REQUIRED, tolerate_missing_fields=True
+        )
+        assert tolerant.from_json({"plain_required": "x"}).nullable_required is None
+        assert (
+            tolerant.from_json(
+                {"nullable_required": None, "plain_required": "x"}
+            ).nullable_required
+            is None
+        )
+
+    def test_a_nested_required_nullable_field_is_reported_required(self):
+        """The marker rides on the field, so ``$defs`` entries get it for free."""
+        nested = {
+            "type": "object",
+            "properties": {
+                "child": {
+                    "type": "object",
+                    "properties": {"cid": {"type": ["string", "null"]}},
+                    "required": ["cid"],
+                }
+            },
+            "required": ["child"],
+        }
+        rendered = StructuredModel.from_json_schema(
+            nested, tolerate_missing_fields=True
+        ).model_json_schema()
+        child_defs = [
+            entry
+            for entry in rendered.get("$defs", {}).values()
+            if "cid" in entry.get("properties", {})
+        ]
+        assert child_defs, "expected the nested model to render into $defs"
+        assert all("cid" in entry["required"] for entry in child_defs)
+
+    def test_the_marker_does_not_leak_into_rendered_output(self):
+        """It is a function attribute, so no schema key needs stripping."""
+        tolerant = StructuredModel.from_json_schema(
+            _NULLABLE_AND_REQUIRED, tolerate_missing_fields=True
+        )
+        for rendered in (tolerant.model_json_schema(), tolerant.to_json_schema()):
+            assert "_schema_required" not in json.dumps(rendered)
 
 
 class TestToleranceIsUniformAcrossFieldShapes:

@@ -193,3 +193,54 @@ class TestMultiArmUnionsAreLeftAlone:
         pep604_form = Nested | Other | None
         assert unwrap_optional(typing_form) == (typing_form, False)
         assert unwrap_optional(pep604_form) == (pep604_form, False)
+
+
+class TestAnOptionalListElementIsUnwrappedBeforeExport:
+    """``List[Optional[Model]]`` crashed both export paths.
+
+    ``_is_structured_model_type`` unwraps its argument, so the predicate said
+    "yes" for an ``Optional[Model]`` element and the branch it guards then called
+    ``to_json_schema()`` on the ``Optional[...]`` wrapper -- ``AttributeError``,
+    not a schema. Pre-existing for the ``Optional`` spelling; the PEP 604
+    spelling reached it only once #162's union handling made it resolve as a list
+    of models at all, having previously exported as an array of strings.
+    """
+
+    def test_both_spellings_export_the_element_model(self):
+        class TypingForm(StructuredModel):
+            items: List[Optional[Nested]] = ComparableField()
+
+        class Pep604Form(StructuredModel):
+            items: List[Nested | None] = ComparableField()
+
+        typing_items = TypingForm.to_json_schema()["properties"]["items"]["items"]
+        pep604_items = Pep604Form.to_json_schema()["properties"]["items"]["items"]
+        assert typing_items == pep604_items
+        # The element is the model, offered as nullable -- not a bare string.
+        branches = typing_items["anyOf"]
+        assert {"type": "null"} in branches
+        model_branch = next(b for b in branches if b != {"type": "null"})
+        assert model_branch["type"] == "object"
+        assert "a" in model_branch["properties"]
+
+    def test_both_spellings_export_a_config(self):
+        class TypingForm(StructuredModel):
+            items: List[Optional[Nested]] = ComparableField()
+
+        class Pep604Form(StructuredModel):
+            items: List[Nested | None] = ComparableField()
+
+        typing_config = TypingForm.to_stickler_config()["fields"]["items"]
+        assert typing_config == Pep604Form.to_stickler_config()["fields"]["items"]
+        assert typing_config["type"] == "list_structured_model"
+
+    def test_an_optional_primitive_element_keeps_its_type(self):
+        """``Optional[int]`` is not a key in the type table, so it fell to
+        ``"string"`` -- an integer list exported as a list of strings."""
+
+        class OptInts(StructuredModel):
+            nums: List[Optional[int]] = ComparableField()
+
+        items = OptInts.to_json_schema()["properties"]["nums"]["items"]
+        assert items == {"type": ["integer", "null"]}
+        assert OptInts.to_stickler_config()["fields"]["nums"]["type"] == "List[int]"

@@ -44,7 +44,8 @@ class HungarianMatcher:
             normalize_values: Whether to normalize string values before comparison
                              (convert strings to lowercase, strip whitespace, etc.)
 
-                             Legacy, and deliberately declined by the evaluator.
+                             Legacy, and deliberately declined on the
+                             list-of-values path.
                              This predates comparators owning their own
                              normalization; since 0.7.0 they do
                              (``ExactComparator.case_sensitive``,
@@ -54,7 +55,16 @@ class HungarianMatcher:
                              declared. ``ComparisonHelper.compare_unordered_lists``
                              therefore passes ``False``. The default stays
                              ``True`` for direct callers who relied on it; do
-                             not "fix" the evaluator's call site back.
+                             not "fix" that call site back.
+
+                             ``HungarianHelper``, which matches
+                             ``List[StructuredModel]`` via
+                             ``StructuredModelComparator``, still takes the
+                             default: it matches whole objects rather than
+                             values, so a field's declared comparator is not
+                             what gets overridden. It does still map ``None`` to
+                             ``""`` before scoring candidate pairs, which can
+                             change which pairs the algorithm assigns.
             match_threshold: Minimum similarity score to consider a match as TP
         """
         self.comparator = comparator or (lambda x, y: float(x == y))
