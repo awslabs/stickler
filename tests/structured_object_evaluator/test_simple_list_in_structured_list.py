@@ -10,6 +10,8 @@ See: https://github.com/awslabs/stickler/issues/33
 
 from typing import Any, List, Optional
 
+import pytest
+
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator.models.comparable_field import (
@@ -223,19 +225,17 @@ def test_simple_list_alongside_primitive_field():
 
 
 def test_empty_simple_list_within_structured_list():
-    """Empty simple lists on both sides — the pair is assigned, not unmatched.
+    """Empty simple lists on both sides — the pair is a TP, not a false discovery.
 
-    This asserts only the #224 property: an assigned pair is not reported as
-    FN + FA. It deliberately does *not* pin how the pair is classified.
+    Regression test for GitHub issue #233.
 
-    An object whose only field is an empty list gets list-path similarity 0.0
-    even though the two objects are identical, which is a separate pre-existing
-    bug. That leaves the result internally contradictory here -- the comparison
-    reports ``overall_score == 1.0`` (a perfect match) while the pair scores
-    below ``match_threshold`` and so classifies as FD. Pinning ``fd == 1``
-    would cement that contradiction into the suite and have to be undone when
-    the similarity bug is fixed, at which point this pair should become a TP or
-    a list-level TN.
+    The two objects are identical, so ``overall_score`` is 1.0. The confusion
+    matrix used to read a different score for the same pair: an object whose
+    only field was an empty list scored 0.0 on the list path, landing below
+    ``match_threshold`` and classifying as FD. The same pair was therefore a
+    perfect match and a false discovery at once.
+
+    Also retains the #224 property: an assigned pair is not reported as FN + FA.
     """
     gt = Invoice(LineItems=[LineItemsInfo(LineItemDays=[])])
     pred = Invoice(LineItems=[LineItemsInfo(LineItemDays=[])])
@@ -243,12 +243,74 @@ def test_empty_simple_list_within_structured_list():
     result = gt.compare_with(pred, include_confusion_matrix=True)
     obj_metrics = _overall(result["confusion_matrix"], "LineItems")
 
+    # Identical objects are a perfect match.
+    assert result["overall_score"] == 1.0
+
+    # The pair is a true positive, and specifically not a false discovery.
+    assert obj_metrics["tp"] == 1
+    assert obj_metrics["fd"] == 0
+
     # The #224 property: the pair is assigned, so neither side is orphaned.
     assert obj_metrics["fn"] == 0
     assert obj_metrics["fa"] == 0
 
-    # Whichever way the pair is classified, it is counted exactly once.
+    # The pair is counted exactly once.
     assert obj_metrics["tp"] + obj_metrics["fd"] + obj_metrics["tn"] == 1
+
+
+@pytest.mark.parametrize("n_items", [1, 2, 3])
+def test_empty_simple_lists_are_true_positives_at_any_length(n_items):
+    """Identical empty-list objects are TPs at n=1 and n>1 alike.
+
+    Regression test for GitHub issue #233, which recorded the contradiction at
+    both lengths: ``overall_score=1.0`` with ``fd=1`` at n=1 and ``fd=2`` at
+    n=2. Parameterized because the 1-vs-1 case reaches Hungarian matching
+    differently from the multi-item case.
+    """
+    items = [LineItemsInfo(LineItemDays=[]) for _ in range(n_items)]
+    gt = Invoice(LineItems=list(items))
+    pred = Invoice(LineItems=list(items))
+
+    result = gt.compare_with(pred, include_confusion_matrix=True)
+    obj_metrics = _overall(result["confusion_matrix"], "LineItems")
+
+    assert result["overall_score"] == 1.0
+    assert obj_metrics["tp"] == n_items
+    assert obj_metrics["fd"] == 0
+    assert obj_metrics["fn"] == 0
+    assert obj_metrics["fa"] == 0
+
+
+@pytest.mark.parametrize(
+    "gt_days,pred_days",
+    [
+        ([], []),
+        (None, None),
+        ([], None),
+        (None, []),
+    ],
+)
+def test_absent_simple_list_agrees_across_score_readers(gt_days, pred_days):
+    """``overall_score`` and the confusion matrix agree on an absent list field.
+
+    Regression test for GitHub issue #233.
+
+    For a list field, ``None`` and ``[]`` both mean "no items", so every
+    combination of the two is a perfect match. ``overall_score`` read that from
+    the threshold-corrected score while the confusion matrix read the raw
+    similarity, and the raw path scored ``[]`` against ``None`` as 0.0 — so the
+    pair reported 1.0 and FD together. Both readers must now agree.
+    """
+    gt = Invoice(LineItems=[LineItemsInfo(LineItemDays=gt_days)])
+    pred = Invoice(LineItems=[LineItemsInfo(LineItemDays=pred_days)])
+
+    result = gt.compare_with(pred, include_confusion_matrix=True)
+    obj_metrics = _overall(result["confusion_matrix"], "LineItems")
+
+    # A perfect score cannot coexist with a false discovery.
+    assert result["overall_score"] == 1.0
+    assert obj_metrics["fd"] == 0
+    assert obj_metrics["tp"] == 1
 
 
 # ---------------------------------------------------------------------------
