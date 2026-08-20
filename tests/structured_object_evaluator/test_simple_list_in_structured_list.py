@@ -17,6 +17,9 @@ from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator.models.comparable_field import (
     ComparableField,
 )
+from stickler.structured_object_evaluator.models.comparison_helper import (
+    ComparisonHelper,
+)
 from stickler.structured_object_evaluator.models.structured_model import (
     StructuredModel,
 )
@@ -32,6 +35,15 @@ class LineItemsInfo(StructuredModel):
 
 class Invoice(StructuredModel):
     LineItems: Optional[List[LineItemsInfo]] | Any = ComparableField(weight=1.0)
+
+
+class Pep604LineItemsInfo(StructuredModel):
+    LineItemDays: list[str] | None = ComparableField(weight=1.0)
+    match_threshold = 1.0
+
+
+class Pep604Invoice(StructuredModel):
+    LineItems: list[Pep604LineItemsInfo] = ComparableField(weight=1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +270,22 @@ def test_empty_simple_list_within_structured_list():
     assert obj_metrics["tp"] + obj_metrics["fd"] + obj_metrics["tn"] == 1
 
 
+def test_raw_empty_lists_score_as_perfect_match():
+    """The raw unordered-list path agrees that two empty lists match."""
+    result = ComparisonHelper.compare_unordered_lists(
+        [], [], ExactComparator(), threshold=1.0
+    )
+
+    assert result == {
+        "tp": 0,
+        "fd": 0,
+        "fa": 0,
+        "fn": 0,
+        "fp": 0,
+        "overall_score": 1.0,
+    }
+
+
 @pytest.mark.parametrize("n_items", [1, 2, 3])
 def test_empty_simple_lists_are_true_positives_at_any_length(n_items):
     """Identical empty-list objects are TPs at n=1 and n>1 alike.
@@ -311,6 +339,25 @@ def test_absent_simple_list_agrees_across_score_readers(gt_days, pred_days):
     assert result["overall_score"] == 1.0
     assert obj_metrics["fd"] == 0
     assert obj_metrics["tp"] == 1
+
+
+@pytest.mark.parametrize("gt_days,pred_days", [([], None), (None, [])])
+def test_pep604_optional_absent_list_agrees_across_score_readers(gt_days, pred_days):
+    """PEP 604 optional lists use the same absent-list semantics."""
+    gt = Pep604Invoice(LineItems=[Pep604LineItemsInfo(LineItemDays=gt_days)])
+    pred = Pep604Invoice(LineItems=[Pep604LineItemsInfo(LineItemDays=pred_days)])
+
+    result = gt.compare_with(pred, include_confusion_matrix=True)
+    cm = result["confusion_matrix"]
+    object_metrics = _overall(cm, "LineItems")
+    field_metrics = _overall(cm, "LineItems", "LineItemDays")
+
+    assert result["overall_score"] == 1.0
+    assert object_metrics["tp"] == 1
+    assert object_metrics["fd"] == 0
+    assert field_metrics["tn"] == 1
+    assert field_metrics["fn"] == 0
+    assert field_metrics["fa"] == 0
 
 
 # ---------------------------------------------------------------------------
