@@ -9,6 +9,58 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Fixed
+
+- `overall_score` and the confusion matrix no longer disagree about a field that
+  is absent on both sides. The two read different scores for the same object
+  pair: `overall_score` takes the threshold-corrected score, while object
+  classification against `match_threshold` takes the raw pairwise similarity.
+  The raw path tested absence with a bare `is None`, so it scored `[]` against
+  `None` on a list field, `""` against `None` on a string field, and two empty
+  lists against each other all as `0.0` -- while `ComparisonDispatcher` scored
+  every one of those as a true negative worth `1.0`.
+
+  The result was a pair reported as `overall_score == 1.0` and `fd == 1` at once:
+  a perfect match that is also a false discovery. Two **identical** objects were
+  enough to trigger it. Any `List[Model]` whose element model declares an
+  optional list or string field reaches this whenever that field is left absent
+  on both sides, which for a document-extraction schema is the common case, not
+  an edge one -- and the contradiction is invisible unless you read both numbers
+  together, so it silently deflated precision on object-level metrics.
+
+  Both readers now define absence the same way the dispatcher does, per field
+  kind: `None` and `[]` for a list field, `None` and `""` for everything else.
+  This is the rule the docs already
+  [documented](https://awslabs.github.io/stickler/Advanced/classification-logic/)
+  ([#233](https://github.com/awslabs/stickler/issues/233))
+
+- A field annotated `list`, `list | None`, or `Optional[list]` is now recognized
+  as a list field. `_is_list_field` tested `get_origin(...) is list`, which
+  matches only a *parameterized* spelling, so the three unparameterized ones
+  answered `False` while `List`, `list[str] | None`, and `Optional[List[str]]`
+  answered `True`. `list | None` is the incongruous case: it is a PEP 604
+  optional list, and `list[str] | None` was already handled.
+
+  An unrecognized spelling skips list null handling and falls into the primitive
+  null check, where `[]` is not "effectively null". Such a field scored `1.0`
+  when empty on both sides but recorded **no classification evidence at all** --
+  no TN, no TP, no row. Because the score was right, the missing count was easy
+  to miss; it understated `tn` and every metric derived from it. Comparing a
+  six-field model against itself with every field `[]` reported `tn == 3` where
+  the docs call for `6`.
+
+  Recognition is now spelling-independent within a union: bare and parameterized
+  members answer alike. Only the null and empty cases move -- a populated list
+  reached `PrimitiveListComparator` before and still does, and no raw score
+  changes.
+
+  Two spellings are still not list fields, both deliberately. `Any` holding a
+  list is not one, because inferring list-ness from a runtime value rather than
+  an annotation is a larger change than this. Neither is
+  `Optional[Annotated[list, ...]]`: pydantic strips `Annotated` when it wraps the
+  whole annotation but preserves it as a union member, and unwrapping it should
+  be made consistent across the other annotation readers rather than here alone
+
 ### Changed
 
 - Confidence AUROC and document-splitting statistics now use NumPy
@@ -16,6 +68,34 @@ Each release links to full notes on the
   `scikit-learn` is no longer a core dependency, and the `docsplit` extra now
   adds only pandas; SciPy remains isolated to the `semantic` extra
   ([#216](https://github.com/awslabs/stickler/issues/216)).
+
+- Object-level TP/FD counts move for schemas with fields that are absent on both
+  sides. An absent-on-both field now contributes a full `1.0` to the raw object
+  similarity that `HungarianHelper` classifies against `match_threshold`, so a
+  pair that disagrees on every value a user actually supplied can clear the
+  threshold on the strength of its absent fields alone. An object with two
+  empty-on-both lists and one wrong string scores `2/3`; with five, `5/6`. Pairs
+  that previously classified as FD can now classify as TP, and **precision can
+  rise** as a function of how many absent optional fields a schema declares.
+
+  This extends existing semantics rather than introducing them. A field left
+  `None` already behaved exactly this way -- only the `[]` and `""` spellings
+  were scored differently, which is precisely the inconsistency
+  [#233](https://github.com/awslabs/stickler/issues/233) is about. Making them
+  agree necessarily means `[]` and `""` adopt what `None` already did.
+
+  Field-level counts do not move: an absent-on-both field is still a TN rather
+  than a TP, and a field the prediction gets wrong is still reported as an FD in
+  both the field breakdown and the aggregate. Only the *object-level*
+  classification of the enclosing pair changes. Anyone diffing evaluation
+  reports across this upgrade should expect object-level precision to shift for
+  affected schemas.
+
+  Absence is not leniency: `""` did not become a wildcard. An absent value
+  against a populated one still scores `0.0`, as the dispatcher already scored
+  it. A custom comparator that scored `""` against a populated value above `0.0`
+  is now short-circuited to `0.0` on the raw path, matching what `compare_with`
+  already reported for that pair.
 
 ## [0.7.0] - 2026-08-18
 
