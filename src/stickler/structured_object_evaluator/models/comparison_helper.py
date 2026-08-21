@@ -37,8 +37,12 @@ class ComparisonHelper:
             - fp: Total false positives (fd + fa)
             - overall_score: Similarity score for backward compatibility
         """
-        # Empty lists are handled early on immediately.
-   
+        # Empty lists reach here and fall through to `unordered_list_metrics`,
+        # which scores two of them 1.0. `ComparisonDispatcher` short-circuits an
+        # absent list field before this function is called, but only for fields
+        # `_is_list_field` recognizes -- a list held in an `Any`-annotated field
+        # arrives here empty.
+
         # Use HungarianHelper for Hungarian matching operations
         hungarian_helper = HungarianHelper()
         from .structured_model import StructuredModel
@@ -235,21 +239,29 @@ class ComparisonHelper:
         # Get field value from self
         self_value = getattr(structured_model_instance, field_name)
 
-        # For list fields, None and [] both mean "no items" and so agree with
-        # each other. The dispatcher already scores a both-null list field as a
-        # true negative worth 1.0; without the same rule here the generic None
-        # check below scores `[]` against `None` as 0.0, and the object lands
-        # under `match_threshold` while `compare_with` calls it a perfect match.
+        # Read absence the same way `ComparisonDispatcher` does. It scores a
+        # field absent on both sides as a true negative worth 1.0 and a field
+        # absent on exactly one side as FN/FA worth 0.0 (STEP 3 for list fields,
+        # STEP 4 for everything else). Without the same rule here the two score
+        # readers disagree: `compare_with` reports a perfect match while the raw
+        # similarity lands under `match_threshold`, so the same pair is a perfect
+        # match and a false discovery at once.
+        #
+        # What counts as absent is per-kind, exactly as the dispatcher defines
+        # it: for a list field `None` and `[]` both mean "no items"; for
+        # everything else `None` and `""` both mean "no value". Both predicates
+        # treat `None` as absent, which is why this subsumes the bare `is None`
+        # check that used to stand here.
         # See https://github.com/awslabs/stickler/issues/233
         if structured_model_instance._is_list_field(field_name):
-            self_is_null = NullHelper.is_effectively_null_for_lists(self_value)
-            other_is_null = NullHelper.is_effectively_null_for_lists(other_value)
-            if self_is_null or other_is_null:
-                return 1.0 if self_is_null and other_is_null else 0.0
+            is_absent = NullHelper.is_effectively_null_for_lists
+        else:
+            is_absent = NullHelper.is_effectively_null_for_primitives
 
-        # Handle None values
-        if self_value is None or other_value is None:
-            return 1.0 if self_value == other_value else 0.0
+        self_is_null = is_absent(self_value)
+        other_is_null = is_absent(other_value)
+        if self_is_null or other_is_null:
+            return 1.0 if self_is_null and other_is_null else 0.0
 
         # Handle lists with special processing
         if isinstance(self_value, list) and isinstance(other_value, list):

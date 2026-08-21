@@ -165,6 +165,53 @@ def _strip_extra_fields_property(schema_obj: Dict[str, Any]) -> None:
         schema_obj["required"] = [r for r in required if r != _EXTRA_FIELDS_KEY]
 
 
+def _annotation_is_list(annotation: Any) -> bool:
+    """Check whether a type annotation denotes a list, parameterized or not.
+
+    Every spelling of a list annotation has to answer the same way, because the
+    answer decides whether a field gets list null semantics (``None`` and ``[]``
+    both meaning "no items") or primitive ones. A spelling that reads as
+    non-list records no TN when both sides are empty, so it silently drops
+    classification evidence rather than failing loudly.
+
+    Two traps make that easy to get wrong, and both are handled here:
+
+    - ``get_origin`` returns ``list`` only for a *parameterized* spelling, so
+      bare ``list`` needs an identity test alongside it. Without one, ``list``
+      and ``list | None`` read as non-list while ``list[str]`` and
+      ``list[str] | None`` read as lists. ``typing.List`` needs no special case
+      -- ``get_origin`` already normalizes it to ``list``.
+    - A PEP 604 union (``list | None``) reports ``types.UnionType`` as its
+      origin, not ``typing.Union``, so its arms are reached through
+      :func:`optional_annotation.union_args` -- the package's single source for
+      destructuring a union in every spelling -- rather than a hand-rolled
+      origin check.
+
+    Union members are recursed with the same two rules rather than a bare ``is
+    list``, so a bare and a parameterized member inside one union answer alike.
+    Depth needs no special handling: ``typing`` flattens nested unions, so
+    ``Optional[list[str] | None]`` is stored as ``Optional[list[str]]``.
+
+    One spelling is deliberately *not* covered: ``Optional[Annotated[list,
+    ...]]``. Pydantic strips ``Annotated`` when it wraps the whole annotation
+    (so ``Annotated[list, "m"]`` and ``Annotated[Optional[List[str]], "m"]`` both
+    arrive here already unwrapped) but preserves it as a union member, and this
+    does not unwrap it. Doing so should be consistent with the other annotation
+    readers -- ``_is_structured_field_type`` and the HTML report's threshold
+    extraction -- rather than fixed here alone.
+    """
+    if annotation is list:
+        return True
+
+    if get_origin(annotation) is list:
+        return True
+
+    # Any union arm being a list is enough, in every spelling. `union_args`
+    # is the package's single source for a union's non-None arms and returns
+    # `()` for a non-union, so this also bottoms out the recursion.
+    return any(_annotation_is_list(arg) for arg in union_args(annotation))
+
+
 class StructuredModel(BaseModel):
     """Base class for models with structured comparison capabilities.
 
@@ -936,23 +983,7 @@ class StructuredModel(BaseModel):
             return False
 
         field_type = field_info.annotation
-
-        # Use get_origin rather than reading `__origin__` directly: a PEP 604
-        # union (`list[T] | None`) has no `__origin__` attribute at all, so the
-        # old `hasattr` guard skipped it entirely and such a field was not
-        # recognised as a list.
-        origin = get_origin(field_type)
-        if origin is list or origin is List:
-            return True
-
-        # Optional[List[...]] case, in every spelling. Any arm being a list is
-        # enough, so a wider union like `Optional[List[str]] | Any` still counts.
-        for arg in union_args(field_type):
-            arg_origin = get_origin(arg)
-            if arg_origin is list or arg_origin is List:
-                return True
-
-        return False
+        return _annotation_is_list(field_type)
 
     def _handle_list_field_dispatch(
         self, gt_val: Any, pred_val: Any, weight: float
