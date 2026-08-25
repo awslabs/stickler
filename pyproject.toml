@@ -32,6 +32,7 @@ requires-python = ">=3.10"
 # their own extras below.
 dependencies = [
     "pydantic>=2.11.0,<3.0.0",
+    "json-schema-to-pydantic>=0.4.11,<0.5.0",
     "rapidfuzz>=3.4.0,<4.0.0",
     "munkres>=1.1.4",
     "numpy>=1.26.0,<3.0.0",

@@ -12,8 +12,15 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   `from_json()` (rich-value unwrapping) and `compare_with()` (delegates to the engine).
 - `comparable_field.py`, `field.py`, `comparison_info.py` — field declaration
   (`ComparableField`), per-field comparator/threshold/weight metadata.
-- `model_factory.py`, `field_converter.py`, `json_schema_field_converter.py`,
-  `type_resolver.py`, `configuration_helper.py` — building models from JSON / schema.
+- `model_factory.py`, `field_converter.py`, `type_resolver.py`,
+  `configuration_helper.py` — building models from Stickler's compact JSON config.
+- `json_schema_importer.py`, `json_schema_field_converter.py` — two-stage JSON
+  Schema import. The maintained `json-schema-to-pydantic` library resolves
+  standard schema types, references, combiners, and validation constraints;
+  `JsonSchemaImporter` then adapts the generated Pydantic fields and nested
+  models to `ComparableField` / `StructuredModel` while preserving Stickler's
+  comparator, threshold, weight, and clipping extensions. The converter retains
+  the public compatibility entry point and the inverse field-export helpers.
 
 **Comparison pipeline**
 - `comparison_engine.py` — `ComparisonEngine`, the orchestrator behind

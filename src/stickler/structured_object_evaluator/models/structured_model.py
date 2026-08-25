@@ -661,13 +661,12 @@ class StructuredModel(BaseModel):
 
         Supported Features:
         -------------------
-        - Primitive types: string, number, integer, boolean
-        - Nullable list-form types, e.g. {"type": ["string", "null"]}
-        - Nullable two-branch anyOf types with one explicit null branch
-        - oneOf alternatives are not interpreted or enforced
+        - Primitive types: string, number, integer, boolean, null
+        - Draft 7 list-form type unions, including nullable types
+        - allOf object composition and multi-arm anyOf / oneOf unions
         - Object schemas inferred from properties when type is omitted
         - Nested objects and arrays (primitive/object items)
-        - Required fields, defaults, descriptions
+        - Required fields, defaults, descriptions, and validation constraints
         - Schema references ($ref with #/definitions/ and #/$defs/)
 
         Default Type Mappings:
@@ -820,6 +819,11 @@ class StructuredModel(BaseModel):
                 f"Please ensure the schema conforms to JSON Schema draft-07 specification."
             )
 
+        if "properties" not in schema and not any(
+            keyword in schema for keyword in ("allOf", "anyOf", "oneOf", "$ref")
+        ):
+            raise ValueError("JSON Schema must contain 'properties'")
+
         # Subtask 4.3: Extract model-level configuration
         model_name = schema.get("x-aws-stickler-model-name", "DynamicModel")
         match_threshold = schema.get("x-aws-stickler-match-threshold", 0.7)
@@ -844,13 +848,8 @@ class StructuredModel(BaseModel):
                 f"got: {match_threshold}"
             )
 
-        # Subtask 4.4: Convert fields and create model
-        # Ensure schema has properties
-        if "properties" not in schema:
-            raise ValueError(
-                "JSON Schema must contain 'properties' key for object type"
-            )
-
+        # Convert through the schema library. Composed/root-ref schemas may not
+        # carry ``properties`` at this level; the importer resolves them first.
         properties = schema.get("properties", {})
         required = schema.get("required", [])
 
