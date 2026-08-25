@@ -215,6 +215,11 @@ class DataExtractor:
                 # not imported here: that would make stickler.reporting depend
                 # on the inference machinery and pull pydantic model building
                 # into the report path. The four lines are mirrored instead.
+                #
+                # A third copy lives at
+                # stickler.structured_object_evaluator.models.optional_annotation,
+                # added once ten sites in that package were found with this same
+                # bug. Keep all three in sync; unifying them is a 0.8.0 item.
                 if get_origin(field_type) in (Union, types.UnionType):
                     non_none_args = [
                         arg for arg in get_args(field_type) if arg is not type(None)
