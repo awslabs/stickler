@@ -9,6 +9,42 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Added
+
+- `StructuredModel.from_json_schema(schema, tolerate_missing_fields=True)` builds
+  a model that constructs from partial input, so a prediction omitting a field
+  the schema marks required is scored as a miss instead of raising
+  `ValidationError`.
+
+  This is what an *evaluation* model needs: the engine builds instances from
+  extraction output, and a hand-written `ComparableField` model already tolerates
+  omission for exactly that reason. A schema-built model did not, which made
+  `from_json_schema(Model.model_json_schema())` -- advertised in
+  `src/stickler/auto/README.md` -- unusable for scoring anything incomplete.
+
+  The default is `False`, preserving today's strict behavior, because a schema's
+  `required` list is a contract for callers who want it enforced. In particular
+  `required` together with a nullable type still means "must be present, may be
+  null", and the flag does not blur those two.
+
+  Requiredness is not traded away. `model_json_schema()` and `to_json_schema()`
+  name exactly the same required fields whether or not the flag is set, so the
+  Strands tool spec is unaffected. For a field that is required and *not*
+  nullable that follows from the annotation staying bare; a field that is
+  required *and* nullable must be annotated `Optional[X]` to accept null, which
+  is indistinguishable from an ordinary optional field by shape alone, so the
+  schema's own answer is recorded on the field and consulted when rendering. The
+  flag propagates into nested models and array items, so neither tolerance nor
+  the requiredness it preserves stops at the first level.
+
+  Whether `False` is the right default is open. An omitted field is a false
+  negative, which is what the library measures, so "a comparison model tolerates
+  omission" may be an invariant rather than an option -- in which case this
+  should be unconditional and not a flag at all. That turns on
+  [#189](https://github.com/awslabs/stickler/issues/189), which is about
+  `ComparableField` having no working notion of a required field in the first
+  place ([#214](https://github.com/awslabs/stickler/issues/214))
+
 ## [0.7.0] - 2026-08-18
 
 ### Added
@@ -219,7 +255,8 @@ Each release links to full notes on the
   not just some: a model with no `Optional` field at all is precisely the case,
   since `Optional` fields are the ones that were never required to begin with.
   Model an evaluation target by hand, or via `to_json_schema()` /
-  `to_stickler_config()`, until this is resolved. Tracked in
+  `to_stickler_config()`, on this release; `tolerate_missing_fields=True` (see
+  Unreleased) gets the hand-written model's behavior. Tracked in
   [#214](https://github.com/awslabs/stickler/issues/214)
   ([#188](https://github.com/awslabs/stickler/issues/188))
 

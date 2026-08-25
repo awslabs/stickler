@@ -23,7 +23,11 @@ from pydantic.json_schema import GenerateJsonSchema
 from stickler.comparators.base import BaseComparator
 from stickler.utils.deprecation import warn_once
 
-from .comparable_field import ComparableField
+from .comparable_field import (
+    SCHEMA_REQUIRED_ATTR,
+    ComparableField,
+    is_schema_required,
+)
 from .comparison_helper import ComparisonHelper
 from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
@@ -85,6 +89,17 @@ class _AnnotationDrivenJsonSchema(GenerateJsonSchema):
         if wrapped.get("default") is not None:
             # An explicit, meaningful default: optional.
             return False
+        # A field rebuilt from a schema that listed it in `required`, with
+        # tolerance requested. Checked before the nullability test below because
+        # that test cannot see it: a required *nullable* field is annotated
+        # `Optional[X]`, so the sentinel alone is indistinguishable from an
+        # ordinary optional field.
+        if getattr(
+            (field.get("metadata") or {}).get("pydantic_js_extra"),
+            SCHEMA_REQUIRED_ATTR,
+            False,
+        ):
+            return True
         # default=None on a non-Optional annotation is ComparableField's
         # construction-tolerance sentinel, not a statement that the field is
         # optional.
@@ -638,7 +653,11 @@ class StructuredModel(BaseModel):
         return ModelFactory.create_model_from_json(config, base_class=cls)
 
     @classmethod
-    def from_json_schema(cls, schema: Dict[str, Any]) -> Type["StructuredModel"]:
+    def from_json_schema(
+        cls,
+        schema: Dict[str, Any],
+        tolerate_missing_fields: bool = False,
+    ) -> Type["StructuredModel"]:
         """Create a StructuredModel subclass from a JSON Schema document.
 
         This method accepts standard JSON Schema documents and creates fully functional
@@ -680,6 +699,21 @@ class StructuredModel(BaseModel):
 
         Args:
             schema: JSON Schema document as a dictionary
+            tolerate_missing_fields: Whether the built model may be constructed
+                from input that omits fields the schema marks required.
+
+                Defaults to False, which enforces the schema's ``required``
+                list: omitting such a field raises ``ValidationError``.
+
+                Pass True when the model is for *evaluation*. The comparison
+                engine builds instances from predictions, and a prediction that
+                omits a field is the ordinary case the engine exists to score --
+                a hand-written ``ComparableField`` model tolerates it, and with
+                this flag a schema-built model does too, scoring a miss rather
+                than raising. Requiredness is not lost: such a field keeps a
+                non-nullable annotation, so it is still reported as required in
+                ``model_json_schema()`` and exported with a non-nullable type by
+                ``to_json_schema()``.
 
         Returns:
             StructuredModel subclass created from the schema
@@ -732,7 +766,11 @@ class StructuredModel(BaseModel):
             >>> # name field has weight=2.0, price field clips scores below 0.95
         """
 
-        return cls._from_json_schema_internal(schema, field_path="")
+        return cls._from_json_schema_internal(
+            schema,
+            field_path="",
+            tolerate_missing_fields=tolerate_missing_fields,
+        )
 
     @classmethod
     def from_pydantic(
@@ -792,7 +830,10 @@ class StructuredModel(BaseModel):
 
     @classmethod
     def _from_json_schema_internal(
-        cls, schema: Dict[str, Any], field_path: str
+        cls,
+        schema: Dict[str, Any],
+        field_path: str,
+        tolerate_missing_fields: bool = False,
     ) -> Type["StructuredModel"]:
         """Internal method for creating StructuredModel from JSON Schema with field path tracking.
 
@@ -855,7 +896,11 @@ class StructuredModel(BaseModel):
         required = schema.get("required", [])
 
         # Create converter and convert properties to field definitions
-        converter = JsonSchemaFieldConverter(schema, field_path=field_path)
+        converter = JsonSchemaFieldConverter(
+            schema,
+            field_path=field_path,
+            tolerate_missing_fields=tolerate_missing_fields,
+        )
         field_definitions = converter.convert_properties_to_fields(properties, required)
 
         # Create the model using ModelFactory
@@ -1629,8 +1674,11 @@ class StructuredModel(BaseModel):
 
             schema["properties"][field_name] = property_schema
 
-            # Add to required if field is required (Pydantic uses is_required())
-            if field_info.is_required():
+            # Add to required if field is required. `is_required()` is False for
+            # anything carrying the construction-tolerance sentinel, so a model
+            # rebuilt with `tolerate_missing_fields=True` needs the schema's own
+            # answer as well or this export reports nothing required at all.
+            if field_info.is_required() or is_schema_required(field_info):
                 schema["required"].append(field_name)
 
         return schema
