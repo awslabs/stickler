@@ -12,19 +12,24 @@ Each release links to full notes on the
 ### Fixed
 
 - A `List[Dict[...]]` field no longer raises `TypeError` out of `compare_with()`,
-  and key order no longer affects its score. No comparator can compare two dicts:
-  `LevenshteinComparator` raises for one, and `str(dict)` preserves insertion
-  order, which is why 0.6.0 scored two dicts with identical content `0.5556`.
-  Until the list-item normalization fix, that raise could not reach the list path;
-  afterwards it escaped to the caller, so a field that scored in 0.6.0 crashed
-  instead. Items no comparator handles -- `dict`, `set`, `frozenset` -- are now
-  canonicalized to sorted-key JSON before comparison, so identical content scores
-  `1.0` regardless of key order. `list`, `tuple` and `StructuredModel` items pass
-  through untouched, so `List[bbox]` still parses. This matches what
-  `stickler.auto` already chooses for a dict field, so the explicit and
-  zero-config paths agree. Whether a dict deserves per-key comparison rather than
-  JSON-string similarity is [#277](https://github.com/awslabs/stickler/issues/277)
-
+  and key order no longer affects its score. `LevenshteinComparator` raises for a
+  dict, and the comparators that accept one do so only via `str(dict)`, which
+  preserves insertion order -- which is why 0.6.0 scored two dicts with identical
+  content `0.5556`. Until the list-item normalization fix, that raise could not
+  reach the list path; afterwards it escaped to the caller, so a field that scored
+  in 0.6.0 crashed instead. A list item whose comparator refuses it with
+  `TypeError` is now retried as sorted-key JSON, so identical content scores `1.0`
+  regardless of key order. The retry is a fallback, not a pre-filter: the
+  comparator is offered the raw item first, so a mapping-aware comparator still
+  receives a `dict`, and anything but a `dict` re-raises -- a comparator bug stays
+  loud instead of becoming a silent `0.0`, and `List[bbox]` still parses. The
+  canonical form is the one `stickler.auto` already applies to a dict field, now
+  shared from `stickler.utils.canonical`, so the explicit and zero-config paths
+  cannot drift apart; it also no longer raises `PydanticSerializationError` on a
+  payload pydantic cannot serialize, such as a NumPy scalar under
+  `Dict[str, Any]`. A scalar `Dict` field still raises, and `Set`/`FrozenSet`
+  items are unchanged. Whether a dict deserves per-key comparison rather than
+  JSON-string similarity is [#277](https://github.com/awslabs/stickler/issues/277).
 
 ## [0.7.0] - 2026-08-18
 

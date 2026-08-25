@@ -5,15 +5,14 @@ between two lists, which is commonly used for evaluating list-type fields in
 key information extraction tasks.
 """
 
-import json
 import traceback
 from typing import Any, Callable, List, Optional, Tuple, Union
 
 import numpy as np
 from munkres import Munkres, make_cost_matrix
-from pydantic_core import to_jsonable_python
 
 from stickler.comparators.base import BaseComparator
+from stickler.utils.canonical import canonicalize_json
 
 # Memory threshold for warning in MB
 HUNGARIAN_SIZE_WARNING_THRESHOLD = 10000  # Matrix size (product of dimensions)
@@ -152,19 +151,41 @@ class HungarianMatcher:
 
     @staticmethod
     def _comparable_form(item: Any) -> Any:
-        """Canonicalize an item no comparator can handle; pass everything else through.
+        """Canonical form for an item no comparator can handle.
 
-        A ``dict`` or ``set`` has no comparator: ``LevenshteinComparator`` raises
-        for one, and ``str(dict)`` makes key order significant. Sorted-key JSON
-        removes both problems and matches what ``stickler.auto`` already chooses
-        for a dict field, so the explicit and zero-config paths agree.
+        Only reached from :meth:`_score` after a comparator raised
+        ``TypeError``. A ``dict`` has no comparator: ``LevenshteinComparator``
+        raises for one, and ``str(dict)`` makes key order significant. Sorted-key
+        JSON removes both problems and matches what ``stickler.auto`` already
+        chooses for a dict field, so the explicit and zero-config paths agree.
 
-        ``list``/``tuple``/``StructuredModel`` pass through untouched: a bounding
-        box IS a list, and ``_normalize_bbox`` needs the raw value to parse it.
+        Everything else passes through untouched, so :meth:`_score` re-raises
+        rather than scoring: a bounding box IS a list, and a comparator that
+        raises on anything but a dict has a bug worth surfacing.
         """
-        if isinstance(item, (dict, set, frozenset)):
-            return json.dumps(to_jsonable_python(item), sort_keys=True)
+        if isinstance(item, dict):
+            return canonicalize_json(item)
         return item
+
+    def _score(self, item1: Any, item2: Any) -> float:
+        """Score one pair, canonicalizing dicts only if the comparator refuses.
+
+        The comparator sees the raw item first, so a dict-aware comparator keeps
+        working (#277). Canonicalization is the fallback, not a pre-filter. A
+        ``TypeError`` from anything but a dict pair propagates: it means a
+        comparator bug, not an uncomparable value.
+        """
+        compare = (
+            self.comparator.compare
+            if hasattr(self.comparator, "compare")
+            else self.comparator
+        )
+        try:
+            return compare(item1, item2)
+        except TypeError:
+            if not (isinstance(item1, dict) or isinstance(item2, dict)):
+                raise
+            return compare(self._comparable_form(item1), self._comparable_form(item2))
 
     def match(self, list1: Any, list2: Any) -> Tuple[List[Tuple[int, int]], np.ndarray]:
         """Find optimal assignments between two lists.
@@ -197,13 +218,7 @@ class HungarianMatcher:
             # Fill the matrix with similarity scores
             for i, item1 in enumerate(list1):
                 for j, item2 in enumerate(list2):
-                    # Handle callable function or object with compare method
-                    a = self._comparable_form(item1)
-                    b = self._comparable_form(item2)
-                    if hasattr(self.comparator, "compare"):
-                        similarity_matrix[i, j] = self.comparator.compare(a, b)
-                    else:
-                        similarity_matrix[i, j] = self.comparator(a, b)
+                    similarity_matrix[i, j] = self._score(item1, item2)
 
             # Check matrix size
             matrix_size = len(list1) * len(list2)
@@ -290,12 +305,7 @@ class HungarianMatcher:
         # property of this shortcut; see the Note in the docstring above.
         if len(prepared_list1) == 1 and len(prepared_list2) == 1:
             # Directly compare the single items
-            a = self._comparable_form(prepared_list1[0])
-            b = self._comparable_form(prepared_list2[0])
-            if hasattr(self.comparator, "compare"):
-                score = self.comparator.compare(a, b)
-            else:
-                score = self.comparator(a, b)
+            score = self._score(prepared_list1[0], prepared_list2[0])
 
             is_tp = score >= self.match_threshold
             tp = 1 if is_tp else 0
