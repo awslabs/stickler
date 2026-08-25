@@ -219,7 +219,7 @@ class DataExtractor:
                 # A third copy lives at
                 # stickler.structured_object_evaluator.models.optional_annotation,
                 # added once ten sites in that package were found with this same
-                # bug. Keep all three in sync; unifying them is a 0.8.0 item.
+                # bug. Keep all three in sync; unifying them is a 1.0 item.
                 if get_origin(field_type) in (Union, types.UnionType):
                     non_none_args = [
                         arg for arg in get_args(field_type) if arg is not type(None)

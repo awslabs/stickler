@@ -163,7 +163,7 @@ class TestUniversalAggregateField:
 
         aggregate=False used to be silent, so those callers had no signal the
         parameter is going away and would have met a bare TypeError on the
-        0.8.0 removal (issue #226). The value has no effect either way.
+        1.0 removal (issue #226). The value has no effect either way.
         """
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
@@ -175,7 +175,7 @@ class TestUniversalAggregateField:
             message = str(w[0].message)
             assert "aggregate" in message
             assert "deprecated" in message
-            assert "0.8.0" in message, "the warning should name the removal version"
+            assert "1.0" in message, "the warning should name the removal version"
 
     def test_no_warning_when_aggregate_is_omitted(self):
         """The common case stays quiet."""

@@ -26,7 +26,7 @@ supported range, and it is the spelling modern tooling emits.
    ``stickler.reporting.html.utils.data_extractors``. Both live in packages
    that do not depend on the evaluator models — importing across would pull
    pydantic model building into the report path (see #268). Keep them in sync
-   by hand; unifying all three is tracked for 0.8.0.
+   by hand; unifying all three is tracked for 1.0.
 
 .. note::
    On Python 3.14 the two union representations are unified, so the

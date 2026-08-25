@@ -301,6 +301,8 @@ Each release links to full notes on the
   required. The shim is removed in 0.8.0, after which such a comparator
   raises `TypeError` at construction
   ([#215](https://github.com/awslabs/stickler/issues/215)).
+  <br>*Correction: the 0.8.0 milestone was renamed to 1.0 after this entry shipped.
+  The shim is removed in 1.0.*
 
   Note that the pre-fix `(None, "") -> 1.0` result cannot be inherited: the
   coercion was removed from Levenshtein's algorithm rather than guarded, so
@@ -319,6 +321,8 @@ Each release links to full notes on the
   Callers passing `aggregate=False` had no signal the parameter was going away
   and would have met a bare `TypeError` on removal. Remove the argument; there
   is no replacement to adopt. Scheduled for removal in 0.8.0.
+  <br>*Correction: the 0.8.0 milestone was renamed to 1.0 after this entry shipped.
+  The parameter is removed in 1.0.*
 
   Reading a config does **not** count as explicit use: `to_stickler_config()`
   writes the `aggregate` key for every field, so `model_from_json()` restores
@@ -427,7 +431,7 @@ Each release links to full notes on the
 
   Scores move **up** for affected corpora; nothing that scored `1.0` before
   changes. A region or per-field comparator override on the zero-config entry
-  points is deferred to 0.8.0: it would widen the public API inside a release
+  points is deferred to 1.0: it would widen the public API inside a release
   candidate, and it would not have fixed these cases on its own -- `"ext 4021"`
   is invalid under every region, and no single region works for a mixed corpus
   ([#258](https://github.com/awslabs/stickler/issues/258))

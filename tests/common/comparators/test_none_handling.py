@@ -232,7 +232,7 @@ class TestPreRenameSubclassMigration:
     rename is needed.
 
     That is why the shim is temporary: it buys an upgrade path, not
-    correctness. Removed in 0.8.0 (issue #215), after which these shapes go
+    correctness. Removed in 1.0 (issue #215), after which these shapes go
     back to raising ``TypeError`` at construction.
     """
 

@@ -60,7 +60,7 @@ def ComparableField(
         threshold: Minimum similarity score to consider a match (default: 0.5)
         weight: Weight of this field in overall score calculation (default: 1.0)
         default: Default value for the field (default: None)
-        aggregate: DEPRECATED, has no effect, and will be removed in 0.8.0.
+        aggregate: DEPRECATED, has no effect, and will be removed in 1.0.
                   Passing it at all (either value) emits a DeprecationWarning.
                   Aggregation is applied at the comparison layer: every node in
                   compare_with() output already carries an 'aggregate' block
@@ -97,7 +97,7 @@ def ComparableField(
     if aggregate is not _UNSET:
         warnings.warn(
             "The 'aggregate' parameter in ComparableField is deprecated, has no "
-            "effect, and will be removed in 0.8.0. All nodes automatically "
+            "effect, and will be removed in 1.0. All nodes automatically "
             "include an 'aggregate' field in the compare_with() output that "
             "sums primitive field metrics below that node. Remove the argument; "
             "no replacement is needed. See "
@@ -197,7 +197,7 @@ def _restore_deprecated_aggregate(field: Any, value: Any) -> None:
     export -> import -> export is unchanged, including for ``aggregate=True``
     -- while the warning stays reserved for code a user can actually edit.
 
-    Internal, and removed with the parameter in 0.8.0
+    Internal, and removed with the parameter in 1.0
     (https://github.com/awslabs/stickler/issues/226).
     """
     if not isinstance(value, bool):
