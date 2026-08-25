@@ -12,7 +12,7 @@ This section provides deep dives into Stickler's internal algorithms and advance
 
 - **[Hungarian Matching](hungarian-matching.md)** -- The optimal bipartite matching algorithm used to pair list elements before classification, including worked examples with `List[StructuredModel]`.
 
-- **[Threshold-Gated Evaluation](threshold-gated-evaluation.md)** -- How recursive field-level evaluation is gated by a similarity threshold so that only well-matched object pairs receive detailed analysis.
+- **[How Below-Threshold Pairs Are Classified](threshold-gated-evaluation.md)** -- What happens to an object pair that falls below the similarity threshold: it becomes an atomic False Discovery with no field-by-field breakdown.
 
 - **[Dynamic Model Creation](dynamic-models.md)** -- Creating `StructuredModel` classes at runtime from JSON Schema or custom JSON configuration, enabling configuration-driven evaluation without writing Python model code.
 

@@ -12,6 +12,7 @@ import numpy as np
 from munkres import Munkres, make_cost_matrix
 
 from stickler.comparators.base import BaseComparator
+from stickler.utils.canonical import canonicalize_json
 
 # Memory threshold for warning in MB
 HUNGARIAN_SIZE_WARNING_THRESHOLD = 10000  # Matrix size (product of dimensions)
@@ -43,6 +44,28 @@ class HungarianMatcher:
             size_threshold: Maximum allowable matrix size (rows*cols) before warning
             normalize_values: Whether to normalize string values before comparison
                              (convert strings to lowercase, strip whitespace, etc.)
+
+                             Legacy, and deliberately declined on the
+                             list-of-values path.
+                             This predates comparators owning their own
+                             normalization; since 0.7.0 they do
+                             (``ExactComparator.case_sensitive``,
+                             ``LevenshteinComparator._normalize``,
+                             ``FuzzyComparator._normalize``), so normalizing
+                             here silently overrides the comparator a field
+                             declared. ``ComparisonHelper.compare_unordered_lists``
+                             therefore passes ``False``. The default stays
+                             ``True`` for direct callers who relied on it; do
+                             not "fix" that call site back.
+
+                             ``HungarianHelper``, which matches
+                             ``List[StructuredModel]`` via
+                             ``StructuredModelComparator``, still takes the
+                             default: it matches whole objects rather than
+                             values, so a field's declared comparator is not
+                             what gets overridden. It does still map ``None`` to
+                             ``""`` before scoring candidate pairs, which can
+                             change which pairs the algorithm assigns.
             match_threshold: Minimum similarity score to consider a match as TP
         """
         self.comparator = comparator or (lambda x, y: float(x == y))
@@ -52,6 +75,14 @@ class HungarianMatcher:
 
     def _normalize_value(self, value: Any) -> Any:
         """Normalize a value to improve string matching.
+
+        Only reached when ``normalize_values`` is true. Note what it does
+        beyond case folding: it ``str()``-coerces every primitive and maps
+        ``None`` to ``""``. Both are lossy for a comparator that inspects the
+        value -- ``BBoxIoUComparator`` cannot parse ``"[0, 0, 10, 10]"``, and
+        the ``""`` substitution bypasses ``BaseComparator``'s ``None`` policy.
+        See the ``normalize_values`` note in :meth:`__init__` for why the
+        evaluator path opts out.
 
         Args:
             value: Value to normalize
@@ -118,6 +149,44 @@ class HungarianMatcher:
 
         return list1, list2
 
+    @staticmethod
+    def _comparable_form(item: Any) -> Any:
+        """Canonical form for an item no comparator can handle.
+
+        Only reached from :meth:`_score` after a comparator raised
+        ``TypeError``. A ``dict`` has no comparator: ``LevenshteinComparator``
+        raises for one, and ``str(dict)`` makes key order significant. Sorted-key
+        JSON removes both problems and matches what ``stickler.auto`` already
+        chooses for a dict field, so the explicit and zero-config paths agree.
+
+        Everything else passes through untouched, so :meth:`_score` re-raises
+        rather than scoring: a bounding box IS a list, and a comparator that
+        raises on anything but a dict has a bug worth surfacing.
+        """
+        if isinstance(item, dict):
+            return canonicalize_json(item)
+        return item
+
+    def _score(self, item1: Any, item2: Any) -> float:
+        """Score one pair, canonicalizing dicts only if the comparator refuses.
+
+        The comparator sees the raw item first, so a dict-aware comparator keeps
+        working (#277). Canonicalization is the fallback, not a pre-filter. A
+        ``TypeError`` from anything but a dict pair propagates: it means a
+        comparator bug, not an uncomparable value.
+        """
+        compare = (
+            self.comparator.compare
+            if hasattr(self.comparator, "compare")
+            else self.comparator
+        )
+        try:
+            return compare(item1, item2)
+        except TypeError:
+            if not (isinstance(item1, dict) or isinstance(item2, dict)):
+                raise
+            return compare(self._comparable_form(item1), self._comparable_form(item2))
+
     def match(self, list1: Any, list2: Any) -> Tuple[List[Tuple[int, int]], np.ndarray]:
         """Find optimal assignments between two lists.
 
@@ -149,11 +218,7 @@ class HungarianMatcher:
             # Fill the matrix with similarity scores
             for i, item1 in enumerate(list1):
                 for j, item2 in enumerate(list2):
-                    # Handle callable function or object with compare method
-                    if hasattr(self.comparator, "compare"):
-                        similarity_matrix[i, j] = self.comparator.compare(item1, item2)
-                    else:
-                        similarity_matrix[i, j] = self.comparator(item1, item2)
+                    similarity_matrix[i, j] = self._score(item1, item2)
 
             # Check matrix size
             matrix_size = len(list1) * len(list2)
@@ -200,38 +265,61 @@ class HungarianMatcher:
                 - precision: Precision score
                 - recall: Recall score
                 - f1: F1 score
+
+        Note:
+            ``fn`` and ``fp`` here are **threshold-based, not
+            partnering-based**: they are ``len(list) - tp``, so a pair that
+            appears in ``matched_pairs`` but scored below ``match_threshold``
+            is counted in both. A below-threshold pair is therefore reported
+            as matched *and* as fn/fp by this function, at every list length.
+
+            The FD split -- "matched but below threshold" as distinct from
+            "no partner at all" -- happens downstream in
+            :class:`StructuredListComparator`, which reads ``matched_pairs``
+            and reclassifies. Callers wanting FD semantics should do the same
+            rather than reading ``fn``/``fp`` from here.
+
+            ``match_threshold=0.0`` is used elsewhere as a capture-all
+            sentinel. Every score satisfies ``>= 0.0``, so ``tp`` then counts
+            pairs rather than true positives and must not be read.
         """
         # Prepare lists
         prepared_list1, prepared_list2 = self._prepare_lists(list1, list2)
 
-        # Handle simple case efficiently: single items
+        # Handle simple case efficiently: single items.
+        #
+        # This shortcut must classify exactly as the general path below, or the
+        # same situation gets a different confusion-matrix result depending on
+        # how many items happen to be in the list. One assignment exists (the
+        # only possible one), so the pair is always matched; `match_threshold`
+        # then decides TP versus below-threshold, exactly as the general path
+        # does. Similarity magnitude does not un-match a pair -- a pair at 0.0
+        # is still the assignment the algorithm made, and downstream
+        # (StructuredListComparator) classifies a below-threshold matched pair
+        # as FD. Whether an FD counts against recall is the `recall_with_fd`
+        # knob's job, not this function's.
+        #
+        # `fn`/`fp` below mirror the general path's `len(list) - tp`, which
+        # means a below-threshold pair is reported as matched and as fn/fp at
+        # the same time. That is pre-existing at every list length, not a
+        # property of this shortcut; see the Note in the docstring above.
         if len(prepared_list1) == 1 and len(prepared_list2) == 1:
             # Directly compare the single items
-            if hasattr(self.comparator, "compare"):
-                score = self.comparator.compare(prepared_list1[0], prepared_list2[0])
-            else:
-                score = self.comparator(prepared_list1[0], prepared_list2[0])
+            score = self._score(prepared_list1[0], prepared_list2[0])
 
-            if score > 0:
-                return {
-                    "matched_pairs": [(0, 0, score)],
-                    "tp": 1,
-                    "fp": 0,
-                    "fn": 0,
-                    "precision": 1.0,
-                    "recall": 1.0,
-                    "f1": 1.0,
-                }
-            else:
-                return {
-                    "matched_pairs": [],
-                    "tp": 0,
-                    "fp": 1,
-                    "fn": 1,
-                    "precision": 0.0,
-                    "recall": 0.0,
-                    "f1": 0.0,
-                }
+            is_tp = score >= self.match_threshold
+            tp = 1 if is_tp else 0
+            return {
+                # Always a matched pair: the assignment exists regardless of
+                # similarity, so downstream sees FD rather than FN+FA.
+                "matched_pairs": [(0, 0, score)],
+                "tp": tp,
+                "fp": 1 - tp,
+                "fn": 1 - tp,
+                "precision": float(tp),
+                "recall": float(tp),
+                "f1": float(tp),
+            }
 
         # Handle empty lists
         if not prepared_list1 and not prepared_list2:

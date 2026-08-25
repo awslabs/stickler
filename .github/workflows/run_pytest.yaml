@@ -9,8 +9,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      # Report every version's real outcome. With fail-fast on (the default),
+      # the first failing version cancels the other four, so a single red
+      # version hides whether the rest passed.
+      fail-fast: false
       matrix:
-        python-version: ["3.12"]
+        # Every version `requires-python` claims to support, so the floor is
+        # enforced rather than asserted.
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1

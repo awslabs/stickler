@@ -37,19 +37,45 @@ inside the release squash.
 git checkout dev && git pull origin dev --ff-only
 ```
 
-Edit **both** files (they must always match):
+Edit **all three** files (they must always match):
 
 - `pyproject.toml` → `version = "X.Y.Z"`
 - `src/stickler/__init__.py` → `__version__ = "X.Y.Z"`
+- `uv.lock` → the `version` line in the `name = "stickler-eval"` entry
+
+The lockfile records this package's own version, not just its dependencies, so
+leaving it behind fails CI: `uv lock --check` reports "the lockfile needs to be
+updated", and every workflow runs `uv sync --frozen`.
+
+Patch that one line **by hand**. Do not run `uv lock` to pick it up: in this
+repo it also rewrites `exclude-newer` to `0001-01-01` and strips platform
+markers from the CUDA and nvidia entries. See
+[AGENTS.md](./AGENTS.md#dependencies-and-uvlock).
 
 ```bash
-git add pyproject.toml src/stickler/__init__.py
+uv lock --check          # must pass before committing
+git add pyproject.toml src/stickler/__init__.py uv.lock
 git commit -m "chore: bump version to X.Y.Z for release"
 git push origin dev
 ```
 
 Also add a `## [X.Y.Z] - YYYY-MM-DD` section to `CHANGELOG.md` (move entries
 out of `[Unreleased]`) in the same commit.
+
+### What belongs in the changelog
+
+Entries are for changes a user can observe. A PR needs one when it changes
+behaviour, an exported format, a public signature, a default, or a dependency,
+and when it fixes a bug someone could have hit.
+
+Internal refactors with no runtime change do **not** get an entry: dead-code
+removal, moving a private helper, renaming something not exported. `git log` is
+the record for those. This is the existing convention, made explicit here
+because it had been applied by default rather than by decision
+([#213](https://github.com/awslabs/stickler/issues/213)).
+
+When in doubt, ask whether a user reading the release notes could act on it. If
+not, leave it out.
 
 ## 3. Open the release PR
 

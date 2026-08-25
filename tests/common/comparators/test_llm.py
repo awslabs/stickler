@@ -1,10 +1,13 @@
 """
 Tests for LLMComparator.
 
-Note: This test module mocks the strands-agents and botocore dependencies
-to allow tests to run without these optional packages installed. The mocking
-is done at module level using sys.modules before importing LLMComparator.
-This logic is located in the conftest.py file in this directory.
+Note: This test module runs without strands-agents or botocore installed. The
+conftest.py in this directory injects mocks into sys.modules via a fixture, so
+they are in place by the time a comparator is *instantiated* -- but not at
+import time, which is why LLMComparator is imported from its own module below
+rather than from the `stickler.comparators` namespace. That namespace only
+exposes the name when the `llm` extra is installed (#259); the module itself
+always imports, degrading to STRANDS_AVAILABLE=False.
 """
 
 import re
@@ -14,7 +17,8 @@ from unittest.mock import MagicMock, patch
 import jinja2
 import pytest
 
-from stickler.comparators import BaseComparator, LLMComparator
+from stickler.comparators import BaseComparator
+from stickler.comparators.llm import LLMComparator
 
 
 # Mock AWS exception classes to avoid botocore dependency in tests

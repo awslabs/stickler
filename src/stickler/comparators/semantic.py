@@ -5,12 +5,32 @@ import sys
 from functools import partial
 from typing import Callable, Optional
 
-from scipy import spatial
-
 from stickler.comparators.base import BaseComparator
 from stickler.comparators.utils import generate_bedrock_embedding
 
 logger = logging.getLogger(__name__)
+
+
+def _cosine_distance(x, y) -> float:
+    """Cosine distance between two embedding vectors.
+
+    scipy is imported here rather than at module scope: ``SemanticComparator``
+    is a top-level export, so a module-level import would put scipy on the
+    ``import stickler`` path for every user, including those who never compute
+    an embedding.
+
+    Raises:
+        ImportError: If scipy is not installed.
+    """
+    try:
+        from scipy import spatial
+    except ImportError as exc:  # pragma: no cover - exercised by the extras gate
+        raise ImportError(
+            "SemanticComparator's cosine similarity requires scipy. Install it "
+            'with: pip install "stickler-eval[semantic]"'
+        ) from exc
+
+    return spatial.distance.cosine(x, y)
 
 
 def _embedding_function_name(embedding_function: Callable) -> str:
@@ -48,7 +68,7 @@ class SemanticComparator(BaseComparator):
     """
 
     SIMILARITY_FUNCTIONS = {
-        "cosine_similarity": lambda x, y: 1 - spatial.distance.cosine(x, y)
+        "cosine_similarity": lambda x, y: 1 - _cosine_distance(x, y)
     }
 
     def __init__(
@@ -82,7 +102,7 @@ class SemanticComparator(BaseComparator):
         self.sim_function = sim_function
         self.similarity_function = self.SIMILARITY_FUNCTIONS[self.sim_function]
 
-    def compare(self, str1: str, str2: str) -> float:
+    def _compare(self, str1: str, str2: str) -> float:
         """Compare two values using semantic similarity.
 
         If embedding generation fails, this logs the model ID, embedding function,
@@ -96,9 +116,6 @@ class SemanticComparator(BaseComparator):
         Returns:
             Similarity score between 0.0 and 1.0
         """
-        if str1 is None or str2 is None:
-            return 0.0
-
         try:
             x, y = self.embedding_function(str1), self.embedding_function(str2)
             return self.similarity_function(x, y)

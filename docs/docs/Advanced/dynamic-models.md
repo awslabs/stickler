@@ -101,7 +101,6 @@ The `x-aws-stickler-*` extensions control comparison behavior on each property:
 | `x-aws-stickler-threshold` | Match threshold (0.0--1.0) | `0.8` |
 | `x-aws-stickler-weight` | Field importance weight | `2.0` |
 | `x-aws-stickler-clip-under-threshold` | Zero out scores below threshold | `true` |
-| `x-aws-stickler-aggregate` | Include in aggregate metrics | `true` |
 | `x-aws-stickler-model-name` | Class name (object-level) | `"Invoice"` |
 | `x-aws-stickler-match-threshold` | Hungarian match threshold (object-level) | `0.75` |
 
@@ -116,6 +115,32 @@ Default comparators are assigned by JSON Schema type when no extension is specif
 | `object` | Recursive comparison | 0.7 |
 
 For the complete reference, see the [Evaluation](../Guides/Evaluation/README.md) page.
+
+### Optional fields and `null`
+
+A property that is **not** listed in `required` (or that declares an explicit
+`"default": null`) is built as an optional field: its Python annotation is
+widened to `Optional[T]` and its default is `None`. This keeps the model usable
+through every construction path — in particular `from_json(..., process_rich_values=True)`,
+which round-trips nested objects and would otherwise re-validate the `None`
+default against a non-nullable annotation and raise.
+
+Two consequences are worth noting:
+
+- An explicit `null` is **accepted** for an optional typed field (e.g. a JSON
+  payload `{"note": null}` for an optional `string`), even though strict JSON
+  Schema treats `null` as invalid for `"type": "string"`. This is deliberate:
+  model predictions often emit explicit nulls, and these should score as a value
+  rather than crash evaluation.
+- `model_json_schema()` reflects this by emitting `{"anyOf": [{"type": "string"}, {"type": "null"}]}`
+  for such fields.
+- `to_json_schema()` likewise makes the nullability explicit, emitting
+  `{"type": ["string", "null"]}`. So an optional property declared only as
+  `{"type": "string"}` gains an explicit `"null"` on export that the input schema
+  never stated. This is intended: "absent from `required`" already means the value
+  may be `None`, and the exported schema now says so out loud instead of leaving it
+  implicit. The round trip is idempotent — re-importing the exported schema and
+  exporting again yields the same document, and accepts the same values.
 
 ---
 
@@ -180,7 +205,6 @@ Person = StructuredModel.model_from_json(person_config)
     "weight": 1.0,
     "required": true,
     "default": null,
-    "aggregate": false,
     "clip_under_threshold": true
 }
 ```

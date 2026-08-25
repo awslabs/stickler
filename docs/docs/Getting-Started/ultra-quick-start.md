@@ -219,6 +219,7 @@ By default every field weighs the same (`weight=1.0`), because business-critical
 
 ## Next steps
 
+- **Understanding thresholds and metrics?** See [Thresholds and Metrics](thresholds-and-metrics.md).
 - **Evaluating a Strands agent?** See [Evaluating a Strands Agent](../Guides/Use-Cases/evaluate-strands-agent.md).
 - **Scoring a whole test set?** See [Bulk Evaluation](../Guides/Evaluation/bulk-evaluation.md).
 - **Want to tune comparators by hand?** See [Getting Started](README.md).

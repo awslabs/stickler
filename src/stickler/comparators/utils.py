@@ -1,13 +1,5 @@
 import json
 
-try:
-    import boto3
-    from botocore.config import Config
-
-    _HAS_BOTO3 = True
-except ImportError:
-    _HAS_BOTO3 = False
-
 
 def generate_bedrock_embedding(
     text, model_id="amazon.titan-embed-text-v2:0", max_retries=3, region=None
@@ -27,10 +19,20 @@ def generate_bedrock_embedding(
     Raises:
         Exception: If the embedding generation fails after the maximum number of retries.
     """
-    if not _HAS_BOTO3:
+    # Imported here rather than at module scope: boto3 is only needed to call
+    # Bedrock, and this module is on the `import stickler` path via
+    # comparators/semantic.py, so a module-level import would pull boto3 into
+    # every import of the package. Do not probe for it at module scope either --
+    # `importlib.util.find_spec` raises for an installed module whose
+    # `__spec__` is None, which broke `import stickler` outright (#257).
+    try:
+        import boto3
+        from botocore.config import Config
+    except ImportError as exc:
         raise ImportError(
-            "boto3 is required for Bedrock embeddings. Please install it with: pip install boto3"
-        )
+            "boto3 is required for Bedrock embeddings. Install it with: "
+            'pip install "stickler-eval[semantic]"'
+        ) from exc
 
     if not text or not isinstance(text, str):
         # Return an empty vector for empty input

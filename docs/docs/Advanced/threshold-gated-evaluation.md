@@ -1,10 +1,16 @@
 ---
-title: Threshold-Gated Recursive Evaluation
+title: How Below-Threshold Pairs Are Classified
 ---
 
-# Threshold-Gated Recursive Evaluation
+# How Below-Threshold Pairs Are Classified
 
 When comparing `List[StructuredModel]` fields, Stickler only performs detailed nested-field analysis on object pairs whose overall similarity meets a configurable threshold. Pairs that fall below the threshold are classified as False Discovery (FD) and treated as atomic units -- no field-by-field breakdown is generated for them.
+
+> **New to thresholds?** Start with
+> [Thresholds and Metrics](../Getting-Started/thresholds-and-metrics.md), which
+> explains all four thresholds, which one wins where, and what each confusion-matrix
+> category means. This page is the mechanism reference for the gating behaviour
+> itself: what happens to a pair once it falls below the threshold.
 
 ## Core Principle
 
@@ -24,6 +30,26 @@ For each matched pair, compare the similarity score against `StructuredModel.mat
 
 - **similarity >= threshold** -- **TP**: recurse into nested fields
 - **similarity < threshold** -- **FD**: stop recursion, treat as atomic
+
+!!! warning "Do not set a list field's `threshold` to `0.0`"
+    The comparison is `>=`, so a threshold of `0.0` is satisfied by *every*
+    score including `0.0` itself. Every pair the algorithm assigns becomes a
+    true positive, and a wholly wrong prediction reports perfect metrics:
+
+    ```python
+    class Doc(StructuredModel):
+        tags: List[str] = ComparableField(comparator=ExactComparator(), threshold=0.0)
+
+    Doc(tags=["X"]).compare_with(Doc(tags=["A"]), include_confusion_matrix=True)
+    # tp=1, fa=0, fn=0 -- recall, precision, F1 and accuracy all 1.000
+    ```
+
+    Use a small positive threshold instead if the intent is "accept weak
+    matches." `0.0` means "accept everything," which is rarely what a
+    threshold is for. Note that Stickler uses `match_threshold=0.0`
+    internally as a deliberate capture-all sentinel when it needs every pair
+    for scoring, and reclassifies those pairs itself rather than reading
+    their `tp`.
 
 ### 3. Unmatched Items
 
@@ -151,6 +177,7 @@ The `all_fields_matched` flag is `True` only when every field's raw similarity m
 
 ## See Also
 
+- [Thresholds and Metrics](../Getting-Started/thresholds-and-metrics.md) -- the explainer: all four thresholds, precedence, the metrics glossary, and the zero-threshold trap
 - [Hungarian Matching](hungarian-matching.md) -- the assignment algorithm that produces pairings
 - [Classification Logic](classification-logic.md) -- full definitions of TP, FD, FA, FN, TN
 - [Aggregate Metrics](aggregate-metrics.md) -- how metrics roll up through the result tree

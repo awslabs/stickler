@@ -14,10 +14,13 @@ import stickler
 # Mapping of public name -> canonical source module
 ALWAYS_AVAILABLE_EXPORTS = {
     "BaseComparator": "stickler.comparators.base",
+    "BBoxIoUComparator": "stickler.comparators.bbox",
+    "DateComparator": "stickler.comparators.date",
     "ExactComparator": "stickler.comparators.exact",
     "FuzzyComparator": "stickler.comparators.fuzzy",
     "LevenshteinComparator": "stickler.comparators.levenshtein",
     "NumericComparator": "stickler.comparators.numeric",
+    "PhoneComparator": "stickler.comparators.phone",
     "SemanticComparator": "stickler.comparators.semantic",
     "StructuredModelComparator": "stickler.comparators.structured",
 }
@@ -77,6 +80,38 @@ class TestAllConsistency:
         """All always-available comparators must be in __all__."""
         for name in ALWAYS_AVAILABLE_EXPORTS:
             assert name in stickler.__all__
+
+    def test_no_eager_comparator_is_missing_from_the_top_level(self):
+        """The two namespaces must agree, derived rather than hand-listed.
+
+        `ALWAYS_AVAILABLE_EXPORTS` above is maintained by hand, which is why
+        three comparators were absent from it and one of them
+        (`DateComparator`) went unexported from the package root for two
+        releases. `BBoxIoUComparator` had the same gap. This test derives the
+        expectation from `stickler.comparators` instead, so adding a comparator
+        to one namespace and not the other fails rather than passing quietly.
+
+        Covers the lazily-imported comparators too. `BERTComparator` and
+        `LLMComparator` were exempted here, and the exemption was hiding #259:
+        `stickler.comparators` hardcoded `LLMComparator` as available while the
+        package root gated it on the strands probe, so without the extra the
+        subpackage resolved a name the root did not. Both `__dir__` hooks return
+        `globals() | __all__`, and `__getattr__` caches a resolved comparator
+        into `globals()`, so an unadvertised-but-resolvable name shows up here --
+        which is what makes the exemption's removal load-bearing rather than
+        cosmetic.
+        """
+        import stickler.comparators as comparators
+
+        def comparator_names(namespace):
+            return {n for n in dir(namespace) if n.endswith("Comparator")}
+
+        missing = comparator_names(comparators) - comparator_names(stickler)
+
+        assert not missing, (
+            f"in stickler.comparators but not at the top level: {sorted(missing)}. "
+            f"Add the import and the __all__ entry to src/stickler/__init__.py."
+        )
 
     def test_numeric_exact_c_not_in_all(self):
         """NumericExactC is a compat alias - not re-exported at top level."""
@@ -145,3 +180,74 @@ class TestOptionalGating:
 
         assert "LLMComparator" not in reloaded.__all__
         assert not hasattr(reloaded, "LLMComparator")
+
+    def test_both_import_paths_agree_when_strands_is_missing(self, monkeypatch):
+        """The two namespaces must give the same answer, not merely a safe one.
+
+        `stickler.comparators` hardcoded `LLMComparator` as available while the
+        package root gated it on the strands probe, so without the extra
+        `stickler.comparators.LLMComparator` resolved to a class that raised at
+        instantiation while `stickler.LLMComparator` raised AttributeError --
+        and neither `__all__` advertised it. Which import path worked was a
+        matter of luck (#259).
+
+        Absence is simulated with `sys.modules[name] = None`, the convention
+        `tests/common/comparators/conftest.py` establishes;
+        `_dependency_available()` treats an explicit None as blocked for exactly
+        this purpose.
+        """
+        monkeypatch.setitem(sys.modules, "strands", None)
+
+        for mod in [
+            k for k in sys.modules if k == "stickler" or k.startswith("stickler.")
+        ]:
+            monkeypatch.delitem(sys.modules, mod, raising=False)
+
+        import stickler as root
+        import stickler.comparators as comparators
+
+        assert hasattr(root, "LLMComparator") == hasattr(
+            comparators, "LLMComparator"
+        ), "the two import paths disagree on whether LLMComparator exists"
+        assert not hasattr(comparators, "LLMComparator")
+
+        with pytest.raises(AttributeError):
+            comparators.LLMComparator
+        with pytest.raises(AttributeError):
+            root.LLMComparator
+
+        assert ("LLMComparator" in root.__all__) == (
+            "LLMComparator" in comparators.__all__
+        )
+        assert "LLMComparator" not in comparators.__all__
+
+    def test_both_import_paths_agree_when_strands_is_present(self):
+        """With the extra installed, both paths resolve to the same class."""
+        from stickler.comparators.llm import STRANDS_AVAILABLE
+
+        if not STRANDS_AVAILABLE:
+            pytest.skip("strands-agents is not installed")
+
+        import stickler.comparators as comparators
+
+        assert hasattr(stickler, "LLMComparator") == hasattr(
+            comparators, "LLMComparator"
+        )
+        assert stickler.LLMComparator is comparators.LLMComparator
+        assert ("LLMComparator" in stickler.__all__) == (
+            "LLMComparator" in comparators.__all__
+        )
+
+    def test_the_gate_is_the_flag_not_a_trial_import(self):
+        """Why availability is probed rather than tried.
+
+        `stickler.comparators.llm` imports fine without strands -- it degrades
+        to STRANDS_AVAILABLE=False and raises at instantiation -- so a
+        successful import proves nothing. This pins the premise both comments
+        rest on; if the module started failing to import, the gating rationale
+        would need rewriting.
+        """
+        module = importlib.import_module("stickler.comparators.llm")
+
+        assert hasattr(module, "LLMComparator")
+        assert hasattr(module, "STRANDS_AVAILABLE")

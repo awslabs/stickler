@@ -4,6 +4,9 @@ This module provides a registry system for mapping string names to comparator cl
 enabling configuration-based comparator selection in model_from_json().
 """
 
+import importlib
+import importlib.util
+import sys
 from typing import Any, Dict, List, Optional, Type
 
 from stickler.comparators.base import BaseComparator
@@ -12,82 +15,110 @@ from stickler.comparators.base import BaseComparator
 class ComparatorRegistry:
     """Registry for mapping comparator names to classes."""
 
+    # Built-in comparator name -> (module path, dependency to probe, owning
+    # extra). Stored as paths rather than classes so constructing the registry
+    # does not import every comparator: BERTComparator pulls torch,
+    # transformers, and datasets, and LLMComparator pulls strands-agents and
+    # boto3. The global registry is built at module import, so eager
+    # registration put all of that on the `import stickler` path.
+    #
+    # `probe` is the distribution whose absence means the comparator is
+    # unavailable, or None when the comparator needs nothing beyond the core.
+    _BUILTINS = {
+        "LevenshteinComparator": ("stickler.comparators.levenshtein", None, None),
+        "ExactComparator": ("stickler.comparators.exact", None, None),
+        "PhoneComparator": ("stickler.comparators.phone", None, None),
+        "NumericComparator": ("stickler.comparators.numeric", None, None),
+        "DateComparator": ("stickler.comparators.date", None, None),
+        "FuzzyComparator": ("stickler.comparators.fuzzy", None, None),
+        "StructuredModelComparator": ("stickler.comparators.structured", None, None),
+        "BBoxIoUComparator": ("stickler.comparators.bbox", None, None),
+        "SemanticComparator": ("stickler.comparators.semantic", None, None),
+        "BERTComparator": ("stickler.comparators.bert", "evaluate", "bert"),
+        "LLMComparator": ("stickler.comparators.llm", "strands", "llm"),
+    }
+
     def __init__(self):
-        """Initialize the registry with built-in comparators."""
+        """Initialize the registry with built-in comparators.
+
+        Built-ins are recorded lazily; user registrations via :meth:`register`
+        are stored as classes directly.
+        """
         self._registry: Dict[str, Type[BaseComparator]] = {}
-        self._register_builtin_comparators()
+        # Built-in names whose module has not been imported yet.
+        self._pending = {
+            name: spec
+            for name, spec in self._BUILTINS.items()
+            if self._builtin_is_available(spec)
+        }
 
-    def _register_builtin_comparators(self):
-        """Register all built-in comparators."""
-        try:
-            from stickler.comparators.levenshtein import LevenshteinComparator
+    @staticmethod
+    def _builtin_is_available(spec) -> bool:
+        """Whether a built-in's dependency is installed, without importing it.
 
-            self._registry["LevenshteinComparator"] = LevenshteinComparator
-        except ImportError:
-            pass
+        Mirrors the package-level ``_dependency_available`` helpers: consult
+        ``sys.modules`` before the filesystem, so a test-injected mock counts as
+        available. Diverging would make two public entry points disagree in one
+        process -- ``stickler.LLMComparator`` resolving while
+        ``registry.get("LLMComparator")`` reports the comparator does not exist.
 
-        try:
-            from stickler.comparators.exact import ExactComparator
+        The ``find_spec`` fallback is guarded because it raises rather than
+        returning None for a ``sys.modules`` entry with no ``__spec__``
+        (``ValueError: <name>.__spec__ is not set``).
+        """
+        _, probe, _ = spec
+        if probe is None:
+            return True
 
-            self._registry["ExactComparator"] = ExactComparator
-        except ImportError:
-            pass
-
-        try:
-            from stickler.comparators.numeric import NumericComparator
-
-            self._registry["NumericComparator"] = NumericComparator
-        except ImportError:
-            pass
-
-        try:
-            from stickler.comparators.date import DateComparator
-
-            self._registry["DateComparator"] = DateComparator
-        except ImportError:
-            pass
-
-        try:
-            from stickler.comparators.fuzzy import FuzzyComparator
-
-            self._registry["FuzzyComparator"] = FuzzyComparator
-        except ImportError:
-            pass
+        module = sys.modules.get(probe, False)
+        if module is not None and module is not False:
+            # Present in sys.modules, including a test-injected mock.
+            return True
+        if module is None:
+            # Explicitly blocked (sys.modules[probe] = None), which is how tests
+            # simulate a missing dependency.
+            return False
 
         try:
-            from stickler.comparators.semantic import SemanticComparator
+            return importlib.util.find_spec(probe) is not None
+        except (ImportError, ValueError):
+            return False
 
-            self._registry["SemanticComparator"] = SemanticComparator
-        except ImportError:
-            pass
+    def _resolve(self, name: str) -> Optional[Type[BaseComparator]]:
+        """Import and cache a pending built-in. Returns None if unavailable.
 
+        A dependency that is installed but broken (a version-skewed transitive
+        dep raising plain ImportError) is treated as unavailable rather than
+        propagating, matching the previous try/except behavior.
+
+        A failed import leaves the name in ``_pending``, so a later call retries
+        and nothing the registry reports changes as a side effect of the
+        failure. The entry is consumed only once the class is in hand.
+        """
+        spec = self._pending.get(name)
+        if spec is None:
+            return None
+        module_path, _, _ = spec
         try:
-            from stickler.comparators.structured import StructuredModelComparator
-
-            self._registry["StructuredModelComparator"] = StructuredModelComparator
+            # `module_path` is a literal from `_BUILTINS`, not the caller's
+            # `name`. An unregistered `name` misses `_pending` and returns None
+            # above, so a caller-supplied string is only ever a dict key and
+            # never an import path. Semgrep matches a non-literal first
+            # argument and does not follow the dict lookup.
+            # nosemgrep: python.lang.security.audit.non-literal-import.non-literal-import
+            module = importlib.import_module(module_path)
         except ImportError:
-            pass
-
-        try:
-            from stickler.comparators.bert import BERTComparator
-
-            self._registry["BERTComparator"] = BERTComparator
-        except ImportError:
-            pass
-
-        try:
-            from stickler.comparators.llm import LLMComparator
-
-            self._registry["LLMComparator"] = LLMComparator
-        except ImportError:
-            pass
-
-        try:
-            from stickler.comparators.bbox import BBoxIoUComparator
-
-            self._registry["BBoxIoUComparator"] = BBoxIoUComparator
-        except ImportError:
-            pass
+            # Leave the entry in `_pending`. A broken extra is unavailable now,
+            # but the name is still a built-in, so `is_registered()` and
+            # `list_available()` must not change as a side effect of a failed
+            # lookup, and `register()` -- which rejects a name only when it is
+            # in `_registry` or `_pending` -- must keep rejecting it rather than
+            # letting a caller silently shadow a built-in (#260).
+            return None
+        comparator_class = getattr(module, name)
+        self._pending.pop(name, None)
+        self._registry[name] = comparator_class
+        return comparator_class
 
     def register(self, name: str, comparator_class: Type[BaseComparator]) -> None:
         """Register a new comparator class.
@@ -104,7 +135,7 @@ class ComparatorRegistry:
                 f"Comparator class must inherit from BaseComparator, got {comparator_class}"
             )
 
-        if name in self._registry:
+        if name in self._registry or name in self._pending:
             raise ValueError(f"Comparator '{name}' is already registered")
 
         self._registry[name] = comparator_class
@@ -122,8 +153,11 @@ class ComparatorRegistry:
             KeyError: If comparator name is not registered
         """
         if name not in self._registry:
+            resolved = self._resolve(name)
+            if resolved is not None:
+                return resolved
             raise KeyError(
-                f"Unknown comparator: '{name}'. Available: {list(self._registry.keys())}"
+                f"Unknown comparator: '{name}'. Available: {self.list_available()}"
             )
 
         return self._registry[name]
@@ -164,7 +198,7 @@ class ComparatorRegistry:
         Returns:
             List of registered comparator names
         """
-        return list(self._registry.keys())
+        return list(self._registry.keys()) + list(self._pending.keys())
 
     def is_registered(self, name: str) -> bool:
         """Check if a comparator name is registered.
@@ -175,7 +209,7 @@ class ComparatorRegistry:
         Returns:
             True if registered, False otherwise
         """
-        return name in self._registry
+        return name in self._registry or name in self._pending
 
 
 # Global registry instance

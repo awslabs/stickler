@@ -25,11 +25,12 @@ Example:
 """
 
 import html
-from typing import Any, Dict, Union
-
-from jinja2 import Template
+from typing import TYPE_CHECKING, Any, Dict, Union
 
 from stickler.comparators.base import BaseComparator
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from jinja2 import Template
 
 try:
     from botocore.exceptions import NoCredentialsError
@@ -137,13 +138,27 @@ class LLMComparator(BaseComparator):
         """
         return "You are a helpful assistant that compares two values and determines if they are equivalent. Only return one word: 'true' or 'false'."
 
-    def _default_prompt_template(self) -> Template:
+    def _default_prompt_template(self) -> "Template":
         """Generate the default Jinja2 template for comparison prompts.
 
         Returns:
             Template: Jinja2 template that formats comparison prompts with values
                 and optional evaluation guidelines.
+
+        Raises:
+            ImportError: If jinja2 is not installed.
         """
+        # Imported here rather than at module scope: jinja2 is only needed to
+        # render this prompt, and a module-level import would put it on the
+        # `import stickler` path via the comparator registry.
+        try:
+            from jinja2 import Template
+        except ImportError as exc:  # pragma: no cover - exercised by the extras gate
+            raise ImportError(
+                "LLMComparator requires jinja2. Install it with: "
+                'pip install "stickler-eval[llm]"'
+            ) from exc
+
         prompt_template = """
             Compare these two values and determine if they are equivalent:
 
@@ -178,7 +193,7 @@ class LLMComparator(BaseComparator):
         result = self.agent(prompt)
         return result.message["content"][0]["text"]
 
-    def compare(self, value1: Any, value2: Any) -> float:
+    def _compare(self, value1: Any, value2: Any) -> float:
         """Compare two values using LLM-based semantic analysis.
 
         This method converts both values to strings and uses the configured LLM
@@ -196,7 +211,6 @@ class LLMComparator(BaseComparator):
                 - 0.0 if an error occurs during comparison
 
         Note:
-            - None values: Returns 1.0 if both are None, 0.0 if only one is None
             - Error handling: Returns 0.0 for any exceptions during LLM calls
             - Cost consideration: Each call incurs API costs and latency
 
@@ -206,15 +220,7 @@ class LLMComparator(BaseComparator):
             1.0
             >>> comparator.compare("apple", "orange")
             0.0
-            >>> comparator.compare(None, None)
-            1.0
         """
-        # Handle None values
-        if value1 is None and value2 is None:
-            return 1.0
-        elif value1 is None or value2 is None:
-            return 0.0
-
         # Format the prompt with your values
         formatted_prompt = self.prompt_template.render(
             value1=html.escape(str(value1)),

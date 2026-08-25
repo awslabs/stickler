@@ -81,8 +81,8 @@ class ListModel(StructuredModel):
     """Model with list fields for testing."""
 
     name: str = ComparableField(comparator=ExactComparator(), threshold=1.0, weight=1.0)
-    transactions: List[Transaction] = ComparableField(aggregate=False, weight=1.0)
-    tags: List[str] = ComparableField(aggregate=False, weight=1.0)
+    transactions: List[Transaction] = ComparableField(weight=1.0)
+    tags: List[str] = ComparableField(weight=1.0)
 
 
 class DeepNestedModel(StructuredModel):
@@ -97,7 +97,7 @@ class DeepNestedModel(StructuredModel):
     nested_data: NestedModel = ComparableField(
         comparator=ExactComparator(), threshold=1.0, weight=1.0
     )
-    transaction_list: List[Transaction] = ComparableField(aggregate=False, weight=1.0)
+    transaction_list: List[Transaction] = ComparableField(weight=1.0)
     metadata: Dict[str, str] = Field(default_factory=dict)
 
 

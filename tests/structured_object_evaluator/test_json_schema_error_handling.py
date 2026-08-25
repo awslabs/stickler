@@ -58,7 +58,12 @@ class TestThresholdValidation:
             StructuredModel.from_json_schema(schema)
 
     def test_threshold_exactly_zero_is_valid(self):
-        """Test that threshold of exactly 0.0 is valid."""
+        """Test that threshold of exactly 0.0 is valid.
+
+        Still accepted, deliberately: 0.0 is a legal value and someone may be
+        relying on it. It now emits a UserWarning because it disables
+        classification (issue #234), but warning is not rejecting.
+        """
         schema = {
             "type": "object",
             "properties": {

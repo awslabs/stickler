@@ -148,12 +148,12 @@ def test_simple_list_extra_elements():
 
 
 def test_simple_list_no_match():
-    """Completely different elements — objects don't match, classified at object level.
+    """Completely different elements — a below-threshold matched pair is FD.
 
-    With match_threshold=0.3 and completely different single-character tags,
-    the object similarity is ~0 which is below even 0.3. The objects get
-    paired by Hungarian but classified as unmatched (FN + FA) because the
-    similarity is effectively zero.
+    The objects share no aligning tags, so similarity is ~0, below the 0.3
+    match_threshold. Hungarian still assigns the pair (it is the only possible
+    assignment), so the threshold splits it into FD rather than un-matching it
+    into FN + FA. Similarity magnitude does not change that; see issue #224.
     """
     gt = TaggedContainer(items=[TaggedItem(tags=["X", "Y"])])
     pred = TaggedContainer(items=[TaggedItem(tags=["A", "B"])])
@@ -161,9 +161,10 @@ def test_simple_list_no_match():
     result = gt.compare_with(pred, include_confusion_matrix=True)
     obj_metrics = _overall(result["confusion_matrix"], "items")
 
-    # Objects are so different they end up unmatched: 1 FN (GT) + 1 FA (pred)
-    assert obj_metrics["fn"] == 1
-    assert obj_metrics["fa"] == 1
+    # One assigned pair, below threshold: one FD, no FN/FA.
+    assert obj_metrics["fd"] == 1
+    assert obj_metrics["fn"] == 0
+    assert obj_metrics["fa"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -222,17 +223,32 @@ def test_simple_list_alongside_primitive_field():
 
 
 def test_empty_simple_list_within_structured_list():
-    """Empty simple lists on both sides — objects with only empty fields
-    get similarity 0 and don't match, so field-level metrics are all zeros.
-    This is pre-existing behavior for objects whose only field is an empty list."""
+    """Empty simple lists on both sides — the pair is assigned, not unmatched.
+
+    This asserts only the #224 property: an assigned pair is not reported as
+    FN + FA. It deliberately does *not* pin how the pair is classified.
+
+    An object whose only field is an empty list gets list-path similarity 0.0
+    even though the two objects are identical, which is a separate pre-existing
+    bug. That leaves the result internally contradictory here -- the comparison
+    reports ``overall_score == 1.0`` (a perfect match) while the pair scores
+    below ``match_threshold`` and so classifies as FD. Pinning ``fd == 1``
+    would cement that contradiction into the suite and have to be undone when
+    the similarity bug is fixed, at which point this pair should become a TP or
+    a list-level TN.
+    """
     gt = Invoice(LineItems=[LineItemsInfo(LineItemDays=[])])
     pred = Invoice(LineItems=[LineItemsInfo(LineItemDays=[])])
 
     result = gt.compare_with(pred, include_confusion_matrix=True)
     obj_metrics = _overall(result["confusion_matrix"], "LineItems")
 
-    # Objects with only empty-list fields get similarity 0 → unmatched
-    assert obj_metrics["fn"] + obj_metrics["fa"] >= 1
+    # The #224 property: the pair is assigned, so neither side is orphaned.
+    assert obj_metrics["fn"] == 0
+    assert obj_metrics["fa"] == 0
+
+    # Whichever way the pair is classified, it is counted exactly once.
+    assert obj_metrics["tp"] + obj_metrics["fd"] + obj_metrics["tn"] == 1
 
 
 # ---------------------------------------------------------------------------
