@@ -39,6 +39,12 @@ class BBoxIoUComparator(BaseComparator):
         1.0
         >>> cmp.compare([[0, 0], [5, 5]], [[5, 5], [10, 10]])
         0.0
+
+    .. versionchanged:: 0.7.0
+        Usable on a list-of-boxes field. Previously every ``List[bbox]`` field
+        scored ``0.0``, even against identical input: the evaluator stringified
+        each item before comparison and ``"[0, 0, 10, 10]"`` is not a list, so
+        no box could be parsed.
     """
 
     def __init__(

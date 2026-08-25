@@ -103,6 +103,14 @@ def unwrap_optional(annotation: Any) -> Tuple[Any, bool]:
     Returns ``(inner, was_optional)``. A multi-arm union that is not simply
     ``X | None`` is returned unchanged (the caller treats it as ambiguous and
     falls back to a string comparator).
+
+    One of three deliberate copies of this logic, kept separate to avoid
+    cross-package dependencies. The others are
+    ``stickler.reporting.html.utils.data_extractors`` and
+    ``stickler.structured_object_evaluator.models.optional_annotation`` (which
+    additionally exposes the permissive ``is_union`` / ``union_args`` pair, for
+    sites that search a union's arms rather than unwrapping it). Keep them in
+    sync; unifying all three is tracked for 0.8.0.
     """
     origin = get_origin(annotation)
     # PEP 604 unions (X | None) have origin types.UnionType, not typing.Union.

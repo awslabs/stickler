@@ -29,6 +29,7 @@ from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
+from .optional_annotation import union_args, unwrap_optional
 from .rich_value_helper import RichValueHelper
 from .threshold_helper import THRESHOLD_DOCS_URL
 from .threshold_helper import model_identity as _model_identity
@@ -437,10 +438,12 @@ class StructuredModel(BaseModel):
                 # Use consolidated method for element type check
                 return cls._is_structured_model_type(args[0])
 
-        # Handle Union types (like Optional[List[StructuredModel]])
-        elif origin is Union:
-            args = get_args(field_type)
-            for arg in args:
+        # Handle Union types (like Optional[List[StructuredModel]]), in every
+        # spelling -- `list[Model] | None` reaches here too. Searches every arm
+        # rather than requiring a single one, so a wider union such as
+        # `Optional[List[Model]] | Any` still resolves to a list of models.
+        else:
+            for arg in union_args(field_type):
                 if cls._is_list_of_structured_model_type(arg):
                     return True
 
@@ -933,18 +936,22 @@ class StructuredModel(BaseModel):
             return False
 
         field_type = field_info.annotation
-        # Handle Optional types and direct List types
-        if hasattr(field_type, "__origin__"):
-            origin = field_type.__origin__
-            if origin is list or origin is List:
+
+        # Use get_origin rather than reading `__origin__` directly: a PEP 604
+        # union (`list[T] | None`) has no `__origin__` attribute at all, so the
+        # old `hasattr` guard skipped it entirely and such a field was not
+        # recognised as a list.
+        origin = get_origin(field_type)
+        if origin is list or origin is List:
+            return True
+
+        # Optional[List[...]] case, in every spelling. Any arm being a list is
+        # enough, so a wider union like `Optional[List[str]] | Any` still counts.
+        for arg in union_args(field_type):
+            arg_origin = get_origin(arg)
+            if arg_origin is list or arg_origin is List:
                 return True
-            elif origin is Union:  # Optional[List[...]] case
-                args = field_type.__args__
-                for arg in args:
-                    if hasattr(arg, "__origin__") and (
-                        arg.__origin__ is list or arg.__origin__ is List
-                    ):
-                        return True
+
         return False
 
     def _handle_list_field_dispatch(
@@ -1570,13 +1577,23 @@ class StructuredModel(BaseModel):
                         f"Field '{field_name}' has unparameterized list type. "
                         f"Use List[str], List[int], etc."
                     )
-                element_type = args[0]
+                # Unwrap an optional element before dispatching on it.
+                # `_is_structured_model_type` unwraps internally, so without this
+                # `List[Optional[Model]]` passed the check and then called
+                # `to_json_schema()` on the `Optional[...]` wrapper, which has no
+                # such attribute -- an AttributeError instead of a schema. The
+                # primitive branch needs it too: `Optional[int]` is not a key in
+                # PYTHON_TYPE_TO_JSON_TYPE, so it fell through to "string".
+                element_type, element_is_nullable = cls._unwrap_optional(args[0])
 
                 if cls._is_structured_model_type(element_type):
                     # List of StructuredModels - recursively export element schema
+                    items_schema = element_type.to_json_schema()
+                    if element_is_nullable:
+                        items_schema = {"anyOf": [items_schema, {"type": "null"}]}
                     property_schema = {
                         "type": "array",
-                        "items": element_type.to_json_schema(),
+                        "items": items_schema,
                     }
                     metadata = converter._extract_field_metadata(field_info)
                     metadata.pop("comparator", None)
@@ -1589,7 +1606,11 @@ class StructuredModel(BaseModel):
                     )
                     property_schema = {
                         "type": "array",
-                        "items": {"type": json_element_type},
+                        "items": {
+                            "type": [json_element_type, "null"]
+                            if element_is_nullable
+                            else json_element_type
+                        },
                     }
                     # Extract and add stickler extensions from field metadata
                     metadata = converter._extract_field_metadata(field_info)
@@ -1618,18 +1639,20 @@ class StructuredModel(BaseModel):
     def _unwrap_optional(field_type: Type) -> tuple:
         """Unwrap Optional[T] to (T, True) or return (T, False) if not Optional.
 
+        Recognises every spelling, including ``T | None``. This is load-bearing
+        for ``to_json_schema()``: the nested-model branch, the list branch and
+        the nullability of a primitive property all key off it, so a spelling it
+        fails to recognise falls through to the scalar path and exports as
+        ``{"type": "string"}`` -- silently replacing a nested model, or a whole
+        array of models, with a string.
+
         Args:
             field_type: Type annotation to unwrap
 
         Returns:
             Tuple of (unwrapped_type, is_optional)
         """
-        if get_origin(field_type) is Union:
-            args = get_args(field_type)
-            non_none_args = [arg for arg in args if arg is not type(None)]
-            if len(non_none_args) == 1 and type(None) in args:
-                return non_none_args[0], True
-        return field_type, False
+        return unwrap_optional(field_type)
 
     @staticmethod
     def _is_structured_model_type(field_type: Type) -> bool:
@@ -1722,7 +1745,12 @@ class StructuredModel(BaseModel):
                         f"Field '{field_name}' has unparameterized list type. "
                         f"Use List[str], List[int], etc."
                     )
-                element_type = args[0]
+                # Unwrap an optional element for the same reason as
+                # to_json_schema()'s list branch: the predicate below unwraps, so
+                # `List[Optional[Model]]` reached `to_stickler_config()` on the
+                # wrapper. The primitive branch below also reads
+                # `element_type.__name__`, which a union does not have.
+                element_type, _ = cls._unwrap_optional(args[0])
 
                 if cls._is_structured_model_type(element_type):
                     nested_config = element_type.to_stickler_config()

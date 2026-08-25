@@ -205,15 +205,21 @@ Each release links to full notes on the
   `to_json_schema()`.
 
   Note a side effect: dropping the internal `extra_fields` property means
-  `from_json_schema(M.model_json_schema())` now parses for a model whose fields
-  are all required, where it previously raised `ValueError`. It still does
-  **not** round-trip -- the rebuilt model carries default thresholds, weights
-  and comparators, because a shape-only schema does not describe them. A model
-  with any `Optional` field still raises, on the nullable `anyOf` gap that
-  [#198](https://github.com/awslabs/stickler/pull/198) addresses, so most real
-  models are unaffected either way. `model_json_schema()` remains documented as
-  not round-trip-capable; use `to_json_schema()` or `to_stickler_config()` to
-  preserve configuration. Tracked in
+  `from_json_schema(M.model_json_schema())` now parses where it previously
+  raised `ValueError`. It still does **not** round-trip -- the rebuilt model
+  carries default thresholds, weights and comparators, because a shape-only
+  schema does not describe them. `model_json_schema()` remains documented as not
+  round-trip-capable; use `to_json_schema()` or `to_stickler_config()` to
+  preserve configuration.
+
+  A model rebuilt this way enforces the schema's `required` list at construction
+  time, so it rejects a prediction that omits a required field -- unlike a
+  hand-written `ComparableField` model, where every field tolerates omission so
+  the engine can score a miss. That affects **any** model with a required field,
+  not just some: a model with no `Optional` field at all is precisely the case,
+  since `Optional` fields are the ones that were never required to begin with.
+  Model an evaluation target by hand, or via `to_json_schema()` /
+  `to_stickler_config()`, until this is resolved. Tracked in
   [#214](https://github.com/awslabs/stickler/issues/214)
   ([#188](https://github.com/awslabs/stickler/issues/188))
 
@@ -331,6 +337,74 @@ Each release links to full notes on the
 
 ### Fixed
 
+- A list-typed field's items now reach its comparator exactly as supplied.
+  `ComparisonHelper.compare_unordered_lists` built its `HungarianMatcher` with
+  `normalize_values` left at the default `True`, so every item was `str()`-coerced,
+  lowercased and whitespace-collapsed *before the comparator saw it* -- silently
+  overriding whatever comparator the field declared. Three distinct defects fall
+  out of that one line, and they have different histories:
+
+  - **`ExactComparator`'s strictness now applies to list fields.** This is the
+    other half of the `#199` fix below, and is new in 0.7.0: on 0.6.0 the
+    comparator folded case itself, so the matcher's normalization was redundant
+    and list and scalar fields agreed. Making the comparator strict without
+    removing the normalization split them. A `List[str]` scored
+    `"SHP-2024-001"` against `"shp-2024-001"` as `1.0` while an otherwise
+    identical `str` field scored it `0.0` -- so a confusion matrix depended on
+    whether a field happened to be a list. Same for `"A  B"` against `"A B"`.
+    Reachable with no configuration: the `id`, `code` and `zip` name tokens
+    route to `ExactComparator(case_sensitive=True)`, so `order_ids` and
+    `zip_codes` got none of the strictness their scalar siblings got.
+
+    Scores move **down** for list fields whose values differ only by case or
+    whitespace. The pre-0.7.0 leniency is available as
+    `ExactComparator(case_sensitive=False)` -- the same knob a scalar field
+    uses, since the opt-out is a property of the comparator, not of being a list.
+
+  - **`List[bbox]` fields could not score a match at all.** Pre-existing, and
+    shipped in 0.6.0 and earlier. `BBoxIoUComparator._normalize_bbox` rejects
+    anything that is not a `list`/`tuple`, so a box arriving as
+    `"[0, 0, 10, 10]"` was unparseable and IoU fell to `0.0` -- for **identical**
+    input, in both the flat `[x1, y1, x2, y2]` and two-point
+    `[[x1, y1], [x2, y2]]` forms. Such fields now score real IoU.
+
+  - **`List[dict]` under `LevenshteinComparator` scored `1.0` by comparing
+    `str(dict)`.** Also pre-existing. It now raises `TypeError`, whose message
+    names modelling the dict as a `StructuredModel` as the fix. Stringifying
+    makes key order significant and the comparison meaningless, so raising is
+    the correction.
+
+    This one is **not** parity with the scalar spelling, and is the one place
+    where a value scores differently for being in a list. The scalar spelling
+    already raises under `compare()` and `compare_field_raw()`; it returns `0.0`
+    only under `compare_recursive()`, where the dispatcher's type-mismatch case
+    intercepts a scalar dict before the comparator sees it and has no equivalent
+    for a dict item inside a list. Keeping the raise is deliberate: refusing a
+    shape stickler cannot compare beats a silently wrong score, and the scalar
+    `0.0` is the outlier. Two things to know: this is stricter than pre-0.7.0,
+    which returned `1.0`; and `BulkStructuredModelEvaluator` catches per-document
+    exceptions, so an affected document becomes an error entry plus an overall
+    `fn` rather than halting a run. Model the dict as a `StructuredModel` to
+    score it.
+
+  For the first two shapes the new value is what the field's own comparator
+  already returned for the same pair as a scalar, so the fix removes a
+  divergence rather than introducing a rule.
+  `HungarianMatcher(normalize_values=...)` is unchanged and still defaults to
+  `True` for direct callers -- including `HungarianHelper`, which matches
+  `List[StructuredModel]` and still substitutes `""` for `None` when scoring
+  candidate pairs.
+
+  One asymmetry is deliberate and remains: `NullHelper.is_effectively_null_for_primitives`
+  treats `""` as equivalent to `None` for a scalar primitive field, so a scalar
+  scores `None` against `""` as `1.0`. The list path applies the comparator's
+  `None` policy instead and scores `0.0`. The old normalization reproduced the
+  scalar answer only incidentally, by mapping `None` to `""`.
+
+  If you are diffing 0.7.0 metrics against a stored 0.6.0 baseline, expect
+  movement on list-of-bbox fields in addition to the list-of-identifier movement
+  `#199` implies ([#199](https://github.com/awslabs/stickler/issues/199))
+
 - `PhoneComparator` no longer scores two identical values `0.0`. When **neither**
   side is a usable number the comparison falls back to exact string equality, so
   a correctly extracted number that is not dialable under the configured region
@@ -389,18 +463,63 @@ Each release links to full notes on the
   `ImportError` at the caller; only the bookkeeping changed
   ([#260](https://github.com/awslabs/stickler/issues/260))
 
-- HTML reports no longer drop nested thresholds for a field annotated
-  `Addr | None`. Threshold extraction unwrapped `Optional[X]` and
-  `Union[X, None]` but tested only for the `typing.Union` origin, and on Python
-  3.10 through 3.13 a PEP 604 union's origin is `types.UnionType` instead, so
-  that spelling was never unwrapped and the nested-model and list branches never
-  fired. (Python 3.14 unifies the two, which is why the widened check has an arm
-  that cannot fail there.) The `Optional[X]` and `X | None` spellings are both
-  handled as of this release; the second was missed when the first was fixed, and
-  is the more reachable of the two now that 0.7.0 raises the floor to Python
-  3.10 where `X | None` is idiomatic. A genuine multi-arm union is still left
-  alone
+- A field's behavior no longer depends on which equivalent spelling of "optional"
+  was used to declare it. `Optional[X]`, `Union[X, None]` and `X | None` are the
+  same type, but ten places tested `get_origin(annotation) is Union`, which is
+  `True` only for the `typing` spellings: on Python 3.10 through 3.13 a PEP 604
+  union's origin is `types.UnionType`. (Python 3.14 unifies the two, which is why
+  the widened check has an arm that cannot fail there.) An `X | None` field
+  therefore took a different code path from an identical `Optional[X]` field, in
+  three separate ways:
+
+  - **HTML reports dropped nested thresholds.** Threshold extraction never
+    unwrapped the annotation, so the nested-model and list branches never fired.
+
+  - **`to_json_schema()` exported a nested model as `{"type": "string"}`.** The
+    model, its fields, its comparators and its thresholds were all replaced by a
+    bare string, with no error and no warning — so
+    `from_json_schema(M.to_json_schema())` rebuilt a *structurally different*
+    model. A nested list of models collapsed the same way, losing its item schema
+    and match threshold, and a nullable scalar exported as `"string"` rather than
+    `["string", "null"]`. Exporting a nested model as a scalar now raises instead
+    of succeeding quietly.
+
+  - **Hierarchical metric breakdowns were silently flattened.** This is the one
+    to check if you have `X | None` models: `is_structured_field_type` is the
+    gate #149 added, and when it says "not structured" a nested-object field is
+    routed to flat counts. For an optional nested object inside a list element,
+    the reported field lost its nested per-field rows, its derived metrics
+    (`cm_precision`, `cm_recall`, `cm_f1`, `cm_accuracy`) and its similarity
+    scores — while the top-level `tp`/`fd`/`fp` counts stayed correct, so the
+    confusion matrix looked right and the detail underneath it was missing.
+
+  The union check now lives in one place rather than being hand-copied. Note that
+  the ten sites were asking two different questions: two of them need *the* single
+  inner type in order to export it, while the other eight only ask "does any arm
+  of this union look like a list, or a model?" — the latter keep their permissive
+  behavior, so a wider annotation such as `Optional[List[str]] | Any` still
+  resolves as it did. A genuine multi-arm union is still never unwrapped to an
+  arbitrary arm.
+
+  Models written with `Optional[...]` are unaffected. Models written with
+  `X | None` will see corrected schema exports and *additional* nested rows in
+  hierarchical metrics, so expect movement when diffing against a stored baseline
   ([#162](https://github.com/awslabs/stickler/issues/162))
+
+- A field annotated `List[Optional[Model]]` (or `List[Model | None]`) can now be
+  exported. Both `to_json_schema()` and `to_stickler_config()` raised
+  `AttributeError: to_json_schema` on it: the predicate deciding whether the list
+  holds models unwraps the optional wrapper, but the export call it guards did
+  not, so it ran against the `Optional[...]` object itself. Pre-existing and
+  shipped for the `Optional` spelling; the `X | None` spelling reached it only
+  once `#162` made such a field resolve as a list of models at all, having
+  previously exported as an array of strings.
+
+  The element is now exported as the model, offered as nullable. Relatedly,
+  `List[Optional[T]]` for a primitive `T` had its item type exported as
+  `"string"` regardless of `T`, because `Optional[int]` is not a key in the
+  python-to-JSON type table; it now exports `["integer", "null"]` and
+  round-trips ([#256](https://github.com/awslabs/stickler/pull/256))
 
 - Zero-config evaluation no longer scores formatting-only differences in
   `email`, `url` and `phone` fields as complete mismatches. The name-token

@@ -4,12 +4,13 @@ This module provides utilities for converting JSON Schema properties to
 Pydantic Field instances with ComparableField functionality.
 """
 
-from typing import Any, Dict, List, Optional, Tuple, Type, Union, get_args, get_origin
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from pydantic.fields import FieldInfo
 
 from .comparable_field import ComparableField
 from .comparator_registry import create_comparator
+from .optional_annotation import unwrap_optional
 
 # Type mapping from JSON Schema types to Python types
 JSON_TYPE_TO_PYTHON_TYPE = {
@@ -55,7 +56,7 @@ class JsonSchemaFieldConverter:
 
     def __init__(self, schema: Dict[str, Any], field_path: str = ""):
         """Initialize with a JSON Schema document.
-        
+
         Args:
             schema: JSON Schema document (already validated)
             field_path: Current field path for error messages (e.g., "address.street")
@@ -533,7 +534,7 @@ class JsonSchemaFieldConverter:
         # Get default value
         default = property_schema.get("default", ... if is_required else None)
         description = property_schema.get("description")
-        
+
         # Create ComparableField with dummy comparator (not used for StructuredModel)
         from stickler.comparators.levenshtein import LevenshteinComparator
         field = ComparableField(
@@ -646,11 +647,28 @@ class JsonSchemaFieldConverter:
         """
         # Unwrap Optional[T] in case the caller passes the wrapped type so the
         # nullability still survives the round-trip as the ["X", "null"] idiom.
-        if get_origin(field_type) is Union:
-            args = [a for a in get_args(field_type) if a is not type(None)]
-            if len(args) == 1 and type(None) in get_args(field_type):
-                field_type = args[0]
-                is_nullable = True
+        # Every spelling, including `X | None`.
+        unwrapped, was_optional = unwrap_optional(field_type)
+        if was_optional:
+            field_type = unwrapped
+            is_nullable = True
+
+        # A StructuredModel must never reach the scalar fallback below. It has
+        # its own schema -- properties, nested thresholds, comparators -- and
+        # `PYTHON_TYPE_TO_JSON_TYPE.get(..., "string")` would silently discard
+        # all of it, emitting a schema that rebuilds into a structurally
+        # different model. Raise rather than produce a wrong schema quietly.
+        #
+        # Deliberately scoped to StructuredModel, not to every dict miss:
+        # Decimal, UUID and enums legitimately export as "string".
+        from .structured_model import StructuredModel
+
+        if isinstance(field_type, type) and issubclass(field_type, StructuredModel):
+            raise ValueError(
+                f"Cannot export nested model field as a scalar: annotation "
+                f"{field_type!r} is a StructuredModel. Export it via its own "
+                f"to_json_schema() instead of field_to_property()."
+            )
 
         json_type = PYTHON_TYPE_TO_JSON_TYPE.get(field_type, "string")
         property_schema = {"type": [json_type, "null"] if is_nullable else json_type}

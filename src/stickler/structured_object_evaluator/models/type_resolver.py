@@ -7,6 +7,8 @@ enabling configuration-based type specification in model_from_json().
 import re
 from typing import Any, Dict, List, Type, Union, get_args, get_origin
 
+from .optional_annotation import is_union, union_args
+
 
 class TypeResolver:
     """Resolver for converting string type names to Python types."""
@@ -32,7 +34,7 @@ class TypeResolver:
         self._type_registry["set"] = set
 
         # Typing module types
-        from typing import Any, Dict, List, Optional, Set, Tuple, Union
+        from typing import Any, Dict, List, Optional, Set, Tuple
 
         self._type_registry["List"] = List
         self._type_registry["Dict"] = Dict
@@ -177,17 +179,16 @@ class TypeResolver:
     def is_optional_type(self, type_obj: Type) -> bool:
         """Check if a type is Optional (Union with None).
 
+        Recognises every spelling: ``Optional[T]``, ``Union[T, None]`` and
+        ``T | None``.
+
         Args:
             type_obj: Type to check
 
         Returns:
             True if the type is Optional
         """
-        origin = get_origin(type_obj)
-        if origin is Union:
-            args = get_args(type_obj)
-            return type(None) in args
-        return False
+        return is_union(type_obj) and type(None) in get_args(type_obj)
 
     def get_optional_inner_type(self, type_obj: Type) -> Type:
         """Get the inner type from an Optional type.
@@ -204,10 +205,9 @@ class TypeResolver:
         if not self.is_optional_type(type_obj):
             raise ValueError(f"Type {type_obj} is not Optional")
 
-        args = get_args(type_obj)
-        for arg in args:
-            if arg is not type(None):
-                return arg
+        args = union_args(type_obj)
+        if args:
+            return args[0]
 
         raise ValueError(f"Could not find non-None type in {type_obj}")
 
