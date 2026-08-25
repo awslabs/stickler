@@ -1,0 +1,3558 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://awslabs.github.io/stickler/Getting-Started/thresholds-and-metrics/">
+      
+      
+        <link rel="prev" href="../ultra-quick-start/">
+      
+      
+        <link rel="next" href="../installation/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Thresholds and Metrics - Stickler</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#thresholds-and-metrics" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Stickler" class="md-header__button md-logo" aria-label="Stickler" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Stickler
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Thresholds and Metrics
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/awslabs/stickler" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    awslabs/stickler
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../.." class="md-tabs__link">
+          
+  
+  
+  Home
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../Guides/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../Advanced/" class="md-tabs__link">
+          
+  
+  
+  Advanced
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../API-Reference/" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Stickler" class="md-nav__button md-logo" aria-label="Stickler" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Stickler
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/awslabs/stickler" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    awslabs/stickler
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Home
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stickler Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ultra-quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ultra Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Thresholds and Metrics
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Thresholds and Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+  
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-four-thresholds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Four Thresholds
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The Four Thresholds">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-comparator-threshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Comparator Threshold
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-field-threshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Field Threshold
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-model-match-threshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Model Match Threshold
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-runtime-match-threshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Runtime Match Threshold
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#threshold-precedence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Threshold Precedence
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Threshold Precedence">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#key-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key Rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-all-four-in-action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example: All Four in Action
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metrics-glossary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metrics Glossary
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Metrics Glossary">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#base-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Base Categories
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-fp-split" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The FP Split
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#derived-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Derived Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-recall_with_fd-option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The recall_with_fd Option
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The recall_with_fd Option">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#two-moves-that-push-recall-in-opposite-directions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two moves that push recall in opposite directions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-zero-threshold-trap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Zero-Threshold Trap
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#worked-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worked Example
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Worked Example">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#field-by-field-analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Field-by-Field Analysis
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-matching-line_items" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List Matching (line_items)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aggregate-confusion-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Aggregate Confusion Matrix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#derived-metrics_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Derived Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#threshold-cheat-sheet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Threshold Cheat Sheet
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metric-formulas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metric Formulas
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../known-issues/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Known Issues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_6" id="__nav_2_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing to Stickler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Contributing/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Engine Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Contributing/development-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development Environment Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Contributing/testing-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Contributing/code-style/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Style Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Contributing/pull-request-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pull Request Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Contributing/maintainers-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintainer's Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparators
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Comparators
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Comparators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Comparators/date-comparator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Date Comparator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Comparators/postal-codes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Postal Codes and Addresses
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Comparators/llm-as-a-judge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM-as-a-Judge Comparators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Evaluation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Customizing Your Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Evaluation/bulk-evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bulk Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Evaluation/confidence-evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Confidence Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Evaluation/understanding-results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Understanding Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use Cases
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Use Cases
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Use-Cases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use Cases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Use-Cases/evaluate-strands-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluating a Strands Agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Use-Cases/idp-accelerator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IDP Accelerator Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Best Practices
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Best Practices
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Best-Practices/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Best Practices
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Best-Practices/agentic-development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentic Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Advanced
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced Topics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/rich-value-pattern/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rich Value Pattern
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/classification-logic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Classification Logic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/hungarian-matching/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hungarian Matching
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/threshold-gated-evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How Below-Threshold Pairs Are Classified
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/dynamic-models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dynamic Model Creation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/confidence-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Confidence Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/bbox-map-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bounding Box mAP Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/map-reduce-evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Map/Reduce Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/aggregate-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Aggregate Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/model-export/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Export
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../API-Reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SDK Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../API-Reference/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../API-Reference/comparators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../API-Reference/evaluator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../API-Reference/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../API-Reference/utils/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Utils
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+  
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-four-thresholds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Four Thresholds
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The Four Thresholds">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-comparator-threshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Comparator Threshold
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-field-threshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Field Threshold
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-model-match-threshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Model Match Threshold
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-runtime-match-threshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Runtime Match Threshold
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#threshold-precedence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Threshold Precedence
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Threshold Precedence">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#key-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key Rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-all-four-in-action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example: All Four in Action
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metrics-glossary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metrics Glossary
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Metrics Glossary">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#base-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Base Categories
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-fp-split" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The FP Split
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#derived-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Derived Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-recall_with_fd-option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The recall_with_fd Option
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The recall_with_fd Option">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#two-moves-that-push-recall-in-opposite-directions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two moves that push recall in opposite directions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-zero-threshold-trap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Zero-Threshold Trap
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#worked-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worked Example
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Worked Example">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#field-by-field-analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Field-by-Field Analysis
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-matching-line_items" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List Matching (line_items)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aggregate-confusion-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Aggregate Confusion Matrix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#derived-metrics_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Derived Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#threshold-cheat-sheet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Threshold Cheat Sheet
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metric-formulas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metric Formulas
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="thresholds-and-metrics">Thresholds and Metrics</h1>
+<p>This guide explains the four thresholds in Stickler, how they interact, and provides a glossary of confusion-matrix metrics with worked examples.</p>
+<h2 id="the-four-thresholds">The Four Thresholds</h2>
+<p>Stickler has four distinct thresholds that control different aspects of evaluation. Understanding what each one does—and which takes precedence—is essential for interpreting results correctly.</p>
+<h3 id="1-comparator-threshold">1. Comparator Threshold</h3>
+<p><strong>What it is:</strong> The threshold built into a comparator instance.</p>
+<div class="highlight"><pre><span></span><code><span class="n">comparator</span> <span class="o">=</span> <span class="n">LevenshteinComparator</span><span class="p">(</span><span class="n">threshold</span><span class="o">=</span><span class="mf">0.8</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>What it gates:</strong> The comparator's <code>binary_compare()</code> method uses this to return <code>(1, 0)</code> for TP or <code>(0, 1)</code> for FP.</p>
+<p><strong>When it applies:</strong> Only when calling <code>comparator.binary_compare()</code> directly. In normal evaluation, this threshold is <strong>ignored</strong>—the field threshold is used instead.</p>
+<h3 id="2-field-threshold">2. Field Threshold</h3>
+<p><strong>What it is:</strong> The threshold set on a <code>ComparableField</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Invoice</span><span class="p">(</span><span class="n">StructuredModel</span><span class="p">):</span>
+    <span class="n">vendor_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">ComparableField</span><span class="p">(</span>
+        <span class="n">comparator</span><span class="o">=</span><span class="n">LevenshteinComparator</span><span class="p">(),</span>
+        <span class="n">threshold</span><span class="o">=</span><span class="mf">0.85</span><span class="p">,</span>  <span class="c1"># &lt;-- Field threshold</span>
+    <span class="p">)</span>
+</code></pre></div>
+<p><strong>What it gates:</strong></p>
+<ul>
+<li><strong>TP vs FD classification:</strong> If <code>similarity &gt;= threshold</code>, the field is a True Positive. Otherwise, it's a False Discovery.</li>
+<li><strong>Score clipping:</strong> When <code>clip_under_threshold=True</code> (the default), scores below the threshold are zeroed out in the weighted average.</li>
+</ul>
+<p><strong>Default:</strong> <code>0.5</code></p>
+<h3 id="3-model-match-threshold">3. Model Match Threshold</h3>
+<p><strong>What it is:</strong> A class-level attribute on a <code>StructuredModel</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">LineItem</span><span class="p">(</span><span class="n">StructuredModel</span><span class="p">):</span>
+    <span class="n">match_threshold</span> <span class="o">=</span> <span class="mf">0.8</span>  <span class="c1"># &lt;-- Model match threshold</span>
+
+    <span class="n">sku</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">ComparableField</span><span class="p">(</span><span class="n">comparator</span><span class="o">=</span><span class="n">ExactComparator</span><span class="p">())</span>
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">ComparableField</span><span class="p">(</span><span class="n">threshold</span><span class="o">=</span><span class="mf">0.7</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>What it gates:</strong></p>
+<ul>
+<li><strong>Hungarian matching classification:</strong> When comparing <code>List[StructuredModel]</code>, the Hungarian algorithm pairs ground-truth and prediction objects. Each pair's overall similarity is compared against <code>match_threshold</code> to classify as TP or FD.</li>
+<li><strong>Recursive evaluation:</strong> Only pairs meeting the threshold get field-by-field breakdown. Below-threshold pairs are treated as atomic FD.</li>
+</ul>
+<p><strong>Default:</strong> <code>0.7</code></p>
+<h3 id="4-runtime-match-threshold">4. Runtime Match Threshold</h3>
+<p><strong>What it is:</strong> The <code>match_threshold</code> parameter passed to <code>evaluate()</code> or <code>EvalSpec</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="n">stickler</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">gt</span><span class="p">,</span> <span class="n">pred</span><span class="p">,</span> <span class="n">match_threshold</span><span class="o">=</span><span class="mf">0.8</span><span class="p">)</span>
+
+<span class="c1"># Or via EvalSpec</span>
+<span class="n">spec</span> <span class="o">=</span> <span class="n">stickler</span><span class="o">.</span><span class="n">eval_for</span><span class="p">(</span><span class="n">Invoice</span><span class="p">,</span> <span class="n">match_threshold</span><span class="o">=</span><span class="mf">0.8</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>What it gates:</strong> Same as Model Match Threshold, but applied at runtime. Overrides the class-level <code>match_threshold</code> for this evaluation.</p>
+<p><strong>Default:</strong> <code>0.7</code></p>
+<h2 id="threshold-precedence">Threshold Precedence</h2>
+<p>When multiple thresholds could apply, here's which one wins:</p>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Which threshold applies</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Primitive field comparison</strong> (str, int, float)</td>
+<td>Field threshold (<code>ComparableField(threshold=...)</code>)</td>
+</tr>
+<tr>
+<td><strong>Nested object comparison</strong></td>
+<td>Recurses into fields; each field uses its own field threshold</td>
+</tr>
+<tr>
+<td><strong>List element pairing</strong> (<code>List[StructuredModel]</code>)</td>
+<td>Runtime match threshold if provided, else Model match threshold</td>
+</tr>
+<tr>
+<td><strong>Score clipping</strong></td>
+<td>Field threshold (when <code>clip_under_threshold=True</code>)</td>
+</tr>
+<tr>
+<td><strong>Binary classification (TP/FD)</strong> for primitives</td>
+<td>Field threshold</td>
+</tr>
+<tr>
+<td><strong>Binary classification (TP/FD)</strong> for list pairs</td>
+<td>Match threshold (runtime or model)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="key-rules">Key Rules</h3>
+<ol>
+<li><strong>Field threshold</strong> controls primitive-level TP/FD classification and score clipping.</li>
+<li><strong>Match threshold</strong> controls object-level TP/FD classification for list matching.</li>
+<li><strong>Runtime match threshold</strong> overrides model-level match threshold.</li>
+<li><strong>Comparator threshold</strong> is only used by <code>binary_compare()</code>; evaluation ignores it.</li>
+</ol>
+<h3 id="example-all-four-in-action">Example: All Four in Action</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">stickler</span><span class="w"> </span><span class="kn">import</span> <span class="n">StructuredModel</span><span class="p">,</span> <span class="n">ComparableField</span><span class="p">,</span> <span class="n">LevenshteinComparator</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Product</span><span class="p">(</span><span class="n">StructuredModel</span><span class="p">):</span>
+    <span class="n">match_threshold</span> <span class="o">=</span> <span class="mf">0.75</span>  <span class="c1"># (3) Model match threshold</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">ComparableField</span><span class="p">(</span>
+        <span class="n">comparator</span><span class="o">=</span><span class="n">LevenshteinComparator</span><span class="p">(</span><span class="n">threshold</span><span class="o">=</span><span class="mf">0.5</span><span class="p">),</span>  <span class="c1"># (1) Comparator threshold - IGNORED</span>
+        <span class="n">threshold</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span>  <span class="c1"># (2) Field threshold - USED</span>
+    <span class="p">)</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Order</span><span class="p">(</span><span class="n">StructuredModel</span><span class="p">):</span>
+    <span class="n">products</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Product</span><span class="p">]</span> <span class="o">=</span> <span class="n">ComparableField</span><span class="p">(</span><span class="n">weight</span><span class="o">=</span><span class="mf">2.0</span><span class="p">)</span>
+
+<span class="c1"># (4) Runtime match threshold - overrides Product.match_threshold</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">stickler</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">gt_order</span><span class="p">,</span> <span class="n">pred_order</span><span class="p">,</span> <span class="n">match_threshold</span><span class="o">=</span><span class="mf">0.8</span><span class="p">)</span>
+</code></pre></div>
+<p>In this example:</p>
+<ul>
+<li><code>name</code> similarity is compared against <strong>0.8</strong> (field threshold) for TP/FD</li>
+<li>Product pairs are compared against <strong>0.8</strong> (runtime threshold) for list matching</li>
+<li>The comparator's <strong>0.5</strong> is never used</li>
+</ul>
+<hr />
+<h2 id="metrics-glossary">Metrics Glossary</h2>
+<p>Stickler uses a five-category confusion matrix that splits False Positives into two meaningful subcategories.</p>
+<h3 id="base-categories">Base Categories</h3>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Abbr</th>
+<th>Definition</th>
+<th>Intuition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>True Positive</strong></td>
+<td>TP</td>
+<td>Both GT and Pred are non-null and match above threshold</td>
+<td>Correct prediction</td>
+</tr>
+<tr>
+<td><strong>True Negative</strong></td>
+<td>TN</td>
+<td>Both GT and Pred are null</td>
+<td>Correctly absent</td>
+</tr>
+<tr>
+<td><strong>False Negative</strong></td>
+<td>FN</td>
+<td>GT is non-null, Pred is null</td>
+<td>Missing prediction</td>
+</tr>
+<tr>
+<td><strong>False Alarm</strong></td>
+<td>FA</td>
+<td>GT is null, Pred is non-null</td>
+<td>Spurious prediction</td>
+</tr>
+<tr>
+<td><strong>False Discovery</strong></td>
+<td>FD</td>
+<td>Both non-null but similarity &lt; threshold</td>
+<td>Wrong prediction</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-fp-split">The FP Split</h3>
+<p>Traditional confusion matrices have a single False Positive (FP) category. Stickler splits this into <strong>FA</strong> (False Alarm) and <strong>FD</strong> (False Discovery):</p>
+<div class="highlight"><pre><span></span><code>FP = FA + FD
+</code></pre></div>
+<p><strong>Why the split?</strong> FA and FD represent different failure modes:</p>
+<ul>
+<li><strong>FA</strong> (False Alarm): The model hallucinated a value where none should exist.</li>
+<li><strong>FD</strong> (False Discovery): The model produced a value, but it was wrong.</li>
+</ul>
+<p>These require different remediation strategies, so Stickler tracks them separately.</p>
+<h3 id="derived-metrics">Derived Metrics</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Formula</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Precision</strong></td>
+<td><code>TP / (TP + FA + FD)</code></td>
+<td>Of all predictions made, how many were correct?</td>
+</tr>
+<tr>
+<td><strong>Recall</strong></td>
+<td><code>TP / (TP + FN)</code></td>
+<td>Of all ground-truth values, how many were found?</td>
+</tr>
+<tr>
+<td><strong>F1 Score</strong></td>
+<td><code>2 × P × R / (P + R)</code></td>
+<td>Harmonic mean of precision and recall</td>
+</tr>
+<tr>
+<td><strong>Accuracy</strong></td>
+<td><code>(TP + TN) / Total</code></td>
+<td>Overall correctness rate</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-recall_with_fd-option">The <code>recall_with_fd</code> Option</h3>
+<p>Standard recall only penalizes missing predictions (FN). But what if the model produces a value that's <em>wrong</em> (FD)? Should that count against recall?</p>
+<p><strong><code>recall_with_fd=True</code></strong> changes the recall formula:</p>
+<div class="highlight"><pre><span></span><code>Standard:      Recall = TP / (TP + FN)
+With FD:       Recall = TP / (TP + FN + FD)
+</code></pre></div>
+<p><strong>When to use it:</strong></p>
+<ul>
+<li><strong>Use standard recall</strong> when you want to measure coverage—did the model attempt to extract the field?</li>
+<li><strong>Use <code>recall_with_fd=True</code></strong> when wrong values are as bad as missing values for your use case.</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="n">gt</span><span class="o">.</span><span class="n">compare_with</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">recall_with_fd</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+<h4 id="two-moves-that-push-recall-in-opposite-directions">Two moves that push recall in opposite directions</h4>
+<p>Because the default excludes FD from the recall denominator, <em>becoming</em> an FD
+affects recall differently depending on what the pair was before. These two are
+easy to conflate, and they go opposite ways:</p>
+<table>
+<thead>
+<tr>
+<th>move</th>
+<th>numerator</th>
+<th>denominator</th>
+<th>default recall</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TP → FD (you raised <code>match_threshold</code>)</td>
+<td><code>-1</code></td>
+<td><code>-1</code></td>
+<td>falls, or stays equal</td>
+</tr>
+<tr>
+<td>FN → FD (the pair got matched instead of missed)</td>
+<td>unchanged</td>
+<td><code>-1</code></td>
+<td><strong>rises</strong></td>
+</tr>
+</tbody>
+</table>
+<p>A TP that becomes an FD loses a correct answer, so recall falls. An FN that
+becomes an FD was never in the numerator to begin with, so removing it from the
+denominator only makes the remaining hits look better.</p>
+<p>The practical consequence: <strong>raising <code>match_threshold</code> does not reliably lower
+reported recall.</strong> Checked exhaustively over <code>tp ∈ 1..4</code> and <code>fn ∈ 0..3</code>, a
+TP → FD move raised recall in 0 cases, left it equal in 6, and lowered it in 34.
+But an FN → FD move raises it. If you track recall across releases or across
+threshold changes, set <code>recall_with_fd=True</code> so both moves count against you and
+the number means one thing.</p>
+<hr />
+<h2 id="the-zero-threshold-trap">The Zero-Threshold Trap</h2>
+<p>Setting a <code>threshold</code> or <code>match_threshold</code> to exactly <code>0.0</code> reports perfect
+scores for wholly incorrect output. Stickler emits a <code>UserWarning</code> when it sees
+one.</p>
+<p>The threshold test is <code>&gt;=</code>, so <code>0.0</code> is satisfied by <strong>every</strong> score, including
+<code>0.0</code> itself. Every compared pair becomes a true positive:</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Doc</span><span class="p">(</span><span class="n">StructuredModel</span><span class="p">):</span>
+    <span class="n">match_threshold</span> <span class="o">=</span> <span class="mf">0.0</span>          <span class="c1"># UserWarning</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+
+<span class="n">gt</span>   <span class="o">=</span> <span class="n">Doc</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Acme Corporation&quot;</span><span class="p">)</span>
+<span class="n">pred</span> <span class="o">=</span> <span class="n">Doc</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;totally wrong&quot;</span><span class="p">)</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">gt</span><span class="o">.</span><span class="n">compare_with</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">include_confusion_matrix</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="c1"># precision 1.0, recall 1.0, f1 1.0 -- for an answer that is entirely wrong</span>
+</code></pre></div>
+<p>Nothing errors and the numbers look ideal, which makes this the hardest
+misconfiguration to notice.</p>
+<p><strong>It is a cliff, not a slope.</strong> <code>0.01</code> classifies correctly; only exactly <code>0.0</code>
+misbehaves. This is one broken value rather than a "low thresholds are risky"
+heuristic, which is why the warning fires only for <code>0.0</code>.</p>
+<p>What is genuinely invariant at <code>0.0</code> is that <strong>no false discovery can ever be
+reported</strong>, since FD means "compared and scored below threshold" and nothing
+scores below <code>0.0</code>. Perfect precision and recall are <em>not</em> invariant, and it is
+worth knowing why, because it is easy to over-claim here. Unmatched items are not
+subject to any threshold, so:</p>
+<ul>
+<li>2 ground-truth objects against 3 predictions still yields an FA, giving
+  precision <code>0.667</code></li>
+<li>2 against 1 still yields an FN, giving recall <code>0.5</code></li>
+</ul>
+<p><strong><code>match_threshold = 0.0</code> warns unconditionally</strong>, because the value is used two
+ways: as the object-matching threshold for a <code>List[StructuredModel]</code> element,
+<em>and</em> as the default field threshold for any field with no explicit config. A
+plainly annotated <code>name: str</code> inherits it, so a standalone model with no list
+anywhere still reports <code>1.0</code> across the board. Declaring the field with
+<code>ComparableField()</code> instead takes an earlier branch that supplies a hardcoded
+<code>0.5</code>, which is why the value can look inert when probed that way (see
+<a href="https://github.com/awslabs/stickler/issues/237">#237</a>).</p>
+<p><strong>Fix:</strong> use a small positive value.</p>
+<div class="highlight"><pre><span></span><code><span class="n">match_threshold</span> <span class="o">=</span> <span class="mf">0.01</span>    <span class="c1"># accepts weak matches, still classifies correctly</span>
+</code></pre></div>
+<p>The warning fires once per configured site, so a bulk run over many documents
+does not emit one per document.</p>
+<hr />
+<h2 id="worked-example">Worked Example</h2>
+<p>Let's trace through a complete evaluation to see how thresholds and metrics interact.</p>
+<h3 id="setup">Setup</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">stickler</span><span class="w"> </span><span class="kn">import</span> <span class="n">StructuredModel</span><span class="p">,</span> <span class="n">ComparableField</span><span class="p">,</span> <span class="n">ExactComparator</span><span class="p">,</span> <span class="n">LevenshteinComparator</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">LineItem</span><span class="p">(</span><span class="n">StructuredModel</span><span class="p">):</span>
+    <span class="n">match_threshold</span> <span class="o">=</span> <span class="mf">0.7</span>
+
+    <span class="n">sku</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">ComparableField</span><span class="p">(</span><span class="n">comparator</span><span class="o">=</span><span class="n">ExactComparator</span><span class="p">(),</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="mf">2.0</span><span class="p">)</span>
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">ComparableField</span><span class="p">(</span><span class="n">comparator</span><span class="o">=</span><span class="n">LevenshteinComparator</span><span class="p">(),</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Invoice</span><span class="p">(</span><span class="n">StructuredModel</span><span class="p">):</span>
+    <span class="n">invoice_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">ComparableField</span><span class="p">(</span><span class="n">comparator</span><span class="o">=</span><span class="n">ExactComparator</span><span class="p">(),</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+    <span class="n">vendor</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">ComparableField</span><span class="p">(</span><span class="n">comparator</span><span class="o">=</span><span class="n">LevenshteinComparator</span><span class="p">(),</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">0.8</span><span class="p">)</span>
+    <span class="n">notes</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">ComparableField</span><span class="p">(</span><span class="n">threshold</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+    <span class="n">line_items</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">LineItem</span><span class="p">]</span> <span class="o">=</span> <span class="n">ComparableField</span><span class="p">(</span><span class="n">weight</span><span class="o">=</span><span class="mf">2.0</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="data">Data</h3>
+<div class="highlight"><pre><span></span><code><span class="n">gt</span> <span class="o">=</span> <span class="n">Invoice</span><span class="p">(</span>
+    <span class="n">invoice_id</span><span class="o">=</span><span class="s2">&quot;INV-001&quot;</span><span class="p">,</span>
+    <span class="n">vendor</span><span class="o">=</span><span class="s2">&quot;Acme Corporation&quot;</span><span class="p">,</span>
+    <span class="n">notes</span><span class="o">=</span><span class="s2">&quot;Net 30&quot;</span><span class="p">,</span>
+    <span class="n">line_items</span><span class="o">=</span><span class="p">[</span>
+        <span class="n">LineItem</span><span class="p">(</span><span class="n">sku</span><span class="o">=</span><span class="s2">&quot;SKU-A&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Widget Alpha&quot;</span><span class="p">),</span>
+        <span class="n">LineItem</span><span class="p">(</span><span class="n">sku</span><span class="o">=</span><span class="s2">&quot;SKU-B&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Widget Beta&quot;</span><span class="p">),</span>
+        <span class="n">LineItem</span><span class="p">(</span><span class="n">sku</span><span class="o">=</span><span class="s2">&quot;SKU-C&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Widget Gamma&quot;</span><span class="p">),</span>
+    <span class="p">]</span>
+<span class="p">)</span>
+
+<span class="n">pred</span> <span class="o">=</span> <span class="n">Invoice</span><span class="p">(</span>
+    <span class="n">invoice_id</span><span class="o">=</span><span class="s2">&quot;INV-001&quot;</span><span class="p">,</span>           <span class="c1"># Exact match</span>
+    <span class="n">vendor</span><span class="o">=</span><span class="s2">&quot;Acme Corp&quot;</span><span class="p">,</span>             <span class="c1"># 0.5625 similarity (below 0.8 threshold)</span>
+    <span class="n">notes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>                     <span class="c1"># Missing</span>
+    <span class="n">line_items</span><span class="o">=</span><span class="p">[</span>
+        <span class="n">LineItem</span><span class="p">(</span><span class="n">sku</span><span class="o">=</span><span class="s2">&quot;SKU-A&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Widget Alpha&quot;</span><span class="p">),</span>  <span class="c1"># Match</span>
+        <span class="n">LineItem</span><span class="p">(</span><span class="n">sku</span><span class="o">=</span><span class="s2">&quot;SKU-B&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Widget Bet&quot;</span><span class="p">),</span>    <span class="c1"># SKU match, desc ~0.9</span>
+        <span class="n">LineItem</span><span class="p">(</span><span class="n">sku</span><span class="o">=</span><span class="s2">&quot;SKU-X&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;New Item&quot;</span><span class="p">),</span>      <span class="c1"># Pairs with SKU-C, far below threshold</span>
+    <span class="p">]</span>
+<span class="p">)</span>
+</code></pre></div>
+<h3 id="field-by-field-analysis">Field-by-Field Analysis</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>GT Value</th>
+<th>Pred Value</th>
+<th>Similarity</th>
+<th>Threshold</th>
+<th>Classification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>invoice_id</code></td>
+<td>"INV-001"</td>
+<td>"INV-001"</td>
+<td>1.0</td>
+<td>1.0</td>
+<td><strong>TP</strong></td>
+</tr>
+<tr>
+<td><code>vendor</code></td>
+<td>"Acme Corporation"</td>
+<td>"Acme Corp"</td>
+<td>0.5625</td>
+<td>0.8</td>
+<td><strong>FD</strong></td>
+</tr>
+<tr>
+<td><code>notes</code></td>
+<td>"Net 30"</td>
+<td>null</td>
+<td>—</td>
+<td>0.6</td>
+<td><strong>FN</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="list-matching-line_items">List Matching (line_items)</h3>
+<p>Hungarian algorithm pairs:</p>
+<table>
+<thead>
+<tr>
+<th>GT Item</th>
+<th>Pred Item</th>
+<th>Overall Similarity</th>
+<th>vs <code>match_threshold=0.7</code></th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SKU-A, "Widget Alpha"</td>
+<td>SKU-A, "Widget Alpha"</td>
+<td>1.0</td>
+<td>≥ 0.7</td>
+<td><strong>TP</strong> → recurse</td>
+</tr>
+<tr>
+<td>SKU-B, "Widget Beta"</td>
+<td>SKU-B, "Widget Bet"</td>
+<td>~0.95</td>
+<td>≥ 0.7</td>
+<td><strong>TP</strong> → recurse</td>
+</tr>
+<tr>
+<td>SKU-C, "Widget Gamma"</td>
+<td>SKU-X, "New Item"</td>
+<td>0.083</td>
+<td>&lt; 0.7</td>
+<td><strong>FD</strong> → atomic</td>
+</tr>
+</tbody>
+</table>
+<p>Both lists hold three items, so the Hungarian algorithm pairs every one of them and
+no item is left over. <strong>FN and FA are impossible for an equal-length list</strong> --
+<code>SKU-C</code> does not go missing, it gets paired with the only prediction left, scores
+<code>0.083</code>, and lands below <code>match_threshold</code> as a false discovery. Unmatched items
+appear only when the two lists differ in length.</p>
+<p>Within each matched pair that <em>meets</em> the threshold, the fields (sku, description)
+are evaluated and contribute to the aggregate counts. A below-threshold pair is
+treated as atomic and contributes one FD at the object level, with no field-level
+breakdown -- see
+<a href="../../Advanced/threshold-gated-evaluation/">Threshold-Gated Evaluation</a>.</p>
+<h3 id="aggregate-confusion-matrix">Aggregate Confusion Matrix</h3>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Count</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TP</td>
+<td>5</td>
+<td>invoice_id + line_items fields from matched pairs</td>
+</tr>
+<tr>
+<td>TN</td>
+<td>0</td>
+<td>—</td>
+</tr>
+<tr>
+<td>FN</td>
+<td>1</td>
+<td>notes</td>
+</tr>
+<tr>
+<td>FA</td>
+<td>0</td>
+<td>—</td>
+</tr>
+<tr>
+<td>FD</td>
+<td>1</td>
+<td>vendor</td>
+</tr>
+</tbody>
+</table>
+<h3 id="derived-metrics_1">Derived Metrics</h3>
+<div class="highlight"><pre><span></span><code>Precision = TP / (TP + FA + FD) = 5 / (5 + 0 + 1) = 0.833
+Recall    = TP / (TP + FN)      = 5 / (5 + 1)     = 0.833
+F1        = 2 × 0.833 × 0.833 / (0.833 + 0.833)   = 0.833
+Accuracy  = (TP + TN) / Total   = 5 / 7           = 0.714
+
+Recall (with FD) = TP / (TP + FN + FD) = 5 / (5 + 1 + 1) = 0.714
+</code></pre></div>
+<hr />
+<h2 id="quick-reference">Quick Reference</h2>
+<h3 id="threshold-cheat-sheet">Threshold Cheat Sheet</h3>
+<table>
+<thead>
+<tr>
+<th>Threshold</th>
+<th>Where Set</th>
+<th>What It Controls</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Comparator</td>
+<td><code>Comparator(threshold=...)</code></td>
+<td><code>binary_compare()</code> only</td>
+<td>varies</td>
+</tr>
+<tr>
+<td>Field</td>
+<td><code>ComparableField(threshold=...)</code></td>
+<td>TP/FD for primitives, clipping</td>
+<td>0.5</td>
+</tr>
+<tr>
+<td>Model</td>
+<td><code>match_threshold = ...</code> on class</td>
+<td>Hungarian pairing</td>
+<td>0.7</td>
+</tr>
+<tr>
+<td>Runtime</td>
+<td><code>evaluate(..., match_threshold=...)</code></td>
+<td>Overrides model threshold</td>
+<td>0.7</td>
+</tr>
+</tbody>
+</table>
+<h3 id="metric-formulas">Metric Formulas</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Formula</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Precision</td>
+<td><code>TP / (TP + FA + FD)</code></td>
+</tr>
+<tr>
+<td>Recall</td>
+<td><code>TP / (TP + FN)</code></td>
+</tr>
+<tr>
+<td>Recall (with FD)</td>
+<td><code>TP / (TP + FN + FD)</code></td>
+</tr>
+<tr>
+<td>F1</td>
+<td><code>2 × Precision × Recall / (Precision + Recall)</code></td>
+</tr>
+<tr>
+<td>FP (total)</td>
+<td><code>FA + FD</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="../../Advanced/classification-logic/">Classification Logic</a> — detailed definitions</li>
+<li><a href="../../Advanced/threshold-gated-evaluation/">How Below-Threshold Pairs Are Classified</a> — the gating mechanism in detail</li>
+<li><a href="../../Advanced/hungarian-matching/">Hungarian Matching</a> — list pairing algorithm</li>
+</ul>
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.code.copy", "content.code.select", "navigation.instant", "navigation.instant.prefetch", "navigation.instant.progress", "navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="https://unpkg.com/mermaid@11/dist/mermaid.min.js"></script>
+      
+    
+  </body>
+</html>
