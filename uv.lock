@@ -4018,8 +4018,6 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-dateutil" },
     { name = "rapidfuzz" },
-    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scikit-learn", version = "1.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 
 [package.optional-dependencies]
@@ -4027,8 +4025,6 @@ all = [
     { name = "boto3" },
     { name = "jinja2" },
     { name = "pandas" },
-    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scikit-learn", version = "1.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "strands-agents" },
@@ -4060,10 +4056,6 @@ dev = [
 ]
 docsplit = [
     { name = "pandas" },
-    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scikit-learn", version = "1.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 llm = [
     { name = "jinja2" },
@@ -4153,11 +4145,8 @@ requires-dist = [
     { name = "python-dateutil", specifier = ">=2.8.2,<3.0.0" },
     { name = "rapidfuzz", specifier = ">=3.4.0,<4.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.10" },
-    { name = "scikit-learn", specifier = ">=1.7.2,<2.0.0" },
     { name = "scikit-learn", marker = "extra == 'dev'", specifier = ">=1.7.2,<2.0.0" },
-    { name = "scikit-learn", marker = "extra == 'docsplit'", specifier = ">=1.7.2,<2.0.0" },
     { name = "scipy", marker = "extra == 'dev'", specifier = ">=1.12.0,<2.0.0" },
-    { name = "scipy", marker = "extra == 'docsplit'", specifier = ">=1.12.0,<2.0.0" },
     { name = "scipy", marker = "extra == 'semantic'", specifier = ">=1.12.0,<2.0.0" },
     { name = "stickler-eval", extras = ["llm", "semantic", "confidence", "docsplit", "reporting"], marker = "extra == 'all'" },
     { name = "strands-agents", marker = "extra == 'llm'", specifier = ">=1.14.0,<2.0.0" },
