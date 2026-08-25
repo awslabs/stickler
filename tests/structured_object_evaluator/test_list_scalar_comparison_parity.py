@@ -17,10 +17,11 @@ already scored the same pair as a scalar; the third deliberately does not:
   compare against -- a box is itself a list -- so those assertions call the
   comparator directly instead.
 - ``List[dict]`` under ``LevenshteinComparator`` scored ``1.0`` by comparing
-  ``str(dict)``; it now raises the comparator's own ``TypeError``. This one is
-  **not** parity with the scalar spelling under ``compare_recursive``, and
-  ``test_dict_items_raise_like_the_scalar_compare_path`` documents the full
-  entry-point matrix.
+  ``str(dict)``, then raised once #278 let the comparator see the dict. It now
+  scores sorted-key JSON, but only after the comparator has refused the raw
+  dict. This one is deliberately **not** parity with the scalar spelling, which
+  still raises; ``test_dict_items_diverge_from_the_scalar_spelling`` pins that
+  gap so it cannot widen unnoticed.
 
 Most assertions here compare the list path to the scalar path rather than to a
 literal, because parity is the actual requirement: pinning two independent
@@ -39,6 +40,7 @@ from stickler.comparators import (
     LevenshteinComparator,
     NumericComparator,
 )
+from stickler.comparators.base import BaseComparator
 from stickler.comparators.fuzzy import FuzzyComparator
 
 
@@ -213,41 +215,35 @@ class TestItemTypesReachTheComparatorIntact:
         assert list_score == scalar_score
         assert list_score == 1.0
 
-    def test_dict_items_raise_like_the_scalar_compare_path(self):
-        """``List[dict]`` raises. This is the one shape that is not parity.
+    def test_dict_items_are_canonicalized_not_stringified(self):
+        """A dict item is compared as sorted-key JSON, so key order stops mattering.
 
-        A stringified dict compared ``1.0``: ``str(dict)`` makes key order
-        significant and the comparison meaningless, so the comparator's own
-        guard -- whose message names modelling the dict as a ``StructuredModel``
-        -- is right to fire. But calling that *parity with the scalar spelling*
-        would be wrong, because the scalar spelling does two different things
-        depending on the entry point:
+        ``LevenshteinComparator`` raises for a dict, and the comparators that
+        accept one only do so by way of ``str(dict)``, which preserves insertion
+        order -- so key order was significant and the comparison meaningless.
+        0.6.0 scored two dicts with identical content ``0.5556`` for exactly that
+        reason.
 
-        =========================  ===========  ============
-        entry point                scalar dict  ``List[dict]``
-        =========================  ===========  ============
-        ``compare()``              TypeError    TypeError
-        ``compare_field_raw()``    TypeError    TypeError
-        ``compare_recursive()``    ``0.0``      TypeError
-        =========================  ===========  ============
+        Once #278 stopped ``_prepare_lists`` stringifying items, the comparator's
+        guard fired and the ``TypeError`` escaped to the caller, so a field that
+        scored in 0.6.0 crashed instead. ``_score`` now retries a refused pair
+        against ``_comparable_form``, which renders a dict as sorted-key JSON.
+        That removes both the raise and the key-order sensitivity.
 
-        So the raise agrees with ``compare()``, which already refuses a scalar
-        dict, and diverges from ``compare_recursive()``, where
-        ``ComparisonDispatcher``'s type-mismatch case (CASE 4) intercepts a
-        *scalar* dict before the comparator sees it but has no equivalent for a
-        dict *item* inside a list.
+        The retry is a fallback, never a pre-filter: the comparator is offered
+        the raw dict first, so one that understands mappings keeps receiving one
+        (``test_a_dict_aware_comparator_still_receives_the_dict``). Anything but
+        a dict re-raises rather than being canonicalized -- a bounding box *is* a
+        list and ``_normalize_bbox`` needs the raw value, which is what
+        ``TestItemTypesReachTheComparatorIntact`` covers above.
 
-        The divergence is deliberate, not parity: raising is the honest answer
-        for a shape stickler cannot compare, and CASE 4's silent ``0.0`` for the
-        scalar spelling is the odd one out. Two consequences a caller should
-        know: this is stricter than pre-0.7.0, which returned ``1.0``; and
-        ``BulkStructuredModelEvaluator`` catches per-document exceptions
-        (``bulk_structured_model_evaluator.py:246``), so an affected document
-        becomes an error entry plus an overall ``fn`` rather than halting a run.
+        This also aligns the explicit path with the zero-config path, which
+        already canonicalizes a dict field to sorted-key JSON
+        (``src/stickler/auto/README.md``, inference precedence table).
 
-        All four cells are pinned here because the previous version of this test
-        asserted only the ``List[dict]`` raise and described it as parity, which
-        no assertion contradicted.
+        Whether a dict deserves per-key comparison rather than JSON-string
+        similarity at all is #277; refusing the annotation outright on the
+        explicit path is #276. Neither is settled here.
         """
 
         class ListModel(StructuredModel):
@@ -255,26 +251,109 @@ class TestItemTypesReachTheComparatorIntact:
                 comparator=LevenshteinComparator(), threshold=0.7
             )
 
+        def score(gt, pred):
+            return ListModel(v=[gt]).compare_with(ListModel(v=[pred]))["field_scores"]["v"]
+
+        # Identical content scores 1.0 regardless of key order. On 0.6.0 the
+        # reordered pair scored 0.5556.
+        assert score({"a": 1, "b": 2}, {"a": 1, "b": 2}) == 1.0
+        assert score({"a": 1, "b": 2}, {"b": 2, "a": 1}) == 1.0
+
+        # Different content still scores below a perfect match.
+        assert score({"a": 1, "b": 2}, {"a": 9, "b": 8}) < 1.0
+
+        # And it does not raise, which is the regression this pins (#278 exposed
+        # the comparator's guard on the list path for the first time).
+        assert isinstance(score({"a": 1}, {"a": 1}), float)
+
+    def test_a_dict_aware_comparator_still_receives_the_dict(self):
+        """Canonicalization is a fallback, so a mapping-aware comparator is intact.
+
+        Rendering every dict to JSON *before* the comparator call would fix the
+        crash by making a dict unreachable: a comparator that scores mappings
+        per-key -- the shape #277 is about -- would be handed a ``str`` it never
+        asked for and would have no way to opt out. Offering the raw item first
+        keeps that door open, and is why ``_score`` retries rather than
+        pre-filters.
+        """
+
+        class KeyOverlap(BaseComparator):
+            """Jaccard over keys; refuses anything that is not a mapping."""
+
+            def _compare(self, value1, value2):
+                if not isinstance(value1, dict) or not isinstance(value2, dict):
+                    raise TypeError(f"expected dicts, got {type(value1).__name__}")
+                keys1, keys2 = set(value1), set(value2)
+                union = keys1 | keys2
+                return len(keys1 & keys2) / len(union) if union else 1.0
+
+        class ListModel(StructuredModel):
+            v: List[Dict[str, Any]] = ComparableField(
+                comparator=KeyOverlap(), threshold=0.5
+            )
+
+        def score(gt, pred):
+            return ListModel(v=[gt]).compare_with(ListModel(v=[pred]))["field_scores"]["v"]
+
+        # Same keys, different values: a key-wise comparator says 1.0 where JSON
+        # string similarity would not.
+        assert score({"a": 1, "b": 2}, {"a": 9, "b": 8}) == 1.0
+        # Half the keys shared is below the field's threshold, so it scores 0.0
+        # rather than being rescued by canonicalization.
+        assert score({"a": 1, "b": 2}, {"a": 1, "c": 3}) == 0.0
+
+    def test_dict_items_diverge_from_the_scalar_spelling(self):
+        """The list path scores a dict pair the scalar path still refuses.
+
+        ``_score`` lives in ``HungarianMatcher``, so only the list path has the
+        fallback: a scalar ``Dict`` field hits the comparator's guard with
+        nothing to retry against. That is the mirror image of the asymmetry #278
+        removed, and it is pinned here rather than left to be rediscovered --
+        closing it means deciding whether a scalar dict field should be
+        canonicalized too, which is #276 and #277 territory.
+        """
+
         class ScalarModel(StructuredModel):
             v: Dict[str, Any] = ComparableField(
                 comparator=LevenshteinComparator(), threshold=0.7
             )
 
-        with pytest.raises(TypeError, match="StructuredModel"):
-            ListModel(v=[{"a": 1}]).compare_recursive(ListModel(v=[{"a": 1}]))
-        with pytest.raises(TypeError, match="StructuredModel"):
-            ListModel(v=[{"a": 1}]).compare(ListModel(v=[{"a": 1}]))
+        class ListModel(StructuredModel):
+            v: List[Dict[str, Any]] = ComparableField(
+                comparator=LevenshteinComparator(), threshold=0.7
+            )
 
-        # The scalar spelling: refuses under `compare`, scores under
-        # `compare_recursive`. Pinned so the asymmetry cannot drift unnoticed.
-        with pytest.raises(TypeError, match="StructuredModel"):
-            ScalarModel(v={"a": 1}).compare(ScalarModel(v={"a": 1}))
+        gt, pred = {"a": 1, "b": 2}, {"b": 2, "a": 1}
 
-        scalar_recursive = ScalarModel(v={"a": 1}).compare_recursive(
-            ScalarModel(v={"a": 1})
-        )
-        assert scalar_recursive["fields"]["v"]["similarity_score"] == 0.0
-        assert scalar_recursive["fields"]["v"]["overall"]["fd"] == 1
+        assert ListModel(v=[gt]).compare(ListModel(v=[pred])) == 1.0
+        with pytest.raises(TypeError):
+            ScalarModel(v=gt).compare(ScalarModel(v=pred))
+
+        # compare_with degrades to 0.0 instead of raising, which is its own
+        # per-field policy -- the divergence in the score survives either way.
+        assert ListModel(v=[gt]).compare_with(ListModel(v=[pred]))["field_scores"]["v"] == 1.0
+        assert ScalarModel(v=gt).compare_with(ScalarModel(v=pred))["field_scores"]["v"] == 0.0
+
+    def test_a_comparator_error_is_not_swallowed(self):
+        """Canonicalization must not become a catch-all for comparator failures.
+
+        The rejected alternative was catching ``TypeError`` around the comparator
+        call. That fixes the dict case and also silently converts any genuine
+        comparator bug into a ``0.0`` score, which for a metrics library is worse
+        than crashing: a wrong number is harder to notice than an exception. It
+        would also have created a fresh list-versus-scalar divergence, since the
+        scalar path does not catch anything.
+        """
+
+        class Broken(BaseComparator):
+            def _compare(self, value1, value2):
+                return len(value1) / len(value2)  # TypeError on ints
+
+        class ListModel(StructuredModel):
+            v: List[int] = ComparableField(comparator=Broken(), threshold=0.7)
+
+        with pytest.raises(TypeError):
+            ListModel(v=[1]).compare_with(ListModel(v=[1]))
 
 
 class TestMissingValuePolicyOnTheListPath:
