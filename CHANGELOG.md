@@ -9,6 +9,23 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Fixed
+
+- A `List[Dict[...]]` field no longer raises `TypeError` out of `compare_with()`,
+  and key order no longer affects its score. No comparator can compare two dicts:
+  `LevenshteinComparator` raises for one, and `str(dict)` preserves insertion
+  order, which is why 0.6.0 scored two dicts with identical content `0.5556`.
+  Until the list-item normalization fix, that raise could not reach the list path;
+  afterwards it escaped to the caller, so a field that scored in 0.6.0 crashed
+  instead. Items no comparator handles -- `dict`, `set`, `frozenset` -- are now
+  canonicalized to sorted-key JSON before comparison, so identical content scores
+  `1.0` regardless of key order. `list`, `tuple` and `StructuredModel` items pass
+  through untouched, so `List[bbox]` still parses. This matches what
+  `stickler.auto` already chooses for a dict field, so the explicit and
+  zero-config paths agree. Whether a dict deserves per-key comparison rather than
+  JSON-string similarity is [#277](https://github.com/awslabs/stickler/issues/277)
+
+
 ## [0.7.0] - 2026-08-18
 
 ### Added

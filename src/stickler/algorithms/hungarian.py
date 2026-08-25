@@ -5,11 +5,13 @@ between two lists, which is commonly used for evaluating list-type fields in
 key information extraction tasks.
 """
 
+import json
 import traceback
 from typing import Any, Callable, List, Optional, Tuple, Union
 
 import numpy as np
 from munkres import Munkres, make_cost_matrix
+from pydantic_core import to_jsonable_python
 
 from stickler.comparators.base import BaseComparator
 
@@ -148,6 +150,22 @@ class HungarianMatcher:
 
         return list1, list2
 
+    @staticmethod
+    def _comparable_form(item: Any) -> Any:
+        """Canonicalize an item no comparator can handle; pass everything else through.
+
+        A ``dict`` or ``set`` has no comparator: ``LevenshteinComparator`` raises
+        for one, and ``str(dict)`` makes key order significant. Sorted-key JSON
+        removes both problems and matches what ``stickler.auto`` already chooses
+        for a dict field, so the explicit and zero-config paths agree.
+
+        ``list``/``tuple``/``StructuredModel`` pass through untouched: a bounding
+        box IS a list, and ``_normalize_bbox`` needs the raw value to parse it.
+        """
+        if isinstance(item, (dict, set, frozenset)):
+            return json.dumps(to_jsonable_python(item), sort_keys=True)
+        return item
+
     def match(self, list1: Any, list2: Any) -> Tuple[List[Tuple[int, int]], np.ndarray]:
         """Find optimal assignments between two lists.
 
@@ -180,10 +198,12 @@ class HungarianMatcher:
             for i, item1 in enumerate(list1):
                 for j, item2 in enumerate(list2):
                     # Handle callable function or object with compare method
+                    a = self._comparable_form(item1)
+                    b = self._comparable_form(item2)
                     if hasattr(self.comparator, "compare"):
-                        similarity_matrix[i, j] = self.comparator.compare(item1, item2)
+                        similarity_matrix[i, j] = self.comparator.compare(a, b)
                     else:
-                        similarity_matrix[i, j] = self.comparator(item1, item2)
+                        similarity_matrix[i, j] = self.comparator(a, b)
 
             # Check matrix size
             matrix_size = len(list1) * len(list2)
@@ -270,10 +290,12 @@ class HungarianMatcher:
         # property of this shortcut; see the Note in the docstring above.
         if len(prepared_list1) == 1 and len(prepared_list2) == 1:
             # Directly compare the single items
+            a = self._comparable_form(prepared_list1[0])
+            b = self._comparable_form(prepared_list2[0])
             if hasattr(self.comparator, "compare"):
-                score = self.comparator.compare(prepared_list1[0], prepared_list2[0])
+                score = self.comparator.compare(a, b)
             else:
-                score = self.comparator(prepared_list1[0], prepared_list2[0])
+                score = self.comparator(a, b)
 
             is_tp = score >= self.match_threshold
             tp = 1 if is_tp else 0
