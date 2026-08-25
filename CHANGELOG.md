@@ -9,6 +9,15 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Changed
+
+- JSON Schema import now delegates standard types, local references, combiners,
+  and validation constraints to `json-schema-to-pydantic`. Stickler retains a
+  narrow adapter for comparison metadata and nested `StructuredModel` creation.
+  This adds support for valid Draft 7 multi-type unions and multi-arm `allOf`,
+  `anyOf`, and `oneOf` schemas; recursive models and `patternProperties` remain
+  explicit unsupported boundaries ([#212](https://github.com/awslabs/stickler/issues/212)).
+
 ## [0.7.0] - 2026-08-18
 
 ### Added
