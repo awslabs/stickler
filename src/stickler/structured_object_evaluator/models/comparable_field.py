@@ -187,6 +187,51 @@ def ComparableField(
     return field
 
 
+# Attribute set on a field's ``json_schema_extra`` callable to record that the
+# source JSON Schema listed the field in ``required``, even though the field
+# carries ``default=None`` so that construction tolerates its absence.
+#
+# Needed because that pairing is otherwise ambiguous. On a non-nullable
+# annotation, ``default=None`` alone identifies a required field -- that is
+# ComparableField's construction-tolerance sentinel, which
+# ``_AnnotationDrivenJsonSchema.field_is_required`` reads. On a *nullable*
+# annotation it does not: ``Optional[str]`` with ``default=None`` is exactly
+# what an optional field looks like, so a schema-required nullable field was
+# indistinguishable from an optional one and silently dropped out of the
+# rendered ``required`` list.
+#
+# Carried as a function attribute rather than a schema key because that is
+# already how ComparableField smuggles runtime data past ``FieldInfo``'s
+# ``__slots__`` (``_threshold``, ``_comparator_instance``). It therefore never
+# reaches rendered output and needs no stripping.
+SCHEMA_REQUIRED_ATTR = "_schema_required"
+
+
+def mark_schema_required(field: Any) -> None:
+    """Record that the source schema declared this field required.
+
+    No-op when the field carries no callable ``json_schema_extra``, which is
+    every field not built by ``ComparableField``.
+    """
+    extra = getattr(field, "json_schema_extra", None)
+    if callable(extra):
+        setattr(extra, SCHEMA_REQUIRED_ATTR, True)
+
+
+def is_schema_required(field_info: Any) -> bool:
+    """Whether the source schema declared this field required.
+
+    ``False`` for hand-written models, which never set the marker -- their
+    requiredness is already legible from the annotation.
+    """
+    return bool(
+        getattr(
+            getattr(field_info, "json_schema_extra", None),
+            SCHEMA_REQUIRED_ATTR,
+            False,
+        )
+    )
+
 
 def _restore_deprecated_aggregate(field: Any, value: Any) -> None:
     """Set a field's stored ``aggregate`` value without emitting a warning.
