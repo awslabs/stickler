@@ -11,14 +11,98 @@ Each release links to full notes on the
 
 ### Removed
 
+- **Breaking:** `all_fields_matched` is no longer returned by `compare_with()`,
+  and no longer appears on `confusion_matrix.overall`. It quantified over
+  **top-level** fields only and did not recurse, so a nested field "matched" when
+  its own subtree mean cleared its own threshold and a failing leaf underneath was
+  invisible. Two external reports read it the way its name and the documentation
+  implied, as a quantifier over every leaf, and expected opposite behaviours from
+  each other, so no single implementation satisfied both
+  ([#23](https://github.com/awslabs/stickler/issues/23),
+  [#275](https://github.com/awslabs/stickler/issues/275),
+  [#287](https://github.com/awslabs/stickler/issues/287)).
+
+  Replacements, all of which already existed: `overall_score` for the scalar
+  summary, `EvalResult.matched` for a single object-level verdict, and
+  `field_comparisons` for the individual failures. To ask whether anything failed
+  at all, both rollup nodes have to be read, because a list item that scores
+  below `match_threshold` is recorded as one `fd` on `confusion_matrix.overall`
+  and is not descended into, so its leaves never appear under
+  `confusion_matrix.aggregate`:
+
+  ```python
+  clean = (
+      cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
+      and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
+  )
+  ```
+
+  A below-threshold object is a spurious non-match, so not descending into it is
+  deliberate: `overall` carries the object verdict and `aggregate` carries leaf
+  detail for the objects that were comparable. A caller wanting leaf detail for a
+  marginal object lowers `match_threshold` until it qualifies. See
+  [#288](https://github.com/awslabs/stickler/issues/288) for the naming.
+
+### Changed
+
+- **Breaking:** `EvalResult.matched` is now `overall_score >= match_threshold`,
+  defined directly rather than read from the removed `all_fields_matched` key.
+  This is the definition its docstring already claimed ("the `match_threshold`
+  knob's model-level verdict"), and it cannot disagree with the `overall_score`
+  sitting beside it. The two definitions do diverge: with one wrong field among
+  six the score is `0.8333`, so the old key read `False` where
+  `overall_score >= match_threshold` reads `True`.
+
+- `EvalResult.matched` now honours a `StructuredModel` subclass's own declared
+  `match_threshold` when the caller does not pass one to `evaluate` / `eval_for`.
+  It previously always compared against the facade default of `0.7`, so a model
+  declaring `match_threshold = 0.95` reported a `0.80` pair as matched. Passing
+  `match_threshold=` explicitly still overrides the declaration, and a class that
+  declares nothing is unaffected.
+
+- JSON Schema import now delegates standard types, local references, combiners,
+  and constraint parsing to `json-schema-to-pydantic`. Stickler retains a narrow
+  adapter for comparison metadata and nested `StructuredModel` creation. Parsed
+  types still choose comparison behavior, but schema constraints do not reject
+  imperfect predictions before scoring: malformed enum, date, and
+  constraint-violating values remain constructible and reach their comparator.
+
+  Unconfigured enum fields now use `ExactComparator` at threshold `1.0`, and
+  `date` / `date-time` formats use `DateComparator` at threshold `1.0`; both used
+  `LevenshteinComparator` at threshold `0.5` before this change, so default scores
+  can move for those fields.
+  This adds support for valid Draft 7 multi-type unions and multi-arm `allOf`,
+  `anyOf`, and `oneOf` schemas; recursive models and `patternProperties` remain
+  explicit unsupported boundaries ([#212](https://github.com/awslabs/stickler/issues/212)).
+
+- Confidence AUROC and document-splitting statistics now use NumPy
+  implementations with randomized scikit-learn and SciPy equivalence tests.
+  `scikit-learn` is no longer a core dependency, and the `docsplit` extra now
+  adds only pandas; SciPy remains isolated to the `semantic` extra
+  ([#216](https://github.com/awslabs/stickler/issues/216)).
+
 ### Fixed
 
   Replacements, all of which already existed: `overall_score` for the scalar
-  summary, `confusion_matrix.aggregate.fd + fn == 0` to ask whether every ground
-  truth leaf landed (`fd` is a leaf that scored below its threshold, `fn` a leaf
-  absent from the prediction, so reading `fd` alone misses missing fields),
-  `field_comparisons` for which one, and `EvalResult.matched` for a single
-  object-level verdict.
+  summary, `EvalResult.matched` for a single object-level verdict, and
+  `field_comparisons` for the individual failures. To ask whether anything failed
+  at all, both rollup nodes have to be read, because a list item that scores
+  below `match_threshold` is recorded as one `fd` on `confusion_matrix.overall`
+  and is not descended into, so its leaves never appear under
+  `confusion_matrix.aggregate`:
+
+  ```python
+  clean = (
+      cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
+      and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
+  )
+  ```
+
+  A below-threshold object is a spurious non-match, so not descending into it is
+  deliberate: `overall` carries the object verdict and `aggregate` carries leaf
+  detail for the objects that were comparable. A caller wanting leaf detail for a
+  marginal object lowers `match_threshold` until it qualifies. See
+  [#288](https://github.com/awslabs/stickler/issues/288) for the naming.
 
 - `overall_score` and the confusion matrix no longer disagree about a field that
   is absent on both sides. The two read different scores for the same object
@@ -123,44 +207,6 @@ Each release links to full notes on the
   Lower the element model's `match_threshold` to inspect leaf comparisons for
   weaker pairs.
 
-### Changed
-
-- **Breaking:** `EvalResult.matched` is now `overall_score >= match_threshold`,
-  defined directly rather than read from the removed `all_fields_matched` key.
-  This is the definition its docstring already claimed ("the `match_threshold`
-  knob's model-level verdict"), and it cannot disagree with the `overall_score`
-  sitting beside it. The two definitions do diverge: with one wrong field among
-  six the score is `0.8333`, so the old key read `False` where
-  `overall_score >= match_threshold` reads `True`.
-
-- `EvalResult.matched` now honours a `StructuredModel` subclass's own declared
-  `match_threshold` when the caller does not pass one to `evaluate` / `eval_for`.
-  It previously always compared against the facade default of `0.7`, so a model
-  declaring `match_threshold = 0.95` reported a `0.80` pair as matched. Passing
-  `match_threshold=` explicitly still overrides the declaration, and a class that
-  declares nothing is unaffected.
-
-- JSON Schema import now delegates standard types, local references, combiners,
-  and constraint parsing to `json-schema-to-pydantic`. Stickler retains a narrow
-  adapter for comparison metadata and nested `StructuredModel` creation. Parsed
-  types still choose comparison behavior, but schema constraints do not reject
-  imperfect predictions before scoring: malformed enum, date, and
-  constraint-violating values remain constructible and reach their comparator.
-
-  Unconfigured enum fields now use `ExactComparator` at threshold `1.0`, and
-  `date` / `date-time` formats use `DateComparator` at threshold `1.0`; both used
-  `LevenshteinComparator` at threshold `0.5` before this change, so default scores
-  can move for those fields.
-  This adds support for valid Draft 7 multi-type unions and multi-arm `allOf`,
-  `anyOf`, and `oneOf` schemas; recursive models and `patternProperties` remain
-  explicit unsupported boundaries ([#212](https://github.com/awslabs/stickler/issues/212)).
-
-- Confidence AUROC and document-splitting statistics now use NumPy
-  implementations with randomized scikit-learn and SciPy equivalence tests.
-  `scikit-learn` is no longer a core dependency, and the `docsplit` extra now
-  adds only pandas; SciPy remains isolated to the `semantic` extra
-  ([#216](https://github.com/awslabs/stickler/issues/216)).
-
 ### Performance
 
 - Restored the fast path in `ComparisonHelper.compare_field_raw`. Reading a
@@ -177,7 +223,6 @@ Each release links to full notes on the
   populated skips the annotation entirely (0.537s, within noise of the original).
   A test pins the superset property so adding a case to either rule without
   widening the guard fails loudly rather than silently skipping the check.
-
 
 ## [0.7.0] - 2026-08-18
 

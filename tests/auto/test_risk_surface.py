@@ -1042,9 +1042,62 @@ class TestMatchedHasOneDefinition:
         assert result.matched is True
 
         # The question `matched` does not answer. This is what a caller reads
-        # instead of the removed key, and it does see the one bad leaf.
+        # instead of the removed key, and it does see the one bad leaf --
+        # because this item paired. See the test below for when it does not.
         aggregate = result.confusion_matrix["aggregate"]
         assert aggregate["fd"] + aggregate["fn"] == 1
+
+    def test_a_rejected_object_contributes_no_leaf_rows(self):
+        """Why "did anything fail" reads both rollup nodes, not just `aggregate`.
+
+        An object scoring below `match_threshold` is a spurious non-match: it is
+        recorded as one `fd` on `overall` and is not descended into, so it
+        contributes no leaf rows to `aggregate`. That is deliberate, since
+        reporting the leaves of an object already rejected as a whole would
+        score something the comparison declared not comparable. A caller who
+        wants those leaves lowers `match_threshold` until the object qualifies.
+
+        So the two nodes scope different things and a complete check reads both.
+        """
+
+        class Line(BaseModel):
+            a: Optional[str] = None
+            b: Optional[str] = None
+            c: Optional[str] = None
+            d: Optional[str] = None
+            e: Optional[str] = None
+            f: Optional[str] = None
+
+        class Doc(BaseModel):
+            lines: List[Line] = Field(default_factory=list)
+
+        good = {"a": "1", "b": "2", "c": "3", "d": "4", "e": "5", "f": "6"}
+        # Two of six leaves wrong, so the item scores 0.6667 and misses the
+        # 0.7 default. One leaf wrong (0.8333) would have paired.
+        failed = {**good, "a": "WRONG", "b": "WRONG"}
+
+        result = stickler.evaluate(
+            Doc(lines=[Line(**good), Line(**good)]),
+            Doc(lines=[Line(**good), Line(**failed)]),
+        )
+        cm = result.confusion_matrix
+        aggregate, overall = cm["aggregate"], cm["overall"]
+
+        # Twelve leaves exist, but only the six under the comparable object are
+        # scored, and all six landed, so the leaf view is clean.
+        assert aggregate["tp"] == 6
+        assert aggregate["fd"] + aggregate["fn"] == 0
+
+        # The rejected object is recorded here instead, as one object-level fd.
+        assert overall["tp"] == 1
+        assert overall["fd"] == 1
+
+        # So the reliable question is the conjunction of both nodes.
+        clean = (
+            aggregate["fd"] + aggregate["fn"] == 0
+            and overall["fd"] + overall["fn"] + overall["fa"] == 0
+        )
+        assert clean is False
 
     def test_a_declared_match_threshold_wins_over_the_default(self):
         """A StructuredModel's own `match_threshold` reaches `matched`.
