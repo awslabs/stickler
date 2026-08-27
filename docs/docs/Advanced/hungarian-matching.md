@@ -42,6 +42,13 @@ pair and is therefore FD, not FN + FA. Only items with no partner at all
 become FN or FA. This holds identically for a one-item list and a hundred-item
 one; see `tests/common/algorithms/test_hungarian_path_parity.py`.
 
+`HungarianMatcher.calculate_metrics` returns these same four counts if you call
+it directly. Before
+[#231](https://github.com/awslabs/stickler/issues/231) it did not have an `fd`
+key and reported every low score pair in `fn` as well, which contradicted the
+rule above. `tests/common/algorithms/test_hungarian_fd_contract.py` now pins the
+agreement.
+
 ### FD and recall
 
 Whether an FD counts against recall is a separate decision, controlled by
