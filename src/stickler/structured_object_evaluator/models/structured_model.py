@@ -1128,7 +1128,7 @@ class StructuredModel(BaseModel):
 
         Returns:
             Dictionary with clean hierarchical structure:
-            - overall: TP, FP, TN, FN, FD, FA counts + similarity_score + all_fields_matched
+            - overall: TP, FP, TN, FN, FD, FA counts + similarity_score
             - fields: Recursive structure for each field with scores
             - non_matches: List of non-matching items
         """
@@ -1409,7 +1409,6 @@ class StructuredModel(BaseModel):
             Dictionary with comparison results including:
             - field_scores: Scores for each field
             - overall_score: Weighted average score
-            - all_fields_matched: Whether all fields matched
             - confusion_matrix: (optional) Confusion matrix data if requested
             - non_matches: (optional) Non-match documentation if requested
             - field_comparisons: (optional) Field level comparison information if requested

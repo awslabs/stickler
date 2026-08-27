@@ -25,7 +25,6 @@ result = ground_truth.compare_with(prediction)
     "notes": 0.62
   },
   "overall_score": 0.92,
-  "all_fields_matched": false
 }
 ```
 
@@ -43,9 +42,11 @@ Fields with `clip_under_threshold=True` (the default) contribute 0.0 if they sco
 
 Maps each field name to its similarity score (0.0 to 1.0). For nested objects, the value is the weighted average of the sub-fields. For lists, it reflects the Hungarian-matched aggregate.
 
-### `all_fields_matched` (bool)
+### Asking whether anything failed
 
-`True` only when every field's raw similarity score meets or exceeds its configured threshold. A single field below threshold makes this `False`.
+There is no boolean verdict on the result. A former `all_fields_matched` key was removed in 1.0: it quantified over top-level fields only and did not recurse, so a failing leaf inside a nested field was invisible whenever that field's own mean cleared its own threshold.
+
+Use `overall_score` for the scalar summary, `confusion_matrix.aggregate.fd` to ask whether any leaf failed, and `EvalResult.matched` from `stickler.evaluate()` for a single object-level verdict (`overall_score >= match_threshold`).
 
 ---
 

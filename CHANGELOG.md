@@ -11,21 +11,6 @@ Each release links to full notes on the
 
 ### Removed
 
-- The deprecated `aggregate` parameter on `ComparableField`, along with its dead
-  code path (`_is_aggregate_field`, `ConfigurationHelper.is_aggregate_field`, and
-  the `parent_is_aggregate` plumbing in the confusion-matrix calculator). The
-  flag had no effect once aggregation moved to the comparison layer in
-  [#94](https://github.com/awslabs/stickler/issues/94): every node in
-  `compare_with()` output already carries an `aggregate` block summing the
-  primitive field metrics below it. Passing `aggregate=` now raises `TypeError`
-  instead of emitting a `DeprecationWarning`. The comparison parameters after
-  `default` (`clip_under_threshold`, `alias`, ...) are now keyword-only, so an
-  old five-positional call raises `TypeError` rather than silently rebinding its
-  fifth argument to `clip_under_threshold`. A JSON Schema carrying
-  `x-aws-stickler-aggregate` still imports — the key is accepted but ignored — so
-  existing schema files keep loading.
-  ([#226](https://github.com/awslabs/stickler/issues/226))
-
 ### Fixed
 
 - `overall_score` and the confusion matrix no longer disagree about a field that
@@ -131,24 +116,15 @@ Each release links to full notes on the
   Lower the element model's `match_threshold` to inspect leaf comparisons for
   weaker pairs.
 
-### Performance
-
-- Restored the fast path in `ComparisonHelper.compare_field_raw`. Reading a
-  field's absence rule requires knowing whether the field is a list, and
-  `_is_list_field` re-reads `model_fields` and destructures the annotation on
-  every call. The bare `is None` check it replaced short-circuited before doing
-  any of that, so consulting the annotation unconditionally cost about 23% on a
-  60x60 Hungarian cost matrix of 20-field models -- 72,000 calls for one list
-  comparison (0.531s to 0.651s; measured best-of-three).
-
-  The lookup is now guarded by a cheap value test that is the union of both
-  `NullHelper` rules, so anything either one calls absent still reaches the full
-  check and no outcome changes, while the common case of both sides being
-  populated skips the annotation entirely (0.537s, within noise of the original).
-  A test pins the superset property so adding a case to either rule without
-  widening the guard fails loudly rather than silently skipping the check.
-
 ### Changed
+
+- **Breaking:** `EvalResult.matched` is now `overall_score >= match_threshold`,
+  defined directly rather than read from the removed `all_fields_matched` key.
+  This is the definition its docstring already claimed ("the `match_threshold`
+  knob's model-level verdict"), and it cannot disagree with the `overall_score`
+  sitting beside it. The two definitions did diverge: with one of three fields
+  wrong the old key read `False` while `overall_score >= match_threshold` was
+  `True`.
 
 - JSON Schema import now delegates standard types, local references, combiners,
   and constraint parsing to `json-schema-to-pydantic`. Stickler retains a narrow
@@ -170,6 +146,24 @@ Each release links to full notes on the
   `scikit-learn` is no longer a core dependency, and the `docsplit` extra now
   adds only pandas; SciPy remains isolated to the `semantic` extra
   ([#216](https://github.com/awslabs/stickler/issues/216)).
+
+### Performance
+
+- Restored the fast path in `ComparisonHelper.compare_field_raw`. Reading a
+  field's absence rule requires knowing whether the field is a list, and
+  `_is_list_field` re-reads `model_fields` and destructures the annotation on
+  every call. The bare `is None` check it replaced short-circuited before doing
+  any of that, so consulting the annotation unconditionally cost about 23% on a
+  60x60 Hungarian cost matrix of 20-field models -- 72,000 calls for one list
+  comparison (0.531s to 0.651s; measured best-of-three).
+
+  The lookup is now guarded by a cheap value test that is the union of both
+  `NullHelper` rules, so anything either one calls absent still reaches the full
+  check and no outcome changes, while the common case of both sides being
+  populated skips the annotation entirely (0.537s, within noise of the original).
+  A test pins the superset property so adding a case to either rule without
+  widening the guard fails loudly rather than silently skipping the check.
+
 
 ## [0.7.0] - 2026-08-18
 

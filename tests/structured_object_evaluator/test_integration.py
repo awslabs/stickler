@@ -71,7 +71,7 @@ class TestIntegration:
 
         # Check the result
         assert result["overall_score"] == 1.0
-        assert result["all_fields_matched"]
+        assert result["overall_score"] == 1.0
         assert result["field_scores"]["name"] == 1.0
         assert result["field_scores"]["age"] == 1.0
         assert result["field_scores"]["address"] == 1.0
@@ -118,7 +118,7 @@ class TestIntegration:
 
         # Check the result
         assert result["overall_score"] == 1.0
-        assert result["all_fields_matched"]
+        assert result["overall_score"] == 1.0
         assert result["field_scores"]["name"] == 1.0
         assert result["field_scores"]["founded_year"] == 1.0
         assert result["field_scores"]["employees"] == 1.0
@@ -177,7 +177,7 @@ class TestIntegration:
 
         # Check the result
         assert result["overall_score"] == 1.0
-        assert result["all_fields_matched"]
+        assert result["overall_score"] == 1.0
         assert result["field_scores"]["name"] == 1.0
         assert result["field_scores"]["age"] == 1.0
         assert result["field_scores"]["address"] == 1.0

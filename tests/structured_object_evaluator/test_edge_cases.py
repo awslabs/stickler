@@ -35,7 +35,7 @@ class TestEdgeCases:
 
         result = person1.compare_with(person2)
         assert result["overall_score"] == 1.0
-        assert result["all_fields_matched"]
+        assert result["overall_score"] == 1.0
 
         # Test with None value in one object
         person3 = Person(name="John Doe", age=30, email=None)
@@ -43,7 +43,7 @@ class TestEdgeCases:
 
         result = person3.compare_with(person4)
         assert result["overall_score"] < 1.0
-        assert not result["all_fields_matched"]
+        assert result["overall_score"] < 1.0
 
     def test_empty_strings(self):
         """Test handling of empty strings."""
@@ -53,7 +53,7 @@ class TestEdgeCases:
 
         result = person1.compare_with(person2)
         assert result["overall_score"] == 1.0
-        assert result["all_fields_matched"]
+        assert result["overall_score"] == 1.0
 
         # Test with empty string in one object
         person3 = Person(name="John Doe", age=30, email="john@example.com")
@@ -61,7 +61,7 @@ class TestEdgeCases:
 
         result = person3.compare_with(person4)
         assert result["overall_score"] < 1.0
-        assert not result["all_fields_matched"]
+        assert result["overall_score"] < 1.0
 
     def test_different_types(self):
         """Test handling of different types."""

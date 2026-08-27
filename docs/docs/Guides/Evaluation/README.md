@@ -125,17 +125,15 @@ Once you have two model instances -- a ground truth and a prediction -- call `co
 result = ground_truth.compare_with(prediction)
 
 print(f"Overall score: {result['overall_score']:.2%}")
-print(f"All fields matched: {result['all_fields_matched']}")
 
 for field, score in result['field_scores'].items():
     print(f"  {field}: {score:.3f}")
 ```
 
-The default output contains three keys:
+The default output contains two keys:
 
 - **`overall_score`** (float) -- Weighted average of all field scores (0.0 to 1.0).
 - **`field_scores`** (dict) -- Maps each field name to its similarity score.
-- **`all_fields_matched`** (bool) -- `True` when every field meets or exceeds its threshold.
 
 ### Key Parameters
 
@@ -252,7 +250,6 @@ print(f"Overall Score: {result['overall_score']:.3f}")
         "total_amount": 1.0
       },
       "overall_score": 0.786,
-      "all_fields_matched": false
     }
     ```
 

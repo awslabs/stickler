@@ -36,7 +36,7 @@ def test_structured_model_compare_with_exact_match():
     # Check result structure
     assert "field_scores" in result
     assert "overall_score" in result
-    assert "all_fields_matched" in result
+    assert "all_fields_matched" not in result  # removed in #287
 
     # Check field scores
     assert "name" in result["field_scores"]
@@ -46,7 +46,7 @@ def test_structured_model_compare_with_exact_match():
     assert result["field_scores"]["name"] == 1.0
     assert result["field_scores"]["age"] == 1.0
     assert result["overall_score"] == 1.0
-    assert result["all_fields_matched"] is True
+    assert result["overall_score"] == 1.0
 
     print("✓ Exact match test passed")
     print(f"Result: {result}")
@@ -62,7 +62,7 @@ def test_structured_model_compare_with_partial_match():
     # Check result structure
     assert "field_scores" in result
     assert "overall_score" in result
-    assert "all_fields_matched" in result
+    assert "all_fields_matched" not in result  # removed in #287
 
     # Age should match, name should have some similarity
     assert result["field_scores"]["age"] == 1.0
@@ -89,7 +89,7 @@ def test_structured_model_compare_with_no_match():
     # Check result structure
     assert "field_scores" in result
     assert "overall_score" in result
-    assert "all_fields_matched" in result
+    assert "all_fields_matched" not in result  # removed in #287
 
     # Fields should not match
     assert result["field_scores"]["age"] == 0.0  # ExactComparator with different values

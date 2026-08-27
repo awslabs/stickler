@@ -18,7 +18,7 @@ from enum import Enum, IntEnum
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import stickler
 from stickler.structured_object_evaluator.models.comparable_field import (
@@ -953,3 +953,81 @@ class TestDumpModeEquivalence:
         native = MEval.from_json(inst.model_dump())
         json_form = MEval.from_json(inst.model_dump(mode="json"))
         assert native.compare_with(json_form)["overall_score"] == pytest.approx(1.0)
+
+
+class TestMatchedHasOneDefinition:
+    """`EvalResult.matched` is `overall_score >= match_threshold`, and nothing else.
+
+    The engine used to emit an `all_fields_matched` key that `EvalResult.matched`
+    read. That key was a quantifier over **top-level** fields only and did not
+    recurse: a nested field "matched" when its own subtree mean cleared its own
+    threshold, so a failing leaf underneath was invisible.
+
+    Two external reports read it the way its name and the documentation implied,
+    as a quantifier over every leaf, and expected opposite behaviours from each
+    other (#23 expected False when a nested item fell below its match_threshold;
+    #275 expected False when a leaf failed inside an item that paired). Removed in
+    #287 rather than redefined, because no single implementation satisfies both
+    readings.
+    """
+
+    def test_the_removed_key_is_gone_from_compare_with(self):
+        class M(StructuredModel):
+            a: str = ComparableField()
+            b: str = ComparableField()
+
+        raw = M.from_json({"a": "x", "b": "y"}).compare_with(
+            M.from_json({"a": "x", "b": "y"}), include_confusion_matrix=True
+        )
+
+        assert "all_fields_matched" not in raw
+        assert "all_fields_matched" not in raw["confusion_matrix"]["overall"]
+
+    def test_matched_follows_overall_score_and_the_threshold(self):
+        """The definition its docstring always claimed, now the one it uses."""
+
+        class M(BaseModel):
+            a: Optional[str] = None
+            b: Optional[str] = None
+
+        gt = M(a="x", b="y")
+
+        # 0.5: one of two fields wrong, under the 0.7 default
+        half = stickler.evaluate(gt, M(a="x", b="WRONG"))
+        assert half.overall_score == pytest.approx(0.5)
+        assert half.matched is False
+
+        # and it moves with the threshold rather than with a hidden field count
+        lenient = stickler.evaluate(gt, M(a="x", b="WRONG"), match_threshold=0.4)
+        assert lenient.matched is True
+
+        assert stickler.evaluate(gt, M(a="x", b="y")).matched is True
+
+    def test_a_leaf_failure_under_a_nested_field_is_not_hidden(self):
+        """The dilution the removed key allowed.
+
+        With one wrong leaf, the old flag flipped to True once enough *other*
+        leaves were correct, because the nested field's mean cleared its own
+        threshold. `overall_score` cannot do that: adding correct siblings raises
+        it, but it stays strictly below 1.0 while anything is wrong.
+        """
+
+        class Line(BaseModel):
+            a: Optional[str] = None
+            b: Optional[str] = None
+            c: Optional[str] = None
+            d: Optional[str] = None
+            e: Optional[str] = None
+            f: Optional[str] = None
+
+        class Doc(BaseModel):
+            lines: List[Line] = Field(default_factory=list)
+
+        good = {"a": "1", "b": "2", "c": "3", "d": "4", "e": "5", "f": "6"}
+        bad = {**good, "a": "WRONG"}
+
+        result = stickler.evaluate(
+            Doc(lines=[Line(**good)]), Doc(lines=[Line(**bad)])
+        )
+
+        assert result.overall_score < 1.0, "a wrong leaf must not read as perfect"

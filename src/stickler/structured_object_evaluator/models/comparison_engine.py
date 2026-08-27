@@ -109,7 +109,6 @@ class ComparisonEngine:
                     "tn": int,
                     "fn": int,
                     "similarity_score": float,
-                    "all_fields_matched": bool
                 },
                 "fields": {
                     "field_name": {
@@ -138,7 +137,6 @@ class ComparisonEngine:
                 "tn": 0,
                 "fn": 0,
                 "similarity_score": 0.0,
-                "all_fields_matched": False,
             },
             "fields": {},
             "non_matches": [],
@@ -184,14 +182,6 @@ class ComparisonEngine:
         # Calculate overall similarity score from percolated scores
         if total_weight > 0:
             result["overall"]["similarity_score"] = total_score / total_weight
-
-        # Determine all_fields_matched
-        model_fields_for_comparison = set(self.model.__class__.model_fields.keys()) - {
-            "extra_fields"
-        }
-        result["overall"]["all_fields_matched"] = len(threshold_matched_fields) == len(
-            model_fields_for_comparison
-        )
 
         return result
 
@@ -239,7 +229,6 @@ class ComparisonEngine:
             {
                 "field_scores": {"field_name": float, ...},
                 "overall_score": float,
-                "all_fields_matched": bool,
                 "confusion_matrix": {...},  # If include_confusion_matrix=True
                 "non_matches": [...],  # If document_non_matches=True
                 "field_comparisons": [...] # If field_comparisons=True
@@ -273,13 +262,11 @@ class ComparisonEngine:
         # Extract overall metrics
         overall_result = recursive_result["overall"]
         overall_score = overall_result.get("similarity_score", 0.0)
-        all_fields_matched = overall_result.get("all_fields_matched", False)
 
         # Build basic result structure
         result = {
             "field_scores": field_scores,
             "overall_score": overall_score,
-            "all_fields_matched": all_fields_matched,
         }
 
         # Add optional features using already-computed recursive result

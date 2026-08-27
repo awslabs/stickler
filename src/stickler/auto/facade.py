@@ -46,9 +46,20 @@ class EvalResult:
         self.f1: float = derived.get("cm_f1", 0.0)
         self.accuracy: float = derived.get("cm_accuracy", 0.0)
         self.confusion_matrix: Dict[str, Any] = cm
-        # True when every field scored at or above its threshold (the
-        # match_threshold knob's model-level verdict).
-        self.matched: bool = bool(raw.get("all_fields_matched", False))
+        # The `match_threshold` knob's model-level verdict: did this pair match?
+        #
+        # Defined directly rather than read from the engine's former
+        # `all_fields_matched` key, which was removed in #287. That key was a
+        # quantifier over TOP-LEVEL fields only and did not recurse, so a leaf
+        # failure inside a nested field was invisible whenever the nested field's
+        # own mean cleared its own threshold. Two external reports (#23, #275)
+        # read it as a quantifier over every leaf, which is what the docs said and
+        # what the name implies.
+        #
+        # `overall_score` is the weighted mean over the whole tree, so comparing
+        # it against `match_threshold` gives one definition that cannot disagree
+        # with the score sitting beside it.
+        self.matched: bool = self.overall_score >= spec._match_threshold
 
     def explain(self) -> Dict[str, Dict[str, Any]]:
         """Per-field config + provenance, joined with THIS pair's scores.

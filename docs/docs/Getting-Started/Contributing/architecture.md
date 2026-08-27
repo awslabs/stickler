@@ -103,8 +103,9 @@ After the field loop completes:
 # See: comparison_engine.py:181-191
 overall_score = total_score / total_weight  # Weighted average
 
-# all_fields_matched is True only when EVERY field meets its threshold
-all_fields_matched = len(threshold_matched_fields) == len(model_fields)
+# No boolean verdict is emitted. The former `all_fields_matched` counted only
+# top-level fields and did not recurse, so it read True on documents with a
+# failing nested leaf. Removed in 0.8.0.
 ```
 
 ### Extra Field Handling

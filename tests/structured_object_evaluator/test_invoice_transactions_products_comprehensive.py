@@ -132,12 +132,11 @@ class TestInvoiceTransactionsProductsComprehensive:
 
         print("\n=== Perfect Match Results ===")
         print(f"Overall similarity: {comparison_result['overall_score']:.3f}")
-        print(f"All fields matched: {comparison_result['all_fields_matched']}")
         print(f"Field score count: {len(comparison_result['field_scores'])}")
 
         # Validate perfect match
         assert comparison_result["overall_score"] == 1.0, "Perfect match should have similarity=1.0"
-        assert comparison_result["all_fields_matched"], "Perfect match should have all fields matched"
+        assert comparison_result["overall_score"] == 1.0
 
         # Check that all field scores are perfect
         for field_name, field_score in comparison_result["field_scores"].items():
@@ -359,7 +358,6 @@ class TestInvoiceTransactionsProductsComprehensive:
 
         print("\n=== Complex Mixed Scenario Results ===")
         print(f"Overall similarity: {comparison_result['overall_score']:.3f}")
-        print(f"All fields matched: {comparison_result['all_fields_matched']}")
         print(f"Field score count: {len(comparison_result['field_scores'])}")
 
         # Analyze field scores
@@ -601,7 +599,6 @@ class TestInvoiceTransactionsProductsComprehensive:
 
         print("\n=== List Length Mismatch Results ===")
         print(f"Overall similarity: {comparison_result['overall_score']:.3f}")
-        print(f"All fields matched: {comparison_result['all_fields_matched']}")
 
         # Examine the transactions field specifically
         transactions_score = comparison_result["field_scores"].get("transactions", 0.0)
@@ -668,7 +665,6 @@ class TestInvoiceTransactionsProductsComprehensive:
 
         print("\n=== Deep Nesting Field Path Analysis ===")
         print(f"Overall similarity: {comparison_result['overall_score']:.3f}")
-        print(f"All fields matched: {comparison_result['all_fields_matched']}")
         print("Field scores:")
 
         # Analyze field scores at different levels
@@ -851,7 +847,6 @@ class TestInvoiceTransactionsProductsComprehensive:
 
         print("\n=== Weighted Field Test Results ===")
         print(f"Overall similarity: {comparison_result['overall_score']:.3f}")
-        print(f"All fields matched: {comparison_result['all_fields_matched']}")
 
         # Print detailed confusion matrix structure
         def print_cm_structure(obj, prefix=""):
@@ -912,5 +907,4 @@ class TestInvoiceTransactionsProductsComprehensive:
         # Overall similarity should be high due to weighted fields
         assert comparison_result["overall_score"] > 0.9, "Overall score should be high due to high-weight matches"
 
-        # Note: all_fields_matched flag is vestigial and misleading with weighted fields
         # The meaningful data is in the confusion matrix above

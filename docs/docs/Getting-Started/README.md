@@ -76,7 +76,6 @@ print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # 0.926 - Hung
         "line_items": 0.926
       },
       "overall_score": 0.693,
-      "all_fields_matched": false
     }
     ```
 
