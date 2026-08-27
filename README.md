@@ -483,49 +483,6 @@ Controls whether similarity scores below threshold are clipped to 0.0.
 }
 ```
 
-#### `x-aws-stickler-aggregate`
-
-**Type:** `boolean`  
-**Required:** No  
-**Default:** `false`
-
-Controls whether this field's confusion matrix metrics (TP/FP/TN/FN) are included in parent-level aggregate counts.
-
-**How Aggregation Works:**
-- `true`: Field's metrics are **included** in parent's aggregate counts
-- `false`: Field's metrics are **calculated but not aggregated** to parent
-
-**When to Use:**
-
-| Setting | Use Case |
-|---------|----------|
-| `true` | Include field in overall accuracy/precision/recall calculations |
-| `false` | Exclude field from aggregate metrics (debugging, metadata, experimental fields) |
-
-**Example:**
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "invoice_id": {
-      "type": "string",
-      "description": "Include in accuracy metrics",
-      "x-aws-stickler-comparator": "ExactComparator",
-      "x-aws-stickler-threshold": 1.0,
-      "x-aws-stickler-aggregate": true
-    },
-    "debug_field": {
-      "type": "string",
-      "description": "For debugging only - don't affect metrics",
-      "x-aws-stickler-comparator": "ExactComparator",
-      "x-aws-stickler-threshold": 1.0,
-      "x-aws-stickler-aggregate": false
-    }
-  }
-}
-```
-
 ### Model-Level Extensions
 
 Add these at the root level of your JSON Schema:
@@ -581,8 +538,7 @@ Here's a production-ready invoice schema with all extensions:
       "x-aws-stickler-comparator": "ExactComparator",
       "x-aws-stickler-threshold": 1.0,
       "x-aws-stickler-weight": 3.0,
-      "x-aws-stickler-clip-under-threshold": true,
-      "x-aws-stickler-aggregate": true
+      "x-aws-stickler-clip-under-threshold": true
     },
     "customer_name": {
       "type": "string",
@@ -591,8 +547,7 @@ Here's a production-ready invoice schema with all extensions:
       "x-aws-stickler-comparator": "LevenshteinComparator",
       "x-aws-stickler-threshold": 0.8,
       "x-aws-stickler-weight": 1.5,
-      "x-aws-stickler-clip-under-threshold": false,
-      "x-aws-stickler-aggregate": true
+      "x-aws-stickler-clip-under-threshold": false
     },
     "total_amount": {
       "type": "number",
@@ -601,8 +556,7 @@ Here's a production-ready invoice schema with all extensions:
       "x-aws-stickler-comparator": "NumericComparator",
       "x-aws-stickler-threshold": 0.95,
       "x-aws-stickler-weight": 2.5,
-      "x-aws-stickler-clip-under-threshold": false,
-      "x-aws-stickler-aggregate": true
+      "x-aws-stickler-clip-under-threshold": false
     },
     "line_items": {
       "type": "array",
@@ -641,8 +595,7 @@ Here's a production-ready invoice schema with all extensions:
       "x-aws-stickler-comparator": "FuzzyComparator",
       "x-aws-stickler-threshold": 0.5,
       "x-aws-stickler-weight": 0.2,
-      "x-aws-stickler-clip-under-threshold": false,
-      "x-aws-stickler-aggregate": false
+      "x-aws-stickler-clip-under-threshold": false
     }
   },
   "required": ["invoice_id", "customer_name", "total_amount", "line_items"]
@@ -702,7 +655,6 @@ print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # ~1.0 - match
 | `x-aws-stickler-threshold` | number (0.0-1.0) | 0.5 or 1.0 | Match classification cutoff |
 | `x-aws-stickler-weight` | number (> 0.0) | 1.0 | Field importance multiplier |
 | `x-aws-stickler-clip-under-threshold` | boolean | false | Zero out low scores |
-| `x-aws-stickler-aggregate` | boolean | false | Include in parent metrics |
 | `x-aws-stickler-model-name` | string | "DynamicModel" | Generated class name |
 | `x-aws-stickler-match-threshold` | number (0.0-1.0) | 0.7 | Model-level threshold |
 

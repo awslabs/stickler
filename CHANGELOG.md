@@ -9,6 +9,20 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Removed
+
+- The deprecated `aggregate` parameter on `ComparableField`, along with its dead
+  code path (`_is_aggregate_field`, `ConfigurationHelper.is_aggregate_field`, and
+  the `parent_is_aggregate` plumbing in the confusion-matrix calculator). The
+  flag had no effect once aggregation moved to the comparison layer in
+  [#94](https://github.com/awslabs/stickler/issues/94): every node in
+  `compare_with()` output already carries an `aggregate` block summing the
+  primitive field metrics below it. Passing `aggregate=` now raises `TypeError`
+  instead of emitting a `DeprecationWarning`. A JSON Schema carrying
+  `x-aws-stickler-aggregate` still imports — the key is accepted but ignored — so
+  existing schema files keep loading.
+  ([#226](https://github.com/awslabs/stickler/issues/226))
+
 ## [0.7.0] - 2026-08-18
 
 ### Added

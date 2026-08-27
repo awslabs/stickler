@@ -190,7 +190,6 @@ Add these extensions to any property in your JSON Schema to control comparison b
 | `x-aws-stickler-threshold` | number (0.0--1.0) | 0.5 or 1.0 | Match classification cutoff |
 | `x-aws-stickler-weight` | number (> 0.0) | 1.0 | Field importance multiplier |
 | `x-aws-stickler-clip-under-threshold` | boolean | `false` | Zero out scores below threshold |
-| `x-aws-stickler-aggregate` | boolean | `false` | Include in parent-level aggregate metrics |
 | `x-aws-stickler-model-name` | string | `"DynamicModel"` | Name of the generated Python class (root level) |
 | `x-aws-stickler-match-threshold` | number (0.0--1.0) | 0.7 | Model-level matching threshold for Hungarian algorithm (root level) |
 

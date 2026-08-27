@@ -11,7 +11,6 @@ This test suite validates that the new universal aggregate field feature works c
 5. Structure is consistent across all levels
 """
 
-import warnings
 from typing import List, Optional
 
 import pytest
@@ -158,33 +157,15 @@ class TestUniversalAggregateField:
         }
 
     @pytest.mark.parametrize("value", [True, False])
-    def test_deprecation_warning_for_legacy_aggregate_parameter(self, value):
-        """Passing 'aggregate' at all warns, whichever value is given.
+    def test_aggregate_parameter_raises_type_error(self, value):
+        """The removed 'aggregate' parameter is now a hard error (issue #226).
 
-        aggregate=False used to be silent, so those callers had no signal the
-        parameter is going away and would have met a bare TypeError on the
-        1.0 removal (issue #226). The value has no effect either way.
+        Aggregation moved to the comparison layer, so the per-field flag had no
+        effect and was deprecated; 1.0 removes it, so passing it at all must
+        raise rather than warn.
         """
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-
+        with pytest.raises(TypeError, match="aggregate"):
             ComparableField(aggregate=value)
-
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            message = str(w[0].message)
-            assert "aggregate" in message
-            assert "deprecated" in message
-            assert "1.0" in message, "the warning should name the removal version"
-
-    def test_no_warning_when_aggregate_is_omitted(self):
-        """The common case stays quiet."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-
-            ComparableField(threshold=0.8)
-
-            assert [x for x in w if issubclass(x.category, DeprecationWarning)] == []
 
     def test_universal_aggregate_field_presence(self):
         """Test that aggregate fields are present at every level."""
