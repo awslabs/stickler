@@ -78,7 +78,6 @@ def demo_individual_comparison():
 
     print("\n📊 Results:")
     print(f"  Overall Score: {result['overall_score']:.3f}")
-    print(f"  All Fields Match: {result['all_fields_matched']}")
 
     print("\n📋 Field Scores:")
     for field, score in result["field_scores"].items():
@@ -137,7 +136,6 @@ def demo_list_comparison():
 
     print("\n📊 Comparison Results:")
     print(f"  Overall Score: {result['overall_score']:.3f}")
-    print(f"  All Fields Match: {result['all_fields_matched']}")
 
     print("\n📋 Field Scores:")
     for field, score in result["field_scores"].items():

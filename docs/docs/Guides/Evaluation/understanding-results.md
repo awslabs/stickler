@@ -44,7 +44,7 @@ Maps each field name to its similarity score (0.0 to 1.0). For nested objects, t
 
 ### Asking whether anything failed
 
-There is no boolean verdict on the result. A former `all_fields_matched` key was removed in 1.0: it quantified over top-level fields only and did not recurse, so a failing leaf inside a nested field was invisible whenever that field's own mean cleared its own threshold.
+`overall_score` is the scalar summary. To ask whether any leaf comparison failed, read `confusion_matrix.aggregate.fd`, which counts below-threshold leaves at every depth, and `field_comparisons` for which ones. For a single object-level verdict, `stickler.evaluate()` returns an `EvalResult` whose `matched` attribute is `overall_score >= match_threshold`.
 
 Use `overall_score` for the scalar summary, `confusion_matrix.aggregate.fd` to ask whether any leaf failed, and `EvalResult.matched` from `stickler.evaluate()` for a single object-level verdict (`overall_score >= match_threshold`).
 

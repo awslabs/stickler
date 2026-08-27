@@ -102,10 +102,6 @@ After the field loop completes:
 ```python
 # See: comparison_engine.py:181-191
 overall_score = total_score / total_weight  # Weighted average
-
-# No boolean verdict is emitted. The former `all_fields_matched` counted only
-# top-level fields and did not recurse, so it read True on documents with a
-# failing nested leaf. Removed in 0.8.0.
 ```
 
 ### Extra Field Handling

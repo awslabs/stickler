@@ -172,13 +172,11 @@ Scores percolate upward from leaf fields to the top-level result using weighted 
 3. Clipped scores are multiplied by the field weight and summed.
 4. The overall similarity is `total_weighted_score / total_weight`.
 
-There is no boolean verdict on the result. `compare_with()` used to return an
-`all_fields_matched` flag, removed in 1.0: it quantified over top-level fields
-only and did not recurse, so a failing leaf inside a nested field was invisible
-whenever that field's own mean cleared its own threshold. Use `overall_score`
-for the scalar summary, `confusion_matrix.aggregate.fd` to ask whether any leaf
-failed, and `EvalResult.matched` (`overall_score >= match_threshold`) for a
-single object-level verdict.
+To ask whether anything failed, read `confusion_matrix.aggregate.fd`, which
+counts leaf comparisons that fell below their threshold at any depth.
+`overall_score` is the scalar summary, and `EvalResult.matched` from
+`stickler.evaluate()` is the object-level verdict
+(`overall_score >= match_threshold`).
 
 For the raw object similarity used by Hungarian matching, fields absent on both sides are omitted from both totals. They remain TNs in the confusion matrix, but do not help a pair clear `match_threshold`. If no fields remain, the similarity is defined as `1.0`, because nothing disagreed.
 
