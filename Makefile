@@ -15,6 +15,23 @@ install-dev:
 test:
 	uv run pytest tests/
 
+# Execute every example end to end. Examples are onboarding material and are not
+# covered by the test suite, so a removed dict key or a renamed argument stays
+# invisible until a user hits it (issue #118).
+#
+# `examples` needs no credentials and no network. `examples-aws` adds the three
+# that call Bedrock, and requires AWS_PROFILE (or AWS_ACCESS_KEY_ID):
+#
+#     AWS_PROFILE=myprofile make examples-aws
+examples:
+	uv run python examples/run_examples.py
+
+examples-aws:
+	uv run python examples/run_examples.py --aws --bert
+
+examples-list:
+	uv run python examples/run_examples.py --list
+
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete
@@ -24,7 +41,7 @@ lint:
 	uv run ruff check --fix
 	uv run ruff format
 
-.PHONY: docs docs-build docs-install
+.PHONY: docs docs-build docs-install examples examples-aws examples-list
 
 # Install docs dependencies (mkdocs, material theme, etc.)
 docs-install:
