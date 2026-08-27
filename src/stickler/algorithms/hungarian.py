@@ -303,9 +303,9 @@ class HungarianMatcher:
             # stops. The counting below is then shared, not repeated.
             score = self._score(prepared_list1[0], prepared_list2[0])
             matched_pairs = [(0, 0, score)]
-        elif m == 0 or n == 0:
-            matched_pairs = []
         else:
+            # An empty list needs no branch of its own. match() returns no
+            # pairs for one, which is what the counting below expects.
             matched_indices, similarity_matrix = self.match(
                 prepared_list1, prepared_list2
             )
