@@ -1,22 +1,18 @@
 """The contract for the counts that ``calculate_metrics`` returns. See #231.
 
-``calculate_metrics`` derives ``fn`` and ``fp`` as ``len(list) minus tp``. So a
-pair that the assignment did produce, and that the method returns inside
-``matched_pairs``, is also counted as a false negative and as a false positive
-when its score sits below ``match_threshold``. The same pair is reported as
-matched and as missing at the same time.
+``calculate_metrics`` used to derive ``fn`` and ``fp`` as ``len(list) minus
+tp``. So a pair that the assignment did produce, and that the method returns
+inside ``matched_pairs``, was also counted as a false negative when its score
+sat below ``match_threshold``. The same pair was reported as matched and as
+missing at the same time.
 
-The rule that ``docs/docs/Advanced/hungarian-matching.md`` publishes is
-different. The assignment decides what is paired. The threshold then splits the
-paired items into TP and FD. It never puts a pair back into ``fn`` or ``fa``.
-Only an item with no partner at all becomes FN on the ground truth side or FA
-on the prediction side.
+The rule these tests hold the method to is the one
+``docs/docs/Advanced/hungarian-matching.md`` publishes. The assignment decides
+what is paired. The threshold then splits the paired items into TP and FD. It
+never puts a pair back into ``fn`` or ``fa``. Only an item with no partner at
+all becomes FN on the ground truth side or FA on the prediction side.
 
-This file is the executable form of that rule. It is written before the fix, so
-every assertion that today's code violates carries ``xfail(strict=True)``. A
-strict marker fails the suite if the assertion starts passing while the marker
-is still there, which is how the markers get removed in the same commit as the
-fix instead of being forgotten.
+This file is the executable form of that rule.
 
 The five categories, with ``m`` and ``n`` as the list lengths after the matcher
 prepares its inputs and ``k`` as the number of assigned pairs:
@@ -32,9 +28,9 @@ FA
 FP
     the rollup ``fd plus fa``, which is the value the method already returns.
 
-Callers of ``HungarianMatcher`` that read ``fn`` today read a value that will
-drop by ``fd``. The old value is recoverable as ``fn plus fd``, and one test
-below pins that identity so the migration note stays true.
+A caller that read ``fn`` before this change now reads a value lower by ``fd``.
+The old value is recoverable as ``fn plus fd``, and one test below pins that
+identity so the migration note stays true.
 """
 
 import pytest
@@ -111,14 +107,12 @@ class TestTheFullKeySetIsAlwaysPresent:
     which keys it can read.
     """
 
-    @pytest.mark.xfail(strict=True, reason="#231 fd and fa are not returned yet")
     @pytest.mark.parametrize("ground_truth, prediction", PLAIN_SHAPES)
     def test_every_input_shape_carries_the_full_key_set(self, ground_truth, prediction):
         result = _matcher(0.5).calculate_metrics(ground_truth, prediction)
 
         assert set(result) == CONTRACT_KEYS
 
-    @pytest.mark.xfail(strict=True, reason="#231 fd and fa are not returned yet")
     def test_a_scalar_input_carries_the_full_key_set(self):
         """A bare value stands for a list of one, and reports like one."""
         result = _matcher(0.5).calculate_metrics("apple", "apple")
@@ -129,13 +123,12 @@ class TestTheFullKeySetIsAlwaysPresent:
 class TestAPairedItemIsNeverAlsoMissing:
     """The defect in #231, stated as behaviour rather than as arithmetic."""
 
-    @pytest.mark.xfail(strict=True, reason="#231 a low score pair is fn and fp today")
     def test_a_pair_below_the_threshold_is_fd_and_not_fn(self):
         """Two lists of equal length pair every item, so nothing is missing.
 
         Every pair scores zero here, which is below the threshold, so both
-        pairs are false discoveries. Today the method reports ``fn`` as two,
-        which says both ground truth items have no partner while also
+        pairs are false discoveries. The old formula reported ``fn`` as two,
+        which said both ground truth items had no partner while the method was
         returning both of them inside ``matched_pairs``.
         """
         result = _matcher(0.5).calculate_metrics(_gt(2), _pred(2))
@@ -147,7 +140,6 @@ class TestAPairedItemIsNeverAlsoMissing:
         assert result["fa"] == 0, "a paired prediction item is not an extra"
         assert result["fp"] == 2, "the fp rollup is unchanged"
 
-    @pytest.mark.xfail(strict=True, reason="#231 a low score pair is fn and fp today")
     def test_one_pair_below_the_threshold_is_fd_and_not_fn(self):
         """The same rule on the fast path for one item on each side."""
         result = _matcher(0.5).calculate_metrics(_gt(1), _pred(1))
@@ -159,7 +151,6 @@ class TestAPairedItemIsNeverAlsoMissing:
         assert result["fa"] == 0
         assert result["fp"] == 1
 
-    @pytest.mark.xfail(strict=True, reason="#231 fd and fa are not returned yet")
     def test_an_unpaired_ground_truth_item_is_fn(self):
         """Only an item with no partner reaches ``fn``.
 
@@ -173,7 +164,6 @@ class TestAPairedItemIsNeverAlsoMissing:
         assert result["fn"] == 1
         assert result["fa"] == 0
 
-    @pytest.mark.xfail(strict=True, reason="#231 fd and fa are not returned yet")
     def test_an_unpaired_prediction_item_is_fa(self):
         """The mirror case. An extra prediction is a false alarm."""
         result = _matcher(0.5).calculate_metrics(["apple"], ["apple", "QQQ"])
@@ -183,15 +173,14 @@ class TestAPairedItemIsNeverAlsoMissing:
         assert result["fn"] == 0
         assert result["fa"] == 1
 
-    @pytest.mark.xfail(strict=True, reason="#231 fd and fa are not returned yet")
     def test_fd_and_fn_can_both_be_present(self):
         """A low score pair and a missing item are different things.
 
         Three ground truth values against two predictions. One prediction
         matches and clears the threshold. The other pairs with a value it
         shares nothing with, so that pair is a false discovery. The third
-        ground truth value has no partner, so it is a false negative. Today
-        both of them land in ``fn``, which makes the two cases impossible to
+        ground truth value has no partner, so it is a false negative. Both of
+        them used to land in ``fn``, which made the two cases impossible to
         tell apart.
         """
         result = _matcher(0.5).calculate_metrics(
@@ -213,7 +202,6 @@ class TestTheCountsPartitionTheInputs:
     is counted twice and none is dropped.
     """
 
-    @pytest.mark.xfail(strict=True, reason="#231 fd and fa are not returned yet")
     @pytest.mark.parametrize("ground_truth, prediction", PLAIN_SHAPES)
     @pytest.mark.parametrize("threshold", [0.0, 0.5, 1.0])
     def test_counts_partition_every_shape(self, ground_truth, prediction, threshold):
@@ -235,20 +223,18 @@ class TestTheCountsPartitionTheInputs:
 class TestTheOldFnValueIsRecoverable:
     """The migration note for callers, pinned as a test.
 
-    A caller that reads ``fn`` today gets a number that mixes missing items and
-    low score pairs. After the fix the two are separate. The old number is
-    ``fn plus fd``, and this must stay true for every shape so the note in the
-    changelog does not go stale.
+    The old ``fn`` mixed missing items and low score pairs. The two are now
+    separate keys, and the old number is ``fn plus fd``. That must hold for
+    every shape, so the note in the changelog does not go stale.
     """
 
-    @pytest.mark.xfail(strict=True, reason="#231 fd is not returned yet")
     @pytest.mark.parametrize("ground_truth, prediction", PLAIN_SHAPES)
     @pytest.mark.parametrize("threshold", [0.0, 0.5, 1.0])
     def test_old_fn_equals_new_fn_plus_fd(self, ground_truth, prediction, threshold):
         m = len(ground_truth)
         result = _matcher(threshold).calculate_metrics(ground_truth, prediction)
 
-        # ``m minus tp`` is the formula the method uses today.
+        # ``m minus tp`` is the formula the method used before the fix.
         old_fn = m - result["tp"]
 
         assert old_fn == result["fn"] + result["fd"]
@@ -257,12 +243,11 @@ class TestTheOldFnValueIsRecoverable:
 class TestTheRatesFollowTheCountsThatAreReturned:
     """A caller can recompute the rates from the counts in the same dict.
 
-    Nothing in the suite checks this today. The rates are computed from list
-    lengths rather than from the counts, which is correct arithmetic but a
-    different route, so the two can drift apart without any test noticing.
+    Nothing else in the suite checks this. The method computes the rates from
+    the list lengths rather than from the counts, which is correct arithmetic
+    but a different route, so the two can drift apart unnoticed.
     """
 
-    @pytest.mark.xfail(strict=True, reason="#231 fd is not returned yet")
     @pytest.mark.parametrize("ground_truth, prediction", PLAIN_SHAPES)
     @pytest.mark.parametrize("threshold", [0.0, 0.5, 1.0])
     def test_rates_agree_with_the_published_formulas(
@@ -271,9 +256,13 @@ class TestTheRatesFollowTheCountsThatAreReturned:
         result = _matcher(threshold).calculate_metrics(ground_truth, prediction)
         tp, fp, fn, fd = (result[key] for key in ("tp", "fp", "fn", "fd"))
 
-        # An empty side has no items to be right or wrong about, so the rate on
-        # that side is one. This is the limit the method already returns.
-        expected_precision = tp / (tp + fp) if tp + fp else float(not prediction)
+        # Both denominators can be zero, and the method already picks a limit
+        # for each. Precision is one only when there is nothing on either side.
+        # An empty prediction against a ground truth that holds items scores
+        # zero, so saying nothing never reads as perfect. Recall is one
+        # whenever there was nothing to find.
+        nothing_at_all = not ground_truth and not prediction
+        expected_precision = tp / (tp + fp) if tp + fp else float(nothing_at_all)
         expected_recall = tp / (tp + fn + fd) if tp + fn + fd else 1.0
         rate_sum = expected_precision + expected_recall
         expected_f1 = (
@@ -294,7 +283,6 @@ class TestTheFastPathAgreesWithTheGeneralPath:
     pinned on all of them.
     """
 
-    @pytest.mark.xfail(strict=True, reason="#231 fd and fa are not returned yet")
     @pytest.mark.parametrize(
         "threshold", [0.0, 0.1, 0.5, 0.66, 0.6666666666666667, 0.7, 0.9, 1.0]
     )
@@ -316,7 +304,6 @@ class TestTheFastPathAgreesWithTheGeneralPath:
 class TestTheThresholdBoundaryIsInclusive:
     """A score equal to the threshold is a TP. Just below it is an FD."""
 
-    @pytest.mark.xfail(strict=True, reason="#231 fd is not returned yet")
     def test_a_score_equal_to_the_threshold_is_a_true_positive(self):
         """``abc`` against ``abd`` scores two thirds, exactly the threshold."""
         result = _matcher(0.6666666666666667).calculate_metrics(["abc"], ["abd"])
@@ -325,7 +312,6 @@ class TestTheThresholdBoundaryIsInclusive:
         assert result["tp"] == 1
         assert result["fd"] == 0
 
-    @pytest.mark.xfail(strict=True, reason="#231 fd is not returned yet")
     def test_a_score_just_below_the_threshold_is_a_false_discovery(self):
         result = _matcher(0.6666666666666667 + 1e-9).calculate_metrics(["abc"], ["abd"])
 
@@ -335,12 +321,12 @@ class TestTheThresholdBoundaryIsInclusive:
 
 
 class TestTheValuesThatMustNotChange:
-    """A guard on the rest of the contract. These pass before and after.
+    """A guard on the rest of the contract. These passed before the fix too.
 
-    #231 changes the meaning of one key. Everything else in the returned dict
-    keeps the value it has today, and these assertions are what make that
-    claim checkable rather than asserted in a commit message. They carry no
-    ``xfail`` marker on purpose.
+    #231 changes the meaning of one key. Every other value in the returned dict
+    stays what it was, and these assertions are what make that claim checkable
+    rather than asserted in prose. Read a failure here as a change in scope,
+    not as a test to update.
     """
 
     @pytest.mark.parametrize("ground_truth, prediction", PLAIN_SHAPES)
