@@ -209,7 +209,7 @@ def test_export_preserves_metadata():
 
     Still exercises the deprecated ``aggregate`` parameter on purpose: it is
     part of the serialized export format, so the round trip has to keep working
-    until the field is removed in 0.8.0 (issue #226). The warning is expected
+    until the field is removed in 1.0 (issue #226). The warning is expected
     here and suppressed rather than silenced globally.
     """
 
