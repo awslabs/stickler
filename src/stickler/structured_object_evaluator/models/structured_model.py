@@ -1545,7 +1545,15 @@ class StructuredModel(BaseModel):
 
         Args:
             other: Another instance of the same model to compare with
-            include_confusion_matrix: Whether to include confusion matrix calculations
+            include_confusion_matrix: Whether to include confusion matrix
+                calculations. The result carries two rollup nodes answering
+                different questions: `overall` gives object verdicts (was the
+                pairing genuine or spurious), while `aggregate` gives leaf
+                detail for the objects that were comparable. An object below
+                `match_threshold` is one FD and is not descended into, so
+                lowering `match_threshold` is how you get leaf detail for a
+                marginal object. See
+                https://awslabs.github.io/stickler/Advanced/aggregate-metrics/
             document_non_matches: Whether to document non-matches for analysis
             evaluator_format: Whether to format results for the evaluator
             recall_with_fd: If True, include FD in recall denominator (TP/(TP+FN+FD))

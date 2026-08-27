@@ -319,30 +319,8 @@ Each release links to full notes on the
 
   ```python
   clean = (
-      cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
-      and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
-  )
-  ```
-
-  A below-threshold object is a spurious non-match, so not descending into it is
-  deliberate: `overall` carries the object verdict and `aggregate` carries leaf
-  detail for the objects that were comparable. A caller wanting leaf detail for a
-  marginal object lowers `match_threshold` until it qualifies. See
-  [#288](https://github.com/awslabs/stickler/issues/288) for the naming.
-
-
-  Replacements, all of which already existed: `overall_score` for the scalar
-  summary, `EvalResult.matched` for a single object-level verdict, and
-  `field_comparisons` for the individual failures. To ask whether anything failed
-  at all, both rollup nodes have to be read, because a list item that scores
-  below `match_threshold` is recorded as one `fd` on `confusion_matrix.overall`
-  and is not descended into, so its leaves never appear under
-  `confusion_matrix.aggregate`:
-
-  ```python
-  clean = (
-      cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
-      and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
+      cm['aggregate']['fp'] + cm['aggregate']['fn'] == 0
+      and cm['overall']['fp'] + cm['overall']['fn'] == 0
   )
   ```
 
@@ -522,6 +500,28 @@ Each release links to full notes on the
   populated skips the annotation entirely (0.537s, within noise of the original).
   A test pins the superset property so adding a case to either rule without
   widening the guard fails loudly rather than silently skipping the check.
+
+### Documentation
+
+- Documented what the two confusion-matrix rollup nodes answer. `overall` gives
+  object verdicts (was this pairing genuine or spurious); `aggregate` gives leaf
+  detail for the objects that were comparable. `match_threshold` is the line
+  between them: an object below it is a single FD, a spurious non-match, and is
+  not descended into, so a caller wanting leaf detail for a marginal object
+  lowers `match_threshold` until the object qualifies as comparable.
+
+  Both nodes were previously described only mechanically ("this node's own direct
+  classification" / "sums all primitive-field classifications beneath"), which
+  said nothing about which to read for which question, or that they diverge on
+  any model with nesting. They coincide only where there is no accepted subtree
+  to expand: a flat model, or a subtree rejected outright.
+
+  Also documents that `EvalResult.precision`, `.recall`, `.f1` and `.accuracy`
+  are the object-level metrics, read from `confusion_matrix.overall.derived`, so
+  `precision` of `1.0` beside an `overall_score` of `0.9667` is two correct
+  answers to two different questions rather than a contradiction. The naming is
+  under review for 1.0 in
+  [#288](https://github.com/awslabs/stickler/issues/288).
 
 ## [0.7.0] - 2026-08-18
 

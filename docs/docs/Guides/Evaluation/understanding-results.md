@@ -98,26 +98,88 @@ The distinction between FA and FD is important for debugging:
 
 The `confusion_matrix` object has four keys:
 
-- **`overall`** -- Object-level metrics for the current hierarchical level.
+- **`overall`** -- Object-level metrics for the current hierarchical level. Counts item pairings, not leaves.
 - **`fields`** -- Field-by-field breakdown, with nested structure for objects and lists.
 - **`non_matches`** -- Populated when `document_non_matches=True` (empty otherwise).
-- **`aggregate`** -- Sum of all primitive field metrics recursively below this node.
+- **`aggregate`** -- Primitive field metrics summed recursively below this node, for the subtrees the traversal reached. See the caveat below.
 
 ### `overall` vs `aggregate`
 
-These serve different purposes:
+The two nodes answer two different questions, and you generally want both:
 
-- **`overall`**: Counts at the current level only. For a list of 2 line items that both matched, `tp = 2`.
-- **`aggregate`**: Sums all primitive fields recursively below. For 2 line items with 3 fields each, all matching: `tp = 6`.
+- **`overall`**: were these objects comparable at all? For a list of 5 line items that each paired above `match_threshold`, `tp = 5`.
+- **`aggregate`**: among the objects that *were* comparable, how many individual leaves landed? For those same 5 items with 6 fields each, `tp` counts up to 30.
 
-The `aggregate` field exists at every node in the confusion matrix hierarchy, making it easy to get field-level granularity at any depth.
+`match_threshold` is the line between them. An object scoring below it is classified as a single **false discovery**: a spurious non-match, counted once at the item level and not descended into. Leaf detail is not reported for it, because enumerating the parts of an object you have already rejected as a whole would be counting a thing you declared not comparable.
+
+Two examples make the split concrete.
+
+**A wrong leaf inside a comparable object.** Five line items of six fields each, one field of one item wrong. That item scores 5/6, clears the 0.7 threshold, and is comparable:
+
+```
+overall_score   0.9667
+
+cm['overall']     tp=5   fd=0   P=1.0000  R=1.0000  F1=1.0000
+cm['aggregate']   tp=29  fd=1   P=0.9667  R=1.0000  F1=0.9831
+```
+
+`overall` reports five comparable objects and no spurious matches, which is exactly what it measures. The wrong field is one of 30 leaves, and `aggregate` is where you see it.
+
+**An object that was not comparable.** Two items of six fields, two fields of one item wrong. That item scores 4/6, below the threshold:
+
+```
+cm['overall']     tp=1   fd=1
+cm['aggregate']   tp=6   fd=0
+```
+
+`overall` records the spurious non-match. `aggregate` reports the six leaves of the one comparable object, and none of them failed. The rejected object contributes no leaf rows.
+
+#### Getting leaf detail for a marginal object
+
+If you want those leaves counted, lower `match_threshold` so the object qualifies as comparable. Same data as above:
+
+```
+match_threshold   comparable?   overall            aggregate
+0.70              no            tp=0 fd=1          tp=0 fd=1
+0.66              yes           tp=1 fd=0          tp=4 fd=2
+```
+
+At `0.66` the object is comparable, so its six leaves are scored individually and the two bad ones appear as `fd`. This is the knob for how much leaf detail you get: `match_threshold` decides what counts as the same object, and leaf reporting follows from that.
+
+#### Which node answers which question
+
+| Question | Node |
+|---|---|
+| Were the objects comparable, and how many were spurious? | `overall` |
+| Among comparable objects, which leaves landed? | `aggregate` |
+| How many list items did the model find? | `overall` |
+| Did anything at all fail? | both, see below |
+
+Because the two nodes scope different things, a complete "did anything fail" check reads both:
 
 ```python
-# Total primitive field metrics across the entire comparison
+clean = (
+    cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
+    and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
+)
+```
+
+`overall` is the only node carrying `fa`, the fields the prediction invented, since those correspond to no ground truth leaf.
+
+!!! note "`EvalResult.precision` is the object-level metric"
+
+    `EvalResult.precision`, `.recall`, `.f1` and `.accuracy` from `stickler.evaluate()` come from `cm['overall']['derived']`, so they answer "how many objects were comparable rather than spurious". On the first example above `result.precision` is `1.0` while `result.overall_score` is `0.9667`: the five items were all comparable, and the score is a weighted mean over the leaves. Both numbers are right for what they measure. For leaf-level precision, read `result.confusion_matrix['aggregate']['derived']`.
+
+    That two similar-looking numbers on one object mean different things is tracked in [#288](https://github.com/awslabs/stickler/issues/288), where the naming is under review for 1.0.
+
+`aggregate` exists at every node, so the same access pattern gives field-level granularity at any depth:
+
+```python
+# Leaf-level counts across the entire comparison
 total = cm['aggregate']
 print(f"Total TP: {total['tp']}, Total FP: {total['fp']}")
 
-# Metrics for a specific section
+# The same question, scoped to one section
 contact = cm['fields']['contact']['aggregate']
 print(f"Contact section F1: {contact['derived']['cm_f1']:.3f}")
 ```
