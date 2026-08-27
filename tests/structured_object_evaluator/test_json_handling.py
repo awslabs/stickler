@@ -162,7 +162,6 @@ def test_extra_fields_handling():
 
     # Overall score should be perfect
     assert comparison["overall_score"] == 1.0
-    assert comparison["overall_score"] == 1.0
 
 
 def test_compare_json_utility():

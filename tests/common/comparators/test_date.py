@@ -1327,7 +1327,6 @@ class TestInStructuredModel:
         pred = Event(event_date="Jan 1, 2025")
         result = gt.compare_with(pred)
         assert result["overall_score"] == 1.0
-        assert result["overall_score"] == 1.0
 
     def test_partial_year_via_threshold(self):
         """Surface Tier 3 (0.7) through a ComparableField with threshold<=0.7."""

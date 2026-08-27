@@ -97,7 +97,6 @@ class TestCompareStructuredModels:
 
         # Check the result
         assert result["overall_score"] == 1.0
-        assert result["overall_score"] == 1.0
         assert result["field_scores"]["name"] == 1.0
         assert result["field_scores"]["age"] == 1.0
 
@@ -116,7 +115,6 @@ class TestCompareJSON:
 
         # Check the result
         assert result["overall_score"] == 1.0
-        assert result["overall_score"] == 1.0
         assert result["field_scores"]["name"] == 1.0
         assert result["field_scores"]["age"] == 1.0
 
@@ -133,4 +131,3 @@ class TestCompareJSON:
         assert "error" in result
         assert result["overall_score"] == 0.0
         assert result["field_scores"] == {}
-        assert result["overall_score"] < 1.0

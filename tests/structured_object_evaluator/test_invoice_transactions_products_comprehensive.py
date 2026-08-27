@@ -136,7 +136,6 @@ class TestInvoiceTransactionsProductsComprehensive:
 
         # Validate perfect match
         assert comparison_result["overall_score"] == 1.0, "Perfect match should have similarity=1.0"
-        assert comparison_result["overall_score"] == 1.0
 
         # Check that all field scores are perfect
         for field_name, field_score in comparison_result["field_scores"].items():

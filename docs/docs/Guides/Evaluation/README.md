@@ -249,7 +249,7 @@ print(f"Overall Score: {result['overall_score']:.3f}")
         "customer_name": 0.0,
         "total_amount": 1.0
       },
-      "overall_score": 0.786,
+      "overall_score": 0.786
     }
     ```
 

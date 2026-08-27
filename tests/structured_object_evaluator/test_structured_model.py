@@ -100,7 +100,6 @@ class TestStructuredModels:
 
         result = gt.compare_with(exact_match)
         assert result["overall_score"] == 1.0
-        assert result["overall_score"] == 1.0
         # Check that score is above the threshold
         assert result["overall_score"] >= Person.match_threshold
 
@@ -179,7 +178,6 @@ class TestStructuredModels:
         )
 
         result = gt.compare_with(exact_match)
-        assert result["overall_score"] == 1.0
         assert result["overall_score"] == 1.0
         # Check that score is perfect (1.0)
         assert result["overall_score"] == 1.0

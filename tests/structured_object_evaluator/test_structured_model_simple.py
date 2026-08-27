@@ -46,7 +46,6 @@ def test_structured_model_compare_with_exact_match():
     assert result["field_scores"]["name"] == 1.0
     assert result["field_scores"]["age"] == 1.0
     assert result["overall_score"] == 1.0
-    assert result["overall_score"] == 1.0
 
     print("✓ Exact match test passed")
     print(f"Result: {result}")

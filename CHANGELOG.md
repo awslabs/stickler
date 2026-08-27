@@ -13,6 +13,13 @@ Each release links to full notes on the
 
 ### Fixed
 
+  Replacements, all of which already existed: `overall_score` for the scalar
+  summary, `confusion_matrix.aggregate.fd + fn == 0` to ask whether every ground
+  truth leaf landed (`fd` is a leaf that scored below its threshold, `fn` a leaf
+  absent from the prediction, so reading `fd` alone misses missing fields),
+  `field_comparisons` for which one, and `EvalResult.matched` for a single
+  object-level verdict.
+
 - `overall_score` and the confusion matrix no longer disagree about a field that
   is absent on both sides. The two read different scores for the same object
   pair: `overall_score` takes the threshold-corrected score, while object
@@ -122,9 +129,16 @@ Each release links to full notes on the
   defined directly rather than read from the removed `all_fields_matched` key.
   This is the definition its docstring already claimed ("the `match_threshold`
   knob's model-level verdict"), and it cannot disagree with the `overall_score`
-  sitting beside it. The two definitions did diverge: with one of three fields
-  wrong the old key read `False` while `overall_score >= match_threshold` was
-  `True`.
+  sitting beside it. The two definitions do diverge: with one wrong field among
+  six the score is `0.8333`, so the old key read `False` where
+  `overall_score >= match_threshold` reads `True`.
+
+- `EvalResult.matched` now honours a `StructuredModel` subclass's own declared
+  `match_threshold` when the caller does not pass one to `evaluate` / `eval_for`.
+  It previously always compared against the facade default of `0.7`, so a model
+  declaring `match_threshold = 0.95` reported a `0.80` pair as matched. Passing
+  `match_threshold=` explicitly still overrides the declaration, and a class that
+  declares nothing is unaffected.
 
 - JSON Schema import now delegates standard types, local references, combiners,
   and constraint parsing to `json-schema-to-pydantic`. Stickler retains a narrow

@@ -1010,6 +1010,12 @@ class TestMatchedHasOneDefinition:
         leaves were correct, because the nested field's mean cleared its own
         threshold. `overall_score` cannot do that: adding correct siblings raises
         it, but it stays strictly below 1.0 while anything is wrong.
+
+        `matched` is deliberately True here. It is a score verdict, not a leaf
+        quantifier, so it answers "is this pair close enough" and not "did every
+        leaf land" -- that second question is `aggregate.fd + fn`, which is the
+        replacement #275 is pointed at. Both are pinned below so neither can
+        drift into the other's job.
         """
 
         class Line(BaseModel):
@@ -1026,8 +1032,74 @@ class TestMatchedHasOneDefinition:
         good = {"a": "1", "b": "2", "c": "3", "d": "4", "e": "5", "f": "6"}
         bad = {**good, "a": "WRONG"}
 
-        result = stickler.evaluate(
-            Doc(lines=[Line(**good)]), Doc(lines=[Line(**bad)])
-        )
+        result = stickler.evaluate(Doc(lines=[Line(**good)]), Doc(lines=[Line(**bad)]))
 
         assert result.overall_score < 1.0, "a wrong leaf must not read as perfect"
+
+        # A score verdict, and 0.8333 clears the 0.7 default. Pinned so the
+        # design call is explicit rather than incidental.
+        assert result.overall_score == pytest.approx(5 / 6)
+        assert result.matched is True
+
+        # The question `matched` does not answer. This is what a caller reads
+        # instead of the removed key, and it does see the one bad leaf.
+        aggregate = result.confusion_matrix["aggregate"]
+        assert aggregate["fd"] + aggregate["fn"] == 1
+
+    def test_a_declared_match_threshold_wins_over_the_default(self):
+        """A StructuredModel's own `match_threshold` reaches `matched`.
+
+        `eval_for` promises a StructuredModel is used AS CONFIGURED. Before this
+        was pinned, the facade compared against its own 0.7 default no matter
+        what the class declared, so a model declaring 0.95 called a 0.80 pair
+        matched. The removed `all_fields_matched` had honoured the model's
+        per-field thresholds, so this was a regression and not just the
+        documented redefinition.
+        """
+
+        class Strict(StructuredModel):
+            match_threshold = 0.95
+            a: Optional[str] = ComparableField(default=None)
+            b: Optional[str] = ComparableField(default=None)
+            c: Optional[str] = ComparableField(default=None)
+            d: Optional[str] = ComparableField(default=None)
+            e: Optional[str] = ComparableField(default=None)
+
+        class Silent(StructuredModel):
+            """Declares nothing, so it inherits the ClassVar default."""
+
+            a: Optional[str] = ComparableField(default=None)
+            b: Optional[str] = ComparableField(default=None)
+            c: Optional[str] = ComparableField(default=None)
+            d: Optional[str] = ComparableField(default=None)
+            e: Optional[str] = ComparableField(default=None)
+
+        good = {"a": "x", "b": "x", "c": "x", "d": "x", "e": "x"}
+        bad = {**good, "e": "WRONG"}
+
+        assert stickler.eval_for(Strict)._match_threshold == 0.95
+        assert stickler.eval_for(Silent)._match_threshold == 0.7
+
+        # One wrong field of five: 0.80, which clears 0.7 but not 0.95.
+        strict = stickler.evaluate(Strict(**good), Strict(**bad))
+        assert strict.overall_score == pytest.approx(0.8)
+        assert strict.matched is False
+
+        silent = stickler.evaluate(Silent(**good), Silent(**bad))
+        assert silent.overall_score == pytest.approx(0.8)
+        assert silent.matched is True
+
+        # An explicit argument still beats the declaration, in both directions.
+        assert stickler.eval_for(Strict, match_threshold=0.5)._match_threshold == 0.5
+        assert (
+            stickler.evaluate(
+                Strict(**good), Strict(**bad), match_threshold=0.5
+            ).matched
+            is True
+        )
+        assert (
+            stickler.evaluate(
+                Silent(**good), Silent(**bad), match_threshold=0.99
+            ).matched
+            is False
+        )

@@ -24,7 +24,7 @@ result = ground_truth.compare_with(prediction)
     "total_amount": 1.0,
     "notes": 0.62
   },
-  "overall_score": 0.92,
+  "overall_score": 0.92
 }
 ```
 
@@ -44,9 +44,16 @@ Maps each field name to its similarity score (0.0 to 1.0). For nested objects, t
 
 ### Asking whether anything failed
 
-`overall_score` is the scalar summary. To ask whether any leaf comparison failed, read `confusion_matrix.aggregate.fd`, which counts below-threshold leaves at every depth, and `field_comparisons` for which ones. For a single object-level verdict, `stickler.evaluate()` returns an `EvalResult` whose `matched` attribute is `overall_score >= match_threshold`.
+`overall_score` is the scalar summary, and for a single object-level verdict `stickler.evaluate()` returns an `EvalResult` whose `matched` attribute is `overall_score >= match_threshold`.
 
-Use `overall_score` for the scalar summary, `confusion_matrix.aggregate.fd` to ask whether any leaf failed, and `EvalResult.matched` from `stickler.evaluate()` for a single object-level verdict (`overall_score >= match_threshold`).
+To ask whether any individual leaf went wrong, read the counts under `confusion_matrix.aggregate`, which cover every depth. Two categories mean "a ground truth leaf did not land":
+
+- `fd`: the leaf was compared and scored below its threshold
+- `fn`: the leaf is absent from the prediction, so there was nothing to compare
+
+So `fd + fn == 0` is the question "did every ground truth leaf land", and `field_comparisons` names the ones that did not. Reading `fd` alone is not enough: a missing field scores 0.0 yet is counted as `fn`, leaving `fd` at 0.
+
+Fields the prediction invented are counted as `fa` on the `overall` node rather than under `aggregate`, because they correspond to no ground truth leaf.
 
 ---
 

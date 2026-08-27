@@ -18,12 +18,17 @@ For a batch loop, compile once with :func:`eval_for` and reuse the returned
 
 from __future__ import annotations
 
-from typing import Any, Dict, Type, Union
+from typing import Any, Dict, Optional, Type, Union
 
 from pydantic import BaseModel
 
 from ..structured_object_evaluator.models.structured_model import StructuredModel
 from .builder import specs_for, structured_model_for
+
+#: Object-level match threshold applied when neither the caller nor the model
+#: declares one. ``None`` is the "caller said nothing" sentinel on the public
+#: entry points, which lets a ``StructuredModel``'s own declaration win.
+DEFAULT_MATCH_THRESHOLD = 0.7
 
 
 class EvalResult:
@@ -58,8 +63,10 @@ class EvalResult:
         #
         # `overall_score` is the weighted mean over the whole tree, so comparing
         # it against `match_threshold` gives one definition that cannot disagree
-        # with the score sitting beside it.
-        self.matched: bool = self.overall_score >= spec._match_threshold
+        # with the score sitting beside it. The threshold is whatever the spec
+        # resolved: the caller's argument, else a StructuredModel's own declared
+        # `match_threshold`, else DEFAULT_MATCH_THRESHOLD. See `eval_for`.
+        self.matched: bool = bool(self.overall_score >= spec._match_threshold)
 
     def explain(self) -> Dict[str, Dict[str, Any]]:
         """Per-field config + provenance, joined with THIS pair's scores.
@@ -116,7 +123,7 @@ class EvalSpec:
         eval_model: Type,
         *,
         weight_hints: bool,
-        match_threshold: float = 0.7,
+        match_threshold: float = DEFAULT_MATCH_THRESHOLD,
     ):
         self.source_cls = source_cls
         self.eval_model = eval_model
@@ -183,7 +190,7 @@ def eval_for(
     cls: Type[BaseModel],
     *,
     weight_hints: bool = False,
-    match_threshold: float = 0.7,
+    match_threshold: Optional[float] = None,
 ) -> EvalSpec:
     """Compile a reusable :class:`EvalSpec` for a pydantic class.
 
@@ -199,18 +206,29 @@ def eval_for(
             ``List[Model]`` fields, the Hungarian TP/FN/FA classification of
             each element (at every nesting level). It does NOT change
             per-field similarity scores or ``overall_score``.
+
+            Left unset, a ``StructuredModel`` subclass's own declared
+            ``match_threshold`` wins, so the AS CONFIGURED promise above holds
+            for this knob too; any other class gets
+            ``DEFAULT_MATCH_THRESHOLD``. Passing a value overrides both.
     """
     if isinstance(cls, type) and issubclass(cls, StructuredModel):
         # Explicit configuration wins: never re-infer over a model the user
         # already tuned. weight_hints has nothing to apply to here.
-        return EvalSpec(cls, cls, weight_hints=False, match_threshold=match_threshold)
+        #
+        # `match_threshold` is a ClassVar on StructuredModel defaulting to
+        # DEFAULT_MATCH_THRESHOLD, so reading it needs no hasattr guard and an
+        # undeclared subclass lands on the same default a plain BaseModel gets.
+        resolved = cls.match_threshold if match_threshold is None else match_threshold
+        return EvalSpec(cls, cls, weight_hints=False, match_threshold=resolved)
+    resolved = DEFAULT_MATCH_THRESHOLD if match_threshold is None else match_threshold
     eval_model = structured_model_for(
         cls,
         weight_hints=weight_hints,
-        match_threshold=match_threshold,
+        match_threshold=resolved,
     )
     return EvalSpec(
-        cls, eval_model, weight_hints=weight_hints, match_threshold=match_threshold
+        cls, eval_model, weight_hints=weight_hints, match_threshold=resolved
     )
 
 
@@ -219,7 +237,7 @@ def evaluate(
     prediction: BaseModel,
     *,
     weight_hints: bool = False,
-    match_threshold: float = 0.7,
+    match_threshold: Optional[float] = None,
 ) -> EvalResult:
     """Evaluate a prediction against ground truth with zero configuration.
 
@@ -233,7 +251,9 @@ def evaluate(
         weight_hints: Enable name-token weight heuristics (default off).
         match_threshold: The similarity score at or above which an object
             counts as a match (drives ``EvalResult.matched`` and list-element
-            TP/FN classification; does not change similarity scores).
+            TP/FN classification; does not change similarity scores). Left
+            unset, a ``StructuredModel``'s own declaration wins; see
+            :func:`eval_for`.
 
     Returns:
         An :class:`EvalResult` with ``overall_score``, ``precision``,

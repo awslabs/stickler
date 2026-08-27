@@ -35,14 +35,12 @@ class TestEdgeCases:
 
         result = person1.compare_with(person2)
         assert result["overall_score"] == 1.0
-        assert result["overall_score"] == 1.0
 
         # Test with None value in one object
         person3 = Person(name="John Doe", age=30, email=None)
         person4 = Person(name="John Doe", age=None, email=None)
 
         result = person3.compare_with(person4)
-        assert result["overall_score"] < 1.0
         assert result["overall_score"] < 1.0
 
     def test_empty_strings(self):
@@ -53,14 +51,12 @@ class TestEdgeCases:
 
         result = person1.compare_with(person2)
         assert result["overall_score"] == 1.0
-        assert result["overall_score"] == 1.0
 
         # Test with empty string in one object
         person3 = Person(name="John Doe", age=30, email="john@example.com")
         person4 = Person(name="John Doe", age=30, email="")
 
         result = person3.compare_with(person4)
-        assert result["overall_score"] < 1.0
         assert result["overall_score"] < 1.0
 
     def test_different_types(self):

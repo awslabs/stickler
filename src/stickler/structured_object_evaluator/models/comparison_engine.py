@@ -145,7 +145,6 @@ class ComparisonEngine:
         # Score percolation variables
         total_score = 0.0
         total_weight = 0.0
-        threshold_matched_fields = set()
 
         for field_name in self.model.__class__.model_fields:
             if field_name == "extra_fields":
@@ -168,11 +167,6 @@ class ComparisonEngine:
                 threshold_applied_score = field_result["threshold_applied_score"]
                 total_score += threshold_applied_score * weight
                 total_weight += weight
-
-                # Track threshold-matched fields
-                info = self.model._get_comparison_info(field_name)
-                if field_result["raw_similarity_score"] >= info.threshold:
-                    threshold_matched_fields.add(field_name)
 
         # CRITICAL FIX: Handle hallucinated fields (extra fields) as False Alarms
         extra_fields_fa = self._count_extra_fields_as_false_alarms(other)

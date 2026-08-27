@@ -71,7 +71,6 @@ class TestIntegration:
 
         # Check the result
         assert result["overall_score"] == 1.0
-        assert result["overall_score"] == 1.0
         assert result["field_scores"]["name"] == 1.0
         assert result["field_scores"]["age"] == 1.0
         assert result["field_scores"]["address"] == 1.0
@@ -117,7 +116,6 @@ class TestIntegration:
         result = compare_structured_models(company1, company2)
 
         # Check the result
-        assert result["overall_score"] == 1.0
         assert result["overall_score"] == 1.0
         assert result["field_scores"]["name"] == 1.0
         assert result["field_scores"]["founded_year"] == 1.0
@@ -176,7 +174,6 @@ class TestIntegration:
         result = compare_json(json1, json2, Person)
 
         # Check the result
-        assert result["overall_score"] == 1.0
         assert result["overall_score"] == 1.0
         assert result["field_scores"]["name"] == 1.0
         assert result["field_scores"]["age"] == 1.0
