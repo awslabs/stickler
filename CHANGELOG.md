@@ -9,6 +9,14 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Changed
+
+- Confidence AUROC and document-splitting statistics now use NumPy
+  implementations with randomized scikit-learn and SciPy equivalence tests.
+  `scikit-learn` is no longer a core dependency, and the `docsplit` extra now
+  adds only pandas; SciPy remains isolated to the `semantic` extra
+  ([#216](https://github.com/awslabs/stickler/issues/216)).
+
 ## [0.7.0] - 2026-08-18
 
 ### Added
