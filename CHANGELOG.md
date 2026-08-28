@@ -36,11 +36,13 @@ Each release links to full notes on the
   the number of predictions that are not true positives, and `precision`,
   `recall`, `f1` and `matched_pairs` are unchanged for every input. No evaluator
   score changes either, because both internal callers
-  (`HungarianHelper.match_lists` and `ComparisonHelper.compare_unordered_lists`)
-  read only `matched_pairs` and classify the scores themselves. The counts now
-  agree with what `ComparisonHelper.unordered_list_metrics` already produced and
-  with the rule that
-  [Hungarian Matching](https://awslabs.github.io/stickler/Advanced/hungarian-matching/)
+  (`HungarianHelper.get_complete_matching_info` and
+  `ComparisonHelper.compare_unordered_lists`) read only `matched_pairs` and
+  classify the scores themselves. Both are on the traditional path; ANLS Star
+  matches lists with its own `munkres` call in `trees/list_tree.py` and is
+  untouched. The counts now agree with what
+  `ComparisonHelper.unordered_list_metrics` already produced and with the rule
+  that [Hungarian Matching](https://awslabs.github.io/stickler/Advanced/hungarian-matching/)
   documents.
 
 - The worked list example in

@@ -277,6 +277,11 @@ class HungarianMatcher:
                 recall: ``tp / (tp + fn + fd)``, and 1.0 if list1 is empty
                 f1: the harmonic mean of precision and recall
 
+            ``recall`` follows the ``recall_with_fd=True`` convention and cannot
+            be recomputed from the ``fn`` beside it: ``fd`` is in its denominator
+            and not in ``fn``, so the project's default ``TP / (TP + FN)`` over
+            these keys gives a different, higher number.
+
         Note:
             ``recall`` counts an FD against the score.
             :meth:`MetricsHelper.calculate_derived_metrics` defaults to the

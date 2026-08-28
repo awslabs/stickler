@@ -47,7 +47,9 @@ it directly. Before
 [#231](https://github.com/awslabs/stickler/issues/231) it did not have an `fd`
 key and reported every low score pair in `fn` as well, which contradicted the
 rule above. `tests/common/algorithms/test_hungarian_fd_contract.py` now pins the
-agreement.
+agreement. Its `recall` key, however, follows the `recall_with_fd=True` row of
+the table below rather than the default, so do not recompute it from the `fn` in
+the same dict.
 
 ### FD and recall
 

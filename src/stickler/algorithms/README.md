@@ -2,8 +2,14 @@
 
 One module, one public class. `HungarianMatcher` pairs the items of two lists so
 that the total similarity is as high as it can be, which is what lets a list
-field be scored without caring about order. It is shared by the traditional and
-the ANLS Star evaluation paths.
+field be scored without caring about order. Both of its internal callers are on
+the traditional evaluation path.
+
+**ANLS Star does not go through this class.** `trees/list_tree.py` calls
+`Munkres` itself in `ANLSList._hungarian` and turns the assignment into averaged
+NLS scores rather than into the counts below, so nothing here reaches it. That
+is another face of [#135](https://github.com/awslabs/stickler/issues/135), the
+two parallel evaluation paths.
 
 ```python
 from stickler.algorithms import HungarianMatcher
@@ -44,10 +50,18 @@ twice and nothing is dropped. Only one of `fn` and `fa` can be non zero.
 have a denominator in closed form and the method needs no special case per
 input shape.
 
+`recall` is `tp / m`, so its denominator includes `fd`. That is the
+`recall_with_fd=True` convention, and it is the one place the returned dict
+cannot be read as a whole: applying the project's default `TP / (TP + FN)` to
+the `fn` beside it gives a different, higher number. The `Returns` block of
+`calculate_metrics` says so too, since that is where a direct caller looks.
+
 A paired item is never also reported as missing. That was the defect in
 [#231](https://github.com/awslabs/stickler/issues/231), where `fn` was derived
 as `m` minus `tp` and so counted every low score pair as a missing item while
-the method was returning that same pair inside `matched_pairs`.
+the method was returning that same pair inside `matched_pairs`. The fix reaches
+only this class, so it says nothing about how `anls_score` treats a low score
+pair; that runs through `trees/list_tree.py`.
 
 ## Two traps worth knowing before reading `tp`
 
@@ -68,7 +82,7 @@ themselves:
 
 | Caller | What it does with the pairs |
 |---|---|
-| `HungarianHelper.match_lists` | derives the matched and unmatched index sets for object matching over `List[StructuredModel]` |
+| `HungarianHelper.get_complete_matching_info` | derives the matched and unmatched index sets for object matching over `List[StructuredModel]` |
 | `ComparisonHelper.compare_unordered_lists` | hands them to `unordered_list_metrics`, which counts against its own `classification_threshold` |
 
 `unordered_list_metrics` uses the same derivation as `calculate_metrics`, so the
