@@ -142,12 +142,10 @@ def test_non_match_documentation_disabled():
 # Result-shape parity across list length (#224)
 # ---------------------------------------------------------------------------
 #
-# A below-threshold pair in a List[StructuredModel] must be documented the
-# same way whether the list holds one item or several. Before #224 the 1-vs-1
+# A below-threshold pair in a List[StructuredModel] must be documented as one
+# atomic FD whether the list holds one item or several. Before #224 the 1-vs-1
 # case was the odd one out: the fast path dropped the pair, so it surfaced as
-# an object-level FN plus an object-level FA instead of field-level false
-# discoveries. These pin the shape at n=1 against n=2 so the two cannot drift
-# apart again.
+# an FN plus an FA. These pin the shape at n=1 against n=2.
 
 
 class _Line(StructuredModel):
@@ -169,34 +167,47 @@ def _wholly_wrong(n: int):
 
 
 @pytest.mark.parametrize("n", [1, 2, 3])
-def test_below_threshold_pairs_are_field_level_false_discoveries(n):
-    """Every sub-field of every below-threshold pair is documented as an FD."""
+def test_below_threshold_pairs_are_atomic_false_discoveries(n):
+    """Each below-threshold pair is documented as one object-level FD."""
     gt, pred = _wholly_wrong(n)
 
     non_matches = gt.compare_with(pred, document_non_matches=True)["non_matches"]
 
-    # One record per sub-field per pair -- not one per object.
-    assert len(non_matches) == 2 * n
+    assert len(non_matches) == n
     assert all(
         nm["non_match_type"] == NonMatchType.FALSE_DISCOVERY for nm in non_matches
     ), "an assigned pair below threshold is a false discovery, not FN + FA"
 
-    # Paths address the field, not the object: `lines[0].sku`, not `lines[0]`.
     assert {nm["field_path"] for nm in non_matches} == {
-        f"lines[{i}].{field}" for i in range(n) for field in ("sku", "desc")
+        f"lines[{i}]" for i in range(n)
     }
 
-    # Scalars, not the whole object dict.
     assert all(
-        isinstance(nm["ground_truth_value"], str) for nm in non_matches
-    ), "field-level records carry the field value"
+        set(nm["ground_truth_value"]) == {"sku", "desc"} for nm in non_matches
+    ), "atomic records carry the whole object"
+    assert all(nm["similarity"] < _Line.match_threshold for nm in non_matches)
+
+
+def test_threshold_passing_pair_reports_leaf_non_matches(monkeypatch):
+    """A pair admitted by PET still documents its incorrect leaves."""
+    monkeypatch.setattr(_Line, "match_threshold", 0.5)
+    gt = _Invoice(lines=[_Line(sku="A0", desc="Widget")])
+    pred = _Invoice(lines=[_Line(sku="A0", desc="Gadget")])
+
+    non_matches = gt.compare_with(pred, document_non_matches=True)["non_matches"]
+
+    assert len(non_matches) == 1
+    assert non_matches[0]["field_path"] == "lines[0].desc"
+    assert non_matches[0]["non_match_type"] == NonMatchType.FALSE_DISCOVERY
+    assert non_matches[0]["ground_truth_value"] == "Widget"
+    assert non_matches[0]["prediction_value"] == "Gadget"
 
 
 def test_non_match_shape_is_independent_of_list_length():
     """The per-pair record shape at n=1 matches n=2 exactly.
 
-    This is the #224 property: classification must not depend on how many
-    items happen to be in the list.
+    This is the #224 property: atomic classification must not depend on list
+    length.
     """
     keys_by_n = {}
     for n in (1, 2):

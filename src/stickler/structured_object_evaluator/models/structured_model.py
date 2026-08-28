@@ -24,11 +24,12 @@ from stickler.comparators.base import BaseComparator
 from stickler.utils.deprecation import warn_once
 
 from .comparable_field import ComparableField
-from .comparison_helper import ComparisonHelper
+from .comparison_helper import ComparisonHelper, _maybe_absent
 from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
+from .null_helper import NullHelper
 from .optional_annotation import union_args, unwrap_annotated, unwrap_optional
 from .rich_value_helper import RichValueHelper
 from .threshold_helper import THRESHOLD_DOCS_URL
@@ -1342,15 +1343,29 @@ class StructuredModel(BaseModel):
             if field_name == "extra_fields":
                 continue
             if hasattr(other, field_name):
+                self_value = getattr(self, field_name)
+                other_value = getattr(other, field_name)
+
+                # A true negative is absence of evidence, not evidence that two
+                # objects match. Omit absent-on-both fields from the weighted
+                # average that Hungarian matching uses. The cheap guard preserves
+                # the populated-value fast path in pairwise cost matrices.
+                if _maybe_absent(self_value) and _maybe_absent(other_value):
+                    is_absent = (
+                        NullHelper.is_effectively_null_for_lists
+                        if self._is_list_field(field_name)
+                        else NullHelper.is_effectively_null_for_primitives
+                    )
+                    if is_absent(self_value) and is_absent(other_value):
+                        continue
+
                 # Get field configuration
                 info = self.__class__._get_comparison_info(field_name)
                 # Use weight from ComparableField object
                 weight = info.weight
 
                 # Compare field values WITHOUT applying thresholds
-                field_score = self.compare_field_raw(
-                    field_name, getattr(other, field_name)
-                )
+                field_score = self.compare_field_raw(field_name, other_value)
 
                 # Update total score
                 total_score += field_score * weight
@@ -1359,8 +1374,10 @@ class StructuredModel(BaseModel):
         # Calculate overall score
         if total_weight > 0:
             return total_score / total_weight
-        else:
-            return 0.0
+
+        # Every compared field was absent on both sides. Nothing disagreed, so
+        # identical empty objects remain a perfect match (#233).
+        return 1.0
 
     def compare_with(
         self,

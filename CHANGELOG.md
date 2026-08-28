@@ -99,6 +99,21 @@ Each release links to full notes on the
   different question from reading a spelling correctly, and every caller here
   has only the annotation.
 
+- Raw object similarity used by Hungarian matching no longer treats a true
+  negative as evidence that two objects match. Fields absent on both sides are
+  excluded from the weighted-average numerator and denominator. If every field
+  is absent, the score is defined as `1.0`, preserving the #233 fix; otherwise,
+  empty optional fields can no longer hide a missed value or make an empty
+  candidate tie one that extracted real content.
+
+- Threshold-gated recursion now applies consistently to nested metrics,
+  `non_matches`, and `field_comparisons` for `List[StructuredModel]`. An
+  assigned pair below the element model's `match_threshold` produces one atomic
+  FD, while unmatched GT and prediction objects produce one atomic FN and FA.
+  None of these objects contributes leaf-level metrics or report entries.
+  Lower the element model's `match_threshold` to inspect leaf comparisons for
+  weaker pairs.
+
 ### Performance
 
 - Restored the fast path in `ComparisonHelper.compare_field_raw`. Reading a
@@ -123,46 +138,6 @@ Each release links to full notes on the
   `scikit-learn` is no longer a core dependency, and the `docsplit` extra now
   adds only pandas; SciPy remains isolated to the `semantic` extra
   ([#216](https://github.com/awslabs/stickler/issues/216)).
-
-- Object-level TP/FD counts move for schemas with fields that are absent on both
-  sides. An absent-on-both field now contributes a full `1.0` to the raw object
-  similarity that `HungarianHelper` classifies against `match_threshold`, so a
-  pair that disagrees on every value a user actually supplied can clear the
-  threshold on the strength of its absent fields alone. An object with two
-  empty-on-both lists and one wrong string scores `2/3`; with five, `5/6`. Pairs
-  that previously classified as FD can now classify as TP, and **precision can
-  rise** as a function of how many absent optional fields a schema declares.
-
-  This extends existing semantics rather than introducing them. A field left
-  `None` already behaved exactly this way -- only the `[]`, `""` and `{}`
-  spellings were scored differently, which is precisely the inconsistency
-  [#233](https://github.com/awslabs/stickler/issues/233) is about. Making them
-  agree necessarily means those three adopt what `None` already did. The same
-  applies to a field whose annotation was not recognized as a list
-  (`Optional[list]`, `Optional[Annotated[List[str], ...]]` and the other
-  spellings above): it now gets list absence semantics, so an empty-on-both
-  field of that kind starts contributing `1.0` where it previously contributed
-  `0.0` or nothing.
-
-  Field-level counts do not move: an absent-on-both field is still a TN rather
-  than a TP, and a field the prediction gets wrong is still reported as an FD in
-  both the field breakdown and the aggregate. Only the *object-level*
-  classification of the enclosing pair changes. Anyone diffing evaluation
-  reports across this upgrade should expect object-level precision to shift for
-  affected schemas.
-
-  Absence is not leniency: `""` and `{}` did not become wildcards. An absent
-  value against a populated one still scores `0.0`, as the dispatcher already
-  scored it. A custom comparator that scored `""` against a populated value
-  above `0.0` is now short-circuited to `0.0` on the raw path, matching what
-  `compare_with` already reported for that pair.
-
-  What is *not* changed here: how a below-threshold pair is treated. Those are
-  still atomic false discoveries with no field breakdown, per
-  [threshold-gated evaluation](https://awslabs.github.io/stickler/Advanced/threshold-gated-evaluation/).
-  Whether an absent-on-both field should count toward the similarity that gets
-  gated at all is a separate question about the metric itself, not about the
-  spelling inconsistency this fixes, and it is left alone.
 
 ## [0.7.0] - 2026-08-18
 

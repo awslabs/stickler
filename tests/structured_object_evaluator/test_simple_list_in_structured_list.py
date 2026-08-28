@@ -23,6 +23,8 @@ from stickler.structured_object_evaluator.models.comparison_helper import (
     ComparisonHelper,
     _maybe_absent,
 )
+from stickler.structured_object_evaluator.models.hungarian_helper import HungarianHelper
+from stickler.structured_object_evaluator.models.non_match_field import NonMatchType
 from stickler.structured_object_evaluator.models.null_helper import NullHelper
 from stickler.structured_object_evaluator.models.structured_model import (
     StructuredModel,
@@ -138,12 +140,7 @@ class DictContainer(StructuredModel):
 
 
 class PartiallyWrongItem(StructuredModel):
-    """Two absent-on-both list fields and one field the prediction gets wrong.
-
-    ``match_threshold`` is low enough that the two agreeing empty fields alone
-    carry the pair over it — see
-    ``test_absent_list_fields_lift_a_disagreeing_pair_to_a_true_positive``.
-    """
+    """Two absent-on-both list fields and one populated field."""
 
     a: Optional[List[str]] = ComparableField(weight=1.0)
     b: Optional[List[str]] = ComparableField(weight=1.0)
@@ -153,6 +150,38 @@ class PartiallyWrongItem(StructuredModel):
 
 class PartiallyWrongContainer(StructuredModel):
     items: List[PartiallyWrongItem] = ComparableField(weight=1.0)
+
+
+class MissedValueItem(StructuredModel):
+    """One real value and five fields that may be true negatives."""
+
+    a: Optional[str] = ComparableField(
+        comparator=ExactComparator(), threshold=1.0, weight=1.0
+    )
+    b: list = ComparableField(weight=1.0)
+    c: list = ComparableField(weight=1.0)
+    d: list = ComparableField(weight=1.0)
+    e: list = ComparableField(weight=1.0)
+    f: list = ComparableField(weight=1.0)
+    match_threshold = 0.8
+
+
+class MissedValueContainer(StructuredModel):
+    items: List[MissedValueItem] = ComparableField(weight=1.0)
+
+
+class CompetingCandidateItem(StructuredModel):
+    """Two fields that distinguish an empty from a useful candidate."""
+
+    a: Optional[str] = ComparableField(
+        comparator=ExactComparator(), threshold=1.0, weight=1.0
+    )
+    b: list = ComparableField(weight=1.0)
+    match_threshold = 0.7
+
+
+class CompetingCandidateContainer(StructuredModel):
+    items: List[CompetingCandidateItem] = ComparableField(weight=1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -864,70 +893,132 @@ def test_absent_string_against_populated_is_not_leniently_matched(gt_note, pred_
 
 
 # ---------------------------------------------------------------------------
-# Tests — object matching counts absent-on-both fields toward the threshold
+# Tests — true negatives are not evidence for object matching
 # ---------------------------------------------------------------------------
 
+def test_all_absent_fields_define_empty_denominator_as_a_match():
+    """An empty denominator is 1.0, preserving the original #233 fix."""
+    gt = LineItemsInfo(LineItemDays=[])
+    pred = LineItemsInfo(LineItemDays=None)
+
+    assert gt.compare(pred) == 1.0
+
+
 @pytest.mark.parametrize("absent", [[], None], ids=["empty-list", "none"])
-def test_absent_list_fields_lift_a_disagreeing_pair_to_a_true_positive(absent):
-    """Absent-on-both fields count toward ``match_threshold``. Deliberate.
-
-    This is the metric consequence of the #233 fix, pinned because it is not
-    self-evidently desirable. ``HungarianHelper`` classifies an object pair by
-    its raw similarity, and an absent-on-both field now contributes a full
-    ``1.0`` to that average. So a pair that disagrees on *every* value a user
-    actually supplied can still clear ``match_threshold`` on the strength of its
-    absent fields: here two of three fields are absent on both sides, the third
-    disagrees outright, and the pair scores ``2/3`` and classifies as TP. Before
-    the fix the ``[]`` spelling scored ``0.0`` and classified as FD.
-
-    Parameterized over both spellings of absent because that is the argument for
-    the flip: ``None`` already behaved this way, so the fix extends existing
-    semantics to ``[]`` rather than inventing a rule. The two ids must stay
-    equal — if they ever diverge, the parity #233 is about has reopened.
-
-    The inflation this permits is real and worth stating: precision rises with
-    the number of absent optional fields a schema declares. The field-level
-    counts are what keep the report honest — ``c`` is still reported as a false
-    discovery, and the aggregate still carries ``fd == 1``. Only the
-    *object-level* classification moves.
-    """
+def test_absent_list_fields_do_not_lift_a_disagreeing_pair(absent):
+    """True negatives are excluded from object similarity in either spelling."""
     gt_item = PartiallyWrongItem(a=absent, b=absent, c="alpha")
     pred_item = PartiallyWrongItem(a=absent, b=absent, c="zzzzz")
 
-    # Two of three fields agree (vacuously), the third does not.
-    assert gt_item.compare(pred_item) == pytest.approx(2 / 3)
+    assert gt_item.compare(pred_item) == 0.0
 
     result = PartiallyWrongContainer(items=[gt_item]).compare_with(
         PartiallyWrongContainer(items=[pred_item]), include_confusion_matrix=True
     )
     cm = result["confusion_matrix"]
 
-    # 2/3 clears match_threshold=0.5, so the pair is an object-level TP.
-    assert _overall(cm, "items")["tp"] == 1
-    assert _overall(cm, "items")["fd"] == 0
+    assert _overall(cm, "items")["tp"] == 0
+    assert _overall(cm, "items")["fd"] == 1
+    assert cm["fields"]["items"]["overall"]["derived"]["cm_f1"] == 0.0
+    assert cm["fields"]["items"].get("fields", {}) == {}
 
-    # The disagreement is not swallowed: the field that is wrong is still wrong,
-    # the vacuously-agreeing fields are true negatives rather than true
-    # positives, and the aggregate still reports the false discovery.
-    assert _overall(cm, "items", "c")["fd"] == 1
-    assert _overall(cm, "items", "a")["tn"] == 1
-    assert _overall(cm, "items", "b")["tn"] == 1
-    assert cm["aggregate"]["fd"] == 1
-    assert cm["aggregate"]["tp"] == 0
+
+def test_prediction_that_extracts_nothing_is_not_a_perfect_match():
+    """Five true negatives cannot hide the only missed value."""
+    gt_item = MissedValueItem(
+        a="VALUE", b=[], c=[], d=[], e=[], f=[]
+    )
+    pred_item = MissedValueItem(
+        a=None, b=[], c=[], d=[], e=[], f=[]
+    )
+
+    assert gt_item.compare(pred_item) == 0.0
+
+    result = MissedValueContainer(items=[gt_item]).compare_with(
+        MissedValueContainer(items=[pred_item]), include_confusion_matrix=True
+    )
+    object_metrics = _overall(result["confusion_matrix"], "items")
+
+    assert object_metrics["tp"] == 0
+    assert object_metrics["fd"] == 1
+    assert (
+        result["confusion_matrix"]["fields"]["items"]["overall"]["derived"]["cm_f1"]
+        == 0.0
+    )
+
+
+def test_hungarian_prefers_content_agreement_over_an_empty_candidate():
+    """Assignment prefers content, while PET still rejects a weak pair."""
+    gt_item = CompetingCandidateItem(a="x", b=[])
+    empty_candidate = CompetingCandidateItem(a=None, b=[])
+    correct_candidate = CompetingCandidateItem(a="x", b=["z"])
+
+    assert gt_item.compare(empty_candidate) == 0.0
+    assert gt_item.compare(correct_candidate) == pytest.approx(0.5)
+
+    matching = HungarianHelper().get_complete_matching_info(
+        [gt_item], [empty_candidate, correct_candidate]
+    )
+    assert matching["assignments"] == [(0, 1)]
+    assert matching["matched_pairs"][0][2] == pytest.approx(0.5)
+    assert matching["unmatched_pred_indices"] == [0]
+
+    result = CompetingCandidateContainer(items=[gt_item]).compare_with(
+        CompetingCandidateContainer(items=[empty_candidate, correct_candidate]),
+        include_confusion_matrix=True,
+        document_non_matches=True,
+        document_field_comparisons=True,
+    )
+    object_metrics = _overall(result["confusion_matrix"], "items")
+    fd_entry = next(
+        non_match
+        for non_match in result["non_matches"]
+        if non_match["non_match_type"] == NonMatchType.FALSE_DISCOVERY
+    )
+    fa_entry = next(
+        non_match
+        for non_match in result["non_matches"]
+        if non_match["non_match_type"] == NonMatchType.FALSE_ALARM
+    )
+    item_comparisons = [
+        comparison
+        for comparison in result["field_comparisons"]
+        if comparison["expected_key"].startswith("items[")
+    ]
+
+    assert result["overall_score"] == pytest.approx(0.25)
+    assert object_metrics["tp"] == 0
+    assert object_metrics["fd"] == 1
+    assert object_metrics["fa"] == 1
+    assert result["confusion_matrix"]["fields"]["items"]["fields"] == {}
+
+    assert fd_entry["field_path"] == "items[0]"
+    assert fd_entry["ground_truth_value"] == gt_item.model_dump()
+    assert fd_entry["prediction_value"] == correct_candidate.model_dump()
+    assert fd_entry["similarity"] == pytest.approx(0.5)
+    assert fa_entry["field_path"] == "items[0]"
+    assert fa_entry["ground_truth_value"] is None
+    assert fa_entry["prediction_value"] == empty_candidate.model_dump()
+
+    assert len(item_comparisons) == 2
+    assert all("." not in comparison["expected_key"] for comparison in item_comparisons)
+    assigned_comparison = next(
+        comparison
+        for comparison in item_comparisons
+        if comparison["actual_value"] == correct_candidate.model_dump()
+    )
+    assert assigned_comparison["expected_key"] == "items[0]"
+    assert assigned_comparison["actual_key"] == "items[1]"
+    assert assigned_comparison["match"] is False
+    assert assigned_comparison["score"] == pytest.approx(0.5)
 
 
 # ---------------------------------------------------------------------------
-# Tests — unmatched structured objects with simple list fields
-# Exercises the unmatched-object path for simple lists (PR #83 feedback)
+# Tests — unmatched structured objects remain atomic
 # ---------------------------------------------------------------------------
 
-def test_unmatched_gt_object_simple_list_contributes_fn():
-    """When GT has more structured items than pred, the unmatched GT item's
-    simple list elements should contribute FN at the field level.
-
-    GT: 2 TaskItems, Pred: 1 TaskItem (matching the first).
-    The unmatched GT item has tags=["X", "Y", "Z"] → should add 3 FN.
-    """
+def test_unmatched_gt_object_does_not_contribute_leaf_fn():
+    """An unmatched GT object is one object-level FN, not leaf-level FNs."""
     gt = TaskList(tasks=[
         TaskItem(tags=["A", "B"], priority="high"),
         TaskItem(tags=["X", "Y", "Z"], priority="low"),
@@ -937,25 +1028,19 @@ def test_unmatched_gt_object_simple_list_contributes_fn():
     ])
 
     result = gt.compare_with(pred, include_confusion_matrix=True)
+    task_metrics = _overall(result["confusion_matrix"], "tasks")
     tags_metrics = _overall(result["confusion_matrix"], "tasks", "tags")
     priority_metrics = _overall(result["confusion_matrix"], "tasks", "priority")
 
-    # Matched pair: tags TP=2, priority TP=1
-    # Unmatched GT: priority gets FN=1 (primitive path handles this)
-    #               tags should get FN=3 (one per list element)
+    assert task_metrics["fn"] == 1
     assert tags_metrics["tp"] == 2
-    assert tags_metrics["fn"] == 3
+    assert tags_metrics["fn"] == 0
     assert priority_metrics["tp"] == 1
-    assert priority_metrics["fn"] == 1
+    assert priority_metrics["fn"] == 0
 
 
-def test_unmatched_pred_object_simple_list_contributes_fa():
-    """When pred has more structured items than GT, the unmatched pred item's
-    simple list elements should contribute FA/FP at the field level.
-
-    GT: 1 TaskItem, Pred: 2 TaskItems (first matches GT).
-    The unmatched pred item has tags=["X", "Y", "Z"] → should add 3 FA.
-    """
+def test_unmatched_pred_object_does_not_contribute_leaf_fa():
+    """An unmatched prediction is one object-level FA, not leaf-level FAs."""
     gt = TaskList(tasks=[
         TaskItem(tags=["A", "B"], priority="high"),
     ])
@@ -965,13 +1050,12 @@ def test_unmatched_pred_object_simple_list_contributes_fa():
     ])
 
     result = gt.compare_with(pred, include_confusion_matrix=True)
+    task_metrics = _overall(result["confusion_matrix"], "tasks")
     tags_metrics = _overall(result["confusion_matrix"], "tasks", "tags")
     priority_metrics = _overall(result["confusion_matrix"], "tasks", "priority")
 
-    # Matched pair: tags TP=2, priority TP=1
-    # Unmatched pred: priority gets FA=1, FP=1 (primitive path handles this)
-    #                 tags should get FA=3, FP=3 (one per list element)
+    assert task_metrics["fa"] == 1
     assert tags_metrics["tp"] == 2
-    assert tags_metrics["fa"] == 3
+    assert tags_metrics["fa"] == 0
     assert priority_metrics["tp"] == 1
-    assert priority_metrics["fa"] == 1
+    assert priority_metrics["fa"] == 0

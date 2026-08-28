@@ -107,6 +107,8 @@ From the base counts:
 
 **Null vs. empty equivalence** -- Empty strings (`""`), empty lists (`[]`), and empty objects (`{}`) are treated as null. Comparing any of these with `null` yields TN.
 
+**TN in object matching** -- A TN is absence of evidence, not evidence of a match. Fields absent on both sides are excluded from the weighted object similarity used by Hungarian matching. If every field is absent, the similarity is defined as `1.0`.
+
 **Threshold boundary** -- A similarity score exactly equal to the threshold counts as a match (TP).
 
 **List order** -- Order does not matter. The Hungarian algorithm finds the optimal pairing regardless of element position.
