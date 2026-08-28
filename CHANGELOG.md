@@ -29,10 +29,50 @@ Each release links to full notes on the
   together, so it silently deflated precision on object-level metrics.
 
   Both readers now define absence the same way the dispatcher does, per field
-  kind: `None` and `[]` for a list field, `None` and `""` for everything else.
-  This is the rule the docs already
+  kind: `None` and `[]` for a list field, `None`, `""` and `{}` for everything
+  else. This is the rule the docs already
   [documented](https://awslabs.github.io/stickler/Advanced/classification-logic/)
   ([#233](https://github.com/awslabs/stickler/issues/233))
+
+- An empty dict is now read as absent, the third case that documented rule
+  names. `NullHelper.is_effectively_null_for_primitives` covered `None` and `""`
+  but not `{}`, so the #233 contradiction survived for a `Dict` field in the
+  opposite direction: two **identical** objects each holding `{}` classified as
+  a false discovery instead of a match, and `{}` against `None` recorded an FN
+  while `None` against `{}` recorded an FA, where the rule calls for a TN in all
+  three.
+
+  A populated dict field was worse than misclassified, it was unscoreable. No
+  comparator accepts a dict -- `LevenshteinComparator` raises `TypeError`
+  pointing at `StructuredModel` instead -- so `{}` against `{"k": "v"}` fell
+  through to the comparator and *raised*, taking out Hungarian matching for any
+  `List[Model]` whose element model had a populated dict field. That pair is now
+  an ordinary false alarm.
+
+  Two **populated** dicts still reach the comparator and still raise. Giving
+  dicts a comparator is a separate change; this one only closes the absence
+  cases.
+
+- A field annotated `Optional[Annotated[List[str], ...]]` is now recognized as a
+  list field. Pydantic strips `Annotated` when it wraps a whole annotation, so
+  `Annotated[Optional[List[str]], ...]` always worked, but it leaves the wrapper
+  on a union arm -- and `get_origin` reports `Annotated` there rather than the
+  type inside. `Annotated[List[str], ...] | None` normalises to exactly that
+  spelling, so both PEP 604 and subscript forms were affected.
+
+  This is the annotation a `Field(description=...)` produces, which makes it
+  common in extraction schemas rather than exotic. The cost landed three
+  different ways on one field, all silent: `[]` against `[]` recorded **no
+  counter at all** and the field vanished from the confusion matrix, `[]`
+  against `None` recorded an FN, and `None` against `[]` recorded an FA -- while
+  a sibling `Optional[List[str]]` recorded a TN for all three.
+
+  Union arms are unwrapped through a new shared
+  `optional_annotation.unwrap_annotated`, alongside the existing helpers for
+  destructuring a union, rather than a fourth hand-rolled check. Routing is
+  unaffected: `List[Model]` on this spelling already reached
+  `StructuredListComparator` through the dispatcher's runtime type check, so
+  only the null and empty cases move.
 
 - A field annotated `list`, `list | None`, or `Optional[list]` is now recognized
   as a list field. `_is_list_field` tested `get_origin(...) is list`, which
@@ -54,12 +94,27 @@ Each release links to full notes on the
   reached `PrimitiveListComparator` before and still does, and no raw score
   changes.
 
-  Two spellings are still not list fields, both deliberately. `Any` holding a
-  list is not one, because inferring list-ness from a runtime value rather than
-  an annotation is a larger change than this. Neither is
-  `Optional[Annotated[list, ...]]`: pydantic strips `Annotated` when it wraps the
-  whole annotation but preserves it as a union member, and unwrapping it should
-  be made consistent across the other annotation readers rather than here alone
+  One spelling is still not a list field, deliberately: `Any` holding a list.
+  Inferring list-ness from a runtime value rather than an annotation is a
+  different question from reading a spelling correctly, and every caller here
+  has only the annotation.
+
+### Performance
+
+- Restored the fast path in `ComparisonHelper.compare_field_raw`. Reading a
+  field's absence rule requires knowing whether the field is a list, and
+  `_is_list_field` re-reads `model_fields` and destructures the annotation on
+  every call. The bare `is None` check it replaced short-circuited before doing
+  any of that, so consulting the annotation unconditionally cost about 23% on a
+  60x60 Hungarian cost matrix of 20-field models -- 72,000 calls for one list
+  comparison (0.531s to 0.651s; measured best-of-three).
+
+  The lookup is now guarded by a cheap value test that is the union of both
+  `NullHelper` rules, so anything either one calls absent still reaches the full
+  check and no outcome changes, while the common case of both sides being
+  populated skips the annotation entirely (0.537s, within noise of the original).
+  A test pins the superset property so adding a case to either rule without
+  widening the guard fails loudly rather than silently skipping the check.
 
 ### Changed
 
@@ -79,10 +134,15 @@ Each release links to full notes on the
   rise** as a function of how many absent optional fields a schema declares.
 
   This extends existing semantics rather than introducing them. A field left
-  `None` already behaved exactly this way -- only the `[]` and `""` spellings
-  were scored differently, which is precisely the inconsistency
+  `None` already behaved exactly this way -- only the `[]`, `""` and `{}`
+  spellings were scored differently, which is precisely the inconsistency
   [#233](https://github.com/awslabs/stickler/issues/233) is about. Making them
-  agree necessarily means `[]` and `""` adopt what `None` already did.
+  agree necessarily means those three adopt what `None` already did. The same
+  applies to a field whose annotation was not recognized as a list
+  (`Optional[list]`, `Optional[Annotated[List[str], ...]]` and the other
+  spellings above): it now gets list absence semantics, so an empty-on-both
+  field of that kind starts contributing `1.0` where it previously contributed
+  `0.0` or nothing.
 
   Field-level counts do not move: an absent-on-both field is still a TN rather
   than a TP, and a field the prediction gets wrong is still reported as an FD in
@@ -91,11 +151,18 @@ Each release links to full notes on the
   reports across this upgrade should expect object-level precision to shift for
   affected schemas.
 
-  Absence is not leniency: `""` did not become a wildcard. An absent value
-  against a populated one still scores `0.0`, as the dispatcher already scored
-  it. A custom comparator that scored `""` against a populated value above `0.0`
-  is now short-circuited to `0.0` on the raw path, matching what `compare_with`
-  already reported for that pair.
+  Absence is not leniency: `""` and `{}` did not become wildcards. An absent
+  value against a populated one still scores `0.0`, as the dispatcher already
+  scored it. A custom comparator that scored `""` against a populated value
+  above `0.0` is now short-circuited to `0.0` on the raw path, matching what
+  `compare_with` already reported for that pair.
+
+  What is *not* changed here: how a below-threshold pair is treated. Those are
+  still atomic false discoveries with no field breakdown, per
+  [threshold-gated evaluation](https://awslabs.github.io/stickler/Advanced/threshold-gated-evaluation/).
+  Whether an absent-on-both field should count toward the similarity that gets
+  gated at all is a separate question about the metric itself, not about the
+  spelling inconsistency this fixes, and it is left alone.
 
 ## [0.7.0] - 2026-08-18
 

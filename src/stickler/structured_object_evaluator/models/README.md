@@ -14,6 +14,11 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   (`ComparableField`), per-field comparator/threshold/weight metadata.
 - `model_factory.py`, `field_converter.py`, `json_schema_field_converter.py`,
   `type_resolver.py`, `configuration_helper.py` — building models from JSON / schema.
+- `optional_annotation.py` — the single source for destructuring a type
+  annotation: union arms in every spelling (`Optional[T]`, `Union[T, None]`,
+  `T | None`) and `Annotated` unwrapping. Ask through it rather than rebuilding
+  the checks; `get_origin` answers differently per spelling and each hand-rolled
+  copy has gotten one wrong.
 
 **Comparison pipeline**
 - `comparison_engine.py` — `ComparisonEngine`, the orchestrator behind

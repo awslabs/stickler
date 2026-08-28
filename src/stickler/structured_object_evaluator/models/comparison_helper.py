@@ -13,6 +13,24 @@ from .null_helper import NullHelper
 from .threshold_helper import ThresholdHelper
 
 
+def _maybe_absent(val: Any) -> bool:
+    """Whether ``val`` could be absent under *either* of ``NullHelper``'s rules.
+
+    A cheap over-approximation, used only to decide whether it is worth reading
+    a field's annotation to find out which rule applies. It must stay a
+    superset of both :meth:`NullHelper.is_effectively_null_for_lists` and
+    :meth:`NullHelper.is_effectively_null_for_primitives`: returning ``False``
+    for something either one calls absent would silently skip the true-negative
+    and false-negative handling in
+    :meth:`ComparisonHelper.compare_field_raw`. Returning ``True`` too often
+    only costs the lookup it was meant to avoid.
+
+    ``test_maybe_absent_is_a_superset_of_both_null_rules`` pins that property so
+    adding a case to either predicate without widening this one fails loudly.
+    """
+    return val is None or (isinstance(val, (str, list, dict)) and len(val) == 0)
+
+
 class ComparisonHelper:
     """Helper class for StructuredModel field comparison operations."""
 
@@ -249,19 +267,31 @@ class ComparisonHelper:
         #
         # What counts as absent is per-kind, exactly as the dispatcher defines
         # it: for a list field `None` and `[]` both mean "no items"; for
-        # everything else `None` and `""` both mean "no value". Both predicates
-        # treat `None` as absent, which is why this subsumes the bare `is None`
-        # check that used to stand here.
+        # everything else `None`, `""` and `{}` all mean "no value". Both
+        # predicates treat `None` as absent, which is why this subsumes the bare
+        # `is None` check that used to stand here.
         # See https://github.com/awslabs/stickler/issues/233
-        if structured_model_instance._is_list_field(field_name):
-            is_absent = NullHelper.is_effectively_null_for_lists
-        else:
-            is_absent = NullHelper.is_effectively_null_for_primitives
+        #
+        # `_maybe_absent` guards the annotation lookup rather than duplicating
+        # it. This function runs once per field per pairwise comparison, which
+        # is every cell of a Hungarian cost matrix -- 60x60 objects of 20 fields
+        # is 72,000 calls -- and `_is_list_field` re-reads `model_fields` and
+        # destructures the annotation on each one. The bare `is None` check this
+        # replaced short-circuited before doing any of that, so consulting the
+        # annotation unconditionally cost ~23% on that shape. The guard is the
+        # union of the two predicates below, so anything either one would call
+        # absent still reaches it and the outcome is unchanged; both sides being
+        # populated, the overwhelmingly common case, now skips the lookup.
+        if _maybe_absent(self_value) or _maybe_absent(other_value):
+            if structured_model_instance._is_list_field(field_name):
+                is_absent = NullHelper.is_effectively_null_for_lists
+            else:
+                is_absent = NullHelper.is_effectively_null_for_primitives
 
-        self_is_null = is_absent(self_value)
-        other_is_null = is_absent(other_value)
-        if self_is_null or other_is_null:
-            return 1.0 if self_is_null and other_is_null else 0.0
+            self_is_null = is_absent(self_value)
+            other_is_null = is_absent(other_value)
+            if self_is_null or other_is_null:
+                return 1.0 if self_is_null and other_is_null else 0.0
 
         # Handle lists with special processing
         if isinstance(self_value, list) and isinstance(other_value, list):

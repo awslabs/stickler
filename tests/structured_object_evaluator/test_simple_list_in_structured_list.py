@@ -8,9 +8,10 @@ not treated as atomic primitive values.
 See: https://github.com/awslabs/stickler/issues/33
 """
 
-from typing import Any, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 import pytest
+from pydantic import Field
 
 from stickler.comparators.base import BaseComparator
 from stickler.comparators.exact import ExactComparator
@@ -20,7 +21,9 @@ from stickler.structured_object_evaluator.models.comparable_field import (
 )
 from stickler.structured_object_evaluator.models.comparison_helper import (
     ComparisonHelper,
+    _maybe_absent,
 )
+from stickler.structured_object_evaluator.models.null_helper import NullHelper
 from stickler.structured_object_evaluator.models.structured_model import (
     StructuredModel,
 )
@@ -50,9 +53,18 @@ class Pep604Invoice(StructuredModel):
 class EveryListSpelling(StructuredModel):
     """Every spelling of a list annotation. All must be recognized alike.
 
-    ``get_origin`` returns ``list`` only for a *parameterized* spelling, so the
-    three unparameterized ones here used to read as non-list -- including
-    ``list | None``, a PEP 604 optional list. See ``_annotation_is_list``.
+    Two families used to read as non-list:
+
+    - The unparameterized ones, because ``get_origin`` returns ``list`` only for
+      a *parameterized* spelling -- including ``list | None``, a PEP 604
+      optional list.
+    - The ``Annotated`` ones, because pydantic strips ``Annotated`` only when it
+      wraps the whole annotation, and ``get_origin`` reports ``Annotated``
+      rather than the type inside. ``annotated_whole`` is the spelling pydantic
+      does strip, so it always worked; it is here to hold that contrast in
+      place.
+
+    See ``_annotation_is_list`` and ``optional_annotation.unwrap_annotated``.
     """
 
     bare: list = ComparableField(weight=1.0)
@@ -61,6 +73,15 @@ class EveryListSpelling(StructuredModel):
     bare_typing: List = ComparableField(weight=1.0)
     param_pep604_optional: list[str] | None = ComparableField(weight=1.0)
     param_optional: Optional[List[str]] = ComparableField(weight=1.0)
+    annotated_whole: Annotated[Optional[List[str]], "meta"] = ComparableField(weight=1.0)
+    annotated_optional: Optional[Annotated[List[str], "meta"]] = ComparableField(
+        weight=1.0
+    )
+    annotated_pep604: Annotated[List[str], "meta"] | None = ComparableField(weight=1.0)
+    annotated_bare: Annotated[list, "meta"] | None = ComparableField(weight=1.0)
+    annotated_field: Optional[Annotated[List[str], Field(description="d")]] = (
+        ComparableField(weight=1.0)
+    )
 
 
 LIST_SPELLINGS = (
@@ -70,6 +91,21 @@ LIST_SPELLINGS = (
     "bare_typing",
     "param_pep604_optional",
     "param_optional",
+    "annotated_whole",
+    "annotated_optional",
+    "annotated_pep604",
+    "annotated_bare",
+    "annotated_field",
+)
+
+# The spellings that carry an `Annotated` wrapper on the *union arm*, which is
+# where pydantic leaves it in place. `annotated_whole` is excluded: pydantic
+# strips a wrapper around the whole annotation, so it never had the problem.
+ANNOTATED_ARM_SPELLINGS = (
+    "annotated_optional",
+    "annotated_pep604",
+    "annotated_bare",
+    "annotated_field",
 )
 
 
@@ -88,6 +124,17 @@ class NoteLeaf(StructuredModel):
 
 class NoteContainer(StructuredModel):
     items: List[NoteLeaf] = ComparableField(weight=1.0)
+
+
+class DictLeaf(StructuredModel):
+    """A dict field, the third kind of "empty" the documented rule names."""
+
+    meta: Optional[Dict[str, str]] = ComparableField(weight=1.0)
+    match_threshold = 1.0
+
+
+class DictContainer(StructuredModel):
+    items: List[DictLeaf] = ComparableField(weight=1.0)
 
 
 class PartiallyWrongItem(StructuredModel):
@@ -538,6 +585,51 @@ def test_every_list_spelling_records_a_true_negative_when_empty_on_both_sides():
     assert cm["aggregate"]["tn"] == len(LIST_SPELLINGS)
 
 
+@pytest.mark.parametrize("field_name", ANNOTATED_ARM_SPELLINGS)
+@pytest.mark.parametrize(
+    "gt_val,pred_val",
+    [([], []), ([], None), (None, [])],
+)
+def test_annotated_arm_matches_the_plain_optional_list(field_name, gt_val, pred_val):
+    """An ``Annotated`` wrapper on a union arm must not change the metrics.
+
+    Pydantic strips ``Annotated`` when it wraps the whole annotation but leaves
+    it on a union arm, and ``get_origin`` reports ``Annotated`` rather than the
+    wrapped type. So ``Optional[Annotated[List[str], ...]]`` read as non-list
+    while its sibling ``Optional[List[str]]`` read as a list -- and
+    ``Annotated[List[str], ...] | None`` normalises to exactly that spelling.
+
+    The cost showed up in three different ways on the same field, all of them
+    silent: ``[]`` against ``[]`` recorded *no counter at all* (the field
+    vanished from the confusion matrix), ``[]`` against ``None`` recorded an FN,
+    and ``None`` against ``[]`` recorded an FA. The plain spelling records a TN
+    for all three.
+
+    ``Field(description=...)`` produces this annotation, so it is the common
+    spelling in an extraction schema rather than an exotic one.
+    """
+    gt = EveryListSpelling(**{field_name: gt_val})
+    pred = EveryListSpelling(**{field_name: pred_val})
+    plain_gt = EveryListSpelling(**{"param_optional": gt_val})
+    plain_pred = EveryListSpelling(**{"param_optional": pred_val})
+
+    assert gt._is_list_field(field_name) is True
+
+    annotated = _overall(
+        gt.compare_with(pred, include_confusion_matrix=True)["confusion_matrix"],
+        field_name,
+    )
+    plain = _overall(
+        plain_gt.compare_with(plain_pred, include_confusion_matrix=True)[
+            "confusion_matrix"
+        ],
+        "param_optional",
+    )
+
+    assert annotated == plain, f"{field_name} disagrees with Optional[List[str]]"
+    assert annotated["tn"] == 1
+
+
 def test_an_any_annotated_field_is_not_a_list_field():
     """``Any`` holding a list is still not a list *field*, by design.
 
@@ -610,6 +702,133 @@ def test_absent_string_field_agrees_across_score_readers(gt_note, pred_note):
     assert field_metrics["tn"] == 1
     assert field_metrics["fn"] == 0
     assert field_metrics["fa"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Tests — an empty dict is absent, the third case the documented rule names
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "gt_val,pred_val",
+    [({}, {}), ({}, None), (None, {}), (None, None)],
+)
+def test_absent_dict_field_records_a_true_negative(gt_val, pred_val):
+    """``{}`` is absent, exactly as ``""`` and ``[]`` are.
+
+    ``docs/docs/Advanced/classification-logic.md`` states the rule for all
+    three: "Empty strings, empty lists, and empty objects are treated as null.
+    Comparing any of these with null yields TN."
+    ``is_effectively_null_for_primitives`` covered ``None`` and ``""`` but not
+    ``{}``, so the #233 contradiction survived for a dict field in the opposite
+    direction: two **identical** objects each holding ``{}`` classified as a
+    false discovery rather than a match.
+    """
+    gt = DictContainer(items=[DictLeaf(meta=gt_val)])
+    pred = DictContainer(items=[DictLeaf(meta=pred_val)])
+
+    result = gt.compare_with(pred, include_confusion_matrix=True)
+    cm = result["confusion_matrix"]
+
+    assert result["overall_score"] == 1.0
+    assert _overall(cm, "items")["tp"] == 1
+    assert _overall(cm, "items")["fd"] == 0
+    assert _overall(cm, "items", "meta")["tn"] == 1
+
+
+@pytest.mark.parametrize(
+    "gt_val,pred_val,expected",
+    [({}, {"k": "v"}, "fa"), ({"k": "v"}, {}, "fn"), (None, {"k": "v"}, "fa")],
+)
+def test_dict_field_absent_on_one_side_is_reported_not_raised(
+    gt_val, pred_val, expected
+):
+    """A populated dict against an absent one is FA/FN, and does not raise.
+
+    No comparator accepts a dict -- ``LevenshteinComparator`` raises
+    ``TypeError`` explaining that a ``StructuredModel`` should be used instead.
+    Because ``{}`` did not read as absent, ``{}`` against a populated dict fell
+    through to that comparator, so the pair was *uncomparable* rather than
+    merely mismatched: ``compare()`` raised, which took out Hungarian matching
+    for any ``List[StructuredModel]`` whose element model had a populated dict
+    field. Reading ``{}`` as absent short-circuits before any comparator is
+    consulted.
+
+    Two populated dicts still reach the comparator and still raise; that is a
+    separate gap, and this pins only the absent-on-one-side half.
+
+    Asserted on the leaf directly rather than through ``DictContainer``: the
+    pair scores ``0.0``, so inside a list it is a below-threshold FD and gets no
+    field breakdown at all -- that is the documented threshold-gated recursion,
+    not a second bug. The object-level half of that is pinned below.
+    """
+    gt = DictLeaf(meta=gt_val)
+    pred = DictLeaf(meta=pred_val)
+
+    # The regression: this used to raise TypeError out of LevenshteinComparator.
+    assert gt.compare(pred) == 0.0
+
+    cm = gt.compare_with(pred, include_confusion_matrix=True)["confusion_matrix"]
+    assert cm["fields"]["meta"]["overall"][expected] == 1
+
+
+def test_dict_field_absent_on_one_side_is_an_object_level_false_discovery():
+    """Inside a list, the same pair is an FD with no field breakdown.
+
+    The companion to the test above, pinning the gating rather than the field
+    classification. ``DictLeaf.match_threshold`` is ``1.0`` and the pair scores
+    ``0.0``, so the objects are "not really the same" and
+    ``docs/docs/Advanced/threshold-gated-evaluation.md`` calls for treating the
+    pair as atomic. What matters for this fix is that it is reached by scoring
+    rather than by raising.
+    """
+    gt = DictContainer(items=[DictLeaf(meta={})])
+    pred = DictContainer(items=[DictLeaf(meta={"k": "v"})])
+
+    cm = gt.compare_with(pred, include_confusion_matrix=True)["confusion_matrix"]
+
+    assert _overall(cm, "items")["fd"] == 1
+    assert _overall(cm, "items")["tp"] == 0
+    assert cm["fields"]["items"].get("fields", {}) == {}
+
+
+def test_maybe_absent_is_a_superset_of_both_null_rules():
+    """The perf guard must never hide a value either rule calls absent.
+
+    ``compare_field_raw`` consults a field's annotation only when
+    ``_maybe_absent`` says one side could be absent, because that lookup runs
+    for every field of every cell in a Hungarian cost matrix. The guard is
+    therefore an over-approximation of both ``NullHelper`` predicates, and it is
+    only sound while it stays a superset: a value either predicate would call
+    absent but the guard rejects would silently skip true-negative and
+    false-negative handling.
+
+    Adding a case to either predicate without widening the guard fails here.
+    """
+    candidates = [
+        None,
+        "",
+        [],
+        {},
+        "x",
+        ["x"],
+        {"k": "v"},
+        0,
+        0.0,
+        False,
+        set(),
+        (),
+        NoteLeaf(note=None),
+    ]
+
+    for value in candidates:
+        either_rule_calls_it_absent = NullHelper.is_effectively_null_for_lists(
+            value
+        ) or NullHelper.is_effectively_null_for_primitives(value)
+        if either_rule_calls_it_absent:
+            assert _maybe_absent(value) is True, (
+                f"{value!r} is absent under a NullHelper rule but the guard "
+                f"in compare_field_raw would skip the check"
+            )
 
 
 @pytest.mark.parametrize(

@@ -29,7 +29,7 @@ from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
-from .optional_annotation import union_args, unwrap_optional
+from .optional_annotation import union_args, unwrap_annotated, unwrap_optional
 from .rich_value_helper import RichValueHelper
 from .threshold_helper import THRESHOLD_DOCS_URL
 from .threshold_helper import model_identity as _model_identity
@@ -174,7 +174,7 @@ def _annotation_is_list(annotation: Any) -> bool:
     non-list records no TN when both sides are empty, so it silently drops
     classification evidence rather than failing loudly.
 
-    Two traps make that easy to get wrong, and both are handled here:
+    Three traps make that easy to get wrong, and all three are handled here:
 
     - ``get_origin`` returns ``list`` only for a *parameterized* spelling, so
       bare ``list`` needs an identity test alongside it. Without one, ``list``
@@ -186,20 +186,27 @@ def _annotation_is_list(annotation: Any) -> bool:
       :func:`optional_annotation.union_args` -- the package's single source for
       destructuring a union in every spelling -- rather than a hand-rolled
       origin check.
+    - ``Annotated`` survives inside a union, where pydantic does not strip it,
+      and ``get_origin`` reports ``Annotated`` rather than the type inside. So
+      ``Optional[Annotated[List[str], ...]]`` -- the spelling a
+      ``Field(description=...)`` produces, and what ``Annotated[List[str], ...]
+      | None`` normalises to -- read as non-list. Arms are unwrapped through
+      :func:`optional_annotation.unwrap_annotated` before being tested.
 
-    Union members are recursed with the same two rules rather than a bare ``is
+    Union members are recursed with the same rules rather than a bare ``is
     list``, so a bare and a parameterized member inside one union answer alike.
     Depth needs no special handling: ``typing`` flattens nested unions, so
     ``Optional[list[str] | None]`` is stored as ``Optional[list[str]]``.
 
-    One spelling is deliberately *not* covered: ``Optional[Annotated[list,
-    ...]]``. Pydantic strips ``Annotated`` when it wraps the whole annotation
-    (so ``Annotated[list, "m"]`` and ``Annotated[Optional[List[str]], "m"]`` both
-    arrive here already unwrapped) but preserves it as a union member, and this
-    does not unwrap it. Doing so should be consistent with the other annotation
-    readers -- ``_is_structured_field_type`` and the HTML report's threshold
-    extraction -- rather than fixed here alone.
+    One spelling is still deliberately *not* covered: ``Any`` holding a list at
+    runtime. Inferring list-ness from a value rather than an annotation is a
+    different question from reading a spelling correctly, and every caller here
+    has only the annotation.
     """
+    # `Annotated` first: everything below asks about the type inside it, and a
+    # wrapper reaching the `get_origin` test would answer for the wrapper.
+    annotation = unwrap_annotated(annotation)
+
     if annotation is list:
         return True
 
