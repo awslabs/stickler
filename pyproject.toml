@@ -56,8 +56,8 @@ dev = [
     # Used by the memory-measurement assertions in the stress and deep-nesting
     # tests. Not imported anywhere in src/.
     "psutil>=5.9.6,<7.0.0",
-    # The suite exercises every optional module, so it needs every extra's
-    # dependencies even though they are not required at runtime.
+    # The suite exercises every optional module; scipy and scikit-learn also
+    # serve as development metric oracles for tests/test_statistics.py.
     "jinja2>=3.1.6,<3.2.0",
     "pandas>=2.1.1,<3.0.0",
     "scipy>=1.12.0,<2.0.0",
@@ -156,8 +156,8 @@ test = [
     "psutil>=5.9.6,<7.0.0",
     # Used by examples/notebooks/Review_Efficiency_Exploration.ipynb.
     "matplotlib>=3.8.0",
-    # The suite exercises every optional module, so it needs every extra's
-    # dependencies even though they are not required at runtime.
+    # The suite exercises every optional module; scipy and scikit-learn also
+    # serve as development metric oracles for tests/test_statistics.py.
     "jinja2>=3.1.6,<3.2.0",
     "pandas>=2.1.1,<3.0.0",
     "scipy>=1.12.0,<2.0.0",
