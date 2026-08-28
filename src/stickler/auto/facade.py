@@ -147,10 +147,6 @@ class EvalSpec:
         ``source`` is a coarse label (``type`` / ``name-token`` / ``degrade``,
         or ``explicit`` for a passthrough ``StructuredModel``).
         """
-        if isinstance(self.source_cls, type) and issubclass(
-            self.source_cls, StructuredModel
-        ):
-            return self._explain_structured()
         out: Dict[str, Dict[str, Any]] = {}
         for name, spec in specs_for(
             self.source_cls,
@@ -169,21 +165,7 @@ class EvalSpec:
 
     def _explain_structured(self) -> Dict[str, Dict[str, Any]]:
         """Explain a passthrough StructuredModel from its explicit config."""
-        out: Dict[str, Dict[str, Any]] = {}
-        for name in self.source_cls.model_fields:
-            if name == "extra_fields":
-                continue
-            info = self.source_cls._get_comparison_info(name)
-            comparator = getattr(info, "comparator", None)
-            out[name] = {
-                "comparator": type(comparator).__name__ if comparator else "default",
-                "threshold": info.threshold,
-                "weight": info.weight,
-                "clip_under_threshold": info.clip_under_threshold,
-                "source": "explicit",
-                "why": ["explicit: configured on the StructuredModel class"],
-            }
-        return out
+        return self.explain()
 
 
 def eval_for(
