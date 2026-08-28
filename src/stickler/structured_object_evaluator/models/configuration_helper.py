@@ -5,9 +5,12 @@ JSON processing, and schema generation for StructuredModel instances.
 """
 
 import inspect
+from collections.abc import Mapping as abc_Mapping
 from typing import TYPE_CHECKING, Any, Dict, get_args, get_origin
 
+from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.utils.deprecation import warn_once
 
 from .optional_annotation import is_union, union_args
 
@@ -123,6 +126,82 @@ class ConfigurationHelper:
         return instance
 
     @staticmethod
+    def can_score_mapping(model_cls, field_name: str, comparator) -> bool:
+        """Whether ``comparator`` can score a mapping, warning once if it cannot.
+
+        Both public entry points reach a field's comparator by different routes
+        (``compare_with`` through ComparisonDispatcher, ``compare`` through
+        ``compare_field_raw``), so this check lives in one place rather than
+        being written twice and drifting apart.
+
+        Returns False for any scalar comparator, which is every comparator
+        except ANLS*. Callers report a false discovery in that case instead of
+        raising: the shape of a value can be data-dependent, so raising ends a
+        corpus run on document N after succeeding on N-1, and no test would
+        catch it. The warning carries the same information without stopping.
+        """
+        if getattr(comparator, "handles_mappings", False):
+            return True
+        warn_once(
+            "dict-value-uncomparable",
+            f"{getattr(model_cls, '__name__', model_cls)}.{field_name}",
+            f"Field '{field_name}' holds a mapping, but its comparator "
+            f"({comparator.__class__.__name__}) scores scalars, so the pair is "
+            "counted as a false discovery even if the two mappings are "
+            "identical. Annotate the field as a mapping (Dict[...] or "
+            "Mapping[...]) to get ANLSStarComparator automatically, declare "
+            "ComparableField(comparator=ANLSStarComparator()) explicitly, or "
+            "use a nested StructuredModel if you know the keys.",
+            category=UserWarning,
+        )
+        return False
+
+    @staticmethod
+    def is_mapping_annotation(annotation) -> bool:
+        """Whether an annotation describes a mapping.
+
+        Covers ``dict``, ``Dict[...]``, and the ``collections.abc.Mapping``
+        family (``Mapping``, ``MutableMapping``, ``OrderedDict``,
+        ``DefaultDict``, ``Counter``), plus ``Optional[...]`` around any of
+        them. Recognising only ``dict``/``Dict[...]`` left ``Mapping[str, str]``
+        with the type-blind Levenshtein default, which rejects mappings, so a
+        field the user never configured raised at comparison time.
+
+        A multi-arm union such as ``Union[str, Dict[str, str]]`` deliberately
+        returns False: the field is not always a mapping, so a mapping-only
+        comparator is the wrong default for it. Those land in the dispatcher's
+        not-comparable branch instead.
+
+        Args:
+            annotation: A type annotation.
+
+        Returns:
+            True if values of this annotation are always mappings.
+        """
+        try:
+            if is_union(annotation):
+                args = [a for a in union_args(annotation) if a is not type(None)]
+                if len(args) != 1:
+                    return False
+                annotation = args[0]
+            if annotation is dict:
+                return True
+            origin = get_origin(annotation) or annotation
+            if origin is dict:
+                return True
+            return isinstance(origin, type) and issubclass(origin, abc_Mapping)
+        except Exception:
+            return False
+
+    @staticmethod
+    def is_dict_field_type(field_info) -> bool:
+        """Whether a field's annotation is a mapping. See is_mapping_annotation."""
+        try:
+            return ConfigurationHelper.is_mapping_annotation(field_info.annotation)
+        except Exception:
+            return False
+
+    @staticmethod
     def is_structured_field_type(field_info) -> bool:
         """Check if a field represents a structured type that needs special handling.
 
@@ -210,6 +289,18 @@ class ConfigurationHelper:
                 weight = getattr(json_func, "_weight", 1.0)
                 clip_under_threshold = getattr(json_func, "_clip_under_threshold", True)
 
+                # `ComparableField()` with no comparator resolves to
+                # LevenshteinComparator before the annotation is visible, and
+                # Levenshtein REJECTS a mapping. Substitute the structural
+                # comparator, but only when the caller named nothing: an
+                # explicit choice is never overridden, so declaring Levenshtein
+                # on a dict still raises with a message naming the remedies.
+                if not getattr(
+                    json_func, "_comparator_explicit", True
+                ) and ConfigurationHelper.is_dict_field_type(field_info):
+                    comparator = ANLSStarComparator()
+                    clip_under_threshold = False
+
                 from .comparison_info import ComparableFieldConfig
 
                 return ComparableFieldConfig(
@@ -269,6 +360,30 @@ class ConfigurationHelper:
                 comparator=StructuredModelComparator(),
                 threshold=0.9,  # Higher threshold for structured object matching
                 weight=1.0,
+            )
+
+        # A bare dict annotation declares no keys, so there is no per-key
+        # comparison config to apply and the mapping is scored structurally by
+        # ANLS*. The primitive fallback below would install
+        # LevenshteinComparator, which REJECTS a dict outright: edit distance
+        # over str(dict) makes key order significant, so two mappings with
+        # identical content can score well below 1.0.
+        #
+        # clip_under_threshold=False for the same reason nested objects use it:
+        # a mostly-correct mapping should keep its partial score rather than
+        # being zeroed by the field threshold. See #276 and #277.
+        if ConfigurationHelper.is_dict_field_type(field_info):
+            from .comparison_info import ComparableFieldConfig
+
+            # Same threshold source as the primitive fallback below: a dict
+            # field must not be silently exempt from a match_threshold the
+            # class declared. Falls back to 0.7 rather than the primitive
+            # path's 0.5 because a mapping is judged as an object.
+            return ComparableFieldConfig(
+                comparator=ANLSStarComparator(),
+                threshold=getattr(cls, "match_threshold", 0.7),
+                weight=1.0,
+                clip_under_threshold=False,
             )
 
         # Default fallback for primitive fields - use class-level threshold if available
@@ -502,6 +617,8 @@ class ConfigurationHelper:
             Dictionary with processed nested data
         """
         # Recursively call from_json to handle missing fields in nested object
-        nested_instance = structured_class.from_json(nested_data, process_rich_values=False)
+        nested_instance = structured_class.from_json(
+            nested_data, process_rich_values=False
+        )
         # Return the model_dump to get properly processed data
         return nested_instance.model_dump()

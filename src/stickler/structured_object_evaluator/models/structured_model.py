@@ -20,6 +20,7 @@ from typing import (
 from pydantic import BaseModel, Field
 from pydantic.json_schema import GenerateJsonSchema
 
+from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.base import BaseComparator
 from stickler.utils.deprecation import warn_once
 
@@ -379,6 +380,64 @@ class StructuredModel(BaseModel):
     # Default match threshold - can be overridden in subclasses
     match_threshold: ClassVar[float] = 0.7
 
+    @classmethod
+    def _install_mapping_comparators(cls) -> None:
+        """Give mapping-annotated fields a comparator that can score a mapping.
+
+        ``ComparableField`` resolves its comparator default before the field's
+        annotation exists, so it cannot know a field is a dict and installs the
+        type-blind ``LevenshteinComparator``, which REJECTS mappings. Deciding
+        here instead is the earliest point where the annotation and the field
+        metadata are both available.
+
+        Substituting here rather than at read time (in
+        ``ConfigurationHelper.get_comparison_info``) is what keeps the EXPORTED
+        configuration honest. The metadata dict mutated below is the same object
+        ``json_schema_extra`` writes as ``x-comparison``, so ``to_json_schema()``,
+        ``explain()``, the HTML reports and the comparison engine all read one
+        consistent answer. Substituting at read time made ``to_json_schema()``
+        report ``LevenshteinComparator`` for a field the engine scored with
+        ANLS*, and re-importing that schema installed Levenshtein *explicitly*,
+        which suppressed the substitution and made the round-tripped model raise
+        on a field the original scored fine.
+
+        Nothing the caller stated is overridden: an explicit ``comparator`` or an
+        explicit ``clip_under_threshold`` is left exactly as written.
+        """
+        for field_name, annotation in getattr(cls, "__annotations__", {}).items():
+            if field_name == _EXTRA_FIELDS_KEY:
+                continue
+            if not ConfigurationHelper.is_mapping_annotation(annotation):
+                continue
+
+            field_default = getattr(cls, field_name, None)
+            extra = getattr(field_default, "json_schema_extra", None)
+            if not callable(extra):
+                # A bare annotation with no ComparableField metadata to amend.
+                # ConfigurationHelper supplies the default for those instead.
+                continue
+            if getattr(extra, "_comparator_explicit", True):
+                continue
+
+            comparator = ANLSStarComparator()
+            extra._comparator_instance = comparator
+            # Now effectively explicit: the decision has been made, and a
+            # subclass re-running this must not treat it as unset.
+            extra._comparator_explicit = True
+
+            # A mapping is a container, so a partly-correct one keeps its score
+            # rather than being zeroed by the field threshold -- the same policy
+            # nested objects and lists use. An explicit choice still wins.
+            if not getattr(extra, "_clip_explicit", False):
+                extra._clip_under_threshold = False
+
+            metadata = getattr(extra, "_comparison_metadata", None)
+            if isinstance(metadata, dict):
+                metadata["comparator_type"] = comparator.__class__.__name__
+                metadata["comparator_name"] = comparator.name
+                metadata["comparator_config"] = comparator.config or {}
+                metadata["clip_under_threshold"] = extra._clip_under_threshold
+
     extra_fields: Dict[str, Any] = Field(default_factory=dict, exclude=True)
 
     model_config = {
@@ -389,6 +448,8 @@ class StructuredModel(BaseModel):
     def __init_subclass__(cls, **kwargs):
         """Validate field configurations when a StructuredModel subclass is defined."""
         super().__init_subclass__(**kwargs)
+
+        cls._install_mapping_comparators()
 
         # Validate field configurations using class annotations since model_fields isn't populated yet
         if hasattr(cls, "__annotations__"):
@@ -1097,6 +1158,16 @@ class StructuredModel(BaseModel):
         """
         # Get our field value
         my_value = getattr(self, field_name)
+
+        # A mapping pair whose comparator scores scalars: report 0.0 with a
+        # warning rather than letting the comparator raise. Same gate the
+        # dispatcher uses, so compare() and compare_with() agree.
+        if isinstance(my_value, dict) and isinstance(other_value, dict):
+            info = self.__class__._get_comparison_info(field_name)
+            if not ConfigurationHelper.can_score_mapping(
+                self.__class__, field_name, info.comparator
+            ):
+                return 0.0
 
         # If both values are StructuredModel instances, use recursive compare_with
         if isinstance(my_value, StructuredModel) and isinstance(

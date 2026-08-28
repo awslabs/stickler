@@ -275,12 +275,14 @@ class TestWireContract:
             meta: Dict[str, str]
 
         r = stickler.evaluate(M(meta={"a": "1"}), M(meta={"a": "TOTALLY DIFFERENT"}))
-        # Exact over the canonical JSON string: a substantively different dict
-        # scores 0.0, not the ~0.95 edit distance on the JSON blob would give.
-        # Asserting the exact score and comparator (rather than just < 1.0) is
-        # what makes this able to detect a change to the exotic-type fallback.
+        # ANLS* walks the mapping: the key matches, the value does not come
+        # close, and tau discards the residual leaf similarity, so the field
+        # scores 0.0 rather than the ~0.95 an edit distance over the JSON blob
+        # would award. Asserting the exact score and comparator (rather than
+        # just < 1.0) is what makes this able to detect a change to the
+        # dict handling.
         assert r.field_scores["meta"] == pytest.approx(0.0)
-        assert r.explain()["meta"]["comparator"] == "ExactComparator"
+        assert r.explain()["meta"]["comparator"] == "ANLSStarComparator"
 
     def test_set_wire_form_is_sorted(self):
         """Pin the canonical wire string, not just that two set literals agree.

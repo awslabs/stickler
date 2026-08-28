@@ -9,6 +9,35 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Added
+
+- **`ANLSStarComparator`**, which scores a `dict` (or any nesting of dicts and
+  lists) structurally instead of by whole-object equality, and is now what
+  zero-config evaluation installs for a `dict` / `Dict[...]` / `Mapping[...]`
+  field. Ground truth
+  `{"vendor": "Acme Corporation", "terms": "Net 30", "po": "PO-88231"}`:
+
+  | prediction | before | after (tau 0.5) |
+  |---|---|---|
+  | `vendor` abbreviated to `"Acme Corp"` | 0.0 | 0.8542 |
+  | `po` key missing | 0.0 | 0.6667 |
+  | extra `currency` key | 0.0 | 0.7500 |
+  | all three values wrong | 0.0 | 0.0 |
+
+  Before, the first three were indistinguishable, so a dict field could not rank
+  two extractors, detect a regression, or say which document got worse. That is
+  the `Equals` antipattern this library exists to replace, and dict fields were
+  the one place it survived ([#277](https://github.com/awslabs/stickler/issues/277)).
+
+  The per-leaf cutoff (tau) is the comparator's `threshold`, settable per field,
+  or with `dict_leaf_threshold=` on `evaluate()` / `eval_for()` for the
+  zero-config path. It is not safe at `0.0`: with no cutoff an unrelated string
+  earns credit for incidental character overlap.
+
+  ANLS* comes from the [`anls_star`](https://pypi.org/project/anls_star/)
+  project (Apache-2.0); see `NOTICE`. Stickler's implementation was already
+  present as `anls_score`, which now also accepts `threshold=`.
+
 ### Removed
 
 - The deprecated `aggregate` parameter on `ComparableField`, along with its dead
@@ -26,7 +55,59 @@ Each release links to full notes on the
   existing schema files keep loading.
   ([#226](https://github.com/awslabs/stickler/issues/226))
 
+### Changed
+
+- `ComparableField(clip_under_threshold=...)` now defaults to `None` meaning
+  "not specified" rather than `True`. The effective default is unchanged; the
+  sentinel lets a mapping-annotated field default to `False` (so partial credit
+  is not zeroed) while an explicit `True` or `False` is always honoured.
+
+- JSON Schema import now delegates standard types, local references, combiners,
+  and constraint parsing to `json-schema-to-pydantic`. Stickler retains a narrow
+  adapter for comparison metadata and nested `StructuredModel` creation. Parsed
+  types still choose comparison behavior, but schema constraints do not reject
+  imperfect predictions before scoring: malformed enum, date, and
+  constraint-violating values remain constructible and reach their comparator.
+
+  Unconfigured enum fields now use `ExactComparator` at threshold `1.0`, and
+  `date` / `date-time` formats use `DateComparator` at threshold `1.0`; both used
+  `LevenshteinComparator` at threshold `0.5` before this change, so default scores
+  can move for those fields.
+  This adds support for valid Draft 7 multi-type unions and multi-arm `allOf`,
+  `anyOf`, and `oneOf` schemas; recursive models and `patternProperties` remain
+  explicit unsupported boundaries ([#212](https://github.com/awslabs/stickler/issues/212)).
+
+- Confidence AUROC and document-splitting statistics now use NumPy
+  implementations with randomized scikit-learn and SciPy equivalence tests.
+  `scikit-learn` is no longer a core dependency, and the `docsplit` extra now
+  adds only pandas; SciPy remains isolated to the `semantic` extra
+  ([#216](https://github.com/awslabs/stickler/issues/216)).
+
 ### Fixed
+
+- A dict field scored `0.0` against an identical copy of itself on the explicit
+  path, and its configured comparator was never called.
+  `ComparisonDispatcher` handled `str`/`int`/`float`, `list` and
+  `StructuredModel` only, so a mapping fell through to the mismatched-types
+  branch. A comparator hardcoded to return `1.0` still produced `0.0`
+  ([#297](https://github.com/awslabs/stickler/issues/297)).
+
+- A mapping-annotated field with no explicit comparator no longer gets the
+  type-blind `LevenshteinComparator`, which rejects mappings outright. The
+  substitution happens at class definition, so `to_json_schema()`, `explain()`,
+  the HTML reports and the comparison engine all report the same comparator; a
+  schema round-trip previously exported `LevenshteinComparator` for a field the
+  engine scored with something else, and the reimported model then raised.
+
+- A dict field whose value is a mapping but whose comparator scores scalars
+  (reachable through `Any` or `Union[str, Dict[...]]`, where no annotation
+  declares the shape) is now counted as a false discovery with a warning naming
+  the remedies, instead of raising. Value shape can be data-dependent, so
+  raising ended a corpus run on document N after succeeding on N-1.
+
+- A `dict`-typed field is no longer exempt from a `match_threshold` the caller
+  or the model class declared; it previously used a hardcoded `0.7` while sibling
+  fields honoured the declared value.
 
 - **Breaking:** `all_fields_matched` is no longer returned by `compare_with()`,
   and no longer appears on `confusion_matrix.overall`. It quantified over

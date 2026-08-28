@@ -14,6 +14,7 @@ Comparators are the algorithms that determine how similar two field values are. 
 | [**DateComparator**](date-comparator.md) | Date fields with mixed formats, partial dates, ranges | Instant | No | Continuous (0.0--1.0) |
 | [**FuzzyComparator**](#fuzzycomparator) | Flexible text, descriptions, reordered tokens | Fast | No | Continuous (0.0--1.0) |
 | [**BBoxIoUComparator**](#bboxioucomparator) | Bounding boxes, spatial localization | Instant | No | Continuous (0.0--1.0) |
+| [**ANLSStarComparator**](#anlsstarcomparator) | Dicts and nested structures whose keys you do not declare | Moderate | No | Continuous (0.0--1.0) |
 | [**SemanticComparator**](#semanticcomparator) | Meaning-based text similarity | Moderate | Yes (Bedrock) | Continuous (0.0--1.0) |
 | [**BERTComparator**](#bertcomparator) | Contextual semantic similarity | Moderate | No (runs locally) | Continuous (0.0--1.0) |
 | [**LLMComparator**](#llmcomparator) | Complex semantic evaluation with reasoning | Slow | Yes (Bedrock) | Binary (0.0 or 1.0) |
@@ -168,6 +169,53 @@ class Product(StructuredModel):
 
 !!! note "Dependency"
     FuzzyComparator requires the `rapidfuzz` package. Install it with: `pip install rapidfuzz`
+
+---
+
+### ANLSStarComparator
+
+Scores a `dict` (or any nesting of dicts and lists) **structurally**, giving partial credit. For fields whose keys are not known when the model is written, so no per-key comparison config can be declared.
+
+**When to use:** a `Dict[str, Any]` holding whatever the extractor returned. If you *do* know the keys, declare a nested `StructuredModel` instead: each field then carries its own comparator and threshold, and results are reported per field.
+
+**Why it exists:** the alternative for an undeclared dict is whole-object equality, which cannot rank two extractors. Ground truth `{"vendor": "Acme Corporation", "terms": "Net 30", "po": "PO-88231"}`:
+
+| prediction | whole-object `==` | ANLS\* (tau 0.5) |
+|---|---|---|
+| identical | 1.0 | 1.0 |
+| keys reordered | 1.0 | 1.0 |
+| `vendor` abbreviated to `"Acme Corp"` | **0.0** | **0.8542** |
+| `po` key missing | **0.0** | **0.6667** |
+| extra `currency` key | **0.0** | **0.7500** |
+| all three values wrong | 0.0 | 0.0 |
+
+Under `==` the middle three rows are indistinguishable, so a near miss and a total failure score the same.
+
+**The one knob is `threshold`, and it is tau: the per-leaf cutoff**, not the field-level match threshold.
+
+```python
+from stickler import ANLSStarComparator, ComparableField, StructuredModel
+
+class Invoice(StructuredModel):
+    # tau 0.5 accepts an abbreviation at a leaf; 0.85 (the default) does not
+    metadata: dict = ComparableField(comparator=ANLSStarComparator(threshold=0.5))
+```
+
+Below tau, a leaf's similarity is discarded as noise. **Do not set it to 0.0**: with no cutoff an unrelated string earns credit for incidental character overlap, so a wholly wrong value scores above zero.
+
+**How scores are normalized:** over the *union* of both key sets. A renamed key is therefore charged twice, once as missing from the prediction and once as unexpected in it, which is why a rename scores below simply dropping the key.
+
+**Zero-config routing:** `stickler.evaluate()` installs this automatically for any `dict` / `Dict[...]` / `Mapping[...]` field, with `clip_under_threshold=False` so partial credit is not zeroed by the field threshold. Set tau for those fields with the `dict_leaf_threshold` argument:
+
+```python
+stickler.evaluate(ground_truth, prediction, dict_leaf_threshold=0.5)
+```
+
+**Cost:** structural scoring is far more expensive than the equality it replaces. A 200-key dict takes ~3.25 ms per comparison against ~0.0001 ms for `ExactComparator` over a canonical string. Inside a `List[Model]` the Hungarian matrix makes it quadratic: 20 line items each holding a 30-key dict is ~220 ms for **one** document. If that matters, declare a nested `StructuredModel` for the keys you actually score.
+
+**If the annotation does not say "mapping"** (for example `Any`, or `Union[str, Dict[str, str]]`), nothing can install this comparator, because the shape is only known per document. Such a pair is counted as a false discovery and warns once, naming the remedies, rather than raising partway through a corpus.
+
+Attribution: ANLS\* comes from the [`anls_star`](https://pypi.org/project/anls_star/) project (Apache-2.0); see the repository `NOTICE`.
 
 ---
 

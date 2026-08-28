@@ -1,6 +1,6 @@
 """ANLS score calculation for structured objects."""
 
-from typing import Any, Dict, Tuple, Type, Union
+from typing import Any, Dict, Optional, Tuple, Type, Union
 
 from ..models.structured_model import StructuredModel
 
@@ -24,7 +24,11 @@ def compare_structured_models(
 
 
 def anls_score(
-    gt: Any, pred: Any, return_gt: bool = False, return_key_scores: bool = False
+    gt: Any,
+    pred: Any,
+    return_gt: bool = False,
+    return_key_scores: bool = False,
+    threshold: Optional[float] = None,
 ) -> Union[float, Tuple[float, Any], Tuple[float, Any, Dict[str, Any]]]:
     """Calculate ANLS* score between two objects.
 
@@ -36,6 +40,15 @@ def anls_score(
         pred: Prediction object
         return_gt: Whether to return the closest ground truth
         return_key_scores: Whether to return detailed key scores
+        threshold: Tau, the per-leaf cutoff below which a leaf's string
+            similarity is discarded as noise. Defaults to
+            ``ANLSTree.THRESHOLD`` (0.5), the standard value from the ANLS
+            literature. Raise it to require closer leaf matches: at 0.5 an
+            abbreviated value still earns partial credit, at 0.85 it does not.
+
+            Tau is not optional in spirit. With ``threshold=0.0`` an unrelated
+            string earns credit for incidental character overlap, so a wholly
+            wrong value scores above zero.
 
     Returns:
         Either just the overall score (float), or a tuple with the score and
@@ -59,8 +72,8 @@ def anls_score(
         gt = tuple(gt)
 
     # Create trees from the objects
-    gt_tree = ANLSTree.make_tree(gt, is_gt=True)
-    pred_tree = ANLSTree.make_tree(pred, is_gt=False)
+    gt_tree = ANLSTree.make_tree(gt, is_gt=True, threshold=threshold)
+    pred_tree = ANLSTree.make_tree(pred, is_gt=False, threshold=threshold)
 
     # Calculate ANLS score
     score, closest_gt, key_scores = gt_tree.anls(pred_tree)

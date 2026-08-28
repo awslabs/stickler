@@ -12,17 +12,22 @@ path is lossy: it does not support general multi-type unions, enums degrade to
 bare strings, and ``datetime`` loses its type. The live annotations keep every
 signal inference needs.
 
-Wire form: fields whose JSON form is not a scalar (dict, tuple, set, Any,
-multi-arm unions, unparameterized containers, Decimal) are declared with a
-shadow type that canonicalizes the value to a deterministic string
-(``to_jsonable_python`` then ``json.dumps`` with sorted keys), so "compared as
-their JSON string form" is actually true rather than a validation error. Both
-``model_dump()`` (native ``date``/``Decimal``/``set`` objects) and
-``model_dump(mode="json")`` normalize identically.
+Wire form: fields whose JSON form is not a scalar (tuple, set, Any, multi-arm
+unions, unparameterized containers, Decimal) are declared with a shadow type
+that canonicalizes the value to a deterministic string (``to_jsonable_python``
+then ``json.dumps`` with sorted keys), so "compared as their JSON string form"
+is actually true rather than a validation error. Both ``model_dump()`` (native
+``date``/``Decimal``/``set`` objects) and ``model_dump(mode="json")`` normalize
+identically.
+
+``dict`` is the exception: it stays a mapping, normalized key-and-value-wise by
+``jsonable_mapping`` rather than stringified, because ANLS* scores it
+structurally and cannot do that with a JSON blob. The normalization still runs,
+so both dump modes agree for a ``Dict[date, X]``.
 
 Results are cached in a ``WeakKeyDictionary`` keyed on
-``(cls, weight_hints, match_threshold)`` so repeated ``evaluate`` calls in a
-loop are cheap without pinning user classes in memory.
+``(cls, weight_hints, match_threshold, dict_leaf_threshold)`` so repeated
+``evaluate`` calls in a loop are cheap without pinning user classes in memory.
 """
 
 from __future__ import annotations
@@ -54,7 +59,11 @@ from ..structured_object_evaluator.models.comparator_registry import (
 )
 from ..structured_object_evaluator.models.model_factory import ModelFactory
 from ..structured_object_evaluator.models.structured_model import StructuredModel
-from ..utils.canonical import canonicalize_json, canonicalize_json_sorted
+from ..utils.canonical import (
+    canonicalize_json,
+    canonicalize_json_sorted,
+    jsonable_mapping,
+)
 from .inference import InferredSpec, _is_literal, infer_field_config, unwrap_optional
 
 # Cache of built shadow classes. Keyed by the source pydantic class (weak) ->
@@ -73,6 +82,7 @@ def structured_model_for(
     *,
     weight_hints: bool = False,
     match_threshold: float = 0.7,
+    dict_leaf_threshold: Optional[float] = None,
 ) -> Type[StructuredModel]:
     """Return a ``StructuredModel`` subclass mirroring ``cls`` with inferred config.
 
@@ -90,7 +100,7 @@ def structured_model_for(
             f"structured_model_for expects a pydantic BaseModel subclass, got {cls!r}"
         )
 
-    key = _cache_key(weight_hints, match_threshold)
+    key = _cache_key(weight_hints, match_threshold, dict_leaf_threshold)
     per_class = _CACHE.get(cls)
     if per_class is not None and key in per_class:
         return per_class[key]
@@ -100,6 +110,7 @@ def structured_model_for(
         weight_hints=weight_hints,
         match_threshold=match_threshold,
         _building=set(),
+        dict_leaf_threshold=dict_leaf_threshold,
     )
 
     _CACHE.setdefault(cls, {})[key] = shadow
@@ -111,6 +122,7 @@ def specs_for(
     *,
     weight_hints: bool = False,
     match_threshold: float = 0.7,
+    dict_leaf_threshold: Optional[float] = None,
 ) -> Dict[str, InferredSpec]:
     """Return the inferred spec per field (for ``.explain()``), keyed by
     dotted path.
@@ -123,7 +135,16 @@ def specs_for(
     """
     registry = get_global_registry()
     result: Dict[str, InferredSpec] = {}
-    _collect_specs(cls, "", weight_hints, match_threshold, registry, result, set())
+    _collect_specs(
+        cls,
+        "",
+        weight_hints,
+        match_threshold,
+        registry,
+        result,
+        set(),
+        dict_leaf_threshold,
+    )
     return result
 
 
@@ -135,6 +156,7 @@ def _collect_specs(
     registry,
     result: Dict[str, InferredSpec],
     _visiting: set,
+    dict_leaf_threshold: Optional[float] = None,
 ) -> None:
     if cls in _visiting:
         return
@@ -182,6 +204,7 @@ def _collect_specs(
                         registry,
                         result,
                         _visiting,
+                        dict_leaf_threshold,
                     )
                 elif kind == "model_list":
                     element, _ = unwrap_optional(_list_element(annotation))
@@ -193,6 +216,7 @@ def _collect_specs(
                         registry,
                         result,
                         _visiting,
+                        dict_leaf_threshold,
                     )
             elif kind == "model":
                 result[path] = InferredSpec(
@@ -230,12 +254,19 @@ def _collect_specs(
                 # Report the element spec (the same one _field_definition
                 # installs) so the audit trail matches the built model.
                 element, _ = unwrap_optional(_list_element(annotation))
-                spec = _primitive_spec(name, element, weight_hints, registry)
+                spec = _primitive_spec(
+                    name, element, weight_hints, registry, dict_leaf_threshold
+                )
                 spec.provenance.insert(0, "list: spec applies to each element")
                 result[path] = spec
             else:
                 result[path] = infer_field_config(
-                    name, field_info, weight_hints=weight_hints, registry=registry
+                    name,
+                    field_info,
+                    weight_hints=weight_hints,
+                    registry=registry,
+                    dict_leaf_threshold=dict_leaf_threshold,
+                    match_threshold=match_threshold,
                 )
     finally:
         _visiting.discard(cls)
@@ -250,6 +281,7 @@ def _build(
     weight_hints: bool,
     match_threshold: float,
     _building: set,
+    dict_leaf_threshold: Optional[float] = None,
 ) -> Type[StructuredModel]:
     """Recursively assemble the shadow class for ``cls``.
 
@@ -285,6 +317,7 @@ def _build(
                 match_threshold=match_threshold,
                 registry=registry,
                 _building=_building,
+                dict_leaf_threshold=dict_leaf_threshold,
             )
 
         if not field_definitions:
@@ -313,6 +346,7 @@ def _field_definition(
     match_threshold: float,
     registry,
     _building: set,
+    dict_leaf_threshold: Optional[float] = None,
 ) -> Tuple[Any, Any]:
     """Produce a ``(type, Field)`` tuple for one field.
 
@@ -335,6 +369,7 @@ def _field_definition(
             weight_hints=weight_hints,
             match_threshold=match_threshold,
             _building=_building,
+            dict_leaf_threshold=dict_leaf_threshold,
         )
         # A single nested model may carry an explicit StructuredModelComparator
         # (unlike List[StructuredModel], which __init_subclass__ forbids).
@@ -359,6 +394,7 @@ def _field_definition(
             weight_hints=weight_hints,
             match_threshold=match_threshold,
             _building=_building,
+            dict_leaf_threshold=dict_leaf_threshold,
         )
         element_type = Optional[child] if element_optional else child
         list_type = List[element_type]
@@ -371,7 +407,9 @@ def _field_definition(
 
     if kind == "primitive_list":
         element, element_optional = unwrap_optional(_list_element(annotation))
-        spec = _primitive_spec(name, element, weight_hints, registry)
+        spec = _primitive_spec(
+        name, element, weight_hints, registry, dict_leaf_threshold
+    )
         wire = _scalar_wire_type(element)
         element_type = Optional[wire] if element_optional else wire
         list_type = List[element_type]
@@ -382,7 +420,12 @@ def _field_definition(
 
     # Primitive scalar.
     spec = infer_field_config(
-        name, field_info, weight_hints=weight_hints, registry=registry
+        name,
+        field_info,
+        weight_hints=weight_hints,
+        registry=registry,
+        dict_leaf_threshold=dict_leaf_threshold,
+        match_threshold=match_threshold,
     )
     wire = _scalar_wire_type(annotation)
     default = ... if field_info.is_required() else None
@@ -398,6 +441,7 @@ def _shadow_for(
     weight_hints: bool,
     match_threshold: float,
     _building: set,
+    dict_leaf_threshold: Optional[float] = None,
 ) -> Type[StructuredModel]:
     """Shadow class for a nested model annotation.
 
@@ -412,15 +456,26 @@ def _shadow_for(
         weight_hints=weight_hints,
         match_threshold=match_threshold,
         _building=_building,
+        dict_leaf_threshold=dict_leaf_threshold,
     )
 
 
 def _primitive_spec(
-    name: str, element: Any, weight_hints: bool, registry
+    name: str,
+    element: Any,
+    weight_hints: bool,
+    registry,
+    dict_leaf_threshold: Optional[float] = None,
 ) -> InferredSpec:
     """Infer a spec for the *element* type of a primitive list."""
     dummy = FieldInfo(annotation=element)
-    return infer_field_config(name, dummy, weight_hints=weight_hints, registry=registry)
+    return infer_field_config(
+        name,
+        dummy,
+        weight_hints=weight_hints,
+        registry=registry,
+        dict_leaf_threshold=dict_leaf_threshold,
+    )
 
 
 def _comparable_from_spec(spec: InferredSpec, *, default: Any):
@@ -488,6 +543,16 @@ def _isoformat_dates(value: Any) -> Any:
 # Shadow types for fields whose JSON wire form is not a scalar.
 _WireJson = Annotated[str, BeforeValidator(canonicalize_json)]
 _WireJsonSorted = Annotated[str, BeforeValidator(canonicalize_json_sorted)]
+#: A dict kept as a dict, with keys and values in JSON form so both
+#: model_dump modes agree. See jsonable_mapping.
+#:
+#: Annotated ``Any`` rather than ``Dict[Any, Any]`` on purpose. A prediction
+#: whose schema said "object" may arrive holding a list or a string, and
+#: rejecting that at validation time would abort the whole evaluation instead
+#: of scoring the document. Left as-is, the dispatcher sees dict-vs-list, finds
+#: no matching branch, and classifies it as a false discovery -- which is the
+#: right answer for a shape mismatch.
+_WireDict = Annotated[Any, BeforeValidator(jsonable_mapping)]
 _WireDate = Annotated[str, BeforeValidator(_isoformat_dates)]
 _WireNumeric = Annotated[str, BeforeValidator(_stringify_numeric)]
 
@@ -524,8 +589,21 @@ def _scalar_wire_type(annotation: Any) -> Any:
     origin = get_origin(annotation)
     if origin in (set, frozenset):
         return _WireJsonSorted
-    # Everything else (dict, tuple, Any, multi-arm unions, unknown objects)
-    # is compared as its canonical JSON string form.
+    if annotation is dict or origin is dict:
+        # Declared as `dict`, NOT canonicalized to a string. ANLS* scores the
+        # mapping structurally, which requires it to arrive as a mapping; the
+        # dispatcher has a dict branch for exactly this. Stringifying here was
+        # what forced dicts through whole-object equality, since a JSON blob
+        # can only be compared as a blob.
+        #
+        # Keys and values are normalized to their JSON form first, so a
+        # Dict[date, X] compares equal between model_dump() and
+        # model_dump(mode="json"); only the stringify step is skipped.
+        return _WireDict
+    # Everything else (tuple, Any, multi-arm unions, unknown objects) is
+    # compared as its canonical JSON string form. Only dict gets structural
+    # treatment: a tuple is positional so canonical JSON is a fair reading of
+    # it, and Any/unknown objects have no structure that can be assumed.
     return _WireJson
 
 
@@ -536,5 +614,10 @@ def _valid_identifier(name: str) -> str:
     return cleaned or "DynamicModelEval"
 
 
-def _cache_key(weight_hints: bool, match_threshold: float) -> Tuple:
-    return (weight_hints, match_threshold)
+def _cache_key(
+    weight_hints: bool, match_threshold: float, dict_leaf_threshold: Optional[float]
+) -> Tuple:
+    # dict_leaf_threshold is part of the key: it changes the comparator built
+    # for every dict field, so omitting it would hand back a shadow model
+    # configured with a different tau than the caller asked for.
+    return (weight_hints, match_threshold, dict_leaf_threshold)

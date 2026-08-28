@@ -44,7 +44,9 @@ from stickler.comparators.base import BaseComparator
 from stickler.comparators.fuzzy import FuzzyComparator
 
 
-def _scores(comparator, threshold, gt_value, pred_value, item_type=str) -> Tuple[float, float]:
+def _scores(
+    comparator, threshold, gt_value, pred_value, item_type=str
+) -> Tuple[float, float]:
     """Score one pair twice: once as a list field, once as a scalar field.
 
     Returns ``(list_score, scalar_score)``. The two models are identical apart
@@ -66,7 +68,9 @@ def _scores(comparator, threshold, gt_value, pred_value, item_type=str) -> Tuple
     )
 
 
-def _list_counts(comparator, threshold, gt_values, pred_values, item_type=str) -> Dict[str, Any]:
+def _list_counts(
+    comparator, threshold, gt_values, pred_values, item_type=str
+) -> Dict[str, Any]:
     """Confusion-matrix counts for a list field."""
 
     class ListModel(StructuredModel):
@@ -88,7 +92,9 @@ class TestExactComparatorReachesListFields:
         assert list_score == 0.0
 
     def test_case_only_difference_is_classified_as_a_non_match(self):
-        counts = _list_counts(ExactComparator(), 1.0, ["SHP-2024-001"], ["shp-2024-001"])
+        counts = _list_counts(
+            ExactComparator(), 1.0, ["SHP-2024-001"], ["shp-2024-001"]
+        )
         assert counts["tp"] == 0
         assert counts["fd"] == 1
 
@@ -121,9 +127,7 @@ class TestExactComparatorReachesListFields:
         ``HungarianMatcher.calculate_metrics`` short-circuits a single-item
         list, so a two-item list exercises the matrix path instead.
         """
-        counts = _list_counts(
-            ExactComparator(), 1.0, ["AB", "CD"], ["cd", "ab"]
-        )
+        counts = _list_counts(ExactComparator(), 1.0, ["AB", "CD"], ["cd", "ab"])
         assert counts["tp"] == 0
         assert counts["fd"] == 2
 
@@ -204,7 +208,9 @@ class TestItemTypesReachTheComparatorIntact:
         assert _bbox_list_score([gt], [pred], 0.01, List[int]) == direct
 
     def test_numeric_items_supplied_as_numbers(self):
-        list_score, scalar_score = _scores(NumericComparator(), 1.0, 42, 42, item_type=int)
+        list_score, scalar_score = _scores(
+            NumericComparator(), 1.0, 42, 42, item_type=int
+        )
         assert list_score == scalar_score
         assert list_score == 1.0
 
@@ -252,7 +258,9 @@ class TestItemTypesReachTheComparatorIntact:
             )
 
         def score(gt, pred):
-            return ListModel(v=[gt]).compare_with(ListModel(v=[pred]))["field_scores"]["v"]
+            return ListModel(v=[gt]).compare_with(ListModel(v=[pred]))["field_scores"][
+                "v"
+            ]
 
         # Identical content scores 1.0 regardless of key order. On 0.6.0 the
         # reordered pair scored 0.5556.
@@ -293,7 +301,9 @@ class TestItemTypesReachTheComparatorIntact:
             )
 
         def score(gt, pred):
-            return ListModel(v=[gt]).compare_with(ListModel(v=[pred]))["field_scores"]["v"]
+            return ListModel(v=[gt]).compare_with(ListModel(v=[pred]))["field_scores"][
+                "v"
+            ]
 
         # Same keys, different values: a key-wise comparator says 1.0 where JSON
         # string similarity would not.
@@ -302,15 +312,23 @@ class TestItemTypesReachTheComparatorIntact:
         # rather than being rescued by canonicalization.
         assert score({"a": 1, "b": 2}, {"a": 1, "c": 3}) == 0.0
 
-    def test_dict_items_diverge_from_the_scalar_spelling(self):
-        """The list path scores a dict pair the scalar path still refuses.
+    def test_an_explicitly_declared_levenshtein_cannot_score_a_dict(self):
+        """Declaring Levenshtein on a dict field is reported, not scored.
 
-        ``_score`` lives in ``HungarianMatcher``, so only the list path has the
-        fallback: a scalar ``Dict`` field hits the comparator's guard with
-        nothing to retry against. That is the mirror image of the asymmetry #278
-        removed, and it is pinned here rather than left to be rediscovered --
-        closing it means deciding whether a scalar dict field should be
-        canonicalized too, which is #276 and #277 territory.
+        The asymmetry this test used to pin (list path canonicalized, scalar
+        path scored 0.0) is closed differently than expected. A dict field now
+        reaches its declared comparator instead of falling through to a
+        mismatched-types 0.0, so an explicitly declared LevenshteinComparator
+        raises on the scalar path where it previously returned a silent 0.0.
+
+        That is deliberate: edit distance over ``str(dict)`` cannot score a
+        mapping, and the error message names both remedies. A field that
+        declares nothing gets ANLSStarComparator, which is covered by
+        ``test_a_bare_dict_annotation_scores_structurally`` below.
+
+        The list path still canonicalizes rather than raising, because
+        ``HungarianMatcher._score`` retries with canonical JSON when a
+        comparator refuses an item. That divergence is now the only one left.
         """
 
         class ScalarModel(StructuredModel):
@@ -325,14 +343,58 @@ class TestItemTypesReachTheComparatorIntact:
 
         gt, pred = {"a": 1, "b": 2}, {"b": 2, "a": 1}
 
+        # List path: the Hungarian fallback canonicalizes, so key order is
+        # irrelevant and identical content matches.
         assert ListModel(v=[gt]).compare(ListModel(v=[pred])) == 1.0
-        with pytest.raises(TypeError):
-            ScalarModel(v=gt).compare(ScalarModel(v=pred))
+        assert (
+            ListModel(v=[gt]).compare_with(ListModel(v=[pred]))["field_scores"]["v"]
+            == 1.0
+        )
 
-        # compare_with degrades to 0.0 instead of raising, which is its own
-        # per-field policy -- the divergence in the score survives either way.
-        assert ListModel(v=[gt]).compare_with(ListModel(v=[pred]))["field_scores"]["v"] == 1.0
-        assert ScalarModel(v=gt).compare_with(ScalarModel(v=pred))["field_scores"]["v"] == 0.0
+        # Scalar path: the declared comparator cannot score a mapping, so the
+        # pair is reported as a false discovery with a warning naming the
+        # remedies, rather than raising and ending the run.
+        #
+        # Only the FIRST call warns: the gate uses warn_once, keyed on the
+        # model and field, so a corpus run reports the misconfiguration once
+        # rather than once per document. Both calls still return 0.0, which is
+        # what the assertions below check.
+        with pytest.warns(UserWarning, match="ANLSStarComparator"):
+            assert ScalarModel(v=gt).compare(ScalarModel(v=pred)) == 0.0
+
+        assert (
+            ScalarModel(v=gt).compare_with(ScalarModel(v=pred))["field_scores"]["v"]
+            == 0.0
+        )
+
+    def test_a_bare_dict_annotation_scores_structurally(self):
+        """An undeclared dict field gets ANLS*, not the primitive default.
+
+        Without this, the type-blind LevenshteinComparator default would make
+        every bare ``Dict`` annotation raise, which is why the default is
+        type-aware for exactly this one annotation.
+        """
+
+        class BareModel(StructuredModel):
+            v: Dict[str, Any] = ComparableField()
+
+        gt = {"a": "Acme Corporation", "b": "Net 30"}
+
+        info = BareModel._get_comparison_info("v")
+        assert info.comparator.name == "ANLSStarComparator"
+
+        # Key order is irrelevant, and a near miss earns partial credit rather
+        # than the 0.0 whole-object equality would give.
+        assert (
+            BareModel(v=gt).compare(
+                BareModel(v={"b": "Net 30", "a": "Acme Corporation"})
+            )
+            == 1.0
+        )
+        partial = BareModel(v=gt).compare(
+            BareModel(v={"a": "Acme Corp", "b": "Net 30"})
+        )
+        assert 0.0 < partial < 1.0
 
     def test_a_comparator_error_is_not_swallowed(self):
         """Canonicalization must not become a catch-all for comparator failures.
@@ -402,7 +464,9 @@ class TestNestedModelListsKeepTheirOwnPath:
 
     def test_identical_nested_models_match(self):
         class Doc(StructuredModel):
-            items: List["TestNestedModelListsKeepTheirOwnPath._Inner"] = ComparableField()
+            items: List["TestNestedModelListsKeepTheirOwnPath._Inner"] = (
+                ComparableField()
+            )
 
         inner = TestNestedModelListsKeepTheirOwnPath._Inner
         result = Doc(items=[inner(city="Seattle")]).compare_recursive(
@@ -412,7 +476,9 @@ class TestNestedModelListsKeepTheirOwnPath:
 
     def test_differing_nested_models_do_not_match(self):
         class Doc(StructuredModel):
-            items: List["TestNestedModelListsKeepTheirOwnPath._Inner"] = ComparableField()
+            items: List["TestNestedModelListsKeepTheirOwnPath._Inner"] = (
+                ComparableField()
+            )
 
         inner = TestNestedModelListsKeepTheirOwnPath._Inner
         result = Doc(items=[inner(city="Seattle")]).compare_recursive(

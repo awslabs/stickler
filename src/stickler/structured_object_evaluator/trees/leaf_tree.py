@@ -19,19 +19,26 @@ class ANLSLeaf(ANLSTree):
         _comparator: The comparator used for string similarity.
     """
 
-    def __init__(self, obj: Any, comparator: Optional[BaseComparator] = None):
+    def __init__(
+        self,
+        obj: Any,
+        comparator: Optional[BaseComparator] = None,
+        threshold: Optional[float] = None,
+    ):
         """Initialize a leaf node.
 
         Args:
             obj: The primitive value (str, float, int, bool).
             comparator: Optional comparator for string comparison.
+            threshold: Tau, the cutoff below which this leaf's similarity
+                is discarded as noise.
 
         Raises:
             ValueError: If obj is not a primitive type.
         """
         if not isinstance(obj, (str, float, int, bool)):
             raise ValueError(f"Leaf must be a primitive type, got {type(obj)}")
-        super().__init__(obj, comparator)
+        super().__init__(obj, comparator, threshold)
 
     def __len__(self) -> int:
         """Return the length of this leaf node.
@@ -86,6 +93,6 @@ class ANLSLeaf(ANLSTree):
         similarity = self._comparator.compare(this_str, other_str)
 
         # Apply the ANLS threshold
-        question_result = 0.0 if similarity < self.THRESHOLD else similarity
+        question_result = 0.0 if similarity < self.threshold else similarity
 
         return [question_result], self.obj, key_scores_copy
