@@ -221,6 +221,12 @@ def _normalize_results_format(
     Returns:
         Normalized results dict or None if unrecognized format
     """
+    # EvalResult exposes the original comparison dictionary through ``raw``.
+    # Unwrap it before handling the supported dictionary formats below.
+    raw_results = getattr(results, "raw", None)
+    if isinstance(raw_results, dict):
+        results = raw_results
+
     # Handle ProcessEvaluation objects (from bulk evaluator)
     if hasattr(results, "metrics") and hasattr(results, "field_metrics"):
         # This is a ProcessEvaluation object from bulk evaluator
@@ -977,6 +983,11 @@ def _extract_non_matches(results: Union[Dict[str, Any], Any]) -> List[Dict[str, 
     Returns:
         List of non-match dictionaries
     """
+    # EvalResult exposes the original comparison dictionary through ``raw``.
+    raw_results = getattr(results, "raw", None)
+    if isinstance(raw_results, dict):
+        results = raw_results
+
     # Handle ProcessEvaluation objects (from bulk evaluator)
     if hasattr(results, "non_matches") and results.non_matches:
         return results.non_matches
@@ -1310,9 +1321,8 @@ def _print_evaluation_results_content(
         non_matches = _extract_non_matches(results)
         if non_matches:
             print_non_matches(results, use_color=use_color)
-        elif (
-            show_confusion_matrix
-        ):  # Only show this message if we're showing other results
+        elif show_confusion_matrix and _normalize_results_format(results) is not None:
+            # Only show this message when the supplied results were recognized.
             print(
                 _colorize(
                     "✅ No non-matches found - all fields matched successfully!",
