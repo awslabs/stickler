@@ -105,12 +105,14 @@ The `confusion_matrix` object has four keys:
 
 ### `overall` vs `aggregate`
 
-The two nodes answer two different questions, and you generally want both:
+The two nodes are the two stages of the evaluation, and you generally want both:
 
-- **`overall`**: were these objects comparable at all? For a list of 5 line items that each paired above `match_threshold`, `tp = 5`.
-- **`aggregate`**: among the objects that *were* comparable, how many individual leaves landed? For those same 5 items with 6 fields each, `tp` counts up to 30.
+- **`overall` is detection.** The unit is the object. Did we find the right things? For a list of 5 line items that each paired above `match_threshold`, `tp = 5`.
+- **`aggregate` is extraction.** The unit is the leaf. Among the objects established to be the same object, how many field values were correct? For those same 5 items with 6 fields each, `tp` counts up to 30.
 
-`match_threshold` is the line between them. An object scoring below it is classified as a single **false discovery**: a spurious non-match, counted once at the item level and not descended into. Leaf detail is not reported for it, because enumerating the parts of an object you have already rejected as a whole would be counting a thing you declared not comparable.
+`match_threshold` is the handoff, and it is really the definition of "the same object". Above it, the pair is the same thing, so grading its fields is meaningful. Below it, it is not the same thing, so grading its fields would be scoring the fields of a *different* object. Such an object is classified as a single **false discovery** and is not descended into.
+
+If that split is familiar, it should be: it is the structure of mean Average Precision, which Stickler also implements for bounding boxes. An IoU threshold decides whether a detection matched, and only matched pairs are scored further. See [Bounding Box mAP Metrics](../../Advanced/bbox-map-metrics.md#iou-thresholds).
 
 Two examples make the split concrete.
 

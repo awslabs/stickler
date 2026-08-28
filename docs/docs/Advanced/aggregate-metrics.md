@@ -84,9 +84,14 @@ Note the difference between `overall` and `aggregate`:
 
 ### Which node answers which question
 
-`overall` reports **object verdicts**: were these two objects comparable, or was the pairing spurious. `aggregate` reports **leaf detail for the objects that were comparable**. `match_threshold` is the line between the two.
+The two nodes are the two stages of the evaluation:
 
-An object scoring below `match_threshold` is classified as a single false discovery and is not descended into. Its leaves are not enumerated, because reporting the parts of an object already rejected as a whole would be scoring something declared not comparable.
+- **`overall` is detection.** The unit is the object. Did we find the right things? Five line items paired, none spurious.
+- **`aggregate` is extraction.** The unit is the leaf. Among the objects established to be the same object, how many field values were correct? 29 of 30.
+
+`match_threshold` is the handoff, and it is really the definition of "the same object". Above it, the pair is the same thing, so grading its fields is meaningful. Below it, it is not the same thing, so grading its fields would be scoring the fields of a *different* object. Such an object is classified as a single false discovery and is not descended into.
+
+This is the same two-stage structure as mean Average Precision, which Stickler also implements for bounding boxes: an IoU threshold decides whether a detection matched, and only matched pairs are evaluated further. See [Bounding Box mAP Metrics](bbox-map-metrics.md#iou-thresholds), where a below-threshold detection is likewise a failure at the matching stage rather than a source of per-attribute errors. Nobody expects an unmatched detection to contribute attribute-level accuracy, and the reasoning here is identical.
 
 Five line items of six fields each, one field of one item wrong. That item scores 5/6, clears a 0.7 threshold, and is comparable:
 
