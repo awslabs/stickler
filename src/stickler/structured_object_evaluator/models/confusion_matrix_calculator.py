@@ -588,7 +588,7 @@ class ConfusionMatrixCalculator:
                 return nested_metrics
             return nested_metrics
 
-    
+
 
         # For each field in the nested model
         for field_name in gt_nested.__class__.model_fields:
@@ -597,7 +597,7 @@ class ConfusionMatrixCalculator:
 
             nested_field_path = f"{parent_field_name}.{field_name}"
 
-         
+
             # Get the field value from the prediction
             pred_value = getattr(pred_nested, field_name, None)
             gt_value = getattr(gt_nested, field_name)
@@ -643,7 +643,7 @@ class ConfusionMatrixCalculator:
                 )
                 nested_metrics.update(deeper_metrics)
 
-        
+
 
 
 

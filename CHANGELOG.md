@@ -18,7 +18,10 @@ Each release links to full notes on the
   [#94](https://github.com/awslabs/stickler/issues/94): every node in
   `compare_with()` output already carries an `aggregate` block summing the
   primitive field metrics below it. Passing `aggregate=` now raises `TypeError`
-  instead of emitting a `DeprecationWarning`. A JSON Schema carrying
+  instead of emitting a `DeprecationWarning`. The comparison parameters after
+  `default` (`clip_under_threshold`, `alias`, ...) are now keyword-only, so an
+  old five-positional call raises `TypeError` rather than silently rebinding its
+  fifth argument to `clip_under_threshold`. A JSON Schema carrying
   `x-aws-stickler-aggregate` still imports — the key is accepted but ignored — so
   existing schema files keep loading.
   ([#226](https://github.com/awslabs/stickler/issues/226))

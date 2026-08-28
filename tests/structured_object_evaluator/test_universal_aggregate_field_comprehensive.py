@@ -167,6 +167,17 @@ class TestUniversalAggregateField:
         with pytest.raises(TypeError, match="aggregate"):
             ComparableField(aggregate=value)
 
+    def test_removed_positional_slot_not_silently_reused(self):
+        """A five-positional call must raise, not silently rebind (issue #226 review).
+
+        `aggregate` used to be the fifth positional parameter, ahead of
+        `clip_under_threshold`. Removing it and making the remaining comparison
+        parameters keyword-only means an old five-positional call raises
+        `TypeError` instead of quietly flipping the clipping policy.
+        """
+        with pytest.raises(TypeError):
+            ComparableField(ExactComparator(), 0.9, 1.0, None, False)
+
     def test_universal_aggregate_field_presence(self):
         """Test that aggregate fields are present at every level."""
         gt = VeterinaryRecord(**self.gt_record)

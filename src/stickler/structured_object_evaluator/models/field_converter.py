@@ -69,7 +69,7 @@ class FieldConverter:
         threshold = field_config.get("threshold", 0.5)
         weight = field_config.get("weight", 1.0)
         clip_under_threshold = field_config.get("clip_under_threshold", True)
-       
+
 
         # Extract Pydantic field parameters
         default = field_config.get("default", ...)  # Use Ellipsis for required fields

@@ -17,6 +17,7 @@ def ComparableField(
     threshold: float = 0.5,
     weight: float = 1.0,
     default: Any = None,
+    *,
     clip_under_threshold: bool = True,
     # Pydantic Field parameters (all optional, just like Field)
     alias: Optional[str] = None,
