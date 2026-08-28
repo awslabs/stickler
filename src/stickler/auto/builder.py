@@ -26,8 +26,7 @@ structurally and cannot do that with a JSON blob. The normalization still runs,
 so both dump modes agree for a ``Dict[date, X]``.
 
 Results are cached in a ``WeakKeyDictionary`` keyed on
-``(cls, weight_hints, match_threshold, dict_leaf_threshold)`` so repeated
-``evaluate`` calls in a loop are cheap without pinning user classes in memory.
+``(cls, weight_hints, match_threshold)`` so repeated ``evaluate`` calls in a loop are cheap without pinning user classes in memory.
 """
 
 from __future__ import annotations
@@ -82,7 +81,6 @@ def structured_model_for(
     *,
     weight_hints: bool = False,
     match_threshold: float = 0.7,
-    dict_leaf_threshold: Optional[float] = None,
 ) -> Type[StructuredModel]:
     """Return a ``StructuredModel`` subclass mirroring ``cls`` with inferred config.
 
@@ -100,7 +98,7 @@ def structured_model_for(
             f"structured_model_for expects a pydantic BaseModel subclass, got {cls!r}"
         )
 
-    key = _cache_key(weight_hints, match_threshold, dict_leaf_threshold)
+    key = _cache_key(weight_hints, match_threshold)
     per_class = _CACHE.get(cls)
     if per_class is not None and key in per_class:
         return per_class[key]
@@ -110,7 +108,6 @@ def structured_model_for(
         weight_hints=weight_hints,
         match_threshold=match_threshold,
         _building=set(),
-        dict_leaf_threshold=dict_leaf_threshold,
     )
 
     _CACHE.setdefault(cls, {})[key] = shadow
@@ -122,7 +119,6 @@ def specs_for(
     *,
     weight_hints: bool = False,
     match_threshold: float = 0.7,
-    dict_leaf_threshold: Optional[float] = None,
 ) -> Dict[str, InferredSpec]:
     """Return the inferred spec per field (for ``.explain()``), keyed by
     dotted path.
@@ -143,7 +139,6 @@ def specs_for(
         registry,
         result,
         set(),
-        dict_leaf_threshold,
     )
     return result
 
@@ -156,7 +151,6 @@ def _collect_specs(
     registry,
     result: Dict[str, InferredSpec],
     _visiting: set,
-    dict_leaf_threshold: Optional[float] = None,
 ) -> None:
     if cls in _visiting:
         return
@@ -204,7 +198,6 @@ def _collect_specs(
                         registry,
                         result,
                         _visiting,
-                        dict_leaf_threshold,
                     )
                 elif kind == "model_list":
                     element, _ = unwrap_optional(_list_element(annotation))
@@ -216,7 +209,6 @@ def _collect_specs(
                         registry,
                         result,
                         _visiting,
-                        dict_leaf_threshold,
                     )
             elif kind == "model":
                 result[path] = InferredSpec(
@@ -255,7 +247,7 @@ def _collect_specs(
                 # installs) so the audit trail matches the built model.
                 element, _ = unwrap_optional(_list_element(annotation))
                 spec = _primitive_spec(
-                    name, element, weight_hints, registry, dict_leaf_threshold
+                    name, element, weight_hints, registry, match_threshold
                 )
                 spec.provenance.insert(0, "list: spec applies to each element")
                 result[path] = spec
@@ -265,7 +257,6 @@ def _collect_specs(
                     field_info,
                     weight_hints=weight_hints,
                     registry=registry,
-                    dict_leaf_threshold=dict_leaf_threshold,
                     match_threshold=match_threshold,
                 )
     finally:
@@ -281,7 +272,6 @@ def _build(
     weight_hints: bool,
     match_threshold: float,
     _building: set,
-    dict_leaf_threshold: Optional[float] = None,
 ) -> Type[StructuredModel]:
     """Recursively assemble the shadow class for ``cls``.
 
@@ -317,7 +307,6 @@ def _build(
                 match_threshold=match_threshold,
                 registry=registry,
                 _building=_building,
-                dict_leaf_threshold=dict_leaf_threshold,
             )
 
         if not field_definitions:
@@ -346,7 +335,6 @@ def _field_definition(
     match_threshold: float,
     registry,
     _building: set,
-    dict_leaf_threshold: Optional[float] = None,
 ) -> Tuple[Any, Any]:
     """Produce a ``(type, Field)`` tuple for one field.
 
@@ -369,7 +357,6 @@ def _field_definition(
             weight_hints=weight_hints,
             match_threshold=match_threshold,
             _building=_building,
-            dict_leaf_threshold=dict_leaf_threshold,
         )
         # A single nested model may carry an explicit StructuredModelComparator
         # (unlike List[StructuredModel], which __init_subclass__ forbids).
@@ -394,7 +381,6 @@ def _field_definition(
             weight_hints=weight_hints,
             match_threshold=match_threshold,
             _building=_building,
-            dict_leaf_threshold=dict_leaf_threshold,
         )
         element_type = Optional[child] if element_optional else child
         list_type = List[element_type]
@@ -408,7 +394,7 @@ def _field_definition(
     if kind == "primitive_list":
         element, element_optional = unwrap_optional(_list_element(annotation))
         spec = _primitive_spec(
-        name, element, weight_hints, registry, dict_leaf_threshold
+        name, element, weight_hints, registry, match_threshold
     )
         wire = _scalar_wire_type(element)
         element_type = Optional[wire] if element_optional else wire
@@ -424,7 +410,6 @@ def _field_definition(
         field_info,
         weight_hints=weight_hints,
         registry=registry,
-        dict_leaf_threshold=dict_leaf_threshold,
         match_threshold=match_threshold,
     )
     wire = _scalar_wire_type(annotation)
@@ -441,7 +426,6 @@ def _shadow_for(
     weight_hints: bool,
     match_threshold: float,
     _building: set,
-    dict_leaf_threshold: Optional[float] = None,
 ) -> Type[StructuredModel]:
     """Shadow class for a nested model annotation.
 
@@ -456,7 +440,6 @@ def _shadow_for(
         weight_hints=weight_hints,
         match_threshold=match_threshold,
         _building=_building,
-        dict_leaf_threshold=dict_leaf_threshold,
     )
 
 
@@ -465,7 +448,7 @@ def _primitive_spec(
     element: Any,
     weight_hints: bool,
     registry,
-    dict_leaf_threshold: Optional[float] = None,
+    match_threshold: Optional[float] = None,
 ) -> InferredSpec:
     """Infer a spec for the *element* type of a primitive list."""
     dummy = FieldInfo(annotation=element)
@@ -474,7 +457,7 @@ def _primitive_spec(
         dummy,
         weight_hints=weight_hints,
         registry=registry,
-        dict_leaf_threshold=dict_leaf_threshold,
+        match_threshold=match_threshold,
     )
 
 
@@ -614,10 +597,5 @@ def _valid_identifier(name: str) -> str:
     return cleaned or "DynamicModelEval"
 
 
-def _cache_key(
-    weight_hints: bool, match_threshold: float, dict_leaf_threshold: Optional[float]
-) -> Tuple:
-    # dict_leaf_threshold is part of the key: it changes the comparator built
-    # for every dict field, so omitting it would hand back a shadow model
-    # configured with a different tau than the caller asked for.
-    return (weight_hints, match_threshold, dict_leaf_threshold)
+def _cache_key(weight_hints: bool, match_threshold: float) -> Tuple:
+    return (weight_hints, match_threshold)

@@ -40,31 +40,6 @@ def canonicalize_json(value: Any) -> Any:
     return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
 
 
-def jsonable_preserving_tuples(value: Any) -> Any:
-    """JSON-normalize a value but keep tuples as tuples.
-
-    ``to_jsonable_python`` turns a tuple into a list, which is exactly wrong for
-    an ANLS* ground truth: a tuple there means "any one of these is correct"
-    (1-of-n alternatives), and a list means "all of these, in any order". Passing
-    a ground truth through the plain conversion silently reinterpreted the first
-    as the second, so ``anls_score`` and ``ANLSStarComparator`` disagreed by 1.0
-    versus 0.0 on the same input.
-
-    Everything else is normalized as usual, so arbitrary objects reachable
-    through ``Dict[str, Any]`` still become comparable rather than raising.
-    """
-    if isinstance(value, tuple):
-        return tuple(jsonable_preserving_tuples(v) for v in value)
-    if isinstance(value, dict):
-        return {
-            to_jsonable_python(k, fallback=str): jsonable_preserving_tuples(v)
-            for k, v in value.items()
-        }
-    if isinstance(value, list):
-        return [jsonable_preserving_tuples(v) for v in value]
-    return to_jsonable_python(value, fallback=str)
-
-
 def jsonable_mapping(value: Any) -> Any:
     """Normalize a mapping to its JSON form while KEEPING it a mapping.
 

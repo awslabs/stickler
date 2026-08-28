@@ -439,7 +439,6 @@ def infer_field_config(
     *,
     weight_hints: bool = False,
     registry: Optional[ComparatorRegistry] = None,
-    dict_leaf_threshold: Optional[float] = None,
     match_threshold: Optional[float] = None,
 ) -> InferredSpec:
     """Infer a comparison spec for one pydantic field.
@@ -452,9 +451,6 @@ def infer_field_config(
             guessed business-criticality.
         registry: Comparator registry for the availability gate. Defaults to the
             global registry.
-        dict_leaf_threshold: Tau for dict-typed fields, the per-leaf cutoff
-            ``ANLSStarComparator`` applies inside the mapping. Defaults to
-            ``DEFAULT_LEAF_THRESHOLD``.
         match_threshold: Object-level match threshold, used as the FIELD
             threshold for dict-typed fields so they are not exempt from a value
             the caller set. Defaults to ``_DICT_FIELD_THRESHOLD``.
@@ -472,7 +468,7 @@ def infer_field_config(
 
     # 1) Type signal (safe, always on).
     comparator, config, threshold, clip = _type_default(
-        annotation, provenance, dict_leaf_threshold, match_threshold
+        annotation, provenance, match_threshold
     )
 
     # 2) Name-token refinement layered on the type default, gated on type
@@ -526,7 +522,6 @@ def infer_field_config(
 def _type_default(
     annotation: Any,
     provenance: List[str],
-    dict_leaf_threshold: Optional[float] = None,
     match_threshold: Optional[float] = None,
 ) -> Tuple[str, Dict[str, Any], float, bool]:
     """Comparator/threshold/clip from the python type alone."""
@@ -582,12 +577,11 @@ def _type_default(
         # should keep its partial score. With clip=True the field threshold
         # would zero out exactly the partial credit this comparator exists to
         # produce.
-        tau = (
-            DEFAULT_LEAF_THRESHOLD
-            if dict_leaf_threshold is None
-            else dict_leaf_threshold
-        )
-        config = {} if tau == DEFAULT_LEAF_THRESHOLD else {"threshold": tau}
+        # No per-call knob: tau is a property of the comparator, settable per
+        # field via ComparableField(comparator=ANLSStarComparator(threshold=...)).
+        # A general per-field override for the zero-config path is #263.
+        tau = DEFAULT_LEAF_THRESHOLD
+        config = {}
         field_threshold = (
             _DICT_FIELD_THRESHOLD if match_threshold is None else match_threshold
         )

@@ -17,7 +17,7 @@ Each release links to full notes on the
   field. Ground truth
   `{"vendor": "Acme Corporation", "terms": "Net 30", "po": "PO-88231"}`:
 
-  | prediction | before | after (tau 0.5) |
+  | prediction | before | after |
   |---|---|---|
   | `vendor` abbreviated to `"Acme Corp"` | 0.0 | 0.8542 |
   | `po` key missing | 0.0 | 0.6667 |
@@ -29,10 +29,15 @@ Each release links to full notes on the
   the `Equals` antipattern this library exists to replace, and dict fields were
   the one place it survived ([#277](https://github.com/awslabs/stickler/issues/277)).
 
-  The per-leaf cutoff (tau) is the comparator's `threshold`, settable per field,
-  or with `dict_leaf_threshold=` on `evaluate()` / `eval_for()` for the
-  zero-config path. It is not safe at `0.0`: with no cutoff an unrelated string
-  earns credit for incidental character overlap.
+  The per-leaf cutoff (tau) is the comparator's `threshold`, settable per field
+  with `ComparableField(comparator=ANLSStarComparator(threshold=...))`. It
+  defaults to `0.5`, the standard ANLS value, and the default is load-bearing:
+  raising it to `0.85` makes an abbreviated value and a missing key both score
+  `0.6667` on a three-key mapping, collapsing the distinction this comparator
+  exists to provide. It is not safe at `0.0` either, since with no cutoff an
+  unrelated string earns credit for incidental character overlap. A general
+  per-field override for the zero-config path is
+  [#263](https://github.com/awslabs/stickler/issues/263).
 
   ANLS* comes from the [`anls_star`](https://pypi.org/project/anls_star/)
   project (Apache-2.0); see `NOTICE`. Stickler's implementation was already

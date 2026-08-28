@@ -119,7 +119,7 @@ class TestTheComparatorItself:
 
     def test_config_round_trips_only_when_non_default(self):
         assert ANLSStarComparator().config is None
-        assert ANLSStarComparator(threshold=0.5).config == {"threshold": 0.5}
+        assert ANLSStarComparator(threshold=0.85).config == {"threshold": 0.85}
 
 
 class TestEveryWayToDeclareADictField:
@@ -196,33 +196,37 @@ class TestZeroConfigPath:
         assert entry["clip_under_threshold"] is False
         assert any("ANLSStarComparator" in why for why in entry["why"])
 
-    def test_dict_leaf_threshold_reaches_the_leaves(self):
-        class P(BaseModel):
-            metadata: Dict[str, Any] = {}
+    def test_tau_is_the_standard_anls_value(self):
+        """The zero-config default must rank the motivating cases apart.
 
-        truth = P(metadata=GT)
-        abbreviated = P(metadata={**GT, "vendor": "Acme Corp"})
+        There is deliberately no per-call knob for tau on this path: it is a
+        property of the comparator, set per field with
+        ``ComparableField(comparator=ANLSStarComparator(threshold=...))``. A
+        general per-field override for zero-config is #263.
 
-        lenient = stickler.evaluate(truth, abbreviated, dict_leaf_threshold=0.5)
-        strict = stickler.evaluate(truth, abbreviated, dict_leaf_threshold=0.95)
-        assert lenient.field_scores["metadata"] > strict.field_scores["metadata"]
-
-    def test_the_shadow_cache_is_keyed_on_tau(self):
-        """Two taus must not share a cached shadow model.
-
-        The cache key is (weight_hints, match_threshold, dict_leaf_threshold);
-        omitting the last would hand back a model built with someone else's tau.
+        That makes the default load-bearing, which is why it is 0.5 rather than
+        something stricter. At 0.85 an abbreviated value and a missing key both
+        score 0.6667 on a three-key mapping, so the two are indistinguishable --
+        the exact ranking failure this comparator exists to remove.
         """
 
         class P(BaseModel):
             metadata: Dict[str, Any] = {}
 
-        first = stickler.eval_for(P, dict_leaf_threshold=0.5)
-        second = stickler.eval_for(P, dict_leaf_threshold=0.95)
-        assert first.eval_model is not second.eval_model
+        spec = stickler.eval_for(P)
+        installed = spec.eval_model._get_comparison_info("metadata").comparator
+        assert installed.threshold == DEFAULT_LEAF_THRESHOLD == 0.5
 
-        again = stickler.eval_for(P, dict_leaf_threshold=0.5)
-        assert again.eval_model is first.eval_model, "same tau should hit the cache"
+        truth = P(metadata=GT)
+        abbreviated = stickler.evaluate(
+            truth, P(metadata={**GT, "vendor": "Acme Corp"})
+        ).field_scores["metadata"]
+        dropped = stickler.evaluate(
+            truth, P(metadata={"vendor": "Acme Corporation", "terms": "Net 30"})
+        ).field_scores["metadata"]
+        assert abbreviated > dropped, (
+            "at the shipped default these must be distinguishable"
+        )
 
     def test_dump_mode_equivalence_survives_non_string_keys(self):
         """A dict is normalized to JSON form without being stringified.
@@ -257,9 +261,7 @@ class TestRankingAcrossExtractors:
 
         def score(metadata: Dict[str, Any]) -> float:
             prediction = Invoice(invoice_id="INV-1042", metadata=metadata)
-            return stickler.evaluate(
-                truth, prediction, dict_leaf_threshold=0.5
-            ).field_scores["metadata"]
+            return stickler.evaluate(truth, prediction).field_scores["metadata"]
 
         perfect = score(dict(GT))
         near_miss = score({**GT, "vendor": "Acme Corp"})

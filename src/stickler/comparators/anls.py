@@ -24,13 +24,15 @@ from typing import Any, Dict, Optional
 from pydantic_core import to_jsonable_python
 
 from stickler.comparators.base import BaseComparator
-from stickler.utils.canonical import jsonable_preserving_tuples
 
-# Tau applied at each leaf. Chosen to match the threshold zero-config
-# evaluation already installs for name-token strings, so leaf strictness is
-# consistent with the rest of the library rather than a new number. Stricter
-# than ANLS*'s traditional 0.5, which credits an abbreviation as a match.
-DEFAULT_LEAF_THRESHOLD = 0.85
+# Tau applied at each leaf: the standard ANLS value.
+#
+# Not raised above this. Tau is what separates "close enough to count" from
+# noise, and a stricter cutoff collapses distinct outcomes into the same score.
+# At 0.85, an abbreviated value and a missing key both score 0.6667 on a
+# three-key mapping -- indistinguishable, which is the exact ranking failure
+# this comparator exists to remove. At 0.5 they are 0.8542 and 0.6667.
+DEFAULT_LEAF_THRESHOLD = 0.5
 
 
 class ANLSStarComparator(BaseComparator):
@@ -46,9 +48,9 @@ class ANLSStarComparator(BaseComparator):
 
         ``{"vendor": "Acme Corporation", ...}`` vs ``{"vendor": "Acme Corp", ...}``
 
-        whole-object ``==``   -> 0.0
-        ANLS* at tau 0.5      -> 0.8542
-        ANLS* at tau 0.85     -> 0.6667  (abbreviation rejected at the leaf)
+        whole-object ``==``          -> 0.0
+        ANLS* at tau 0.5 (default)   -> 0.8542
+        ANLS* at tau 0.85            -> 0.6667  (abbreviation rejected)
 
     Key-set differences are charged on both sides: a renamed key counts once as
     missing from the prediction and once as unexpected in it, because the score
@@ -68,7 +70,7 @@ class ANLSStarComparator(BaseComparator):
     Args:
         threshold: Tau, the per-leaf cutoff below which a leaf's string
             similarity is discarded as noise (default
-            ``DEFAULT_LEAF_THRESHOLD``). This is the ONE knob, and unlike most
+            ``DEFAULT_LEAF_THRESHOLD``, 0.5). This is the ONE knob, and unlike most
             comparators' ``threshold`` it does real work during evaluation:
             it is applied at every leaf of the recursion.
 
@@ -106,7 +108,7 @@ class ANLSStarComparator(BaseComparator):
         """Initialize the comparator.
 
         Args:
-            threshold: Tau, the per-leaf cutoff (default 0.85).
+            threshold: Tau, the per-leaf cutoff (default 0.5).
         """
         super().__init__(threshold=threshold)
 
@@ -140,11 +142,16 @@ class ANLSStarComparator(BaseComparator):
         # the failure mode rejected in #281 for the equivalent TypeError catch.
         # Normalizing up front means the tree only ever sees types it handles,
         # so no catch is needed and a real error still surfaces.
-        # The ground truth keeps its tuples: a tuple there is ANLS*'s 1-of-n
-        # alternatives contract, and flattening it to a list would silently
-        # reinterpret "any one of these" as "all of these". The prediction is
-        # normalized outright, since a tuple is not legal there anyway.
-        gt_value = jsonable_preserving_tuples(str1)
+        #
+        # BOTH sides normalize identically, which means a tuple becomes a list
+        # on both. ANLS*'s 1-of-n-alternatives contract (a tuple in the ground
+        # truth meaning "any one of these is correct") deliberately does NOT
+        # apply here: a tuple reached through a pydantic field is a tuple, not a
+        # set of alternatives. Preserving it on the ground-truth side only made
+        # the normalization asymmetric, so `Dict[str, Tuple[int, int]]` scored
+        # 0.0 against an identical copy and 1.0 against a truncated prediction.
+        # The 1-of-n contract lives on `anls_score`, which normalizes nothing.
+        gt_value = to_jsonable_python(str1, fallback=str)
         pred_value = to_jsonable_python(str2, fallback=str)
 
         gt_tree = ANLSTree.make_tree(gt_value, is_gt=True, threshold=self.threshold)
