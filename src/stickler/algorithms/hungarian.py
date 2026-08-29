@@ -12,6 +12,7 @@ import numpy as np
 from munkres import Munkres, make_cost_matrix
 
 from stickler.comparators.base import BaseComparator
+from stickler.utils.canonical import canonicalize_json
 
 # Memory threshold for warning in MB
 HUNGARIAN_SIZE_WARNING_THRESHOLD = 10000  # Matrix size (product of dimensions)
@@ -148,6 +149,44 @@ class HungarianMatcher:
 
         return list1, list2
 
+    @staticmethod
+    def _comparable_form(item: Any) -> Any:
+        """Canonical form for an item no comparator can handle.
+
+        Only reached from :meth:`_score` after a comparator raised
+        ``TypeError``. A ``dict`` has no comparator: ``LevenshteinComparator``
+        raises for one, and ``str(dict)`` makes key order significant. Sorted-key
+        JSON removes both problems and matches what ``stickler.auto`` already
+        chooses for a dict field, so the explicit and zero-config paths agree.
+
+        Everything else passes through untouched, so :meth:`_score` re-raises
+        rather than scoring: a bounding box IS a list, and a comparator that
+        raises on anything but a dict has a bug worth surfacing.
+        """
+        if isinstance(item, dict):
+            return canonicalize_json(item)
+        return item
+
+    def _score(self, item1: Any, item2: Any) -> float:
+        """Score one pair, canonicalizing dicts only if the comparator refuses.
+
+        The comparator sees the raw item first, so a dict-aware comparator keeps
+        working (#277). Canonicalization is the fallback, not a pre-filter. A
+        ``TypeError`` from anything but a dict pair propagates: it means a
+        comparator bug, not an uncomparable value.
+        """
+        compare = (
+            self.comparator.compare
+            if hasattr(self.comparator, "compare")
+            else self.comparator
+        )
+        try:
+            return compare(item1, item2)
+        except TypeError:
+            if not (isinstance(item1, dict) or isinstance(item2, dict)):
+                raise
+            return compare(self._comparable_form(item1), self._comparable_form(item2))
+
     def match(self, list1: Any, list2: Any) -> Tuple[List[Tuple[int, int]], np.ndarray]:
         """Find optimal assignments between two lists.
 
@@ -179,11 +218,7 @@ class HungarianMatcher:
             # Fill the matrix with similarity scores
             for i, item1 in enumerate(list1):
                 for j, item2 in enumerate(list2):
-                    # Handle callable function or object with compare method
-                    if hasattr(self.comparator, "compare"):
-                        similarity_matrix[i, j] = self.comparator.compare(item1, item2)
-                    else:
-                        similarity_matrix[i, j] = self.comparator(item1, item2)
+                    similarity_matrix[i, j] = self._score(item1, item2)
 
             # Check matrix size
             matrix_size = len(list1) * len(list2)
@@ -270,10 +305,7 @@ class HungarianMatcher:
         # property of this shortcut; see the Note in the docstring above.
         if len(prepared_list1) == 1 and len(prepared_list2) == 1:
             # Directly compare the single items
-            if hasattr(self.comparator, "compare"):
-                score = self.comparator.compare(prepared_list1[0], prepared_list2[0])
-            else:
-                score = self.comparator(prepared_list1[0], prepared_list2[0])
+            score = self._score(prepared_list1[0], prepared_list2[0])
 
             is_tp = score >= self.match_threshold
             tp = 1 if is_tp else 0

@@ -1,14 +1,10 @@
 """Guards that `import stickler` stays light.
 
 The comparison engine needs only pydantic, rapidfuzz, munkres, numpy,
-jsonschema, and python-dateutil. Everything heavier (pandas, scipy, jinja2, and
-the ML stack behind the optional comparators) belongs to a peripheral module
-and lives behind an extra.
-
-scikit-learn is the exception: it is a core dependency because confidence
-calibration is core functionality, but only ``AUROCMetric.compute()`` needs it,
-so its import stays function-local and must not appear on the import path
-either. Issue #216 removes the dependency altogether.
+jsonschema, and python-dateutil. Everything heavier (pandas, scipy, jinja2,
+scikit-learn, and the ML stack behind the optional comparators) belongs to a
+peripheral module or the development environment and must not appear on the
+core import path.
 
 These tests fail if a module-level import puts one of those packages back on
 the ``import stickler`` path. That regression is easy to introduce and silent:
@@ -32,10 +28,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # mapped to the extra that owns them.
 FORBIDDEN_ON_CORE_PATH = {
     "pandas": "docsplit / reporting",
-    "scipy": "semantic / docsplit",
-    # Core dependency, but imported inside AUROCMetric.compute() so it does
-    # not cost every user ~33MB at import time.
-    "sklearn": "core (function-local in AUROCMetric)",
+    "scipy": "semantic / development metric oracle",
+    "sklearn": "development metric oracle",
     "jinja2": "llm",
     "torch": "bert",
     "transformers": "bert",

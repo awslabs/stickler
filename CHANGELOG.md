@@ -18,6 +18,12 @@ Each release links to full notes on the
   `anyOf`, and `oneOf` schemas; recursive models and `patternProperties` remain
   explicit unsupported boundaries ([#212](https://github.com/awslabs/stickler/issues/212)).
 
+- Confidence AUROC and document-splitting statistics now use NumPy
+  implementations with randomized scikit-learn and SciPy equivalence tests.
+  `scikit-learn` is no longer a core dependency, and the `docsplit` extra now
+  adds only pandas; SciPy remains isolated to the `semantic` extra
+  ([#216](https://github.com/awslabs/stickler/issues/216)).
+
 ## [0.7.0] - 2026-08-18
 
 ### Added
@@ -310,6 +316,8 @@ Each release links to full notes on the
   required. The shim is removed in 0.8.0, after which such a comparator
   raises `TypeError` at construction
   ([#215](https://github.com/awslabs/stickler/issues/215)).
+  <br>*Correction: the 0.8.0 milestone was renamed to 1.0 after this entry shipped.
+  The shim is removed in 1.0.*
 
   Note that the pre-fix `(None, "") -> 1.0` result cannot be inherited: the
   coercion was removed from Levenshtein's algorithm rather than guarded, so
@@ -328,6 +336,8 @@ Each release links to full notes on the
   Callers passing `aggregate=False` had no signal the parameter was going away
   and would have met a bare `TypeError` on removal. Remove the argument; there
   is no replacement to adopt. Scheduled for removal in 0.8.0.
+  <br>*Correction: the 0.8.0 milestone was renamed to 1.0 after this entry shipped.
+  The parameter is removed in 1.0.*
 
   Reading a config does **not** count as explicit use: `to_stickler_config()`
   writes the `aggregate` key for every field, so `model_from_json()` restores
@@ -345,6 +355,26 @@ Each release links to full notes on the
   ([#226](https://github.com/awslabs/stickler/issues/226))
 
 ### Fixed
+
+- A `List[Dict[...]]` field no longer raises `TypeError` out of `compare_with()`,
+  and key order no longer affects its score. `LevenshteinComparator` raises for a
+  dict, and the comparators that accept one do so only via `str(dict)`, which
+  preserves insertion order -- which is why 0.6.0 scored two dicts with identical
+  content `0.5556`. Until the list-item normalization fix, that raise could not
+  reach the list path; afterwards it escaped to the caller, so a field that scored
+  in 0.6.0 crashed instead. A list item whose comparator refuses it with
+  `TypeError` is now retried as sorted-key JSON, so identical content scores `1.0`
+  regardless of key order. The retry is a fallback, not a pre-filter: the
+  comparator is offered the raw item first, so a mapping-aware comparator still
+  receives a `dict`, and anything but a `dict` re-raises -- a comparator bug stays
+  loud instead of becoming a silent `0.0`, and `List[bbox]` still parses. The
+  canonical form is the one `stickler.auto` already applies to a dict field, now
+  shared from `stickler.utils.canonical`, so the explicit and zero-config paths
+  cannot drift apart; it also no longer raises `PydanticSerializationError` on a
+  payload pydantic cannot serialize, such as a NumPy scalar under
+  `Dict[str, Any]`. A scalar `Dict` field still raises, and `Set`/`FrozenSet`
+  items are unchanged. Whether a dict deserves per-key comparison rather than
+  JSON-string similarity is [#277](https://github.com/awslabs/stickler/issues/277).
 
 - A list-typed field's items now reach its comparator exactly as supplied.
   `ComparisonHelper.compare_unordered_lists` built its `HungarianMatcher` with
@@ -436,7 +466,7 @@ Each release links to full notes on the
 
   Scores move **up** for affected corpora; nothing that scored `1.0` before
   changes. A region or per-field comparator override on the zero-config entry
-  points is deferred to 0.8.0: it would widen the public API inside a release
+  points is deferred to 1.0: it would widen the public API inside a release
   candidate, and it would not have fixed these cases on its own -- `"ext 4021"`
   is invalid under every region, and no single region works for a mixed corpus
   ([#258](https://github.com/awslabs/stickler/issues/258))

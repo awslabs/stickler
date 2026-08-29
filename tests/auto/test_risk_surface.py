@@ -404,6 +404,73 @@ class TestStructuredModelPassthrough:
         pred = Wrap(inner=SM(code="X-1"), label="a")
         assert stickler.evaluate(gt, pred).overall_score == pytest.approx(1.0)
 
+    def test_explain_nested_structured_models(self):
+        from stickler.comparators.exact import ExactComparator
+
+        class Line(StructuredModel):
+            sku: str = ComparableField(comparator=ExactComparator())
+
+        class Order(StructuredModel):
+            order_id: str = ComparableField(comparator=ExactComparator())
+            items: List[Line] = ComparableField()
+
+        ex = stickler.eval_for(Order).explain()
+        assert set(ex.keys()) == {"order_id", "items", "items.sku"}
+        assert ex["items.sku"]["source"] == "explicit"
+        assert ex["items.sku"]["comparator"] == "ExactComparator"
+
+    def test_explain_shape_parity_between_structured_and_inferred(self):
+        from stickler.comparators.exact import ExactComparator
+
+        class SLine(StructuredModel):
+            sku: str = ComparableField(comparator=ExactComparator())
+
+        class SOrder(StructuredModel):
+            order_id: str = ComparableField(comparator=ExactComparator())
+            items: List[SLine] = ComparableField()
+
+        class PLine(BaseModel):
+            sku: str
+
+        class POrder(BaseModel):
+            order_id: str
+            items: List[PLine]
+
+        s_keys = set(stickler.eval_for(SOrder).explain().keys())
+        p_keys = set(stickler.eval_for(POrder).explain().keys())
+        assert s_keys == p_keys == {"order_id", "items", "items.sku"}
+
+    def test_explain_single_nested_structured_model(self):
+        from stickler.comparators.exact import ExactComparator
+
+        class Customer(StructuredModel):
+            name: str = ComparableField(comparator=ExactComparator(), threshold=1.0)
+
+        class Account(StructuredModel):
+            account_id: str = ComparableField(comparator=ExactComparator())
+            customer: Customer = ComparableField()
+
+        ex = stickler.eval_for(Account).explain()
+        assert set(ex.keys()) == {"account_id", "customer", "customer.name"}
+        assert ex["customer.name"]["source"] == "explicit"
+        assert ex["customer.name"]["comparator"] == "ExactComparator"
+        assert ex["customer.name"]["threshold"] == 1.0
+
+    def test_explain_mixed_basemodel_wrapping_structured_model(self):
+        from stickler.comparators.exact import ExactComparator
+
+        class SM(StructuredModel):
+            code: str = ComparableField(comparator=ExactComparator(), threshold=1.0)
+
+        class Wrap(BaseModel):
+            inner: SM
+            label: str
+
+        ex = stickler.eval_for(Wrap).explain()
+        assert set(ex.keys()) == {"label", "inner", "inner.code"}
+        assert ex["inner.code"]["source"] == "explicit"
+        assert ex["inner.code"]["comparator"] == "ExactComparator"
+
 
 class TestExplainContract:
     """explain() must describe what is actually installed, at every depth."""

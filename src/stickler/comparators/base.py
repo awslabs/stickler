@@ -38,7 +38,7 @@ class BaseComparator(ABC):
         this template, which dispatches straight back to the function that
         made it.
 
-        Temporary. Removed in 0.8.0 (see issue #215), after which an
+        Temporary. Removed in 1.0 (see issue #215), after which an
         un-migrated comparator becomes abstract again.
         """
         super().__init_subclass__(**kwargs)
@@ -79,7 +79,7 @@ class BaseComparator(ABC):
             f"extension point and bypasses the shared None policy. Rename "
             f"compare() to _compare() and delete any None handling it "
             f"contains, since _compare() never receives None. Support for "
-            f"implementing compare() directly will be removed in 0.8.0.",
+            f"implementing compare() directly will be removed in 1.0.",
             stacklevel=4,
         )
 

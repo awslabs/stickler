@@ -30,7 +30,6 @@ from __future__ import annotations
 import datetime
 import decimal
 import enum
-import json
 import weakref
 from typing import (
     Annotated,
@@ -46,7 +45,6 @@ from typing import (
 
 from pydantic import BaseModel, BeforeValidator
 from pydantic.fields import FieldInfo
-from pydantic_core import to_jsonable_python
 
 from ..comparators.structured import StructuredModelComparator
 from ..structured_object_evaluator.models.comparable_field import ComparableField
@@ -56,6 +54,7 @@ from ..structured_object_evaluator.models.comparator_registry import (
 )
 from ..structured_object_evaluator.models.model_factory import ModelFactory
 from ..structured_object_evaluator.models.structured_model import StructuredModel
+from ..utils.canonical import canonicalize_json, canonicalize_json_sorted
 from .inference import InferredSpec, _is_literal, infer_field_config, unwrap_optional
 
 # Cache of built shadow classes. Keyed by the source pydantic class (weak) ->
@@ -141,18 +140,40 @@ def _collect_specs(
         return
     _visiting.add(cls)
     try:
+        is_structured = isinstance(cls, type) and issubclass(cls, StructuredModel)
         for name, field_info in cls.model_fields.items():
+            if name in _RESERVED_FIELD_NAMES:
+                continue
             path = f"{prefix}{name}"
             annotation, _ = unwrap_optional(field_info.annotation)
             kind = _field_kind(annotation)
-            if kind == "model":
+            if is_structured:
+                info = cls._get_comparison_info(name)
+                comparator = getattr(info, "comparator", None)
+                if kind == "model":
+                    comp_name = (
+                        type(comparator).__name__
+                        if comparator
+                        else "StructuredModelComparator"
+                    )
+                elif kind == "model_list":
+                    comp_name = (
+                        type(comparator).__name__
+                        if comparator
+                        else "Hungarian (per-element StructuredModel)"
+                    )
+                else:
+                    comp_name = (
+                        type(comparator).__name__ if comparator else "default"
+                    )
                 result[path] = InferredSpec(
-                    comparator_name="StructuredModelComparator",
-                    threshold=match_threshold,
-                    clip_under_threshold=False,
-                    provenance=["type:nested BaseModel -> recursive comparison"],
+                    comparator_name=comp_name,
+                    threshold=info.threshold,
+                    weight=info.weight,
+                    clip_under_threshold=info.clip_under_threshold,
+                    provenance=["explicit: configured on the StructuredModel class"],
                 )
-                if not issubclass(annotation, StructuredModel):
+                if kind == "model":
                     _collect_specs(
                         annotation,
                         f"{path}.",
@@ -162,14 +183,8 @@ def _collect_specs(
                         result,
                         _visiting,
                     )
-            elif kind == "model_list":
-                result[path] = InferredSpec(
-                    comparator_name="Hungarian (per-element StructuredModel)",
-                    threshold=match_threshold,
-                    provenance=["type:List[BaseModel] -> Hungarian object matching"],
-                )
-                element, _ = unwrap_optional(_list_element(annotation))
-                if not issubclass(element, StructuredModel):
+                elif kind == "model_list":
+                    element, _ = unwrap_optional(_list_element(annotation))
                     _collect_specs(
                         element,
                         f"{path}.",
@@ -179,6 +194,38 @@ def _collect_specs(
                         result,
                         _visiting,
                     )
+            elif kind == "model":
+                result[path] = InferredSpec(
+                    comparator_name="StructuredModelComparator",
+                    threshold=match_threshold,
+                    clip_under_threshold=False,
+                    provenance=["type:nested BaseModel -> recursive comparison"],
+                )
+                _collect_specs(
+                    annotation,
+                    f"{path}.",
+                    weight_hints,
+                    match_threshold,
+                    registry,
+                    result,
+                    _visiting,
+                )
+            elif kind == "model_list":
+                result[path] = InferredSpec(
+                    comparator_name="Hungarian (per-element StructuredModel)",
+                    threshold=match_threshold,
+                    provenance=["type:List[BaseModel] -> Hungarian object matching"],
+                )
+                element, _ = unwrap_optional(_list_element(annotation))
+                _collect_specs(
+                    element,
+                    f"{path}.",
+                    weight_hints,
+                    match_threshold,
+                    registry,
+                    result,
+                    _visiting,
+                )
             elif kind == "primitive_list":
                 # Report the element spec (the same one _field_definition
                 # installs) so the audit trail matches the built model.
@@ -415,41 +462,6 @@ def _is_model(annotation: Any) -> bool:
     return isinstance(annotation, type) and issubclass(annotation, BaseModel)
 
 
-def _canonicalize_json(value: Any) -> Any:
-    """Normalize a value to a deterministic JSON string (None passes through).
-
-    Applied as a BeforeValidator on shadow fields whose source type has no
-    scalar JSON form. ``to_jsonable_python`` first converts native Python
-    values (sets, enum members, Decimal, UUID, date dict-keys, ...) to their
-    pydantic JSON representation, so plain ``model_dump()`` and
-    ``model_dump(mode="json")`` canonicalize identically; key order and
-    container spelling never affect scores.
-    """
-    if value is None:
-        return value
-    value = to_jsonable_python(value)
-    if isinstance(value, str):
-        return value
-    if isinstance(value, (int, float, bool)):
-        return json.dumps(value)
-    return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
-
-
-def _canonicalize_json_sorted(value: Any) -> Any:
-    """Like :func:`_canonicalize_json`, also sorting top-level arrays.
-
-    Used for ``Set``/``FrozenSet`` sources, whose iteration order is not
-    deterministic across processes (and whose plain ``model_dump`` form is a
-    native set).
-    """
-    if value is None:
-        return value
-    value = to_jsonable_python(value)
-    if isinstance(value, (list, tuple)):
-        value = sorted(value, key=lambda v: json.dumps(v, sort_keys=True, default=str))
-    return _canonicalize_json(value)
-
-
 def _stringify_numeric(value: Any) -> Any:
     """Normalize numeric scalars (Decimal, int, float) to their string form.
 
@@ -474,8 +486,8 @@ def _isoformat_dates(value: Any) -> Any:
 
 
 # Shadow types for fields whose JSON wire form is not a scalar.
-_WireJson = Annotated[str, BeforeValidator(_canonicalize_json)]
-_WireJsonSorted = Annotated[str, BeforeValidator(_canonicalize_json_sorted)]
+_WireJson = Annotated[str, BeforeValidator(canonicalize_json)]
+_WireJsonSorted = Annotated[str, BeforeValidator(canonicalize_json_sorted)]
 _WireDate = Annotated[str, BeforeValidator(_isoformat_dates)]
 _WireNumeric = Annotated[str, BeforeValidator(_stringify_numeric)]
 

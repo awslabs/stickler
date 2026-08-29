@@ -89,6 +89,8 @@ class InferredSpec:
             if entry.startswith("degrade"):
                 return "degrade"
         for entry in self.provenance:
+            if entry.startswith("explicit"):
+                return "explicit"
             if entry.startswith("name-token"):
                 return "name-token"
         return "type"
@@ -110,7 +112,7 @@ def unwrap_optional(annotation: Any) -> Tuple[Any, bool]:
     ``stickler.structured_object_evaluator.models.optional_annotation`` (which
     additionally exposes the permissive ``is_union`` / ``union_args`` pair, for
     sites that search a union's arms rather than unwrapping it). Keep them in
-    sync; unifying all three is tracked for 0.8.0.
+    sync; unifying all three is tracked for 1.0.
     """
     origin = get_origin(annotation)
     # PEP 604 unions (X | None) have origin types.UnionType, not typing.Union.
