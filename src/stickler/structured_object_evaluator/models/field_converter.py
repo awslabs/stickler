@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional, Tuple, Type
 
 from pydantic import Field
 
-from .comparable_field import _UNSET, ComparableField, _restore_deprecated_aggregate
+from .comparable_field import ComparableField
 from .comparator_registry import create_comparator
 from .type_resolver import resolve_type_string
 
@@ -69,14 +69,7 @@ class FieldConverter:
         threshold = field_config.get("threshold", 0.5)
         weight = field_config.get("weight", 1.0)
         clip_under_threshold = field_config.get("clip_under_threshold", True)
-        # Reading a config is not an explicit use of the deprecated `aggregate`
-        # parameter: `to_stickler_config()` writes the key for every field, so
-        # passing it through would warn on every round trip -- blaming this
-        # frame for a key the caller never wrote, and hard-failing under
-        # `-W error::DeprecationWarning`. Construct with the sentinel, then
-        # restore the config's value below so export stays faithful (issue #226).
-        aggregate = _UNSET
-        config_aggregate = field_config.get("aggregate")
+
 
         # Extract Pydantic field parameters
         default = field_config.get("default", ...)  # Use Ellipsis for required fields
@@ -109,14 +102,12 @@ class FieldConverter:
             threshold=threshold,
             weight=weight,
             default=default,
-            aggregate=aggregate,
             clip_under_threshold=clip_under_threshold,
             alias=alias,
             description=description,
             examples=examples,
         )
 
-        _restore_deprecated_aggregate(comparable_field, config_aggregate)
 
         return field_type, comparable_field
 
@@ -181,14 +172,7 @@ class FieldConverter:
         # Extract threshold and weight from field configuration
         weight = field_config.get("weight", 1.0)  # Default weight
         clip_under_threshold = field_config.get("clip_under_threshold", True)
-        # Reading a config is not an explicit use of the deprecated `aggregate`
-        # parameter: `to_stickler_config()` writes the key for every field, so
-        # passing it through would warn on every round trip -- blaming this
-        # frame for a key the caller never wrote, and hard-failing under
-        # `-W error::DeprecationWarning`. Construct with the sentinel, then
-        # restore the config's value below so export stays faithful (issue #226).
-        aggregate = _UNSET
-        config_aggregate = field_config.get("aggregate")
+
 
         # For list_structured_model, don't set threshold (Hungarian matching uses model's match_threshold)
         # For single structured_model, use threshold from config
@@ -210,14 +194,12 @@ class FieldConverter:
             threshold=threshold,
             weight=weight,
             default=default,
-            aggregate=aggregate,
             clip_under_threshold=clip_under_threshold,
             alias=alias,
             description=description,
             examples=examples,
         )
 
-        _restore_deprecated_aggregate(comparable_field, config_aggregate)
 
         return field_type, comparable_field
 
@@ -299,7 +281,7 @@ class FieldConverter:
                     )
 
         # Validate boolean parameters
-        boolean_params = ["required", "aggregate", "clip_under_threshold"]
+        boolean_params = ["required", "clip_under_threshold"]
         for param in boolean_params:
             if param in field_config:
                 value = field_config[param]

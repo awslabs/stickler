@@ -367,8 +367,7 @@ def advanced_extensions_and_refs_example():
                         "type": "string",
                         "x-aws-stickler-comparator": "LevenshteinComparator",
                         "x-aws-stickler-threshold": 0.9,
-                        "x-aws-stickler-weight": 2.0,
-                        "x-aws-stickler-aggregate": True
+                        "x-aws-stickler-weight": 2.0
                     },
                     "address": {"$ref": "#/definitions/Address"}
                 },
@@ -380,7 +379,6 @@ def advanced_extensions_and_refs_example():
                 "type": "string",
                 "x-aws-stickler-comparator": "ExactComparator",
                 "x-aws-stickler-weight": 3.0,
-                "x-aws-stickler-aggregate": True,
                 "x-aws-stickler-clip-under-threshold": True
             },
             "customer": {"$ref": "#/definitions/Customer"},
@@ -389,8 +387,7 @@ def advanced_extensions_and_refs_example():
                 "type": "number",
                 "x-aws-stickler-comparator": "NumericComparator",
                 "x-aws-stickler-threshold": 0.95,
-                "x-aws-stickler-weight": 2.5,
-                "x-aws-stickler-aggregate": True
+                "x-aws-stickler-weight": 2.5
             },
             "items": {
                 "type": "array",

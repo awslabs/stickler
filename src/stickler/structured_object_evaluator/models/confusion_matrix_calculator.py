@@ -150,14 +150,6 @@ class ConfusionMatrixCalculator:
         # List-level metrics count object matches from the Hungarian algorithm;
         # nested field metrics count field matches within those objects. They are
         # separate concerns and are deliberately not rolled together here.
-        #
-        # A branch used to zero these and re-sum them from nested_fields when
-        # `_is_aggregate_field(field_name)` was true and `gt_list` was not a
-        # list. It was dead by construction -- this method is only ever called
-        # with a list, so the guard was self-contradictory (instrumented the
-        # whole suite: 0 calls with a non-list). It is removed here rather than
-        # left as a path keyed on a flag that is deprecated and has no other
-        # effect (#226).
 
         # Add derived metrics
         metrics_helper = MetricsHelper()
@@ -567,7 +559,6 @@ class ConfusionMatrixCalculator:
         parent_field_name: str,
         gt_nested: "StructuredModel",
         pred_nested: "StructuredModel",
-        parent_is_aggregate: bool = False,
     ) -> Dict[str, Dict[str, Any]]:
         """Calculate confusion matrix metrics for fields within a single nested StructuredModel.
 
@@ -575,7 +566,6 @@ class ConfusionMatrixCalculator:
             parent_field_name: Name of the parent field (e.g., "address")
             gt_nested: Ground truth nested StructuredModel
             pred_nested: Predicted nested StructuredModel
-            parent_is_aggregate: Whether the parent field should aggregate child metrics
 
         Returns:
             Dictionary mapping nested field paths to their confusion matrix metrics
@@ -598,15 +588,7 @@ class ConfusionMatrixCalculator:
                 return nested_metrics
             return nested_metrics
 
-        # Initialize aggregation metrics for parent field if it's an aggregated field
-        parent_metrics = (
-            {"tp": 0, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
-            if parent_is_aggregate
-            else None
-        )
 
-        # Track which fields are aggregate fields themselves to avoid double counting
-        child_aggregate_fields = set()
 
         # For each field in the nested model
         for field_name in gt_nested.__class__.model_fields:
@@ -615,12 +597,6 @@ class ConfusionMatrixCalculator:
 
             nested_field_path = f"{parent_field_name}.{field_name}"
 
-            # Check if this nested field is itself an aggregate field
-            is_child_aggregate = False
-            if hasattr(gt_nested.__class__, "_is_aggregate_field"):
-                is_child_aggregate = gt_nested.__class__._is_aggregate_field(field_name)
-                if is_child_aggregate:
-                    child_aggregate_fields.add(field_name)
 
             # Get the field value from the prediction
             pred_value = getattr(pred_nested, field_name, None)
@@ -663,50 +639,12 @@ class ConfusionMatrixCalculator:
 
                 # Recursively calculate metrics for deeper nesting
                 deeper_metrics = self.calculate_single_nested_field_metrics(
-                    nested_field_path, gt_value, pred_value, is_child_aggregate
+                    nested_field_path, gt_value, pred_value
                 )
                 nested_metrics.update(deeper_metrics)
 
-                # If this is an aggregate child field, we need to use its aggregated metrics
-                # instead of the direct field comparison metrics
-                if is_child_aggregate and nested_field_path in deeper_metrics:
-                    # For an aggregate child field, we replace its direct metrics with
-                    # the aggregation of its children's metrics
-                    nested_metrics[nested_field_path] = deeper_metrics[
-                        nested_field_path
-                    ]
 
-            # For parent aggregation, we need to be careful not to double count metrics
-            if parent_is_aggregate:
-                if is_child_aggregate:
-                    # If child is an aggregate, use its aggregated metrics for parent
-                    if nested_field_path in deeper_metrics:
-                        child_agg_metrics = deeper_metrics[nested_field_path]
-                        for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-                            parent_metrics[metric] += child_agg_metrics.get(metric, 0)
-                else:
-                    # If child is not an aggregate, use its direct field metrics
-                    field_metrics = nested_metrics[nested_field_path]
-                    for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-                        parent_metrics[metric] += field_metrics.get(metric, 0)
 
-        # If parent is an aggregated field, add the aggregated metrics to the result
-        if parent_is_aggregate:
-            # Don't include metrics from child aggregate fields in the parent's metrics
-            # as they've already been counted through their own aggregation
-            for field_name in child_aggregate_fields:
-                nested_field_path = f"{parent_field_name}.{field_name}"
-                if nested_field_path in nested_metrics:
-                    # Don't double count these metrics in the parent
-                    field_metrics = nested_metrics[nested_field_path]
-                    # Subtract these metrics from parent_metrics to avoid double counting
-                    for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
-                        parent_metrics[metric] -= field_metrics.get(metric, 0)
 
-            nested_metrics[parent_field_name] = parent_metrics
-            # Add derived metrics
-            nested_metrics[parent_field_name]["derived"] = (
-                MetricsHelper().calculate_derived_metrics(parent_metrics)
-            )
 
         return nested_metrics
