@@ -4,8 +4,7 @@ This module provides the ComparableField function for creating fields in structu
 with comparison configuration parameters.
 """
 
-import warnings
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 from pydantic import Field
 
@@ -13,36 +12,12 @@ from stickler.comparators.base import BaseComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 
 
-class _Unset:
-    """Sentinel distinguishing "argument omitted" from "argument passed".
-
-    Needed because ``aggregate=False`` is both the historical default and a
-    value a user may pass explicitly. Only the explicit case should warn.
-
-    Detection is by identity (``is not _UNSET``). That is sound within one
-    import namespace; a codebase importing stickler under two names (say
-    ``stickler.x`` and ``src.stickler.x``) creates two distinct sentinels, and
-    handing one namespace's to the other would read as an explicit argument.
-    Harmless -- the result is a spurious deprecation warning about a parameter
-    that is going away regardless.
-    """
-
-    def __bool__(self) -> bool:  # pragma: no cover - defensive
-        return False
-
-    def __repr__(self) -> str:  # pragma: no cover - defensive
-        return "<unset>"
-
-
-_UNSET = _Unset()
-
-
 def ComparableField(
     comparator: Optional[BaseComparator] = None,
     threshold: float = 0.5,
     weight: float = 1.0,
     default: Any = None,
-    aggregate: Union[bool, _Unset] = _UNSET,
+    *,
     clip_under_threshold: bool = True,
     # Pydantic Field parameters (all optional, just like Field)
     alias: Optional[str] = None,
@@ -60,13 +35,6 @@ def ComparableField(
         threshold: Minimum similarity score to consider a match (default: 0.5)
         weight: Weight of this field in overall score calculation (default: 1.0)
         default: Default value for the field (default: None)
-        aggregate: DEPRECATED, has no effect, and will be removed in 1.0.
-                  Passing it at all (either value) emits a DeprecationWarning.
-                  Aggregation is applied at the comparison layer: every node in
-                  compare_with() output already carries an 'aggregate' block
-                  summing the primitive field metrics below it. Remove the
-                  argument; there is no replacement to adopt.
-                  See https://github.com/awslabs/stickler/issues/226
         clip_under_threshold: Whether to zero out scores below threshold (default: True)
         alias: Pydantic field alias for serialization (default: None)
         description: Field description for documentation (default: None)
@@ -89,25 +57,14 @@ def ComparableField(
                 examples=["user@example.com"]
             )
     """
-    # Warn on ANY explicit use, not just aggregate=True. Passing False was
-    # silent before, so those callers had no signal that the parameter is going
-    # away; they would have met a bare TypeError on upgrade. The value itself
-    # has no effect either way: aggregation is applied at the comparison layer
-    # and every node in compare_with() output carries an `aggregate` block.
-    if aggregate is not _UNSET:
-        warnings.warn(
-            "The 'aggregate' parameter in ComparableField is deprecated, has no "
-            "effect, and will be removed in 1.0. All nodes automatically "
-            "include an 'aggregate' field in the compare_with() output that "
-            "sums primitive field metrics below that node. Remove the argument; "
-            "no replacement is needed. See "
-            "https://github.com/awslabs/stickler/issues/226",
-            DeprecationWarning,
-            stacklevel=2,
+
+    if "aggregate" in field_kwargs:
+        raise TypeError(
+            "The 'aggregate' parameter was removed in 1.0; it had no effect. "
+            "Aggregation is computed automatically for every node in compare_with() "
+            "output. Remove the argument. "
+            "See https://github.com/awslabs/stickler/issues/226"
         )
-        aggregate = bool(aggregate)
-    else:
-        aggregate = False
 
     # Create the actual comparator instance
     actual_comparator = comparator or LevenshteinComparator()
@@ -119,8 +76,7 @@ def ComparableField(
         "comparator_config": getattr(actual_comparator, "config", {}),
         "threshold": threshold,
         "weight": weight,
-        "clip_under_threshold": clip_under_threshold,
-        "aggregate": aggregate,
+        "clip_under_threshold": clip_under_threshold
     }
 
     # Create json_schema_extra function that stores runtime data
@@ -133,7 +89,6 @@ def ComparableField(
     json_schema_extra_func._threshold = threshold
     json_schema_extra_func._weight = weight
     json_schema_extra_func._clip_under_threshold = clip_under_threshold
-    json_schema_extra_func._aggregate = aggregate
     json_schema_extra_func._comparison_metadata = serializable_metadata
 
     # Merge with existing json_schema_extra if provided
@@ -149,7 +104,6 @@ def ComparableField(
         enhanced_json_schema_extra._threshold = threshold
         enhanced_json_schema_extra._weight = weight
         enhanced_json_schema_extra._clip_under_threshold = clip_under_threshold
-        enhanced_json_schema_extra._aggregate = aggregate
         enhanced_json_schema_extra._comparison_metadata = serializable_metadata
         final_json_schema_extra = enhanced_json_schema_extra
     elif isinstance(existing_json_schema_extra, dict):
@@ -163,7 +117,6 @@ def ComparableField(
         enhanced_json_schema_extra._threshold = threshold
         enhanced_json_schema_extra._weight = weight
         enhanced_json_schema_extra._clip_under_threshold = clip_under_threshold
-        enhanced_json_schema_extra._aggregate = aggregate
         enhanced_json_schema_extra._comparison_metadata = serializable_metadata
         final_json_schema_extra = enhanced_json_schema_extra
     else:
@@ -185,30 +138,6 @@ def ComparableField(
     )
 
     return field
-
-
-
-def _restore_deprecated_aggregate(field: Any, value: Any) -> None:
-    """Set a field's stored ``aggregate`` value without emitting a warning.
-
-    Reading an exported config is not an explicit use of the deprecated
-    parameter, so ``ComparableField`` is called with the sentinel and the value
-    is written afterwards. That keeps ``to_stickler_config()`` faithful --
-    export -> import -> export is unchanged, including for ``aggregate=True``
-    -- while the warning stays reserved for code a user can actually edit.
-
-    Internal, and removed with the parameter in 1.0
-    (https://github.com/awslabs/stickler/issues/226).
-    """
-    if not isinstance(value, bool):
-        return
-    extra = getattr(field, "json_schema_extra", None)
-    if extra is None or not callable(extra):
-        return
-    extra._aggregate = value
-    metadata = getattr(extra, "_comparison_metadata", None)
-    if isinstance(metadata, dict):
-        metadata["aggregate"] = value
 
 
 def _reconstruct_comparator_from_type(

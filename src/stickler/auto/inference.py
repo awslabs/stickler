@@ -89,6 +89,8 @@ class InferredSpec:
             if entry.startswith("degrade"):
                 return "degrade"
         for entry in self.provenance:
+            if entry.startswith("explicit"):
+                return "explicit"
             if entry.startswith("name-token"):
                 return "name-token"
         return "type"

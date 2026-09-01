@@ -445,14 +445,6 @@ class JsonSchemaFieldConverter:
                 )
             extensions["clip_under_threshold"] = clip_value
         
-        if "x-aws-stickler-aggregate" in property_schema:
-            aggregate_value = property_schema["x-aws-stickler-aggregate"]
-            if not isinstance(aggregate_value, bool):
-                field_info = f" for field '{field_path}'" if field_path else ""
-                raise ValueError(
-                    f"x-aws-stickler-aggregate must be a boolean{field_info}, got: {type(aggregate_value).__name__}"
-                )
-            extensions["aggregate"] = aggregate_value
         
         return extensions
 
@@ -761,8 +753,6 @@ class JsonSchemaFieldConverter:
         if metadata.get("clip_under_threshold") is not None:
             clip_key = f"{prefix}clip-under-threshold" if output_format == "json_schema" else "clip_under_threshold"
             extensions[clip_key] = metadata["clip_under_threshold"]
-        if metadata.get("aggregate") is not None:
-            extensions[f"{prefix}aggregate"] = metadata["aggregate"]
         
         return extensions
     
@@ -799,8 +789,5 @@ class JsonSchemaFieldConverter:
         
         if hasattr(json_func, "_clip_under_threshold"):
             metadata["clip_under_threshold"] = json_func._clip_under_threshold
-        
-        if hasattr(json_func, "_aggregate"):
-            metadata["aggregate"] = json_func._aggregate
-        
+
         return metadata

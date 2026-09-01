@@ -707,7 +707,6 @@ class StructuredModel(BaseModel):
         - x-aws-stickler-threshold: Similarity threshold for match/no-match (0.0-1.0, default: 0.5)
         - x-aws-stickler-weight: Field importance in overall scoring (>0.0, default: 1.0)
         - x-aws-stickler-clip-under-threshold: Clip scores below threshold to 0.0 (bool, default: false)
-        - x-aws-stickler-aggregate: Include field metrics in parent aggregation (bool, default: false)
 
         Model-Level Extensions:
         -----------------------
@@ -771,7 +770,6 @@ class StructuredModel(BaseModel):
             ...             "x-aws-stickler-comparator": "LevenshteinComparator",
             ...             "x-aws-stickler-threshold": 0.9,
             ...             "x-aws-stickler-weight": 2.0,
-            ...             "x-aws-stickler-aggregate": true
             ...         },
             ...         "price": {
             ...             "type": "number",
@@ -945,17 +943,6 @@ class StructuredModel(BaseModel):
         """
         return ConfigurationHelper.get_comparison_info(cls, field_name)
 
-    @classmethod
-    def _is_aggregate_field(cls, field_name: str) -> bool:
-        """Check if field is marked for confusion matrix aggregation.
-
-        Args:
-            field_name: Name of the field to check
-
-        Returns:
-            True if the field is marked for aggregation, False otherwise
-        """
-        return ConfigurationHelper.is_aggregate_field(cls, field_name)
 
     def _should_use_hierarchical_structure(self, val: Any, field_name: str) -> bool:
         """Check if a list value should maintain hierarchical structure.
@@ -1277,7 +1264,6 @@ class StructuredModel(BaseModel):
         parent_field_name: str,
         gt_nested: "StructuredModel",
         pred_nested: "StructuredModel",
-        parent_is_aggregate: bool = False,
     ) -> Dict[str, Dict[str, Any]]:
         """Calculate confusion matrix metrics for fields within a single nested StructuredModel.
 
@@ -1287,7 +1273,6 @@ class StructuredModel(BaseModel):
             parent_field_name: Name of the parent field (e.g., "address")
             gt_nested: Ground truth nested StructuredModel
             pred_nested: Predicted nested StructuredModel
-            parent_is_aggregate: Whether the parent field should aggregate child metrics
 
         Returns:
             Dictionary mapping nested field paths to their confusion matrix metrics
@@ -1297,7 +1282,7 @@ class StructuredModel(BaseModel):
 
         calculator = ConfusionMatrixCalculator(self)
         return calculator.calculate_single_nested_field_metrics(
-            parent_field_name, gt_nested, pred_nested, parent_is_aggregate
+            parent_field_name, gt_nested, pred_nested
         )
 
     def _collect_enhanced_non_matches(

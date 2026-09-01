@@ -49,7 +49,6 @@ When defining a `StructuredModel` subclass in Python, each field is declared wit
 | `threshold` | `float` (0.0--1.0) | `0.5` | Minimum similarity score required for a field to be classified as a match. |
 | `weight` | `float` (> 0.0) | `1.0` | Relative importance of this field when computing aggregate scores. |
 | `clip_under_threshold` | `bool` | `True` | When `True`, scores below `threshold` are zeroed out before contributing to the weighted average. |
-| `aggregate` | `bool` | `False` | **Deprecated, removed in 1.0.** Has no effect: every node already carries an `aggregate` block in the `compare_with()` output summing the primitive field metrics below it. Passing it at all emits a `DeprecationWarning`; remove the argument, there is no replacement to adopt ([#226](https://github.com/awslabs/stickler/issues/226)). |
 
 ### How Each Parameter Affects Scoring
 
@@ -190,7 +189,6 @@ Add these extensions to any property in your JSON Schema to control comparison b
 | `x-aws-stickler-threshold` | number (0.0--1.0) | 0.5 or 1.0 | Match classification cutoff |
 | `x-aws-stickler-weight` | number (> 0.0) | 1.0 | Field importance multiplier |
 | `x-aws-stickler-clip-under-threshold` | boolean | `false` | Zero out scores below threshold |
-| `x-aws-stickler-aggregate` | boolean | `false` | Include in parent-level aggregate metrics |
 | `x-aws-stickler-model-name` | string | `"DynamicModel"` | Name of the generated Python class (root level) |
 | `x-aws-stickler-match-threshold` | number (0.0--1.0) | 0.7 | Model-level matching threshold for Hungarian algorithm (root level) |
 
