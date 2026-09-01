@@ -49,6 +49,7 @@ class Product(StructuredModel):
     name: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.8)
     price: float = ComparableField(comparator=NumericComparator(), threshold=0.5)
     sku: str = ComparableField(comparator=ExactComparator(), threshold=1.0)
+    match_threshold = 0.6  # Keep 2-of-3 products open for leaf confidence checks.
 
 
 class Address(StructuredModel):
