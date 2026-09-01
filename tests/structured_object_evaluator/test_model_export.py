@@ -4,7 +4,6 @@ This module tests the to_json_schema() and to_stickler_config() methods
 that export StructuredModel configurations for serialization.
 """
 
-import warnings
 from typing import List, Optional
 
 from stickler.comparators.levenshtein import LevenshteinComparator
@@ -205,24 +204,14 @@ def test_to_stickler_config_primitive_list():
 
 
 def test_export_preserves_metadata():
-    """Test that all comparison metadata is preserved in export.
+    """Test that all comparison metadata is preserved in export."""
 
-    Still exercises the deprecated ``aggregate`` parameter on purpose: it is
-    part of the serialized export format, so the round trip has to keep working
-    until the field is removed in 1.0 (issue #226). The warning is expected
-    here and suppressed rather than silenced globally.
-    """
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-
-        class DetailedModel(StructuredModel):
-            field1: str = ComparableField(
-                threshold=0.75,
-                weight=1.5,
-                clip_under_threshold=False,
-                aggregate=True
-            )
+    class DetailedModel(StructuredModel):
+        field1: str = ComparableField(
+            threshold=0.75,
+            weight=1.5,
+            clip_under_threshold=False,
+        )
     
     # Test JSON Schema export
     schema = DetailedModel.to_json_schema()
@@ -230,7 +219,6 @@ def test_export_preserves_metadata():
     assert field_prop["x-aws-stickler-threshold"] == 0.75
     assert field_prop["x-aws-stickler-weight"] == 1.5
     assert field_prop["x-aws-stickler-clip-under-threshold"] is False
-    assert field_prop["x-aws-stickler-aggregate"] is True
     
     # Test Stickler config export
     config = DetailedModel.to_stickler_config()
@@ -238,57 +226,6 @@ def test_export_preserves_metadata():
     assert field_config["threshold"] == 0.75
     assert field_config["weight"] == 1.5
     assert field_config["clip_under_threshold"] is False
-    assert field_config["aggregate"] is True
-
-
-def test_round_trip_preserves_deprecated_aggregate():
-    """The *import* direction, which the export test above does not cover.
-
-    `to_stickler_config()` writes `aggregate`, so `model_from_json()` has to
-    read it back or export stops being idempotent: export -> import -> export
-    would differ on exactly this key. Reading a config is not an explicit use of
-    the deprecated parameter, so this must happen without a warning (issue
-    #226).
-    """
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-
-        class Aggregated(StructuredModel):
-            field1: str = ComparableField(threshold=0.75, aggregate=True)
-
-    first_export = Aggregated.to_stickler_config()
-
-    with warnings.catch_warnings(record=True) as recorded:
-        warnings.simplefilter("always")
-        rebuilt = StructuredModel.model_from_json(first_export)
-
-    deprecations = [w for w in recorded if w.category is DeprecationWarning]
-    assert deprecations == [], "reading a config is not an explicit use"
-
-    # The value survives the import, not just the export.
-    assert rebuilt._is_aggregate_field("field1") is True
-
-    # And the format is idempotent.
-    assert rebuilt.to_stickler_config() == first_export
-
-
-def test_round_trip_preserves_aggregate_false():
-    """The default value round-trips too, without warning."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-
-        class NotAggregated(StructuredModel):
-            field1: str = ComparableField(threshold=0.75, aggregate=False)
-
-    first_export = NotAggregated.to_stickler_config()
-
-    with warnings.catch_warnings(record=True) as recorded:
-        warnings.simplefilter("always")
-        rebuilt = StructuredModel.model_from_json(first_export)
-
-    assert [w for w in recorded if w.category is DeprecationWarning] == []
-    assert rebuilt._is_aggregate_field("field1") is False
-    assert rebuilt.to_stickler_config() == first_export
 
 
 class OptionalFieldModel(StructuredModel):

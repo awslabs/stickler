@@ -171,7 +171,6 @@ class TestConvertPropertiesToFields:
                     "x-aws-stickler-threshold": 0.9,
                     "x-aws-stickler-weight": 2.0,
                     "x-aws-stickler-clip-under-threshold": False,
-                    "x-aws-stickler-aggregate": True,
                 },
                 "age": {
                     "type": "integer",
@@ -194,7 +193,6 @@ class TestConvertPropertiesToFields:
         assert name_field.json_schema_extra._threshold == 0.9
         assert name_field.json_schema_extra._weight == 2.0
         assert name_field.json_schema_extra._clip_under_threshold is False
-        assert name_field.json_schema_extra._aggregate is False  # aggregate param is deprecated; auto-aggregation is used
 
         # Check age field extensions
         age_field = field_definitions["age"][1]
@@ -609,7 +607,6 @@ class TestNestedObjectHandling:
                 "address": {
                     "type": "object",
                     "x-aws-stickler-weight": 2.0,
-                    "x-aws-stickler-aggregate": True,
                     "properties": {
                         "street": {"type": "string"},
                         "city": {"type": "string"},
@@ -627,7 +624,6 @@ class TestNestedObjectHandling:
         # Check extensions are applied to the field
         address_field = field_definitions["address"][1]
         assert address_field.json_schema_extra._weight == 2.0
-        assert address_field.json_schema_extra._aggregate is False  # aggregate param is deprecated; auto-aggregation is used
 
     def test_deeply_nested_objects(self):
         """Test deeply nested object structures."""
@@ -936,29 +932,6 @@ class TestErrorHandling:
         
         assert "x-aws-stickler-clip-under-threshold must be a boolean" in str(exc_info.value)
         assert "str" in str(exc_info.value)
-
-    def test_invalid_aggregate_type(self):
-        """Test error when aggregate is not boolean."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "count": {
-                    "type": "integer",
-                    "x-aws-stickler-aggregate": 1,  # Invalid: not boolean
-                },
-            },
-            "required": [],
-        }
-
-        converter = JsonSchemaFieldConverter(schema)
-        
-        with pytest.raises(ValueError) as exc_info:
-            converter.convert_properties_to_fields(
-                schema["properties"], schema["required"]
-            )
-        
-        assert "x-aws-stickler-aggregate must be a boolean" in str(exc_info.value)
-        assert "int" in str(exc_info.value)
 
     def test_error_includes_field_path(self):
         """Test that errors include field path for context."""

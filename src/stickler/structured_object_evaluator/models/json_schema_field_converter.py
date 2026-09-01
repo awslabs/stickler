@@ -200,9 +200,6 @@ class JsonSchemaFieldConverter:
                 else "clip_under_threshold"
             )
             extensions[clip_key] = metadata["clip_under_threshold"]
-        if metadata.get("aggregate") is not None:
-            extensions[f"{prefix}aggregate"] = metadata["aggregate"]
-
         return extensions
 
     def _extract_field_metadata(self, field_info: FieldInfo) -> Dict[str, Any]:
@@ -238,8 +235,5 @@ class JsonSchemaFieldConverter:
 
         if hasattr(json_func, "_clip_under_threshold"):
             metadata["clip_under_threshold"] = json_func._clip_under_threshold
-
-        if hasattr(json_func, "_aggregate"):
-            metadata["aggregate"] = json_func._aggregate
 
         return metadata

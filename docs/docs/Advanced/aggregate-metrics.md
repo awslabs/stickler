@@ -8,7 +8,7 @@ Stickler automatically includes an `aggregate` field at every node in the confus
 
 ## Key Features
 
-- **Automatic** -- Every node gets an `aggregate` field. No `aggregate=True` parameter needed.
+- **Automatic** -- Every node gets an `aggregate` field, with no per-field configuration.
 - **Hierarchical** -- Parent nodes sum metrics from all child primitive fields.
 - **Consistent** -- The same access pattern works at every level: `result['confusion_matrix']['aggregate']` or `result['confusion_matrix']['fields']['contact']['aggregate']`.
 - **Derived metrics included** -- Each aggregate contains precision, recall, F1, and accuracy.

@@ -493,18 +493,18 @@ class JsonSchemaImporter:
                 )
             extensions["weight"] = weight
 
-        for key, target in (
-            ("x-aws-stickler-clip-under-threshold", "clip_under_threshold"),
-            ("x-aws-stickler-aggregate", "aggregate"),
-        ):
-            if key in extra:
-                value = extra[key]
-                if not isinstance(value, bool):
-                    raise ValueError(
-                        f"{key} must be a boolean for field '{field_path}', "
-                        f"got: {type(value).__name__}"
-                    )
-                extensions[target] = value
+        clip_key = "x-aws-stickler-clip-under-threshold"
+        if clip_key in extra:
+            value = extra[clip_key]
+            if not isinstance(value, bool):
+                raise ValueError(
+                    f"{clip_key} must be a boolean for field '{field_path}', "
+                    f"got: {type(value).__name__}"
+                )
+            extensions["clip_under_threshold"] = value
+
+        # ``x-aws-stickler-aggregate`` was removed in #226. Accept and ignore
+        # it here so schemas exported by older Stickler versions still import.
 
         return extensions
 
