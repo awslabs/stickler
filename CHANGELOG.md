@@ -9,6 +9,23 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Removed
+
+- The deprecated `aggregate` parameter on `ComparableField`, along with its dead
+  code path (`_is_aggregate_field`, `ConfigurationHelper.is_aggregate_field`, and
+  the `parent_is_aggregate` plumbing in the confusion-matrix calculator). The
+  flag had no effect once aggregation moved to the comparison layer in
+  [#94](https://github.com/awslabs/stickler/issues/94): every node in
+  `compare_with()` output already carries an `aggregate` block summing the
+  primitive field metrics below it. Passing `aggregate=` now raises `TypeError`
+  instead of emitting a `DeprecationWarning`. The comparison parameters after
+  `default` (`clip_under_threshold`, `alias`, ...) are now keyword-only, so an
+  old five-positional call raises `TypeError` rather than silently rebinding its
+  fifth argument to `clip_under_threshold`. A JSON Schema carrying
+  `x-aws-stickler-aggregate` still imports — the key is accepted but ignored — so
+  existing schema files keep loading.
+  ([#226](https://github.com/awslabs/stickler/issues/226))
+
 ### Fixed
 
 - `overall_score` and the confusion matrix no longer disagree about a field that
@@ -132,6 +149,21 @@ Each release links to full notes on the
   widening the guard fails loudly rather than silently skipping the check.
 
 ### Changed
+
+- JSON Schema import now delegates standard types, local references, combiners,
+  and constraint parsing to `json-schema-to-pydantic`. Stickler retains a narrow
+  adapter for comparison metadata and nested `StructuredModel` creation. Parsed
+  types still choose comparison behavior, but schema constraints do not reject
+  imperfect predictions before scoring: malformed enum, date, and
+  constraint-violating values remain constructible and reach their comparator.
+
+  Unconfigured enum fields now use `ExactComparator` at threshold `1.0`, and
+  `date` / `date-time` formats use `DateComparator` at threshold `1.0`; both used
+  `LevenshteinComparator` at threshold `0.5` before this change, so default scores
+  can move for those fields.
+  This adds support for valid Draft 7 multi-type unions and multi-arm `allOf`,
+  `anyOf`, and `oneOf` schemas; recursive models and `patternProperties` remain
+  explicit unsupported boundaries ([#212](https://github.com/awslabs/stickler/issues/212)).
 
 - Confidence AUROC and document-splitting statistics now use NumPy
   implementations with randomized scikit-learn and SciPy equivalence tests.

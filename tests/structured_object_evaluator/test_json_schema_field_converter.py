@@ -5,6 +5,7 @@ import typing
 
 import pytest
 
+from stickler.comparators.date import DateComparator
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.numeric import NumericComparator
@@ -780,25 +781,23 @@ class TestArrayHandling:
 class TestErrorHandling:
     """Tests for error handling and validation."""
 
-    def test_invalid_json_type(self):
-        """Test error when JSON Schema type is unsupported."""
+    def test_null_json_type(self):
+        """The maintained importer represents JSON Schema's null type."""
+        from pydantic import ValidationError
+
         schema = {
             "type": "object",
             "properties": {
-                "data": {"type": "null"},  # null type not supported for fields
+                "data": {"type": "null"},
             },
             "required": [],
         }
 
-        converter = JsonSchemaFieldConverter(schema)
-        
-        with pytest.raises(ValueError) as exc_info:
-            converter.convert_properties_to_fields(
-                schema["properties"], schema["required"]
-            )
-        
-        assert "Unsupported JSON Schema type: null" in str(exc_info.value)
-        assert "Supported types:" in str(exc_info.value)
+        Model = StructuredModel.from_json_schema(schema)
+
+        assert Model(data=None).data is None
+        with pytest.raises(ValidationError):
+            Model(data="not-null")
 
     def test_invalid_threshold_value(self):
         """Test error when threshold is out of range."""
@@ -1261,15 +1260,13 @@ class TestNullableTypeListForm:
         "bad_type",
         [
             [],
-            ["null"],
             ["null", "null"],
-            ["string", "integer"],
             [["string"], "null"],
             [123, "null"],
         ],
     )
     def test_invalid_list_form_type_rejected(self, bad_type):
-        """List-form ``type`` values that are not ['<type>', 'null'] are rejected."""
+        """List-form ``type`` follows Draft 7's non-empty unique string rule."""
         schema = {
             "type": "object",
             "properties": {"value": {"type": bad_type}},
@@ -1277,10 +1274,35 @@ class TestNullableTypeListForm:
         }
 
         converter = JsonSchemaFieldConverter(schema)
-        with pytest.raises(ValueError, match="Unsupported JSON Schema type"):
+        with pytest.raises(ValueError, match="Invalid JSON Schema"):
             converter.convert_properties_to_fields(
                 schema["properties"], schema["required"]
             )
+
+    def test_standard_multi_type_union_is_supported(self):
+        """A non-null multi-type list is valid Draft 7, not a nullable-only form."""
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {"value": {"type": ["string", "integer"]}},
+                "required": ["value"],
+            }
+        )
+
+        assert Model(value="ready").value == "ready"
+        assert Model(value=7).value == 7
+
+    def test_single_null_type_list_is_supported(self):
+        """Draft 7 permits a one-member type list."""
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {"value": {"type": ["null"]}},
+                "required": ["value"],
+            }
+        )
+
+        assert Model(value=None).value is None
 
     def test_nullable_outer_object(self):
         """Outer-level {"type": ["object", "null"]} field wraps model in Optional."""
@@ -1576,19 +1598,18 @@ class TestNullableAnyOfAndImplicitObjects:
             [{"type": "string"}, {"type": "null"}, {"type": "integer"}],
         ],
     )
-    def test_other_anyof_shapes_remain_unsupported(self, branches):
-        """The converter does not guess among multiple non-null alternatives."""
+    def test_multi_arm_anyof_is_supported(self, branches):
+        """The schema library owns ordinary multi-arm anyOf parsing."""
         schema = {
             "type": "object",
             "properties": {"value": {"anyOf": branches}},
             "required": ["value"],
         }
 
-        converter = JsonSchemaFieldConverter(schema)
-        with pytest.raises(ValueError, match="nullable anyOf"):
-            converter.convert_properties_to_fields(
-                schema["properties"], schema["required"]
-            )
+        Model = StructuredModel.from_json_schema(schema)
+
+        assert Model(value="ready").value == "ready"
+        assert Model(value=7).value == 7
 
     def test_nullable_anyof_rejects_constraining_sibling_type(self):
         """A sibling type would make the null branch invalid under JSON Schema AND."""
@@ -1678,3 +1699,280 @@ class TestSticklerEmittedSiblingKeywords:
 
         with pytest.raises(ValueError, match="sibling schema keywords"):
             StructuredModel.from_json_schema(schema)
+
+
+class TestMaintainedSchemaImporter:
+    """Coverage for JSON Schema features delegated to the maintained library."""
+
+    def test_root_allof_merges_object_properties(self):
+        Model = StructuredModel.from_json_schema(
+            {
+                "title": "Combined",
+                "allOf": [
+                    {
+                        "type": "object",
+                        "properties": {"name": {"type": "string"}},
+                        "required": ["name"],
+                    },
+                    {
+                        "type": "object",
+                        "properties": {"score": {"type": "number"}},
+                        "required": ["score"],
+                    },
+                ],
+            }
+        )
+
+        value = Model(name="Ada", score=0.9)
+        assert value.name == "Ada"
+        assert value.score == 0.9
+
+    def test_multi_arm_oneof_is_supported(self):
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "value": {
+                        "oneOf": [
+                            {"type": "integer"},
+                            {"type": "string"},
+                            {"type": "null"},
+                        ]
+                    }
+                },
+                "required": ["value"],
+            }
+        )
+
+        assert Model(value=3).value == 3
+        assert Model(value="three").value == "three"
+        assert Model(value=None).value is None
+
+    def test_multi_arm_object_union_builds_structured_models(self):
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "value": {
+                        "anyOf": [
+                            {
+                                "type": "object",
+                                "properties": {"name": {"type": "string"}},
+                                "required": ["name"],
+                            },
+                            {
+                                "type": "object",
+                                "properties": {"count": {"type": "integer"}},
+                                "required": ["count"],
+                            },
+                        ]
+                    }
+                },
+                "required": ["value"],
+            }
+        )
+
+        assert isinstance(Model(value={"name": "Ada"}).value, StructuredModel)
+        assert Model(value={"count": 3}).value.count == 3
+
+    def test_constraints_remain_scoreable_after_comparison_adaptation(self):
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "minLength": 3},
+                    "tag": {"type": "string", "pattern": "^[A-Z]+$"},
+                    "score": {
+                        "type": "number",
+                        "minimum": 0,
+                        "exclusiveMaximum": 1,
+                    },
+                },
+                "required": ["code", "tag", "score"],
+            }
+        )
+
+        prediction = Model(code="ab", tag="lower", score=1)
+
+        assert prediction.code == "ab"
+        assert prediction.tag == "lower"
+        assert prediction.score == 1
+        rendered = Model.model_json_schema()["properties"]
+        assert rendered["code"]["minLength"] == 3
+        assert rendered["tag"]["pattern"] == "^[A-Z]+$"
+        assert rendered["score"]["minimum"] == 0
+        assert rendered["score"]["exclusiveMaximum"] == 1
+
+    def test_constrained_array_items_remain_scoreable(self):
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "codes": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 3},
+                    }
+                },
+                "required": ["codes"],
+            }
+        )
+
+        assert Model(codes=["x"]).codes == ["x"]
+
+    def test_enum_predictions_are_exact_but_permissive(self):
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "enum": ["OPEN", "PAID"]}
+                },
+                "required": ["status"],
+            }
+        )
+
+        field = Model.model_fields["status"]
+        assert field.annotation is str
+        assert isinstance(
+            field.json_schema_extra._comparator_instance, ExactComparator
+        )
+        assert field.json_schema_extra._threshold == 1.0
+        assert Model.model_json_schema()["properties"]["status"]["enum"] == [
+            "OPEN",
+            "PAID",
+        ]
+
+        ground_truth = Model(status="OPEN")
+        malformed_prediction = Model(status="VOIDED")
+        assert (
+            ground_truth.compare_with(malformed_prediction)["field_scores"]["status"]
+            == 0.0
+        )
+
+    def test_date_predictions_use_date_comparator_without_validation(self):
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {"issued": {"type": "string", "format": "date"}},
+                "required": ["issued"],
+            }
+        )
+
+        field = Model.model_fields["issued"]
+        assert field.annotation is str
+        assert isinstance(
+            field.json_schema_extra._comparator_instance, DateComparator
+        )
+        assert field.json_schema_extra._threshold == 1.0
+        assert Model.model_json_schema()["properties"]["issued"]["format"] == "date"
+
+        ground_truth = Model(issued="2024-01-01")
+        normalized_prediction = Model(issued="01/01/2024")
+        malformed_prediction = Model(issued="not-a-date")
+        assert (
+            ground_truth.compare_with(normalized_prediction)["field_scores"]["issued"]
+            == 1.0
+        )
+        assert (
+            ground_truth.compare_with(malformed_prediction)["field_scores"]["issued"]
+            == 0.0
+        )
+
+    def test_datetime_and_date_list_annotations_are_permissive(self):
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "created": {"type": "string", "format": "date-time"},
+                    "dates": {
+                        "type": "array",
+                        "items": {"type": "string", "format": "date"},
+                    },
+                },
+                "required": ["created", "dates"],
+            }
+        )
+
+        assert Model.model_fields["created"].annotation is str
+        assert Model.model_fields["dates"].annotation == typing.List[str]
+        assert isinstance(
+            Model.model_fields["created"].json_schema_extra._comparator_instance,
+            DateComparator,
+        )
+        assert isinstance(
+            Model.model_fields["dates"].json_schema_extra._comparator_instance,
+            DateComparator,
+        )
+        prediction = Model(created="not-a-datetime", dates=["not-a-date"])
+        assert prediction.created == "not-a-datetime"
+        assert prediction.dates == ["not-a-date"]
+
+    def test_explicit_date_comparator_override_stays_authoritative(self):
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "issued": {
+                        "type": "string",
+                        "format": "date",
+                        "x-aws-stickler-comparator": "LevenshteinComparator",
+                        "x-aws-stickler-threshold": 0.25,
+                    }
+                },
+                "required": ["issued"],
+            }
+        )
+
+        field = Model.model_fields["issued"]
+        assert field.annotation is str
+        assert isinstance(
+            field.json_schema_extra._comparator_instance, LevenshteinComparator
+        )
+        assert field.json_schema_extra._threshold == 0.25
+        assert Model(issued="not-a-date").issued == "not-a-date"
+
+    def test_unknown_extension_survives_on_generated_schema(self):
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "x-vendor-trace": {"source": "fixture"},
+                    }
+                },
+                "required": ["name"],
+            }
+        )
+
+        rendered = Model.model_json_schema()
+        assert rendered["properties"]["name"]["x-vendor-trace"] == {
+            "source": "fixture"
+        }
+
+    def test_pattern_properties_has_explicit_boundary(self):
+        with pytest.raises(ValueError, match="patternProperties cannot be represented"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {"fixed": {"type": "string"}},
+                    "patternProperties": {"^x-": {"type": "string"}},
+                }
+            )
+
+    def test_recursive_model_has_explicit_boundary(self):
+        with pytest.raises(ValueError, match="Recursive JSON Schema models"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "$defs": {
+                        "Node": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "child": {"$ref": "#/$defs/Node"},
+                            },
+                        }
+                    },
+                    "properties": {"root": {"$ref": "#/$defs/Node"}},
+                }
+            )
