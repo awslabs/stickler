@@ -27,11 +27,31 @@ The two pre-existing entry points lose information from real pydantic models:
   thresholds, weights and comparators.
 - Unannotated `StructuredModel` fields fall through
   `configuration_helper.py`'s type-blind default and get compared with
-  `LevenshteinComparator`, which is wrong for `float`, `bool`, `date`.
+  `LevenshteinComparator`, which is wrong for `float`, `bool`, `date`. This is a
+  defect against the parity contract below, tracked by
+  [#239](https://github.com/awslabs/stickler/issues/239), not a property of that
+  entry point.
 
 `auto` walks the **live** `cls.model_fields` (keeping every python-type signal)
 and infers a real per-field comparator, so "unconfigured" already means
 "reasonably configured."
+
+## The inference table governs every path
+
+`infer_field_config` is the single answer to "no comparator was named", not just
+the answer for plain `BaseModel`. The same table applies whether the model came
+from a plain `BaseModel`, a hand-written `StructuredModel` with bare annotations,
+`model_from_json`, or `from_json_schema`. A field the author did not configure
+gets the same comparator and threshold on all four, and
+`stickler.eval_for(Model).explain()` reports it on all four.
+
+That parity is the contract. Where an entry point currently disagrees, the entry
+point is wrong, not the table
+([#239](https://github.com/awslabs/stickler/issues/239)).
+
+An explicit declaration always wins, per parameter: naming a comparator but not
+a threshold takes the inferred threshold, and vice versa. Inference fills gaps;
+it never overrides a stated choice.
 
 ## Architecture
 

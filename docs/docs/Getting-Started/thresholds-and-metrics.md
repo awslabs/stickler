@@ -39,7 +39,12 @@ class Invoice(StructuredModel):
 - **TP vs FD classification:** If `similarity >= threshold`, the field is a True Positive. Otherwise, it's a False Discovery.
 - **Score clipping:** When `clip_under_threshold=True` (the default), scores below the threshold are zeroed out in the weighted average.
 
-**Default:** `0.5`
+**Default:** `0.5` when you write `ComparableField(...)` and omit `threshold`.
+
+**When you name no comparator at all,** the threshold is not `0.5`. It is inferred
+alongside the comparator, from the field's type and name, and it is tuned to
+whatever was chosen: exact matching demands `1.0`, loose text matching accepts
+`0.85`. See [Unspecified fields](#unspecified-fields) below.
 
 ### 3. Model Match Threshold
 
@@ -75,6 +80,43 @@ spec = stickler.eval_for(Invoice, match_threshold=0.8)
 
 **Default:** `0.7`
 
+## Unspecified fields
+
+If you tell Stickler how to compare a field, it does what you said. If you
+don't, Stickler picks for you, by looking at the field's type and its name.
+
+There is one rule, and it does not depend on how you built the model. All four
+of these say the same thing, so all four get the same answer:
+
+```python
+sku: str                                      # plain annotation
+sku: str = ComparableField()                  # no comparator named
+{"sku": {"type": "str"}}                      # JSON config, no comparator key
+{"sku": {"type": "string"}}                   # JSON Schema, no extension
+```
+
+Stickler reads the type first, then the name. A number is compared as a number.
+A date as a date. A true/false exactly. Text loosely, so a small typo still
+counts. But text in a field *named* like an identifier, `sku`, `invoice_id`,
+`code`, is compared exactly, because being one character off on an ID is being
+wrong, not being close.
+
+Each choice carries a threshold suited to it, which is why there is no single
+default to quote. `auto/README.md` holds the full table.
+
+To see what was chosen for a given model:
+
+```python
+stickler.eval_for(MyModel).explain()
+```
+
+That reports the comparator, the threshold, and why each was picked. Nothing is
+decided invisibly.
+
+Inference is a default, not a verdict. Stickler guesses from a name and a type
+and cannot know your data, so if `reference` is a fuzzy human-entered string in
+your world, declare it explicitly.
+
 ## Threshold Precedence
 
 When multiple thresholds could apply, here's which one wins:
@@ -82,6 +124,7 @@ When multiple thresholds could apply, here's which one wins:
 | Situation | Which threshold applies |
 |-----------|------------------------|
 | **Primitive field comparison** (str, int, float) | Field threshold (`ComparableField(threshold=...)`) |
+| **Primitive field with no comparator named** | Inferred threshold, from the field's type and name |
 | **Nested object comparison** | Recurses into fields; each field uses its own field threshold |
 | **List element pairing** (`List[StructuredModel]`) | Runtime match threshold if provided, else Model match threshold |
 | **Score clipping** | Field threshold (when `clip_under_threshold=True`) |
@@ -94,6 +137,10 @@ When multiple thresholds could apply, here's which one wins:
 2. **Match threshold** controls object-level TP/FD classification for list matching.
 3. **Runtime match threshold** overrides model-level match threshold.
 4. **Comparator threshold** is only used by `binary_compare()`; evaluation ignores it.
+5. **`match_threshold` never sets a field's threshold.** It answers one question:
+   are these two objects in a list the same object? Whether a field matched is a
+   different question, and a single number cannot mean both. To make one field
+   lenient, say so on that field: `ComparableField(threshold=0.6)`.
 
 ### Example: All Four in Action
 
@@ -243,14 +290,15 @@ subject to any threshold, so:
   precision `0.667`
 - 2 against 1 still yields an FN, giving recall `0.5`
 
-**`match_threshold = 0.0` warns unconditionally**, because the value is used two
-ways: as the object-matching threshold for a `List[StructuredModel]` element,
-*and* as the default field threshold for any field with no explicit config. A
-plainly annotated `name: str` inherits it, so a standalone model with no list
-anywhere still reports `1.0` across the board. Declaring the field with
-`ComparableField()` instead takes an earlier branch that supplies a hardcoded
-`0.5`, which is why the value can look inert when probed that way (see
-[#237](https://github.com/awslabs/stickler/issues/237)).
+**`match_threshold = 0.0` warns unconditionally**, because a model that is not a
+list element today may become one tomorrow, and the warning is cheaper than the
+silent `1.0` that follows.
+
+It gates object pairing only. It does not set the threshold of any field, so a
+standalone model with no list anywhere is unaffected by it. If you probe a
+plainly annotated `name: str` and find it carrying the `match_threshold` value,
+that is [#237](https://github.com/awslabs/stickler/issues/237), a defect against
+the contract stated above, not the contract itself.
 
 **Fix:** use a small positive value.
 
@@ -373,7 +421,8 @@ Recall (with FD) = TP / (TP + FN + FD) = 5 / (5 + 1 + 1) = 0.714
 |-----------|-----------|------------------|---------|
 | Comparator | `Comparator(threshold=...)` | `binary_compare()` only | varies |
 | Field | `ComparableField(threshold=...)` | TP/FD for primitives, clipping | 0.5 |
-| Model | `match_threshold = ...` on class | Hungarian pairing | 0.7 |
+| Field (inferred) | nothing; no comparator named | same as above | per type and name |
+| Model | `match_threshold = ...` on class | Hungarian pairing, and nothing else | 0.7 |
 | Runtime | `evaluate(..., match_threshold=...)` | Overrides model threshold | 0.7 |
 
 ### Metric Formulas

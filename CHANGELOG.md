@@ -9,6 +9,19 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Documentation
+
+- Stated the contract for fields the author did not configure: when no comparator
+  is named, the comparator and threshold are inferred from the field's type and
+  name, and the answer is the same whether the model came from a plain
+  `BaseModel`, a `StructuredModel` with bare annotations, `model_from_json`, or
+  `from_json_schema`. Also stated that `match_threshold` gates object pairing
+  only and never sets a field's threshold, which the threshold cheat sheet
+  already implied but one section contradicted. Documentation only; the code does
+  not yet match on every path, and where it disagrees the entry point is the
+  defect ([#239](https://github.com/awslabs/stickler/issues/239),
+  [#237](https://github.com/awslabs/stickler/issues/237)).
+
 ### Fixed
 
 - `overall_score` and the confusion matrix no longer disagree about a field that
