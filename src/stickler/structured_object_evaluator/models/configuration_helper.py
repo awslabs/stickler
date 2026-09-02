@@ -209,7 +209,6 @@ class ConfigurationHelper:
                 threshold = getattr(json_func, "_threshold", 0.5)
                 weight = getattr(json_func, "_weight", 1.0)
                 clip_under_threshold = getattr(json_func, "_clip_under_threshold", True)
-                aggregate = getattr(json_func, "_aggregate", False)
 
                 from .comparison_info import ComparableFieldConfig
 
@@ -218,7 +217,6 @@ class ConfigurationHelper:
                     threshold=threshold,
                     weight=weight,
                     clip_under_threshold=clip_under_threshold,
-                    aggregate=aggregate,
                 )
 
         # FALLBACK: Legacy JSON schema approach for backward compatibility
@@ -252,7 +250,6 @@ class ConfigurationHelper:
                 clip_under_threshold = comparison_config.get(
                     "clip_under_threshold", True
                 )
-                aggregate = comparison_config.get("aggregate", False)
 
                 from .comparison_info import ComparableFieldConfig
 
@@ -261,7 +258,6 @@ class ConfigurationHelper:
                     threshold=threshold,
                     weight=weight,
                     clip_under_threshold=clip_under_threshold,
-                    aggregate=aggregate,
                 )
 
         # Check if this is a structured field type that needs special handling
@@ -283,29 +279,6 @@ class ConfigurationHelper:
             comparator=LevenshteinComparator(), threshold=default_threshold, weight=1.0
         )
 
-    @staticmethod
-    def is_aggregate_field(cls, field_name: str) -> bool:
-        """Check if field is marked for confusion matrix aggregation.
-
-        Args:
-            cls: StructuredModel class
-            field_name: Name of the field to check
-
-        Returns:
-            True if the field is marked for aggregation, False otherwise
-        """
-        field_info = cls.model_fields[field_name]
-
-        # Since ComparableField is now always a function, check for json_schema_extra
-        if hasattr(field_info, "json_schema_extra") and callable(
-            field_info.json_schema_extra
-        ):
-            schema = {}
-            field_info.json_schema_extra(schema)
-            comparison_config = schema.get("x-comparison", {})
-            return comparison_config.get("aggregate", False)
-
-        return False
 
     @staticmethod
     def is_immediate_child(nested_path: str, field_name: str) -> bool:

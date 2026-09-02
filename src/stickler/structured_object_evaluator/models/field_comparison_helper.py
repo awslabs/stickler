@@ -110,8 +110,13 @@ class FieldComparisonHelper(ComparisonHelperBase):
         """
         from .structured_model import StructuredModel
         
-        # Check if both objects are structured models
-        if (isinstance(gt_object, StructuredModel) and isinstance(pred_object, StructuredModel)):
+        # Only threshold-passing structured pairs represent the same object and
+        # may expose leaf comparisons.
+        if (
+            is_match
+            and isinstance(gt_object, StructuredModel)
+            and isinstance(pred_object, StructuredModel)
+        ):
             # Perform field-by-field comparison to get detailed field comparisons
             comparison_result = gt_object.compare_with(
                 pred_object, 
@@ -165,7 +170,8 @@ class FieldComparisonHelper(ComparisonHelperBase):
             return field_comparisons
         
         else:
-            # For primitive objects or single object comparisons, create a single entry
+            # Primitive items and threshold-rejected or unmatched structured
+            # objects remain atomic.
             expected_key = f"{field_name}[{gt_index}]" if gt_index is not None else f"{field_name}[]"
             actual_key = f"{field_name}[{pred_index}]" if pred_index is not None else None
             

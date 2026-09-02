@@ -36,14 +36,30 @@ class NullHelper:
 
     @staticmethod
     def is_effectively_null_for_primitives(val: Any) -> bool:
-        """Check if a primitive value is effectively null.
+        """Check if a non-list value is effectively null.
 
-        Treats empty strings and None as equivalent for string fields.
+        Treats ``None``, an empty string and an empty dict as equivalent, which
+        is the rule the docs state: "Empty strings (``""``), empty lists
+        (``[]``), and empty objects (``{}``) are treated as null." Empty lists
+        are the one case this does *not* answer, because list-ness is decided
+        from the annotation rather than the value -- see
+        :meth:`is_effectively_null_for_lists`, which ``ComparisonDispatcher``
+        reaches first for any field ``_is_list_field`` recognises.
+
+        ``{}`` was missing here, and its absence was visible in the metrics
+        rather than benign: two **identical** objects each holding ``{}`` in a
+        dict field classified as a false discovery, the same contradiction
+        #233 reports for lists. It was also unreachable to score, because no
+        comparator accepts a dict -- ``LevenshteinComparator`` raises
+        ``TypeError`` -- so a populated dict field made the pair uncomparable
+        instead of merely mismatched. Reading ``{}`` as absent gives the three
+        empty/null combinations a true negative and turns the fourth
+        (``{}`` against populated) into a false alarm rather than a crash.
 
         Args:
             val: Value to check
 
         Returns:
-            True if the value is None or an empty string, False otherwise
+            True if the value is None, an empty string or an empty dict
         """
-        return val is None or (isinstance(val, str) and val == "")
+        return val is None or (isinstance(val, (str, dict)) and len(val) == 0)

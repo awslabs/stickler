@@ -1421,6 +1421,18 @@ wheels = [
 ]
 
 [[package]]
+name = "json-schema-to-pydantic"
+version = "0.4.11"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/60/d8/423895b918706c80db1cee679c13fbe810200b9a9d9a9442c7a58d35c3f2/json_schema_to_pydantic-0.4.11.tar.gz", hash = "sha256:35448ed711a28dd33396b095c8492939b4925aa30eb31942e9b8e08d04279465", size = 56597, upload-time = "2026-03-09T20:53:55.692Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f3/64/7cfeb8c6d2a5e73e0f8d732032aa62be9a7724c04beb461d677de0b4beb3/json_schema_to_pydantic-0.4.11-py3-none-any.whl", hash = "sha256:da2ccc39d070ee03dbcf0517d16720e3e33f7aa8d61257ace09af8c51bd46348", size = 17842, upload-time = "2026-03-09T20:53:54.576Z" },
+]
+
+[[package]]
 name = "jsonschema"
 version = "4.26.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4033,6 +4045,7 @@ name = "stickler-eval"
 version = "0.7.0"
 source = { editable = "." }
 dependencies = [
+    { name = "json-schema-to-pydantic" },
     { name = "jsonschema" },
     { name = "munkres" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -4041,8 +4054,6 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-dateutil" },
     { name = "rapidfuzz" },
-    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scikit-learn", version = "1.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 
 [package.optional-dependencies]
@@ -4050,8 +4061,6 @@ all = [
     { name = "boto3" },
     { name = "jinja2" },
     { name = "pandas" },
-    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scikit-learn", version = "1.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "strands-agents" },
@@ -4083,10 +4092,6 @@ dev = [
 ]
 docsplit = [
     { name = "pandas" },
-    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scikit-learn", version = "1.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 llm = [
     { name = "jinja2" },
@@ -4156,6 +4161,7 @@ requires-dist = [
     { name = "evaluate", marker = "extra == 'bert'", specifier = ">=0.4.0" },
     { name = "jinja2", marker = "extra == 'dev'", specifier = ">=3.1.6,<3.2.0" },
     { name = "jinja2", marker = "extra == 'llm'", specifier = ">=3.1.6,<3.2.0" },
+    { name = "json-schema-to-pydantic", specifier = ">=0.4.11,<0.5.0" },
     { name = "jsonschema", specifier = ">=4.17.3,<5.0.0" },
     { name = "matplotlib", marker = "extra == 'dev'", specifier = ">=3.8.0" },
     { name = "mkdocs", marker = "extra == 'dev'" },
@@ -4176,11 +4182,8 @@ requires-dist = [
     { name = "python-dateutil", specifier = ">=2.8.2,<3.0.0" },
     { name = "rapidfuzz", specifier = ">=3.4.0,<4.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.10" },
-    { name = "scikit-learn", specifier = ">=1.7.2,<2.0.0" },
     { name = "scikit-learn", marker = "extra == 'dev'", specifier = ">=1.7.2,<2.0.0" },
-    { name = "scikit-learn", marker = "extra == 'docsplit'", specifier = ">=1.7.2,<2.0.0" },
     { name = "scipy", marker = "extra == 'dev'", specifier = ">=1.12.0,<2.0.0" },
-    { name = "scipy", marker = "extra == 'docsplit'", specifier = ">=1.12.0,<2.0.0" },
     { name = "scipy", marker = "extra == 'semantic'", specifier = ">=1.12.0,<2.0.0" },
     { name = "stickler-eval", extras = ["llm", "semantic", "confidence", "docsplit", "reporting"], marker = "extra == 'all'" },
     { name = "strands-agents", marker = "extra == 'llm'", specifier = ">=1.14.0,<2.0.0" },

@@ -1057,8 +1057,7 @@ class TestFromJsonSchemaExtensions:
                     "x-aws-stickler-comparator": "LevenshteinComparator",
                     "x-aws-stickler-threshold": 0.85,
                     "x-aws-stickler-weight": 2.5,
-                    "x-aws-stickler-clip-under-threshold": True,
-                    "x-aws-stickler-aggregate": True
+                    "x-aws-stickler-clip-under-threshold": True
                 }
             }
         }
@@ -1148,29 +1147,6 @@ class TestFromJsonSchemaExtensions:
         
         score = obj1.compare(obj2)
         assert score == 1.0
-
-    def test_extension_aggregate(self):
-        """Test x-aws-stickler-aggregate for confusion matrix aggregation."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "field1": {
-                    "type": "string",
-                    "x-aws-stickler-aggregate": True
-                },
-                "field2": {
-                    "type": "string",
-                    "x-aws-stickler-aggregate": False
-                }
-            }
-        }
-        
-        Model = StructuredModel.from_json_schema(schema)
-        obj1 = Model(field1="A", field2="B")
-        obj2 = Model(field1="A", field2="B")
-        
-        result = obj1.compare_with(obj2)
-        assert "overall_score" in result
 
     def test_multiple_comparator_types(self):
         """Test schema with multiple different comparator types."""

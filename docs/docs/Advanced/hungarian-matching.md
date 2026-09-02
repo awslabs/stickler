@@ -18,7 +18,7 @@ The algorithm has three phases:
 
 ### 1. Pairwise Similarity
 
-For each (GT[i], Pred[j]) pair, Stickler calls `GT[i].compare_with(Pred[j])` to obtain an overall similarity score. The result is an N x M cost matrix.
+For each (GT[i], Pred[j]) pair, Stickler calls `GT[i].compare(Pred[j])` to obtain a raw weighted similarity score. Fields absent on both sides are excluded because a true negative is not match evidence. If every field is absent, the score is `1.0`. The result is an N x M cost matrix.
 
 ### 2. Hungarian Assignment
 
