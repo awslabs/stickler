@@ -192,7 +192,6 @@ def eval_for(
     if isinstance(cls, type) and issubclass(cls, StructuredModel):
         # Explicit configuration wins: never re-infer over a model the user
         # already tuned. weight_hints has nothing to apply to here.
-        #
         return EvalSpec(cls, cls, weight_hints=False, match_threshold=match_threshold)
     eval_model = structured_model_for(
         cls,

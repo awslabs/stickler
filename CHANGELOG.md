@@ -92,6 +92,47 @@ Each release links to full notes on the
 
 ### Fixed
 
+- ANLS* leaf comparison respects the type of what it compares. Edit distance is a
+  string metric, and applying it to every leaf meant character overlap between
+  two numbers read as partial correctness: `{"amount": 1000}` against
+  `{"amount": 9000}` scored `0.75`, cleared the `0.7` field threshold, and
+  reported a nine-fold error as a **true positive**. Dates were worse, since a
+  `date` reaches the leaf already serialised to ISO by this library, so
+  `2024-01-01` against `2024-11-11` scored `0.80`. A non-string leaf, and a pair
+  of ISO timestamps, are now right or wrong. Text keeps its partial credit, which
+  is the property ANLS* exists for. Upstream `anls_star` stringifies everything
+  and has the same flaw; the divergence is deliberate.
+
+- The `Mapping` family is routed on the zero-config path. `Mapping[str, str]`,
+  `MutableMapping`, `OrderedDict`, `DefaultDict` and `Counter` fell through to
+  the exotic branch and were canonicalised to a JSON string, so the auto path
+  disagreed with the explicit path about the same annotation, and with the
+  CHANGELOG, `auto/README.md` and the comparators guide. Both the wire type and
+  the inferred comparator now use `ConfigurationHelper.is_mapping_annotation`.
+
+- The mapping substitution works under `from __future__ import annotations`. It
+  read the raw `__annotations__`, which hold the STRING `"Dict[str, Any]"` under
+  PEP 563, decided that was not a mapping, and skipped every field. The engine
+  still scored with ANLS* via the read-time fallback while `to_json_schema()` and
+  `explain()` reported `LevenshteinComparator`, reintroducing exactly the
+  schema/engine divergence the substitution exists to prevent. It now runs in
+  `__pydantic_init_subclass__` over `model_fields`, whose annotations are already
+  resolved. An explicit `clip_under_threshold=True` is honoured again as a result.
+
+- `ExactComparator` and `StructuredModelComparator` can score a mapping, and are
+  no longer zeroed for trying. `ExactComparator` now canonicalises a mapping
+  first, so identical content scores `1.0` regardless of key order; it previously
+  used `str(dict)`, which made key order significant and returned `0.0` or `1.0`
+  depending only on how the JSON arrived. `LevenshteinComparator` and
+  `FuzzyComparator` stay excluded: the first raises on a dict, and the second
+  scores a changed value (`0.944`) higher than a mere reordering (`0.667`).
+
+- The mapping substitution copies the field descriptor instead of mutating it.
+  Pydantic does not clone the `json_schema_extra` closure, so one
+  `ComparableField(...)` bound to both a `str` field and a `Dict` field had ANLS*
+  and `clip=False` written onto the string field, order-dependently on which class
+  was defined first.
+
 - A dict field scored `0.0` against an identical copy of itself on the explicit
   path, and its configured comparator was never called.
   `ComparisonDispatcher` handled `str`/`int`/`float`, `list` and

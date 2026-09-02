@@ -1,8 +1,10 @@
 """Exact string comparison comparator."""
 
+from collections.abc import Mapping as abc_Mapping
 from typing import Any, Dict, Optional
 
 from stickler.comparators.base import BaseComparator
+from stickler.utils.canonical import canonicalize_json_sorted
 
 
 class ExactComparator(BaseComparator):
@@ -72,6 +74,14 @@ class ExactComparator(BaseComparator):
             cfg["case_sensitive"] = False
         return cfg if cfg else None
 
+    #: Exact matching is meaningful on a mapping once the mapping is
+    #: canonicalised: identical content scores 1.0 regardless of key order, and
+    #: any difference scores 0.0. Distinct from Levenshtein and Fuzzy, which
+    #: cannot: edit distance over a serialised mapping makes key order
+    #: significant, and Fuzzy scores a changed VALUE (0.944) higher than a mere
+    #: reordering (0.667), which is not a defensible metric.
+    handles_mappings: bool = True
+
     def _compare(self, str1: Any, str2: Any) -> float:
         """Compare two values with exact string matching.
 
@@ -82,6 +92,15 @@ class ExactComparator(BaseComparator):
         Returns:
             1.0 if the strings match exactly, 0.0 otherwise
         """
+        # A mapping is canonicalised, not stringified. `str(dict)` preserves
+        # insertion order, so two mappings with identical content scored 0.0
+        # whenever their keys happened to be ordered differently -- and 1.0 when
+        # they happened to agree, which is worse than a consistent answer because
+        # it depends on how the JSON arrived.
+        if isinstance(str1, abc_Mapping) or isinstance(str2, abc_Mapping):
+            str1 = canonicalize_json_sorted(str1)
+            str2 = canonicalize_json_sorted(str2)
+
         # Convert to strings if they aren't already
         str1 = str(str1)
         str2 = str(str2)

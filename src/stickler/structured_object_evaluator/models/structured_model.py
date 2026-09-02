@@ -404,13 +404,23 @@ class StructuredModel(BaseModel):
         Nothing the caller stated is overridden: an explicit ``comparator`` or an
         explicit ``clip_under_threshold`` is left exactly as written.
         """
-        for field_name, annotation in getattr(cls, "__annotations__", {}).items():
+        # Resolve annotations before testing them. Under `from __future__ import
+        # annotations` (PEP 563) or with a quoted annotation, `__annotations__`
+        # holds the STRING "Dict[str, Any]", which is not a mapping annotation,
+        # so every field was skipped and the substitution silently did nothing --
+        # reintroducing the exact schema/engine divergence this method exists to
+        # prevent, in any module that uses PEP 563.
+        # `model_fields` rather than `__annotations__`: its annotations are
+        # already resolved, so a module using `from __future__ import annotations`
+        # (PEP 563) is handled without special-casing the string form, and its
+        # `FieldInfo` is the object every reader consults.
+        for field_name, field_info in cls.model_fields.items():
             if field_name == _EXTRA_FIELDS_KEY:
                 continue
-            if not ConfigurationHelper.is_mapping_annotation(annotation):
+            if not ConfigurationHelper.is_mapping_annotation(field_info.annotation):
                 continue
 
-            field_default = getattr(cls, field_name, None)
+            field_default = field_info
             extra = getattr(field_default, "json_schema_extra", None)
             if not callable(extra):
                 # A bare annotation with no ComparableField metadata to amend.
@@ -419,24 +429,54 @@ class StructuredModel(BaseModel):
             if getattr(extra, "_comparator_explicit", True):
                 continue
 
+            # Substitute onto a COPY, never onto the shared object. A single
+            # `ComparableField(...)` result can be bound to more than one field,
+            # and pydantic does not clone the `json_schema_extra` closure, so
+            # mutating it in place retroactively rewrote the other field:
+            #
+            #     SHARED = ComparableField(threshold=0.8)
+            #     class M1(StructuredModel): v: str = SHARED
+            #     class M2(StructuredModel): v: Dict[str, Any] = SHARED
+            #
+            # left M1.v -- a plain string field -- scored by ANLS* with clipping
+            # off, order-dependently on which class was defined first.
             comparator = ANLSStarComparator()
-            extra._comparator_instance = comparator
+            metadata = getattr(extra, "_comparison_metadata", None)
+            new_metadata = dict(metadata) if isinstance(metadata, dict) else None
+            clip = (
+                getattr(extra, "_clip_under_threshold", True)
+                if getattr(extra, "_clip_explicit", False)
+                # A mapping is a container, so a partly-correct one keeps its
+                # score rather than being zeroed by the field threshold -- the
+                # same policy nested objects and lists use. An explicit choice
+                # still wins.
+                else False
+            )
+
+            def substituted(
+                schema: Dict[str, Any], _metadata=new_metadata, _original=extra
+            ) -> None:
+                _original(schema)
+                if _metadata is not None:
+                    schema["x-comparison"] = _metadata
+
+            for attribute in dir(extra):
+                if attribute.startswith("_") and not attribute.startswith("__"):
+                    setattr(substituted, attribute, getattr(extra, attribute))
+            substituted._comparator_instance = comparator
             # Now effectively explicit: the decision has been made, and a
             # subclass re-running this must not treat it as unset.
-            extra._comparator_explicit = True
+            substituted._comparator_explicit = True
+            substituted._clip_under_threshold = clip
 
-            # A mapping is a container, so a partly-correct one keeps its score
-            # rather than being zeroed by the field threshold -- the same policy
-            # nested objects and lists use. An explicit choice still wins.
-            if not getattr(extra, "_clip_explicit", False):
-                extra._clip_under_threshold = False
+            if new_metadata is not None:
+                new_metadata["comparator_type"] = comparator.__class__.__name__
+                new_metadata["comparator_name"] = comparator.name
+                new_metadata["comparator_config"] = comparator.config or {}
+                new_metadata["clip_under_threshold"] = clip
+                substituted._comparison_metadata = new_metadata
 
-            metadata = getattr(extra, "_comparison_metadata", None)
-            if isinstance(metadata, dict):
-                metadata["comparator_type"] = comparator.__class__.__name__
-                metadata["comparator_name"] = comparator.name
-                metadata["comparator_config"] = comparator.config or {}
-                metadata["clip_under_threshold"] = extra._clip_under_threshold
+            field_default.json_schema_extra = substituted
 
     extra_fields: Dict[str, Any] = Field(default_factory=dict, exclude=True)
 
@@ -445,11 +485,24 @@ class StructuredModel(BaseModel):
         "extra": "allow",  # Allow extra fields to be stored in extra_fields
     }
 
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs):
+        """Amend field metadata once pydantic has populated ``model_fields``.
+
+        Runs after ``__init_subclass__``, which is the point of using it: the
+        mapping substitution needs the RESOLVED annotation and needs to write to
+        the ``FieldInfo`` that ``model_fields`` actually holds. Doing it earlier
+        meant writing to a ``FieldInfo`` pydantic had not yet copied, so the
+        substitution was silently discarded and the read-time fallback in
+        ``ConfigurationHelper`` took over -- which is exactly the schema/engine
+        divergence ``_install_mapping_comparators`` exists to prevent.
+        """
+        super().__pydantic_init_subclass__(**kwargs)
+        cls._install_mapping_comparators()
+
     def __init_subclass__(cls, **kwargs):
         """Validate field configurations when a StructuredModel subclass is defined."""
         super().__init_subclass__(**kwargs)
-
-        cls._install_mapping_comparators()
 
         # Validate field configurations using class annotations since model_fields isn't populated yet
         if hasattr(cls, "__annotations__"):

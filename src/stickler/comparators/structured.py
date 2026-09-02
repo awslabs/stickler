@@ -12,6 +12,10 @@ class StructuredModelComparator(BaseComparator):
     leveraging their built-in comparison capabilities.
     """
 
+    #: Scores a mapping correctly: identical content is 1.0 regardless of key
+    #: order, any difference is 0.0.
+    handles_mappings: bool = True
+
     def __init__(self, threshold: float = 0.7, strict_types: bool = False):
         """Initialize the comparator.
 

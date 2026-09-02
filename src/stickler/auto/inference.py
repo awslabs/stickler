@@ -519,6 +519,19 @@ def infer_field_config(
     )
 
 
+def _is_mapping(annotation: Any) -> bool:
+    """Whether an annotation describes a mapping, per ConfigurationHelper.
+
+    Imported lazily: ConfigurationHelper lives in the evaluator package, which
+    imports this module's package, so a top-level import would be circular.
+    """
+    from ..structured_object_evaluator.models.configuration_helper import (
+        ConfigurationHelper,
+    )
+
+    return ConfigurationHelper.is_mapping_annotation(annotation)
+
+
 def _type_default(
     annotation: Any,
     provenance: List[str],
@@ -564,7 +577,12 @@ def _type_default(
         provenance.append("type:str -> LevenshteinComparator@0.7")
         return "LevenshteinComparator", {}, 0.7, True
 
-    if annotation is dict or get_origin(annotation) is dict:
+    # Reuse ConfigurationHelper's predicate rather than re-testing `dict`, which
+    # left the whole Mapping family (`Mapping`, `MutableMapping`, `OrderedDict`,
+    # `DefaultDict`, `Counter`) falling through to the exotic branch and being
+    # canonicalised to a JSON string, contradicting the docs and disagreeing with
+    # the explicit path for the same annotation.
+    if _is_mapping(annotation):
         # A dict annotation declines to name its keys, so there is no per-key
         # config to infer and the mapping is scored structurally: ANLS* walks
         # it as a tree, comparing leaves as strings and normalizing over the

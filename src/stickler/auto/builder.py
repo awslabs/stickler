@@ -63,7 +63,13 @@ from ..utils.canonical import (
     canonicalize_json_sorted,
     jsonable_mapping,
 )
-from .inference import InferredSpec, _is_literal, infer_field_config, unwrap_optional
+from .inference import (
+    InferredSpec,
+    _is_literal,
+    _is_mapping,
+    infer_field_config,
+    unwrap_optional,
+)
 
 # Cache of built shadow classes. Keyed by the source pydantic class (weak) ->
 # {cache_key: shadow_class}. Weak keys let user classes be garbage-collected.
@@ -394,8 +400,8 @@ def _field_definition(
     if kind == "primitive_list":
         element, element_optional = unwrap_optional(_list_element(annotation))
         spec = _primitive_spec(
-        name, element, weight_hints, registry, match_threshold
-    )
+            name, element, weight_hints, registry, match_threshold
+        )
         wire = _scalar_wire_type(element)
         element_type = Optional[wire] if element_optional else wire
         list_type = List[element_type]
@@ -572,7 +578,9 @@ def _scalar_wire_type(annotation: Any) -> Any:
     origin = get_origin(annotation)
     if origin in (set, frozenset):
         return _WireJsonSorted
-    if annotation is dict or origin is dict:
+    # Same predicate as inference._is_mapping, so the wire type and the inferred
+    # comparator cannot disagree about what counts as a mapping.
+    if _is_mapping(annotation):
         # Declared as `dict`, NOT canonicalized to a string. ANLS* scores the
         # mapping structurally, which requires it to arrive as a mapping; the
         # dispatcher has a dict branch for exactly this. Stringifying here was
