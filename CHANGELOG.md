@@ -26,6 +26,128 @@ Each release links to full notes on the
   existing schema files keep loading.
   ([#226](https://github.com/awslabs/stickler/issues/226))
 
+### Fixed
+
+- `overall_score` and the confusion matrix no longer disagree about a field that
+  is absent on both sides. The two read different scores for the same object
+  pair: `overall_score` takes the threshold-corrected score, while object
+  classification against `match_threshold` takes the raw pairwise similarity.
+  The raw path tested absence with a bare `is None`, so it scored `[]` against
+  `None` on a list field, `""` against `None` on a string field, and two empty
+  lists against each other all as `0.0` -- while `ComparisonDispatcher` scored
+  every one of those as a true negative worth `1.0`.
+
+  The result was a pair reported as `overall_score == 1.0` and `fd == 1` at once:
+  a perfect match that is also a false discovery. Two **identical** objects were
+  enough to trigger it. Any `List[Model]` whose element model declares an
+  optional list or string field reaches this whenever that field is left absent
+  on both sides, which for a document-extraction schema is the common case, not
+  an edge one -- and the contradiction is invisible unless you read both numbers
+  together, so it silently deflated precision on object-level metrics.
+
+  Both readers now define absence the same way the dispatcher does, per field
+  kind: `None` and `[]` for a list field, `None`, `""` and `{}` for everything
+  else. This is the rule the docs already
+  [documented](https://awslabs.github.io/stickler/Advanced/classification-logic/)
+  ([#233](https://github.com/awslabs/stickler/issues/233))
+
+- An empty dict is now read as absent, the third case that documented rule
+  names. `NullHelper.is_effectively_null_for_primitives` covered `None` and `""`
+  but not `{}`, so the #233 contradiction survived for a `Dict` field in the
+  opposite direction: two **identical** objects each holding `{}` classified as
+  a false discovery instead of a match, and `{}` against `None` recorded an FN
+  while `None` against `{}` recorded an FA, where the rule calls for a TN in all
+  three.
+
+  A populated dict field was worse than misclassified, it was unscoreable. No
+  comparator accepts a dict -- `LevenshteinComparator` raises `TypeError`
+  pointing at `StructuredModel` instead -- so `{}` against `{"k": "v"}` fell
+  through to the comparator and *raised*, taking out Hungarian matching for any
+  `List[Model]` whose element model had a populated dict field. That pair is now
+  an ordinary false alarm.
+
+  Two **populated** dicts still reach the comparator and still raise. Giving
+  dicts a comparator is a separate change; this one only closes the absence
+  cases.
+
+- A field annotated `Optional[Annotated[List[str], ...]]` is now recognized as a
+  list field. Pydantic strips `Annotated` when it wraps a whole annotation, so
+  `Annotated[Optional[List[str]], ...]` always worked, but it leaves the wrapper
+  on a union arm -- and `get_origin` reports `Annotated` there rather than the
+  type inside. `Annotated[List[str], ...] | None` normalises to exactly that
+  spelling, so both PEP 604 and subscript forms were affected.
+
+  This is the annotation a `Field(description=...)` produces, which makes it
+  common in extraction schemas rather than exotic. The cost landed three
+  different ways on one field, all silent: `[]` against `[]` recorded **no
+  counter at all** and the field vanished from the confusion matrix, `[]`
+  against `None` recorded an FN, and `None` against `[]` recorded an FA -- while
+  a sibling `Optional[List[str]]` recorded a TN for all three.
+
+  Union arms are unwrapped through a new shared
+  `optional_annotation.unwrap_annotated`, alongside the existing helpers for
+  destructuring a union, rather than a fourth hand-rolled check. Routing is
+  unaffected: `List[Model]` on this spelling already reached
+  `StructuredListComparator` through the dispatcher's runtime type check, so
+  only the null and empty cases move.
+
+- A field annotated `list`, `list | None`, or `Optional[list]` is now recognized
+  as a list field. `_is_list_field` tested `get_origin(...) is list`, which
+  matches only a *parameterized* spelling, so the three unparameterized ones
+  answered `False` while `List`, `list[str] | None`, and `Optional[List[str]]`
+  answered `True`. `list | None` is the incongruous case: it is a PEP 604
+  optional list, and `list[str] | None` was already handled.
+
+  An unrecognized spelling skips list null handling and falls into the primitive
+  null check, where `[]` is not "effectively null". Such a field scored `1.0`
+  when empty on both sides but recorded **no classification evidence at all** --
+  no TN, no TP, no row. Because the score was right, the missing count was easy
+  to miss; it understated `tn` and every metric derived from it. Comparing a
+  six-field model against itself with every field `[]` reported `tn == 3` where
+  the docs call for `6`.
+
+  Recognition is now spelling-independent within a union: bare and parameterized
+  members answer alike. Only the null and empty cases move -- a populated list
+  reached `PrimitiveListComparator` before and still does, and no raw score
+  changes.
+
+  One spelling is still not a list field, deliberately: `Any` holding a list.
+  Inferring list-ness from a runtime value rather than an annotation is a
+  different question from reading a spelling correctly, and every caller here
+  has only the annotation.
+
+- Raw object similarity used by Hungarian matching no longer treats a true
+  negative as evidence that two objects match. Fields absent on both sides are
+  excluded from the weighted-average numerator and denominator. If every field
+  is absent, the score is defined as `1.0`, preserving the #233 fix; otherwise,
+  empty optional fields can no longer hide a missed value or make an empty
+  candidate tie one that extracted real content.
+
+- Threshold-gated recursion now applies consistently to nested metrics,
+  `non_matches`, and `field_comparisons` for `List[StructuredModel]`. An
+  assigned pair below the element model's `match_threshold` produces one atomic
+  FD, while unmatched GT and prediction objects produce one atomic FN and FA.
+  None of these objects contributes leaf-level metrics or report entries.
+  Lower the element model's `match_threshold` to inspect leaf comparisons for
+  weaker pairs.
+
+### Performance
+
+- Restored the fast path in `ComparisonHelper.compare_field_raw`. Reading a
+  field's absence rule requires knowing whether the field is a list, and
+  `_is_list_field` re-reads `model_fields` and destructures the annotation on
+  every call. The bare `is None` check it replaced short-circuited before doing
+  any of that, so consulting the annotation unconditionally cost about 23% on a
+  60x60 Hungarian cost matrix of 20-field models -- 72,000 calls for one list
+  comparison (0.531s to 0.651s; measured best-of-three).
+
+  The lookup is now guarded by a cheap value test that is the union of both
+  `NullHelper` rules, so anything either one calls absent still reaches the full
+  check and no outcome changes, while the common case of both sides being
+  populated skips the annotation entirely (0.537s, within noise of the original).
+  A test pins the superset property so adding a case to either rule without
+  widening the guard fails loudly rather than silently skipping the check.
+
 ### Changed
 
 - JSON Schema import now delegates standard types, local references, combiners,

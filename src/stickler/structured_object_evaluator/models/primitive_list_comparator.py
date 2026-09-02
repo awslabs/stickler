@@ -90,7 +90,10 @@ class PrimitiveListComparator:
         weight = info.weight
         threshold = info.threshold
 
-        # All code paths already check if the lists are empty
+        # Empty lists are not filtered out before this point. `ComparisonDispatcher`
+        # short-circuits an absent list field, but only for fields
+        # `_is_list_field` recognizes -- a list held in an `Any`-annotated field
+        # arrives here empty and is scored by `_compare_unordered_lists`.
 
         # For primitive lists, use the comparison logic from _compare_unordered_lists
         # which properly handles the threshold-based matching

@@ -35,13 +35,49 @@ supported range, and it is the spelling modern tooling emits.
 """
 
 import types
-from typing import Any, Tuple, Union, get_args, get_origin
+from typing import Annotated, Any, Tuple, Union, get_args, get_origin
 
-__all__ = ["is_union", "union_args", "is_optional_union", "unwrap_optional"]
+__all__ = [
+    "is_union",
+    "union_args",
+    "is_optional_union",
+    "unwrap_optional",
+    "unwrap_annotated",
+]
 
 # Both origins a union annotation can report. `types.UnionType` is what the
 # `|` operator produces; `typing.Union` is what the subscript form produces.
 _UNION_ORIGINS = (Union, types.UnionType)
+
+
+def unwrap_annotated(annotation: Any) -> Any:
+    """Strip ``Annotated[T, ...]`` down to ``T``, leaving anything else alone.
+
+    Pydantic strips ``Annotated`` when it wraps a whole annotation, so
+    ``Annotated[List[str], "m"]`` arrives at these readers already unwrapped. It
+    does **not** strip it inside a union, so ``Optional[Annotated[List[str],
+    "m"]]`` keeps the wrapper on the arm -- and ``Annotated[List[str], "m"] |
+    None`` normalises to exactly that. Any reader that destructures a union arm
+    has to unwrap it itself or the arm answers for ``Annotated`` rather than for
+    the type inside.
+
+    ``get_origin`` reports ``Annotated`` here rather than the wrapped type, so
+    an origin test alone reads the wrapper. ``get_args(...)[0]`` is the wrapped
+    type and the remaining args are the metadata.
+
+    Applies once, not repeatedly: ``typing`` flattens nested ``Annotated``, so
+    ``Annotated[Annotated[T, "a"], "b"]`` is stored as ``Annotated[T, "a", "b"]``.
+
+    Args:
+        annotation: Type annotation to unwrap.
+
+    Returns:
+        The wrapped type when ``annotation`` is ``Annotated``, otherwise
+        ``annotation`` unchanged.
+    """
+    if get_origin(annotation) is Annotated:
+        return get_args(annotation)[0]
+    return annotation
 
 
 def is_union(annotation: Any) -> bool:

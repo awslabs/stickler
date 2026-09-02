@@ -24,12 +24,13 @@ from stickler.comparators.base import BaseComparator
 from stickler.utils.deprecation import warn_once
 
 from .comparable_field import ComparableField
-from .comparison_helper import ComparisonHelper
+from .comparison_helper import ComparisonHelper, _maybe_absent
 from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
-from .optional_annotation import union_args, unwrap_optional
+from .null_helper import NullHelper
+from .optional_annotation import union_args, unwrap_annotated, unwrap_optional
 from .rich_value_helper import RichValueHelper
 from .threshold_helper import THRESHOLD_DOCS_URL
 from .threshold_helper import model_identity as _model_identity
@@ -163,6 +164,60 @@ def _strip_extra_fields_property(schema_obj: Dict[str, Any]) -> None:
     required = schema_obj.get("required")
     if isinstance(required, list) and _EXTRA_FIELDS_KEY in required:
         schema_obj["required"] = [r for r in required if r != _EXTRA_FIELDS_KEY]
+
+
+def _annotation_is_list(annotation: Any) -> bool:
+    """Check whether a type annotation denotes a list, parameterized or not.
+
+    Every spelling of a list annotation has to answer the same way, because the
+    answer decides whether a field gets list null semantics (``None`` and ``[]``
+    both meaning "no items") or primitive ones. A spelling that reads as
+    non-list records no TN when both sides are empty, so it silently drops
+    classification evidence rather than failing loudly.
+
+    Three traps make that easy to get wrong, and all three are handled here:
+
+    - ``get_origin`` returns ``list`` only for a *parameterized* spelling, so
+      bare ``list`` needs an identity test alongside it. Without one, ``list``
+      and ``list | None`` read as non-list while ``list[str]`` and
+      ``list[str] | None`` read as lists. ``typing.List`` needs no special case
+      -- ``get_origin`` already normalizes it to ``list``.
+    - A PEP 604 union (``list | None``) reports ``types.UnionType`` as its
+      origin, not ``typing.Union``, so its arms are reached through
+      :func:`optional_annotation.union_args` -- the package's single source for
+      destructuring a union in every spelling -- rather than a hand-rolled
+      origin check.
+    - ``Annotated`` survives inside a union, where pydantic does not strip it,
+      and ``get_origin`` reports ``Annotated`` rather than the type inside. So
+      ``Optional[Annotated[List[str], ...]]`` -- the spelling a
+      ``Field(description=...)`` produces, and what ``Annotated[List[str], ...]
+      | None`` normalises to -- read as non-list. Arms are unwrapped through
+      :func:`optional_annotation.unwrap_annotated` before being tested.
+
+    Union members are recursed with the same rules rather than a bare ``is
+    list``, so a bare and a parameterized member inside one union answer alike.
+    Depth needs no special handling: ``typing`` flattens nested unions, so
+    ``Optional[list[str] | None]`` is stored as ``Optional[list[str]]``.
+
+    One spelling is still deliberately *not* covered: ``Any`` holding a list at
+    runtime. Inferring list-ness from a value rather than an annotation is a
+    different question from reading a spelling correctly, and every caller here
+    has only the annotation.
+    """
+    # `Annotated` first: everything below asks about the type inside it, and a
+    # wrapper reaching the `get_origin` test would answer for the wrapper.
+    annotation = unwrap_annotated(annotation)
+
+    if annotation is list:
+        return True
+
+    if get_origin(annotation) is list:
+        return True
+
+    # Any union arm being a list is enough, in every spelling. `union_args`
+    # is the package's single source for a union's non-None arms and returns
+    # `()` for a non-union, so this also bottoms out the recursion.
+    return any(_annotation_is_list(arg) for arg in union_args(annotation))
 
 
 class StructuredModel(BaseModel):
@@ -922,23 +977,7 @@ class StructuredModel(BaseModel):
             return False
 
         field_type = field_info.annotation
-
-        # Use get_origin rather than reading `__origin__` directly: a PEP 604
-        # union (`list[T] | None`) has no `__origin__` attribute at all, so the
-        # old `hasattr` guard skipped it entirely and such a field was not
-        # recognised as a list.
-        origin = get_origin(field_type)
-        if origin is list or origin is List:
-            return True
-
-        # Optional[List[...]] case, in every spelling. Any arm being a list is
-        # enough, so a wider union like `Optional[List[str]] | Any` still counts.
-        for arg in union_args(field_type):
-            arg_origin = get_origin(arg)
-            if arg_origin is list or arg_origin is List:
-                return True
-
-        return False
+        return _annotation_is_list(field_type)
 
     def _handle_list_field_dispatch(
         self, gt_val: Any, pred_val: Any, weight: float
@@ -1288,15 +1327,29 @@ class StructuredModel(BaseModel):
             if field_name == "extra_fields":
                 continue
             if hasattr(other, field_name):
+                self_value = getattr(self, field_name)
+                other_value = getattr(other, field_name)
+
+                # A true negative is absence of evidence, not evidence that two
+                # objects match. Omit absent-on-both fields from the weighted
+                # average that Hungarian matching uses. The cheap guard preserves
+                # the populated-value fast path in pairwise cost matrices.
+                if _maybe_absent(self_value) and _maybe_absent(other_value):
+                    is_absent = (
+                        NullHelper.is_effectively_null_for_lists
+                        if self._is_list_field(field_name)
+                        else NullHelper.is_effectively_null_for_primitives
+                    )
+                    if is_absent(self_value) and is_absent(other_value):
+                        continue
+
                 # Get field configuration
                 info = self.__class__._get_comparison_info(field_name)
                 # Use weight from ComparableField object
                 weight = info.weight
 
                 # Compare field values WITHOUT applying thresholds
-                field_score = self.compare_field_raw(
-                    field_name, getattr(other, field_name)
-                )
+                field_score = self.compare_field_raw(field_name, other_value)
 
                 # Update total score
                 total_score += field_score * weight
@@ -1305,8 +1358,10 @@ class StructuredModel(BaseModel):
         # Calculate overall score
         if total_weight > 0:
             return total_score / total_weight
-        else:
-            return 0.0
+
+        # Every compared field was absent on both sides. Nothing disagreed, so
+        # identical empty objects remain a perfect match (#233).
+        return 1.0
 
     def compare_with(
         self,

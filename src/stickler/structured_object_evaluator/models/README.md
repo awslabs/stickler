@@ -21,6 +21,11 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   models to `ComparableField` / `StructuredModel` while preserving Stickler's
   comparator, threshold, weight, and clipping extensions. The converter retains
   the public compatibility entry point and the inverse field-export helpers.
+- `optional_annotation.py` — the single source for destructuring a type
+  annotation: union arms in every spelling (`Optional[T]`, `Union[T, None]`,
+  `T | None`) and `Annotated` unwrapping. Ask through it rather than rebuilding
+  the checks; `get_origin` answers differently per spelling and each hand-rolled
+  copy has gotten one wrong.
 
 **Comparison pipeline**
 - `comparison_engine.py` — `ComparisonEngine`, the orchestrator behind
