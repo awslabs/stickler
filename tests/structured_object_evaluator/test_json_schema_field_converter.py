@@ -5,6 +5,7 @@ import typing
 
 import pytest
 
+from stickler.comparators.date import DateComparator
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.comparators.numeric import NumericComparator
@@ -1774,29 +1775,160 @@ class TestMaintainedSchemaImporter:
         assert isinstance(Model(value={"name": "Ada"}).value, StructuredModel)
         assert Model(value={"count": 3}).value.count == 3
 
-    def test_constraints_survive_comparison_adaptation(self):
-        from pydantic import ValidationError
-
+    def test_constraints_remain_scoreable_after_comparison_adaptation(self):
         Model = StructuredModel.from_json_schema(
             {
                 "type": "object",
                 "properties": {
                     "code": {"type": "string", "minLength": 3},
+                    "tag": {"type": "string", "pattern": "^[A-Z]+$"},
                     "score": {
                         "type": "number",
                         "minimum": 0,
                         "exclusiveMaximum": 1,
                     },
                 },
-                "required": ["code", "score"],
+                "required": ["code", "tag", "score"],
             }
         )
 
-        assert Model(code="abc", score=0.5).score == 0.5
-        with pytest.raises(ValidationError):
-            Model(code="ab", score=0.5)
-        with pytest.raises(ValidationError):
-            Model(code="abc", score=1)
+        prediction = Model(code="ab", tag="lower", score=1)
+
+        assert prediction.code == "ab"
+        assert prediction.tag == "lower"
+        assert prediction.score == 1
+        rendered = Model.model_json_schema()["properties"]
+        assert rendered["code"]["minLength"] == 3
+        assert rendered["tag"]["pattern"] == "^[A-Z]+$"
+        assert rendered["score"]["minimum"] == 0
+        assert rendered["score"]["exclusiveMaximum"] == 1
+
+    def test_constrained_array_items_remain_scoreable(self):
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "codes": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 3},
+                    }
+                },
+                "required": ["codes"],
+            }
+        )
+
+        assert Model(codes=["x"]).codes == ["x"]
+
+    def test_enum_predictions_are_exact_but_permissive(self):
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "enum": ["OPEN", "PAID"]}
+                },
+                "required": ["status"],
+            }
+        )
+
+        field = Model.model_fields["status"]
+        assert field.annotation is str
+        assert isinstance(
+            field.json_schema_extra._comparator_instance, ExactComparator
+        )
+        assert field.json_schema_extra._threshold == 1.0
+        assert Model.model_json_schema()["properties"]["status"]["enum"] == [
+            "OPEN",
+            "PAID",
+        ]
+
+        ground_truth = Model(status="OPEN")
+        malformed_prediction = Model(status="VOIDED")
+        assert (
+            ground_truth.compare_with(malformed_prediction)["field_scores"]["status"]
+            == 0.0
+        )
+
+    def test_date_predictions_use_date_comparator_without_validation(self):
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {"issued": {"type": "string", "format": "date"}},
+                "required": ["issued"],
+            }
+        )
+
+        field = Model.model_fields["issued"]
+        assert field.annotation is str
+        assert isinstance(
+            field.json_schema_extra._comparator_instance, DateComparator
+        )
+        assert field.json_schema_extra._threshold == 1.0
+        assert Model.model_json_schema()["properties"]["issued"]["format"] == "date"
+
+        ground_truth = Model(issued="2024-01-01")
+        normalized_prediction = Model(issued="01/01/2024")
+        malformed_prediction = Model(issued="not-a-date")
+        assert (
+            ground_truth.compare_with(normalized_prediction)["field_scores"]["issued"]
+            == 1.0
+        )
+        assert (
+            ground_truth.compare_with(malformed_prediction)["field_scores"]["issued"]
+            == 0.0
+        )
+
+    def test_datetime_and_date_list_annotations_are_permissive(self):
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "created": {"type": "string", "format": "date-time"},
+                    "dates": {
+                        "type": "array",
+                        "items": {"type": "string", "format": "date"},
+                    },
+                },
+                "required": ["created", "dates"],
+            }
+        )
+
+        assert Model.model_fields["created"].annotation is str
+        assert Model.model_fields["dates"].annotation == typing.List[str]
+        assert isinstance(
+            Model.model_fields["created"].json_schema_extra._comparator_instance,
+            DateComparator,
+        )
+        assert isinstance(
+            Model.model_fields["dates"].json_schema_extra._comparator_instance,
+            DateComparator,
+        )
+        prediction = Model(created="not-a-datetime", dates=["not-a-date"])
+        assert prediction.created == "not-a-datetime"
+        assert prediction.dates == ["not-a-date"]
+
+    def test_explicit_date_comparator_override_stays_authoritative(self):
+        Model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "issued": {
+                        "type": "string",
+                        "format": "date",
+                        "x-aws-stickler-comparator": "LevenshteinComparator",
+                        "x-aws-stickler-threshold": 0.25,
+                    }
+                },
+                "required": ["issued"],
+            }
+        )
+
+        field = Model.model_fields["issued"]
+        assert field.annotation is str
+        assert isinstance(
+            field.json_schema_extra._comparator_instance, LevenshteinComparator
+        )
+        assert field.json_schema_extra._threshold == 0.25
+        assert Model(issued="not-a-date").issued == "not-a-date"
 
     def test_unknown_extension_survives_on_generated_schema(self):
         Model = StructuredModel.from_json_schema(

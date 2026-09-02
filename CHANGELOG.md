@@ -151,8 +151,16 @@ Each release links to full notes on the
 ### Changed
 
 - JSON Schema import now delegates standard types, local references, combiners,
-  and validation constraints to `json-schema-to-pydantic`. Stickler retains a
-  narrow adapter for comparison metadata and nested `StructuredModel` creation.
+  and constraint parsing to `json-schema-to-pydantic`. Stickler retains a narrow
+  adapter for comparison metadata and nested `StructuredModel` creation. Parsed
+  types still choose comparison behavior, but schema constraints do not reject
+  imperfect predictions before scoring: malformed enum, date, and
+  constraint-violating values remain constructible and reach their comparator.
+
+  Unconfigured enum fields now use `ExactComparator` at threshold `1.0`, and
+  `date` / `date-time` formats use `DateComparator` at threshold `1.0`; both used
+  `LevenshteinComparator` at threshold `0.5` before this change, so default scores
+  can move for those fields.
   This adds support for valid Draft 7 multi-type unions and multi-arm `allOf`,
   `anyOf`, and `oneOf` schemas; recursive models and `patternProperties` remain
   explicit unsupported boundaries ([#212](https://github.com/awslabs/stickler/issues/212)).

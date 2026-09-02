@@ -4,11 +4,26 @@ from __future__ import annotations
 
 import re
 from copy import copy, deepcopy
+from datetime import date, datetime, time
+from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Type, Union, get_args, get_origin
+from typing import (
+    Annotated,
+    Any,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+    get_args,
+    get_origin,
+)
+from uuid import UUID
 
 from json_schema_to_pydantic import create_model as create_pydantic_model
-from pydantic import BaseModel
+from pydantic import AnyUrl, BaseModel, TypeAdapter
 from pydantic.fields import FieldInfo
 
 from .comparable_field import ComparableField
@@ -25,6 +40,24 @@ _JSON_DEFAULTS = {
 
 _PRESERVED_EXAMPLES_KEY = "x-aws-stickler-internal-examples"
 _COMBINERS = frozenset({"allOf", "anyOf", "oneOf"})
+_NON_VALIDATING_SCHEMA_KEYWORDS = frozenset(
+    {
+        "const",
+        "enum",
+        "exclusiveMaximum",
+        "exclusiveMinimum",
+        "format",
+        "maxItems",
+        "maximum",
+        "maxLength",
+        "minItems",
+        "minimum",
+        "minLength",
+        "multipleOf",
+        "pattern",
+        "uniqueItems",
+    }
+)
 _ANNOTATION_KEYWORDS = frozenset(
     {
         "$comment",
@@ -47,7 +80,8 @@ class JsonSchemaImporter:
 
     ``json-schema-to-pydantic`` owns JSON Schema parsing, reference resolution,
     combiners, constraints, defaults, aliases, and format types. This adapter
-    only maps the resulting live Pydantic fields to Stickler comparison fields.
+    uses the parsed types to select comparison behavior, then widens validation
+    annotations so malformed predictions remain scoreable.
     """
 
     def __init__(self, schema: Dict[str, Any], field_path: str = ""):
@@ -186,8 +220,13 @@ class JsonSchemaImporter:
                     field_path=f"{field_path}[]",
                     building=building,
                 )
-                final_list = List[Optional[element] if element_nullable else element]
                 comparator_name, threshold = self._default_comparison(element)
+                evaluation_element = self._evaluation_annotation(element)
+                final_list = List[
+                    Optional[evaluation_element]
+                    if element_nullable
+                    else evaluation_element
+                ]
                 comparison_field = self._comparison_from_extensions(
                     field_info,
                     field_path,
@@ -208,7 +247,10 @@ class JsonSchemaImporter:
             comparator_name=comparator_name,
             threshold=threshold,
         )
-        final_type = Optional[annotation] if nullable else annotation
+        evaluation_annotation = self._evaluation_annotation(annotation)
+        final_type = (
+            Optional[evaluation_annotation] if nullable else evaluation_annotation
+        )
         return final_type, comparison_field
 
     def _adapt_union_models(
@@ -304,6 +346,16 @@ class JsonSchemaImporter:
             source_extra = dict(source_extra)
             examples = source_extra.pop(_PRESERVED_EXAMPLES_KEY, examples)
 
+        parsed_schema = TypeAdapter(source.rebuild_annotation()).json_schema()
+        schema_metadata = {
+            key: deepcopy(value)
+            for key, value in parsed_schema.items()
+            if key in _NON_VALIDATING_SCHEMA_KEYWORDS
+        }
+        if isinstance(source_extra, dict):
+            schema_metadata.update(source_extra)
+        source_extra = schema_metadata or None
+
         comparison = ComparableField(
             comparator=comparator,
             threshold=threshold,
@@ -313,9 +365,11 @@ class JsonSchemaImporter:
             json_schema_extra=source_extra,
         )
 
-        # Keep every constraint/default/alias produced by the schema library;
-        # replace only the schema-extra hook that carries comparison runtime data.
+        # Keep descriptive/default/alias data, but not validation constraints.
+        # Stickler scores imperfect predictions; a constraint violation must reach
+        # the comparator rather than abort model construction.
         field = copy(source)
+        field.metadata = []
         field.default = comparison.default
         field.examples = examples
         field.json_schema_extra = comparison.json_schema_extra
@@ -447,9 +501,70 @@ class JsonSchemaImporter:
     @staticmethod
     def _default_comparison(annotation: Any) -> Tuple[str, float]:
         annotation, _ = unwrap_optional(annotation)
+        if get_origin(annotation) is Annotated:
+            annotation = get_args(annotation)[0]
+        if annotation in (date, datetime):
+            return "DateComparator", 1.0
+        if annotation is Decimal:
+            return "NumericComparator", 0.5
+        if get_origin(annotation) is Literal:
+            return "ExactComparator", 1.0
         if isinstance(annotation, type) and issubclass(annotation, Enum):
             return "ExactComparator", 1.0
         return _JSON_DEFAULTS.get(annotation, ("ExactComparator", 1.0))
+
+    @classmethod
+    def _evaluation_annotation(cls, annotation: Any) -> Any:
+        """Return a scoreable annotation while retaining parsed type semantics.
+
+        The schema library deliberately produces strict Pydantic annotations for
+        formats, enums, literals, and constrained collection elements. Those are
+        useful for comparator selection but wrong for an evaluation model: an
+        invalid extraction is an ordinary zero-score candidate, not a model
+        construction error. Widen only to the corresponding JSON value type and
+        keep primitive type boundaries that the previous importer enforced.
+        """
+        if get_origin(annotation) is Annotated:
+            return cls._evaluation_annotation(get_args(annotation)[0])
+
+        if is_union(annotation):
+            widened = []
+            for arm in get_args(annotation):
+                value = cls._evaluation_annotation(arm)
+                if value not in widened:
+                    widened.append(value)
+            if len(widened) == 1:
+                return widened[0]
+            return Union[tuple(widened)]
+
+        origin = get_origin(annotation)
+        if origin is Literal:
+            value_types = []
+            for value in get_args(annotation):
+                if isinstance(value, Enum):
+                    value = value.value
+                value_type = type(value)
+                if value_type not in value_types:
+                    value_types.append(value_type)
+            if len(value_types) == 1:
+                return value_types[0]
+            return Union[tuple(value_types)]
+
+        if origin in (list, List, set):
+            args = get_args(annotation)
+            element = cls._evaluation_annotation(args[0] if args else Any)
+            return List[element]
+
+        if isinstance(annotation, type) and issubclass(annotation, Enum):
+            return cls._evaluation_annotation(
+                Literal[tuple(item.value for item in annotation)]
+            )
+
+        if annotation in (date, datetime, time, UUID, AnyUrl):
+            return str
+        if annotation is Decimal:
+            return float
+        return annotation
 
     @staticmethod
     def _is_model(annotation: Any) -> bool:
