@@ -518,7 +518,7 @@ def _print_field_details(
         sorted_fields = sorted(cm_fields.items(), key=get_metric, reverse=True)
 
     # Prepare format strings for the table
-    name_width = max(max(len(name) for name in cm_fields.keys()), 20)
+    name_width = max(max((len(name) for name in cm_fields.keys()), default=0), 20)
     row_format = (
         "{:<"
         + str(name_width)
