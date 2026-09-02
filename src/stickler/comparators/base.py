@@ -3,8 +3,6 @@
 from abc import ABC, abstractmethod
 from typing import Any, Tuple
 
-from stickler.utils.deprecation import warn_once
-
 
 class BaseComparator(ABC):
     """Base class for all comparators.
@@ -21,67 +19,6 @@ class BaseComparator(ABC):
             threshold: Similarity threshold (0.0-1.0)
         """
         self.threshold = threshold
-
-    def __init_subclass__(cls, **kwargs):
-        """Keep comparators written against the pre-rename interface working.
-
-        Before the shared ``None`` policy existed, comparators implemented
-        ``compare`` directly. Such a subclass is left exactly as written: its
-        ``compare`` still overrides the template method, so its behavior is
-        unchanged and it does not get the policy. All this does is fill the
-        ``_compare`` slot when nothing in the MRO provides one, so the class
-        is not abstract, and warn that the rename is needed.
-
-        Deliberately does not rewire ``compare`` to ``_compare``. Doing that
-        breaks any subclass whose body calls ``super().compare(...)``: the
-        parent would no longer have a real ``compare``, so the call lands on
-        this template, which dispatches straight back to the function that
-        made it.
-
-        Temporary. Removed in 1.0 (see issue #215), after which an
-        un-migrated comparator becomes abstract again.
-        """
-        super().__init_subclass__(**kwargs)
-
-        if "_compare" in cls.__dict__:
-            return
-
-        legacy_compare = cls.__dict__.get("compare")
-        if legacy_compare is None:
-            # Also catch a compare() reached through a non-BaseComparator
-            # mixin: still the old interface, just not defined on this class.
-            candidate = getattr(cls, "compare", None)
-            if candidate is None or candidate is BaseComparator.compare:
-                return
-            legacy_compare = candidate
-
-        if getattr(legacy_compare, "__isabstractmethod__", False):
-            return
-
-        inherited = getattr(cls, "_compare", None)
-        if inherited is None or getattr(inherited, "__isabstractmethod__", False):
-            # Nothing in the MRO implements _compare, so the class would be
-            # abstract. Their compare() overrides the template and is what
-            # actually runs, so this stub is only reached by an explicit
-            # super().compare() from a direct BaseComparator subclass.
-            def _unmigrated(self, str1: Any, str2: Any) -> float:
-                raise NotImplementedError(
-                    f"{type(self).__name__} implements compare() but not "
-                    f"_compare(); rename compare() to _compare()."
-                )
-
-            cls._compare = _unmigrated
-
-        warn_once(
-            "comparator-compare-rename",
-            cls.__qualname__,
-            f"{cls.__name__} implements compare(), which is no longer the "
-            f"extension point and bypasses the shared None policy. Rename "
-            f"compare() to _compare() and delete any None handling it "
-            f"contains, since _compare() never receives None. Support for "
-            f"implementing compare() directly will be removed in 1.0.",
-            stacklevel=4,
-        )
 
     def compare(self, str1: Any, str2: Any) -> float:
         """Compare two values and return a similarity score.

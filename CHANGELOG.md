@@ -139,6 +139,18 @@ Each release links to full notes on the
   adds only pandas; SciPy remains isolated to the `semantic` extra
   ([#216](https://github.com/awslabs/stickler/issues/216)).
 
+### Removed
+
+- **Deprecation shim for `compare()` → `_compare()` rename** (`BaseComparator.__init_subclass__`).
+  A comparator that extends `BaseComparator` directly and implements only
+  `compare()` is now abstract again and raises `TypeError` at construction.
+  A comparator extending a concrete comparator and overriding `compare()` still
+  constructs, and can bypass the `None` policy if its `compare()` does not
+  delegate to `super().compare()`.
+  Migrate by renaming `compare()` to `_compare()` and removing any `None`
+  handling -- `_compare()` is only called when both arguments are non-`None`
+  ([#215](https://github.com/awslabs/stickler/issues/215)).
+
 ## [0.7.0] - 2026-08-18
 
 ### Added
@@ -420,19 +432,14 @@ Each release links to full notes on the
   delete any `None` handling it contains, since `_compare()` only ever
   receives present values.
 
-  This is not a hard break. A deprecation shim keeps pre-rename comparators
-  working: one that implements `compare()` still constructs and behaves
-  exactly as written, and emits a `DeprecationWarning` naming the rename.
-  That holds whether it extends `BaseComparator` directly, extends a
-  concrete comparator, or inherits `compare()` from a mixin.
+  This is not a hard break in 0.7.0 -- existing comparators keep working with
+  unchanged behavior. Migrate by renaming `compare()` to `_compare()` and
+  removing any `None` handling inside it.
 
   An un-migrated comparator does **not** receive the `None` policy, because
-  its `compare()` shadows the template method, so the rename is still
-  required. The shim is removed in 0.8.0, after which such a comparator
-  raises `TypeError` at construction
+  its `compare()` shadows the template method, so the rename is required.
+  The shim has been removed — see the `[Unreleased]` entry above
   ([#215](https://github.com/awslabs/stickler/issues/215)).
-  <br>*Correction: the 0.8.0 milestone was renamed to 1.0 after this entry shipped.
-  The shim is removed in 1.0.*
 
   Note that the pre-fix `(None, "") -> 1.0` result cannot be inherited: the
   coercion was removed from Levenshtein's algorithm rather than guarded, so
