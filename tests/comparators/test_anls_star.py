@@ -43,7 +43,7 @@ class TestTheComparatorItself:
         Under `==` every row below except the last scored 0.0, so a near miss
         and a wholly wrong extraction were indistinguishable.
         """
-        c = ANLSStarComparator(threshold=0.5)
+        c = ANLSStarComparator(leaf_threshold=0.5)
         near_miss = c.compare(GT, {**GT, "vendor": "Acme Corp"})
         dropped_key = c.compare(GT, {"vendor": "Acme Corporation", "terms": "Net 30"})
         hallucinated = c.compare(GT, {**GT, "currency": "USD"})
@@ -60,7 +60,7 @@ class TestTheComparatorItself:
         unexpected in it, which is why per-key FN/FA rows would be itemizing
         information the score already carries rather than adding any.
         """
-        c = ANLSStarComparator(threshold=0.5)
+        c = ANLSStarComparator(leaf_threshold=0.5)
         renamed = c.compare(
             GT, {"vendor_name": "Acme Corporation", "terms": "Net 30", "po": "PO-88231"}
         )
@@ -73,11 +73,11 @@ class TestTheComparatorItself:
     def test_tau_is_configurable_and_changes_the_verdict(self):
         """The leaf cutoff is a parameter, not a fixed constant."""
         abbreviated = {**GT, "vendor": "Acme Corp"}
-        lenient = ANLSStarComparator(threshold=0.5).compare(GT, abbreviated)
-        strict = ANLSStarComparator(threshold=0.85).compare(GT, abbreviated)
+        lenient = ANLSStarComparator(leaf_threshold=0.5).compare(GT, abbreviated)
+        strict = ANLSStarComparator(leaf_threshold=0.85).compare(GT, abbreviated)
 
         assert lenient > strict, "a higher tau must reject the abbreviation"
-        assert ANLSStarComparator().threshold == DEFAULT_LEAF_THRESHOLD
+        assert ANLSStarComparator().leaf_threshold == DEFAULT_LEAF_THRESHOLD
 
     def test_tau_zero_is_the_trap_it_looks_like(self):
         """Why tau cannot simply be removed.
@@ -86,9 +86,9 @@ class TestTheComparatorItself:
         character overlap, so a wholly wrong value scores above zero.
         """
         unrelated = {"vendor": "Zeta Ltd", "terms": "Net 30", "po": "PO-88231"}
-        assert ANLSStarComparator(threshold=0.0).compare(GT, unrelated) > 0.0
-        assert ANLSStarComparator(threshold=0.5).compare(GT, unrelated) < (
-            ANLSStarComparator(threshold=0.0).compare(GT, unrelated)
+        assert ANLSStarComparator(leaf_threshold=0.0).compare(GT, unrelated) > 0.0
+        assert ANLSStarComparator(leaf_threshold=0.5).compare(GT, unrelated) < (
+            ANLSStarComparator(leaf_threshold=0.0).compare(GT, unrelated)
         )
 
     def test_arbitrary_depth(self):
@@ -119,7 +119,7 @@ class TestTheComparatorItself:
 
     def test_config_round_trips_only_when_non_default(self):
         assert ANLSStarComparator().config is None
-        assert ANLSStarComparator(threshold=0.85).config == {"threshold": 0.85}
+        assert ANLSStarComparator(leaf_threshold=0.85).config == {"leaf_threshold": 0.85}
 
 
 class TestEveryWayToDeclareADictField:
@@ -201,7 +201,7 @@ class TestZeroConfigPath:
 
         There is deliberately no per-call knob for tau on this path: it is a
         property of the comparator, set per field with
-        ``ComparableField(comparator=ANLSStarComparator(threshold=...))``. A
+        ``ComparableField(comparator=ANLSStarComparator(leaf_threshold=...))``. A
         general per-field override for zero-config is #263.
 
         That makes the default load-bearing, which is why it is 0.5 rather than
@@ -215,7 +215,7 @@ class TestZeroConfigPath:
 
         spec = stickler.eval_for(P)
         installed = spec.eval_model._get_comparison_info("metadata").comparator
-        assert installed.threshold == DEFAULT_LEAF_THRESHOLD == 0.5
+        assert installed.leaf_threshold == DEFAULT_LEAF_THRESHOLD == 0.5
 
         truth = P(metadata=GT)
         abbreviated = stickler.evaluate(

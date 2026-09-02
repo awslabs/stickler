@@ -29,8 +29,10 @@ Each release links to full notes on the
   the `Equals` antipattern this library exists to replace, and dict fields were
   the one place it survived ([#277](https://github.com/awslabs/stickler/issues/277)).
 
-  The per-leaf cutoff (tau) is the comparator's `threshold`, settable per field
-  with `ComparableField(comparator=ANLSStarComparator(threshold=...))`. It
+  The per-leaf cutoff (tau) is the comparator's `leaf_threshold`, settable per
+  field with `ComparableField(comparator=ANLSStarComparator(leaf_threshold=...))`.
+  It is deliberately not called `threshold`, which means the same thing on this
+  comparator as on every other: the score at which a field counts as a match. It
   defaults to `0.5`, the standard ANLS value, and the default is load-bearing:
   raising it to `0.85` makes an abbreviated value and a missing key both score
   `0.6667` on a three-key mapping, collapsing the distinction this comparator

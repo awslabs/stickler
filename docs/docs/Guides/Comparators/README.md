@@ -191,24 +191,26 @@ Scores a `dict` (or any nesting of dicts and lists) **structurally**, giving par
 
 Under `==` the middle three rows are indistinguishable, so a near miss and a total failure score the same.
 
-**The one knob is `threshold`, and it is tau: the per-leaf cutoff**, not the field-level match threshold.
+**`leaf_threshold` is tau: the per-leaf cutoff applied during the recursion.** It is an algorithm parameter, and it changes the score this comparator returns. It is deliberately *not* called `threshold`, because `threshold` means the same thing here as on every other comparator: the score at which a field using it counts as a match.
 
 ```python
 from stickler import ANLSStarComparator, ComparableField, StructuredModel
 
 class Invoice(StructuredModel):
     # stricter than the 0.5 default: an abbreviation no longer counts at a leaf
-    metadata: dict = ComparableField(comparator=ANLSStarComparator(threshold=0.85))
+    metadata: dict = ComparableField(
+        comparator=ANLSStarComparator(leaf_threshold=0.85)
+    )
 ```
 
-Below tau, a leaf's similarity is discarded as noise. Two limits are worth knowing:
+Below `leaf_threshold`, a leaf's similarity is discarded as noise. Two limits are worth knowing:
 
 - **Do not set it to 0.0.** With no cutoff an unrelated string earns credit for incidental character overlap, so a wholly wrong value scores above zero.
 - **Raising it collapses distinct outcomes.** At 0.85, an abbreviated value and a missing key both score 0.6667 on a three-key mapping, so the two stop being distinguishable. 0.5 is the standard ANLS value and the default for that reason.
 
 **How scores are normalized:** over the *union* of both key sets. A renamed key is therefore charged twice, once as missing from the prediction and once as unexpected in it, which is why a rename scores below simply dropping the key.
 
-**Zero-config routing:** `stickler.evaluate()` installs this automatically for any `dict` / `Dict[...]` / `Mapping[...]` field, at the default tau, with `clip_under_threshold=False` so partial credit is not zeroed by the field threshold. There is no per-call knob for tau on that path; a general per-field override for zero-config evaluation is tracked in [#263](https://github.com/awslabs/stickler/issues/263).
+**Zero-config routing:** `stickler.evaluate()` installs this automatically for any `dict` / `Dict[...]` / `Mapping[...]` field, at the default `leaf_threshold`, with `clip_under_threshold=False` so partial credit is not zeroed by the field threshold. There is no per-call knob for it on that path; a general per-field override for zero-config evaluation is tracked in [#263](https://github.com/awslabs/stickler/issues/263).
 
 **Cost:** structural scoring is far more expensive than the equality it replaces. A 200-key dict takes ~3.25 ms per comparison against ~0.0001 ms for `ExactComparator` over a canonical string. Inside a `List[Model]` the Hungarian matrix makes it quadratic: 20 line items each holding a 30-key dict is ~220 ms for **one** document. If that matters, declare a nested `StructuredModel` for the keys you actually score.
 

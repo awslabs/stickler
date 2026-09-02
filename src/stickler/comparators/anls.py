@@ -14,9 +14,11 @@ not declared by walking it as a tree, are taken from the ``anls_star`` project
 Stickler's implementation lives in
 ``stickler.structured_object_evaluator.trees``.
 
-One divergence: the per-leaf cutoff (tau) is a parameter here rather than a
-fixed constant, because whether a near match at a leaf should earn partial
-credit depends on the data being evaluated.
+One divergence: the per-leaf cutoff (tau) is a parameter here, ``leaf_threshold``,
+rather than a fixed constant, because whether a near match at a leaf should earn
+partial credit depends on the data being evaluated. It is deliberately not called
+``threshold``: that name means "the score at which this counts as a match" on
+every comparator, and a cutoff applied inside the recursion is a different thing.
 """
 
 from typing import Any, Dict, Optional
@@ -25,7 +27,12 @@ from pydantic_core import to_jsonable_python
 
 from stickler.comparators.base import BaseComparator
 
-# Tau applied at each leaf: the standard ANLS value.
+# Tau applied at each leaf during the recursion: the standard ANLS value.
+#
+# This is an algorithm parameter, NOT a verdict about the field. It changes the
+# score the comparator returns, by discarding leaf similarities below it as
+# noise. `threshold` is the verdict, and means here exactly what it means on
+# every other comparator.
 #
 # Not raised above this. Tau is what separates "close enough to count" from
 # noise, and a stricter cutoff collapses distinct outcomes into the same score.
@@ -33,6 +40,13 @@ from stickler.comparators.base import BaseComparator
 # three-key mapping -- indistinguishable, which is the exact ranking failure
 # this comparator exists to remove. At 0.5 they are 0.8542 and 0.6667.
 DEFAULT_LEAF_THRESHOLD = 0.5
+
+# Verdict threshold: at what overall ANLS* score does a mapping count as a match.
+#
+# 0.7 rather than BaseComparator's 0.5 because a mapping is judged as an object,
+# and it preserves the value the dict branch of `ConfigurationHelper` already
+# supplied before the comparator carried its own.
+DEFAULT_VERDICT_THRESHOLD = 0.7
 
 
 class ANLSStarComparator(BaseComparator):
@@ -48,9 +62,9 @@ class ANLSStarComparator(BaseComparator):
 
         ``{"vendor": "Acme Corporation", ...}`` vs ``{"vendor": "Acme Corp", ...}``
 
-        whole-object ``==``          -> 0.0
-        ANLS* at tau 0.5 (default)   -> 0.8542
-        ANLS* at tau 0.85            -> 0.6667  (abbreviation rejected)
+        whole-object ``==``                   -> 0.0
+        ANLS* at leaf_threshold 0.5 (default) -> 0.8542
+        ANLS* at leaf_threshold 0.85          -> 0.6667  (abbreviation rejected)
 
     Key-set differences are charged on both sides: a renamed key counts once as
     missing from the prediction and once as unexpected in it, because the score
@@ -63,24 +77,33 @@ class ANLSStarComparator(BaseComparator):
         comparator.compare({"a": "x", "b": "y"}, {"b": "y", "a": "x"})   # 1.0
         comparator.compare({"a": "x"}, {"a": "x", "b": "y"})             # 0.5
 
-        # Accept looser leaf matches
-        lenient = ANLSStarComparator(threshold=0.5)
+        # Demand a closer match before a mapping counts as one
+        strict = ANLSStarComparator(threshold=0.9)
+
+        # Reject looser leaf matches when scoring
+        picky = ANLSStarComparator(leaf_threshold=0.85)
         ```
 
     Args:
-        threshold: Tau, the per-leaf cutoff below which a leaf's string
+        threshold: The verdict threshold, meaning what it means on every other
+            comparator: the score at or above which a field using this comparator
+            counts as a match, unless the field states its own via
+            ``ComparableField(threshold=...)``. Default
+            ``DEFAULT_VERDICT_THRESHOLD``, 0.7, rather than ``BaseComparator``'s
+            0.5, because a mapping is judged as an object.
+        leaf_threshold: Tau, the per-leaf cutoff below which a leaf's string
             similarity is discarded as noise (default
-            ``DEFAULT_LEAF_THRESHOLD``, 0.5). This is the ONE knob, and unlike most
-            comparators' ``threshold`` it does real work during evaluation:
-            it is applied at every leaf of the recursion.
+            ``DEFAULT_LEAF_THRESHOLD``, 0.5).
+
+            This is an algorithm parameter, not a verdict. It changes the score
+            this comparator returns, by deciding which leaf similarities are
+            signal, and it is applied at every leaf of the recursion. Keeping it
+            under its own name is deliberate: ``threshold`` means one thing
+            across every comparator, and an internal cutoff is a different thing.
 
             It is not safe to set to 0.0. Without a cutoff, an unrelated string
             earns credit for incidental character overlap, so a wholly wrong
             value scores above zero.
-
-            Note this is distinct from the FIELD threshold set by
-            ``ComparableField(threshold=...)``, which decides whether the
-            resulting score counts as a match.
 
     Cost:
         Scoring a mapping structurally is not free, and it is dramatically more
@@ -104,13 +127,24 @@ class ANLSStarComparator(BaseComparator):
 
     handles_mappings = True
 
-    def __init__(self, threshold: float = DEFAULT_LEAF_THRESHOLD):
+    def __init__(
+        self,
+        threshold: float = DEFAULT_VERDICT_THRESHOLD,
+        leaf_threshold: float = DEFAULT_LEAF_THRESHOLD,
+    ):
         """Initialize the comparator.
 
         Args:
-            threshold: Tau, the per-leaf cutoff (default 0.5).
+            threshold: The verdict threshold, meaning the same thing it means on
+                every other comparator: the score at or above which a field
+                using this comparator counts as a match, unless the field states
+                its own. Default ``DEFAULT_VERDICT_THRESHOLD`` (0.7).
+            leaf_threshold: Tau, the per-leaf cutoff applied during the
+                recursion. An algorithm parameter, not a verdict: it changes the
+                score returned. Default ``DEFAULT_LEAF_THRESHOLD`` (0.5).
         """
         super().__init__(threshold=threshold)
+        self.leaf_threshold = leaf_threshold
 
     @property
     def name(self) -> str:
@@ -154,9 +188,11 @@ class ANLSStarComparator(BaseComparator):
         gt_value = to_jsonable_python(str1, fallback=str)
         pred_value = to_jsonable_python(str2, fallback=str)
 
-        gt_tree = ANLSTree.make_tree(gt_value, is_gt=True, threshold=self.threshold)
+        gt_tree = ANLSTree.make_tree(
+            gt_value, is_gt=True, threshold=self.leaf_threshold
+        )
         pred_tree = ANLSTree.make_tree(
-            pred_value, is_gt=False, threshold=self.threshold
+            pred_value, is_gt=False, threshold=self.leaf_threshold
         )
 
         score, _closest_gt, _key_scores = gt_tree.anls(pred_tree)
@@ -166,15 +202,21 @@ class ANLSStarComparator(BaseComparator):
     def config(self) -> Optional[Dict[str, Any]]:
         """Round-trippable config for JSON-schema export.
 
-        Only a non-default tau is emitted, and an all-default instance returns
+        Only non-default values are emitted, and an all-default instance returns
         ``None``, matching ``NumericComparator.config`` and ``DateComparator``
         so an unremarkable instance adds no
         ``x-aws-stickler-comparator-config`` block to every exported schema.
         """
-        if self.threshold == DEFAULT_LEAF_THRESHOLD:
-            return None
-        return {"threshold": self.threshold}
+        config: Dict[str, Any] = {}
+        if self.threshold != DEFAULT_VERDICT_THRESHOLD:
+            config["threshold"] = self.threshold
+        if self.leaf_threshold != DEFAULT_LEAF_THRESHOLD:
+            config["leaf_threshold"] = self.leaf_threshold
+        return config or None
 
     def __repr__(self) -> str:
         """Detailed string representation."""
-        return f"ANLSStarComparator(threshold={self.threshold})"
+        return (
+            f"ANLSStarComparator(threshold={self.threshold}, "
+            f"leaf_threshold={self.leaf_threshold})"
+        )

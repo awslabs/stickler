@@ -577,16 +577,17 @@ def _type_default(
         # should keep its partial score. With clip=True the field threshold
         # would zero out exactly the partial credit this comparator exists to
         # produce.
-        # No per-call knob: tau is a property of the comparator, settable per
-        # field via ComparableField(comparator=ANLSStarComparator(threshold=...)).
+        # No per-call knob: the leaf cutoff is a property of the comparator,
+        # settable per field via
+        # ComparableField(comparator=ANLSStarComparator(leaf_threshold=...)).
         # A general per-field override for the zero-config path is #263.
-        tau = DEFAULT_LEAF_THRESHOLD
+        leaf_threshold = DEFAULT_LEAF_THRESHOLD
         config = {}
         field_threshold = (
             _DICT_FIELD_THRESHOLD if match_threshold is None else match_threshold
         )
         provenance.append(
-            f"type:dict -> ANLSStarComparator(threshold={tau})"
+            f"type:dict -> ANLSStarComparator(leaf_threshold={leaf_threshold})"
             f"@{field_threshold} (structural, partial credit)"
         )
         return "ANLSStarComparator", config, field_threshold, False
