@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from stickler.comparators.anls import _UNSCOREABLE
 from stickler.comparators.base import BaseComparator
 
 from .base import ANLSTree
@@ -96,13 +97,13 @@ class ANLSLeaf(ANLSTree):
         # character overlap on a long numeric or identifier value scores high, and
         # scores ABOVE a genuine text near-miss.
         #
-        #     wrong IBAN, one character   0.9545
+        #     account number, 1 of 22 chars   0.9545
         #     date one day off            0.9000
         #     amount 2x wrong             0.8571
         #     "Acme Corporation"/"Acme Corp"   0.5625
         #
         # So no `leaf_threshold` separates them: a cutoff high enough to reject the
-        # IBAN also rejects the partial credit this comparator exists to award. A
+        # account number also rejects the partial credit this exists to award. A
         # field whose values you care about should be declared, where it gets a
         # comparator chosen for its type.
         #
@@ -120,6 +121,19 @@ class ANLSLeaf(ANLSTree):
         # a prediction's string `"10.50"`), so something has to decide which side is
         # authoritative. That is coercion, and it is unresolved in
         # https://github.com/awslabs/stickler/issues/49.
+        # A value with no JSON representation is outside ANLS*'s domain, so it is
+        # refused rather than scored. `ANLSStarComparator` marks such a value
+        # instead of inventing text for it; see `_UNSCOREABLE` there for what
+        # inventing text cost (two unrelated objects scored 0.8684, because the
+        # invented text was a memory address).
+        #
+        # Short-circuited here rather than left to the metric: two identical
+        # markers would score 1.0, so every out-of-domain value would match every
+        # other. Refusing is also why equality is not consulted -- an out-of-domain
+        # value is not scored, whether or not the two happen to be equal.
+        if _UNSCOREABLE in (this_str, other_str):
+            return [0.0], self.obj, key_scores_copy
+
         similarity = self._comparator.compare(this_str, other_str)
 
         # Apply the ANLS threshold

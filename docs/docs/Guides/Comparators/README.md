@@ -174,79 +174,84 @@ class Product(StructuredModel):
 
 ### ANLSStarComparator
 
-Scores a `dict` (or any nesting of dicts and lists) **structurally**, giving partial credit. For fields whose keys are not known when the model is written, so no per-key comparison config can be declared.
+Scores a dict whose keys you did not declare, giving partial credit instead of a
+simple pass or fail.
 
-**When to use:** a `Dict[str, Any]` holding whatever the extractor returned. If you *do* know the keys, declare a nested `StructuredModel` instead: each field then carries its own comparator and threshold, and results are reported per field.
+**When to use:** a field like `metadata: Dict[str, Any]` holding whatever the
+extractor returned. Comparing such a field for equality tells you only "identical"
+or "not", so a prediction that got two keys of three right is indistinguishable
+from one that got nothing right. This comparator scores the difference.
 
-**Why it exists:** the alternative for an undeclared dict is whole-object equality, which cannot rank two extractors. Ground truth `{"vendor": "Acme Corporation", "terms": "Net 30", "po": "PO-88231"}`:
+**When not to use:** if you know the keys, declare a nested [`StructuredModel`](../../API-Reference/models.md#stickler.structured_object_evaluator.models.structured_model.StructuredModel){:target="_blank"} instead. You get
+the same partial credit *plus* a score per key, and each key can have its own
+comparator and threshold. Use `ANLSStarComparator` for the case where you could
+not have declared the shape.
 
-| prediction | whole-object `==` | ANLS\* (default tau 0.5) |
-|---|---|---|
-| identical | 1.0 | 1.0 |
-| keys reordered | 1.0 | 1.0 |
-| `vendor` abbreviated to `"Acme Corp"` | **0.0** | **0.8542** |
-| `po` key missing | **0.0** | **0.6667** |
-| extra `currency` key | **0.0** | **0.7500** |
-| all three values wrong | 0.0 | 0.0 |
+#### A worked example
 
-Under `==` the middle three rows are indistinguishable, so a near miss and a total failure score the same.
+```python
+from typing import Any, Dict
 
-**`leaf_threshold` is tau: the per-leaf cutoff applied during the recursion.** It is an algorithm parameter, and it changes the score this comparator returns. It is deliberately *not* called `threshold`, because `threshold` means the same thing here as on every other comparator: the score at which a field using it counts as a match.
+from pydantic import BaseModel
+
+import stickler
+
+
+class Invoice(BaseModel):
+    invoice_id: str
+    metadata: Dict[str, Any] = {}
+
+
+truth = Invoice(
+    invoice_id="INV-1042",
+    metadata={"vendor": "Acme Corporation", "terms": "Net 30", "po": "PO-88231"},
+)
+prediction = Invoice(
+    invoice_id="INV-1042",
+    metadata={"vendor": "Acme Corp", "terms": "Net 30", "po": "PO-88231"},
+)
+
+result = stickler.evaluate(truth, prediction)
+print(result.field_scores["metadata"])   # 0.8542
+print(result.overall_score)              # 0.9271
+```
+
+`stickler.evaluate` picks this comparator for a `dict` field automatically, so
+there is nothing to configure.
+
+Running the same ground truth against a range of predictions shows what the score
+is actually measuring:
+
+| prediction's `metadata` | score |
+|---|---|
+| identical, in any key order | 1.0000 |
+| `vendor` abbreviated to `"Acme Corp"` | 0.8542 |
+| an extra `currency` key | 0.7500 |
+| `po` missing | 0.6667 |
+| `vendor` renamed to `vendor_name` | 0.5000 |
+| every value wrong, or empty | 0.0000 |
+
+Two things to read out of that table:
+
+- **A missing key and an extra key both cost**, because the score is averaged over
+  the union of both key sets. That is why a *renamed* key (0.5000) scores worse
+  than a simply missing one (0.6667): a rename is charged twice, once as absent
+  from the prediction and once as unexpected in it.
+- **Nesting works.** Dicts inside dicts, and lists of dicts, are walked
+  recursively, and list elements are paired by best fit rather than by position,
+  so reordering a list of items does not penalise you.
+
+#### Declaring it explicitly
+
+To set a parameter, name the comparator on the field:
 
 ```python
 from stickler import ANLSStarComparator, ComparableField, StructuredModel
 
+
 class Invoice(StructuredModel):
-    # stricter than the 0.5 default: an abbreviation no longer counts at a leaf
     metadata: dict = ComparableField(
         comparator=ANLSStarComparator(leaf_threshold=0.85)
-    )
-```
-
-Below `leaf_threshold`, a leaf's similarity is discarded as noise. Two limits are worth knowing:
-
-- **Do not set it to 0.0.** With no cutoff an unrelated string earns credit for incidental character overlap, so a wholly wrong value scores above zero.
-- **Raising it collapses distinct outcomes.** At 0.85, an abbreviated value and a missing key both score 0.6667 on a three-key mapping, so the two stop being distinguishable. 0.5 is the standard ANLS value and the default for that reason.
-
-**Leaves are compared as text.** Every value at the bottom of the structure goes through string similarity, whatever its Python type. That is canonical ANLS\*, which came from reading text out of images. What ANLS\* generalizes is the *structure*: aligning keys, normalizing over the union, and pairing list elements.
-
-The cost is that incidental character overlap on a long numeric or identifier value scores high, and scores **above** a genuine text near-miss:
-
-| comparison | score |
-|---|---|
-| wrong IBAN, one character off | 0.9545 |
-| date one day off | 0.9000 |
-| amount 2x wrong | 0.8571 |
-| `"Acme Corporation"` vs `"Acme Corp"` | 0.5625 |
-
-So `leaf_threshold` cannot separate them: a cutoff high enough to reject the IBAN also deletes the partial credit this comparator exists to award. **If a value's correctness matters, declare the field** so it gets a comparator chosen for its type. This comparator is for values whose shape you could not declare in the first place. Making leaves type-aware is tracked as future work, and has to reuse the zero-config inference table rather than invent a second one ([#239](https://github.com/awslabs/stickler/issues/239), [#49](https://github.com/awslabs/stickler/issues/49)).
-
-**How scores are normalized:** over the *union* of both key sets. A renamed key is therefore charged twice, once as missing from the prediction and once as unexpected in it, which is why a rename scores below simply dropping the key.
-
-**Zero-config routing:** `stickler.evaluate()` installs this automatically for any `dict` / `Dict[...]` / `Mapping[...]` field, at the default `leaf_threshold`, with `clip_under_threshold=False` so partial credit is not zeroed by the field threshold. There is no per-call knob for it on that path; a general per-field override for zero-config evaluation is tracked in [#263](https://github.com/awslabs/stickler/issues/263).
-
-**Cost:** structural scoring is far more expensive than the equality it replaces. A 200-key dict takes ~3.25 ms per comparison against ~0.0001 ms for `ExactComparator` over a canonical string. Inside a `List[Model]` the Hungarian matrix makes it quadratic: 20 line items each holding a 30-key dict is ~220 ms for **one** document. If that matters, declare a nested `StructuredModel` for the keys you actually score.
-
-**If the annotation does not say "mapping"** (for example `Any`, or `Union[str, Dict[str, str]]`), nothing can install this comparator, because the shape is only known per document. What happens then depends on the path. Under `stickler.evaluate()` the value is canonicalized to a JSON string and compared with `ExactComparator`, so two identical mappings score 1.0 and any difference scores 0.0, with no warning. On a hand-declared `StructuredModel` the pair is counted as a false discovery and warns once, naming the remedies, rather than raising partway through a corpus.
-
-Attribution: ANLS\* comes from the [`anls_star`](https://pypi.org/project/anls_star/) project (Apache-2.0); see the repository `NOTICE`.
-
----
-
-### BBoxIoUComparator
-
-Compares two bounding boxes using Intersection over Union (IoU) as the similarity score. Accepts both two-point (`[[x1, y1], [x2, y2]]`) and flat (`[x1, y1, x2, y2]`) formats. Coordinates are automatically normalized so that x1 <= x2 and y1 <= y2.
-
-**When to use:** Evaluating spatial localization accuracy for document fields, signature detection, logo identification, or any use case where you need to measure how well a predicted bounding box overlaps with ground truth.
-
-```python
-from stickler import StructuredModel, ComparableField
-from stickler.comparators import BBoxIoUComparator
-
-class DocumentField(StructuredModel):
-    bbox: list = ComparableField(
-        comparator=BBoxIoUComparator(threshold=0.5),
-        weight=1.0
     )
 ```
 
@@ -254,10 +259,56 @@ class DocumentField(StructuredModel):
 
 | Parameter | Default | Description |
 |---|---|---|
-| `threshold` | `0.5` | IoU threshold for binary match classification |
+| `threshold` | `0.7` | Score at or above which the whole mapping counts as a match |
+| `leaf_threshold` | `0.5` | Cutoff below which a single value's similarity is treated as noise |
 
-!!! tip "Rich Value Pattern"
-    For end-to-end mAP evaluation with per-field breakdown, use the [Bounding Box mAP Metrics](../../Advanced/bbox-map-metrics.md) feature instead of using BBoxIoUComparator directly.
+`leaf_threshold` is applied to each value as the structure is walked, so it changes
+the score itself rather than only the verdict. On the abbreviated-vendor example
+above:
+
+| `leaf_threshold` | score |
+|---|---|
+| `0.5` (default) | 0.8542 |
+| `0.85` | 0.6667 |
+
+At `0.85` the abbreviation stops counting at all, so that key contributes nothing.
+Do not set it to `0.0`: with no cutoff, an unrelated value earns credit for
+incidental character overlap.
+
+!!! warning "Every value is compared as text, whatever its type"
+    Numbers, dates and identifiers are compared character by character. Incidental
+    overlap in a long value therefore scores high, and scores *higher* than a
+    genuine near-miss in ordinary text:
+
+    | key | ground truth | prediction | score |
+    |---|---|---|---|
+    | `account` | `DE89370400440532013000` | `DE8937040044053201300`**`1`** | 0.9545 |
+    | `invoice_date` | `2024-01-15` | `2024-01-1`**`6`** | 0.9000 |
+    | `amount` | `1000000` | **`2`**`000000` | 0.8571 |
+    | `total` | `1234.56` | `1234.5`**`7`** | 0.8571 |
+    | `vendor` | `Acme Corporation` | `Acme Corp` (truncated) | 0.5625 |
+
+    A wrong account number, a date off by a day and a **2x-wrong amount** all score
+    above the one row that is a genuine near-miss.
+
+    Lowering `leaf_threshold` will not separate these: a cutoff high enough to
+    reject the account number also removes the partial credit you wanted. **If a
+    value's correctness matters, declare that field** so it gets a comparator
+    chosen for its type, such as [`NumericComparator`](#numericcomparator) or
+    [`DateComparator`](date-comparator.md). If you know *some* of the keys, declare
+    those in a nested `StructuredModel` and leave the rest to this comparator.
+
+**Values with no JSON form score 0.0.** Anything with a JSON representation is
+compared normally, including `date`, `datetime`, `time`, `Decimal`, `UUID`, `Enum`,
+`set`, `tuple`, `bytes` and `Path`. An arbitrary Python object has none, so it
+cannot be compared: it scores `0.0` whether or not the two sides are equal, warns
+once per type, and leaves the other keys' credit intact. Convert it to a JSON type
+before evaluating, or declare a nested [`StructuredModel`](../../API-Reference/models.md#stickler.structured_object_evaluator.models.structured_model.StructuredModel){:target="_blank"} if you know its shape.
+
+**Performance:** walking a structure costs noticeably more than comparing two
+strings, and the cost multiplies inside a list, where every candidate pair is
+scored. If a large corpus feels slow, declare a nested [`StructuredModel`](../../API-Reference/models.md#stickler.structured_object_evaluator.models.structured_model.StructuredModel){:target="_blank"} for the keys you
+actually score.
 
 ---
 

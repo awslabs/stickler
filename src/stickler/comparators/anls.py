@@ -26,6 +26,7 @@ from typing import Any, Dict, Optional
 from pydantic_core import to_jsonable_python
 
 from stickler.comparators.base import BaseComparator
+from stickler.utils.deprecation import warn_once
 
 # Tau applied at each leaf during the recursion: the standard ANLS value.
 #
@@ -47,6 +48,47 @@ DEFAULT_LEAF_THRESHOLD = 0.5
 # and it preserves the value the dict branch of `ConfigurationHelper` already
 # supplied before the comparator carried its own.
 DEFAULT_VERDICT_THRESHOLD = 0.7
+
+# Marker for a value with no JSON representation, which is outside this
+# comparator's domain. ANLS* scores JSON values: dicts, lists, and string,
+# numeric or boolean leaves. An arbitrary Python object is none of those.
+#
+# It exists because the alternative was worse. `to_jsonable_python(fallback=str)`
+# invents a text form for such a value, and for an object without a value-based
+# `__repr__` that text is `<module.Class object at 0xADDRESS>`. Two of those share
+# a long prefix, so edit distance rated two UNRELATED objects 0.8684 and two
+# EQUAL ones 0.8857 -- it was measuring how similar two memory addresses look, and
+# scoring higher for longer class names.
+#
+# Note the marker cannot simply be a constant string that flows into the metric:
+# two identical markers would score 1.0, making every out-of-domain object match
+# every other. `ANLSLeaf` short-circuits on it instead. See `_UNSCOREABLE` there.
+_UNSCOREABLE = "\x00stickler:unscoreable\x00"
+
+
+def _jsonable_or_unscoreable(value: Any) -> Any:
+    """Fallback for `to_jsonable_python`: refuse rather than invent text.
+
+    Only reached for types pydantic cannot represent in JSON. Everything with a
+    JSON form -- `date`, `datetime`, `time`, `Decimal`, `UUID`, `Enum`, `set`,
+    `tuple`, `bytes`, `Path` -- is handled natively and never arrives here.
+
+    Warns once per type, because a value silently scoring 0.0 is indistinguishable
+    from a wrong extraction. The caller needs to know the difference between "your
+    prediction was wrong" and "we could not score this at all".
+    """
+    warn_once(
+        "anls-unscoreable-value",
+        f"{type(value).__module__}.{type(value).__qualname__}",
+        f"ANLSStarComparator cannot score a value of type "
+        f"'{type(value).__qualname__}': it has no JSON representation, so there "
+        "is nothing to compare. Every such value scores 0.0, whether or not the "
+        "two sides are equal. Convert it to a JSON type before evaluating, give "
+        "the field a nested StructuredModel if you know its shape, or declare a "
+        "comparator that understands it.",
+        category=UserWarning,
+    )
+    return _UNSCOREABLE
 
 
 class ANLSStarComparator(BaseComparator):
@@ -116,13 +158,13 @@ class ANLSStarComparator(BaseComparator):
         character overlap on a long numeric or identifier value scores high, and
         scores ABOVE a genuine text near-miss::
 
-            wrong IBAN, one character        0.9545
+            account number, 1 of 22 chars    0.9545
             date one day off                 0.9000
             amount 2x wrong                  0.8571
             "Acme Corporation"/"Acme Corp"   0.5625
 
         So ``leaf_threshold`` does not separate them: a cutoff high enough to
-        reject the IBAN also deletes the partial credit this comparator exists to
+        reject that account number also deletes the partial credit this exists to
         award. **Declare a field whose values you care about**, where it gets a
         comparator chosen for its type. This comparator is for values whose shape
         you could not declare.
@@ -220,8 +262,8 @@ class ANLSStarComparator(BaseComparator):
         # the normalization asymmetric, so `Dict[str, Tuple[int, int]]` scored
         # 0.0 against an identical copy and 1.0 against a truncated prediction.
         # The 1-of-n contract lives on `anls_score`, which normalizes nothing.
-        gt_value = to_jsonable_python(str1, fallback=str)
-        pred_value = to_jsonable_python(str2, fallback=str)
+        gt_value = to_jsonable_python(str1, fallback=_jsonable_or_unscoreable)
+        pred_value = to_jsonable_python(str2, fallback=_jsonable_or_unscoreable)
 
         gt_tree = ANLSTree.make_tree(
             gt_value, is_gt=True, threshold=self.leaf_threshold

@@ -115,7 +115,8 @@ Each release links to full notes on the
 
   The consequence is stated rather than patched. Incidental character overlap on
   a long numeric or identifier value scores high, and scores above a genuine text
-  near-miss: a one-character IBAN error is `0.9545` and a 2x-wrong amount
+  near-miss: a one-character error in a 22-character account number is `0.9545`
+  and a 2x-wrong amount
   `0.8571`, where `"Acme Corporation"` against `"Acme Corp"` is `0.5625`. No
   `leaf_threshold` separates those, so a field whose values matter should be
   declared, where it gets a comparator chosen for its type.
