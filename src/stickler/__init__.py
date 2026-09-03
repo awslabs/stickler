@@ -21,6 +21,7 @@ from .comparators.date import DateComparator
 from .comparators.exact import ExactComparator
 from .comparators.fuzzy import FuzzyComparator
 from .comparators.levenshtein import LevenshteinComparator
+from .comparators.normalized import NormalizedComparator
 from .comparators.numeric import NumericComparator
 from .comparators.phone import PhoneComparator
 from .comparators.semantic import SemanticComparator
@@ -163,6 +164,7 @@ __all__ = [
     "BBoxIoUComparator",
     "FuzzyComparator",
     "LevenshteinComparator",
+    "NormalizedComparator",
     "NumericComparator",
     "SemanticComparator",
     "StructuredModelComparator",

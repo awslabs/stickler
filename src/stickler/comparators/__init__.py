@@ -15,6 +15,7 @@ from stickler.comparators.bbox import BBoxIoUComparator
 from stickler.comparators.date import DateComparator
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.comparators.normalized import NormalizedComparator
 from stickler.comparators.numeric import NumericComparator, NumericExactC
 from stickler.comparators.phone import PhoneComparator
 from stickler.comparators.semantic import SemanticComparator
@@ -113,6 +114,7 @@ __all__ = [
     "BaseComparator",
     "BBoxIoUComparator",
     "LevenshteinComparator",
+    "NormalizedComparator",
     "NumericComparator",
     "NumericExactC",
     "ExactComparator",
