@@ -12,6 +12,7 @@ from typing import (
     Annotated,
     Any,
     Dict,
+    FrozenSet,
     List,
     Literal,
     Optional,
@@ -88,7 +89,25 @@ _KNOWN_MODEL_EXTENSIONS = frozenset(
 _EXTENSION_PREFIXES = ("x-aws-stickler-", "x-stickler-")
 
 
-def _closest_known_key(key: str) -> Optional[str]:
+def _is_object_schema(node: Any) -> bool:
+    """Whether this node generates a StructuredModel of its own.
+
+    Such a node reads both key sets: the field keys describe how its parent
+    scores it, the model keys configure the class it generates. Checked
+    structurally rather than by `type` alone so the list form
+    (``["object", "null"]``) and a bare ``properties`` both count.
+    """
+    if not isinstance(node, dict):
+        return False
+    if "properties" in node or "patternProperties" in node:
+        return True
+    declared = node.get("type")
+    if declared == "object":
+        return True
+    return isinstance(declared, list) and "object" in declared
+
+
+def _closest_known_key(key: str, candidates: FrozenSet[str]) -> Optional[str]:
     """The valid key a typo was probably reaching for, or None.
 
     Compares the SUFFIX after the prefix, not the whole key. Every valid key
@@ -97,9 +116,15 @@ def _closest_known_key(key: str) -> Optional[str]:
     `x-aws-stickler-zzzzzzzz` scored as a near-miss on `-weight`. Comparing
     suffixes makes both a real suggestion and no suggestion possible, and a wrong
     suggestion is worse than none.
+
+    `candidates` is scoped to the position being checked. Suggesting a key that
+    is valid *somewhere* is worse than suggesting nothing: a field-position typo
+    of `-match-threshold` used to be answered with "did you mean
+    `x-aws-stickler-match-threshold`", and taking that advice imported cleanly
+    and did nothing, which is the silent drop this module exists to prevent.
     """
     known = {}
-    for full in sorted(_DOCUMENTED_FIELD_EXTENSIONS | _KNOWN_MODEL_EXTENSIONS):
+    for full in sorted(candidates):
         for prefix in _EXTENSION_PREFIXES:
             if full.startswith(prefix):
                 known[full[len(prefix) :]] = full
@@ -118,32 +143,74 @@ def _closest_known_key(key: str) -> Optional[str]:
     return known[matches[0]] if matches else None
 
 
-def _reject_unknown_extensions(extra: Any, field_path: str) -> None:
-    """Raise for any extension-shaped key this importer does not honour.
+def _reject_unknown_extensions(
+    extra: Any,
+    field_path: str,
+    *,
+    scope: str = "field",
+) -> None:
+    """Raise for any extension-shaped key this importer does not honour here.
 
     Raising rather than warning, deliberately, and unlike the mapping-comparator
     case elsewhere: a schema is authored once and read deterministically, so there
     is no risk of failing on document N of a corpus after succeeding on N-1. The
     author is present, the mistake is in a file they can edit, and the alternative
     is a model that builds and reports the wrong number.
+
+    `scope` decides which keys are honoured at this position, because the two sets
+    are not interchangeable. `x-aws-stickler-match-threshold` on an object is read;
+    the same key on a scalar field is dropped. Accepting both everywhere made the
+    check pass on keys that do nothing, so a valid-but-misplaced key was exactly
+    as silent as the typo it was mistaken for.
     """
     if not isinstance(extra, dict):
         return
+
+    if scope == "model":
+        accepted = _KNOWN_MODEL_EXTENSIONS
+        suggestible = _KNOWN_MODEL_EXTENSIONS
+        other_scope, other_keys = "field", _DOCUMENTED_FIELD_EXTENSIONS
+        where = f"object '{field_path}'"
+    elif scope == "field_or_model":
+        # An object-typed property honours both sets, so there is no misplacement
+        # to report and nothing to route elsewhere.
+        accepted = _KNOWN_FIELD_EXTENSIONS | _KNOWN_MODEL_EXTENSIONS
+        suggestible = _DOCUMENTED_FIELD_EXTENSIONS | _KNOWN_MODEL_EXTENSIONS
+        other_scope, other_keys = "", frozenset()
+        where = f"field '{field_path}'"
+    else:
+        accepted = _KNOWN_FIELD_EXTENSIONS
+        suggestible = _DOCUMENTED_FIELD_EXTENSIONS
+        other_scope, other_keys = "object", _KNOWN_MODEL_EXTENSIONS
+        where = f"field '{field_path}'"
+
     for key in extra:
         if not isinstance(key, str):
             continue
-        if key in _KNOWN_FIELD_EXTENSIONS or key in _KNOWN_MODEL_EXTENSIONS:
+        if key in accepted:
             continue
         if not key.startswith(_EXTENSION_PREFIXES):
             continue  # an unrelated x-* extension is none of our business
-        suggestion = _closest_known_key(key)
+
+        # A real key in the wrong position. Naming the position is the whole
+        # answer here, so say that instead of offering a spelling correction.
+        if key in other_keys:
+            raise ValueError(
+                f"Stickler extension '{key}' is not read on {where}. It belongs "
+                f"on the {other_scope}. Left in place it would be dropped "
+                f"silently. Valid keys here: {', '.join(sorted(suggestible))}."
+            )
+
+        suggestion = _closest_known_key(key, suggestible)
         hint = f" Did you mean '{suggestion}'?" if suggestion else ""
         raise ValueError(
-            f"Unrecognized Stickler extension '{key}' on field '{field_path}'."
-            f"{hint} It would otherwise be dropped silently, leaving the field "
-            "configured by fallback while its correctly-spelled siblings were "
-            f"honoured. Valid keys: {', '.join(sorted(_DOCUMENTED_FIELD_EXTENSIONS))}."
+            f"Unrecognized Stickler extension '{key}' on {where}."
+            f"{hint} It would otherwise be dropped silently, leaving the "
+            "configuration to fall back while its correctly-spelled siblings "
+            f"were honoured. Valid keys here: {', '.join(sorted(suggestible))}."
         )
+
+
 _COMBINERS = frozenset({"allOf", "anyOf", "oneOf"})
 _NON_VALIDATING_SCHEMA_KEYWORDS = frozenset(
     {
@@ -534,15 +601,26 @@ class JsonSchemaImporter:
 
     @classmethod
     def _validate_supported_shapes(cls, schema: Dict[str, Any]) -> None:
-        """Reject shapes the comparison model cannot represent faithfully."""
+        """Reject shapes the comparison model cannot represent faithfully.
 
-        def walk(node: Any, path: str) -> None:
+        Also where extension keys are checked, because this walk sees every node
+        of the RAW schema before `_prepare_schema` rewrites list-form types into
+        `anyOf`. Checking per-field at extraction time reached only the positions
+        that produce a field, so a typo on the root object, on `items`, or on a
+        `["object", "null"]` node was silently dropped while the same typo one
+        level down raised.
+        """
+
+        def walk(node: Any, path: str, scope: Optional[str] = "model") -> None:
             if isinstance(node, list):
                 for index, value in enumerate(node):
-                    walk(value, f"{path}[{index}]")
+                    walk(value, f"{path}[{index}]", scope)
                 return
             if not isinstance(node, dict):
                 return
+
+            if scope is not None:
+                _reject_unknown_extensions(node, path or "(root)", scope=scope)
 
             if "patternProperties" in node:
                 location = f" at '{path}'" if path else ""
@@ -573,15 +651,30 @@ class JsonSchemaImporter:
 
             for key, value in node.items():
                 child_path = path
+                child_scope: Optional[str] = None
                 if key == "properties" and isinstance(value, dict):
                     for name, child in value.items():
-                        walk(child, f"{path}.{name}" if path else name)
+                        # A property is scored as a field of this object, and if
+                        # it is itself an object it also configures its own
+                        # generated class, so both key sets are honoured there.
+                        walk(
+                            child,
+                            f"{path}.{name}" if path else name,
+                            "field_or_model" if _is_object_schema(child) else "field",
+                        )
                     continue
                 if key == "items":
                     child_path = f"{path}[]" if path else "[]"
-                walk(value, child_path)
+                    # Field keys are NOT read on `items`: weight, threshold and
+                    # comparator there are all dropped, since the field they would
+                    # configure is the array itself, one level up. Only the element
+                    # class's own settings are read.
+                    child_scope = "model"
+                elif key in _COMBINERS or key in ("$defs", "definitions"):
+                    child_scope = "model"
+                walk(value, child_path, child_scope)
 
-        walk(schema, "")
+        walk(schema, "", "model")
 
     @staticmethod
     def _translate_import_error(message: str, schema: Dict[str, Any]) -> str:
@@ -680,7 +773,13 @@ class JsonSchemaImporter:
         extra = field_info.json_schema_extra
         if not isinstance(extra, dict):
             return {}
-        _reject_unknown_extensions(extra, field_path)
+        # Backstop for entry points that do not walk a raw schema, such as an
+        # already-parsed pydantic model. `_validate_supported_shapes` is the
+        # precise gate: it sees each node's position, so it is what distinguishes
+        # a model key on a scalar field from the same key on an object. Here the
+        # position is no longer visible, so both sets are accepted rather than
+        # re-deciding it from an annotation and disagreeing with the walker.
+        _reject_unknown_extensions(extra, field_path, scope="field_or_model")
         extensions: Dict[str, Any] = {}
 
         if "x-aws-stickler-comparator" in extra:

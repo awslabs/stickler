@@ -7,7 +7,7 @@ JSON Schema documents and use them for evaluation.
 Key Features:
 - Create models from JSON Schema (Draft 7 compatible)
 - Support for nested objects and arrays
-- Custom comparison behavior via x-stickler extensions
+- Custom comparison behavior via x-aws-stickler extensions
 - Full evaluation with confusion matrices and metrics
 """
 
@@ -156,7 +156,7 @@ def nested_json_schema_example():
 
 
 def custom_extensions_example():
-    """Example using x-stickler extensions for custom comparison behavior."""
+    """Example using x-aws-stickler extensions for custom comparison behavior."""
     print("=" * 80)
     print("CUSTOM EXTENSIONS EXAMPLE")
     print("=" * 80)
@@ -331,7 +331,7 @@ def real_world_api_schema_example():
 
 
 def advanced_extensions_and_refs_example():
-    """Example showcasing comprehensive x-stickler extensions with $ref usage."""
+    """Example showcasing comprehensive x-aws-stickler extensions with $ref usage."""
     print("=" * 80)
     print("ADVANCED EXTENSIONS AND $REF EXAMPLE")
     print("=" * 80)
@@ -421,7 +421,7 @@ def advanced_extensions_and_refs_example():
     print(f"Created model class: {ECommerceOrder.__name__}")
     print(f"Model match threshold: {ECommerceOrder.match_threshold}")
     
-    # Create test data demonstrating the impact of different x-stickler configurations
+    # Create test data demonstrating the impact of different x-aws-stickler configurations
     ground_truth_json = {
         "order_id": "ORD-2024-001",
         "customer": {
@@ -443,7 +443,7 @@ def advanced_extensions_and_refs_example():
         ]
     }
     
-    # Prediction with various differences to showcase x-stickler behavior
+    # Prediction with various differences to showcase x-aws-stickler behavior
     prediction_json = {
         "order_id": "ORD-2024-001",  # Exact match (ExactComparator)
         "customer": {
@@ -513,7 +513,7 @@ Key Takeaways:
 1. Use StructuredModel.from_json_schema() to create models from JSON Schema
 2. Supports nested objects, arrays, and all JSON Schema primitive types
 3. Use x-aws-stickler-* extensions for custom comparison behavior:
-   - x-aws-stickler-comparator: Choose comparison algorithm (fuzzy, exact, etc.)
+   - x-aws-stickler-comparator: comparator class name, e.g. FuzzyComparator
    - x-aws-stickler-threshold: Set matching threshold (0.0 to 1.0)
    - x-aws-stickler-weight: Adjust field importance in scoring
 4. Full compatibility with compare_with() for evaluation and metrics

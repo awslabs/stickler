@@ -342,11 +342,30 @@ Each release links to full notes on the
   in a file they can edit, and the alternative is a model that builds and reports
   a wrong number.
 
+  The check runs over the raw schema, so it reaches every position an extension
+  can be written in, not only the ones that produce a field: the root object,
+  `items`, and a list-form `["object", "null"]` node were all silently dropping
+  keys while the same typo one level down raised.
+
+  Position is part of validity, because the two key sets are not interchangeable.
+  `x-aws-stickler-match-threshold` and `-model-name` are read on the root object
+  and on any object-typed property, and dropped on a scalar field; the field keys
+  are the other way round. Accepting both everywhere let the suggester answer a
+  field-position typo of `-match-threshold` with "did you mean
+  `x-aws-stickler-match-threshold`", where taking that advice imported cleanly
+  and did nothing. A valid key in a position that does not read it now says so
+  and names the position it belongs in.
+
   This also corrects two places that taught the wrong prefix: the
   `structured_object_evaluator/README.md` extension section and
   `examples/scripts/json_schema_demo.py`. Both used `x-stickler-*` and lowercase
   comparator names (`"fuzzy"`, `"exact"`), neither of which works, so the
-  README's own example applied none of its settings. It now applies all of them.
+  README's own example applied none of its settings. It now applies all of them,
+  which a test asserts verbatim. Correcting the prefix without correcting the
+  values would have turned a double no-op into a hard error for anyone copying
+  the page, so both moved together. The README now also separates the field-level
+  keys from the object-level ones and gives the real `clip-under-threshold`
+  default, which it had recorded as `false` rather than `true`.
   ([#210](https://github.com/awslabs/stickler/issues/210))
 
 - `overall_score` and the confusion matrix no longer disagree about a field that

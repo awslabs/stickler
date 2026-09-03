@@ -16,6 +16,8 @@ mistake is in a file they can edit.
 See https://github.com/awslabs/stickler/issues/210
 """
 
+import typing
+
 import pytest
 
 from stickler import StructuredModel
@@ -150,3 +152,284 @@ class TestNestedFields:
                 }
             )
         assert "x-aws-stickler-thresold" in str(exc.value)
+
+
+def _unwrap(annotation):
+    """The class behind `Optional[X]` / `List[X]` / `Optional[List[X]]`."""
+    while True:
+        args = [a for a in typing.get_args(annotation) if a is not type(None)]
+        if not args:
+            return annotation
+        annotation = args[0]
+
+
+class TestTheCheckReachesEveryPosition:
+    """A field-level check only reached positions that produce a field.
+
+    The root object, `items`, and a list-form `["object", "null"]` node all
+    carried extension keys that were dropped in silence, while the same typo one
+    level down raised. The guarantee is worth little if it has holes, so the walk
+    over the raw schema is what enforces it now.
+    """
+
+    def test_a_typo_on_the_root_object_raises(self):
+        with pytest.raises(ValueError, match="x-aws-stickler-match-treshold"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "title": "T",
+                    "x-aws-stickler-match-treshold": 0.95,
+                    "properties": {"a": {"type": "string"}},
+                }
+            )
+
+    def test_a_model_name_typo_on_the_root_raises(self):
+        with pytest.raises(ValueError, match="x-aws-stickler-model-nmae"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "title": "T",
+                    "x-aws-stickler-model-nmae": "Foo",
+                    "properties": {"a": {"type": "string"}},
+                }
+            )
+
+    def test_the_wrong_prefix_on_the_root_raises(self):
+        with pytest.raises(ValueError, match="x-stickler-match-threshold"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "title": "T",
+                    "x-stickler-match-threshold": 0.9,
+                    "properties": {"a": {"type": "string"}},
+                }
+            )
+
+    def test_a_typo_on_array_items_raises(self):
+        with pytest.raises(ValueError, match="x-aws-stickler-thresold"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "title": "T",
+                    "properties": {
+                        "tags": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "x-aws-stickler-thresold": 0.9,
+                            },
+                        }
+                    },
+                }
+            )
+
+    @pytest.mark.parametrize("declared", (["object", "null"], ["array", "null"]))
+    def test_the_wrong_prefix_on_a_list_form_type_raises(self, declared):
+        """The check runs before list-form types are rewritten to `anyOf`.
+
+        Running after normalization was how these escaped: the node the author
+        wrote no longer existed in the shape being inspected.
+        """
+        node = {"type": declared, "x-stickler-comparator": "fuzzy"}
+        if "object" in declared:
+            node["properties"] = {"z": {"type": "string"}}
+        else:
+            node["items"] = {"type": "string"}
+
+        with pytest.raises(ValueError, match="x-stickler-comparator"):
+            StructuredModel.from_json_schema(
+                {"type": "object", "title": "T", "properties": {"o": node}}
+            )
+
+
+class TestPositionIsPartOfValidity:
+    """A valid key in a position that does not read it is still a silent drop.
+
+    Allowlisting both key sets everywhere made the check pass on keys that do
+    nothing, and worse, let the suggester answer a field-position typo of
+    `-match-threshold` with "did you mean `x-aws-stickler-match-threshold`" when
+    applying that advice imported cleanly and changed nothing.
+    """
+
+    @pytest.mark.parametrize(
+        "key, value",
+        (
+            ("x-aws-stickler-match-threshold", 0.9),
+            ("x-aws-stickler-model-name", "Foo"),
+        ),
+    )
+    def test_an_object_level_key_on_a_scalar_field_raises(self, key, value):
+        with pytest.raises(ValueError) as exc:
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "title": "T",
+                    "properties": {"a": {"type": "string", key: value}},
+                }
+            )
+        message = str(exc.value)
+        assert key in message
+        assert "belongs on the object" in message
+
+    def test_the_suggester_never_routes_to_a_key_that_is_not_read_here(self):
+        """The failure this closes: a suggestion that reintroduces the bug."""
+        with pytest.raises(ValueError) as exc:
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "title": "T",
+                    "properties": {
+                        "a": {"type": "string", "x-aws-stickler-match-treshold": 0.9}
+                    },
+                }
+            )
+        message = str(exc.value)
+        assert "x-aws-stickler-match-threshold" not in message.split("Valid keys")[0]
+
+
+class TestObjectPropertiesReadBothKeySets:
+    """An object-typed property is a field of its parent AND its own class.
+
+    Both key sets are honoured there, so scoping the check must not turn a
+    working schema into an error. These pin the values, not just that it imports.
+    """
+
+    @staticmethod
+    def _object_property(**extensions):
+        return {
+            "type": "object",
+            "title": "T",
+            "properties": {
+                "inner": {
+                    "type": "object",
+                    "properties": {"b": {"type": "string"}},
+                    **extensions,
+                }
+            },
+        }
+
+    def test_match_threshold_on_a_nested_object_is_honoured(self):
+        model = StructuredModel.from_json_schema(
+            self._object_property(**{"x-aws-stickler-match-threshold": 0.93})
+        )
+        assert _unwrap(model.model_fields["inner"].annotation).match_threshold == 0.93
+
+    def test_model_name_on_a_nested_object_is_honoured(self):
+        model = StructuredModel.from_json_schema(
+            self._object_property(**{"x-aws-stickler-model-name": "Renamed"})
+        )
+        assert _unwrap(model.model_fields["inner"].annotation).__name__ == "Renamed"
+
+    def test_weight_on_a_nested_object_is_honoured(self):
+        model = StructuredModel.from_json_schema(
+            self._object_property(**{"x-aws-stickler-weight": 3.0})
+        )
+        assert model._get_comparison_info("inner").weight == 3.0
+
+    def test_match_threshold_on_array_items_is_honoured(self):
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "title": "T",
+                "properties": {
+                    "rows": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "x-aws-stickler-match-threshold": 0.91,
+                            "properties": {"b": {"type": "string"}},
+                        },
+                    }
+                },
+            }
+        )
+        assert _unwrap(model.model_fields["rows"].annotation).match_threshold == 0.91
+
+    def test_the_root_still_reads_both_of_its_own_keys(self):
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "title": "T",
+                "x-aws-stickler-model-name": "Invoice",
+                "x-aws-stickler-match-threshold": 0.9,
+                "properties": {"a": {"type": "string"}},
+            }
+        )
+        assert model.__name__ == "Invoice"
+        assert model.match_threshold == 0.9
+
+
+class TestTheDocumentedValuesWork:
+    """The README's own values must import, since copying them is the point.
+
+    Correcting the prefix without correcting the values would have turned a
+    double no-op into a hard error for anyone following the page.
+    """
+
+    @pytest.mark.parametrize(
+        "comparator_name",
+        (
+            "ExactComparator",
+            "FuzzyComparator",
+            "LevenshteinComparator",
+        ),
+    )
+    def test_each_documented_comparator_class_name_is_accepted(self, comparator_name):
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "title": "T",
+                "properties": {
+                    "a": {
+                        "type": "string",
+                        "x-aws-stickler-comparator": comparator_name,
+                    }
+                },
+            }
+        )
+        installed = model._get_comparison_info("a").comparator
+        assert type(installed).__name__ == comparator_name
+
+    @pytest.mark.parametrize("alias", ("exact", "fuzzy", "levenshtein", "semantic"))
+    def test_the_lowercase_aliases_the_readme_used_to_list_still_raise(self, alias):
+        """Recorded so the corrected README cannot quietly regress.
+
+        These were documented for a prefix that was itself wrong, so the example
+        applied none of its settings and raised nothing. Now the prefix is right,
+        a lowercase value is a hard error, which is why both halves had to move
+        together.
+        """
+        with pytest.raises(ValueError, match="Invalid x-aws-stickler-comparator"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "title": "T",
+                    "properties": {
+                        "a": {"type": "string", "x-aws-stickler-comparator": alias}
+                    },
+                }
+            )
+
+    def test_the_readme_example_applies_every_setting_it_documents(self):
+        """Verbatim from `structured_object_evaluator/README.md`."""
+        document_schema = {
+            "type": "object",
+            "title": "Document",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "x-aws-stickler-comparator": "FuzzyComparator",
+                    "x-aws-stickler-threshold": 0.8,
+                },
+                "priority": {"type": "integer", "x-aws-stickler-weight": 2.0},
+                "tags": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["title", "priority"],
+        }
+
+        model = StructuredModel.from_json_schema(document_schema)
+
+        title = model._get_comparison_info("title")
+        assert type(title.comparator).__name__ == "FuzzyComparator"
+        assert title.threshold == 0.8
+        assert model._get_comparison_info("priority").weight == 2.0
