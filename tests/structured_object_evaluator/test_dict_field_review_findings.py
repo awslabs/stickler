@@ -8,7 +8,7 @@ not because they share a symptom.
 from __future__ import annotations
 
 import warnings
-from typing import Any, Dict, Mapping, MutableMapping
+from typing import Any, Dict, List, Mapping, MutableMapping
 
 import pytest
 from pydantic import BaseModel
@@ -149,3 +149,69 @@ class TestSharedComparableFieldDoesNotLeak:
         assert type(WithDict._get_comparison_info("v").comparator).__name__ == "ANLSStarComparator"
         assert WithString._get_comparison_info("v").clip_under_threshold is True
         assert WithDict._get_comparison_info("v").clip_under_threshold is False
+
+
+class TestOneAnnotationOneAnswer:
+    """Whether a field carries `ComparableField(...)` must not change WHICH
+    comparator it gets. Two regressions below were introduced by fixing the
+    mapping routing in one branch and not the other, and neither was caught by
+    the suite."""
+
+    def test_a_list_of_mappings_agrees_with_and_without_comparable_field(self):
+        class Declared(StructuredModel):
+            rows: List[Dict[str, str]] = ComparableField(threshold=0.7)
+
+        class Bare(StructuredModel):
+            rows: List[Dict[str, str]] = None
+
+        scores = []
+        for model in (Declared, Bare):
+            assert type(model._get_comparison_info("rows").comparator).__name__ == (
+                "ANLSStarComparator"
+            )
+            scores.append(
+                model(rows=[{"vendor": "Acme Corporation"}]).compare_field_raw(
+                    "rows", [{"vendor": "Acme Corp"}]
+                )
+            )
+        assert scores[0] == pytest.approx(scores[1]), (
+            "declaring ComparableField must not switch the comparator; "
+            "Levenshtein scored 0.7667 over a canonical JSON blob here"
+        )
+
+    def test_naming_the_comparator_does_not_re_enable_clipping(self):
+        """The docs recommend naming ANLS* to set `leaf_threshold`, and that form
+        used to keep clip=True and zero the partial credit it exists for."""
+        from stickler import ANLSStarComparator
+
+        gt = {"vendor": "Acme Corporation", "terms": "Net 30", "po": "PO-88231"}
+        pred = {**gt, "vendor": "Acme Corp"}
+
+        class Unnamed(StructuredModel):
+            v: Dict[str, Any] = ComparableField(threshold=0.9)
+
+        class Named(StructuredModel):
+            v: Dict[str, Any] = ComparableField(
+                comparator=ANLSStarComparator(), threshold=0.9
+            )
+
+        for model in (Unnamed, Named):
+            assert model._get_comparison_info("v").clip_under_threshold is False
+            score = model(v=gt).compare_with(model(v=pred))["field_scores"]["v"]
+            assert score > 0.0, "partial credit must survive a below-threshold score"
+
+    def test_an_explicit_clip_choice_still_wins_on_a_mapping(self):
+        class M(StructuredModel):
+            v: Dict[str, Any] = ComparableField(clip_under_threshold=True)
+
+        assert M._get_comparison_info("v").clip_under_threshold is True
+
+
+class TestExactComparatorOnlyCanonicalisesTwoMappings:
+    def test_a_mapping_is_not_equal_to_its_json_string_spelling(self):
+        """Canonicalising a lone mapping made `compare()` say 1.0 while
+        `compare_with()` called the same pair a false discovery."""
+        assert ExactComparator().compare({"a": 1}, '{"a": 1}') == 0.0
+
+    def test_two_mappings_still_ignore_key_order(self):
+        assert ExactComparator().compare({"a": 1, "b": 2}, {"b": 2, "a": 1}) == 1.0

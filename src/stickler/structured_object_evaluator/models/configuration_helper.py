@@ -341,7 +341,16 @@ class ConfigurationHelper:
                 # would end a corpus run on document N after succeeding on N-1.
                 if not getattr(
                     json_func, "_comparator_explicit", True
-                ) and ConfigurationHelper.is_dict_field_type(field_info):
+                ) and (
+                    ConfigurationHelper.is_dict_field_type(field_info)
+                    # A list of mappings too. Testing only the field's own
+                    # annotation left `List[Dict[str, str]] = ComparableField(...)`
+                    # on Levenshtein, scored as edit distance over a canonical JSON
+                    # blob at 0.7667 (a match), while the SAME annotation with no
+                    # ComparableField got ANLS* at 0.5625. One annotation, two
+                    # answers, which is the divergence this work removes.
+                    or ConfigurationHelper._is_list_of_mappings(field_info)
+                ):
                     comparator = ANLSStarComparator()
                     clip_under_threshold = False
 

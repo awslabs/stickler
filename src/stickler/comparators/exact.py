@@ -90,7 +90,11 @@ class ExactComparator(BaseComparator):
         # whenever their keys happened to be ordered differently -- and 1.0 when
         # they happened to agree, which is worse than a consistent answer because
         # it depends on how the JSON arrived.
-        if isinstance(str1, abc_Mapping) or isinstance(str2, abc_Mapping):
+        # BOTH sides, not either. Canonicalising a lone mapping made a dict equal
+        # to its own JSON-string spelling, so `compare()` said 1.0 while
+        # `compare_with()` classified the same pair as a false discovery (its dict
+        # branch requires two dicts). A mapping and a string are different shapes.
+        if isinstance(str1, abc_Mapping) and isinstance(str2, abc_Mapping):
             str1 = canonicalize_json_sorted(str1)
             str2 = canonicalize_json_sorted(str2)
 

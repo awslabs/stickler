@@ -221,6 +221,32 @@ def _annotation_is_list(annotation: Any) -> bool:
     return any(_annotation_is_list(arg) for arg in union_args(annotation))
 
 
+def _amend_clip_default(field_info: Any, extra: Any) -> None:
+    """Turn clipping off for a mapping field, on a COPY of the metadata.
+
+    Split out because it must run whether or not the comparator was named, while
+    the comparator substitution must not run when it was. Copies for the same
+    reason the substitution does: one `ComparableField(...)` can be bound to
+    several fields and pydantic does not clone the closure.
+    """
+    metadata = getattr(extra, "_comparison_metadata", None)
+    new_metadata = dict(metadata) if isinstance(metadata, dict) else None
+
+    def amended(schema: Dict[str, Any], _metadata=new_metadata, _original=extra) -> None:
+        _original(schema)
+        if _metadata is not None:
+            schema["x-comparison"] = _metadata
+
+    for attribute in dir(extra):
+        if attribute.startswith("_") and not attribute.startswith("__"):
+            setattr(amended, attribute, getattr(extra, attribute))
+    amended._clip_under_threshold = False
+    if new_metadata is not None:
+        new_metadata["clip_under_threshold"] = False
+        amended._comparison_metadata = new_metadata
+    field_info.json_schema_extra = amended
+
+
 class StructuredModel(BaseModel):
     """Base class for models with structured comparison capabilities.
 
@@ -426,6 +452,18 @@ class StructuredModel(BaseModel):
                 # A bare annotation with no ComparableField metadata to amend.
                 # ConfigurationHelper supplies the default for those instead.
                 continue
+            # The clip default follows the ANNOTATION, so it applies even when the
+            # caller named the comparator. Tying it to the substitution meant
+            # `ComparableField(comparator=ANLSStarComparator(leaf_threshold=...))`
+            # -- the form the docs recommend for setting the leaf cutoff -- kept
+            # clipping on and zeroed exactly the partial credit ANLS* produces.
+            # A mapping is a container: a partly-correct one keeps its score,
+            # the same policy nested objects and lists use.
+            if not getattr(extra, "_clip_explicit", False) and getattr(
+                extra, "_clip_under_threshold", True
+            ):
+                _amend_clip_default(field_default, extra)
+
             if getattr(extra, "_comparator_explicit", True):
                 continue
 

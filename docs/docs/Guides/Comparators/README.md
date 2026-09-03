@@ -227,7 +227,7 @@ So `leaf_threshold` cannot separate them: a cutoff high enough to reject the IBA
 
 **Cost:** structural scoring is far more expensive than the equality it replaces. A 200-key dict takes ~3.25 ms per comparison against ~0.0001 ms for `ExactComparator` over a canonical string. Inside a `List[Model]` the Hungarian matrix makes it quadratic: 20 line items each holding a 30-key dict is ~220 ms for **one** document. If that matters, declare a nested `StructuredModel` for the keys you actually score.
 
-**If the annotation does not say "mapping"** (for example `Any`, or `Union[str, Dict[str, str]]`), nothing can install this comparator, because the shape is only known per document. Such a pair is counted as a false discovery and warns once, naming the remedies, rather than raising partway through a corpus.
+**If the annotation does not say "mapping"** (for example `Any`, or `Union[str, Dict[str, str]]`), nothing can install this comparator, because the shape is only known per document. What happens then depends on the path. Under `stickler.evaluate()` the value is canonicalized to a JSON string and compared with `ExactComparator`, so two identical mappings score 1.0 and any difference scores 0.0, with no warning. On a hand-declared `StructuredModel` the pair is counted as a false discovery and warns once, naming the remedies, rather than raising partway through a corpus.
 
 Attribution: ANLS\* comes from the [`anls_star`](https://pypi.org/project/anls_star/) project (Apache-2.0); see the repository `NOTICE`.
 

@@ -6,9 +6,6 @@ from stickler.comparators.base import BaseComparator
 
 from .base import ANLSTree
 
-# The canonical ISO-8601 date and datetime forms, which is what
-# `to_jsonable_python` produces for a `date`/`datetime` before this tree sees it.
-
 
 class ANLSLeaf(ANLSTree):
     """Leaf node for primitive values in the ANLS tree.
