@@ -115,7 +115,7 @@ Default comparators are assigned by JSON Schema type when no extension is specif
 |------------------|-------------------|-------------------|
 | `string` | LevenshteinComparator | 0.5 |
 | `number` / `integer` | NumericComparator | 0.5 |
-| `boolean` | ExactComparator | 1.0 |
+| `boolean` | ExactComparator | 0.5 |
 | `array` (objects) | Hungarian matching | 0.7 |
 | `object` | Recursive comparison | 0.7 |
 

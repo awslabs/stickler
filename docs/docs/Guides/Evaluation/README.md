@@ -187,9 +187,9 @@ Add these extensions to any property in your JSON Schema to control comparison b
 | Extension | Type | Default | Purpose |
 |-----------|------|---------|---------|
 | `x-aws-stickler-comparator` | string | Type-dependent | Comparison algorithm (e.g., `"ExactComparator"`, `"LevenshteinComparator"`) |
-| `x-aws-stickler-threshold` | number (0.0--1.0) | 0.5 or 1.0 | Match classification cutoff |
+| `x-aws-stickler-threshold` | number (0.0--1.0) | 0.5, for every primitive type | Match classification cutoff |
 | `x-aws-stickler-weight` | number (> 0.0) | 1.0 | Field importance multiplier |
-| `x-aws-stickler-clip-under-threshold` | boolean | `false` | Zero out scores below threshold |
+| `x-aws-stickler-clip-under-threshold` | boolean | `true` | Zero out scores below threshold |
 | `x-aws-stickler-model-name` | string | `"DynamicModel"` | Name of the generated Python class (root level) |
 | `x-aws-stickler-match-threshold` | number (0.0--1.0) | 0.7 | Model-level matching threshold for Hungarian algorithm (root level) |
 
@@ -209,13 +209,13 @@ Add these extensions to any property in your JSON Schema to control comparison b
       "x-aws-stickler-clip-under-threshold": true
     },
     "customer_name": {
-      "type": "string",
+      "type": ["string", "null"],
       "x-aws-stickler-comparator": "LevenshteinComparator",
       "x-aws-stickler-threshold": 0.8,
       "x-aws-stickler-weight": 1.5
     },
     "total_amount": {
-      "type": "number",
+      "type": ["number", "null"],
       "x-aws-stickler-comparator": "NumericComparator",
       "x-aws-stickler-threshold": 0.95,
       "x-aws-stickler-weight": 2.5
@@ -224,6 +224,8 @@ Add these extensions to any property in your JSON Schema to control comparison b
   "required": ["invoice_id", "customer_name", "total_amount"]
 }
 ```
+
+The two fields that a document may not show are typed `["string", "null"]` and `["number", "null"]`. A field listed in `required` and typed `"string"` alone raises `ValidationError` when the value is genuinely `None`, so a schema that omits `"null"` fails on exactly the documents that test absence handling. `invoice_id` keeps its bare `"string"`: an invoice without an identifier is a broken record, not an absent field.
 
 ### Loading a Schema
 
