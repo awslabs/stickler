@@ -129,6 +129,48 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **Breaking:** `HungarianMatcher.calculate_metrics` no longer reports a paired
+  item as missing. It derived `fn` and `fp` as `len(list) - tp`, so a pair the
+  algorithm produced, and that the method returns inside `matched_pairs`, was
+  also counted as a false negative when its score fell below `match_threshold`.
+  The same pair was reported as matched and as missing at once, which fixes
+  [#231](https://github.com/awslabs/stickler/issues/231).
+
+  The assignment now decides what is paired and the threshold only splits the
+  paired items into `tp` and `fd`. Two keys join the returned dict: `fd` counts
+  pairs below the threshold and `fa` counts predictions with no partner. `fn`
+  keeps its name and counts only ground truth items with no partner.
+
+  **What moves:** `fn` is lower by `fd` for any input with a pair below the
+  threshold. If you read `fn` from this method directly, the old value is
+  `fn + fd`:
+
+  ```python
+  metrics = matcher.calculate_metrics(gt, pred)
+  old_fn = metrics["fn"] + metrics["fd"]
+  ```
+
+  **What does not move:** `fp` is still the rollup `fd + fa`, which still equals
+  the number of predictions that are not true positives, and `precision`,
+  `recall`, `f1` and `matched_pairs` are unchanged for every input. No evaluator
+  score changes either, because both internal callers
+  (`HungarianHelper.get_complete_matching_info` and
+  `ComparisonHelper.compare_unordered_lists`) read only `matched_pairs` and
+  classify the scores themselves. Both are on the traditional path; ANLS Star
+  matches lists with its own `munkres` call in
+  `structured_object_evaluator/trees/list_tree.py` and is
+  untouched. The counts now agree with what
+  `ComparisonHelper.unordered_list_metrics` already produced and with the rule
+  that [Hungarian Matching](https://awslabs.github.io/stickler/Advanced/hungarian-matching/)
+  documents.
+
+- The worked list example in
+  [Classification Logic](https://awslabs.github.io/stickler/Advanced/classification-logic/)
+  reported `TP=2, FA=2, FN=1, FD=0` for a three item ground truth against a four
+  item prediction. The assignment pairs three of them, so the correct counts are
+  `TP=2, FD=1, FA=1, FN=0`. The `FP` total was right, which is why the error went
+  unnoticed.
+
 - `can_score_mapping` is a denylist, not an allowlist. It gated on a new
   `handles_mappings` attribute, which no comparator outside this repo could carry,
   so a user who wrote a mapping comparator and asked for it by name had their
