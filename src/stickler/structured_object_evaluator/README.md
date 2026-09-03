@@ -280,7 +280,7 @@ model (`"email"`, `"hostname"`, `"duration"`) stays `str`, so the field keeps
 - JSON Schema Draft 7 compatibility
 
 See `examples/scripts/json_schema_demo.py` for complete examples, and the
-[extension reference](../../../README.md#json-schema-extensions-x-aws-stickler-complete-reference)
+[extension reference](../../../README.md#json-schema-extensions-x-aws-stickler--complete-reference)
 in the top-level README for per-extension detail.
 
 ## Field Comparison Configuration
@@ -311,6 +311,8 @@ Available comparators:
 - `SemanticComparator`: Semantic similarity using embeddings
 - `StructuredModelComparator`: Recursive comparison of a nested model
 - `BBoxIoUComparator`: Bounding-box overlap by intersection over union
+- `BERTComparator`, `LLMComparator`: Contextual and LLM-judged similarity; need the `[bert]` and
+  `[llm]` extras
 
 ## API Reference
 

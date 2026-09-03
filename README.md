@@ -43,7 +43,9 @@ print(result.overall_score, result.f1, result.field_scores)
 print(result.explain())   # per-field: comparator, threshold, weight, and why
 ```
 
-See the [Ultra Quick Start](https://awslabs.github.io/stickler/Getting-Started/ultra-quick-start/) for the full walkthrough, or read on for the fully-configured API.
+See the [Ultra Quick Start](https://awslabs.github.io/stickler/Getting-Started/ultra-quick-start/) for the full walkthrough.
+
+This is one of two independent configuration paths, not the first rung of one ladder. It takes a live Pydantic class; the [JSON Schema path](#json-schema-extensions-x-aws-stickler--complete-reference) below takes a schema dict, infers from type alone, and uses different thresholds. Neither accepts the other's input — `stickler.evaluate` cannot take a JSON Schema. [Choosing a Configuration Path](https://awslabs.github.io/stickler/Getting-Started/choosing-a-configuration-path/) compares them field by field and shows how far the two scores drift on the same data.
 
 ## Get Started in 30 Seconds
 
@@ -267,9 +269,11 @@ Add these to any property in your JSON Schema to control comparison behavior:
 
 **Type:** `string`  
 **Required:** No  
-**Default:** Type-dependent (see table below)
+**Default:** Type-dependent (see table below) — a coarse fallback, not inference
 
 Specifies the comparison algorithm for this field.
+
+Omitting it is safe but blunt. The fallback reads the JSON type and nothing else: field names and `format` are ignored, so every `"type": "string"` becomes `LevenshteinComparator` at threshold `0.5` whether it holds an invoice ID, a person's name, or a paragraph of notes. This is a different mechanism from the inference behind `stickler.evaluate`, which reads field names and Python types and would give those three fields three different comparators. See [Choosing a Configuration Path](https://awslabs.github.io/stickler/Getting-Started/choosing-a-configuration-path/) before relying on either default.
 
 **Available Comparators:**
 
@@ -280,8 +284,8 @@ Specifies the comparison algorithm for this field.
 | `"NumericComparator"` | Prices, quantities, measurements | Compares numbers with configurable tolerance |
 | `"FuzzyComparator"` | Flexible text, descriptions | Token-based fuzzy matching (order-independent) |
 | `"SemanticComparator"` | Semantic similarity | Embedding-based comparison for meaning |
-| `"BertComparator"` | Deep semantic understanding | BERT model for contextual similarity |
-| `"LLMComparator"` | Complex semantic evaluation | LLM-powered comparison with reasoning |
+| `"BERTComparator"` | Deep semantic understanding | BERT model for contextual similarity. Needs the `[bert]` extra |
+| `"LLMComparator"` | Complex semantic evaluation | LLM-powered comparison with reasoning. Needs the `[llm]` extra |
 | `"BBoxIoUComparator"` | Bounding boxes, spatial localization | Intersection over Union (IoU) between two boxes; accepts `[[x1,y1],[x2,y2]]` or `[x1,y1,x2,y2]`. See [Bounding Box mAP Metrics](docs/docs/Advanced/bbox-map-metrics.md) for end-to-end mAP scoring |
 
 **Default Comparators by JSON Schema Type:**
@@ -291,7 +295,7 @@ Specifies the comparison algorithm for this field.
 | `"string"` | `LevenshteinComparator` | `0.5` | Handles typos and minor variations |
 | `"number"` | `NumericComparator` | `0.5` | Tolerates small numeric differences |
 | `"integer"` | `NumericComparator` | `0.5` | Tolerates small numeric differences |
-| `"boolean"` | `ExactComparator` | `1.0` | Must be exactly true or false |
+| `"boolean"` | `ExactComparator` | `0.5` | Must be exactly true or false (Exact scores only 0.0 or 1.0, so the threshold is immaterial) |
 | `"array"` (primitives) | Based on item type | Based on item type | Inherits from element type |
 | `"array"` (objects) | Hungarian matching | `0.7` | Optimal pairing of list elements |
 | `"object"` | Recursive comparison | `0.7` | Field-by-field nested comparison |
@@ -325,7 +329,7 @@ Specifies the comparison algorithm for this field.
 
 **Type:** `number` (0.0 to 1.0, inclusive)  
 **Required:** No  
-**Default:** `0.5` (or `1.0` for booleans)
+**Default:** `0.5`, for every type
 
 Minimum similarity score required for binary match classification.
 
@@ -442,9 +446,9 @@ Relative importance of this field in aggregate scoring and weighted averages.
 
 **Type:** `boolean`  
 **Required:** No  
-**Default:** `false`
+**Default:** `true`
 
-Controls whether similarity scores below threshold are clipped to 0.0.
+Controls whether similarity scores below threshold are clipped to 0.0. Clipping is **on** unless you turn it off, so a field scoring just under its threshold reports `0.0` rather than its raw similarity.
 
 **How Clipping Works:**
 - `true`: Scores below threshold are **set to 0.0** (hard cutoff)
