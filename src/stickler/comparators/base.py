@@ -22,12 +22,6 @@ class BaseComparator(ABC):
         """
         self.threshold = threshold
 
-    #: Whether this comparator can score a mapping. False for every comparator
-    #: that treats its inputs as scalars, which is all of them except ANLS*.
-    #: The dispatcher reads this to decide whether handing a dict to the
-    #: configured comparator is meaningful, rather than discovering it via a
-    #: TypeError partway through a corpus.
-    handles_mappings: bool = False
 
     def __init_subclass__(cls, **kwargs):
         """Keep comparators written against the pre-rename interface working.

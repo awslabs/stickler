@@ -6,19 +6,29 @@ JSON processing, and schema generation for StructuredModel instances.
 
 import inspect
 from collections.abc import Mapping as abc_Mapping
-from typing import TYPE_CHECKING, Any, Dict, get_args, get_origin
+from typing import TYPE_CHECKING, Any, Dict, List, get_args, get_origin
 
 from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.utils.deprecation import warn_once
 
-from .optional_annotation import is_union, union_args
+from .optional_annotation import is_union, union_args, unwrap_optional
 
 if TYPE_CHECKING:
     from stickler.structured_object_evaluator.models.comparison_info import (
         ComparableFieldConfig,
     )
 from stickler.comparators.structured import StructuredModelComparator
+
+# Comparators that must not be handed a mapping, by class name so an out-of-tree
+# comparator is never caught by it. Both entries are here on measured evidence:
+# Levenshtein raises, and Fuzzy ranks a changed value above a reordering.
+#
+# Deliberately a denylist. An allowlist would silently zero any mapping-capable
+# comparator written outside this repo, since it could not know to opt in.
+_COMPARATORS_THAT_CANNOT_SCORE_MAPPINGS = frozenset(
+    {"LevenshteinComparator", "FuzzyComparator"}
+)
 
 
 class ConfigurationHelper:
@@ -134,13 +144,29 @@ class ConfigurationHelper:
         ``compare_field_raw``), so this check lives in one place rather than
         being written twice and drifting apart.
 
-        Returns False for any scalar comparator, which is every comparator
-        except ANLS*. Callers report a false discovery in that case instead of
-        raising: the shape of a value can be data-dependent, so raising ends a
-        corpus run on document N after succeeding on N-1, and no test would
-        catch it. The warning carries the same information without stopping.
+        A DENYLIST, not an allowlist. Only the comparators known to be wrong on a
+        mapping are refused; everything else is trusted.
+
+        An allowlist keyed on an opt-in attribute looked safer and was worse: the
+        attribute is new, so no comparator outside this repo can carry it, and a
+        user who wrote a mapping comparator and asked for it BY NAME had their
+        score silently replaced with 0.0. An explicit ``comparator=`` is consent
+        by definition, and the gate was overriding it -- reproducing the very
+        symptom of #297 for a different population.
+
+        The two refused comparators are refused on evidence, not by category:
+
+            LevenshteinComparator  raises TypeError on a dict
+            FuzzyComparator        scores a CHANGED value (0.944) above a mere
+                                   key reordering (0.667), so its ordering is
+                                   not defensible as a metric
+
+        Callers report a false discovery rather than raising: the shape of a value
+        can be data-dependent, so raising ends a corpus run on document N after
+        succeeding on N-1, and no test would catch it. The warning carries the
+        same information without stopping.
         """
-        if getattr(comparator, "handles_mappings", False):
+        if comparator.__class__.__name__ not in _COMPARATORS_THAT_CANNOT_SCORE_MAPPINGS:
             return True
         warn_once(
             "dict-value-uncomparable",
@@ -198,6 +224,23 @@ class ConfigurationHelper:
         """Whether a field's annotation is a mapping. See is_mapping_annotation."""
         try:
             return ConfigurationHelper.is_mapping_annotation(field_info.annotation)
+        except Exception:
+            return False
+
+    @staticmethod
+    def _is_list_of_mappings(field_info) -> bool:
+        """Whether an annotation is a list whose ELEMENT is a mapping.
+
+        `List[Dict[str, str]]` is not itself a mapping, so `is_dict_field_type`
+        is correctly False for it, but its elements still need a comparator that
+        can score a mapping.
+        """
+        try:
+            annotation, _ = unwrap_optional(field_info.annotation)
+            if get_origin(annotation) not in (list, List):
+                return False
+            args = get_args(annotation)
+            return bool(args) and ConfigurationHelper.is_mapping_annotation(args[0])
         except Exception:
             return False
 
@@ -294,7 +337,8 @@ class ConfigurationHelper:
                 # Levenshtein REJECTS a mapping. Substitute the structural
                 # comparator, but only when the caller named nothing: an
                 # explicit choice is never overridden, so declaring Levenshtein
-                # on a dict still raises with a message naming the remedies.
+                # on a dict warns once and scores 0.0 rather than raising: raising
+                # would end a corpus run on document N after succeeding on N-1.
                 if not getattr(
                     json_func, "_comparator_explicit", True
                 ) and ConfigurationHelper.is_dict_field_type(field_info):
@@ -372,7 +416,15 @@ class ConfigurationHelper:
         # clip_under_threshold=False for the same reason nested objects use it:
         # a mostly-correct mapping should keep its partial score rather than
         # being zeroed by the field threshold. See #276 and #277.
-        if ConfigurationHelper.is_dict_field_type(field_info):
+        # `List[Dict[...]]` too, keyed on the ELEMENT type. Without this the
+        # element kept LevenshteinComparator, whose #281 fallback compares edit
+        # distance over a canonical JSON blob: `[{"vendor": "Acme Corporation"}]`
+        # against `[{"vendor": "Acme Corp"}]` scored 0.7667 and cleared a 0.7
+        # threshold, while the auto path scored the same annotation 0.0. Two
+        # answers for one annotation is the divergence this work removes.
+        if ConfigurationHelper.is_dict_field_type(
+            field_info
+        ) or ConfigurationHelper._is_list_of_mappings(field_info):
             from .comparison_info import ComparableFieldConfig
 
             # Same threshold source as the primitive fallback below: a dict

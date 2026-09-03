@@ -208,6 +208,19 @@ Below `leaf_threshold`, a leaf's similarity is discarded as noise. Two limits ar
 - **Do not set it to 0.0.** With no cutoff an unrelated string earns credit for incidental character overlap, so a wholly wrong value scores above zero.
 - **Raising it collapses distinct outcomes.** At 0.85, an abbreviated value and a missing key both score 0.6667 on a three-key mapping, so the two stop being distinguishable. 0.5 is the standard ANLS value and the default for that reason.
 
+**Leaves are compared as text.** Every value at the bottom of the structure goes through string similarity, whatever its Python type. That is canonical ANLS\*, which came from reading text out of images. What ANLS\* generalizes is the *structure*: aligning keys, normalizing over the union, and pairing list elements.
+
+The cost is that incidental character overlap on a long numeric or identifier value scores high, and scores **above** a genuine text near-miss:
+
+| comparison | score |
+|---|---|
+| wrong IBAN, one character off | 0.9545 |
+| date one day off | 0.9000 |
+| amount 2x wrong | 0.8571 |
+| `"Acme Corporation"` vs `"Acme Corp"` | 0.5625 |
+
+So `leaf_threshold` cannot separate them: a cutoff high enough to reject the IBAN also deletes the partial credit this comparator exists to award. **If a value's correctness matters, declare the field** so it gets a comparator chosen for its type. This comparator is for values whose shape you could not declare in the first place. Making leaves type-aware is tracked as future work, and has to reuse the zero-config inference table rather than invent a second one ([#239](https://github.com/awslabs/stickler/issues/239), [#49](https://github.com/awslabs/stickler/issues/49)).
+
 **How scores are normalized:** over the *union* of both key sets. A renamed key is therefore charged twice, once as missing from the prediction and once as unexpected in it, which is why a rename scores below simply dropping the key.
 
 **Zero-config routing:** `stickler.evaluate()` installs this automatically for any `dict` / `Dict[...]` / `Mapping[...]` field, at the default `leaf_threshold`, with `clip_under_threshold=False` so partial credit is not zeroed by the field threshold. There is no per-call knob for it on that path; a general per-field override for zero-config evaluation is tracked in [#263](https://github.com/awslabs/stickler/issues/263).

@@ -92,16 +92,42 @@ Each release links to full notes on the
 
 ### Fixed
 
-- ANLS* leaf comparison respects the type of what it compares. Edit distance is a
-  string metric, and applying it to every leaf meant character overlap between
-  two numbers read as partial correctness: `{"amount": 1000}` against
-  `{"amount": 9000}` scored `0.75`, cleared the `0.7` field threshold, and
-  reported a nine-fold error as a **true positive**. Dates were worse, since a
-  `date` reaches the leaf already serialised to ISO by this library, so
-  `2024-01-01` against `2024-11-11` scored `0.80`. A non-string leaf, and a pair
-  of ISO timestamps, are now right or wrong. Text keeps its partial credit, which
-  is the property ANLS* exists for. Upstream `anls_star` stringifies everything
-  and has the same flaw; the divergence is deliberate.
+- `can_score_mapping` is a denylist, not an allowlist. It gated on a new
+  `handles_mappings` attribute, which no comparator outside this repo could carry,
+  so a user who wrote a mapping comparator and asked for it by name had their
+  score silently replaced with `0.0`. An explicit `comparator=` is consent by
+  definition. Only `LevenshteinComparator` (raises on a dict) and
+  `FuzzyComparator` (scores a changed value `0.944`, above a mere key reordering
+  at `0.667`) are refused, both on measured evidence. `handles_mappings` is
+  removed entirely rather than documented, since nothing reads it now.
+
+- `List[Dict[...]]` is routed on the explicit path too, keyed on the element type.
+  The element kept `LevenshteinComparator`, whose canonical-JSON fallback compared
+  edit distance over a serialised blob: one path scored `0.7667` and cleared a
+  `0.7` threshold while the zero-config path scored the same annotation `0.0`. Both
+  now compute the same raw score.
+
+- Documented that ANLS* compares every leaf as text, and pinned it with tests.
+  This is canonical ANLS* and is deliberate: the metric generalises the
+  *structure* of a comparison (key alignment, union normalisation, Hungarian
+  pairing of list elements), not the leaf metric, which came from scene-text VQA
+  where every answer is a string.
+
+  The consequence is stated rather than patched. Incidental character overlap on
+  a long numeric or identifier value scores high, and scores above a genuine text
+  near-miss: a one-character IBAN error is `0.9545` and a 2x-wrong amount
+  `0.8571`, where `"Acme Corporation"` against `"Acme Corp"` is `0.5625`. No
+  `leaf_threshold` separates those, so a field whose values matter should be
+  declared, where it gets a comparator chosen for its type.
+
+  An earlier revision of this branch made leaves type-aware. That was reverted:
+  it amounted to a second inference table contradicting the zero-config one
+  (`amount: float` gets `NumericComparator@0.95` with tolerance when declared, and
+  would have got exact equality as a dict leaf), which is the divergence
+  [#239](https://github.com/awslabs/stickler/issues/239) exists to remove. A
+  future `infer_types=True` must delegate to `stickler.auto.inference` instead,
+  and needs [#49](https://github.com/awslabs/stickler/issues/49) settled first
+  because the two sides of a comparison can disagree about their type.
 
 - The `Mapping` family is routed on the zero-config path. `Mapping[str, str]`,
   `MutableMapping`, `OrderedDict`, `DefaultDict` and `Counter` fell through to

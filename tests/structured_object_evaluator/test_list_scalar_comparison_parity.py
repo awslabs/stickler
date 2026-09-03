@@ -20,8 +20,9 @@ already scored the same pair as a scalar; the third deliberately does not:
   ``str(dict)``, then raised once #278 let the comparator see the dict. It now
   scores sorted-key JSON, but only after the comparator has refused the raw
   dict. This one is deliberately **not** parity with the scalar spelling, which
-  still raises; ``test_dict_items_diverge_from_the_scalar_spelling`` pins that
-  gap so it cannot widen unnoticed.
+  warns once and scores 0.0 rather than raising;
+  ``test_dict_items_diverge_from_the_scalar_spelling`` pins that gap so it cannot
+  widen unnoticed.
 
 Most assertions here compare the list path to the scalar path rather than to a
 literal, because parity is the actual requirement: pinning two independent
@@ -225,8 +226,10 @@ class TestItemTypesReachTheComparatorIntact:
         """A dict item is compared as sorted-key JSON, so key order stops mattering.
 
         ``LevenshteinComparator`` raises for a dict, and the comparators that
-        accept one only do so by way of ``str(dict)``, which preserves insertion
+        accept one used to do so by way of ``str(dict)``, which preserves insertion
         order -- so key order was significant and the comparison meaningless.
+        ``ExactComparator`` now canonicalises first, so key order no longer
+        matters there.
         0.6.0 scored two dicts with identical content ``0.5556`` for exactly that
         reason.
 

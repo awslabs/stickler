@@ -74,13 +74,6 @@ class ExactComparator(BaseComparator):
             cfg["case_sensitive"] = False
         return cfg if cfg else None
 
-    #: Exact matching is meaningful on a mapping once the mapping is
-    #: canonicalised: identical content scores 1.0 regardless of key order, and
-    #: any difference scores 0.0. Distinct from Levenshtein and Fuzzy, which
-    #: cannot: edit distance over a serialised mapping makes key order
-    #: significant, and Fuzzy scores a changed VALUE (0.944) higher than a mere
-    #: reordering (0.667), which is not a defensible metric.
-    handles_mappings: bool = True
 
     def _compare(self, str1: Any, str2: Any) -> float:
         """Compare two values with exact string matching.

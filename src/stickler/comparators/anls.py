@@ -105,6 +105,43 @@ class ANLSStarComparator(BaseComparator):
             earns credit for incidental character overlap, so a wholly wrong
             value scores above zero.
 
+    Leaves are text:
+        Every leaf is compared as a string, whatever its Python type. That is
+        canonical ANLS*: the metric comes from scene-text VQA, where every answer
+        is text. What ANLS* generalises is the STRUCTURE -- aligning dict keys,
+        normalising over the union of both key sets, and pairing list elements by
+        Hungarian assignment.
+
+        The cost is real and is documented rather than patched. Incidental
+        character overlap on a long numeric or identifier value scores high, and
+        scores ABOVE a genuine text near-miss::
+
+            wrong IBAN, one character        0.9545
+            date one day off                 0.9000
+            amount 2x wrong                  0.8571
+            "Acme Corporation"/"Acme Corp"   0.5625
+
+        So ``leaf_threshold`` does not separate them: a cutoff high enough to
+        reject the IBAN also deletes the partial credit this comparator exists to
+        award. **Declare a field whose values you care about**, where it gets a
+        comparator chosen for its type. This comparator is for values whose shape
+        you could not declare.
+
+        A future ``infer_types=True`` would make leaves type-aware. It must
+        delegate to ``stickler.auto.inference`` rather than define its own rules:
+        a dict key is a field name, so ``{"amount": 1000}`` would route through
+        ``infer_field_config("amount", ...)`` and get the same
+        ``NumericComparator@0.95`` with ``relative_tolerance`` that a declared
+        ``amount: float`` gets. Hand-rolled leaf rules would be a second
+        inference table contradicting the first, which is the divergence
+        https://github.com/awslabs/stickler/issues/239 exists to remove.
+
+        The open question blocking it: inference needs a type, and the two sides
+        can disagree about theirs (ground truth ``Decimal("10.50")`` against a
+        prediction's string ``"10.50"``), so something must decide which side is
+        authoritative. That is coercion, unresolved in
+        https://github.com/awslabs/stickler/issues/49.
+
     Cost:
         Scoring a mapping structurally is not free, and it is dramatically more
         expensive than the whole-object equality it replaces. Measured on a
@@ -124,8 +161,6 @@ class ANLSStarComparator(BaseComparator):
 
     .. versionadded:: 1.0
     """
-
-    handles_mappings = True
 
     def __init__(
         self,

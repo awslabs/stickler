@@ -93,7 +93,11 @@ class TestPep563:
 
 
 class TestComparatorsThatCanScoreAMapping:
-    """The `handles_mappings` gate zeroed comparators that work fine on a dict."""
+    """The mapping gate zeroed comparators that work fine on a dict.
+
+    It was an allowlist keyed on an opt-in attribute no out-of-tree comparator
+    could carry; it is now a denylist of the two known to be wrong.
+    """
 
     @pytest.mark.parametrize("comparator", [ExactComparator, StructuredModelComparator])
     def test_an_explicitly_declared_capable_comparator_is_used(self, comparator):
