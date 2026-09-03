@@ -346,6 +346,34 @@ actually score.
 
 ---
 
+### BBoxIoUComparator
+
+Compares two bounding boxes using Intersection over Union (IoU) as the similarity score. Accepts both two-point (`[[x1, y1], [x2, y2]]`) and flat (`[x1, y1, x2, y2]`) formats. Coordinates are automatically normalized so that x1 <= x2 and y1 <= y2.
+
+**When to use:** Evaluating spatial localization accuracy for document fields, signature detection, logo identification, or any use case where you need to measure how well a predicted bounding box overlaps with ground truth.
+
+```python
+from stickler import StructuredModel, ComparableField
+from stickler.comparators import BBoxIoUComparator
+
+class DocumentField(StructuredModel):
+    bbox: list = ComparableField(
+        comparator=BBoxIoUComparator(threshold=0.5),
+        weight=1.0
+    )
+```
+
+**Key parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `threshold` | `0.5` | IoU threshold for binary match classification |
+
+!!! tip "Rich Value Pattern"
+    For end-to-end mAP evaluation with per-field breakdown, use the [Bounding Box mAP Metrics](../../Advanced/bbox-map-metrics.md) feature instead of using BBoxIoUComparator directly.
+
+---
+
 ### SemanticComparator
 
 Uses AWS Bedrock Titan embeddings to generate vector representations of text, then computes cosine similarity. Captures meaning rather than surface-level string similarity.

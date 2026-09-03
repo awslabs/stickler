@@ -90,6 +90,43 @@ Each release links to full notes on the
   adds only pandas; SciPy remains isolated to the `semantic` extra
   ([#216](https://github.com/awslabs/stickler/issues/216)).
 
+
+- **Breaking:** `EvalResult.matched` is now `overall_score >= match_threshold`,
+  defined directly rather than read from the removed `all_fields_matched` key.
+  This is the definition its docstring already claimed ("the `match_threshold`
+  knob's model-level verdict"), and it cannot disagree with the `overall_score`
+  sitting beside it. The two definitions do diverge: with one wrong field among
+  six the score is `0.8333`, so the old key read `False` where
+  `overall_score >= match_threshold` reads `True`.
+
+- `EvalResult.matched` now honours a `StructuredModel` subclass's own declared
+  `match_threshold` when the caller does not pass one to `evaluate` / `eval_for`.
+  It previously always compared against the facade default of `0.7`, so a model
+  declaring `match_threshold = 0.95` reported a `0.80` pair as matched. Passing
+  `match_threshold=` explicitly still overrides the declaration, and a class that
+  declares nothing is unaffected.
+
+- JSON Schema import now delegates standard types, local references, combiners,
+  and constraint parsing to `json-schema-to-pydantic`. Stickler retains a narrow
+  adapter for comparison metadata and nested `StructuredModel` creation. Parsed
+  types still choose comparison behavior, but schema constraints do not reject
+  imperfect predictions before scoring: malformed enum, date, and
+  constraint-violating values remain constructible and reach their comparator.
+
+  Unconfigured enum fields now use `ExactComparator` at threshold `1.0`, and
+  `date` / `date-time` formats use `DateComparator` at threshold `1.0`; both used
+  `LevenshteinComparator` at threshold `0.5` before this change, so default scores
+  can move for those fields.
+  This adds support for valid Draft 7 multi-type unions and multi-arm `allOf`,
+  `anyOf`, and `oneOf` schemas; recursive models and `patternProperties` remain
+  explicit unsupported boundaries ([#212](https://github.com/awslabs/stickler/issues/212)).
+
+- Confidence AUROC and document-splitting statistics now use NumPy
+  implementations with randomized scikit-learn and SciPy equivalence tests.
+  `scikit-learn` is no longer a core dependency, and the `docsplit` extra now
+  adds only pandas; SciPy remains isolated to the `semantic` extra
+  ([#216](https://github.com/awslabs/stickler/issues/216)).
+
 ### Fixed
 
 - `can_score_mapping` is a denylist, not an allowlist. It gated on a new
@@ -340,44 +377,6 @@ Each release links to full notes on the
   None of these objects contributes leaf-level metrics or report entries.
   Lower the element model's `match_threshold` to inspect leaf comparisons for
   weaker pairs.
-
-### Changed
-
-- **Breaking:** `EvalResult.matched` is now `overall_score >= match_threshold`,
-  defined directly rather than read from the removed `all_fields_matched` key.
-  This is the definition its docstring already claimed ("the `match_threshold`
-  knob's model-level verdict"), and it cannot disagree with the `overall_score`
-  sitting beside it. The two definitions do diverge: with one wrong field among
-  six the score is `0.8333`, so the old key read `False` where
-  `overall_score >= match_threshold` reads `True`.
-
-- `EvalResult.matched` now honours a `StructuredModel` subclass's own declared
-  `match_threshold` when the caller does not pass one to `evaluate` / `eval_for`.
-  It previously always compared against the facade default of `0.7`, so a model
-  declaring `match_threshold = 0.95` reported a `0.80` pair as matched. Passing
-  `match_threshold=` explicitly still overrides the declaration, and a class that
-  declares nothing is unaffected.
-
-- JSON Schema import now delegates standard types, local references, combiners,
-  and constraint parsing to `json-schema-to-pydantic`. Stickler retains a narrow
-  adapter for comparison metadata and nested `StructuredModel` creation. Parsed
-  types still choose comparison behavior, but schema constraints do not reject
-  imperfect predictions before scoring: malformed enum, date, and
-  constraint-violating values remain constructible and reach their comparator.
-
-  Unconfigured enum fields now use `ExactComparator` at threshold `1.0`, and
-  `date` / `date-time` formats use `DateComparator` at threshold `1.0`; both used
-  `LevenshteinComparator` at threshold `0.5` before this change, so default scores
-  can move for those fields.
-  This adds support for valid Draft 7 multi-type unions and multi-arm `allOf`,
-  `anyOf`, and `oneOf` schemas; recursive models and `patternProperties` remain
-  explicit unsupported boundaries ([#212](https://github.com/awslabs/stickler/issues/212)).
-
-- Confidence AUROC and document-splitting statistics now use NumPy
-  implementations with randomized scikit-learn and SciPy equivalence tests.
-  `scikit-learn` is no longer a core dependency, and the `docsplit` extra now
-  adds only pandas; SciPy remains isolated to the `semantic` extra
-  ([#216](https://github.com/awslabs/stickler/issues/216)).
 
 ### Performance
 
