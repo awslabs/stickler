@@ -22,6 +22,7 @@ class BaseComparator(ABC):
         """
         self.threshold = threshold
 
+
     def __init_subclass__(cls, **kwargs):
         """Keep comparators written against the pre-rename interface working.
 

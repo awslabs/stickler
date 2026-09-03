@@ -20,6 +20,7 @@ from typing import (
 from pydantic import BaseModel, Field
 from pydantic.json_schema import GenerateJsonSchema
 
+from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.base import BaseComparator
 from stickler.utils.deprecation import warn_once
 
@@ -220,6 +221,32 @@ def _annotation_is_list(annotation: Any) -> bool:
     return any(_annotation_is_list(arg) for arg in union_args(annotation))
 
 
+def _amend_clip_default(field_info: Any, extra: Any) -> None:
+    """Turn clipping off for a mapping field, on a COPY of the metadata.
+
+    Split out because it must run whether or not the comparator was named, while
+    the comparator substitution must not run when it was. Copies for the same
+    reason the substitution does: one `ComparableField(...)` can be bound to
+    several fields and pydantic does not clone the closure.
+    """
+    metadata = getattr(extra, "_comparison_metadata", None)
+    new_metadata = dict(metadata) if isinstance(metadata, dict) else None
+
+    def amended(schema: Dict[str, Any], _metadata=new_metadata, _original=extra) -> None:
+        _original(schema)
+        if _metadata is not None:
+            schema["x-comparison"] = _metadata
+
+    for attribute in dir(extra):
+        if attribute.startswith("_") and not attribute.startswith("__"):
+            setattr(amended, attribute, getattr(extra, attribute))
+    amended._clip_under_threshold = False
+    if new_metadata is not None:
+        new_metadata["clip_under_threshold"] = False
+        amended._comparison_metadata = new_metadata
+    field_info.json_schema_extra = amended
+
+
 class StructuredModel(BaseModel):
     """Base class for models with structured comparison capabilities.
 
@@ -379,12 +406,137 @@ class StructuredModel(BaseModel):
     # Default match threshold - can be overridden in subclasses
     match_threshold: ClassVar[float] = 0.7
 
+    @classmethod
+    def _install_mapping_comparators(cls) -> None:
+        """Give mapping-annotated fields a comparator that can score a mapping.
+
+        ``ComparableField`` resolves its comparator default before the field's
+        annotation exists, so it cannot know a field is a dict and installs the
+        type-blind ``LevenshteinComparator``, which REJECTS mappings. Deciding
+        here instead is the earliest point where the annotation and the field
+        metadata are both available.
+
+        Substituting here rather than at read time (in
+        ``ConfigurationHelper.get_comparison_info``) is what keeps the EXPORTED
+        configuration honest. The metadata dict mutated below is the same object
+        ``json_schema_extra`` writes as ``x-comparison``, so ``to_json_schema()``,
+        ``explain()``, the HTML reports and the comparison engine all read one
+        consistent answer. Substituting at read time made ``to_json_schema()``
+        report ``LevenshteinComparator`` for a field the engine scored with
+        ANLS*, and re-importing that schema installed Levenshtein *explicitly*,
+        which suppressed the substitution and made the round-tripped model raise
+        on a field the original scored fine.
+
+        Nothing the caller stated is overridden: an explicit ``comparator`` or an
+        explicit ``clip_under_threshold`` is left exactly as written.
+        """
+        # Resolve annotations before testing them. Under `from __future__ import
+        # annotations` (PEP 563) or with a quoted annotation, `__annotations__`
+        # holds the STRING "Dict[str, Any]", which is not a mapping annotation,
+        # so every field was skipped and the substitution silently did nothing --
+        # reintroducing the exact schema/engine divergence this method exists to
+        # prevent, in any module that uses PEP 563.
+        # `model_fields` rather than `__annotations__`: its annotations are
+        # already resolved, so a module using `from __future__ import annotations`
+        # (PEP 563) is handled without special-casing the string form, and its
+        # `FieldInfo` is the object every reader consults.
+        for field_name, field_info in cls.model_fields.items():
+            if field_name == _EXTRA_FIELDS_KEY:
+                continue
+            if not ConfigurationHelper.is_mapping_annotation(field_info.annotation):
+                continue
+
+            field_default = field_info
+            extra = getattr(field_default, "json_schema_extra", None)
+            if not callable(extra):
+                # A bare annotation with no ComparableField metadata to amend.
+                # ConfigurationHelper supplies the default for those instead.
+                continue
+            # The clip default follows the ANNOTATION, so it applies even when the
+            # caller named the comparator. Tying it to the substitution meant
+            # `ComparableField(comparator=ANLSStarComparator(leaf_threshold=...))`
+            # -- the form the docs recommend for setting the leaf cutoff -- kept
+            # clipping on and zeroed exactly the partial credit ANLS* produces.
+            # A mapping is a container: a partly-correct one keeps its score,
+            # the same policy nested objects and lists use.
+            if not getattr(extra, "_clip_explicit", False) and getattr(
+                extra, "_clip_under_threshold", True
+            ):
+                _amend_clip_default(field_default, extra)
+
+            if getattr(extra, "_comparator_explicit", True):
+                continue
+
+            # Substitute onto a COPY, never onto the shared object. A single
+            # `ComparableField(...)` result can be bound to more than one field,
+            # and pydantic does not clone the `json_schema_extra` closure, so
+            # mutating it in place retroactively rewrote the other field:
+            #
+            #     SHARED = ComparableField(threshold=0.8)
+            #     class M1(StructuredModel): v: str = SHARED
+            #     class M2(StructuredModel): v: Dict[str, Any] = SHARED
+            #
+            # left M1.v -- a plain string field -- scored by ANLS* with clipping
+            # off, order-dependently on which class was defined first.
+            comparator = ANLSStarComparator()
+            metadata = getattr(extra, "_comparison_metadata", None)
+            new_metadata = dict(metadata) if isinstance(metadata, dict) else None
+            clip = (
+                getattr(extra, "_clip_under_threshold", True)
+                if getattr(extra, "_clip_explicit", False)
+                # A mapping is a container, so a partly-correct one keeps its
+                # score rather than being zeroed by the field threshold -- the
+                # same policy nested objects and lists use. An explicit choice
+                # still wins.
+                else False
+            )
+
+            def substituted(
+                schema: Dict[str, Any], _metadata=new_metadata, _original=extra
+            ) -> None:
+                _original(schema)
+                if _metadata is not None:
+                    schema["x-comparison"] = _metadata
+
+            for attribute in dir(extra):
+                if attribute.startswith("_") and not attribute.startswith("__"):
+                    setattr(substituted, attribute, getattr(extra, attribute))
+            substituted._comparator_instance = comparator
+            # Now effectively explicit: the decision has been made, and a
+            # subclass re-running this must not treat it as unset.
+            substituted._comparator_explicit = True
+            substituted._clip_under_threshold = clip
+
+            if new_metadata is not None:
+                new_metadata["comparator_type"] = comparator.__class__.__name__
+                new_metadata["comparator_name"] = comparator.name
+                new_metadata["comparator_config"] = comparator.config or {}
+                new_metadata["clip_under_threshold"] = clip
+                substituted._comparison_metadata = new_metadata
+
+            field_default.json_schema_extra = substituted
+
     extra_fields: Dict[str, Any] = Field(default_factory=dict, exclude=True)
 
     model_config = {
         "arbitrary_types_allowed": True,
         "extra": "allow",  # Allow extra fields to be stored in extra_fields
     }
+
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs):
+        """Amend field metadata once pydantic has populated ``model_fields``.
+
+        Runs after ``__init_subclass__``, which is the point of using it: the
+        mapping substitution needs the RESOLVED annotation and needs to write to
+        the ``FieldInfo`` that ``model_fields`` actually holds. Doing it earlier
+        meant writing to a ``FieldInfo`` pydantic had not yet copied, so the
+        substitution was silently discarded and the read-time fallback in
+        ``ConfigurationHelper`` took over -- which is exactly the schema/engine
+        divergence ``_install_mapping_comparators`` exists to prevent.
+        """
+        super().__pydantic_init_subclass__(**kwargs)
+        cls._install_mapping_comparators()
 
     def __init_subclass__(cls, **kwargs):
         """Validate field configurations when a StructuredModel subclass is defined."""
@@ -1097,6 +1249,16 @@ class StructuredModel(BaseModel):
         """
         # Get our field value
         my_value = getattr(self, field_name)
+
+        # A mapping pair whose comparator scores scalars: report 0.0 with a
+        # warning rather than letting the comparator raise. Same gate the
+        # dispatcher uses, so compare() and compare_with() agree.
+        if isinstance(my_value, dict) and isinstance(other_value, dict):
+            info = self.__class__._get_comparison_info(field_name)
+            if not ConfigurationHelper.can_score_mapping(
+                self.__class__, field_name, info.comparator
+            ):
+                return 0.0
 
         # If both values are StructuredModel instances, use recursive compare_with
         if isinstance(my_value, StructuredModel) and isinstance(

@@ -161,7 +161,7 @@ def test_infer_comparator(field_name, annotation, expected):
         (datetime.datetime, "DateComparator", "type:datetime"),
         (str, "LevenshteinComparator", "type:str"),
         (Status, "ExactComparator", "type:"),
-        (dict, "ExactComparator", "type:"),
+        (dict, "ANLSStarComparator", "type:dict"),
     ],
 )
 def test_type_dispatch_table(annotation, expected, provenance_prefix):
