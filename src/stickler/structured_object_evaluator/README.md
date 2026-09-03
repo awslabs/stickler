@@ -202,22 +202,28 @@ document_schema = {
     "properties": {
         "title": {
             "type": "string",
-            "x-aws-stickler-comparator": "FuzzyComparator",  # Use fuzzy string matching
-            "x-aws-stickler-threshold": 0.8  # Require 80% similarity
+            "x-aws-stickler-comparator": "FuzzyComparator",  # token-based string matching
+            "x-aws-stickler-threshold": 0.8,                 # require 80% similarity
         },
         "priority": {
             "type": "integer",
-            "x-aws-stickler-weight": 2.0  # Double weight for priority field
+            "x-aws-stickler-weight": 2.0,                    # double weight for priority field
         },
         "tags": {
             "type": "array",
-            "items": {"type": "string"}
-        }
+            "items": {"type": "string"},
+        },
     },
-    "required": ["title", "priority"]
+    "required": ["title", "priority"],
 }
 
 Document = StructuredModel.from_json_schema(document_schema)
+
+gt = Document(title="Quarterly Report", priority=1, tags=["finance"])
+pred = Document(title="Quarterly Report (Final)", priority=1, tags=["finance"])
+result = gt.compare_with(pred)
+# title 0.8, overall 0.95 -- the same pair scores title 0.667, overall 0.889 without the
+# extensions, which is how you check that yours are being applied rather than ignored.
 ```
 
 **Field-level extensions**, valid on a property:
@@ -239,15 +245,43 @@ rejected rather than dropped. An unrecognized or misspelled `x-aws-stickler-*`
 key raises and names the closest valid key for that position; unrelated `x-*`
 extensions from other tooling are left alone.
 
+Comparator names accepted by `x-aws-stickler-comparator` are the registered class names:
+`LevenshteinComparator`, `ExactComparator`, `NormalizedComparator`, `PhoneComparator`,
+`NumericComparator`, `DateComparator`, `FuzzyComparator`, `StructuredModelComparator`,
+`ANLSStarComparator`, `BBoxIoUComparator`, `SemanticComparator`, plus `BERTComparator` and
+`LLMComparator`, which need the `[bert]` and `[llm]` extras. Without the extra those two are not
+registered, so naming one raises `ValueError: Invalid x-aws-stickler-comparator 'BERTComparator'
+...` and the name is absent from the "Available" list the message prints.
+
+With no comparator given, the schema is first resolved to a Python annotation and the comparator is
+chosen from that, so `format` does participate — but field names never do:
+
+| Schema | Annotation | Comparator | Threshold |
+| --- | --- | --- | --- |
+| `"string"` | `str` | `LevenshteinComparator` | `0.5` |
+| `"number"` | `float` | `NumericComparator` | `0.5` |
+| `"integer"` | `int` | `NumericComparator` | `0.5` |
+| `"boolean"` | `bool` | `ExactComparator` | `0.5` |
+| `"string"` + `"format": "date"` or `"date-time"` | `date` / `datetime` | `DateComparator` | `1.0` |
+| `"string"` + `"enum"` or a single-value `const` | `Enum` / `Literal` | `ExactComparator` | `1.0` |
+
+Any other annotation falls back to `ExactComparator` at `1.0`, which is what a `format` the schema
+library maps to a distinct type (`"uri"`, `"uuid"`, `"time"`) resolves to. A `format` it does not
+model (`"email"`, `"hostname"`, `"duration"`) stays `str`, so the field keeps
+`LevenshteinComparator` at `0.5`.
+
 **Supported JSON Schema Features:**
-- All primitive types: `string`, `number`, `integer`, `boolean`, `null`
+
+- Primitive types: `string`, `number`, `integer`, `boolean` (a bare `{"type": "null"}` is rejected)
 - Complex types: `object`, `array`
 - Nested objects and arrays of objects
 - Required fields via `required` array
 - Optional fields (not in `required` array)
 - JSON Schema Draft 7 compatibility
 
-See `examples/scripts/json_schema_demo.py` for complete examples.
+See `examples/scripts/json_schema_demo.py` for complete examples, and the
+[extension reference](../../../README.md#json-schema-extensions-x-aws-stickler-complete-reference)
+in the top-level README for per-extension detail.
 
 ## Field Comparison Configuration
 
@@ -255,18 +289,28 @@ The `ComparableField` descriptor allows you to configure how fields are compared
 
 ```python
 ComparableField(
-    comparator=LevenshteinComparator(),  # Comparison algorithm
-    threshold=0.7,  # Similarity threshold (0.0-1.0)
-    weight=1.0,  # Field weight for overall score
-    required=True  # Whether the field is required
+    comparator=LevenshteinComparator(),  # comparison algorithm (default: LevenshteinComparator)
+    threshold=0.7,                       # similarity threshold, 0.0-1.0 (default: 0.5)
+    weight=1.0,                          # field weight for overall score (default: 1.0)
+    clip_under_threshold=True,           # zero out scores below threshold (default: True)
+    default=None,                        # field default; every ComparableField is optional
 )
 ```
 
+`ComparableField` passes any other keyword through to Pydantic's `Field`, so a name it does not
+recognize is accepted without error and has no effect on comparison.
+
 Available comparators:
+
 - `LevenshteinComparator`: String similarity based on edit distance
 - `ExactComparator`: Exact match comparison
+- `FuzzyComparator`: Token-based fuzzy matching, order-independent
 - `NumericComparator`: Numeric comparison with tolerance
+- `DateComparator`: Date comparison across formats
+- `PhoneComparator`: Phone-number comparison, normalizing formatting
 - `SemanticComparator`: Semantic similarity using embeddings
+- `StructuredModelComparator`: Recursive comparison of a nested model
+- `BBoxIoUComparator`: Bounding-box overlap by intersection over union
 
 ## API Reference
 
