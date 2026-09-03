@@ -272,6 +272,25 @@ above:
 | `0.85` | 0.6667 |
 
 At `0.85` the abbreviation stops counting at all, so that key contributes nothing.
+
+**When to raise it.** Character similarity scales with length, so the same cutoff
+is lenient for a short value and strict for a long one. At the default, a wholly
+wrong short code still earns half credit:
+
+| kind | ground truth | prediction | `0.5` | `0.7` | `0.85` |
+|---|---|---|---|---|---|
+| state code | `CA` | `CO` | 0.5000 | 0.0000 | 0.0000 |
+| status | `PAID` | `PEND` | 0.5000 | 0.0000 | 0.0000 |
+| vendor name | `Acme Corporation` | `Acme Corp` | 0.5625 | 0.0000 | 0.0000 |
+| description | `blue widget, 3 inch` | `blue widget 3in` | 0.7895 | 0.7895 | 0.0000 |
+
+Raise it toward `0.7` if the dict holds **short codes**, where one wrong character
+means wrong rather than close. Keep the default if it holds **names or free text**,
+where a genuine abbreviation should still count. Note the two columns disagree:
+`0.7` correctly rejects the wrong status but also discards the correct vendor
+abbreviation, so if one dict holds both kinds, no single value is right for both.
+Declare the fields you care about instead.
+
 Do not set it to `0.0`: with no cutoff, an unrelated value earns credit for
 incidental character overlap.
 
