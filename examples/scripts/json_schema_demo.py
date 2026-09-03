@@ -168,16 +168,16 @@ def custom_extensions_example():
         "properties": {
             "title": {
                 "type": "string",
-                "x-stickler-comparator": "fuzzy",  # Use fuzzy string matching
-                "x-stickler-threshold": 0.8  # Require 80% similarity
+                "x-aws-stickler-comparator": "FuzzyComparator",  # Use fuzzy string matching
+                "x-aws-stickler-threshold": 0.8  # Require 80% similarity
             },
             "content": {
                 "type": "string",
-                "x-stickler-comparator": "fuzzy"
+                "x-aws-stickler-comparator": "FuzzyComparator"
             },
             "priority": {
                 "type": "integer",
-                "x-stickler-weight": 2.0  # Double weight for priority
+                "x-aws-stickler-weight": 2.0  # Double weight for priority
             },
             "tags": {
                 "type": "array",
@@ -512,10 +512,10 @@ def main():
 Key Takeaways:
 1. Use StructuredModel.from_json_schema() to create models from JSON Schema
 2. Supports nested objects, arrays, and all JSON Schema primitive types
-3. Use x-stickler-* extensions for custom comparison behavior:
-   - x-stickler-comparator: Choose comparison algorithm (fuzzy, exact, etc.)
-   - x-stickler-threshold: Set matching threshold (0.0 to 1.0)
-   - x-stickler-weight: Adjust field importance in scoring
+3. Use x-aws-stickler-* extensions for custom comparison behavior:
+   - x-aws-stickler-comparator: Choose comparison algorithm (fuzzy, exact, etc.)
+   - x-aws-stickler-threshold: Set matching threshold (0.0 to 1.0)
+   - x-aws-stickler-weight: Adjust field importance in scoring
 4. Full compatibility with compare_with() for evaluation and metrics
 5. Works seamlessly with existing StructuredModel features
 

@@ -191,9 +191,9 @@ result = ground_truth.compare_with(
 )
 ```
 
-#### Custom Comparison Behavior with x-stickler Extensions
+#### Custom Comparison Behavior with x-aws-stickler Extensions
 
-Use `x-stickler-*` extensions in your JSON Schema to customize comparison behavior:
+Use `x-aws-stickler-*` extensions in your JSON Schema to customize comparison behavior:
 
 ```python
 document_schema = {
@@ -202,12 +202,12 @@ document_schema = {
     "properties": {
         "title": {
             "type": "string",
-            "x-stickler-comparator": "fuzzy",  # Use fuzzy string matching
-            "x-stickler-threshold": 0.8  # Require 80% similarity
+            "x-aws-stickler-comparator": "FuzzyComparator",  # Use fuzzy string matching
+            "x-aws-stickler-threshold": 0.8  # Require 80% similarity
         },
         "priority": {
             "type": "integer",
-            "x-stickler-weight": 2.0  # Double weight for priority field
+            "x-aws-stickler-weight": 2.0  # Double weight for priority field
         },
         "tags": {
             "type": "array",
@@ -220,11 +220,11 @@ document_schema = {
 Document = StructuredModel.from_json_schema(document_schema)
 ```
 
-**Available x-stickler Extensions:**
-- `x-stickler-comparator`: Comparison algorithm (`"exact"`, `"fuzzy"`, `"levenshtein"`, `"semantic"`)
-- `x-stickler-threshold`: Matching threshold (0.0 to 1.0, default: 0.5)
-- `x-stickler-weight`: Field importance weight (default: 1.0)
-- `x-stickler-clip-under-threshold`: Clip scores below threshold to 0.0 (boolean, default: false)
+**Available x-aws-stickler Extensions:**
+- `x-aws-stickler-comparator`: Comparison algorithm (`"exact"`, `"fuzzy"`, `"levenshtein"`, `"semantic"`)
+- `x-aws-stickler-threshold`: Matching threshold (0.0 to 1.0, default: 0.5)
+- `x-aws-stickler-weight`: Field importance weight (default: 1.0)
+- `x-aws-stickler-clip-under-threshold`: Clip scores below threshold to 0.0 (boolean, default: false)
 
 **Supported JSON Schema Features:**
 - All primitive types: `string`, `number`, `integer`, `boolean`, `null`

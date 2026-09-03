@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import re
 from copy import copy, deepcopy
 from datetime import date, datetime, time
@@ -39,6 +40,110 @@ _JSON_DEFAULTS = {
 }
 
 _PRESERVED_EXAMPLES_KEY = "x-aws-stickler-internal-examples"
+
+# Every extension key this importer honours, on a field. Anything else that LOOKS
+# like one is a typo or a wrong prefix, and is rejected rather than dropped.
+#
+# The asymmetry this closes: a bad extension VALUE already raised a clear error,
+# so the schema path taught users it validated their input, then said nothing
+# about the case that actually bites. A dropped key leaves a plausible model that
+# scores wrong in the direction of over-reporting accuracy, which is the worst
+# combination for an evaluation library.
+_KNOWN_FIELD_EXTENSIONS = frozenset(
+    {
+        "x-aws-stickler-comparator",
+        "x-aws-stickler-comparator-config",
+        "x-aws-stickler-threshold",
+        "x-aws-stickler-weight",
+        "x-aws-stickler-clip-under-threshold",
+        # Removed in #226. Accepted and ignored so schemas exported by older
+        # versions still import.
+        "x-aws-stickler-aggregate",
+        _PRESERVED_EXAMPLES_KEY,
+    }
+)
+
+# The subset worth suggesting to an author. `aggregate` is removed and
+# `internal-examples` is ours, so offering either as a fix would be misleading.
+_DOCUMENTED_FIELD_EXTENSIONS = frozenset(
+    {
+        "x-aws-stickler-comparator",
+        "x-aws-stickler-comparator-config",
+        "x-aws-stickler-threshold",
+        "x-aws-stickler-weight",
+        "x-aws-stickler-clip-under-threshold",
+    }
+)
+
+# Model-level keys, read elsewhere but valid, so they must not be flagged.
+_KNOWN_MODEL_EXTENSIONS = frozenset(
+    {
+        "x-aws-stickler-model-name",
+        "x-aws-stickler-match-threshold",
+    }
+)
+
+# Prefixes that mean "the author was reaching for a Stickler extension". The
+# second appears in our own README, so it is a mistake we taught.
+_EXTENSION_PREFIXES = ("x-aws-stickler-", "x-stickler-")
+
+
+def _closest_known_key(key: str) -> Optional[str]:
+    """The valid key a typo was probably reaching for, or None.
+
+    Compares the SUFFIX after the prefix, not the whole key. Every valid key
+    starts with `x-aws-stickler-`, so whole-string similarity is dominated by
+    that shared prefix and returns a confident match for anything at all:
+    `x-aws-stickler-zzzzzzzz` scored as a near-miss on `-weight`. Comparing
+    suffixes makes both a real suggestion and no suggestion possible, and a wrong
+    suggestion is worse than none.
+    """
+    known = {}
+    for full in sorted(_DOCUMENTED_FIELD_EXTENSIONS | _KNOWN_MODEL_EXTENSIONS):
+        for prefix in _EXTENSION_PREFIXES:
+            if full.startswith(prefix):
+                known[full[len(prefix) :]] = full
+                break
+
+    suffix = key
+    for prefix in _EXTENSION_PREFIXES:
+        if key.startswith(prefix):
+            suffix = key[len(prefix) :]
+            break
+
+    # An exact suffix match is the wrong-prefix case: `x-stickler-comparator`.
+    if suffix in known:
+        return known[suffix]
+    matches = difflib.get_close_matches(suffix, sorted(known), n=1, cutoff=0.75)
+    return known[matches[0]] if matches else None
+
+
+def _reject_unknown_extensions(extra: Any, field_path: str) -> None:
+    """Raise for any extension-shaped key this importer does not honour.
+
+    Raising rather than warning, deliberately, and unlike the mapping-comparator
+    case elsewhere: a schema is authored once and read deterministically, so there
+    is no risk of failing on document N of a corpus after succeeding on N-1. The
+    author is present, the mistake is in a file they can edit, and the alternative
+    is a model that builds and reports the wrong number.
+    """
+    if not isinstance(extra, dict):
+        return
+    for key in extra:
+        if not isinstance(key, str):
+            continue
+        if key in _KNOWN_FIELD_EXTENSIONS or key in _KNOWN_MODEL_EXTENSIONS:
+            continue
+        if not key.startswith(_EXTENSION_PREFIXES):
+            continue  # an unrelated x-* extension is none of our business
+        suggestion = _closest_known_key(key)
+        hint = f" Did you mean '{suggestion}'?" if suggestion else ""
+        raise ValueError(
+            f"Unrecognized Stickler extension '{key}' on field '{field_path}'."
+            f"{hint} It would otherwise be dropped silently, leaving the field "
+            "configured by fallback while its correctly-spelled siblings were "
+            f"honoured. Valid keys: {', '.join(sorted(_DOCUMENTED_FIELD_EXTENSIONS))}."
+        )
 _COMBINERS = frozenset({"allOf", "anyOf", "oneOf"})
 _NON_VALIDATING_SCHEMA_KEYWORDS = frozenset(
     {
@@ -575,6 +680,7 @@ class JsonSchemaImporter:
         extra = field_info.json_schema_extra
         if not isinstance(extra, dict):
             return {}
+        _reject_unknown_extensions(extra, field_path)
         extensions: Dict[str, Any] = {}
 
         if "x-aws-stickler-comparator" in extra:
