@@ -141,14 +141,33 @@ Each release links to full notes on the
 
 ### Removed
 
-- **Deprecation shim for `compare()` → `_compare()` rename** (`BaseComparator.__init_subclass__`).
+- **Deprecation shim for `compare()` → `_compare()` rename**
+  (`BaseComparator.__init_subclass__`), removed in 1.0 as the 0.7.0
+  deprecation promised.
+
   A comparator that extends `BaseComparator` directly and implements only
-  `compare()` is now abstract again and raises `TypeError` at construction.
-  A comparator extending a concrete comparator and overriding `compare()` still
-  constructs, and can bypass the `None` policy if its `compare()` does not
-  delegate to `super().compare()`.
+  `compare()` is abstract again and raises `TypeError` at construction, naming
+  `_compare`. The same applies to one that inherits `compare()` from a mixin
+  over `BaseComparator`.
+
+  A comparator that extends a *concrete* comparator and supplies `compare()`
+  still constructs, because `_compare()` reaches it through the MRO. Its
+  `compare()` shadows the template method, so it can bypass the `None` policy
+  and score `None` as a present value. Python cannot prevent that shadowing,
+  so `BaseComparator.__init_subclass__` now reports it instead: a
+  `UserWarning` at class-definition time, pointing at the `class` statement.
+  This replaces the shim's `DeprecationWarning` and is visible by default,
+  which the `DeprecationWarning` was not.
+
+  The warning cannot tell a faithful `super().compare()` pass-through — which
+  keeps the policy intact and is correct — from one that transforms values
+  first, so it fires on both.
+
   Migrate by renaming `compare()` to `_compare()` and removing any `None`
-  handling -- `_compare()` is only called when both arguments are non-`None`
+  handling -- `_compare()` is only called when both arguments are non-`None`.
+  Grep your comparators for `def compare(` to find the overrides that need
+  renaming. If you are overriding `compare()` deliberately to customise the
+  `None` policy, define `_compare()` as well and the warning goes quiet
   ([#215](https://github.com/awslabs/stickler/issues/215)).
 
 ## [0.7.0] - 2026-08-18
@@ -432,14 +451,21 @@ Each release links to full notes on the
   delete any `None` handling it contains, since `_compare()` only ever
   receives present values.
 
-  This is not a hard break in 0.7.0 -- existing comparators keep working with
-  unchanged behavior. Migrate by renaming `compare()` to `_compare()` and
-  removing any `None` handling inside it.
+  This is not a hard break. A deprecation shim keeps pre-rename comparators
+  working: one that implements `compare()` still constructs and behaves
+  exactly as written, and emits a `DeprecationWarning` naming the rename.
+  That holds whether it extends `BaseComparator` directly, extends a
+  concrete comparator, or inherits `compare()` from a mixin.
 
   An un-migrated comparator does **not** receive the `None` policy, because
-  its `compare()` shadows the template method, so the rename is required.
-  The shim has been removed — see the `[Unreleased]` entry above
+  its `compare()` shadows the template method, so the rename is still
+  required. The shim is removed in 0.8.0, after which such a comparator
+  raises `TypeError` at construction
   ([#215](https://github.com/awslabs/stickler/issues/215)).
+  <br>*Correction: the 0.8.0 milestone was renamed to 1.0 after this entry shipped.
+  The shim is removed in 1.0, and removal is narrower than stated here: only a
+  comparator with no `_compare()` raises `TypeError`. One extending a concrete
+  comparator inherits `_compare()`, so it constructs and warns instead.*
 
   Note that the pre-fix `(None, "") -> 1.0` result cannot be inherited: the
   coercion was removed from Levenshtein's algorithm rather than guarded, so

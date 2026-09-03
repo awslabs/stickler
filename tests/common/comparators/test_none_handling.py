@@ -221,18 +221,35 @@ class TestTemplateMethodContract:
 class TestPreRenameSubclassRejected:
     """The deprecation shim was removed in 1.0 (issue #215).
 
-    Subclasses of ``BaseComparator`` that implement only ``compare()`` are now
-    abstract again and raise ``TypeError`` at construction.  Subclasses of a
-    *concrete* comparator still construct -- they inherit ``_compare`` from the
-    parent -- but their ``compare()`` override can bypass the ``None`` policy
-    if it does not delegate to ``super().compare()``.  That is plain Python
-    MRO, not something the shim caused, and cannot be fixed by removing the
-    shim.
+    Two different signals replaced it, and which one fires depends on whether
+    the subclass ends up constructible:
+
+    * No ``_compare`` anywhere -- extending ``BaseComparator`` directly, or via
+      a mixin over it -- leaves the abstract slot unfilled, so ``ABCMeta``
+      raises ``TypeError`` at construction naming ``_compare``. That is the
+      hard break, and it fires without a warning: the exception is already the
+      louder and more precise signal.
+    * ``_compare`` inherited from a *concrete* comparator makes the class
+      construct fine while its ``compare()`` shadows the template method and
+      skips the ``None`` policy. Nothing else flags that, so
+      ``__init_subclass__`` warns at class-definition time.
+
+    The second signal is a ``UserWarning`` rather than a ``TypeError`` because
+    the condition is not decidable at class-definition time: an override that
+    forwards both values to ``super().compare()`` unchanged keeps the policy
+    intact and is correct code, and nothing at class creation can tell it apart
+    from one that mangles the values first. Refusing the class would reject the
+    correct shape along with the broken one, so both warn and neither is
+    blocked. Defining ``_compare`` opts out.
+
+    So the MRO shadowing itself is unavoidable, but going *undetected* is not:
+    a deliberate ``compare()`` override is left as the user's choice, and the
+    warning is what makes it a choice rather than an accident.
     """
 
     def test_subclassing_basecomparator_with_only_compare_raises(self):
-        """Extending ``BaseComparator`` directly with only ``compare()``
-        raises ``TypeError`` at construction -- ``_compare`` is abstract."""
+        """Extending ``BaseComparator`` directly with only ``compare()`` leaves
+        ``_compare`` abstract, so it raises ``TypeError`` at construction."""
 
         class PreRename(BaseComparator):
             def compare(self, str1, str2):  # pre-rename interface
@@ -240,16 +257,19 @@ class TestPreRenameSubclassRejected:
                     return 0.0
                 return 1.0 if str(str1) == str(str2) else 0.0
 
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError, match="_compare"):
             PreRename()
 
-    def test_pre_rename_subclass_of_concrete_comparator_still_constructs(self):
+    def test_pre_rename_subclass_of_concrete_comparator_warns_and_constructs(self):
         """A pre-rename subclass of a *concrete* comparator constructs without
-        error because it inherits ``_compare`` from the parent."""
+        error because it inherits ``_compare`` from the parent -- and warns at
+        class definition, because that is the shape with no other signal."""
 
-        class PreRenameCaseInsensitive(LevenshteinComparator):
-            def compare(self, str1, str2):
-                return super().compare(str(str1).lower(), str(str2).lower())
+        with pytest.warns(UserWarning, match="shadows BaseComparator.compare"):
+
+            class PreRenameCaseInsensitive(LevenshteinComparator):
+                def compare(self, str1, str2):
+                    return super().compare(str(str1).lower(), str(str2).lower())
 
         comparator = PreRenameCaseInsensitive()
 
@@ -270,22 +290,29 @@ class TestPreRenameSubclassRejected:
         class ViaMixin(LegacyMixin, BaseComparator):
             pass
 
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError, match="_compare"):
             ViaMixin()
 
     def test_pre_rename_subclass_of_concrete_bypasses_none_policy(self):
         """A pre-rename subclass of a concrete comparator still constructs,
-        but its ``compare()`` override can bypass the template method and the
-        shared ``None`` policy if it does not delegate to ``super().compare()``.
+        and its ``compare()`` override bypasses the template method and the
+        shared ``None`` policy because it does not delegate to
+        ``super().compare()``.
 
         This is the residual risk the shim used to carry for *all* pre-rename
-        subclasses.  After removing the shim it survives only for subclasses
-        of concrete comparators -- an unavoidable consequence of Python MRO.
+        subclasses.  After removing the shim it survives only for subclasses of
+        concrete comparators, and it is no longer silent: the warning asserted
+        here is the signal that replaced the shim's ``DeprecationWarning``.
+        Removing the shim does not fix the bypass -- nothing can, it is plain
+        MRO -- but a deliberate ``compare()`` override is now the user's
+        informed choice rather than an accident.
         """
 
-        class Legacy(LevenshteinComparator):
-            def compare(self, a, b):  # pre-rename interface
-                return 0.42
+        with pytest.warns(UserWarning, match="_compare"):
+
+            class Legacy(LevenshteinComparator):
+                def compare(self, a, b):  # pre-rename interface
+                    return 0.42
 
         comparator = Legacy()
 
@@ -299,11 +326,20 @@ class TestPreRenameSubclassRejected:
         guarded, so a pre-rename subclass that delegates upward via
         ``super().compare()`` gets the corrected answer through the template
         method's ``None`` policy.
+
+        This shape is *correct* -- it forwards both values unchanged, so the
+        policy runs -- and it still warns, because class creation cannot see
+        what an override does with its arguments. That over-warning is the
+        deliberate price of not hard-failing: a false alarm on correct code
+        costs a suppressible message, whereas a ``TypeError`` here would make
+        the shape impossible to write at all.
         """
         assert LevenshteinComparator()._compare(None, "") == 0.0
 
-        class LegacyDelegating(LevenshteinComparator):
-            def compare(self, a, b):
-                return super().compare(a, b)
+        with pytest.warns(UserWarning, match="_compare"):
+
+            class LegacyDelegating(LevenshteinComparator):
+                def compare(self, a, b):
+                    return super().compare(a, b)
 
         assert LegacyDelegating().compare(None, "") == 0.0

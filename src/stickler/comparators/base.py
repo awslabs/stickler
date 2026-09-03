@@ -3,6 +3,8 @@
 from abc import ABC, abstractmethod
 from typing import Any, Tuple
 
+from stickler.utils.deprecation import warn_once
+
 
 class BaseComparator(ABC):
     """Base class for all comparators.
@@ -11,6 +13,76 @@ class BaseComparator(ABC):
     Comparators are used to compare two values and return a similarity score
     between 0.0 and 1.0, where 1.0 means the values are identical.
     """
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        """Warn when a constructible subclass's ``compare`` shadows the ``None`` policy.
+
+        :meth:`compare` is the template method that owns the ``None`` policy.
+        A subclass supplying its own ``compare`` -- directly or through a
+        mixin -- wins over it by plain Python MRO, so ``None`` reaches user
+        code and can be scored as a present value. That shadowing cannot be
+        prevented, only reported.
+
+        This only reports the subset that has no other signal. A subclass that
+        never supplies ``_compare`` leaves the abstract slot unfilled, so
+        ``ABCMeta`` already raises ``TypeError`` at construction naming
+        ``_compare``; warning as well would just add noise ahead of a hard
+        failure. The gap is the subclass of a *concrete* comparator, which
+        inherits a working ``_compare``, constructs fine, and silently skips
+        the policy. That is the one warned about here.
+
+        The report is a warning rather than a ``TypeError`` because the
+        condition is not decidable at class-definition time: an override that
+        forwards both values to ``super().compare()`` unchanged keeps the
+        policy intact and is perfectly correct, and only the override itself
+        knows whether it does. Refusing the class would reject those along
+        with the broken ones.
+
+        Owning ``_compare`` is the escape hatch. A class defining both is
+        customising the policy deliberately rather than sitting on the
+        pre-1.0 interface, and stays quiet -- as do its subclasses.
+        """
+        super().__init_subclass__(**kwargs)
+
+        if "_compare" in cls.__dict__:
+            return
+
+        # Abstract slot unfilled: ABCMeta raises TypeError at construction,
+        # which is a louder and more precise signal than a warning. Checked
+        # via the resolved attribute because ``cls.__abstractmethods__`` is
+        # not populated until after ``__init_subclass__`` returns.
+        if getattr(getattr(cls, "_compare", None), "__isabstractmethod__", False):
+            return
+
+        # The class that actually supplies ``compare`` -- which may be a mixin
+        # rather than ``cls`` itself. Keying on the owner rather than on
+        # ``cls.__dict__`` catches ``class M(LegacyMixin, SomeComparator)``,
+        # and keeps ordinary subclasses of a deliberate override quiet.
+        owner = next(
+            (k for k in cls.__mro__ if "compare" in k.__dict__), BaseComparator
+        )
+        if owner is BaseComparator or "_compare" in owner.__dict__:
+            return
+
+        source = (
+            "defines compare()"
+            if owner is cls
+            else f"inherits compare() from {owner.__name__}"
+        )
+        warn_once(
+            "comparator-compare-shadows-none-policy",
+            cls.__qualname__,
+            f"{cls.__name__} {source}, which shadows BaseComparator.compare() "
+            f"and the shared None policy. Unless that compare() forwards both "
+            f"values to super().compare() unchanged, None will reach it and can "
+            f"be scored as a present value. Implement _compare() instead: it is "
+            f"only called when both values are present.",
+            category=UserWarning,
+            # warn_once(1) -> __init_subclass__(2) -> ABCMeta.__new__(3) ->
+            # the user's ``class`` statement(4). ABCMeta.__new__ is a Python
+            # frame, so the default stacklevel=3 blames ``<frozen abc>``.
+            stacklevel=4,
+        )
 
     def __init__(self, threshold: float = 0.7):
         """Initialize the comparator.
