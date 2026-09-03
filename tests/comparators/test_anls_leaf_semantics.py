@@ -272,3 +272,35 @@ class TestTheRefusalIsAnnounced:
             assert ANLSStarComparator().compare(
                 {"v": Decimal("1.5")}, {"v": Decimal("1.5")}
             ) == pytest.approx(1.0)
+
+
+class TestNumericallyEqualValuesCanScoreBelowOne:
+    """The other direction of uniform text leaves, and the likelier one to bite.
+
+    A ground truth loaded from a database as an integer against a prediction
+    parsed from JSON as a float is a perfect extraction, and text comparison
+    scores it as a miss. Pinned as documented behaviour so nobody "fixes" it into
+    the type-aware leaves that were deliberately reverted; see the FUTURE note in
+    `ANLSLeaf.nls_list`.
+    """
+
+    @pytest.mark.parametrize(
+        "gt,pred,expected",
+        [
+            (5, 5.0, 0.0),
+            (0, 0.0, 0.0),
+            (1000, 1000.0, 2 / 3),
+            (Decimal("10.50"), Decimal("10.5"), 0.8),
+        ],
+    )
+    def test_equal_numbers_of_different_spelling(self, gt, pred, expected):
+        assert ANLSStarComparator().compare({"v": gt}, {"v": pred}) == pytest.approx(
+            expected, abs=1e-4
+        )
+
+    def test_the_documented_remedy_actually_works(self):
+        """The docs point at NumericComparator, so check that it does the job."""
+        from stickler.comparators.numeric import NumericComparator
+
+        assert NumericComparator().compare(5, 5.0) == pytest.approx(1.0)
+        assert NumericComparator().compare(1000, 1000.0) == pytest.approx(1.0)

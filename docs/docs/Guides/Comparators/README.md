@@ -310,6 +310,21 @@ incidental character overlap.
     A wrong account number, a date off by a day and a **2x-wrong amount** all score
     above the one row that is a genuine near-miss.
 
+    It fails in the other direction too. Values that are *numerically equal* score
+    below 1.0, or not at all, because their text differs:
+
+    | ground truth | prediction | score |
+    |---|---|---|
+    | `5` | `5.0` | 0.0000 |
+    | `1000` | `1000.0` | 0.6667 |
+    | `Decimal("10.50")` | `Decimal("10.5")` | 0.8000 |
+
+    This is easy to hit by accident: a ground truth loaded from a database as an
+    integer, against a prediction parsed from JSON as a float, is a perfect
+    extraction scored as a miss. Declaring the field with
+    [`NumericComparator`](#numericcomparator) compares the numbers instead of their
+    spelling.
+
     Lowering `leaf_threshold` will not separate these: a cutoff high enough to
     reject the account number also removes the partial credit you wanted. **If a
     value's correctness matters, declare that field** so it gets a comparator
