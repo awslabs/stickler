@@ -48,13 +48,22 @@ GT  = ["red", "blue", "green"]
 EST = ["red", "yellow", "orange", "blue"]
 ```
 
-- "red" matches "red" -- TP
-- "blue" matches "blue" -- TP
-- "green" unmatched -- FN
-- "yellow" unmatched -- FA
-- "orange" unmatched -- FA
+The assignment pairs as many elements as the shorter list allows, so it makes
+three pairs here and leaves one prediction over:
 
-Result: TP=2, FA=2, FN=1, FD=0
+| GT | EST | Score | Classification |
+|----|-----|-------|----------------|
+| `"red"` | `"red"` | 1.00 | TP |
+| `"blue"` | `"blue"` | 1.00 | TP |
+| `"green"` | `"orange"` | 0.17 | FD |
+| | `"yellow"` | | FA |
+
+Result: TP=2, FD=1, FA=1, FN=0, and so FP=2
+
+Note that `"green"` is an FD and not an FN. It did get a partner, and a low
+score is what the FD category is for. Only an element the assignment could not
+pair at all is FN or FA, which is why FN is zero whenever GT is the shorter
+list.
 
 #### Example: Below-Threshold Matches
 
@@ -99,9 +108,16 @@ From the base counts:
 | Metric | Formula | Meaning |
 |--------|---------|---------|
 | Precision | TP / (TP + FP) | Fraction of predictions that are correct |
-| Recall | TP / (TP + FN) | Fraction of ground-truth values found |
+| Recall | TP / (TP + FN) | Fraction of ground-truth values found (FD in neither term; see below) |
 | F1 Score | 2 * Precision * Recall / (Precision + Recall) | Harmonic mean of precision and recall |
 | Accuracy | (TP + TN) / (TP + TN + FP + FN) | Overall correctness |
+
+**An FD is invisible to recall under that formula**, because it appears in
+neither term. The mixed-matching example above scores recall `1.000` even though
+`"green"` was never found, since it is an FD and not an FN. Set
+`recall_with_fd=True` for `TP / (TP + FN + FD)`, which scores the same example
+`0.667`. `HungarianMatcher.calculate_metrics` always uses that second formula.
+See [FD and recall](hungarian-matching.md#fd-and-recall).
 
 ## Edge Cases
 

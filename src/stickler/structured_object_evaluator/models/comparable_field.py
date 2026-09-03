@@ -18,7 +18,7 @@ def ComparableField(
     weight: float = 1.0,
     default: Any = None,
     *,
-    clip_under_threshold: bool = True,
+    clip_under_threshold: Optional[bool] = None,
     # Pydantic Field parameters (all optional, just like Field)
     alias: Optional[str] = None,
     description: Optional[str] = None,
@@ -35,7 +35,11 @@ def ComparableField(
         threshold: Minimum similarity score to consider a match (default: 0.5)
         weight: Weight of this field in overall score calculation (default: 1.0)
         default: Default value for the field (default: None)
-        clip_under_threshold: Whether to zero out scores below threshold (default: True)
+        clip_under_threshold: Whether to zero out scores below threshold
+                  (effective default: True). ``None`` means "not specified",
+                  which lets a dict-annotated field default it to False so
+                  partial credit survives, while an explicit True or False is
+                  always honoured. See StructuredModel.__init_subclass__.
         alias: Pydantic field alias for serialization (default: None)
         description: Field description for documentation (default: None)
         examples: Example values for the field (default: None)
@@ -68,6 +72,17 @@ def ComparableField(
 
     # Create the actual comparator instance
     actual_comparator = comparator or LevenshteinComparator()
+    # Whether the CALLER named a comparator. Recorded because the default is
+    # resolved here, before the field's annotation is known, so this is the only
+    # place the distinction survives. ConfigurationHelper needs it to give a
+    # dict-annotated field a comparator that can actually score a mapping
+    # without overriding a choice the user made deliberately.
+    comparator_was_explicit = comparator is not None
+    # Same reasoning for clip: the dict substitution turns it off so partial
+    # credit survives, but must not overwrite a value the caller chose.
+    clip_was_explicit = clip_under_threshold is not None
+    if clip_under_threshold is None:
+        clip_under_threshold = True
 
     # Create serializable metadata for JSON schema compatibility
     serializable_metadata = {
@@ -86,6 +101,8 @@ def ComparableField(
     # HYBRID APPROACH: Store runtime instances as function attributes
     # This works around FieldInfo's __slots__ restriction
     json_schema_extra_func._comparator_instance = actual_comparator
+    json_schema_extra_func._comparator_explicit = comparator_was_explicit
+    json_schema_extra_func._clip_explicit = clip_was_explicit
     json_schema_extra_func._threshold = threshold
     json_schema_extra_func._weight = weight
     json_schema_extra_func._clip_under_threshold = clip_under_threshold
@@ -101,6 +118,8 @@ def ComparableField(
 
         # Copy our runtime data to the enhanced function
         enhanced_json_schema_extra._comparator_instance = actual_comparator
+        enhanced_json_schema_extra._comparator_explicit = comparator_was_explicit
+        enhanced_json_schema_extra._clip_explicit = clip_was_explicit
         enhanced_json_schema_extra._threshold = threshold
         enhanced_json_schema_extra._weight = weight
         enhanced_json_schema_extra._clip_under_threshold = clip_under_threshold
@@ -114,6 +133,8 @@ def ComparableField(
 
         # Copy our runtime data to the enhanced function
         enhanced_json_schema_extra._comparator_instance = actual_comparator
+        enhanced_json_schema_extra._comparator_explicit = comparator_was_explicit
+        enhanced_json_schema_extra._clip_explicit = clip_was_explicit
         enhanced_json_schema_extra._threshold = threshold
         enhanced_json_schema_extra._weight = weight
         enhanced_json_schema_extra._clip_under_threshold = clip_under_threshold

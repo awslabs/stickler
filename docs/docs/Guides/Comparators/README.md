@@ -14,6 +14,7 @@ Comparators are the algorithms that determine how similar two field values are. 
 | [**DateComparator**](date-comparator.md) | Date fields with mixed formats, partial dates, ranges | Instant | No | Continuous (0.0--1.0) |
 | [**FuzzyComparator**](#fuzzycomparator) | Flexible text, descriptions, reordered tokens | Fast | No | Continuous (0.0--1.0) |
 | [**BBoxIoUComparator**](#bboxioucomparator) | Bounding boxes, spatial localization | Instant | No | Continuous (0.0--1.0) |
+| [**ANLSStarComparator**](#anlsstarcomparator) | Dicts and nested structures whose keys you do not declare | Moderate | No | Continuous (0.0--1.0) |
 | [**SemanticComparator**](#semanticcomparator) | Meaning-based text similarity | Moderate | Yes (Bedrock) | Continuous (0.0--1.0) |
 | [**BERTComparator**](#bertcomparator) | Contextual semantic similarity | Moderate | No (runs locally) | Continuous (0.0--1.0) |
 | [**LLMComparator**](#llmcomparator) | Complex semantic evaluation with reasoning | Slow | Yes (Bedrock) | Binary (0.0 or 1.0) |
@@ -168,6 +169,180 @@ class Product(StructuredModel):
 
 !!! note "Dependency"
     FuzzyComparator requires the `rapidfuzz` package. Install it with: `pip install rapidfuzz`
+
+---
+
+### ANLSStarComparator
+
+Scores a dict whose keys you did not declare, giving partial credit instead of a
+simple pass or fail.
+
+**When to use:** a field like `metadata: Dict[str, Any]` holding whatever the
+extractor returned. Comparing such a field for equality tells you only "identical"
+or "not", so a prediction that got two keys of three right is indistinguishable
+from one that got nothing right. This comparator scores the difference.
+
+**When not to use:** if you know the keys, declare a nested [`StructuredModel`](../../API-Reference/models.md#stickler.structured_object_evaluator.models.structured_model.StructuredModel){:target="_blank"} instead. You get
+the same partial credit *plus* a score per key, and each key can have its own
+comparator and threshold. Use `ANLSStarComparator` for the case where you could
+not have declared the shape.
+
+#### A worked example
+
+```python
+from typing import Any, Dict
+
+from pydantic import BaseModel
+
+import stickler
+
+
+class Invoice(BaseModel):
+    invoice_id: str
+    metadata: Dict[str, Any] = {}
+
+
+truth = Invoice(
+    invoice_id="INV-1042",
+    metadata={"vendor": "Acme Corporation", "terms": "Net 30", "po": "PO-88231"},
+)
+prediction = Invoice(
+    invoice_id="INV-1042",
+    metadata={"vendor": "Acme Corp", "terms": "Net 30", "po": "PO-88231"},
+)
+
+result = stickler.evaluate(truth, prediction)
+print(result.field_scores["metadata"])   # 0.8542
+print(result.overall_score)              # 0.9271
+```
+
+`stickler.evaluate` picks this comparator for a `dict` field automatically, so
+there is nothing to configure.
+
+Running the same ground truth against a range of predictions shows what the score
+is actually measuring:
+
+| prediction's `metadata` | score |
+|---|---|
+| identical, in any key order | 1.0000 |
+| `vendor` abbreviated to `"Acme Corp"` | 0.8542 |
+| an extra `currency` key | 0.7500 |
+| `po` missing | 0.6667 |
+| `vendor` renamed to `vendor_name` | 0.5000 |
+| every value wrong, or empty | 0.0000 |
+
+Two things to read out of that table:
+
+- **A missing key and an extra key both cost**, because the score is averaged over
+  the union of both key sets. That is why a *renamed* key (0.5000) scores worse
+  than a simply missing one (0.6667): a rename is charged twice, once as absent
+  from the prediction and once as unexpected in it.
+- **Nesting works.** Dicts inside dicts, and lists of dicts, are walked
+  recursively, and list elements are paired by best fit rather than by position,
+  so reordering a list of items does not penalise you.
+
+#### Declaring it explicitly
+
+To set a parameter, name the comparator on the field:
+
+```python
+from stickler import ANLSStarComparator, ComparableField, StructuredModel
+
+
+class Invoice(StructuredModel):
+    metadata: dict = ComparableField(
+        comparator=ANLSStarComparator(leaf_threshold=0.85)
+    )
+```
+
+**Key parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `threshold` | `0.7` | Score at or above which the whole mapping counts as a match |
+| `leaf_threshold` | `0.5` | Cutoff below which a single value's similarity is treated as noise |
+
+`leaf_threshold` is applied to each value as the structure is walked, so it changes
+the score itself rather than only the verdict. On the abbreviated-vendor example
+above:
+
+| `leaf_threshold` | score |
+|---|---|
+| `0.5` (default) | 0.8542 |
+| `0.85` | 0.6667 |
+
+At `0.85` the abbreviation stops counting at all, so that key contributes nothing.
+
+**When to raise it.** Character similarity scales with length, so the same cutoff
+is lenient for a short value and strict for a long one. At the default, a wholly
+wrong short code still earns half credit:
+
+| kind | ground truth | prediction | `0.5` | `0.7` | `0.85` |
+|---|---|---|---|---|---|
+| state code | `CA` | `CO` | 0.5000 | 0.0000 | 0.0000 |
+| status | `PAID` | `PEND` | 0.5000 | 0.0000 | 0.0000 |
+| vendor name | `Acme Corporation` | `Acme Corp` | 0.5625 | 0.0000 | 0.0000 |
+| description | `blue widget, 3 inch` | `blue widget 3in` | 0.7895 | 0.7895 | 0.0000 |
+
+Raise it toward `0.7` if the dict holds **short codes**, where one wrong character
+means wrong rather than close. Keep the default if it holds **names or free text**,
+where a genuine abbreviation should still count. Note the two columns disagree:
+`0.7` correctly rejects the wrong status but also discards the correct vendor
+abbreviation, so if one dict holds both kinds, no single value is right for both.
+Declare the fields you care about instead.
+
+Do not set it to `0.0`: with no cutoff, an unrelated value earns credit for
+incidental character overlap.
+
+!!! warning "Every value is compared as text, whatever its type"
+    Numbers, dates and identifiers are compared character by character. Incidental
+    overlap in a long value therefore scores high, and scores *higher* than a
+    genuine near-miss in ordinary text:
+
+    | key | ground truth | prediction | score |
+    |---|---|---|---|
+    | `account` | `DE89370400440532013000` | `DE8937040044053201300`**`1`** | 0.9545 |
+    | `invoice_date` | `2024-01-15` | `2024-01-1`**`6`** | 0.9000 |
+    | `amount` | `1000000` | **`2`**`000000` | 0.8571 |
+    | `total` | `1234.56` | `1234.5`**`7`** | 0.8571 |
+    | `vendor` | `Acme Corporation` | `Acme Corp` (truncated) | 0.5625 |
+
+    A wrong account number, a date off by a day and a **2x-wrong amount** all score
+    above the one row that is a genuine near-miss.
+
+    It fails in the other direction too. Values that are *numerically equal* score
+    below 1.0, or not at all, because their text differs:
+
+    | ground truth | prediction | score |
+    |---|---|---|
+    | `5` | `5.0` | 0.0000 |
+    | `1000` | `1000.0` | 0.6667 |
+    | `Decimal("10.50")` | `Decimal("10.5")` | 0.8000 |
+
+    This is easy to hit by accident: a ground truth loaded from a database as an
+    integer, against a prediction parsed from JSON as a float, is a perfect
+    extraction scored as a miss. Declaring the field with
+    [`NumericComparator`](#numericcomparator) compares the numbers instead of their
+    spelling.
+
+    Lowering `leaf_threshold` will not separate these: a cutoff high enough to
+    reject the account number also removes the partial credit you wanted. **If a
+    value's correctness matters, declare that field** so it gets a comparator
+    chosen for its type, such as [`NumericComparator`](#numericcomparator) or
+    [`DateComparator`](date-comparator.md). If you know *some* of the keys, declare
+    those in a nested `StructuredModel` and leave the rest to this comparator.
+
+**Values with no JSON form score 0.0.** Anything with a JSON representation is
+compared normally, including `date`, `datetime`, `time`, `Decimal`, `UUID`, `Enum`,
+`set`, `tuple`, `bytes` and `Path`. An arbitrary Python object has none, so it
+cannot be compared: it scores `0.0` whether or not the two sides are equal, warns
+once per type, and leaves the other keys' credit intact. Convert it to a JSON type
+before evaluating, or declare a nested [`StructuredModel`](../../API-Reference/models.md#stickler.structured_object_evaluator.models.structured_model.StructuredModel){:target="_blank"} if you know its shape.
+
+**Performance:** walking a structure costs noticeably more than comparing two
+strings, and the cost multiplies inside a list, where every candidate pair is
+scored. If a large corpus feels slow, declare a nested [`StructuredModel`](../../API-Reference/models.md#stickler.structured_object_evaluator.models.structured_model.StructuredModel){:target="_blank"} for the keys you
+actually score.
 
 ---
 
