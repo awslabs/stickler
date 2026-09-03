@@ -312,10 +312,12 @@ Each release links to full notes on the
   Replacements, all of which already existed: `overall_score` for the scalar
   summary, `EvalResult.matched` for a single object-level verdict, and
   `field_comparisons` for the individual failures. To ask whether anything failed
-  at all, both rollup nodes have to be read, because a list item that scores
-  below `match_threshold` is recorded as one `fd` on `confusion_matrix.overall`
-  and is not descended into, so its leaves never appear under
-  `confusion_matrix.aggregate`:
+  at all, both rollup nodes have to be read, because each is blind to the other's
+  failures. A list item scoring below `match_threshold` is recorded as one `fd` on
+  `confusion_matrix.overall` and is not descended into, so its leaves never appear
+  under `confusion_matrix.aggregate`; conversely a value invented where the ground
+  truth is null is `fa` at that leaf and rolls into `confusion_matrix.aggregate`,
+  while `overall` stays clean because the item still paired:
 
   ```python
   clean = (
@@ -514,7 +516,16 @@ Each release links to full notes on the
   classification" / "sums all primitive-field classifications beneath"), which
   said nothing about which to read for which question, or that they diverge on
   any model with nesting. They coincide only where there is no accepted subtree
-  to expand: a flat model, or a subtree rejected outright.
+  to expand: a flat model, or a document in which *every* subtree was rejected.
+  One rejected subtree among several makes them diverge further, not converge,
+  because `aggregate` then reports a flawless precision over the accepted items
+  only.
+
+  Both pages carry the same two-stage framing as mean Average Precision, and now
+  also name where the analogy stops: a below-threshold bounding box counts as both
+  FP and FN so mAP recall falls, while a below-threshold object is `fd` only, so
+  `overall` recall reads `1.0` on a document with a spurious pairing unless
+  `recall_with_fd=True` is passed.
 
   Also documents that `EvalResult.precision`, `.recall`, `.f1` and `.accuracy`
   are the object-level metrics, read from `confusion_matrix.overall.derived`, so

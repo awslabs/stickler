@@ -51,12 +51,12 @@ To ask whether anything at all went wrong, read **both** rollup nodes, because t
 ```python
 cm = result['confusion_matrix']
 clean = (
-    cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
-    and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
+    cm['aggregate']['fp'] + cm['aggregate']['fn'] == 0
+    and cm['overall']['fp'] + cm['overall']['fn'] == 0
 )
 ```
 
-`aggregate` gives leaf detail for the objects that were comparable: `fd` is a leaf that scored below its threshold, `fn` a leaf absent from the prediction. `overall` gives the object verdicts, and it is the only node carrying `fa`, the fields the prediction invented, since those correspond to no ground truth leaf.
+`aggregate` gives leaf detail for the objects that were comparable: `fp` covers a leaf that scored below its threshold and a value invented where the ground truth was null, `fn` a leaf absent from the prediction. `overall` gives the object verdicts. Sum `fp` rather than `fa + fd`, since `FP = FA + FD` by construction and `fp` cannot go stale if a class is ever added.
 
 The second half of that check is what catches an object rejected outright. An object scoring below `match_threshold` is a spurious non-match, counted once as `fd` on `overall` and not descended into, so it contributes no leaf rows. If you want leaf detail for a marginal object, lower `match_threshold` until it qualifies as comparable. `field_comparisons` names the individual failures.
 
@@ -98,10 +98,10 @@ The distinction between FA and FD is important for debugging:
 
 The `confusion_matrix` object has four keys:
 
-- **`overall`** -- Object-level metrics for the current hierarchical level. Counts item pairings, not leaves.
+- **`overall`** -- Metrics for this node's direct children. Where the field is a list, those children are item pairings rather than leaves.
 - **`fields`** -- Field-by-field breakdown, with nested structure for objects and lists.
 - **`non_matches`** -- Populated when `document_non_matches=True` (empty otherwise).
-- **`aggregate`** -- Primitive field metrics summed recursively below this node, for the subtrees the traversal reached. See the caveat below.
+- **`aggregate`** -- Primitive field metrics summed recursively below this node, excluding subtrees rejected at `match_threshold`. See [`overall` vs `aggregate`](#overall-vs-aggregate).
 
 ### `overall` vs `aggregate`
 
@@ -113,6 +113,15 @@ The two nodes are the two stages of the evaluation, and you generally want both:
 `match_threshold` is the handoff, and it is really the definition of "the same object". Above it, the pair is the same thing, so grading its fields is meaningful. Below it, it is not the same thing, so grading its fields would be scoring the fields of a *different* object. Such an object is classified as a single **false discovery** and is not descended into.
 
 If that split is familiar, it should be: it is the structure of mean Average Precision, which Stickler also implements for bounding boxes. An IoU threshold decides whether a detection matched, and only matched pairs are scored further. See [Bounding Box mAP Metrics](../../Advanced/bbox-map-metrics.md#iou-thresholds).
+
+The analogy stops at recall. A below-threshold *detection* counts as both a false positive and a false negative, so recall falls. A below-threshold *object* is an `fd` only, so the unmatched ground-truth item leaves no trace and `overall` recall still reads `1.0`. Pass `recall_with_fd=True` to `compare_with()` for the mAP convention:
+
+```
+five items, one rejected
+
+recall_with_fd=False   overall tp=4 fd=1 fn=0   R=1.0000
+recall_with_fd=True    overall tp=4 fd=1 fn=0   R=0.8000
+```
 
 Two examples make the split concrete.
 
@@ -138,15 +147,15 @@ cm['aggregate']   tp=6   fd=0
 
 #### Getting leaf detail for a marginal object
 
-If you want those leaves counted, lower `match_threshold` so the object qualifies as comparable. Same data as above:
+If you want those leaves counted, lower `match_threshold` so the object qualifies as comparable. Same two items as above, with the second still at 4/6:
 
 ```
 match_threshold   comparable?   overall            aggregate
-0.70              no            tp=0 fd=1          tp=0 fd=1
-0.66              yes           tp=1 fd=0          tp=4 fd=2
+0.70              no            tp=1 fd=1          tp=6  fd=0
+0.66              yes           tp=2 fd=0          tp=10 fd=2
 ```
 
-At `0.66` the object is comparable, so its six leaves are scored individually and the two bad ones appear as `fd`. This is the knob for how much leaf detail you get: `match_threshold` decides what counts as the same object, and leaf reporting follows from that.
+At `0.66` the marginal item is comparable, so its six leaves join the first item's in `aggregate`: 12 leaves, of which the two wrong ones appear as `fd`. This is the knob for how much leaf detail you get: `match_threshold` decides what counts as the same object, and leaf reporting follows from that.
 
 #### Which node answers which question
 
@@ -161,12 +170,21 @@ Because the two nodes scope different things, a complete "did anything fail" che
 
 ```python
 clean = (
-    cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
-    and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
+    cm['aggregate']['fp'] + cm['aggregate']['fn'] == 0
+    and cm['overall']['fp'] + cm['overall']['fn'] == 0
 )
 ```
 
-`overall` is the only node carrying `fa`, the fields the prediction invented, since those correspond to no ground truth leaf.
+Sum `fp` rather than `fa + fd`. `FP = FA + FD` by construction, so the two are equivalent today, and reading `fp` cannot go stale if a class is ever added.
+
+Both nodes carry `fa`, for different kinds of invention. A field invented where the ground truth has no value at all is `fa` at that leaf and rolls up into `aggregate`, while `overall` stays clean because the item still paired. An item invented wholesale is `fa` on `overall`. Naming only one node here is how a hallucinated value slips through:
+
+```
+one item, ground truth total=None, prediction total="INVENTED", five other leaves exact
+
+overall     tp=1  fp=0  fn=0  fa=0  fd=0
+aggregate   tp=5  fp=1  fn=0  fa=1  fd=0
+```
 
 !!! note "`EvalResult.precision` is the object-level metric"
 
