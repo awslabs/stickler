@@ -4,13 +4,12 @@ This module provides the ComparisonDispatcher class that routes field comparison
 to appropriate handlers based on field type and null states.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import Any, Dict, Optional
 
+from .configuration_helper import ConfigurationHelper
 from .null_helper import NullHelper
 from .result_helper import ResultHelper
-
-if TYPE_CHECKING:
-    from .structured_model import StructuredModel
+from .structured_model import StructuredModel
 
 
 class ComparisonDispatcher:
@@ -212,7 +211,41 @@ class ComparisonDispatcher:
         ):
             return self.field_comparator.compare_structured_field(gt_val, pred_val, field_name, threshold)
         
-        # CASE 4: Mismatched types (e.g., str vs int, list vs str, struct vs primitive)
+        # CASE 4: Both are dicts, whose keys the model did not declare
+        # A dict annotation says "I do not know these keys", so there is no
+        # per-key comparison config to apply and the whole mapping is scored as
+        # one unit. Routed through the primitive path deliberately: that method
+        # is only "primitive" in name -- it calls the field's configured
+        # comparator, classifies TP/FD against the FIELD threshold, and honours
+        # clip_under_threshold, which is exactly the treatment a dict needs.
+        #
+        # Before this branch existed, a dict fell through to CASE 5 and scored
+        # 0.0 even against an identical copy of itself, and the comparator the
+        # field declared was never consulted (#297). Zero-config evaluation
+        # installs ANLSStarComparator here, which gives partial credit; see
+        # stickler.comparators.anls.
+        elif isinstance(gt_val, dict) and isinstance(pred_val, dict):
+            info = self.model.__class__._get_comparison_info(field_name)
+            if not ConfigurationHelper.can_score_mapping(
+                self.model.__class__, field_name, info.comparator
+            ):
+                # Reachable via `Any` or a multi-arm union, where no annotation
+                # declared the field a mapping so nothing could install a
+                # structural comparator. Scored, warned, and not raised -- see
+                # ConfigurationHelper.can_score_mapping.
+                return {
+                    "overall": {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0},
+                    "fields": {},
+                    "raw_similarity_score": 0.0,
+                    "similarity_score": 0.0,
+                    "threshold_applied_score": 0.0,
+                    "weight": weight,
+                }
+            return self.field_comparator.compare_primitive_with_scores(
+                gt_val, pred_val, field_name
+            )
+
+        # CASE 5: Mismatched types (e.g., str vs int, list vs str, struct vs primitive)
         # This is a False Discovery - types don't match
         else:
             return {

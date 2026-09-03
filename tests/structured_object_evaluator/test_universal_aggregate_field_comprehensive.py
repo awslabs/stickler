@@ -461,7 +461,7 @@ class TestUniversalAggregateField:
         # All existing fields should still be present
         assert "field_scores" in result
         assert "overall_score" in result
-        assert "all_fields_matched" in result
+        assert "all_fields_matched" not in result  # removed in #287
         assert "confusion_matrix" in result
 
         cm = result["confusion_matrix"]
