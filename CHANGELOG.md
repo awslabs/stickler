@@ -28,6 +28,60 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **Breaking:** `all_fields_matched` is no longer returned by `compare_with()`,
+  and no longer appears on `confusion_matrix.overall`. It quantified over
+  **top-level** fields only and did not recurse, so a nested field "matched" when
+  its own subtree mean cleared its own threshold and a failing leaf underneath was
+  invisible. Two external reports read it the way its name and the documentation
+  implied, as a quantifier over every leaf, and expected opposite behaviours from
+  each other, so no single implementation satisfied both
+  ([#23](https://github.com/awslabs/stickler/issues/23),
+  [#275](https://github.com/awslabs/stickler/issues/275),
+  [#287](https://github.com/awslabs/stickler/issues/287)).
+
+  Replacements, all of which already existed: `overall_score` for the scalar
+  summary, `EvalResult.matched` for a single object-level verdict, and
+  `field_comparisons` for the individual failures. To ask whether anything failed
+  at all, both rollup nodes have to be read, because a list item that scores
+  below `match_threshold` is recorded as one `fd` on `confusion_matrix.overall`
+  and is not descended into, so its leaves never appear under
+  `confusion_matrix.aggregate`:
+
+  ```python
+  clean = (
+      cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
+      and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
+  )
+  ```
+
+  A below-threshold object is a spurious non-match, so not descending into it is
+  deliberate: `overall` carries the object verdict and `aggregate` carries leaf
+  detail for the objects that were comparable. A caller wanting leaf detail for a
+  marginal object lowers `match_threshold` until it qualifies. See
+  [#288](https://github.com/awslabs/stickler/issues/288) for the naming.
+
+
+  Replacements, all of which already existed: `overall_score` for the scalar
+  summary, `EvalResult.matched` for a single object-level verdict, and
+  `field_comparisons` for the individual failures. To ask whether anything failed
+  at all, both rollup nodes have to be read, because a list item that scores
+  below `match_threshold` is recorded as one `fd` on `confusion_matrix.overall`
+  and is not descended into, so its leaves never appear under
+  `confusion_matrix.aggregate`:
+
+  ```python
+  clean = (
+      cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
+      and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
+  )
+  ```
+
+  A below-threshold object is a spurious non-match, so not descending into it is
+  deliberate: `overall` carries the object verdict and `aggregate` carries leaf
+  detail for the objects that were comparable. A caller wanting leaf detail for a
+  marginal object lowers `match_threshold` until it qualifies. See
+  [#288](https://github.com/awslabs/stickler/issues/288) for the naming.
+
 - `overall_score` and the confusion matrix no longer disagree about a field that
   is absent on both sides. The two read different scores for the same object
   pair: `overall_score` takes the threshold-corrected score, while object
@@ -131,24 +185,22 @@ Each release links to full notes on the
   Lower the element model's `match_threshold` to inspect leaf comparisons for
   weaker pairs.
 
-### Performance
-
-- Restored the fast path in `ComparisonHelper.compare_field_raw`. Reading a
-  field's absence rule requires knowing whether the field is a list, and
-  `_is_list_field` re-reads `model_fields` and destructures the annotation on
-  every call. The bare `is None` check it replaced short-circuited before doing
-  any of that, so consulting the annotation unconditionally cost about 23% on a
-  60x60 Hungarian cost matrix of 20-field models -- 72,000 calls for one list
-  comparison (0.531s to 0.651s; measured best-of-three).
-
-  The lookup is now guarded by a cheap value test that is the union of both
-  `NullHelper` rules, so anything either one calls absent still reaches the full
-  check and no outcome changes, while the common case of both sides being
-  populated skips the annotation entirely (0.537s, within noise of the original).
-  A test pins the superset property so adding a case to either rule without
-  widening the guard fails loudly rather than silently skipping the check.
-
 ### Changed
+
+- **Breaking:** `EvalResult.matched` is now `overall_score >= match_threshold`,
+  defined directly rather than read from the removed `all_fields_matched` key.
+  This is the definition its docstring already claimed ("the `match_threshold`
+  knob's model-level verdict"), and it cannot disagree with the `overall_score`
+  sitting beside it. The two definitions do diverge: with one wrong field among
+  six the score is `0.8333`, so the old key read `False` where
+  `overall_score >= match_threshold` reads `True`.
+
+- `EvalResult.matched` now honours a `StructuredModel` subclass's own declared
+  `match_threshold` when the caller does not pass one to `evaluate` / `eval_for`.
+  It previously always compared against the facade default of `0.7`, so a model
+  declaring `match_threshold = 0.95` reported a `0.80` pair as matched. Passing
+  `match_threshold=` explicitly still overrides the declaration, and a class that
+  declares nothing is unaffected.
 
 - JSON Schema import now delegates standard types, local references, combiners,
   and constraint parsing to `json-schema-to-pydantic`. Stickler retains a narrow
@@ -170,6 +222,23 @@ Each release links to full notes on the
   `scikit-learn` is no longer a core dependency, and the `docsplit` extra now
   adds only pandas; SciPy remains isolated to the `semantic` extra
   ([#216](https://github.com/awslabs/stickler/issues/216)).
+
+### Performance
+
+- Restored the fast path in `ComparisonHelper.compare_field_raw`. Reading a
+  field's absence rule requires knowing whether the field is a list, and
+  `_is_list_field` re-reads `model_fields` and destructures the annotation on
+  every call. The bare `is None` check it replaced short-circuited before doing
+  any of that, so consulting the annotation unconditionally cost about 23% on a
+  60x60 Hungarian cost matrix of 20-field models -- 72,000 calls for one list
+  comparison (0.531s to 0.651s; measured best-of-three).
+
+  The lookup is now guarded by a cheap value test that is the union of both
+  `NullHelper` rules, so anything either one calls absent still reaches the full
+  check and no outcome changes, while the common case of both sides being
+  populated skips the annotation entirely (0.537s, within noise of the original).
+  A test pins the superset property so adding a case to either rule without
+  widening the guard fails loudly rather than silently skipping the check.
 
 ## [0.7.0] - 2026-08-18
 

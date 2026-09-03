@@ -100,7 +100,6 @@ class TestStructuredModels:
 
         result = gt.compare_with(exact_match)
         assert result["overall_score"] == 1.0
-        assert result["all_fields_matched"]
         # Check that score is above the threshold
         assert result["overall_score"] >= Person.match_threshold
 
@@ -115,7 +114,7 @@ class TestStructuredModels:
         result = gt.compare_with(close_match)
         assert result["overall_score"] > 0.35  # Should be moderate
         # We're now checking based on thresholds, not exact matches, so this is actually matched
-        assert not result["all_fields_matched"]  # Age isn't an exact match
+        assert result["overall_score"] < 1.0  # Age isn't an exact match
 
         # Test poor match
         poor_match = Person(
@@ -127,7 +126,7 @@ class TestStructuredModels:
 
         result = gt.compare_with(poor_match)
         assert result["overall_score"] < 0.5  # Should be low
-        assert not result["all_fields_matched"]
+        assert result["overall_score"] < 1.0
 
         # Check that score is below the threshold
         assert result["overall_score"] < Person.match_threshold
@@ -142,7 +141,7 @@ class TestStructuredModels:
 
         result = gt.compare_with(necessary_match)
         assert result["overall_score"] < 0.7  # Should be moderate
-        assert not result["all_fields_matched"]
+        assert result["overall_score"] < 1.0
         # Check that score is appropriate
         assert result["overall_score"] >= 0.35
 
@@ -180,7 +179,6 @@ class TestStructuredModels:
 
         result = gt.compare_with(exact_match)
         assert result["overall_score"] == 1.0
-        assert result["all_fields_matched"]
         # Check that score is perfect (1.0)
         assert result["overall_score"] == 1.0
 
@@ -202,7 +200,7 @@ class TestStructuredModels:
         result = gt.compare_with(nested_variation)
         # Lower the expected threshold due to Levenshtein distance limitations
         assert result["overall_score"] > 0.34  # Should be moderate
-        assert not result["all_fields_matched"]
+        assert result["overall_score"] < 1.0
         # Check that score is above threshold but not perfect
         # Updated threshold to reflect the new recursive comparison behavior
         assert result["overall_score"] >= 0.65
@@ -230,7 +228,7 @@ class TestStructuredModels:
 
         result = gt.compare_with(nested_poor_match)
         assert result["overall_score"] < 0.7  # Should be moderate or low
-        assert not result["all_fields_matched"]
+        assert result["overall_score"] < 1.0
         # Check that score is appropriate but not too high
         assert result["overall_score"] >= 0.4
         assert result["overall_score"] < 0.9

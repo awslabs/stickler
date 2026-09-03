@@ -143,7 +143,6 @@ class ConfusionMatrixBuilder:
                     "tn": int,
                     "fn": int,
                     "similarity_score": float,
-                    "all_fields_matched": bool,
                     "derived": {  # If add_derived_metrics=True
                         "cm_precision": float,
                         "cm_recall": float,

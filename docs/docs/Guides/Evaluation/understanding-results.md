@@ -24,8 +24,7 @@ result = ground_truth.compare_with(prediction)
     "total_amount": 1.0,
     "notes": 0.62
   },
-  "overall_score": 0.92,
-  "all_fields_matched": false
+  "overall_score": 0.92
 }
 ```
 
@@ -43,9 +42,23 @@ Fields with `clip_under_threshold=True` (the default) contribute 0.0 if they sco
 
 Maps each field name to its similarity score (0.0 to 1.0). For nested objects, the value is the weighted average of the sub-fields. For lists, it reflects the Hungarian-matched aggregate.
 
-### `all_fields_matched` (bool)
+### Asking whether anything failed
 
-`True` only when every field's raw similarity score meets or exceeds its configured threshold. A single field below threshold makes this `False`.
+`overall_score` is the scalar summary, and for a single object-level verdict `stickler.evaluate()` returns an `EvalResult` whose `matched` attribute is `overall_score >= match_threshold`.
+
+To ask whether anything at all went wrong, read **both** rollup nodes, because they scope different things:
+
+```python
+cm = result['confusion_matrix']
+clean = (
+    cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
+    and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
+)
+```
+
+`aggregate` gives leaf detail for the objects that were comparable: `fd` is a leaf that scored below its threshold, `fn` a leaf absent from the prediction. `overall` gives the object verdicts, and it is the only node carrying `fa`, the fields the prediction invented, since those correspond to no ground truth leaf.
+
+The second half of that check is what catches an object rejected outright. An object scoring below `match_threshold` is a spurious non-match, counted once as `fd` on `overall` and not descended into, so it contributes no leaf rows. If you want leaf detail for a marginal object, lower `match_threshold` until it qualifies as comparable. `field_comparisons` names the individual failures.
 
 ---
 

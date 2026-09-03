@@ -18,7 +18,7 @@ from enum import Enum, IntEnum
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import stickler
 from stickler.structured_object_evaluator.models.comparable_field import (
@@ -953,3 +953,206 @@ class TestDumpModeEquivalence:
         native = MEval.from_json(inst.model_dump())
         json_form = MEval.from_json(inst.model_dump(mode="json"))
         assert native.compare_with(json_form)["overall_score"] == pytest.approx(1.0)
+
+
+class TestMatchedHasOneDefinition:
+    """`EvalResult.matched` is `overall_score >= match_threshold`, and nothing else.
+
+    The engine used to emit an `all_fields_matched` key that `EvalResult.matched`
+    read. That key was a quantifier over **top-level** fields only and did not
+    recurse: a nested field "matched" when its own subtree mean cleared its own
+    threshold, so a failing leaf underneath was invisible.
+
+    Two external reports read it the way its name and the documentation implied,
+    as a quantifier over every leaf, and expected opposite behaviours from each
+    other (#23 expected False when a nested item fell below its match_threshold;
+    #275 expected False when a leaf failed inside an item that paired). Removed in
+    #287 rather than redefined, because no single implementation satisfies both
+    readings.
+    """
+
+    def test_the_removed_key_is_gone_from_compare_with(self):
+        class M(StructuredModel):
+            a: str = ComparableField()
+            b: str = ComparableField()
+
+        raw = M.from_json({"a": "x", "b": "y"}).compare_with(
+            M.from_json({"a": "x", "b": "y"}), include_confusion_matrix=True
+        )
+
+        assert "all_fields_matched" not in raw
+        assert "all_fields_matched" not in raw["confusion_matrix"]["overall"]
+
+    def test_matched_follows_overall_score_and_the_threshold(self):
+        """The definition its docstring always claimed, now the one it uses."""
+
+        class M(BaseModel):
+            a: Optional[str] = None
+            b: Optional[str] = None
+
+        gt = M(a="x", b="y")
+
+        # 0.5: one of two fields wrong, under the 0.7 default
+        half = stickler.evaluate(gt, M(a="x", b="WRONG"))
+        assert half.overall_score == pytest.approx(0.5)
+        assert half.matched is False
+
+        # and it moves with the threshold rather than with a hidden field count
+        lenient = stickler.evaluate(gt, M(a="x", b="WRONG"), match_threshold=0.4)
+        assert lenient.matched is True
+
+        assert stickler.evaluate(gt, M(a="x", b="y")).matched is True
+
+    def test_a_leaf_failure_under_a_nested_field_is_not_hidden(self):
+        """The dilution the removed key allowed.
+
+        With one wrong leaf, the old flag flipped to True once enough *other*
+        leaves were correct, because the nested field's mean cleared its own
+        threshold. `overall_score` cannot do that: adding correct siblings raises
+        it, but it stays strictly below 1.0 while anything is wrong.
+
+        `matched` is deliberately True here. It is a score verdict, not a leaf
+        quantifier, so it answers "is this pair close enough" and not "did every
+        leaf land" -- that second question is `aggregate.fd + fn`, which is the
+        replacement #275 is pointed at. Both are pinned below so neither can
+        drift into the other's job.
+        """
+
+        class Line(BaseModel):
+            a: Optional[str] = None
+            b: Optional[str] = None
+            c: Optional[str] = None
+            d: Optional[str] = None
+            e: Optional[str] = None
+            f: Optional[str] = None
+
+        class Doc(BaseModel):
+            lines: List[Line] = Field(default_factory=list)
+
+        good = {"a": "1", "b": "2", "c": "3", "d": "4", "e": "5", "f": "6"}
+        bad = {**good, "a": "WRONG"}
+
+        result = stickler.evaluate(Doc(lines=[Line(**good)]), Doc(lines=[Line(**bad)]))
+
+        assert result.overall_score < 1.0, "a wrong leaf must not read as perfect"
+
+        # A score verdict, and 0.8333 clears the 0.7 default. Pinned so the
+        # design call is explicit rather than incidental.
+        assert result.overall_score == pytest.approx(5 / 6)
+        assert result.matched is True
+
+        # The question `matched` does not answer. This is what a caller reads
+        # instead of the removed key, and it does see the one bad leaf --
+        # because this item paired. See the test below for when it does not.
+        aggregate = result.confusion_matrix["aggregate"]
+        assert aggregate["fd"] + aggregate["fn"] == 1
+
+    def test_a_rejected_object_contributes_no_leaf_rows(self):
+        """Why "did anything fail" reads both rollup nodes, not just `aggregate`.
+
+        An object scoring below `match_threshold` is a spurious non-match: it is
+        recorded as one `fd` on `overall` and is not descended into, so it
+        contributes no leaf rows to `aggregate`. That is deliberate, since
+        reporting the leaves of an object already rejected as a whole would
+        score something the comparison declared not comparable. A caller who
+        wants those leaves lowers `match_threshold` until the object qualifies.
+
+        So the two nodes scope different things and a complete check reads both.
+        """
+
+        class Line(BaseModel):
+            a: Optional[str] = None
+            b: Optional[str] = None
+            c: Optional[str] = None
+            d: Optional[str] = None
+            e: Optional[str] = None
+            f: Optional[str] = None
+
+        class Doc(BaseModel):
+            lines: List[Line] = Field(default_factory=list)
+
+        good = {"a": "1", "b": "2", "c": "3", "d": "4", "e": "5", "f": "6"}
+        # Two of six leaves wrong, so the item scores 0.6667 and misses the
+        # 0.7 default. One leaf wrong (0.8333) would have paired.
+        failed = {**good, "a": "WRONG", "b": "WRONG"}
+
+        result = stickler.evaluate(
+            Doc(lines=[Line(**good), Line(**good)]),
+            Doc(lines=[Line(**good), Line(**failed)]),
+        )
+        cm = result.confusion_matrix
+        aggregate, overall = cm["aggregate"], cm["overall"]
+
+        # Twelve leaves exist, but only the six under the comparable object are
+        # scored, and all six landed, so the leaf view is clean.
+        assert aggregate["tp"] == 6
+        assert aggregate["fd"] + aggregate["fn"] == 0
+
+        # The rejected object is recorded here instead, as one object-level fd.
+        assert overall["tp"] == 1
+        assert overall["fd"] == 1
+
+        # So the reliable question is the conjunction of both nodes.
+        clean = (
+            aggregate["fd"] + aggregate["fn"] == 0
+            and overall["fd"] + overall["fn"] + overall["fa"] == 0
+        )
+        assert clean is False
+
+    def test_a_declared_match_threshold_wins_over_the_default(self):
+        """A StructuredModel's own `match_threshold` reaches `matched`.
+
+        `eval_for` promises a StructuredModel is used AS CONFIGURED. Before this
+        was pinned, the facade compared against its own 0.7 default no matter
+        what the class declared, so a model declaring 0.95 called a 0.80 pair
+        matched. The removed `all_fields_matched` had honoured the model's
+        per-field thresholds, so this was a regression and not just the
+        documented redefinition.
+        """
+
+        class Strict(StructuredModel):
+            match_threshold = 0.95
+            a: Optional[str] = ComparableField(default=None)
+            b: Optional[str] = ComparableField(default=None)
+            c: Optional[str] = ComparableField(default=None)
+            d: Optional[str] = ComparableField(default=None)
+            e: Optional[str] = ComparableField(default=None)
+
+        class Silent(StructuredModel):
+            """Declares nothing, so it inherits the ClassVar default."""
+
+            a: Optional[str] = ComparableField(default=None)
+            b: Optional[str] = ComparableField(default=None)
+            c: Optional[str] = ComparableField(default=None)
+            d: Optional[str] = ComparableField(default=None)
+            e: Optional[str] = ComparableField(default=None)
+
+        good = {"a": "x", "b": "x", "c": "x", "d": "x", "e": "x"}
+        bad = {**good, "e": "WRONG"}
+
+        assert stickler.eval_for(Strict)._match_threshold == 0.95
+        assert stickler.eval_for(Silent)._match_threshold == 0.7
+
+        # One wrong field of five: 0.80, which clears 0.7 but not 0.95.
+        strict = stickler.evaluate(Strict(**good), Strict(**bad))
+        assert strict.overall_score == pytest.approx(0.8)
+        assert strict.matched is False
+
+        silent = stickler.evaluate(Silent(**good), Silent(**bad))
+        assert silent.overall_score == pytest.approx(0.8)
+        assert silent.matched is True
+
+        # An explicit argument still beats the declaration, in both directions.
+        assert stickler.eval_for(Strict, match_threshold=0.5)._match_threshold == 0.5
+        assert (
+            stickler.evaluate(
+                Strict(**good), Strict(**bad), match_threshold=0.5
+            ).matched
+            is True
+        )
+        assert (
+            stickler.evaluate(
+                Silent(**good), Silent(**bad), match_threshold=0.99
+            ).matched
+            is False
+        )
