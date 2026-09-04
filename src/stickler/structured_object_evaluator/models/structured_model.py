@@ -1213,6 +1213,7 @@ class StructuredModel(BaseModel):
         pred_list: List[Any],
         comparator: BaseComparator,
         threshold: float,
+        field_name: str = "",
     ) -> Dict[str, Any]:
         """Compare two lists as unordered collections using Hungarian matching.
 
@@ -1232,7 +1233,12 @@ class StructuredModel(BaseModel):
             - overall_score: Similarity score for backward compatibility
         """
         return ComparisonHelper.compare_unordered_lists(
-            gt_list, pred_list, comparator, threshold
+            gt_list,
+            pred_list,
+            comparator,
+            threshold,
+            model_cls=self.__class__,
+            field_name=field_name,
         )
 
     def compare_field_raw(self, field_name: str, other_value: Any) -> float:

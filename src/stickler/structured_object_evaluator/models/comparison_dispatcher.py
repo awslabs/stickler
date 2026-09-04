@@ -291,24 +291,31 @@ class ComparisonDispatcher:
         # asymmetry this branch exists to remove. The comparator decides its own
         # coercion; the dispatcher does not decide for it.
         #
-        # Both sides must be the SAME class. Pydantic's `__str__` omits the class
-        # name, so `Cat(name="rex")` and `Dog(name="rex")` both render as
-        # `name='rex'` and compared equal: a genuine type mismatch reported as a
-        # perfect match, which is worse than the 0.0 this branch was added to fix.
-        # Reachable through `Any` and through a `Union` of models, where pydantic
-        # keeps the concrete class.
+        # Both sides must be the SAME class, which
+        # `ConfigurationHelper.values_are_same_model_class` decides and warns
+        # about. The rule lives there rather than here because `compare()`
+        # reaches the same question through `compare_field_raw`, and list
+        # elements reach it through the Hungarian cost matrix; writing it three
+        # times is how the three drift apart. That is why `can_score_mapping`
+        # is shaped the same way.
         #
-        # Exact class, not `isinstance`, so a subclass against its base is also a
-        # mismatch. That is deliberate: a subclass renders its own fields, so
-        # `Sub(a="x")` is `"a='x' b=None"` against `Base(a="x")` as `"a='x'"`.
-        # Allowing the pair would score a schema mismatch by edit distance and
-        # report a near-match, which is less useful than saying plainly that the
-        # two are not the same shape.
-        elif (
-            isinstance(gt_val, BaseModel)
-            and isinstance(pred_val, BaseModel)
-            and type(gt_val) is type(pred_val)
-        ):
+        # A correctly annotated field never reaches the mismatch case: pydantic
+        # refuses a `Dog` for an `Optional[Cat]` field at construction. It fires
+        # where the annotation permitted both -- `Union[Cat, Dog]`, `Any`,
+        # `object` -- or where a subclass was supplied for its base, which
+        # `Optional[Base]` accepts.
+        elif isinstance(gt_val, BaseModel) and isinstance(pred_val, BaseModel):
+            if not ConfigurationHelper.values_are_same_model_class(
+                self.model.__class__, field_name, gt_val, pred_val
+            ):
+                return {
+                    "overall": {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0},
+                    "fields": {},
+                    "raw_similarity_score": 0.0,
+                    "similarity_score": 0.0,
+                    "threshold_applied_score": 0.0,
+                    "weight": weight,
+                }
             return self.field_comparator.compare_primitive_with_scores(
                 gt_val, pred_val, field_name
             )

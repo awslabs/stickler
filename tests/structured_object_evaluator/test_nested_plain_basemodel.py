@@ -14,13 +14,31 @@ The asymmetry is what made it clearly a defect rather than an unsupported shape:
 because the list branch sends any non-`StructuredModel` element to the primitive
 list comparator. The singular and list forms of one shape disagreed.
 
-Both forms now compare the model's canonical string through the field's declared
-comparator. Scoring a plain `BaseModel` field by field is what `StructuredModel`
-is for, and what `stickler.evaluate()` does by wrapping one; doing it in the
-dispatcher instead would make a nested plain model behave differently from the
-same model inside a list, trading this inconsistency for another. See #135.
+Both forms now get the same treatment a `dict` field gets: `ANLSStarComparator`
+at object grade, judging the model's JSON form key by key. Routing to the dict
+path without also adopting its CONFIGURATION was not enough, and was the defect
+found in review: the field kept the primitive default of Levenshtein at 0.5,
+i.e. edit distance over `str(model)`. Field names are identical on both sides,
+so that put a floor under every score and a wholly wrong prediction classified
+as a match:
 
-See https://github.com/awslabs/stickler/issues/318
+    LineItem(quantity=2, unit_price=10.5, currency='USD')
+    vs LineItem(quantity=9, unit_price=99.9, currency='EUR')  ->  0.8293, tp=1
+
+Under ANLS* the same pair is 0.0 and a false discovery.
+
+Two plain models of DIFFERENT classes are a false discovery, whatever their
+field names. `ConfigurationHelper.values_are_same_model_class` owns that rule
+because four paths ask the question -- `compare_with`, `compare`, and the list
+form of each -- and writing it four times is how they drift apart. A correctly
+annotated field never reaches it: pydantic refuses a `Dog` for an
+`Optional[Cat]` field at construction, so it fires only where the annotation
+permitted both (`Union[Cat, Dog]`, `Any`, `object`) or where a subclass was
+supplied for its base. It warns rather than raising, because which class arrives
+is prediction data and raising would end a corpus run on document N.
+
+See https://github.com/awslabs/stickler/issues/318 and
+https://github.com/awslabs/stickler/issues/321
 """
 
 from typing import Any, List, Optional
@@ -79,12 +97,28 @@ class TestIdenticalObjectsAreNotAFailure:
         assert matrix["overall"]["fd"] == 0
         assert matrix["overall"]["fp"] == 0
 
-    def test_a_different_nested_plain_model_still_fails(self):
-        """The fix must not make everything match."""
+    def test_a_wholly_different_nested_plain_model_scores_zero(self):
+        """`< 1.0` is not a real assertion here, and it hid a bug.
+
+        This asserted only `< 1.0` while the field ran Levenshtein over
+        `str(model)`. Field-name boilerplate is identical on both sides, so it
+        put a floor under the score: three differing values scored 0.8293 and
+        classified as a TRUE POSITIVE, and the loose assertion passed. Pinning
+        the number is the point.
+        """
         result = Nested(kid=Plain(sku="completely-different", qty=99)).compare_with(
-            Nested(kid=Plain(sku="x", qty=1))
+            Nested(kid=Plain(sku="x", qty=1)), include_confusion_matrix=True
         )
-        assert result["field_scores"]["kid"] < 1.0
+        assert result["field_scores"]["kid"] == pytest.approx(0.0)
+        assert result["confusion_matrix"]["overall"]["fd"] == 1
+        assert result["confusion_matrix"]["overall"]["tp"] == 0
+
+    def test_a_partly_wrong_nested_plain_model_gets_partial_credit(self):
+        """Object-grade scoring, not edit distance: one of two fields wrong."""
+        result = Nested(kid=Plain(sku="x", qty=1)).compare_with(
+            Nested(kid=Plain(sku="x", qty=99))
+        )
+        assert result["field_scores"]["kid"] == pytest.approx(0.5)
 
 
 class TestTheSingularAndListFormsAgree:
@@ -99,6 +133,8 @@ class TestTheSingularAndListFormsAgree:
         ),
     )
     def test_one_element_scores_the_same_either_way(self, ground_truth, prediction):
+        """Same class on both sides. Differing classes are covered below: this
+        parametrisation cannot see a gate that only fires on a class mismatch."""
         singular = Nested(kid=ground_truth).compare_with(Nested(kid=prediction))[
             "field_scores"
         ]["kid"]
@@ -405,3 +441,145 @@ class TestASubclassIsADifferentShape:
         assert Holder(v=self.Sub(a="x", b="y")).compare_with(
             Holder(v=self.Sub(a="x", b="y"))
         )["field_scores"]["v"] == pytest.approx(1.0)
+
+
+class Cat(BaseModel):
+    name: Optional[str] = None
+
+
+class Dog(BaseModel):
+    name: Optional[str] = None
+
+
+class Base(BaseModel):
+    a: Optional[str] = None
+
+
+class Sub(Base):
+    b: Optional[str] = None
+
+
+class Permissive(StructuredModel):
+    """`Any` is one of the few annotations that lets two classes reach a field."""
+
+    pet: Optional[Any] = None
+
+
+class PermissiveList(StructuredModel):
+    pets: Optional[List[Any]] = None
+
+
+class TestObjectGradeScoring:
+    """The field must be judged as an object, not as its `str()`.
+
+    Levenshtein over `str(model)` is not a metric on objects: the field names
+    are boilerplate identical on both sides, so the score can never fall far.
+    """
+
+    def test_an_entirely_wrong_model_scores_zero(self):
+        result = Nested(kid=Plain(sku="aaa", qty=1)).compare_with(
+            Nested(kid=Plain(sku="zzz", qty=99)), include_confusion_matrix=True
+        )
+        assert result["field_scores"]["kid"] == pytest.approx(0.0)
+        assert result["confusion_matrix"]["overall"]["fd"] == 1
+
+    def test_the_field_gets_the_object_grade_comparator(self):
+        """Not the primitive Levenshtein default, which cannot score an object."""
+        info = Nested._get_comparison_info("kid")
+        assert type(info.comparator).__name__ == "ANLSStarComparator"
+        assert info.clip_under_threshold is False
+
+    def test_a_list_of_plain_models_gets_it_too(self):
+        """Keyed on the ELEMENT, so the list form reads the same config."""
+        info = NestedList._get_comparison_info("rows")
+        assert type(info.comparator).__name__ == "ANLSStarComparator"
+
+    def test_a_dict_inside_a_plain_model_is_not_key_order_sensitive(self):
+        """What the primitive default got wrong, stated directly."""
+
+        class Wrapper(BaseModel):
+            payload: Optional[dict] = None
+
+        class Holder(StructuredModel):
+            w: Optional[Wrapper] = None
+
+        a = {"alpha": "1", "beta": "2", "gamma": "3"}
+        reordered = {"gamma": "3", "alpha": "1", "beta": "2"}
+        assert Holder(w=Wrapper(payload=a)).compare_with(
+            Holder(w=Wrapper(payload=reordered))
+        )["field_scores"]["w"] == pytest.approx(1.0)
+
+
+class TestADifferentClassIsAFalseDiscovery:
+    """A wrong class is one false discovery, whatever its field names carry."""
+
+    def test_unrelated_classes_with_identical_content_do_not_match(self):
+        result = Permissive(pet=Cat(name="rex")).compare_with(
+            Permissive(pet=Dog(name="rex")), include_confusion_matrix=True
+        )
+        assert result["field_scores"]["pet"] == pytest.approx(0.0)
+        assert result["confusion_matrix"]["overall"]["fd"] == 1
+
+    def test_a_subclass_against_its_base_does_not_match(self):
+        """`Optional[Base]` accepts a `Sub`, so this is reachable normally."""
+        result = Permissive(pet=Base(a="x")).compare_with(
+            Permissive(pet=Sub(a="x")), include_confusion_matrix=True
+        )
+        assert result["field_scores"]["pet"] == pytest.approx(0.0)
+        assert result["confusion_matrix"]["overall"]["fd"] == 1
+
+    def test_it_warns_rather_than_raising(self):
+        """Which class arrives is prediction data; raising would end a corpus run."""
+        with pytest.warns(UserWarning, match="compared a Cat against a Dog"):
+            Permissive(pet=Cat(name="rex")).compare_with(
+                Permissive(pet=Dog(name="rex"))
+            )
+
+    def test_the_same_class_is_unaffected(self):
+        assert Permissive(pet=Cat(name="rex")).compare_with(
+            Permissive(pet=Cat(name="rex"))
+        )["field_scores"]["pet"] == pytest.approx(1.0)
+
+
+class TestTheClassGateHoldsInEveryPath:
+    """Four readers ask the same question and must give the same answer.
+
+    `compare()` feeds the Hungarian cost matrix, so a disagreement here is not
+    cosmetic: a list pairs two items at zero cost and then reports the field as
+    a mismatch, the contradiction #233 forbids.
+    """
+
+    @pytest.mark.parametrize(
+        "gt, pred",
+        ((Cat(name="rex"), Dog(name="rex")), (Base(a="x"), Sub(a="x"))),
+    )
+    def test_compare_agrees_with_compare_with(self, gt, pred):
+        raw = Permissive(pet=gt).compare(Permissive(pet=pred))
+        scored = Permissive(pet=gt).compare_with(Permissive(pet=pred))
+        assert raw == pytest.approx(0.0)
+        assert scored["field_scores"]["pet"] == pytest.approx(0.0)
+
+    def test_the_list_form_agrees_with_the_singular_form(self):
+        singular = Permissive(pet=Cat(name="rex")).compare_with(
+            Permissive(pet=Dog(name="rex"))
+        )["field_scores"]["pet"]
+        listed = PermissiveList(pets=[Cat(name="rex")]).compare_with(
+            PermissiveList(pets=[Dog(name="rex")])
+        )["field_scores"]["pets"]
+        assert singular == pytest.approx(listed) == pytest.approx(0.0)
+
+    def test_one_wrong_element_among_several_is_one_false_discovery(self):
+        """Issue #321's shape: it used to report tp=2 and a perfect score."""
+        result = PermissiveList(pets=[Cat(name="a"), Cat(name="b")]).compare_with(
+            PermissiveList(pets=[Cat(name="a"), Dog(name="b")]),
+            include_confusion_matrix=True,
+        )
+        overall = result["confusion_matrix"]["overall"]
+        assert (overall["tp"], overall["fd"]) == (1, 1)
+        assert result["field_scores"]["pets"] == pytest.approx(0.5)
+
+    def test_a_heterogeneous_list_of_matching_classes_is_untouched(self):
+        """The gate must not penalise a list that is simply mixed and correct."""
+        assert PermissiveList(pets=[Cat(name="a"), Dog(name="b")]).compare_with(
+            PermissiveList(pets=[Cat(name="a"), Dog(name="b")])
+        )["field_scores"]["pets"] == pytest.approx(1.0)

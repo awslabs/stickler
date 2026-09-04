@@ -113,7 +113,7 @@ class ConfusionMatrixCalculator:
 
             # Reuse existing Hungarian matching logic
             match_result = self.model._compare_unordered_lists(
-                gt_list, pred_list, comparator, threshold
+                gt_list, pred_list, comparator, threshold, field_name=field_name
             )
 
             # Use the detailed confusion matrix results directly from Hungarian matcher

@@ -165,12 +165,12 @@ Each release links to full notes on the
 ### Fixed
 
 - A nested plain pydantic `BaseModel` field no longer scores `0.0` against an
-  identical object. `ComparisonDispatcher` routed on
-  `isinstance(value, StructuredModel)`, and a plain `BaseModel` is not one, so a
-  nested one fell to the mismatched-types branch: two equal objects were reported
-  as `overall_score 0.0` with `fd=1`, a perfect match that is also a failure. That
-  is the contradiction [#287](https://github.com/awslabs/stickler/issues/287)
-  removed elsewhere.
+  identical object, and is now judged as an object rather than as its rendered
+  string. `ComparisonDispatcher` routed on `isinstance(value, StructuredModel)`,
+  and a plain `BaseModel` is not one, so a nested one fell to the
+  mismatched-types branch: two equal objects were reported as `overall_score 0.0`
+  with `fd=1`, a perfect match that is also a failure. That is the contradiction
+  [#287](https://github.com/awslabs/stickler/issues/287) removed elsewhere.
 
   The asymmetry is what identified it as a defect rather than an unsupported
   shape, since the list form of the same type was already correct:
@@ -181,45 +181,82 @@ Each release links to full notes on the
   ```
 
   because the list branch already sent any non-`StructuredModel` element to the
-  primitive list comparator. Both forms now compare the model's canonical string
-  through the field's declared comparator, so the singular and list forms of one
-  shape agree and a near miss earns partial credit rather than zero.
+  primitive list comparator.
 
-  The models reach the comparator unconverted, exactly as a dict already does.
-  Stringifying them in the dispatcher looked equivalent, since `Levenshtein` and
-  `Exact` coerce internally anyway, but it silently defeated any comparator that
-  reads structure: `ANLSStarComparator` scored `0.9091` on a stringified model
-  against `0.5000` on the same model in a list, reintroducing the asymmetry. It
-  also broke the documented invariant that `compare()` and `compare_with()` agree
-  on a field, which matters because `compare()` is what the Hungarian cost matrix
-  reads.
+  **A plain `BaseModel` field now gets the same configuration a `Dict[...]` field
+  gets**: `ANLSStarComparator` at object grade, `clip_under_threshold=False`, and
+  the class's `match_threshold`. Routing it to the dict code path without also
+  adopting the dict configuration was not enough. The field kept the primitive
+  default, Levenshtein at 0.5, which is edit distance over `str(model)` -- and
+  because the field names are identical on both sides, that put a floor under
+  every score:
 
-  Both sides must be the same class. Pydantic's `__str__` omits the class name, so
-  `Cat(name="rex")` and `Dog(name="rex")` both render as `name='rex'` and compared
-  equal: a genuine type mismatch reported as a perfect match, which is worse than
-  the `0.0` being fixed. Reachable through `Any` and through a union of models.
+  ```
+  LineItem(quantity=2, unit_price=10.5, currency='USD')
+    vs LineItem(quantity=9, unit_price=99.9, currency='EUR')
+                                     before  0.8293  tp=1   <- every value wrong
+                                      after  0.0000  fd=1
+  half of the values wrong             before  0.9268  tp=1
+                                      after  0.6667  fd=1
+  identical                            before  1.0000  tp=1
+                                      after  1.0000  tp=1
+  ```
 
-  The class check is exact rather than `isinstance`, so a subclass against its
-  base is also a mismatch. A subclass renders its own fields, so `Sub(a="x")` is
-  `"a='x' b=None"` against `Base(a="x")` as `"a='x'"`; allowing the pair would
-  score a schema mismatch by edit distance and report a near-match.
+  The same keying applies to `List[plain BaseModel]`, so the singular and list
+  forms read one configuration rather than two. Declaring a comparator on the
+  field overrides the default, exactly as it does for a `dict`.
+
+  **Breaking: two plain models of different classes are a false discovery**,
+  whatever their field names and values. `Cat(name="rex")` against
+  `Dog(name="rex")` scores `0.0` with `fd=1`, not `1.0`; so does `Base(a="x")`
+  against `Sub(a="x")`. The class is part of a value's identity. A correctly
+  annotated field never reaches this, because pydantic refuses a `Dog` for an
+  `Optional[Cat]` field at construction; it applies where the annotation
+  permitted both (`Union[Cat, Dog]`, `Any`, `object`) or where a subclass arrived
+  for its base, which `Optional[Base]` accepts. Stickler warns once per field
+  rather than raising, on the same reasoning as `can_score_mapping`: which class
+  arrives is prediction data, so raising would end a corpus run on document N
+  after succeeding on N-1.
+
+  The rule lives in `ConfigurationHelper.values_are_same_model_class` because
+  four readers ask it -- `compare_with` through the dispatcher, `compare` through
+  `compare_field_raw`, and the list form of each -- and writing it four times is
+  how they drift apart. They did drift: `compare()` returned `1.0` for `Cat`/`Dog`
+  and `0.4167` for `Base`/`Sub` where `compare_with()` returned `0.0` and `fd=1`,
+  breaking the invariant [#233](https://github.com/awslabs/stickler/issues/233)
+  states, which matters because `compare()` is what the Hungarian cost matrix
+  reads: a list paired those items at zero cost and then called the field a
+  mismatch.
+
+  In a list, a wrong-class element is **one** false discovery. It still pairs, and
+  scores `0.0`:
+
+  ```
+  [Cat(a), Cat(b)]  vs  [Cat(a), Dog(b)]    before  1.0000  tp=2
+                                             after  0.5000  tp=1 fd=1
+  ```
+
+  Whether such an element should be allowed to pair at all, or should instead be
+  `fn` plus `fa`, is tracked in
+  [#321](https://github.com/awslabs/stickler/issues/321).
 
   A nested `StructuredModel` is unaffected and keeps its per-field detail; the new
   branch sits after that one, which matters because `StructuredModel` subclasses
-  `BaseModel`.
-
-  Known limitation, unchanged by this and tracked in
-  [#320](https://github.com/awslabs/stickler/issues/320): a plain `BaseModel` is
-  compared by its rendered form, so a custom `__str__`, a `repr=False` field or a
-  `SecretStr` hides data from scoring, and extra-field or dict key ordering makes
-  identical content score below `1.0`. All of it predates this change on the list
-  path; this makes the singular case consistent with it rather than fixing it. A nested plain `BaseModel` reports no per-field breakdown, because
+  `BaseModel`. A plain `BaseModel` still reports no per-field breakdown, because
   it carries no per-field comparison configuration; declaring it as a
-  `StructuredModel` is how to get that. Scoring a plain `BaseModel` field by field
-  in the dispatcher would make it behave differently from the same model inside a
-  list, trading one inconsistency for another
-  ([#135](https://github.com/awslabs/stickler/issues/135),
-  [#318](https://github.com/awslabs/stickler/issues/318)).
+  `StructuredModel` is how to get that, and `stickler.evaluate()` does exactly
+  that for you ([#135](https://github.com/awslabs/stickler/issues/135)).
+
+  Two of the three limitations recorded under
+  [#320](https://github.com/awslabs/stickler/issues/320) are resolved by moving
+  off the rendered string: a custom `__str__` and a `repr=False` field no longer
+  hide data from scoring, and dict key ordering inside a plain model no longer
+  drops the score below `1.0`. One remains, and it is not specific to this change:
+  `pydantic_core.to_jsonable_python` masks a `SecretStr` to a constant, so any two
+  differing secrets compare equal at `1.0`. A bare `Dict[str, SecretStr]` field
+  already behaved that way on `dev`; this extends the reach of that behaviour to
+  plain-model fields rather than introducing it
+  ([#318](https://github.com/awslabs/stickler/issues/318)).
 
 - **Breaking:** `HungarianMatcher.calculate_metrics` no longer reports a paired
   item as missing. It derived `fn` and `fp` as `len(list) - tp`, so a pair the

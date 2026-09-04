@@ -8,6 +8,8 @@ import inspect
 from collections.abc import Mapping as abc_Mapping
 from typing import TYPE_CHECKING, Any, Dict, List, get_args, get_origin
 
+from pydantic import BaseModel
+
 from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.utils.deprecation import warn_once
@@ -183,6 +185,103 @@ class ConfigurationHelper:
         return False
 
     @staticmethod
+    def is_plain_model_annotation(annotation) -> bool:
+        """Whether an annotation is a plain pydantic model, not a StructuredModel.
+
+        A ``StructuredModel`` is excluded because it has its own comparison
+        path: the engine recurses into its fields. A plain ``BaseModel`` has no
+        per-field configuration to recurse into, so it is scored as one object,
+        exactly as a mapping is. See ``ComparisonDispatcher`` CASE 5.
+
+        ``Optional[...]`` is unwrapped. A multi-arm union such as
+        ``Union[str, Cat]`` returns False for the same reason
+        ``is_mapping_annotation`` refuses one: the field is not always an
+        object, so an object-only comparator is the wrong default for it.
+        """
+        from .structured_model import StructuredModel
+
+        try:
+            annotation, _ = unwrap_optional(annotation)
+            return (
+                isinstance(annotation, type)
+                and issubclass(annotation, BaseModel)
+                and not issubclass(annotation, StructuredModel)
+            )
+        except Exception:
+            return False
+
+    @staticmethod
+    def is_plain_model_field_type(field_info) -> bool:
+        """Whether a field's annotation is a plain model. See is_plain_model_annotation."""
+        try:
+            return ConfigurationHelper.is_plain_model_annotation(field_info.annotation)
+        except Exception:
+            return False
+
+    @staticmethod
+    def _is_list_of_plain_models(field_info) -> bool:
+        """Whether an annotation is a list whose ELEMENT is a plain model.
+
+        The list form has to reach the same configuration as the singular one.
+        `List[LineItem]` is not itself a model, so `is_plain_model_field_type`
+        is correctly False for it, but its elements are still scored as objects.
+        """
+        try:
+            annotation, _ = unwrap_optional(field_info.annotation)
+            if get_origin(annotation) not in (list, List):
+                return False
+            args = get_args(annotation)
+            return bool(args) and ConfigurationHelper.is_plain_model_annotation(args[0])
+        except Exception:
+            return False
+
+    @staticmethod
+    def values_are_same_model_class(model_cls, field_name: str, gt_val, pred_val) -> bool:
+        """Whether two plain models are the same class, warning once if not.
+
+        Both public entry points reach this question by different routes
+        (``compare_with`` through ComparisonDispatcher, ``compare`` through
+        ``compare_field_raw``, and the list forms of each), so it lives in one
+        place rather than being written four times and drifting apart. That is
+        the same reason ``can_score_mapping`` exists.
+
+        Only pairs where BOTH sides are plain models are judged. Anything else
+        returns True and is left to the caller's own type dispatch.
+
+        EXACT class, not ``isinstance``, so a subclass against its base is also
+        a mismatch. A subclass carries fields the base does not, so the two do
+        not describe the same shape, and scoring them on their shared fields
+        would report a near-match for a schema difference.
+
+        Scored as a false discovery rather than raised, following
+        ``can_score_mapping``: which class arrives is prediction data, so
+        raising ends a corpus run on document N after succeeding on N-1. A
+        correctly annotated field cannot reach here at all -- pydantic refuses
+        a ``Dog`` for an ``Optional[Cat]`` field at construction -- so this only
+        fires where the annotation permitted both (``Union[Cat, Dog]``, ``Any``,
+        ``object``) or where a subclass was passed for its base.
+        """
+        if not (isinstance(gt_val, BaseModel) and isinstance(pred_val, BaseModel)):
+            return True
+        from .structured_model import StructuredModel
+
+        if isinstance(gt_val, StructuredModel) or isinstance(pred_val, StructuredModel):
+            return True
+        if type(gt_val) is type(pred_val):
+            return True
+        warn_once(
+            "plain-model-class-mismatch",
+            f"{getattr(model_cls, '__name__', model_cls)}.{field_name}",
+            f"Field '{field_name}' compared a {type(gt_val).__name__} against a "
+            f"{type(pred_val).__name__}. Different classes are scored as a false "
+            "discovery (0.0), even where field names and values match. Annotate "
+            "the field with a single model type, or use a nested StructuredModel, "
+            "if you did not intend to permit both.",
+            category=UserWarning,
+        )
+        return False
+
+    @staticmethod
     def is_mapping_annotation(annotation) -> bool:
         """Whether an annotation describes a mapping.
 
@@ -350,6 +449,17 @@ class ConfigurationHelper:
                     # ComparableField got ANLS* at 0.5625. One annotation, two
                     # answers, which is the divergence this work removes.
                     or ConfigurationHelper._is_list_of_mappings(field_info)
+                    # A plain BaseModel is scored as one object for the same
+                    # reason a mapping is: it declares no per-field comparison
+                    # config to recurse into. Routing it to the primitive path
+                    # without also giving it the object-grade comparator left it
+                    # on Levenshtein over `str(model)`, where the identical field
+                    # names on both sides put a floor under the score:
+                    # `LineItem(2, 10.5, 'USD')` against `LineItem(9, 99.9, 'EUR')`
+                    # scored 0.8293 and classified as a true positive with every
+                    # value wrong. ANLS* scores that pair 0.0. See #319.
+                    or ConfigurationHelper.is_plain_model_field_type(field_info)
+                    or ConfigurationHelper._is_list_of_plain_models(field_info)
                 ):
                     comparator = ANLSStarComparator()
                     clip_under_threshold = False
@@ -431,9 +541,15 @@ class ConfigurationHelper:
         # against `[{"vendor": "Acme Corp"}]` scored 0.7667 and cleared a 0.7
         # threshold, while the auto path scored the same annotation 0.0. Two
         # answers for one annotation is the divergence this work removes.
-        if ConfigurationHelper.is_dict_field_type(
-            field_info
-        ) or ConfigurationHelper._is_list_of_mappings(field_info):
+        if (
+            ConfigurationHelper.is_dict_field_type(field_info)
+            or ConfigurationHelper._is_list_of_mappings(field_info)
+            # A plain BaseModel is judged as an object, not a string. Same
+            # treatment as a mapping, and for the same reason: no declared
+            # per-field config to recurse into. See #319.
+            or ConfigurationHelper.is_plain_model_field_type(field_info)
+            or ConfigurationHelper._is_list_of_plain_models(field_info)
+        ):
             from .comparison_info import ComparableFieldConfig
 
             # Same threshold source as the primitive fallback below: a dict

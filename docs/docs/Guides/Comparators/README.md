@@ -511,15 +511,38 @@ The `object` row above applies to a nested **`StructuredModel`**. A nested plain
 because a plain model is what you already have if you are bringing a schema from
 elsewhere.
 
-| Nested annotation | How it is compared | Per-field detail |
-|---|---|---|
-| `StructuredModel` | recursively, field by field | yes, one row per field |
-| plain `BaseModel` | as one value, by the field's comparator | no |
+| Nested annotation | How it is compared | Default comparator | Per-field detail |
+|---|---|---|---|
+| `StructuredModel` | recursively, field by field | each field's own | yes, one row per field |
+| plain `BaseModel` | as one object, key by key | `ANLSStarComparator` | no |
 
 A plain `BaseModel` carries no per-field comparison configuration, so there is
-nothing to score per field and nothing to report per field. The whole model goes
-to whatever comparator the field declares, and the same is true of the elements
-of a `List[plain BaseModel]`, so the two shapes agree.
+nothing to score per field and nothing to report per field. It gets the same
+treatment a `Dict[...]` field gets, and for the same reason: the whole thing is
+one object, judged key by key, with partial credit and no score clipping. The
+elements of a `List[plain BaseModel]` get it too, so the two shapes agree.
+
+Declaring a comparator overrides that default, exactly as it does for a `dict`.
+
+### A different class is a false discovery
+
+Two plain models of different classes score `0.0` and count as one false
+discovery, however well their field names and values line up:
+
+```python
+Cat(name="rex")  vs  Dog(name="rex")   ->  0.0, fd=1   (not 1.0)
+Base(a="x")      vs  Sub(a="x")        ->  0.0, fd=1
+```
+
+The class is part of the value's identity, not incidental to it. A correctly
+annotated field never sees this, because pydantic refuses a `Dog` for an
+`Optional[Cat]` field when the model is constructed. It applies where you
+declared that more than one class is allowed (`Union[Cat, Dog]`, `Any`,
+`object`), or where a subclass arrived for its base, which `Optional[Base]`
+accepts.
+
+Stickler warns once per field rather than raising, because which class arrives is
+a property of the prediction, and raising would end a bulk run partway through.
 
 To get field-by-field detail, declare the nested model as a `StructuredModel`:
 
