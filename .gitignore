@@ -27,3 +27,9 @@ dist/
 openspec/
 .claude/commands/opsx/
 .claude/skills/openspec-*
+
+# Artifacts written into the repo root by examples/scripts/*.py when run
+# (see examples/run_examples.py). The examples write relative to the cwd.
+/evaluation_metrics.json
+/individual_results.jsonl
+/reports/
