@@ -48,7 +48,9 @@ class ExactComparator(BaseComparator):
         fixing #199 where ``"SHP-2024-001"`` incorrectly matched ``"shp 2024 001"``.
     """
 
-    def __init__(self, threshold: float = 1.0, case_sensitive: bool = True):
+    DEFAULT_THRESHOLD = 1.0
+
+    def __init__(self, threshold: Optional[float] = None, case_sensitive: bool = True):
         """Initialize the comparator.
 
         Args:
@@ -73,7 +75,6 @@ class ExactComparator(BaseComparator):
         if not self.case_sensitive:
             cfg["case_sensitive"] = False
         return cfg if cfg else None
-
 
     def _compare(self, str1: Any, str2: Any) -> float:
         """Compare two values with exact string matching.

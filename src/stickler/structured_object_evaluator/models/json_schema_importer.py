@@ -384,7 +384,15 @@ class JsonSchemaImporter:
                     field_info,
                     field_path,
                     comparator_name="LevenshteinComparator",
-                    threshold=0.5,
+                    # `None`, not the legacy 0.5. Both resolve to the same
+                    # number, but passing a value marks the field as having
+                    # named a threshold, and a list-of-model field is not
+                    # allowed to: Hungarian matching reads each element
+                    # class's `match_threshold` instead. A schema that names
+                    # `x-aws-stickler-threshold` here is still refused, which
+                    # is the point -- it asked for something that has no
+                    # effect.
+                    threshold=None,
                 )
             else:
                 element = self._adapt_union_models(
@@ -485,7 +493,7 @@ class JsonSchemaImporter:
         field_path: str,
         *,
         comparator_name: str,
-        threshold: float,
+        threshold: Optional[float],
     ) -> FieldInfo:
         extensions = self._extract_extensions(field_info, field_path)
         comparator = extensions.get("comparator")
@@ -505,7 +513,7 @@ class JsonSchemaImporter:
         *,
         comparator=None,
         comparator_name: Optional[str] = None,
-        threshold: float,
+        threshold: Optional[float],
         weight: float,
         clip_under_threshold: bool,
     ) -> FieldInfo:

@@ -11,10 +11,47 @@ from pydantic import Field
 from stickler.comparators.base import BaseComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 
+# The threshold a field gets when it names neither a threshold nor a comparator
+# threshold. Kept as a named constant rather than a literal because it is a
+# placeholder: the contract says an unspecified field is inferred from its type
+# and name, and this value stands in until inference owns that path (#239). It is
+# not a meaningful default, it is the historical one.
+_LEGACY_DEFAULT_THRESHOLD = 0.5
+
+
+def _comparator_threshold_was_set(comparator: BaseComparator) -> Optional[float]:
+    """Return the comparator's threshold if the caller named one, else ``None``.
+
+    A field with no threshold of its own adopts one the caller put on the
+    comparator, because ``LevenshteinComparator(threshold=0.9)`` is a clear
+    statement of intent that was previously discarded in silence.
+
+    It deliberately does NOT adopt a comparator's *default* threshold. Those
+    defaults were only ever read by ``binary_compare()``, never as verdict
+    thresholds, so they have not been audited as such and several are wrong for
+    the job: ``DateComparator`` defaults to ``1.0`` while awarding partial credit
+    of ``0.7`` for a year-less match, so adopting it would clip that feature to
+    zero. Auditing every comparator's default is separate work (#246).
+
+    The distinction comes from :attr:`BaseComparator.threshold_was_set`, recorded
+    at construction. It cannot be recovered here: every comparator resolves its
+    own default before calling ``super().__init__``, so ``DateComparator()`` and
+    ``DateComparator(threshold=1.0)`` both arrive holding ``1.0``, and comparing
+    against the signature default reads both as unset. That is why
+    ``BaseComparator.__init__`` takes ``Optional[float] = None``.
+
+    ``getattr`` with a default rather than a bare attribute read: a comparator
+    that never chains to ``BaseComparator.__init__`` has no such attribute, and
+    the safe reading of "cannot tell" is "not set".
+    """
+    if not getattr(comparator, "threshold_was_set", False):
+        return None
+    return getattr(comparator, "threshold", None)
+
 
 def ComparableField(
     comparator: Optional[BaseComparator] = None,
-    threshold: float = 0.5,
+    threshold: Optional[float] = None,
     weight: float = 1.0,
     default: Any = None,
     *,
@@ -32,7 +69,21 @@ def ComparableField(
 
     Args:
         comparator: Comparator to use for field comparison (default: LevenshteinComparator)
-        threshold: Minimum similarity score to consider a match (default: 0.5)
+        threshold: Minimum similarity score to consider a match. ``None`` means
+                  "not specified", in which case a threshold the caller set on
+                  the comparator applies, since a threshold is only meaningful
+                  next to the metric that produced the score. Otherwise 0.5
+                  stands in until inference owns that case (#239)::
+
+                      ComparableField(comparator=ExactComparator(threshold=0.9))
+                      # 0.9, taken from the comparator
+
+                      ComparableField(comparator=ExactComparator(), threshold=0.8)
+                      # 0.8, stated on the field, which always wins
+
+                      ComparableField(comparator=ExactComparator())
+                      # 0.5. A comparator's *default* threshold is not adopted;
+                      # see _comparator_threshold_was_set for why.
         weight: Weight of this field in overall score calculation (default: 1.0)
         default: Default value for the field (default: None)
         clip_under_threshold: Whether to zero out scores below threshold
@@ -84,6 +135,24 @@ def ComparableField(
     if clip_under_threshold is None:
         clip_under_threshold = True
 
+    # A threshold is only meaningful next to the metric that produced the score:
+    # 0.85 means one thing on edit distance and another on a semantic embedding.
+    # So a threshold the caller put on the comparator is a statement of intent
+    # about this field, and it used to be discarded in silence. A comparator's
+    # *default* threshold is not adopted; see _comparator_threshold_was_set.
+    threshold_was_explicit = threshold is not None
+    if threshold is None:
+        from_comparator = (
+            _comparator_threshold_was_set(actual_comparator)
+            if comparator_was_explicit
+            else None
+        )
+        threshold = (
+            from_comparator
+            if from_comparator is not None
+            else _LEGACY_DEFAULT_THRESHOLD
+        )
+
     # Create serializable metadata for JSON schema compatibility
     serializable_metadata = {
         "comparator_type": actual_comparator.__class__.__name__,
@@ -91,7 +160,7 @@ def ComparableField(
         "comparator_config": getattr(actual_comparator, "config", {}),
         "threshold": threshold,
         "weight": weight,
-        "clip_under_threshold": clip_under_threshold
+        "clip_under_threshold": clip_under_threshold,
     }
 
     # Create json_schema_extra function that stores runtime data
@@ -103,6 +172,7 @@ def ComparableField(
     json_schema_extra_func._comparator_instance = actual_comparator
     json_schema_extra_func._comparator_explicit = comparator_was_explicit
     json_schema_extra_func._clip_explicit = clip_was_explicit
+    json_schema_extra_func._threshold_explicit = threshold_was_explicit
     json_schema_extra_func._threshold = threshold
     json_schema_extra_func._weight = weight
     json_schema_extra_func._clip_under_threshold = clip_under_threshold
@@ -120,6 +190,7 @@ def ComparableField(
         enhanced_json_schema_extra._comparator_instance = actual_comparator
         enhanced_json_schema_extra._comparator_explicit = comparator_was_explicit
         enhanced_json_schema_extra._clip_explicit = clip_was_explicit
+        enhanced_json_schema_extra._threshold_explicit = threshold_was_explicit
         enhanced_json_schema_extra._threshold = threshold
         enhanced_json_schema_extra._weight = weight
         enhanced_json_schema_extra._clip_under_threshold = clip_under_threshold
@@ -135,6 +206,7 @@ def ComparableField(
         enhanced_json_schema_extra._comparator_instance = actual_comparator
         enhanced_json_schema_extra._comparator_explicit = comparator_was_explicit
         enhanced_json_schema_extra._clip_explicit = clip_was_explicit
+        enhanced_json_schema_extra._threshold_explicit = threshold_was_explicit
         enhanced_json_schema_extra._threshold = threshold
         enhanced_json_schema_extra._weight = weight
         enhanced_json_schema_extra._clip_under_threshold = clip_under_threshold

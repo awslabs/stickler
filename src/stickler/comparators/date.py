@@ -176,9 +176,11 @@ class DateComparator(BaseComparator):
               long as they agree on every field both sides specify.
     """
 
+    DEFAULT_THRESHOLD = 1.0
+
     def __init__(
         self,
-        threshold: float = 1.0,
+        threshold: Optional[float] = None,
         tolerance: Optional[Union[timedelta, int, float]] = None,
         dayfirst: Optional[bool] = None,
         allow_partial_year: bool = False,

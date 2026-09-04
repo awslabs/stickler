@@ -1,7 +1,7 @@
 """Base class for comparators."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Tuple
+from typing import Any, Optional, Tuple
 
 from stickler.utils.deprecation import warn_once
 
@@ -84,13 +84,41 @@ class BaseComparator(ABC):
             stacklevel=4,
         )
 
-    def __init__(self, threshold: float = 0.7):
+    #: The threshold this comparator uses when the caller does not name one.
+    #: Overridden per subclass. Read through ``self`` so a subclass's value
+    #: wins, which is what lets ``__init__`` below resolve ``None`` without
+    #: every subclass repeating its own default in two places.
+    DEFAULT_THRESHOLD: float = 0.7
+
+    def __init__(self, threshold: Optional[float] = None):
         """Initialize the comparator.
 
+        ``threshold`` defaults to ``None`` rather than to a number so that a
+        threshold the caller named stays distinguishable from one nobody
+        asked for. The two are not interchangeable: a named threshold is a
+        statement about the field being compared and is adopted as the
+        verdict threshold, while a class default was only ever read by
+        ``binary_compare()`` and has not been audited as a verdict threshold.
+        ``DateComparator``'s default of ``1.0`` would clip its own
+        ``allow_partial_year`` partial credit of ``0.7`` to zero, so adopting
+        defaults is not safe.
+
+        Recording it here is the only place that can. Each subclass resolves
+        its own default before calling ``super().__init__``, so by the time a
+        concrete number arrives, comparing it against the signature default
+        cannot tell ``DateComparator()`` from ``DateComparator(threshold=1.0)``
+        -- both hold ``1.0``. Passing ``None`` through preserves the
+        distinction, and it survives a subclass that forwards ``**kwargs``,
+        which signature inspection does not.
+
         Args:
-            threshold: Similarity threshold (0.0-1.0)
+            threshold: Similarity threshold (0.0-1.0), or None to use
+                :attr:`DEFAULT_THRESHOLD`.
         """
-        self.threshold = threshold
+        #: Whether the caller named a threshold. Consumed by
+        #: ``stickler.structured_object_evaluator.models.comparable_field``.
+        self.threshold_was_set = threshold is not None
+        self.threshold = self.DEFAULT_THRESHOLD if threshold is None else threshold
 
     def compare(self, str1: Any, str2: Any) -> float:
         """Compare two values and return a similarity score.

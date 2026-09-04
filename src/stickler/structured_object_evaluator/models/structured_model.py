@@ -564,9 +564,33 @@ class StructuredModel(BaseModel):
                         if cls._is_list_of_structured_model_type(field_type):
                             comparison_config = temp_schema["x-comparison"]
 
-                            # Threshold validation - only flag if explicitly set to non-default value
+                            # Threshold validation - only flag a threshold the
+                            # caller actually wrote on the field.
+                            #
+                            # Read from the ``_threshold_explicit`` marker, not
+                            # by comparing the resolved value against the legacy
+                            # 0.5. That comparison used to be a serviceable
+                            # proxy, but a field with no threshold of its own now
+                            # inherits one the caller put on the comparator, so
+                            # `ComparableField(comparator=Lev(threshold=0.9))`
+                            # resolves to 0.9 and the proxy would refuse the
+                            # class -- blaming a `threshold` parameter that does
+                            # not appear at the call site. The marker says
+                            # whether it does, because it records only the
+                            # field's own `threshold=` argument and is set before
+                            # any comparator threshold is folded in.
+                            #
+                            # The old proxy stays as the `getattr` fallback for a
+                            # field whose extra callable predates the marker: a
+                            # worse answer than the marker, and a better one than
+                            # silently accepting every threshold.
                             threshold = comparison_config.get("threshold", 0.5)
-                            if threshold != 0.5:  # Default threshold value
+                            threshold_explicit = getattr(
+                                field_default.json_schema_extra,
+                                "_threshold_explicit",
+                                threshold != 0.5,
+                            )
+                            if threshold_explicit:
                                 # Do not echo 0.0 back as advice: the threshold
                                 # test is `>=`, so `match_threshold = 0.0` makes
                                 # every paired object a true positive. Telling a
@@ -1797,6 +1821,15 @@ class StructuredModel(BaseModel):
                     }
                     metadata = converter._extract_field_metadata(field_info)
                     metadata.pop("comparator", None)
+                    # Drop the threshold for the same reason as the comparator:
+                    # neither is read for a list of models. Hungarian matching
+                    # uses each element class's `match_threshold`, which the
+                    # recursive `items_schema` above already carries. Exporting
+                    # it was worse than redundant -- `from_json_schema()` reads
+                    # `x-aws-stickler-threshold` as a threshold the caller named,
+                    # and a named threshold on a list-of-model field is an error,
+                    # so a model exported here could not be imported back.
+                    metadata.pop("threshold", None)
                     extensions = converter._build_comparison_extensions(metadata, output_format="json_schema")
                     property_schema.update(extensions)
                 else:

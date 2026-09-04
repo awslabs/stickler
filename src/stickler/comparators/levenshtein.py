@@ -13,7 +13,9 @@ class LevenshteinComparator(BaseComparator):
     score between 0 and 1.
     """
 
-    def __init__(self, normalize: bool = True, threshold: float = 0.7):
+    DEFAULT_THRESHOLD = 0.7
+
+    def __init__(self, normalize: bool = True, threshold: Optional[float] = None):
         """Initialize the comparator.
 
         Args:

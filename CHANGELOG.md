@@ -164,6 +164,73 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **Breaking:** a threshold set on a comparator now reaches the field that names
+  it. `Comparator(threshold=...)` was accepted everywhere and read almost
+  nowhere: the only functional reader outside ANLS\* is `binary_compare()`, which
+  has no callers in `src/`, so
+
+  ```python
+  ComparableField(comparator=LevenshteinComparator(threshold=0.95))
+  ```
+
+  produced a field whose verdict threshold was `0.5`. The value was stored on the
+  comparator and visible in its `repr`, and never consulted. A threshold is only
+  meaningful beside the metric that produced the score, since `0.85` means one
+  thing on edit distance and another on a semantic embedding, so discarding one
+  the caller wrote was the wrong default.
+
+  `ComparableField(threshold=...)` now defaults to `None` meaning "not
+  specified". A threshold stated on the field always wins; otherwise one
+  explicitly set on the comparator is adopted; otherwise `0.5` stands in until
+  inference owns that case ([#239](https://github.com/awslabs/stickler/issues/239)).
+
+  A comparator's own **default** threshold is deliberately not adopted. Those
+  defaults were never audited as verdict thresholds and several are wrong for the
+  job: `DateComparator` defaults to `1.0` while awarding `0.7` for a match with no
+  year, so adopting it would clip that comparator's own feature to zero.
+
+  Telling the two apart required a change to `BaseComparator`, because it could
+  not be done anywhere downstream. `threshold` on every comparator now defaults
+  to `None`, meaning "use my `DEFAULT_THRESHOLD`", and `BaseComparator.__init__`
+  records `threshold_was_set`. Previously each comparator resolved its own
+  default before calling `super().__init__`, so `DateComparator()` and
+  `DateComparator(threshold=1.0)` both arrived holding `1.0` and were
+  indistinguishable. `.threshold` still reads back the same number it always
+  did; what changes is that the signature default is `None` rather than a
+  literal, and a comparator that forwards `**kwargs` to `super().__init__` now
+  propagates the caller's threshold correctly.
+
+  **What moves:**
+
+  - Any field that named a comparator threshold and no field threshold. Its
+    verdict threshold changes from `0.5` to that value, so a score between the
+    two flips from true positive to false discovery.
+  - **Scores move too, not just verdicts.** `clip_under_threshold` defaults to
+    `True`, so an adopted threshold also zeroes a below-threshold field score.
+    `ComparableField(comparator=LevenshteinComparator(threshold=0.95))` on
+    `"abcdefghij"` against `"abcdefghiX"` reports `field_scores` of `0.0` and an
+    `overall_score` of `0.0`, where both were `0.9` before. Aggregate metrics
+    move with them.
+  - `to_json_schema()` no longer emits `x-aws-stickler-threshold` for a
+    `List[StructuredModel]` field. It was never read there (Hungarian matching
+    uses the element class's `match_threshold`, which the exported `items`
+    schema already carries), and re-importing it now raises, so a model exported
+    before this change round-trips where it previously could not.
+
+  Unchanged: `threshold=0.0` remains a value rather than an omission, a field
+  that states its own threshold, and a bare comparator with no threshold named.
+
+  Also records a `_threshold_explicit` marker alongside the existing
+  `_comparator_explicit` and `_clip_explicit` ones. Its only reader today is the
+  `List[StructuredModel]` guard in `StructuredModel.__init_subclass__`, which
+  refuses a threshold on a list-of-model field and used to detect one by
+  comparing the resolved value against the literal `0.5`. That proxy would now
+  reject `ComparableField(comparator=Lev(threshold=0.9))` on such a field,
+  blaming a `threshold` parameter absent from the call site. Wiring the marker
+  into `explain()` provenance is left to
+  [#210](https://github.com/awslabs/stickler/issues/210)
+  ([#246](https://github.com/awslabs/stickler/issues/246)).
+
 - **Breaking:** `HungarianMatcher.calculate_metrics` no longer reports a paired
   item as missing. It derived `fn` and `fp` as `len(list) - tp`, so a pair the
   algorithm produced, and that the method returns inside `matched_pairs`, was

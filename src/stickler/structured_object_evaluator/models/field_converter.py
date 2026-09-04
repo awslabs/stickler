@@ -177,7 +177,14 @@ class FieldConverter:
         # For list_structured_model, don't set threshold (Hungarian matching uses model's match_threshold)
         # For single structured_model, use threshold from config
         if type_string == "list_structured_model":
-            threshold = 0.5  # Use default threshold to avoid validation error
+            # `None`, not the legacy 0.5. Both resolve to the same number, but
+            # passing a value marks the field as having named a threshold, and
+            # `StructuredModel.__init_subclass__` refuses a named threshold on a
+            # list-of-model field. Passing 0.5 only slipped past that check while
+            # it compared against the literal 0.5; it now reads the explicitness
+            # marker, so a placeholder here would reject every imported schema
+            # containing an array of objects.
+            threshold = None
         else:
             threshold = field_config.get(
                 "threshold", 0.7
