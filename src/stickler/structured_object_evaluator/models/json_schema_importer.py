@@ -489,11 +489,21 @@ class JsonSchemaImporter:
     ) -> FieldInfo:
         extensions = self._extract_extensions(field_info, field_path)
         comparator = extensions.get("comparator")
+        # Only the schema saying `x-aws-stickler-comparator` counts as a choice.
+        # Recorded separately from `_comparator_explicit`, which is NOT a
+        # provenance flag despite its name: `ConfigurationHelper` and
+        # `_install_mapping_comparators` both gate mapping-comparator
+        # substitution on it, so making it honest here switched dict fields from
+        # `ExactComparator` to `ANLSStarComparator` and moved their scores from
+        # 0.0 to 0.9792. That may well be an improvement, but it is a scoring
+        # change and belongs in its own PR, not in a labelling fix.
+        comparator_named_in_schema = comparator is not None
         if comparator is None:
             comparator = create_comparator(comparator_name, {})
         return self._make_comparison_field(
             field_info,
             comparator=comparator,
+            comparator_explicit=comparator_named_in_schema,
             threshold=extensions.get("threshold", threshold),
             weight=extensions.get("weight", 1.0),
             clip_under_threshold=extensions.get("clip_under_threshold", True),
@@ -505,6 +515,7 @@ class JsonSchemaImporter:
         *,
         comparator=None,
         comparator_name: Optional[str] = None,
+        comparator_explicit: bool = False,
         threshold: float,
         weight: float,
         clip_under_threshold: bool,
@@ -536,6 +547,16 @@ class JsonSchemaImporter:
             default=default,
             json_schema_extra=source_extra,
         )
+
+        # `ComparableField` marks any concrete comparator as explicit, which is
+        # right for a hand-written model where passing one IS the choice, and
+        # wrong here: this importer supplies an inferred comparator too. Record
+        # what the schema actually said under its own name, so `explain()` can
+        # tell a configured field from a defaulted one without disturbing the
+        # substitution `_comparator_explicit` gates.
+        extra_callable = comparison.json_schema_extra
+        if callable(extra_callable):
+            extra_callable._comparator_named_in_schema = comparator_explicit
 
         # Keep descriptive/default/alias data, but not validation constraints.
         # Stickler scores imperfect predictions; a constraint violation must reach
