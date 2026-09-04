@@ -185,6 +185,20 @@ Each release links to full notes on the
   through the field's declared comparator, so the singular and list forms of one
   shape agree and a near miss earns partial credit rather than zero.
 
+  The models reach the comparator unconverted, exactly as a dict already does.
+  Stringifying them in the dispatcher looked equivalent, since `Levenshtein` and
+  `Exact` coerce internally anyway, but it silently defeated any comparator that
+  reads structure: `ANLSStarComparator` scored `0.9091` on a stringified model
+  against `0.5000` on the same model in a list, reintroducing the asymmetry. It
+  also broke the documented invariant that `compare()` and `compare_with()` agree
+  on a field, which matters because `compare()` is what the Hungarian cost matrix
+  reads.
+
+  Both sides must be the same class. Pydantic's `__str__` omits the class name, so
+  `Cat(name="rex")` and `Dog(name="rex")` both render as `name='rex'` and compared
+  equal: a genuine type mismatch reported as a perfect match, which is worse than
+  the `0.0` being fixed. Reachable through `Any` and through a union of models.
+
   A nested `StructuredModel` is unaffected and keeps its per-field detail; the new
   branch sits after that one, which matters because `StructuredModel` subclasses
   `BaseModel`. A nested plain `BaseModel` reports no per-field breakdown, because

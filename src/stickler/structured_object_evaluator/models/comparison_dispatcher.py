@@ -233,7 +233,8 @@ class ComparisonDispatcher:
         # comparator, classifies TP/FD against the FIELD threshold, and honours
         # clip_under_threshold, which is exactly the treatment a dict needs.
         #
-        # Before this branch existed, a dict fell through to CASE 5 and scored
+        # Before this branch existed, a dict fell through to the mismatched-types
+        # branch and scored
         # 0.0 even against an identical copy of itself, and the comparator the
         # field declared was never consulted (#297). Zero-config evaluation
         # installs ANLSStarComparator here, which gives partial credit; see
@@ -276,16 +277,33 @@ class ComparisonDispatcher:
         # threshold, and honours clip_under_threshold.
         #
         # This makes the two forms agree rather than introducing a third
-        # behaviour. Both compare the model's canonical string, which pydantic
-        # renders in field-declaration order, so it is stable across instances
-        # regardless of keyword order at construction. Scoring a plain BaseModel
-        # structurally, field by field, is what `StructuredModel` is for and what
-        # `stickler.evaluate()` does by wrapping one; doing it here instead would
-        # make a nested plain model behave differently from the same model inside
-        # a list, trading this inconsistency for another. See #135.
-        elif isinstance(gt_val, BaseModel) and isinstance(pred_val, BaseModel):
+        # behaviour. Scoring a plain BaseModel structurally, field by field, is
+        # what `StructuredModel` is for and what `stickler.evaluate()` does by
+        # wrapping one; doing it here instead would make a nested plain model
+        # behave differently from the same model inside a list, trading this
+        # inconsistency for another. See #135.
+        #
+        # The models are passed through UNCONVERTED, exactly as CASE 4 passes a
+        # dict. Stringifying here looked equivalent because Levenshtein and Exact
+        # coerce internally anyway, but it silently defeats any comparator that
+        # reads structure: `ANLSStarComparator` scored 0.9091 on a stringified
+        # model against 0.5000 on the same model in a list, which is the very
+        # asymmetry this branch exists to remove. The comparator decides its own
+        # coercion; the dispatcher does not decide for it.
+        #
+        # Both sides must be the SAME class. Pydantic's `__str__` omits the class
+        # name, so `Cat(name="rex")` and `Dog(name="rex")` both render as
+        # `name='rex'` and compared equal: a genuine type mismatch reported as a
+        # perfect match, which is worse than the 0.0 this branch was added to fix.
+        # Reachable through `Any` and through a `Union` of models, where pydantic
+        # keeps the concrete class.
+        elif (
+            isinstance(gt_val, BaseModel)
+            and isinstance(pred_val, BaseModel)
+            and type(gt_val) is type(pred_val)
+        ):
             return self.field_comparator.compare_primitive_with_scores(
-                str(gt_val), str(pred_val), field_name
+                gt_val, pred_val, field_name
             )
 
         # CASE 6: Mismatched types (e.g., str vs int, list vs str, struct vs primitive)

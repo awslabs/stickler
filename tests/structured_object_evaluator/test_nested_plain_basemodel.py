@@ -23,7 +23,7 @@ same model inside a list, trading this inconsistency for another. See #135.
 See https://github.com/awslabs/stickler/issues/318
 """
 
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import pytest
 from pydantic import BaseModel
@@ -215,3 +215,149 @@ class TestNullHandlingIsUnchanged:
             Nested(kid=Plain(sku="x")), include_confusion_matrix=True
         )["confusion_matrix"]
         assert matrix["overall"]["fa"] == 1
+
+
+class TestTheModelsReachTheComparatorUnconverted:
+    """The dispatcher must not decide coercion on the comparator's behalf.
+
+    Stringifying here looked equivalent, because `LevenshteinComparator` and
+    `ExactComparator` coerce internally anyway, so a test using either cannot see
+    the difference. It silently defeats any comparator that reads structure, and
+    reintroduces exactly the asymmetry this module exists to remove.
+    """
+
+    class WithMapping(BaseModel):
+        meta: Optional[dict] = None
+
+    def test_a_structural_comparator_scores_the_model_not_its_repr(self):
+        from stickler import ANLSStarComparator
+
+        class Single(StructuredModel):
+            kid: Optional["TestTheModelsReachTheComparatorUnconverted.WithMapping"] = (
+                ComparableField(comparator=ANLSStarComparator(), default=None)
+            )
+
+        ground_truth = self.WithMapping(meta={"a": 1, "b": 2})
+        prediction = self.WithMapping(meta={"a": 1, "b": 99})
+
+        # One of two leaves wrong, scored structurally.
+        assert Single(kid=ground_truth).compare_with(Single(kid=prediction))[
+            "field_scores"
+        ]["kid"] == pytest.approx(0.5)
+
+    def test_the_structural_score_matches_the_list_form(self):
+        """The parity claim, checked with a comparator that can tell.
+
+        Under stringification this read 0.9091 against 0.5000, so the earlier
+        parity tests passed only because their comparators stringify too.
+        """
+        from stickler import ANLSStarComparator
+
+        class Single(StructuredModel):
+            kid: Optional["TestTheModelsReachTheComparatorUnconverted.WithMapping"] = (
+                ComparableField(comparator=ANLSStarComparator(), default=None)
+            )
+
+        class Listed(StructuredModel):
+            kids: Optional[
+                List["TestTheModelsReachTheComparatorUnconverted.WithMapping"]
+            ] = ComparableField(comparator=ANLSStarComparator(), default=None)
+
+        ground_truth = self.WithMapping(meta={"a": 1, "b": 2})
+        prediction = self.WithMapping(meta={"a": 1, "b": 99})
+
+        singular = Single(kid=ground_truth).compare_with(Single(kid=prediction))[
+            "field_scores"
+        ]["kid"]
+        listed = Listed(kids=[ground_truth]).compare_with(Listed(kids=[prediction]))[
+            "field_scores"
+        ]["kids"]
+
+        assert singular == pytest.approx(listed)
+
+    def test_compare_and_compare_with_agree(self):
+        """`compare_field_raw` passes the raw models, so this branch must too.
+
+        Its own comment states the invariant: "Same gate the dispatcher uses, so
+        compare() and compare_with() agree". Stringifying on one side only broke
+        it, and `compare()` is what the Hungarian cost matrix reads.
+        """
+        from stickler import ANLSStarComparator
+        from stickler.structured_object_evaluator.models.comparison_helper import (
+            ComparisonHelper,
+        )
+
+        class Single(StructuredModel):
+            kid: Optional["TestTheModelsReachTheComparatorUnconverted.WithMapping"] = (
+                ComparableField(comparator=ANLSStarComparator(), default=None)
+            )
+
+        ground_truth = self.WithMapping(meta={"a": 1, "b": 2})
+        prediction = self.WithMapping(meta={"a": 1, "b": 99})
+
+        through_compare_with = Single(kid=ground_truth).compare_with(
+            Single(kid=prediction)
+        )["field_scores"]["kid"]
+        through_compare = ComparisonHelper.compare_field_raw(
+            Single(kid=ground_truth), "kid", prediction
+        )
+
+        assert through_compare_with == pytest.approx(through_compare)
+
+
+class TestTwoDifferentClassesAreNotAMatch:
+    """Pydantic's `__str__` omits the class name, so shape alone is not identity.
+
+    `Cat(name="rex")` and `Dog(name="rex")` both render as `name='rex'`. Without a
+    type guard they compared equal: a genuine type mismatch reported as a perfect
+    match, which is worse than the `0.0` this branch was added to fix.
+    """
+
+    class Cat(BaseModel):
+        name: Optional[str] = None
+
+    class Dog(BaseModel):
+        name: Optional[str] = None
+
+    def test_unrelated_models_with_equal_fields_are_a_false_discovery(self):
+        class Holder(StructuredModel):
+            pet: Optional[Any] = ComparableField(default=None)
+
+        result = Holder(pet=self.Cat(name="rex")).compare_with(
+            Holder(pet=self.Dog(name="rex")), include_confusion_matrix=True
+        )
+
+        assert result["field_scores"]["pet"] == pytest.approx(0.0)
+        assert result["confusion_matrix"]["overall"]["fd"] == 1
+        assert result["confusion_matrix"]["overall"]["tp"] == 0
+
+    def test_their_renderings_really_are_identical(self):
+        """The measurement behind the guard, so its necessity is visible."""
+        assert str(self.Cat(name="rex")) == str(self.Dog(name="rex"))
+
+    def test_a_structured_model_against_a_plain_one_is_a_mismatch(self):
+        """`StructuredModel` subclasses `BaseModel`, so this pair reaches here."""
+
+        class PlainShape(BaseModel):
+            name: Optional[str] = None
+
+        class StructuredShape(StructuredModel):
+            name: Optional[str] = ComparableField(default=None)
+
+        class Holder(StructuredModel):
+            thing: Optional[Any] = ComparableField(default=None)
+
+        result = Holder(thing=StructuredShape(name="rex")).compare_with(
+            Holder(thing=PlainShape(name="rex")), include_confusion_matrix=True
+        )
+        assert result["confusion_matrix"]["overall"]["fd"] == 1
+
+    def test_the_same_class_on_both_sides_still_scores(self):
+        """The guard must not reject the ordinary case."""
+
+        class Holder(StructuredModel):
+            pet: Optional[Any] = ComparableField(default=None)
+
+        assert Holder(pet=self.Cat(name="rex")).compare_with(
+            Holder(pet=self.Cat(name="rex"))
+        )["field_scores"]["pet"] == pytest.approx(1.0)

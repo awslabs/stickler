@@ -504,6 +504,38 @@ When you do not specify a comparator in `ComparableField`, Stickler assigns one 
 | `array` (objects) | Hungarian matching | 0.7 | Optimal pairing of list elements |
 | `object` | Recursive comparison | 0.7 | Field-by-field nested comparison |
 
+### Nested models: `StructuredModel` versus plain `BaseModel`
+
+The `object` row above applies to a nested **`StructuredModel`**. A nested plain
+`pydantic.BaseModel` is a different case, and the difference is worth knowing
+because a plain model is what you already have if you are bringing a schema from
+elsewhere.
+
+| Nested annotation | How it is compared | Per-field detail |
+|---|---|---|
+| `StructuredModel` | recursively, field by field | yes, one row per field |
+| plain `BaseModel` | as one value, by the field's comparator | no |
+
+A plain `BaseModel` carries no per-field comparison configuration, so there is
+nothing to score per field and nothing to report per field. The whole model goes
+to whatever comparator the field declares, and the same is true of the elements
+of a `List[plain BaseModel]`, so the two shapes agree.
+
+To get field-by-field detail, declare the nested model as a `StructuredModel`:
+
+```python
+class Address(StructuredModel):                    # per-field detail
+    city: str = ComparableField(threshold=0.9)
+    postcode: str = ComparableField(comparator=ExactComparator())
+
+class Invoice(StructuredModel):
+    address: Address = ComparableField()
+```
+
+`stickler.evaluate()` does this for you: it wraps a plain `BaseModel` in a
+generated `StructuredModel` with inferred comparators, so the zero-config path
+scores nested models field by field without you declaring anything.
+
 ---
 
 ## Custom Comparators
