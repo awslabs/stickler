@@ -13,6 +13,55 @@ from .null_helper import NullHelper
 from .threshold_helper import ThresholdHelper
 
 
+class _ClassGatedComparator(BaseComparator):
+    """Refuses two plain models of different classes, else delegates.
+
+    List elements reach a comparator through the Hungarian cost matrix, which
+    sees values and knows nothing about the field. Wrapping the comparator is
+    what makes a list element obey the same class rule as the singular form:
+    both then read the same configured comparator, with the gate in front of it.
+    Without this, `Single(pet=Cat('rex'))` against `Dog('rev')` scored 0.0 while
+    `Listed(pets=[Cat('rex')])` against `[Dog('rex')]` scored 1.0 -- the parity
+    #319 exists to establish, broken in the opposite direction. See #321 for
+    whether a refused element should pair at all.
+
+    Applied only when an element is actually a plain model, so the ordinary
+    primitive-list path keeps its cost-matrix hot loop unwrapped.
+    """
+
+    def __init__(self, inner: BaseComparator, model_cls=None, field_name: str = ""):
+        super().__init__(getattr(inner, "threshold", 0.5))
+        self._inner = inner
+        self._model_cls = model_cls
+        self._field_name = field_name
+
+    def _compare(self, str1: Any, str2: Any) -> float:
+        from .configuration_helper import ConfigurationHelper
+
+        if not ConfigurationHelper.values_are_same_model_class(
+            self._model_cls, self._field_name, str1, str2
+        ):
+            return 0.0
+        return self._inner.compare(str1, str2)
+
+
+def _holds_a_plain_model(items: List[Any]) -> bool:
+    """Whether any element is a plain pydantic model.
+
+    Scans the whole list rather than the first element: a heterogeneous list is
+    exactly the case that needs the gate, and keying on `items[0]` would miss
+    `[Cat(...), "text"]`.
+    """
+    from pydantic import BaseModel
+
+    from .structured_model import StructuredModel
+
+    return any(
+        isinstance(item, BaseModel) and not isinstance(item, StructuredModel)
+        for item in items
+    )
+
+
 def _maybe_absent(val: Any) -> bool:
     """Whether ``val`` could be absent under *either* of ``NullHelper``'s rules.
 
@@ -36,7 +85,12 @@ class ComparisonHelper:
 
     @staticmethod
     def compare_unordered_lists(
-        gt_list: List[Any], pred_list: List[Any], comparator: BaseComparator, threshold: float
+        gt_list: List[Any],
+        pred_list: List[Any],
+        comparator: BaseComparator,
+        threshold: float,
+        model_cls=None,
+        field_name: str = "",
     ) -> Dict[str, Any]:
         """Compare two lists as unordered collections using Hungarian matching.
 
@@ -133,8 +187,17 @@ class ComparisonHelper:
             # stringified coordinates cannot be parsed. Items must reach the
             # comparator exactly as the caller supplied them, so that a list
             # field and a scalar field score the same pair identically.
+            # Gate the element comparator on class identity. See
+            # _ClassGatedComparator; skipped entirely for ordinary primitive
+            # lists so the cost matrix stays unwrapped.
+            element_comparator = comparator
+            if _holds_a_plain_model(gt_list) or _holds_a_plain_model(pred_list):
+                element_comparator = _ClassGatedComparator(
+                    comparator, model_cls=model_cls, field_name=field_name
+                )
+
             hungarian = HungarianMatcher(
-                comparator, match_threshold=0.0, normalize_values=False
+                element_comparator, match_threshold=0.0, normalize_values=False
             )
             classification_threshold = threshold
 
@@ -297,7 +360,12 @@ class ComparisonHelper:
         if isinstance(self_value, list) and isinstance(other_value, list):
             threshold = 0.0  # Use zero threshold for raw comparisons
             result = ComparisonHelper.compare_unordered_lists(
-                self_value, other_value, comparator, threshold
+                self_value,
+                other_value,
+                comparator,
+                threshold,
+                model_cls=structured_model_instance.__class__,
+                field_name=field_name,
             )
             return result["overall_score"]
 
@@ -312,6 +380,18 @@ class ComparisonHelper:
         # Handle dictionary objects using the field's configured comparator
         if isinstance(self_value, dict) and isinstance(other_value, dict):
             return comparator.compare(self_value, other_value)
+
+        # Two plain models of different classes are not comparable, and this
+        # function must agree with `compare_with` about that. Its own comment
+        # above forbids the two readers disagreeing (#233), and without this
+        # gate they did: `compare()` returned 1.0 for Cat/Dog and 0.4167 for
+        # Base/Sub where `compare_with` reported 0.0 and a false discovery.
+        # `compare()` also feeds the Hungarian cost matrix, so a List[Holder]
+        # paired those items at zero cost and then called the field a mismatch.
+        if not ConfigurationHelper.values_are_same_model_class(
+            structured_model_instance.__class__, field_name, self_value, other_value
+        ):
+            return 0.0
 
         # Use the comparator to calculate raw similarity (no threshold)
         return comparator.compare(self_value, other_value)

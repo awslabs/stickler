@@ -99,7 +99,7 @@ class PrimitiveListComparator:
         # which properly handles the threshold-based matching
         comparator = info.comparator
         match_result = self.parent_model._compare_unordered_lists(
-            gt_list, pred_list, comparator, threshold
+            gt_list, pred_list, comparator, threshold, field_name=field_name
         )
 
         # Extract the counts from the match result
