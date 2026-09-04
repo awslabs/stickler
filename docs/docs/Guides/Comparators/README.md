@@ -499,7 +499,7 @@ When you do not specify a comparator in `ComparableField`, Stickler assigns one 
 | `string` | LevenshteinComparator | 0.5 | Handles typos and minor variations |
 | `number` | NumericComparator | 0.5 | Tolerates small numeric differences |
 | `integer` | NumericComparator | 0.5 | Tolerates small numeric differences |
-| `boolean` | ExactComparator | 1.0 | Must be exactly true or false |
+| `boolean` | ExactComparator | 0.5 | Must be exactly true or false (Exact returns only 0.0 or 1.0, so the threshold is immaterial) |
 | `array` (primitives) | Based on item type | Based on item type | Inherits from element type |
 | `array` (objects) | Hungarian matching | 0.7 | Optimal pairing of list elements |
 | `object` | Recursive comparison | 0.7 | Field-by-field nested comparison |

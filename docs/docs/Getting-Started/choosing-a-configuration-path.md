@@ -51,7 +51,8 @@ class Invoice(BaseModel):
 | `total` | `NumericComparator` @ 0.95 | `NumericComparator` @ 0.5 |
 | `quantity` | `NumericComparator` @ 1.0 | `NumericComparator` @ 0.5 |
 
-Four of six comparators and six of six thresholds differ. Scoring one realistic prediction
+Three of six comparators and six of six thresholds differ. `customer_name` is the subtle case: the
+same comparator on both paths, separated only by the threshold. Scoring one realistic prediction
 (`"inv-001"` for `"INV-001"`, `"Acme Corp."` for `"Acme Corporation"`, `"friday delivery"` for
 `"deliver by friday"`) gives **0.646** by inference and **0.760** by schema — and the two disagree
 in *opposite directions* on three fields:
