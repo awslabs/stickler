@@ -191,9 +191,9 @@ result = ground_truth.compare_with(
 )
 ```
 
-#### Custom Comparison Behavior with x-stickler Extensions
+#### Custom Comparison Behavior with x-aws-stickler Extensions
 
-Use `x-stickler-*` extensions in your JSON Schema to customize comparison behavior:
+Use `x-aws-stickler-*` extensions in your JSON Schema to customize comparison behavior:
 
 ```python
 document_schema = {
@@ -202,12 +202,12 @@ document_schema = {
     "properties": {
         "title": {
             "type": "string",
-            "x-stickler-comparator": "fuzzy",  # Use fuzzy string matching
-            "x-stickler-threshold": 0.8  # Require 80% similarity
+            "x-aws-stickler-comparator": "FuzzyComparator",  # Use fuzzy string matching
+            "x-aws-stickler-threshold": 0.8  # Require 80% similarity
         },
         "priority": {
             "type": "integer",
-            "x-stickler-weight": 2.0  # Double weight for priority field
+            "x-aws-stickler-weight": 2.0  # Double weight for priority field
         },
         "tags": {
             "type": "array",
@@ -220,11 +220,24 @@ document_schema = {
 Document = StructuredModel.from_json_schema(document_schema)
 ```
 
-**Available x-stickler Extensions:**
-- `x-stickler-comparator`: Comparison algorithm (`"exact"`, `"fuzzy"`, `"levenshtein"`, `"semantic"`)
-- `x-stickler-threshold`: Matching threshold (0.0 to 1.0, default: 0.5)
-- `x-stickler-weight`: Field importance weight (default: 1.0)
-- `x-stickler-clip-under-threshold`: Clip scores below threshold to 0.0 (boolean, default: false)
+**Field-level extensions**, valid on a property:
+
+- `x-aws-stickler-comparator`: comparator **class name**, such as `"ExactComparator"`, `"FuzzyComparator"`, `"LevenshteinComparator"`, `"SemanticComparator"`. Lowercase aliases are not accepted and raise.
+- `x-aws-stickler-comparator-config`: keyword arguments for that comparator's constructor
+- `x-aws-stickler-threshold`: matching threshold, 0.0 to 1.0 (default: 0.5)
+- `x-aws-stickler-weight`: field importance weight (default: 1.0)
+- `x-aws-stickler-clip-under-threshold`: clip scores below threshold to 0.0 (boolean, default: true)
+
+**Object-level extensions**, valid on the root schema or on any object-typed property:
+
+- `x-aws-stickler-model-name`: the generated class name (default: `DynamicModel`)
+- `x-aws-stickler-match-threshold`: the score at which two objects count as the same object (default: 0.7)
+
+The two sets are not interchangeable, and position matters. A field-level key on
+the root, or an object-level key on a scalar field, is not read, so it is
+rejected rather than dropped. An unrecognized or misspelled `x-aws-stickler-*`
+key raises and names the closest valid key for that position; unrelated `x-*`
+extensions from other tooling are left alone.
 
 **Supported JSON Schema Features:**
 - All primitive types: `string`, `number`, `integer`, `boolean`, `null`
