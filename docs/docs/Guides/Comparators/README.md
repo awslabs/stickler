@@ -9,6 +9,7 @@ Comparators are the algorithms that determine how similar two field values are. 
 | Comparator | Best For | Speed | Needs AWS? | Score Type |
 |---|---|---|---|---|
 | [**ExactComparator**](#exactcomparator) | IDs, codes, booleans | Instant | No | Binary (0.0 or 1.0) |
+| [**NormalizedComparator**](#normalizedcomparator) | Text where formatting differences are noise | Instant | No | Binary (0.0 or 1.0) |
 | [**LevenshteinComparator**](#levenshteincomparator) | Names, addresses, text with typos | Instant | No | Continuous (0.0--1.0) |
 | [**NumericComparator**](#numericcomparator) | Prices, quantities, measurements | Instant | No | Binary (0.0 or 1.0) |
 | [**DateComparator**](date-comparator.md) | Date fields with mixed formats, partial dates, ranges | Instant | No | Continuous (0.0--1.0) |
@@ -25,7 +26,7 @@ Comparators are the algorithms that determine how similar two field values are. 
 
 ### ExactComparator
 
-Checks for exact string matching after normalizing whitespace, punctuation, and (by default) case. Returns 1.0 for exact matches and 0.0 otherwise.
+Checks for exact string matching. Case, whitespace, and punctuation are significant by default. Returns 1.0 for exact matches and 0.0 otherwise.
 
 **When to use:** Critical identifiers, status codes, booleans, or any field where partial matches are meaningless.
 
@@ -46,7 +47,35 @@ class Order(StructuredModel):
 | Parameter | Default | Description |
 |---|---|---|
 | `threshold` | `1.0` | Similarity threshold for binary classification |
-| `case_sensitive` | `False` | Whether comparison is case-sensitive |
+| `case_sensitive` | `True` | Whether comparison is case-sensitive |
+
+### NormalizedComparator
+
+Checks equality after a declared set of text transforms. By default it ignores
+case, Unicode whitespace, and Unicode punctuation. Punctuation means characters
+in the Unicode `P*` categories, so em dashes, curly quotes, and full-width
+punctuation are handled consistently. Symbols such as `$`, `±`, and emoji remain
+significant, as do accents. NFC normalization makes composed and decomposed
+spellings equivalent.
+
+**When to use:** OCR or LLM output where formatting drift is noise but edit
+distance is not meaningful, such as `"U.S.A."` versus `"USA"`.
+
+```python
+from stickler import ComparableField, NormalizedComparator, StructuredModel
+
+class Contact(StructuredModel):
+    name: str = ComparableField(comparator=NormalizedComparator())
+```
+
+**Key parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `threshold` | `1.0` | Similarity threshold for binary classification |
+| `case_sensitive` | `False` | Preserve case differences when `True` |
+| `ignore_whitespace` | `True` | Remove Unicode whitespace |
+| `ignore_punctuation` | `True` | Remove Unicode `P*` punctuation; symbols remain |
 
 ---
 

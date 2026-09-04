@@ -11,6 +11,12 @@ Each release links to full notes on the
 
 ### Added
 
+- **`NormalizedComparator`** for explicit formatting-insensitive equality.
+  Its independent case, whitespace, and punctuation options round-trip through
+  JSON Schema. Punctuation follows Unicode `P*` categories, whitespace follows
+  `str.isspace()`, and Unicode symbols and combining marks remain significant
+  ([#223](https://github.com/awslabs/stickler/issues/223)).
+
 - **`ANLSStarComparator`**, which scores a `dict` (or any nesting of dicts and
   lists) structurally instead of by whole-object equality, and is now what
   zero-config evaluation installs for a `dict` / `Dict[...]` / `Mapping[...]`

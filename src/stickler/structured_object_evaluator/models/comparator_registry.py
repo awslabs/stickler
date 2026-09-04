@@ -27,6 +27,7 @@ class ComparatorRegistry:
     _BUILTINS = {
         "LevenshteinComparator": ("stickler.comparators.levenshtein", None, None),
         "ExactComparator": ("stickler.comparators.exact", None, None),
+        "NormalizedComparator": ("stickler.comparators.normalized", None, None),
         "PhoneComparator": ("stickler.comparators.phone", None, None),
         "NumericComparator": ("stickler.comparators.numeric", None, None),
         "DateComparator": ("stickler.comparators.date", None, None),

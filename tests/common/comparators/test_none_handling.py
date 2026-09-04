@@ -25,6 +25,7 @@ from stickler.comparators import (
     DateComparator,
     ExactComparator,
     LevenshteinComparator,
+    NormalizedComparator,
     NumericComparator,
     SemanticComparator,
     StructuredModelComparator,
@@ -77,6 +78,7 @@ def _bert():
 BUILTIN_COMPARATORS = [
     pytest.param(ExactComparator, id="Exact"),
     pytest.param(LevenshteinComparator, id="Levenshtein"),
+    pytest.param(NormalizedComparator, id="Normalized"),
     pytest.param(NumericComparator, id="Numeric"),
     pytest.param(DateComparator, id="Date"),
     pytest.param(BBoxIoUComparator, id="BBox"),

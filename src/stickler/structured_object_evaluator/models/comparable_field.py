@@ -189,6 +189,13 @@ def _reconstruct_comparator_from_type(
         pass
 
     try:
+        from stickler.comparators.normalized import NormalizedComparator
+
+        comparator_map["NormalizedComparator"] = NormalizedComparator
+    except ImportError:
+        pass
+
+    try:
         from stickler.comparators.phone import PhoneComparator
 
         comparator_map["PhoneComparator"] = PhoneComparator

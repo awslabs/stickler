@@ -11,13 +11,26 @@ The comparator system provides a flexible framework for measuring similarity bet
 
 #### Exact Comparator
 ```python
-comparator = ExactComparator(threshold=1.0, case_sensitive=False)
+comparator = ExactComparator(threshold=1.0, case_sensitive=True)
 ```
-- Performs exact string matching after normalization
-- Removes whitespace and punctuation by default
+- Performs exact string matching without normalization
 - Options for case-sensitive comparison
 - Returns 1.0 for exact matches, 0.0 otherwise
 - Useful for strict matching requirements
+
+#### Normalized Comparator
+```python
+comparator = NormalizedComparator(
+    case_sensitive=False,
+    ignore_whitespace=True,
+    ignore_punctuation=True,
+)
+```
+- Performs equality after independently configured text transforms
+- Removes Unicode whitespace and Unicode `P*` punctuation by default
+- Preserves symbols such as `$`, `±`, and emoji, plus accents and combining marks
+- Uses NFC normalization and Unicode case folding
+- Useful when formatting differences are noise but typos should not match
 
 #### Numeric Comparator
 ```python
@@ -129,6 +142,7 @@ comparator = BBoxIoUComparator(threshold=0.5)
 
 1. **Choosing the Right Comparator**
    - Use ExactComparator for strict matching requirements
+   - Use NormalizedComparator for formatting-insensitive equality
    - Use FuzzyComparator for general string matching with tolerance for variations
    - Use semantic comparators (BERT/Semantic) for meaning-based comparison
    - Use LevenshteinComparator for simple edit distance-based matching
