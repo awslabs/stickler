@@ -164,6 +164,37 @@ Each release links to full notes on the
 
 ### Fixed
 
+- A nested plain pydantic `BaseModel` field no longer scores `0.0` against an
+  identical object. `ComparisonDispatcher` routed on
+  `isinstance(value, StructuredModel)`, and a plain `BaseModel` is not one, so a
+  nested one fell to the mismatched-types branch: two equal objects were reported
+  as `overall_score 0.0` with `fd=1`, a perfect match that is also a failure. That
+  is the contradiction [#287](https://github.com/awslabs/stickler/issues/287)
+  removed elsewhere.
+
+  The asymmetry is what identified it as a defect rather than an unsupported
+  shape, since the list form of the same type was already correct:
+
+  ```
+  Optional[Plain]        identical -> 0.0   and fd=1
+  Optional[List[Plain]]  identical -> 1.0
+  ```
+
+  because the list branch already sent any non-`StructuredModel` element to the
+  primitive list comparator. Both forms now compare the model's canonical string
+  through the field's declared comparator, so the singular and list forms of one
+  shape agree and a near miss earns partial credit rather than zero.
+
+  A nested `StructuredModel` is unaffected and keeps its per-field detail; the new
+  branch sits after that one, which matters because `StructuredModel` subclasses
+  `BaseModel`. A nested plain `BaseModel` reports no per-field breakdown, because
+  it carries no per-field comparison configuration; declaring it as a
+  `StructuredModel` is how to get that. Scoring a plain `BaseModel` field by field
+  in the dispatcher would make it behave differently from the same model inside a
+  list, trading one inconsistency for another
+  ([#135](https://github.com/awslabs/stickler/issues/135),
+  [#318](https://github.com/awslabs/stickler/issues/318)).
+
 - **Breaking:** `HungarianMatcher.calculate_metrics` no longer reports a paired
   item as missing. It derived `fn` and `fp` as `len(list) - tp`, so a pair the
   algorithm produced, and that the method returns inside `matched_pairs`, was

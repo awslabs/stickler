@@ -6,6 +6,8 @@ to appropriate handlers based on field type and null states.
 
 from typing import Any, Dict, Optional
 
+from pydantic import BaseModel
+
 from .configuration_helper import ConfigurationHelper
 from .null_helper import NullHelper
 from .result_helper import ResultHelper
@@ -14,24 +16,24 @@ from .structured_model import StructuredModel
 
 class ComparisonDispatcher:
     """Dispatches field comparisons to appropriate handlers based on field type.
-    
+
     This class is responsible for routing field comparisons to the correct
     comparison handler based on:
     - Field type (primitive, list, structured)
     - Null states (None, empty lists, etc.)
     - Hierarchical structure requirements
-    
+
     It uses match-statement based dispatch for clear, traceable logic flow.
     """
 
     def __init__(self, model: "StructuredModel"):
         """Initialize dispatcher with the ground truth model.
-        
+
         Args:
             model: The ground truth StructuredModel instance
         """
         self.model = model
-        
+
         # Initialize comparators lazily to avoid circular imports
         self._field_comparator = None
         self._primitive_list_comparator = None
@@ -42,6 +44,7 @@ class ComparisonDispatcher:
         """Lazy initialization of FieldComparator."""
         if self._field_comparator is None:
             from .field_comparator import FieldComparator
+
             self._field_comparator = FieldComparator(self.model)
         return self._field_comparator
 
@@ -50,6 +53,7 @@ class ComparisonDispatcher:
         """Lazy initialization of PrimitiveListComparator."""
         if self._primitive_list_comparator is None:
             from .primitive_list_comparator import PrimitiveListComparator
+
             self._primitive_list_comparator = PrimitiveListComparator(self.model)
         return self._primitive_list_comparator
 
@@ -58,20 +62,18 @@ class ComparisonDispatcher:
         """Lazy initialization of StructuredListComparator."""
         if self._structured_list_comparator is None:
             from .structured_list_comparator import StructuredListComparator
+
             self._structured_list_comparator = StructuredListComparator(self.model)
         return self._structured_list_comparator
 
     def dispatch_field_comparison(
-        self, 
-        field_name: str, 
-        gt_val: Any, 
-        pred_val: Any
+        self, field_name: str, gt_val: Any, pred_val: Any
     ) -> Dict[str, Any]:
         """Dispatch field comparison using match-based routing.
-        
+
         This is the core dispatch logic that routes to the appropriate
         comparison handler based on field type and null states.
-        
+
         The dispatch follows this decision tree:
         1. Check if field is a list type → handle list-specific null cases
         2. Check for primitive null cases → handle TN/FA/FN
@@ -80,12 +82,12 @@ class ComparisonDispatcher:
            - List types → PrimitiveListComparator or StructuredListComparator
            - StructuredModel types → FieldComparator
            - Mismatched types → FD result
-        
+
         Args:
             field_name: Name of the field being compared
             gt_val: Ground truth value
             pred_val: Predicted value
-            
+
         Returns:
             Comparison result with structure:
             {
@@ -98,7 +100,7 @@ class ComparisonDispatcher:
             }
         """
         from .structured_model import StructuredModel
-        
+
         # ============================================================================
         # STEP 1: Get field configuration
         # ============================================================================
@@ -111,7 +113,7 @@ class ComparisonDispatcher:
         # ============================================================================
         # STEP 2: Determine field type and null states
         # ============================================================================
-        # Check if this field is ANY list type (including Optional[List[str]], 
+        # Check if this field is ANY list type (including Optional[List[str]],
         # Optional[List[StructuredModel]], etc.). This determines which dispatch
         # path to take.
         is_list_field = self.model._is_list_field(field_name)
@@ -119,7 +121,9 @@ class ComparisonDispatcher:
         # Get hierarchical needs for both ground truth and prediction.
         # These flags control whether we need to maintain hierarchical structure
         # for list fields (e.g., List[StructuredModel] vs List[str]).
-        gt_needs_hierarchy = self.model._should_use_hierarchical_structure(gt_val, field_name)
+        gt_needs_hierarchy = self.model._should_use_hierarchical_structure(
+            gt_val, field_name
+        )
         pred_needs_hierarchy = self.model._should_use_hierarchical_structure(
             pred_val, field_name
         )
@@ -150,8 +154,12 @@ class ComparisonDispatcher:
         # - GT non-null, Pred null → FN (False Negative)
         # - Both non-null → Continue to type-based dispatch
         if not (gt_needs_hierarchy or pred_needs_hierarchy):
-            gt_effectively_null_prim = NullHelper.is_effectively_null_for_primitives(gt_val)
-            pred_effectively_null_prim = NullHelper.is_effectively_null_for_primitives(pred_val)
+            gt_effectively_null_prim = NullHelper.is_effectively_null_for_primitives(
+                gt_val
+            )
+            pred_effectively_null_prim = NullHelper.is_effectively_null_for_primitives(
+                pred_val
+            )
 
             match (gt_effectively_null_prim, pred_effectively_null_prim):
                 case (True, True):
@@ -187,8 +195,10 @@ class ComparisonDispatcher:
         if isinstance(gt_val, (str, int, float)) and isinstance(
             pred_val, (str, int, float)
         ):
-            return self.field_comparator.compare_primitive_with_scores(gt_val, pred_val, field_name)
-        
+            return self.field_comparator.compare_primitive_with_scores(
+                gt_val, pred_val, field_name
+            )
+
         # CASE 2: Both are lists (non-empty, null/empty cases already handled in STEP 3)
         # Determine if this is a structured list or primitive list by inspecting elements
         elif isinstance(gt_val, list) and isinstance(pred_val, list):
@@ -200,17 +210,21 @@ class ComparisonDispatcher:
                 )
             else:
                 # Delegate to PrimitiveListComparator for List[primitive]
-                return self.primitive_list_comparator.compare_primitive_list_with_scores(
-                    gt_val, pred_val, field_name
+                return (
+                    self.primitive_list_comparator.compare_primitive_list_with_scores(
+                        gt_val, pred_val, field_name
+                    )
                 )
-        
+
         # CASE 3: Nested StructuredModel fields
         # Delegate to FieldComparator for nested object comparison
         elif isinstance(gt_val, StructuredModel) and isinstance(
             pred_val, StructuredModel
         ):
-            return self.field_comparator.compare_structured_field(gt_val, pred_val, field_name, threshold)
-        
+            return self.field_comparator.compare_structured_field(
+                gt_val, pred_val, field_name, threshold
+            )
+
         # CASE 4: Both are dicts, whose keys the model did not declare
         # A dict annotation says "I do not know these keys", so there is no
         # per-key comparison config to apply and the whole mapping is scored as
@@ -245,7 +259,36 @@ class ComparisonDispatcher:
                 gt_val, pred_val, field_name
             )
 
-        # CASE 5: Mismatched types (e.g., str vs int, list vs str, struct vs primitive)
+        # CASE 5: A nested plain pydantic BaseModel, which is not a StructuredModel
+        # so CASE 3 does not reach it.
+        #
+        # It fell through to the mismatched-types branch below and scored 0.0
+        # against an IDENTICAL object, reported as a false discovery: a perfect
+        # match that is also a failure, which is the contradiction #287 removed
+        # elsewhere. Meanwhile `List[plain BaseModel]` already scored correctly,
+        # because CASE 2 sends anything that is not a StructuredModel element to
+        # the primitive list comparator. So the singular and list forms of the
+        # same shape disagreed.
+        #
+        # Routed through the primitive path for the same reason CASE 4 sends a
+        # dict there: that method is only "primitive" in name. It calls the
+        # field's configured comparator, classifies TP/FD against the field
+        # threshold, and honours clip_under_threshold.
+        #
+        # This makes the two forms agree rather than introducing a third
+        # behaviour. Both compare the model's canonical string, which pydantic
+        # renders in field-declaration order, so it is stable across instances
+        # regardless of keyword order at construction. Scoring a plain BaseModel
+        # structurally, field by field, is what `StructuredModel` is for and what
+        # `stickler.evaluate()` does by wrapping one; doing it here instead would
+        # make a nested plain model behave differently from the same model inside
+        # a list, trading this inconsistency for another. See #135.
+        elif isinstance(gt_val, BaseModel) and isinstance(pred_val, BaseModel):
+            return self.field_comparator.compare_primitive_with_scores(
+                str(gt_val), str(pred_val), field_name
+            )
+
+        # CASE 6: Mismatched types (e.g., str vs int, list vs str, struct vs primitive)
         # This is a False Discovery - types don't match
         else:
             return {
@@ -258,24 +301,21 @@ class ComparisonDispatcher:
             }
 
     def handle_list_field_dispatch(
-        self, 
-        gt_val: Any, 
-        pred_val: Any, 
-        weight: float
+        self, gt_val: Any, pred_val: Any, weight: float
     ) -> Optional[Dict[str, Any]]:
         """Handle list field comparison with early exit for null cases.
-        
+
         This method handles special cases for list fields:
         - Both None/empty → True Negative
         - GT None/empty, Pred populated → False Alarm
         - GT populated, Pred None/empty → False Negative
         - Both populated → Return None to continue processing
-        
+
         Args:
             gt_val: Ground truth list value (may be None or empty)
             pred_val: Predicted list value (may be None or empty)
             weight: Field weight for scoring
-            
+
         Returns:
             Comparison result dictionary if early exit needed (null cases),
             None if both lists are populated and should continue to type-based dispatch
