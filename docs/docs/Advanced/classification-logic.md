@@ -119,6 +119,8 @@ neither term. The mixed-matching example above scores recall `1.000` even though
 `0.667`. `HungarianMatcher.calculate_metrics` always uses that second formula.
 See [FD and recall](hungarian-matching.md#fd-and-recall).
 
+These are computed at every node of the result tree, from that node's own counts, and which counts those are depends on which node you read. `overall` gives object verdicts at that level: was the pairing genuine or spurious. `aggregate` gives leaf detail for the objects that were comparable, since an object below `match_threshold` is one FD and is not descended into. See [Which node answers which question](aggregate-metrics.md#which-node-answers-which-question).
+
 ## Edge Cases
 
 **Null vs. empty equivalence** -- Empty strings (`""`), empty lists (`[]`), and empty objects (`{}`) are treated as null. Comparing any of these with `null` yields TN.

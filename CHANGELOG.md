@@ -141,27 +141,6 @@ Each release links to full notes on the
   `match_threshold=` explicitly still overrides the declaration, and a class that
   declares nothing is unaffected.
 
-- JSON Schema import now delegates standard types, local references, combiners,
-  and constraint parsing to `json-schema-to-pydantic`. Stickler retains a narrow
-  adapter for comparison metadata and nested `StructuredModel` creation. Parsed
-  types still choose comparison behavior, but schema constraints do not reject
-  imperfect predictions before scoring: malformed enum, date, and
-  constraint-violating values remain constructible and reach their comparator.
-
-  Unconfigured enum fields now use `ExactComparator` at threshold `1.0`, and
-  `date` / `date-time` formats use `DateComparator` at threshold `1.0`; both used
-  `LevenshteinComparator` at threshold `0.5` before this change, so default scores
-  can move for those fields.
-  This adds support for valid Draft 7 multi-type unions and multi-arm `allOf`,
-  `anyOf`, and `oneOf` schemas; recursive models and `patternProperties` remain
-  explicit unsupported boundaries ([#212](https://github.com/awslabs/stickler/issues/212)).
-
-- Confidence AUROC and document-splitting statistics now use NumPy
-  implementations with randomized scikit-learn and SciPy equivalence tests.
-  `scikit-learn` is no longer a core dependency, and the `docsplit` extra now
-  adds only pandas; SciPy remains isolated to the `semantic` extra
-  ([#216](https://github.com/awslabs/stickler/issues/216)).
-
 ### Fixed
 
 - **Breaking:** `HungarianMatcher.calculate_metrics` no longer reports a paired
@@ -312,37 +291,17 @@ Each release links to full notes on the
   Replacements, all of which already existed: `overall_score` for the scalar
   summary, `EvalResult.matched` for a single object-level verdict, and
   `field_comparisons` for the individual failures. To ask whether anything failed
-  at all, both rollup nodes have to be read, because a list item that scores
-  below `match_threshold` is recorded as one `fd` on `confusion_matrix.overall`
-  and is not descended into, so its leaves never appear under
-  `confusion_matrix.aggregate`:
+  at all, both rollup nodes have to be read, because each is blind to the other's
+  failures. A list item scoring below `match_threshold` is recorded as one `fd` on
+  `confusion_matrix.overall` and is not descended into, so its leaves never appear
+  under `confusion_matrix.aggregate`; conversely a value invented where the ground
+  truth is null is `fa` at that leaf and rolls into `confusion_matrix.aggregate`,
+  while `overall` stays clean because the item still paired:
 
   ```python
   clean = (
-      cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
-      and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
-  )
-  ```
-
-  A below-threshold object is a spurious non-match, so not descending into it is
-  deliberate: `overall` carries the object verdict and `aggregate` carries leaf
-  detail for the objects that were comparable. A caller wanting leaf detail for a
-  marginal object lowers `match_threshold` until it qualifies. See
-  [#288](https://github.com/awslabs/stickler/issues/288) for the naming.
-
-
-  Replacements, all of which already existed: `overall_score` for the scalar
-  summary, `EvalResult.matched` for a single object-level verdict, and
-  `field_comparisons` for the individual failures. To ask whether anything failed
-  at all, both rollup nodes have to be read, because a list item that scores
-  below `match_threshold` is recorded as one `fd` on `confusion_matrix.overall`
-  and is not descended into, so its leaves never appear under
-  `confusion_matrix.aggregate`:
-
-  ```python
-  clean = (
-      cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
-      and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
+      cm['aggregate']['fp'] + cm['aggregate']['fn'] == 0
+      and cm['overall']['fp'] + cm['overall']['fn'] == 0
   )
   ```
 
@@ -522,6 +481,37 @@ Each release links to full notes on the
   populated skips the annotation entirely (0.537s, within noise of the original).
   A test pins the superset property so adding a case to either rule without
   widening the guard fails loudly rather than silently skipping the check.
+
+### Documentation
+
+- Documented what the two confusion-matrix rollup nodes answer. `overall` gives
+  object verdicts (was this pairing genuine or spurious); `aggregate` gives leaf
+  detail for the objects that were comparable. `match_threshold` is the line
+  between them: an object below it is a single FD, a spurious non-match, and is
+  not descended into, so a caller wanting leaf detail for a marginal object
+  lowers `match_threshold` until the object qualifies as comparable.
+
+  Both nodes were previously described only mechanically ("this node's own direct
+  classification" / "sums all primitive-field classifications beneath"), which
+  said nothing about which to read for which question, or that they diverge on
+  any model with nesting. They coincide only where there is no accepted subtree
+  to expand: a flat model, or a document in which *every* subtree was rejected.
+  One rejected subtree among several makes them diverge further, not converge,
+  because `aggregate` then reports a flawless precision over the accepted items
+  only.
+
+  Both pages carry the same two-stage framing as mean Average Precision, and now
+  also name where the analogy stops: a below-threshold bounding box counts as both
+  FP and FN so mAP recall falls, while a below-threshold object is `fd` only, so
+  `overall` recall reads `1.0` on a document with a spurious pairing unless
+  `recall_with_fd=True` is passed.
+
+  Also documents that `EvalResult.precision`, `.recall`, `.f1` and `.accuracy`
+  are the object-level metrics, read from `confusion_matrix.overall.derived`, so
+  `precision` of `1.0` beside an `overall_score` of `0.9667` is two correct
+  answers to two different questions rather than a contradiction. The naming is
+  under review for 1.0 in
+  [#288](https://github.com/awslabs/stickler/issues/288).
 
 ## [0.7.0] - 2026-08-18
 

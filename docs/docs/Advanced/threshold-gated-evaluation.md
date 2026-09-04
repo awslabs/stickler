@@ -180,10 +180,15 @@ whole would score something the comparison declared not comparable.
 
 ```python
 clean = (
-    cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
-    and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
+    cm['aggregate']['fp'] + cm['aggregate']['fn'] == 0
+    and cm['overall']['fp'] + cm['overall']['fn'] == 0
 )
 ```
+
+Read `fp`, not `fa + fd`. The two are equal by construction, and `fp` also catches
+the mirror-image case: a value invented where the ground truth is null is `fa` at
+that leaf and rolls into `aggregate`, while `overall` stays clean because the item
+still paired.
 
 So `match_threshold` is also the knob for how much leaf detail you get. If you
 want a marginal object's leaves scored individually, lower it until that object
