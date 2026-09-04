@@ -199,9 +199,21 @@ Each release links to full notes on the
   equal: a genuine type mismatch reported as a perfect match, which is worse than
   the `0.0` being fixed. Reachable through `Any` and through a union of models.
 
+  The class check is exact rather than `isinstance`, so a subclass against its
+  base is also a mismatch. A subclass renders its own fields, so `Sub(a="x")` is
+  `"a='x' b=None"` against `Base(a="x")` as `"a='x'"`; allowing the pair would
+  score a schema mismatch by edit distance and report a near-match.
+
   A nested `StructuredModel` is unaffected and keeps its per-field detail; the new
   branch sits after that one, which matters because `StructuredModel` subclasses
-  `BaseModel`. A nested plain `BaseModel` reports no per-field breakdown, because
+  `BaseModel`.
+
+  Known limitation, unchanged by this and tracked in
+  [#320](https://github.com/awslabs/stickler/issues/320): a plain `BaseModel` is
+  compared by its rendered form, so a custom `__str__`, a `repr=False` field or a
+  `SecretStr` hides data from scoring, and extra-field or dict key ordering makes
+  identical content score below `1.0`. All of it predates this change on the list
+  path; this makes the singular case consistent with it rather than fixing it. A nested plain `BaseModel` reports no per-field breakdown, because
   it carries no per-field comparison configuration; declaring it as a
   `StructuredModel` is how to get that. Scoring a plain `BaseModel` field by field
   in the dispatcher would make it behave differently from the same model inside a

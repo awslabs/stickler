@@ -297,6 +297,13 @@ class ComparisonDispatcher:
         # perfect match, which is worse than the 0.0 this branch was added to fix.
         # Reachable through `Any` and through a `Union` of models, where pydantic
         # keeps the concrete class.
+        #
+        # Exact class, not `isinstance`, so a subclass against its base is also a
+        # mismatch. That is deliberate: a subclass renders its own fields, so
+        # `Sub(a="x")` is `"a='x' b=None"` against `Base(a="x")` as `"a='x'"`.
+        # Allowing the pair would score a schema mismatch by edit distance and
+        # report a near-match, which is less useful than saying plainly that the
+        # two are not the same shape.
         elif (
             isinstance(gt_val, BaseModel)
             and isinstance(pred_val, BaseModel)

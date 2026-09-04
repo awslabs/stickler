@@ -361,3 +361,47 @@ class TestTwoDifferentClassesAreNotAMatch:
         assert Holder(pet=self.Cat(name="rex")).compare_with(
             Holder(pet=self.Cat(name="rex"))
         )["field_scores"]["pet"] == pytest.approx(1.0)
+
+
+class TestASubclassIsADifferentShape:
+    """Exact class, not `isinstance`, and the reason is measurable.
+
+    A subclass renders its own fields, so even with the extra field unset the two
+    renderings differ:
+
+        str(Base(a="x"))   ->  "a='x'"
+        str(Sub(a="x"))    ->  "a='x' b=None"
+
+    Allowing the pair would score a schema mismatch by edit distance and report a
+    near-match. A clean false discovery says more.
+    """
+
+    class Base(BaseModel):
+        a: Optional[str] = None
+
+    class Sub(Base):
+        b: Optional[str] = None
+
+    @pytest.mark.parametrize("extra", (None, "y"))
+    def test_a_base_against_its_subclass_is_a_false_discovery(self, extra):
+        class Holder(StructuredModel):
+            v: Optional[Any] = ComparableField(default=None)
+
+        result = Holder(v=self.Base(a="x")).compare_with(
+            Holder(v=self.Sub(a="x", b=extra)), include_confusion_matrix=True
+        )
+
+        assert result["field_scores"]["v"] == pytest.approx(0.0)
+        assert result["confusion_matrix"]["overall"]["fd"] == 1
+
+    def test_the_renderings_differ_even_with_the_extra_field_unset(self):
+        """The measurement behind the choice."""
+        assert str(self.Base(a="x")) != str(self.Sub(a="x"))
+
+    def test_a_subclass_against_itself_still_scores(self):
+        class Holder(StructuredModel):
+            v: Optional[Any] = ComparableField(default=None)
+
+        assert Holder(v=self.Sub(a="x", b="y")).compare_with(
+            Holder(v=self.Sub(a="x", b="y"))
+        )["field_scores"]["v"] == pytest.approx(1.0)
