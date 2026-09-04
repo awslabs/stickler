@@ -4,7 +4,6 @@ This module provides the ComparableField function for creating fields in structu
 with comparison configuration parameters.
 """
 
-import inspect
 from typing import Any, Dict, Optional
 
 from pydantic import Field
@@ -21,7 +20,7 @@ _LEGACY_DEFAULT_THRESHOLD = 0.5
 
 
 def _comparator_threshold_was_set(comparator: BaseComparator) -> Optional[float]:
-    """Return the comparator's threshold if the caller chose it, else ``None``.
+    """Return the comparator's threshold if the caller named one, else ``None``.
 
     A field with no threshold of its own adopts one the caller put on the
     comparator, because ``LevenshteinComparator(threshold=0.9)`` is a clear
@@ -32,24 +31,22 @@ def _comparator_threshold_was_set(comparator: BaseComparator) -> Optional[float]
     thresholds, so they have not been audited as such and several are wrong for
     the job: ``DateComparator`` defaults to ``1.0`` while awarding partial credit
     of ``0.7`` for a year-less match, so adopting it would clip that feature to
-    zero. Auditing every comparator's default is separate work.
+    zero. Auditing every comparator's default is separate work (#246).
 
-    Explicitness is recovered by comparing against the default declared on the
-    concrete class, because each subclass resolves its own default before calling
-    ``super().__init__``, so nothing downstream can see what the caller passed.
+    The distinction comes from :attr:`BaseComparator.threshold_was_set`, recorded
+    at construction. It cannot be recovered here: every comparator resolves its
+    own default before calling ``super().__init__``, so ``DateComparator()`` and
+    ``DateComparator(threshold=1.0)`` both arrive holding ``1.0``, and comparing
+    against the signature default reads both as unset. That is why
+    ``BaseComparator.__init__`` takes ``Optional[float] = None``.
 
-    One consequence worth knowing: passing a threshold that happens to equal the
-    class default (``DateComparator(threshold=1.0)``) reads as not set, and the
-    field falls back to ``_LEGACY_DEFAULT_THRESHOLD``. State it on the field to
-    be unambiguous.
+    ``getattr`` with a default rather than a bare attribute read: a comparator
+    that never chains to ``BaseComparator.__init__`` has no such attribute, and
+    the safe reading of "cannot tell" is "not set".
     """
-    parameter = inspect.signature(type(comparator).__init__).parameters.get("threshold")
-    if parameter is None or parameter.default is inspect.Parameter.empty:
+    if not getattr(comparator, "threshold_was_set", False):
         return None
-    actual = getattr(comparator, "threshold", None)
-    if actual is None or actual == parameter.default:
-        return None
-    return actual
+    return getattr(comparator, "threshold", None)
 
 
 def ComparableField(

@@ -47,9 +47,11 @@ class BBoxIoUComparator(BaseComparator):
         no box could be parsed.
     """
 
+    DEFAULT_THRESHOLD = 0.5
+
     def __init__(
         self,
-        threshold: float = 0.5,
+        threshold: Optional[float] = None,
     ):
         super().__init__(threshold=threshold)
 

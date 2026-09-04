@@ -4,6 +4,31 @@ Comparators are the algorithms that determine how similar two field values are. 
 
 ---
 
+## Where the threshold comes from
+
+Every comparator below takes a `threshold`, and every one of them can also be set on the field. Both spellings gate the same thing, TP vs FD classification and score clipping:
+
+```python
+# These two fields behave identically.
+ComparableField(comparator=LevenshteinComparator(threshold=0.8))
+ComparableField(comparator=LevenshteinComparator(), threshold=0.8)
+```
+
+Precedence is field, then comparator, then `0.5`:
+
+| You write | Effective threshold |
+|---|---|
+| `ComparableField(threshold=0.9, comparator=Lev(threshold=0.8))` | `0.9`, the field wins |
+| `ComparableField(comparator=Lev(threshold=0.8))` | `0.8`, from the comparator |
+| `ComparableField(comparator=Lev())` | `0.5`, not Levenshtein's `0.7` |
+| `ComparableField()` | `0.5` |
+
+The third row is the one to know: a comparator's *default* threshold is never adopted. Those defaults were chosen for `binary_compare()`, not as classification cutoffs, and at least one is actively wrong for the job. `DateComparator` defaults to `1.0` while awarding `0.7` partial credit for a match with no year, so adopting it would clip that feature to zero. If you want a comparator's default to act as the cutoff, name it.
+
+See [Thresholds and Metrics](../../Getting-Started/thresholds-and-metrics.md) for how this interacts with model and runtime match thresholds.
+
+---
+
 ## Which Comparator Should I Use?
 
 | Comparator | Best For | Speed | Needs AWS? | Score Type |

@@ -18,9 +18,11 @@ Stickler has four distinct thresholds that control different aspects of evaluati
 comparator = LevenshteinComparator(threshold=0.8)
 ```
 
-**What it gates:** The comparator's `binary_compare()` method uses this to return `(1, 0)` for TP or `(0, 1)` for FP.
+**What it gates:** TP vs FD classification for every field that names this comparator and does not set a threshold of its own. It also drives `binary_compare()`, which returns `(1, 0)` for TP or `(0, 1)` for FP.
 
-**When it applies:** Only when calling `comparator.binary_compare()` directly. In normal evaluation, this threshold is **ignored**—the field threshold is used instead.
+**When it applies:** Whenever the field itself is silent. A threshold is only meaningful beside the metric that produced the score (0.85 means one thing on edit distance and another on a semantic embedding), so a threshold you put on the comparator is read as a statement about the field.
+
+A threshold on the field always wins. And only a threshold you *named* is adopted: a comparator's own default is not, because those defaults were never chosen as classification cutoffs. `LevenshteinComparator(threshold=0.8)` gives the field 0.8; a bare `LevenshteinComparator()` leaves it at the field default of 0.5, not the comparator's 0.7.
 
 ### 2. Field Threshold
 
@@ -81,7 +83,7 @@ When multiple thresholds could apply, here's which one wins:
 
 | Situation | Which threshold applies |
 |-----------|------------------------|
-| **Primitive field comparison** (str, int, float) | Field threshold (`ComparableField(threshold=...)`) |
+| **Primitive field comparison** (str, int, float) | Field threshold (`ComparableField(threshold=...)`), else a threshold named on the comparator |
 | **Nested object comparison** | Recurses into fields; each field uses its own field threshold |
 | **List element pairing** (`List[StructuredModel]`) | Runtime match threshold if provided, else Model match threshold |
 | **Score clipping** | Field threshold (when `clip_under_threshold=True`) |
@@ -93,7 +95,7 @@ When multiple thresholds could apply, here's which one wins:
 1. **Field threshold** controls primitive-level TP/FD classification and score clipping.
 2. **Match threshold** controls object-level TP/FD classification for list matching.
 3. **Runtime match threshold** overrides model-level match threshold.
-4. **Comparator threshold** is only used by `binary_compare()`; evaluation ignores it.
+4. **Comparator threshold** fills in for the field threshold when the field does not set one. A threshold on the field always wins, and a comparator's own default is never adopted.
 
 ### Example: All Four in Action
 
@@ -104,8 +106,8 @@ class Product(StructuredModel):
     match_threshold = 0.75  # (3) Model match threshold
 
     name: str = ComparableField(
-        comparator=LevenshteinComparator(threshold=0.5),  # (1) Comparator threshold - IGNORED
-        threshold=0.8,  # (2) Field threshold - USED
+        comparator=LevenshteinComparator(threshold=0.5),  # (1) Comparator threshold
+        threshold=0.8,  # (2) Field threshold - wins over (1)
     )
 
 class Order(StructuredModel):
@@ -119,7 +121,13 @@ In this example:
 
 - `name` similarity is compared against **0.8** (field threshold) for TP/FD
 - Product pairs are compared against **0.8** (runtime threshold) for list matching
-- The comparator's **0.5** is never used
+- The comparator's **0.5** is overridden by the field's **0.8**. Drop `threshold=0.8` from the field and the comparator's 0.5 governs instead.
+
+### Precedence, in one line
+
+Field threshold → threshold named on the comparator → `0.5`.
+
+A comparator's *default* threshold is not part of that chain. `LevenshteinComparator()` does not contribute its 0.7, because those defaults were chosen for `binary_compare()` and were never audited as classification cutoffs. `DateComparator` is the clearest case: it defaults to `1.0` while awarding `0.7` partial credit for a match with no year, so adopting its default would clip its own feature to zero.
 
 ---
 
@@ -371,7 +379,7 @@ Recall (with FD) = TP / (TP + FN + FD) = 5 / (5 + 1 + 1) = 0.714
 
 | Threshold | Where Set | What It Controls | Default |
 |-----------|-----------|------------------|---------|
-| Comparator | `Comparator(threshold=...)` | `binary_compare()` only | varies |
+| Comparator | `Comparator(threshold=...)` | TP/FD and clipping when the field sets no threshold; `binary_compare()` | varies, and a default is not adopted |
 | Field | `ComparableField(threshold=...)` | TP/FD for primitives, clipping | 0.5 |
 | Model | `match_threshold = ...` on class | Hungarian pairing | 0.7 |
 | Runtime | `evaluate(..., match_threshold=...)` | Overrides model threshold | 0.7 |

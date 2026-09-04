@@ -30,6 +30,7 @@ import pytest
 from stickler.comparators.date import DateComparator
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.comparators.numeric import NumericComparator
 from stickler.structured_object_evaluator.models.comparable_field import (
     _LEGACY_DEFAULT_THRESHOLD,
     ComparableField,
@@ -120,20 +121,49 @@ class TestAComparatorDefaultIsNotAdopted:
     def test_no_comparator_means_the_legacy_default(self):
         assert _threshold_of(ComparableField(default=None)) == _LEGACY_DEFAULT_THRESHOLD
 
-    def test_a_threshold_equal_to_the_class_default_reads_as_unset(self):
-        """A known and documented consequence, asserted so it is not a surprise.
+    def test_a_threshold_equal_to_the_class_default_is_still_honoured(self):
+        """Naming a value must not depend on which value it happens to be.
 
-        Explicitness is recovered by comparing against the declared default,
-        because each subclass resolves its own before calling `super().__init__`.
-        So passing the default value explicitly is indistinguishable from not
-        passing it. The docstring tells callers to state it on the field instead.
+        An earlier revision recovered explicitness by comparing the resolved
+        threshold against the class default, so `DateComparator(threshold=1.0)`
+        was indistinguishable from `DateComparator()` and fell back to the
+        legacy 0.5. That made the effective threshold non-monotonic --
+        `LevenshteinComparator(threshold=0.69)` gave 0.69 while a *stricter*
+        0.70 gave 0.50 -- and it collapsed the strictest and most natural
+        spelling of the 1.0-default comparators. `threshold_was_set` records
+        the caller's intent at construction instead, so the two cases stay
+        apart no matter what number is named.
         """
         assert (
             _threshold_of(
                 ComparableField(comparator=DateComparator(threshold=1.0), default=None)
             )
-            == _LEGACY_DEFAULT_THRESHOLD
+            == 1.0
         )
+
+    @pytest.mark.parametrize("value", [0.69, 0.70, 0.71])
+    def test_the_effective_threshold_is_monotonic_across_the_class_default(self, value):
+        """0.70 is Levenshtein's default and must not be a hole in the range."""
+        assert (
+            _threshold_of(
+                ComparableField(
+                    comparator=LevenshteinComparator(threshold=value), default=None
+                )
+            )
+            == value
+        )
+
+    def test_the_strictest_spelling_does_not_become_the_loosest(self):
+        """`threshold=1.0` on a 1.0-default comparator used to yield 0.5."""
+        for comparator in (
+            ExactComparator(threshold=1.0),
+            NumericComparator(threshold=1.0),
+            DateComparator(threshold=1.0),
+        ):
+            assert (
+                _threshold_of(ComparableField(comparator=comparator, default=None))
+                == 1.0
+            ), type(comparator).__name__
 
 
 class TestTheHelperInIsolation:
@@ -269,3 +299,138 @@ class TestTheVerdictActuallyMoves:
                 comparator=LevenshteinComparator(threshold=0.95), default=None
             )
         )
+
+
+class TestAListOfModelsStillAcceptsAComparator:
+    """The guard on `List[StructuredModel]` must blame only what was written.
+
+    `__init_subclass__` refuses a `threshold` on a list-of-model field, because
+    Hungarian matching reads each element class's `match_threshold` instead. It
+    used to detect that threshold by comparing the resolved value against the
+    legacy `0.5`, which was a serviceable proxy only while nothing else could
+    fill the slot. Now a comparator threshold does, so the proxy refused a class
+    whose call site has no `threshold` in it at all.
+    """
+
+    def test_a_comparator_threshold_does_not_refuse_the_class(self):
+        class Item(StructuredModel):
+            name: str = ComparableField(comparator=LevenshteinComparator())
+
+        class Doc(StructuredModel):
+            items: list[Item] = ComparableField(
+                comparator=LevenshteinComparator(threshold=0.9)
+            )
+
+        assert Doc.model_fields["items"] is not None
+
+    def test_a_field_threshold_is_still_refused(self):
+        """The guard's actual purpose has to survive the fix."""
+
+        class Item(StructuredModel):
+            name: str = ComparableField(comparator=LevenshteinComparator())
+
+        with pytest.raises(ValueError, match="cannot have a 'threshold' parameter"):
+
+            class Doc(StructuredModel):
+                items: list[Item] = ComparableField(threshold=0.9)
+
+
+class TestASubclassThatForwardsKwargs:
+    """Signature inspection could not see a threshold passed through `**kwargs`.
+
+    Custom comparators are a documented extension point, and forwarding
+    `**kwargs` to `super().__init__` is an ordinary way to write one. Reading
+    `threshold_was_set` off the instance sees it; inspecting the concrete
+    class's declared parameters did not, so the bug stayed live out of tree.
+    """
+
+    def test_a_forwarded_threshold_is_adopted(self):
+        class KwLev(LevenshteinComparator):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+
+        assert KwLev(threshold=0.9).threshold == 0.9
+        assert (
+            _threshold_of(
+                ComparableField(comparator=KwLev(threshold=0.9), default=None)
+            )
+            == 0.9
+        )
+
+    def test_a_forwarding_subclass_with_no_threshold_still_defaults(self):
+        class KwLev(LevenshteinComparator):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+
+        assert (
+            _threshold_of(ComparableField(comparator=KwLev(), default=None))
+            == _LEGACY_DEFAULT_THRESHOLD
+        )
+
+
+class TestTheComparatorDefaultsThemselves:
+    """`DEFAULT_THRESHOLD` must agree with what each comparator resolves to.
+
+    The defaults moved from signature defaults to a class attribute. A mismatch
+    would silently change a comparator's own behaviour, which is not what this
+    change is for.
+    """
+
+    @pytest.mark.parametrize(
+        "factory,expected",
+        [
+            (LevenshteinComparator, 0.7),
+            (ExactComparator, 1.0),
+            (NumericComparator, 1.0),
+            (DateComparator, 1.0),
+        ],
+    )
+    def test_a_bare_construction_still_resolves_the_documented_default(
+        self, factory, expected
+    ):
+        assert factory().threshold == expected
+        assert factory.DEFAULT_THRESHOLD == expected
+        assert factory().threshold_was_set is False
+
+
+class TestExportDoesNotEmitAThresholdForAListOfModels:
+    """A schema stickler writes must be one stickler can read back.
+
+    `to_json_schema()` used to emit `x-aws-stickler-threshold` for a
+    `List[StructuredModel]` field, carrying a number that is never read there:
+    Hungarian matching uses the element class's `match_threshold`, which the
+    exported `items` schema already carries. Harmless while import treated the
+    value as a placeholder, and fatal once import reads it as a threshold the
+    caller named -- which a list-of-model field is not allowed to have. The
+    model could be exported and then not imported.
+    """
+
+    @staticmethod
+    def _cart():
+        class Product(StructuredModel):
+            match_threshold = 0.8
+            name: str = ComparableField(comparator=LevenshteinComparator())
+
+        class Cart(StructuredModel):
+            products: list[Product] = ComparableField(weight=2.0)
+
+        return Cart
+
+    def test_the_key_is_absent_from_the_array_property(self):
+        schema = self._cart().to_json_schema()
+        assert "x-aws-stickler-threshold" not in schema["properties"]["products"]
+
+    def test_the_element_match_threshold_still_travels(self):
+        """What was dropped must not be information anyone needed."""
+        products = self._cart().to_json_schema()["properties"]["products"]
+        assert products["items"]["x-aws-stickler-match-threshold"] == 0.8
+
+    def test_the_weight_still_travels(self):
+        """Only the threshold is dropped, not the whole extension block."""
+        products = self._cart().to_json_schema()["properties"]["products"]
+        assert products["x-aws-stickler-weight"] == 2.0
+
+    def test_the_schema_imports_back(self):
+        schema = self._cart().to_json_schema()
+        rebuilt = StructuredModel.from_json_schema(schema)
+        assert "products" in rebuilt.model_fields

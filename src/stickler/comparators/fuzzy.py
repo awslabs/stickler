@@ -29,8 +29,13 @@ class FuzzyComparator(BaseComparator):
     If rapidfuzz is not available, this will raise an ImportError when instantiated.
     """
 
+    DEFAULT_THRESHOLD = 0.7
+
     def __init__(
-        self, method: str = "ratio", normalize: bool = True, threshold: float = 0.7
+        self,
+        method: str = "ratio",
+        normalize: bool = True,
+        threshold: Optional[float] = None,
     ):
         """Initialize the fuzzy comparator.
 

@@ -110,7 +110,9 @@ class PhoneComparator(BaseComparator):
         differences as complete mismatches (issue #242).
     """
 
-    def __init__(self, threshold: float = 1.0, region: str = DEFAULT_REGION):
+    DEFAULT_THRESHOLD = 1.0
+
+    def __init__(self, threshold: Optional[float] = None, region: str = DEFAULT_REGION):
         """Initialize the comparator.
 
         Args:
