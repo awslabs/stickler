@@ -528,7 +528,7 @@ The policy lives in `BaseComparator.compare` and nowhere else. You don't write a
 !!! warning "Implement `_compare`, not `compare`"
     Overriding `compare` directly bypasses the `None` policy and reintroduces exactly the divergence this design prevents. Implement `_compare`.
 
-    A comparator written against the older interface — implementing `compare` — still constructs and behaves exactly as written, and emits a `DeprecationWarning` naming the rename. It does **not** receive the `None` policy, since its `compare` shadows the template method. That shim is removed in 1.0 ([#215](https://github.com/awslabs/stickler/issues/215)), after which such a comparator raises `TypeError` at construction.
+    A subclass of `BaseComparator` that does not implement `_compare` raises `TypeError` at construction. A subclass of a *concrete* comparator that supplies `compare` inherits `_compare` through the MRO, so it constructs — and emits a `UserWarning` at class definition, because its `compare` shadows the template method and can skip the `None` policy. If you are overriding `compare` deliberately, define `_compare` as well and the warning goes quiet ([#215](https://github.com/awslabs/stickler/issues/215)).
 
 ### Example: Custom RegexComparator
 
