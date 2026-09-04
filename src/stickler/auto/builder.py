@@ -129,11 +129,18 @@ def specs_for(
     """Return the inferred spec per field (for ``.explain()``), keyed by
     dotted path.
 
-    Nested ``BaseModel`` / ``List[BaseModel]`` fields appear twice: once as a
-    structural row (recursive / Hungarian handling) and once per sub-field
-    under a dotted path (``lines.sku``), so every comparator decision at every
-    depth is auditable. Primitive-list fields report the spec of the ELEMENT
-    type, matching what the builder actually installs.
+    A nested ``StructuredModel`` / ``List[StructuredModel]`` field appears twice:
+    once as a structural row (recursive / Hungarian handling) and once per
+    sub-field under a dotted path (``lines.sku``), so every comparator decision at
+    every depth is auditable. On a ``StructuredModel`` parent a nested plain
+    ``BaseModel`` gets the structural row only, because the engine compares it as
+    one value through the field's own comparator, so there is no per-sub-field
+    decision to report. On a plain-``BaseModel`` parent it keeps its sub-field
+    rows, and correctly so: ``structured_model_for`` wraps nested plain models
+    into shadow ``StructuredModel`` classes, so the engine really does descend
+    there. Primitive-list
+    fields report the spec of the ELEMENT type, matching what the builder actually
+    installs.
     """
     registry = get_global_registry()
     result: Dict[str, InferredSpec] = {}
@@ -147,6 +154,41 @@ def specs_for(
         set(),
     )
     return result
+
+
+def _is_structured_model(annotation: Any) -> bool:
+    """Whether this annotation is a ``StructuredModel``, not merely a BaseModel.
+
+    ``_field_kind`` answers "model" / "model_list" for a plain ``BaseModel`` too,
+    but only a ``StructuredModel`` gets recursive and Hungarian handling. On a
+    plain ``BaseModel`` the field's own comparator genuinely runs, over the
+    stringified objects, so the two cases must not share a label.
+    """
+    return isinstance(annotation, type) and issubclass(annotation, StructuredModel)
+
+
+def _comparator_was_explicit(cls: Type[BaseModel], name: str) -> bool:
+    """Whether a human chose the comparator on this field, or it was defaulted.
+
+    ``ComparableField`` records this on the ``json_schema_extra`` callable, the
+    same marker ``ConfigurationHelper`` reads before substituting a mapping
+    comparator. Defaults to ``True`` for a field that predates the marker, so an
+    unknown provenance is reported rather than assumed to be a default.
+
+    ``_comparator_named_in_schema`` wins where present. ``_comparator_explicit``
+    is not a pure provenance flag despite its name: ``ConfigurationHelper`` and
+    ``_install_mapping_comparators`` gate mapping-comparator substitution on it,
+    so it means "was a comparator supplied" rather than "did a human choose one".
+    ``from_json_schema`` supplies an inferred comparator when the schema names
+    none, which made every nested-model field of a round-tripped schema claim to
+    be deliberately configured. The importer now records what the schema actually
+    said under the separate name, leaving substitution untouched.
+    """
+    extra = cls.model_fields[name].json_schema_extra
+    from_schema = getattr(extra, "_comparator_named_in_schema", None)
+    if from_schema is not None:
+        return bool(from_schema)
+    return bool(getattr(extra, "_comparator_explicit", True))
 
 
 def _collect_specs(
@@ -172,30 +214,87 @@ def _collect_specs(
             if is_structured:
                 info = cls._get_comparison_info(name)
                 comparator = getattr(info, "comparator", None)
-                if kind == "model":
-                    comp_name = (
-                        type(comparator).__name__
-                        if comparator
-                        else "StructuredModelComparator"
+                comp_name = type(comparator).__name__ if comparator else "default"
+                threshold = info.threshold
+                clip = info.clip_under_threshold
+                why = ["explicit: configured on the StructuredModel class"]
+
+                # No list field clips, of any element type: the list comparators
+                # threshold per element and return the mean, so a mean below the
+                # field threshold survives unzeroed. Measured with a two-element
+                # list at threshold 0.7 where one element matches and one does
+                # not: the engine returns 0.5, while `clip_under_threshold=True`
+                # told a reader it had been zeroed. Only the `List[StructuredModel]`
+                # row was corrected at first, which left the other list kinds
+                # making the same false claim one shape over.
+                if kind in ("model_list", "primitive_list"):
+                    clip = False
+
+                # `_field_kind` says "model" / "model_list" for a plain BaseModel
+                # too, and only a StructuredModel gets the recursive and Hungarian
+                # treatment. On a plain BaseModel the field's own comparator really
+                # does run (Levenshtein over the stringified objects, measured
+                # 0.8571 for `sku='a'` vs `sku='b'`), so relabelling by `kind`
+                # alone hid a live comparator: exactly the defect this fixes, one
+                # shape over.
+                element = (
+                    unwrap_optional(_list_element(annotation))[0]
+                    if kind == "model_list"
+                    else None
+                )
+                nested_is_structured = _is_structured_model(
+                    element if kind == "model_list" else annotation
+                )
+
+                if kind == "model" and nested_is_structured:
+                    # The engine compares a nested StructuredModel by recursing
+                    # into it, so whatever comparator sits on the field never
+                    # runs. Reporting its name named an algorithm that did not
+                    # execute.
+                    #
+                    # The field's own threshold and clip DO apply, to the subtree
+                    # mean: a nested score of 0.5000 under threshold 0.6 with clip
+                    # on is reported as 0.0000. So those two stay as configured.
+                    if _comparator_was_explicit(cls, name) and not isinstance(
+                        comparator, StructuredModelComparator
+                    ):
+                        # An ignored setting the user wrote. Relabelling it away
+                        # would remove the only trace that it is dead, so say so.
+                        why.append(
+                            f"ignored: comparator={comp_name} is not consulted for a "
+                            "nested StructuredModel; the fields are compared recursively"
+                        )
+                    comp_name = "StructuredModelComparator"
+                    why.append("nested StructuredModel -> recursive comparison")
+
+                elif kind == "model_list" and nested_is_structured:
+                    # Elements are paired by Hungarian assignment and each pair is
+                    # compared recursively, so the field's comparator never runs
+                    # here either, and `__init_subclass__` forbids a threshold on
+                    # such a field. The `0.9` that ConfigurationHelper installs
+                    # gates nothing: the field score is identical at any value,
+                    # while the ELEMENT class's `match_threshold` is what decides
+                    # whether a pair is a TP or an FD. Report the real gate.
+                    comp_name = "Hungarian (per-element StructuredModel)"
+                    threshold = element.match_threshold
+                    why.append(
+                        "List[StructuredModel] -> Hungarian object matching, gated "
+                        f"by {element.__name__}.match_threshold"
                     )
-                elif kind == "model_list":
-                    comp_name = (
-                        type(comparator).__name__
-                        if comparator
-                        else "Hungarian (per-element StructuredModel)"
-                    )
-                else:
-                    comp_name = (
-                        type(comparator).__name__ if comparator else "default"
-                    )
+
                 result[path] = InferredSpec(
                     comparator_name=comp_name,
-                    threshold=info.threshold,
+                    threshold=threshold,
                     weight=info.weight,
-                    clip_under_threshold=info.clip_under_threshold,
-                    provenance=["explicit: configured on the StructuredModel class"],
+                    clip_under_threshold=clip,
+                    provenance=why,
                 )
-                if kind == "model":
+                # Only descend where the engine descends. A nested plain
+                # BaseModel is compared as a whole, through the field's own
+                # comparator, so emitting a row per sub-field advertised a
+                # per-field comparison that never happens. Same for the elements
+                # of a `List[plain BaseModel]`.
+                if kind == "model" and nested_is_structured:
                     _collect_specs(
                         annotation,
                         f"{path}.",
@@ -205,8 +304,9 @@ def _collect_specs(
                         result,
                         _visiting,
                     )
-                elif kind == "model_list":
-                    element, _ = unwrap_optional(_list_element(annotation))
+                elif kind == "model_list" and nested_is_structured:
+                    # Reuses the `element` resolved above, so the row's reported
+                    # gate and the subtree actually walked cannot diverge.
                     _collect_specs(
                         element,
                         f"{path}.",
@@ -233,12 +333,27 @@ def _collect_specs(
                     _visiting,
                 )
             elif kind == "model_list":
+                element, _ = unwrap_optional(_list_element(annotation))
+                # An element that is ALREADY a StructuredModel is passed through
+                # unchanged rather than wrapped, so the pairing is gated by its own
+                # declared `match_threshold`, not by the argument to this call.
+                # Reporting the argument made the same element class read `0.8`
+                # through a StructuredModel parent and `0.7` through a plain one,
+                # which is the divergence this is supposed to close.
+                gate = (
+                    element.match_threshold
+                    if _is_structured_model(element)
+                    else match_threshold
+                )
                 result[path] = InferredSpec(
                     comparator_name="Hungarian (per-element StructuredModel)",
-                    threshold=match_threshold,
+                    threshold=gate,
+                    # Not applied to a list-of-model row on either path, so the
+                    # inherited `True` default said a below-threshold list score
+                    # had been zeroed when it had not.
+                    clip_under_threshold=False,
                     provenance=["type:List[BaseModel] -> Hungarian object matching"],
                 )
-                element, _ = unwrap_optional(_list_element(annotation))
                 _collect_specs(
                     element,
                     f"{path}.",
@@ -256,6 +371,10 @@ def _collect_specs(
                     name, element, weight_hints, registry, match_threshold
                 )
                 spec.provenance.insert(0, "list: spec applies to each element")
+                # No list clips; the element spec's own value describes the
+                # element, not the list row. Same correction as the configured
+                # path, so the two cannot disagree.
+                spec.clip_under_threshold = False
                 result[path] = spec
             else:
                 result[path] = infer_field_config(
@@ -399,9 +518,7 @@ def _field_definition(
 
     if kind == "primitive_list":
         element, element_optional = unwrap_optional(_list_element(annotation))
-        spec = _primitive_spec(
-            name, element, weight_hints, registry, match_threshold
-        )
+        spec = _primitive_spec(name, element, weight_hints, registry, match_threshold)
         wire = _scalar_wire_type(element)
         element_type = Optional[wire] if element_optional else wire
         list_type = List[element_type]

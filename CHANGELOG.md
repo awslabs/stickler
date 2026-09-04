@@ -209,6 +209,69 @@ Each release links to full notes on the
   ([#135](https://github.com/awslabs/stickler/issues/135),
   [#318](https://github.com/awslabs/stickler/issues/318)).
 
+- `explain()` no longer names a comparator the engine never ran. On a configured
+  `StructuredModel`, a nested-model field and a `List[StructuredModel]` field
+  both read their comparator straight off the `ComparableField`, which is the
+  inert `LevenshteinComparator` default: a nested model is compared by recursing
+  into its fields, and a model list by pairing elements with Hungarian assignment
+  and recursing into each pair. Fallback labels existed but were unreachable,
+  since `ComparableField` always installs a comparator, so the `if comparator`
+  branch always won. Both rows now report what runs, using the same strings the
+  zero-config inference path emits, so the two `explain()` outputs agree for one
+  behaviour.
+
+  A `List[StructuredModel]` row also reported a threshold that gated nothing.
+  `ConfigurationHelper` installs a hardcoded `0.9` on such a field, and the field
+  score is identical at any value; the real gate is the ELEMENT class's
+  `match_threshold`, which is what moves a pairing between TP and FD. The row now
+  reports that, and reports `clip_under_threshold` as `False`, because clipping is
+  not applied there and claiming otherwise told a reader a low score had been
+  zeroed when it had not. The inference path made the same `clip` claim on its own
+  list rows and is corrected too.
+
+  A nested-model field keeps its own `threshold` and `clip_under_threshold`, which
+  unlike the list case are live: a subtree scoring `0.5000` under threshold `0.6`
+  with clipping on really is reported as `0.0000`.
+
+  Where a nested-model field carries an explicit comparator, the provenance trail
+  now says it is ignored rather than quietly relabelling it, since the old output
+  at least revealed the dead setting. Explicitness is read from the
+  `_comparator_explicit` marker `ComparableField` already records, the same one
+  `ConfigurationHelper` consults before substituting a mapping comparator, so an
+  explicitly named `LevenshteinComparator` is reported as ignored while the
+  identical class arriving as the installed default is not.
+
+  Only `StructuredModel` annotations are relabelled. A nested plain `BaseModel`,
+  or a `List[plain BaseModel]`, keeps the comparator it reports, because there the
+  field's own comparator genuinely does run over the stringified objects, measured
+  `0.8571` for `sku='a'` against `sku='b'` in both shapes once the engine fix
+  above is in place.
+
+  `explain()` also stops descending where the engine does not. On a
+  `StructuredModel` parent, a nested plain `BaseModel` is compared as one value
+  through the field's own comparator, so a row per sub-field advertised a
+  per-field comparison that never happens. Structural nesting still emits its
+  dotted rows, and so does a plain `BaseModel` under a plain parent, where the
+  zero-config builder wraps it into a shadow `StructuredModel` and the engine
+  really does descend.
+
+  No list row claims to clip, whatever its element type. The list comparators
+  threshold per element and return the mean, so a mean below the field threshold
+  survives unzeroed: a two-element list at a declared threshold of `0.7` with
+  `clip_under_threshold=True` scores `0.5`, and reporting `True` said that had
+  been zeroed. Both `explain()` paths are corrected together.
+
+  No scores change. `_comparator_explicit` is deliberately left alone even though
+  its name suggests provenance: `ConfigurationHelper` and
+  `_install_mapping_comparators` gate mapping-comparator substitution on it, so
+  correcting it moved a schema-imported `dict` field from `ExactComparator` to
+  `ANLSStarComparator` and its score from `0.0` to `0.9792`. That may be an
+  improvement, but it is a scoring change and does not belong in a labelling fix.
+  Provenance is recorded under a separate `_comparator_named_in_schema` marker
+  instead, set by both the schema importer and the JSON-config converter, which
+  each supply a comparator the caller never asked for.
+  ([#314](https://github.com/awslabs/stickler/pull/314))
+
 - **Breaking:** `HungarianMatcher.calculate_metrics` no longer reports a paired
   item as missing. It derived `fn` and `fp` as `len(list) - tp`, so a pair the
   algorithm produced, and that the method returns inside `matched_pairs`, was
