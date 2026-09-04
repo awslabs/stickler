@@ -164,6 +164,46 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **Breaking:** a threshold set on a comparator now reaches the field that names
+  it. `Comparator(threshold=...)` was accepted everywhere and read almost
+  nowhere: the only functional reader outside ANLS\* is `binary_compare()`, which
+  has no callers in `src/`, so
+
+  ```python
+  ComparableField(comparator=LevenshteinComparator(threshold=0.95))
+  ```
+
+  produced a field whose verdict threshold was `0.5`. The value was stored on the
+  comparator and visible in its `repr`, and never consulted. A threshold is only
+  meaningful beside the metric that produced the score, since `0.85` means one
+  thing on edit distance and another on a semantic embedding, so discarding one
+  the caller wrote was the wrong default.
+
+  `ComparableField(threshold=...)` now defaults to `None` meaning "not
+  specified". A threshold stated on the field always wins; otherwise one
+  explicitly set on the comparator is adopted; otherwise `0.5` stands in until
+  inference owns that case ([#239](https://github.com/awslabs/stickler/issues/239)).
+
+  A comparator's own **default** threshold is deliberately not adopted. Those
+  defaults were never audited as verdict thresholds and several are wrong for the
+  job: `DateComparator` defaults to `1.0` while awarding `0.7` for a match with no
+  year, so adopting it would clip that comparator's own feature to zero. One
+  consequence worth knowing is that passing a value equal to the class default,
+  as in `DateComparator(threshold=1.0)`, reads as not set; state it on the field
+  to be unambiguous.
+
+  **What moves:** any field that named a comparator with an explicit threshold and
+  no field threshold. Its verdict threshold changes from `0.5` to that value, so a
+  score between the two flips from true positive to false discovery. Nothing else
+  changes: `threshold=0.0` remains a value rather than an omission, and a field
+  that states its own threshold is unaffected.
+
+  Also records `_threshold_explicit` alongside the existing `_comparator_explicit`
+  and `_clip_explicit` markers, which is what lets `explain()` distinguish a
+  configured field from a defaulted one
+  ([#210](https://github.com/awslabs/stickler/issues/210))
+  ([#246](https://github.com/awslabs/stickler/issues/246)).
+
 - **Breaking:** `HungarianMatcher.calculate_metrics` no longer reports a paired
   item as missing. It derived `fn` and `fp` as `len(list) - tp`, so a pair the
   algorithm produced, and that the method returns inside `matched_pairs`, was
