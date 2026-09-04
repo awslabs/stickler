@@ -108,7 +108,6 @@ class FieldConverter:
             examples=examples,
         )
 
-
         return field_type, comparable_field
 
     def _convert_nested_model_field(
@@ -199,6 +198,19 @@ class FieldConverter:
             description=description,
             examples=examples,
         )
+
+        # The dummy above is not a choice the config made, so do not let it read
+        # as one. `ComparableField` marks any supplied comparator explicit, which
+        # `explain()` uses to decide whether to report an ignored comparator on a
+        # nested-model field. Left unset, a config that never named a comparator
+        # was told its `LevenshteinComparator` was being ignored.
+        #
+        # Recorded under the separate provenance name rather than by clearing
+        # `_comparator_explicit`, which gates mapping-comparator substitution and
+        # would move scores.
+        extra_callable = comparable_field.json_schema_extra
+        if callable(extra_callable):
+            extra_callable._comparator_named_in_schema = False
 
 
         return field_type, comparable_field
