@@ -208,6 +208,15 @@ class FieldConverter:
         # Recorded under the separate provenance name rather than by clearing
         # `_comparator_explicit`, which gates mapping-comparator substitution and
         # would move scores.
+        #
+        # Written in place onto the closure, which `structured_model.py` warns
+        # against for a SHARED `ComparableField` result: pydantic does not clone
+        # `json_schema_extra`, so one field's substitution retroactively rewrote
+        # another's. That hazard needs sharing, and it cannot happen here --
+        # `comparable_field` is constructed a few lines above and no
+        # caller has a reference yet. `_amend_clip_default` and
+        # `_install_mapping_comparators` build a copy because they run over
+        # fields they did not create.
         extra_callable = comparable_field.json_schema_extra
         if callable(extra_callable):
             extra_callable._comparator_named_in_schema = False

@@ -502,6 +502,34 @@ Each release links to full notes on the
   `clip_under_threshold=True` scores `0.5`, and reporting `True` said that had
   been zeroed. Both `explain()` paths are corrected together.
 
+  A correction that contradicts the class says so. Rewriting the clip cell without
+  a note left a row reporting the opposite of a declared
+  `clip_under_threshold=True` while still saying `source: explicit`, and the two
+  readings that leaves a user are both wrong: that stickler dropped the setting,
+  or that `explain()` is broken. The row now carries
+  `ignored: clip_under_threshold=True is not applied to a list`, on the same
+  standard the ignored comparator and the Hungarian gate already meet. It is keyed
+  on the `_clip_explicit` marker rather than on the resolved value, because
+  `ComparableField` resolves an unstated clip to `True` and a note keyed on the
+  value fires for every list field ever written.
+
+  The built model agrees with the row. The inference path installed the ELEMENT
+  spec's inherited `True` on the list row while `explain()` reported `False`, so
+  the two descriptions of one auto-built field disagreed, `to_json_schema()` sided
+  with the model, and re-importing that schema produced a field claiming `True`.
+  The value is inert on a list either way, which is the argument for making all
+  three surfaces say the same inert thing rather than correcting only the one a
+  human reads.
+
+  A reported Hungarian gate that the engine might not use now says so.
+  `StructuredListComparator` reads the gate off `gt_list[0].__class__`, so for
+  `List[Optional[Model]]` a leading `None` makes that `NoneType` and the gate
+  falls back to the parent's `match_threshold`: the same declared shape classifies
+  a pair `tp` or `fd` depending on ground-truth element order, while a static row
+  reports the declared number either way. Nullable-element rows carry a caveat
+  naming [#322](https://github.com/awslabs/stickler/issues/322), which tracks the
+  engine fix; the caveat goes away with it.
+
   No scores change. `_comparator_explicit` is deliberately left alone even though
   its name suggests provenance: `ConfigurationHelper` and
   `_install_mapping_comparators` gate mapping-comparator substitution on it, so

@@ -191,6 +191,36 @@ def _comparator_was_explicit(cls: Type[BaseModel], name: str) -> bool:
     return bool(getattr(extra, "_comparator_explicit", True))
 
 
+def _element_is_nullable(annotation: Any) -> bool:
+    """Whether a list annotation's ELEMENT can be None.
+
+    `List[Optional[Line]]` can hold a None next to a model, which is what makes
+    the engine's `gt_list[0].__class__` gate lookup order-dependent. `List[Line]`
+    cannot, so its reported gate is always the one that runs.
+    """
+    element = _list_element(annotation)
+    if element is None:
+        return False
+    _, nullable = unwrap_optional(element)
+    return bool(nullable)
+
+
+def _clip_was_explicit(cls: Type[BaseModel], name: str) -> bool:
+    """Whether a human wrote ``clip_under_threshold`` on this field.
+
+    Not the same question as "is the resolved value True". ``ComparableField``
+    resolves an unstated ``clip_under_threshold`` to ``True``, so reading the
+    value cannot tell a declared ``True`` from a defaulted one, and a note keyed
+    on the value fires for every list field ever written. ``ComparableField``
+    records the distinction on the ``json_schema_extra`` callable as
+    ``_clip_explicit``; ``StructuredModel._amend_clip_default`` reads the same
+    marker for the same reason.
+    """
+    return bool(
+        getattr(cls.model_fields[name].json_schema_extra, "_clip_explicit", False)
+    )
+
+
 def _collect_specs(
     cls: Type[BaseModel],
     prefix: str,
@@ -227,7 +257,27 @@ def _collect_specs(
                 # told a reader it had been zeroed. Only the `List[StructuredModel]`
                 # row was corrected at first, which left the other list kinds
                 # making the same false claim one shape over.
+                #
+                # Say so when the correction actually contradicts the class. A
+                # rewritten cell gets a `why` line everywhere else in this
+                # function -- the ignored comparator, the Hungarian gate -- and by
+                # that same standard the fact that a declared setting is inert is
+                # the thing worth surfacing, not the thing worth quietly
+                # correcting. Without the note a user who wrote
+                # `clip_under_threshold=True` reads `False` under
+                # `source: explicit` with no explanation, and both readings
+                # available to them are wrong: that stickler dropped the setting,
+                # or that `explain()` is broken.
+                #
+                # Guarded on `clip` so the ordinary case stays quiet, the same way
+                # the comparator note stays quiet for a bare `ComparableField()`.
                 if kind in ("model_list", "primitive_list"):
+                    if clip and _clip_was_explicit(cls, name):
+                        why.append(
+                            "ignored: clip_under_threshold=True is not applied to "
+                            "a list; the list comparators threshold per element "
+                            "and return the mean"
+                        )
                     clip = False
 
                 # `_field_kind` says "model" / "model_list" for a plain BaseModel
@@ -281,6 +331,22 @@ def _collect_specs(
                         "List[StructuredModel] -> Hungarian object matching, gated "
                         f"by {element.__name__}.match_threshold"
                     )
+                    # A static row cannot be exactly right for a nullable element.
+                    # `StructuredListComparator` reads the gate off
+                    # `gt_list[0].__class__`, so for `List[Optional[Line]]` a
+                    # LEADING None makes that `NoneType`, the `hasattr` check
+                    # fails, and the gate silently becomes the PARENT's
+                    # match_threshold. The same declared shape then classifies a
+                    # pair TP or FD depending on element order in the ground
+                    # truth, while this row reports the declared number either
+                    # way. Say so rather than let the number read as authoritative
+                    # when it is not. Tracked in #322.
+                    if _element_is_nullable(annotation):
+                        why.append(
+                            "caveat: the engine reads this gate from the first "
+                            "ground-truth element, so a leading None falls back to "
+                            f"{cls.__name__}.match_threshold (#322)"
+                        )
 
                 result[path] = InferredSpec(
                     comparator_name=comp_name,
@@ -519,6 +585,15 @@ def _field_definition(
     if kind == "primitive_list":
         element, element_optional = unwrap_optional(_list_element(annotation))
         spec = _primitive_spec(name, element, weight_hints, registry, match_threshold)
+        # The element spec describes an ELEMENT; this builds the LIST row, and no
+        # list row clips. Installing the element's inherited `True` here left
+        # `explain()` (which corrects it) disagreeing with the model this same
+        # call builds, and with the `to_json_schema()` of that model -- so
+        # re-importing the exported schema produced a field claiming `True`. The
+        # value is inert either way, which is the argument for making all three
+        # surfaces say the same inert thing rather than correcting only the one a
+        # human reads.
+        spec.clip_under_threshold = False
         wire = _scalar_wire_type(element)
         element_type = Optional[wire] if element_optional else wire
         list_type = List[element_type]

@@ -298,9 +298,15 @@ class TestPlainBaseModelFieldsKeepTheirRealComparator:
 
     `_field_kind` answers "model" / "model_list" for a plain `BaseModel` too, but
     only a `StructuredModel` gets recursive and Hungarian handling. On a plain
-    `BaseModel` the field's own comparator genuinely runs, over the stringified
-    objects, so labelling by shape alone hid a live comparator: the same defect
-    this module exists to prevent, one shape over.
+    `BaseModel` the field's own comparator genuinely runs, so labelling by shape
+    alone hid a live comparator: the same defect this module exists to prevent,
+    one shape over.
+
+    That comparator is `ANLSStarComparator` rather than the scalar default, since
+    #318 gave a plain-model field the object-grade configuration a `dict` field
+    gets. What this module asserts is unchanged and is the whole point: whatever
+    the engine actually installs is what `explain()` must name. These tests moved
+    when the engine moved, which is the intended coupling.
     """
 
     def test_a_list_of_plain_models_reports_the_comparator_that_runs(self):
@@ -309,15 +315,31 @@ class TestPlainBaseModelFieldsKeepTheirRealComparator:
 
         assert (
             stickler.eval_for(Doc).explain()["rows"]["comparator"]
-            == "LevenshteinComparator"
+            == "ANLSStarComparator"
         )
 
-    def test_that_comparator_really_does_run_on_a_list_of_plain_models(self):
-        """The measurement behind the previous test.
+    def test_the_reported_comparator_is_the_one_the_engine_holds(self):
+        """Asserting the name against a literal alone could drift from the engine.
 
-        `0.857` is edit distance over the stringified elements. If Hungarian
-        per-element StructuredModel matching were happening, this would not be
-        the score, and the label would be the honest one.
+        Reading both sides makes the test fail if they ever disagree, whatever
+        the name happens to be.
+        """
+
+        class Doc(StructuredModel):
+            rows: Optional[List[PlainLine]] = ComparableField(default=None)
+            kid: Optional[PlainAddr] = ComparableField(default=None)
+
+        explained = stickler.eval_for(Doc).explain()
+        for field in ("rows", "kid"):
+            engine = type(Doc._get_comparison_info(field).comparator).__name__
+            assert explained[field]["comparator"] == engine, field
+
+    def test_that_comparator_really_does_run_on_a_list_of_plain_models(self):
+        """The measurement behind the previous tests.
+
+        `0.0` is ANLS* judging two one-field models whose only field differs. If
+        Hungarian per-element StructuredModel matching were happening this would
+        not be the score, and the label would be the dishonest one.
         """
 
         class Doc(StructuredModel):
@@ -326,7 +348,7 @@ class TestPlainBaseModelFieldsKeepTheirRealComparator:
         score = Doc(rows=[PlainLine(sku="a")]).compare_with(
             Doc(rows=[PlainLine(sku="b")])
         )["field_scores"]["rows"]
-        assert score == pytest.approx(0.857, abs=1e-3)
+        assert score == pytest.approx(0.0)
 
     def test_a_nested_plain_model_reports_the_comparator_that_runs(self):
         class Doc(StructuredModel):
@@ -334,7 +356,7 @@ class TestPlainBaseModelFieldsKeepTheirRealComparator:
 
         assert (
             stickler.eval_for(Doc).explain()["kid"]["comparator"]
-            == "LevenshteinComparator"
+            == "ANLSStarComparator"
         )
 
     def test_no_list_row_claims_to_clip(self):
@@ -558,3 +580,157 @@ class TestExplicitnessSurvivesARoundTrip:
         rebuilt = StructuredModel.from_json_schema(Original.to_json_schema())
         assert self._has_ignored_note(Original) is True
         assert self._has_ignored_note(rebuilt) is False
+
+
+class TestAnIgnoredClipSettingLeavesATrail:
+    """A rewritten cell says why, or the row contradicts the class in silence.
+
+    `clip_under_threshold` is corrected to `False` on every list row because no
+    list clips. Correcting it without a note left `explain()` reporting the
+    opposite of what the class declares while still saying `source: explicit`,
+    and both readings available to a user were wrong: that stickler dropped the
+    setting, or that `explain()` is broken. Everywhere else in this module a
+    rewritten cell gets a `why` line; this is that standard applied to the clip.
+    """
+
+    def test_an_explicit_true_is_reported_as_ignored(self):
+        class Doc(StructuredModel):
+            tags: Optional[List[str]] = ComparableField(
+                threshold=0.7, clip_under_threshold=True, default=None
+            )
+
+        row = stickler.eval_for(Doc).explain()["tags"]
+        assert row["clip_under_threshold"] is False
+        assert any("clip_under_threshold=True is not applied" in w for w in row["why"])
+
+    def test_a_list_of_models_gets_the_same_note(self):
+        class Doc(StructuredModel):
+            rows: Optional[List[PlainLine]] = ComparableField(
+                clip_under_threshold=True, default=None
+            )
+
+        row = stickler.eval_for(Doc).explain()["rows"]
+        assert row["clip_under_threshold"] is False
+        assert any("clip_under_threshold=True is not applied" in w for w in row["why"])
+
+    def test_a_field_that_never_said_it_stays_quiet(self):
+        """The note must key on explicitness, not on the resolved value.
+
+        `ComparableField` resolves an unstated `clip_under_threshold` to `True`,
+        so a note keyed on the value fires for every list field ever written.
+        This asserted the wrong thing first time and reported the note here too.
+        """
+
+        class Doc(StructuredModel):
+            tags: Optional[List[str]] = ComparableField(threshold=0.7, default=None)
+
+        row = stickler.eval_for(Doc).explain()["tags"]
+        assert row["clip_under_threshold"] is False
+        assert not any("clip_under_threshold" in w for w in row["why"])
+
+    def test_a_scalar_field_keeps_its_declared_clip(self):
+        """The correction is for list rows only; a scalar really does clip."""
+
+        class Doc(StructuredModel):
+            name: Optional[str] = ComparableField(
+                threshold=0.7, clip_under_threshold=True, default=None
+            )
+
+        row = stickler.eval_for(Doc).explain()["name"]
+        assert row["clip_under_threshold"] is True
+        assert not any("clip_under_threshold" in w for w in row["why"])
+
+
+class TestEverySurfaceAgreesOnClip:
+    """`explain()` correcting a value the built model still carries is a new lie.
+
+    The inference path installed the ELEMENT spec's inherited `True` on the list
+    row while `explain()` reported `False`, so the two descriptions of one
+    auto-built field disagreed -- and `to_json_schema()` sided with the model, so
+    re-importing the exported schema produced a field claiming `True`. The value
+    is inert either way, which is the argument for making all three say the same
+    inert thing.
+    """
+
+    def test_explain_engine_and_schema_all_report_false(self):
+        class Plain(BaseModel):
+            tags: Optional[List[str]] = None
+
+        from stickler.auto.builder import structured_model_for
+
+        model = structured_model_for(Plain)
+        exported = model.to_json_schema()["properties"]["tags"]
+
+        assert (
+            stickler.eval_for(Plain).explain()["tags"]["clip_under_threshold"] is False
+        )
+        assert model._get_comparison_info("tags").clip_under_threshold is False
+        assert exported.get("x-aws-stickler-clip-under-threshold") is False
+
+    def test_the_exported_schema_reimports_with_the_same_answer(self):
+        class Plain(BaseModel):
+            tags: Optional[List[str]] = None
+
+        from stickler.auto.builder import structured_model_for
+
+        schema = structured_model_for(Plain).to_json_schema()
+        rebuilt = StructuredModel.from_json_schema(schema)
+        assert rebuilt._get_comparison_info("tags").clip_under_threshold is False
+
+
+class TestTheNullableElementGateIsCaveated:
+    """A reported gate that the engine may not use has to say so.
+
+    `StructuredListComparator` reads the gate off `gt_list[0].__class__`, so for
+    `List[Optional[Line]]` a leading `None` makes that `NoneType` and the gate
+    falls back to the PARENT's `match_threshold`. The same declared shape then
+    classifies a pair TP or FD depending on ground-truth element order, while a
+    static row reports the declared number either way. Tracked in #322; until
+    then the row must not read as authoritative.
+    """
+
+    class Line(StructuredModel):
+        match_threshold = 0.95
+        sku: Optional[str] = ComparableField(threshold=0.1, default=None)
+
+    def test_a_nullable_element_row_carries_the_caveat(self):
+        class Doc(StructuredModel):
+            items: Optional[
+                List[Optional["TestTheNullableElementGateIsCaveated.Line"]]
+            ] = ComparableField(default=None)
+
+        why = stickler.eval_for(Doc).explain()["items"]["why"]
+        assert any("first ground-truth element" in w for w in why)
+        assert any("#322" in w for w in why)
+
+    def test_a_non_nullable_element_row_does_not(self):
+        """The caveat must not fire where the reported gate is always the one used."""
+
+        class Doc(StructuredModel):
+            items: Optional[List["TestTheNullableElementGateIsCaveated.Line"]] = (
+                ComparableField(default=None)
+            )
+
+        why = stickler.eval_for(Doc).explain()["items"]["why"]
+        assert not any("first ground-truth element" in w for w in why)
+
+    def test_the_engine_really_is_order_dependent(self):
+        """The measurement behind the caveat, so its necessity stays visible."""
+
+        Line = TestTheNullableElementGateIsCaveated.Line
+
+        class Doc(StructuredModel):
+            match_threshold = 0.1
+            items: Optional[List[Optional[Line]]] = ComparableField(default=None)
+
+        def verdict(gt, pred):
+            matrix = Doc(items=gt).compare_with(
+                Doc(items=pred), include_confusion_matrix=True
+            )["confusion_matrix"]["overall"]
+            return matrix["tp"], matrix["fd"]
+
+        leading_none = verdict([None, Line(sku="aaaa")], [None, Line(sku="azzz")])
+        leading_model = verdict([Line(sku="aaaa"), None], [Line(sku="azzz"), None])
+        assert leading_none == (2, 0)
+        assert leading_model == (1, 1)
+        assert leading_none != leading_model
