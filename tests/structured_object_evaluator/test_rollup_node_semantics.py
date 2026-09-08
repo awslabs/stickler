@@ -477,6 +477,53 @@ class TestTheDocsAndTheEngineCannotDrift:
                 f"on a value invented against a null ground-truth leaf"
             )
 
+    def test_no_file_describes_overall_as_an_object_verdict(self):
+        """`overall` classifies a node's DIRECT CHILDREN, not the node itself.
+
+        This phrasing survived three review rounds because each round corrected the
+        sites that were cited and not the claim. It is only true where the node's
+        children happen to be objects: on a list field. At the root the children are
+        the root's own fields, so the count mixes leaves with pairings, which
+        `TestTheRootMixesHeaderLeavesWithItemPairings` pins.
+
+        Prose is not usually worth a guard, but this one is the whole subject of the
+        pages, it is published to the API reference through two docstrings, and every
+        recurrence has been a fresh review finding. Historical CHANGELOG entries for
+        already-shipped releases are exempt: they record what was said at the time.
+
+        This file is exempt of necessity, since `banned` below spells the phrases
+        out. That exemption is doing real work rather than being a formality: the
+        module docstring says a list field's `overall` "reads as an object verdict",
+        which is the one context where the phrase is accurate. Read that as the
+        boundary this guard cannot police, not as an oversight.
+        """
+        repo_root = Path(__file__).resolve().parents[2]
+        banned = ("object verdict", "verdicts at", "own direct classification")
+        exempt = {Path("CHANGELOG.md")}
+        offenders = []
+
+        for path in (
+            sorted(repo_root.glob("src/**/*.py"))
+            + sorted(repo_root.glob("docs/**/*.md"))
+            + sorted(repo_root.glob("tests/**/*.py"))
+        ):
+            if path == Path(__file__).resolve():
+                continue
+            if path.relative_to(repo_root) in exempt or ".venv" in path.parts:
+                continue
+            for number, line in enumerate(
+                path.read_text(errors="ignore").splitlines(), start=1
+            ):
+                lowered = line.lower()
+                if any(phrase in lowered for phrase in banned):
+                    offenders.append(f"{path.relative_to(repo_root)}:{number}")
+
+        assert not offenders, (
+            "these describe `overall` as a verdict on the node rather than a "
+            "classification of its direct children, which is false at the root "
+            f"and in both docstrings published to the API reference: {offenders}"
+        )
+
     def test_no_file_anywhere_publishes_the_superseded_form(self):
         """The page walk above cannot see a copy that is not a page.
 
