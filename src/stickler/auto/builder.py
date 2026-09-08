@@ -161,8 +161,10 @@ def _is_structured_model(annotation: Any) -> bool:
 
     ``_field_kind`` answers "model" / "model_list" for a plain ``BaseModel`` too,
     but only a ``StructuredModel`` gets recursive and Hungarian handling. On a
-    plain ``BaseModel`` the field's own comparator genuinely runs, over the
-    stringified objects, so the two cases must not share a label.
+    plain ``BaseModel`` the field's own comparator genuinely runs, so the two
+    cases must not share a label. Since #319 that comparator is
+    ``ANLSStarComparator`` over the models themselves, not Levenshtein over their
+    string forms; see the measurement in ``_explain_field``.
     """
     return isinstance(annotation, type) and issubclass(annotation, StructuredModel)
 
@@ -189,20 +191,6 @@ def _comparator_was_explicit(cls: Type[BaseModel], name: str) -> bool:
     if from_schema is not None:
         return bool(from_schema)
     return bool(getattr(extra, "_comparator_explicit", True))
-
-
-def _element_is_nullable(annotation: Any) -> bool:
-    """Whether a list annotation's ELEMENT can be None.
-
-    `List[Optional[Line]]` can hold a None next to a model, which is what makes
-    the engine's `gt_list[0].__class__` gate lookup order-dependent. `List[Line]`
-    cannot, so its reported gate is always the one that runs.
-    """
-    element = _list_element(annotation)
-    if element is None:
-        return False
-    _, nullable = unwrap_optional(element)
-    return bool(nullable)
 
 
 def _clip_was_explicit(cls: Type[BaseModel], name: str) -> bool:
@@ -283,10 +271,21 @@ def _collect_specs(
                 # `_field_kind` says "model" / "model_list" for a plain BaseModel
                 # too, and only a StructuredModel gets the recursive and Hungarian
                 # treatment. On a plain BaseModel the field's own comparator really
-                # does run (Levenshtein over the stringified objects, measured
-                # 0.8571 for `sku='a'` vs `sku='b'`), so relabelling by `kind`
-                # alone hid a live comparator: exactly the defect this fixes, one
-                # shape over.
+                # does run, so relabelling by `kind` alone hid a live comparator:
+                # exactly the defect this fixes, one shape over.
+                #
+                # Measured on this branch, `Plain(sku=...)` on both a bare field
+                # and a bare list field:
+                #
+                #     p   ANLSStarComparator  thr=0.5  clip=False
+                #     ps  ANLSStarComparator  thr=0.5  clip=False
+                #     field_scores  {'p': 0.0, 'ps': 0.0}   # sku='a' vs 'b'
+                #
+                # #319 is what makes it ANLS* over the models rather than
+                # Levenshtein over their string forms: `can_score_object` refuses
+                # a declared Levenshtein on a model instead of stringifying for
+                # it. Only the evidence changed; the conclusion that a live
+                # comparator must not be relabelled is what it always was.
                 element = (
                     unwrap_optional(_list_element(annotation))[0]
                     if kind == "model_list"
@@ -331,22 +330,35 @@ def _collect_specs(
                         "List[StructuredModel] -> Hungarian object matching, gated "
                         f"by {element.__name__}.match_threshold"
                     )
-                    # A static row cannot be exactly right for a nullable element.
-                    # `StructuredListComparator` reads the gate off
-                    # `gt_list[0].__class__`, so for `List[Optional[Line]]` a
-                    # LEADING None makes that `NoneType`, the `hasattr` check
-                    # fails, and the gate silently becomes the PARENT's
-                    # match_threshold. The same declared shape then classifies a
-                    # pair TP or FD depending on element order in the ground
-                    # truth, while this row reports the declared number either
-                    # way. Say so rather than let the number read as authoritative
-                    # when it is not. Tracked in #322.
-                    if _element_is_nullable(annotation):
-                        why.append(
-                            "caveat: the engine reads this gate from the first "
-                            "ground-truth element, so a leading None falls back to "
-                            f"{cls.__name__}.match_threshold (#322)"
-                        )
+                    # A static row cannot be exactly right for ANY element type,
+                    # so this caveat is unconditional. `StructuredListComparator`
+                    # reads the gate off `gt_list[0].__class__` -- the RUNTIME
+                    # class of the first ground-truth element -- which the
+                    # annotation does not determine:
+                    #
+                    #   List[Optional[Line]]  a leading None makes that NoneType,
+                    #                         the hasattr check fails, and the gate
+                    #                         becomes the PARENT's match_threshold
+                    #   List[Base]            pydantic preserves a Sub instance on
+                    #                         a Base-annotated field, so the gate
+                    #                         is Sub.match_threshold
+                    #
+                    # The second is why gating on nullability was too narrow. Same
+                    # declared shape, same reported number, TP or FD depending on
+                    # what the caller constructed:
+                    #
+                    #   items=[Sub(...)]   tp=0 fd=1     gate was 0.95
+                    #   items=[Base(...)]  tp=1 fd=0     gate was 0.10
+                    #
+                    # Testing "does the element class have subclasses" would be
+                    # fussy and still incomplete, so state the general truth
+                    # instead and let the number read as a declaration rather than
+                    # a guarantee. Tracked in #322.
+                    why.append(
+                        "caveat: the engine reads this gate from the runtime class "
+                        "of the first ground-truth element, so a subclass element "
+                        "or a leading None can gate on a different value (#322)"
+                    )
 
                 result[path] = InferredSpec(
                     comparator_name=comp_name,
@@ -576,10 +588,22 @@ def _field_definition(
         element_type = Optional[child] if element_optional else child
         list_type = List[element_type]
         # List[StructuredModel] must use default threshold/comparator; Hungarian
-        # matching uses each element's match_threshold. Weight-only is allowed.
+        # matching uses each element's match_threshold. Weight-only is allowed,
+        # and `clip_under_threshold=False` is accepted here -- checked against
+        # `__init_subclass__`, which objects to a named threshold on this shape
+        # but not to clip.
+        #
+        # Same reason as the `primitive_list` branch below: no list kind clips, so
+        # leaving the resolved `True` here made `explain()` (which corrects it to
+        # `False`) disagree with the model this call builds and with that model's
+        # `to_json_schema()`. Fixing only `primitive_list` moved the
+        # one-sidedness rather than removing it:
+        #
+        #     tags   explain False  engine False  schema false
+        #     items  explain False  engine True   schema true   <- before this
         return (
             Optional[list_type] if nullable else list_type,
-            ComparableField(weight=1.0, default=None),
+            ComparableField(weight=1.0, clip_under_threshold=False, default=None),
         )
 
     if kind == "primitive_list":

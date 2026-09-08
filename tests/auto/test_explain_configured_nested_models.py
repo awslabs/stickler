@@ -581,6 +581,32 @@ class TestExplicitnessSurvivesARoundTrip:
         assert self._has_ignored_note(Original) is True
         assert self._has_ignored_note(rebuilt) is False
 
+    def test_a_hand_written_schema_naming_one_does_get_the_note(self):
+        """The reasoning above covers the EXPORT half only.
+
+        A stickler-exported schema can never carry a comparator on an object
+        property, but a hand-written or externally generated one can, and that
+        comparator is just as dead: the fields are compared recursively. Letting
+        `comparator_explicit` fall to its `False` default suppressed the note for
+        the one case that deserves it along with the round-tripped false
+        positives, so the setting was discarded with no trace at all.
+        """
+        rebuilt = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "title": "Doc",
+                "properties": {
+                    "addr": {
+                        "type": "object",
+                        "x-aws-stickler-comparator": "ExactComparator",
+                        "properties": {"city": {"type": "string"}},
+                    }
+                },
+            }
+        )
+        why = stickler.eval_for(rebuilt).explain()["addr"]["why"]
+        assert any("is not consulted for a nested StructuredModel" in w for w in why)
+
 
 class TestAnIgnoredClipSettingLeavesATrail:
     """A rewritten cell says why, or the row contradicts the class in silence.
@@ -628,6 +654,61 @@ class TestAnIgnoredClipSettingLeavesATrail:
         assert row["clip_under_threshold"] is False
         assert not any("clip_under_threshold" in w for w in row["why"])
 
+    def test_an_imported_field_that_never_said_it_stays_quiet_too(self):
+        """The marker has to survive both import paths, not just hand-written classes.
+
+        Both importers used to pass `clip_under_threshold` unconditionally with
+        their own `True` default, so `_clip_explicit` was true for EVERY imported
+        field and the note fired on settings nobody wrote -- inventing a user
+        decision rather than dropping one. `to_json_schema()` compounded it by
+        exporting the resolved default as though declared, so a round-trip
+        manufactured the declaration even after the importers were fixed.
+        """
+
+        class Doc(StructuredModel):
+            tags: Optional[List[str]] = ComparableField(threshold=0.7, default=None)
+
+        exported = Doc.to_json_schema()["properties"]["tags"]
+        assert "x-aws-stickler-clip-under-threshold" not in exported
+
+        rebuilt = StructuredModel.from_json_schema(Doc.to_json_schema())
+        row = stickler.eval_for(rebuilt).explain()["tags"]
+        assert row["clip_under_threshold"] is False
+        assert not any("clip_under_threshold" in w for w in row["why"])
+
+        from_config = StructuredModel.model_from_json(
+            {
+                "model_name": "M",
+                "fields": {
+                    "tags": {
+                        "type": "List[str]",
+                        "comparator": "LevenshteinComparator",
+                        "threshold": 0.7,
+                    }
+                },
+            }
+        )
+        row = stickler.eval_for(from_config).explain()["tags"]
+        assert not any("clip_under_threshold" in w for w in row["why"])
+
+    def test_an_imported_field_that_did_say_it_still_gets_the_note(self):
+        """Suppressing the false positives must not cost the true one."""
+        rebuilt = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "title": "Doc",
+                "properties": {
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "x-aws-stickler-clip-under-threshold": True,
+                    }
+                },
+            }
+        )
+        row = stickler.eval_for(rebuilt).explain()["tags"]
+        assert any("clip_under_threshold=True is not applied" in w for w in row["why"])
+
     def test_a_scalar_field_keeps_its_declared_clip(self):
         """The correction is for list rows only; a scalar really does clip."""
 
@@ -652,41 +733,62 @@ class TestEverySurfaceAgreesOnClip:
     inert thing.
     """
 
-    def test_explain_engine_and_schema_all_report_false(self):
+    @pytest.mark.parametrize("field", ["tags", "items"])
+    def test_explain_engine_and_schema_all_report_false(self, field):
+        """Both list kinds. Fixing only `primitive_list` moved the one-sidedness
+        rather than removing it: `tags` agreed while `items` read
+        `explain False / engine True / schema true`."""
+
+        class Line(BaseModel):
+            sku: Optional[str] = None
+
         class Plain(BaseModel):
             tags: Optional[List[str]] = None
+            items: Optional[List[Line]] = None
 
         from stickler.auto.builder import structured_model_for
 
         model = structured_model_for(Plain)
-        exported = model.to_json_schema()["properties"]["tags"]
+        exported = model.to_json_schema()["properties"][field]
 
         assert (
-            stickler.eval_for(Plain).explain()["tags"]["clip_under_threshold"] is False
+            stickler.eval_for(Plain).explain()[field]["clip_under_threshold"] is False
         )
-        assert model._get_comparison_info("tags").clip_under_threshold is False
+        assert model._get_comparison_info(field).clip_under_threshold is False
         assert exported.get("x-aws-stickler-clip-under-threshold") is False
 
-    def test_the_exported_schema_reimports_with_the_same_answer(self):
+    @pytest.mark.parametrize("field", ["tags", "items"])
+    def test_the_exported_schema_reimports_with_the_same_answer(self, field):
+        class Line(BaseModel):
+            sku: Optional[str] = None
+
         class Plain(BaseModel):
             tags: Optional[List[str]] = None
+            items: Optional[List[Line]] = None
 
         from stickler.auto.builder import structured_model_for
 
         schema = structured_model_for(Plain).to_json_schema()
         rebuilt = StructuredModel.from_json_schema(schema)
-        assert rebuilt._get_comparison_info("tags").clip_under_threshold is False
+        assert rebuilt._get_comparison_info(field).clip_under_threshold is False
 
 
 class TestTheNullableElementGateIsCaveated:
     """A reported gate that the engine may not use has to say so.
 
-    `StructuredListComparator` reads the gate off `gt_list[0].__class__`, so for
-    `List[Optional[Line]]` a leading `None` makes that `NoneType` and the gate
-    falls back to the PARENT's `match_threshold`. The same declared shape then
-    classifies a pair TP or FD depending on ground-truth element order, while a
-    static row reports the declared number either way. Tracked in #322; until
-    then the row must not read as authoritative.
+    `StructuredListComparator` reads the gate off `gt_list[0].__class__` -- the
+    RUNTIME class of the first ground-truth element, which the annotation does not
+    determine. Two ways to diverge, so the caveat is unconditional on
+    `List[StructuredModel]`:
+
+    * `List[Optional[Line]]`: a leading `None` makes that `NoneType` and the gate
+      falls back to the PARENT's `match_threshold`.
+    * `List[Base]` holding a `Sub`: pydantic preserves the subclass instance, so
+      the gate is `Sub.match_threshold`.
+
+    Gating the caveat on nullability covered only the first, which is why it is
+    now unconditional. Tracked in #322; until then the row must not read as
+    authoritative.
     """
 
     class Line(StructuredModel):
@@ -703,8 +805,10 @@ class TestTheNullableElementGateIsCaveated:
         assert any("first ground-truth element" in w for w in why)
         assert any("#322" in w for w in why)
 
-    def test_a_non_nullable_element_row_does_not(self):
-        """The caveat must not fire where the reported gate is always the one used."""
+    def test_a_non_nullable_element_row_carries_it_too(self):
+        """A non-nullable element list is not safe: a subclass element reaches the
+        same runtime lookup, so this row is no more authoritative than the
+        nullable one. Gating on nullability left it silent here."""
 
         class Doc(StructuredModel):
             items: Optional[List["TestTheNullableElementGateIsCaveated.Line"]] = (
@@ -712,7 +816,38 @@ class TestTheNullableElementGateIsCaveated:
             )
 
         why = stickler.eval_for(Doc).explain()["items"]["why"]
-        assert not any("first ground-truth element" in w for w in why)
+        assert any("runtime class" in w for w in why)
+        assert any("#322" in w for w in why)
+
+    def test_a_subclass_element_really_does_change_the_verdict(self):
+        """The measurement behind widening the caveat.
+
+        Same declared shape, same reported gate, TP or FD depending only on which
+        class the caller constructed. This is why the nullability test was too
+        narrow rather than merely incomplete.
+        """
+
+        class Base(StructuredModel):
+            match_threshold = 0.1
+            sku: Optional[str] = ComparableField(threshold=0.05, default=None)
+
+        class Sub(Base):
+            match_threshold = 0.95
+
+        class Doc(StructuredModel):
+            match_threshold = 0.5
+            items: Optional[List[Base]] = ComparableField(default=None)
+
+        assert stickler.eval_for(Doc).explain()["items"]["threshold"] == 0.1
+
+        def verdict(cls):
+            matrix = Doc(items=[cls(sku="aaaa")]).compare_with(
+                Doc(items=[cls(sku="azzz")]), include_confusion_matrix=True
+            )["confusion_matrix"]["overall"]
+            return matrix["tp"], matrix["fd"]
+
+        assert verdict(Sub) == (0, 1)  # gate was Sub.match_threshold, 0.95
+        assert verdict(Base) == (1, 0)  # gate was Base.match_threshold, 0.10
 
     def test_the_engine_really_is_order_dependent(self):
         """The measurement behind the caveat, so its necessity stays visible."""

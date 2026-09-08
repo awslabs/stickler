@@ -480,13 +480,18 @@ Each release links to full notes on the
   `_comparator_explicit` marker `ComparableField` already records, the same one
   `ConfigurationHelper` consults before substituting a mapping comparator, so an
   explicitly named `LevenshteinComparator` is reported as ignored while the
-  identical class arriving as the installed default is not.
+  identical class arriving as the installed default is not. A schema is read the
+  same way: `x-aws-stickler-comparator` on an object property names a comparator
+  that never runs, so it is reported as ignored rather than discarded silently.
+  `to_json_schema()` writes no comparator for an object property, so only a
+  hand-written or externally generated schema reaches that.
 
   Only `StructuredModel` annotations are relabelled. A nested plain `BaseModel`,
   or a `List[plain BaseModel]`, keeps the comparator it reports, because there the
-  field's own comparator genuinely does run over the stringified objects, measured
-  `0.8571` for `sku='a'` against `sku='b'` in both shapes once the engine fix
-  above is in place.
+  field's own comparator genuinely does run. Since the plain-model routing fix
+  that comparator is `ANLSStarComparator` applied to the models themselves rather
+  than Levenshtein over their string forms, and both shapes score `0.0` for
+  `sku='a'` against `sku='b'`.
 
   `explain()` also stops descending where the engine does not. On a
   `StructuredModel` parent, a nested plain `BaseModel` is compared as one value
@@ -513,13 +518,39 @@ Each release links to full notes on the
   `ComparableField` resolves an unstated clip to `True` and a note keyed on the
   value fires for every list field ever written.
 
-  The built model agrees with the row. The inference path installed the ELEMENT
-  spec's inherited `True` on the list row while `explain()` reported `False`, so
-  the two descriptions of one auto-built field disagreed, `to_json_schema()` sided
-  with the model, and re-importing that schema produced a field claiming `True`.
-  The value is inert on a list either way, which is the argument for making all
-  three surfaces say the same inert thing rather than correcting only the one a
-  human reads.
+  That marker is now honest for imported models too, which the note depends on.
+  Both importers passed `clip_under_threshold` unconditionally with their own
+  `True` default, so every imported field looked as though its author had written
+  the setting, and `to_json_schema()` compounded it by exporting the resolved
+  default as though declared. A round-trip therefore manufactured a declaration
+  and the new note reported stickler overruling a choice nobody made, which is
+  worse than the silence it replaced: it invents a user decision rather than
+  dropping one. Absent now stays absent at all three points, and
+  `x-aws-stickler-clip-under-threshold` is written only where the setting was
+  actually stated. Scoring is unaffected, since an absent key imports as `None`
+  and `ComparableField` resolves that to `True` exactly as before. Where stickler
+  itself installs the container default for a mapping field, that value is marked
+  explicit so it still survives export.
+
+  The built model agrees with the row, for both list kinds. The inference path
+  installed the ELEMENT spec's inherited `True` on the list row while `explain()`
+  reported `False`, so the two descriptions of one auto-built field disagreed,
+  `to_json_schema()` sided with the model, and re-importing that schema produced a
+  field claiming `True`. Correcting only `List[primitive]` moved the one-sidedness
+  instead of removing it, leaving `List[BaseModel]` reading `explain False` against
+  `engine True`; `List[StructuredModel]` now installs the same `False`. The value
+  is inert on a list either way, which is the argument for making all three
+  surfaces say the same inert thing rather than correcting only the one a human
+  reads.
+
+  The Hungarian-gate caveat is unconditional on `List[StructuredModel]`. It was
+  gated on a nullable element, but `StructuredListComparator` reads the gate from
+  the RUNTIME class of the first ground-truth element, which the annotation does
+  not determine: pydantic preserves a subclass instance on a base-annotated field,
+  so `List[Base]` holding a `Sub` gates on `Sub.match_threshold` while the row
+  reports `Base`'s. Same declared shape, TP or FD depending only on what the caller
+  constructed. The caveat now states the general rule instead of testing for one
+  way to hit it.
 
   A reported Hungarian gate that the engine might not use now says so.
   `StructuredListComparator` reads the gate off `gt_list[0].__class__`, so for

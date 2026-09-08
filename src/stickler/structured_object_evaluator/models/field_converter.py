@@ -68,7 +68,11 @@ class FieldConverter:
         # Extract other field parameters
         threshold = field_config.get("threshold", 0.5)
         weight = field_config.get("weight", 1.0)
-        clip_under_threshold = field_config.get("clip_under_threshold", True)
+        # No `True` default: a config that never mentions clip must not arrive
+        # looking like a caller decision. `ComparableField` resolves `None` to
+        # `True` and leaves `_clip_explicit` false, which is what keeps
+        # `explain()` from reporting an overruled setting nobody wrote.
+        clip_under_threshold = field_config.get("clip_under_threshold")
 
 
         # Extract Pydantic field parameters
@@ -170,7 +174,8 @@ class FieldConverter:
         # CRITICAL FIX: Create ComparableField for nested models to enable proper comparison
         # Extract threshold and weight from field configuration
         weight = field_config.get("weight", 1.0)  # Default weight
-        clip_under_threshold = field_config.get("clip_under_threshold", True)
+        # See the note on the primitive path: absent must stay absent.
+        clip_under_threshold = field_config.get("clip_under_threshold")
 
 
         # For list_structured_model, don't set threshold (Hungarian matching uses model's match_threshold)

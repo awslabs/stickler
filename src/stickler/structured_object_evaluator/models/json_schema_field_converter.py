@@ -233,7 +233,17 @@ class JsonSchemaFieldConverter:
         if hasattr(json_func, "_weight"):
             metadata["weight"] = json_func._weight
 
-        if hasattr(json_func, "_clip_under_threshold"):
+        # Guarded on `_clip_explicit`, not on presence: `ComparableField` always
+        # sets `_clip_under_threshold`, resolving an unstated setting to `True`,
+        # so `hasattr` here exported a default as though the author had written
+        # it. Re-importing then read a declared `True`, and `explain()` reported
+        # having overruled a choice nobody made. Honouring the marker is what
+        # makes the docstring's "only attributes that are explicitly set" true of
+        # this one, and it is inert for scoring: the importer passes `None` when
+        # the key is absent and `ComparableField` resolves that back to `True`.
+        if getattr(json_func, "_clip_explicit", False) and hasattr(
+            json_func, "_clip_under_threshold"
+        ):
             metadata["clip_under_threshold"] = json_func._clip_under_threshold
 
         return metadata

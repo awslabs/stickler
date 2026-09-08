@@ -251,6 +251,18 @@ def _amend_clip_default(field_info: Any, extra: Any, clip: bool) -> None:
         if attribute.startswith("_") and not attribute.startswith("__"):
             setattr(amended, attribute, getattr(extra, attribute))
     amended._clip_under_threshold = clip
+    # Explicit from here on. The loop above copied the ORIGINAL field's marker,
+    # which is false for a bare `ComparableField()`, but the value just written is
+    # a decision stickler made rather than an unstated default -- and
+    # `to_json_schema()` now exports clip only when the marker says so, so
+    # leaving it false dropped the amendment from the schema and a re-imported
+    # mapping field resolved back to `True`.
+    #
+    # The caller only reaches this function when the value actually changes, and
+    # `ConfigurationHelper.object_grade_clip` returns the caller's own setting
+    # whenever `_clip_explicit` is already true, so this cannot overwrite a
+    # declared choice with a computed one.
+    amended._clip_explicit = True
     if new_metadata is not None:
         new_metadata["clip_under_threshold"] = clip
         amended._comparison_metadata = new_metadata
@@ -528,6 +540,13 @@ class StructuredModel(BaseModel):
             # subclass re-running this must not treat it as unset.
             substituted._comparator_explicit = True
             substituted._clip_under_threshold = clip
+            # Same reasoning for clip, and it has to be said here as well as in
+            # `_amend_clip_default`: this block rebuilds the closure from the
+            # ORIGINAL `extra`, so an amendment made above is discarded when both
+            # run. Without it `to_json_schema()` -- which now exports clip only
+            # when the marker says so -- omitted the container default, and a
+            # re-imported mapping field resolved back to `True`.
+            substituted._clip_explicit = True
 
             if new_metadata is not None:
                 new_metadata["comparator_type"] = comparator.__class__.__name__

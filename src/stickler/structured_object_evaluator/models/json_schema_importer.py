@@ -360,12 +360,21 @@ class JsonSchemaImporter:
             )
             final_type = Optional[nested] if nullable else nested
             extensions = self._extract_extensions(field_info, field_path)
+            # `comparator_explicit` is computed rather than defaulted: a schema
+            # CAN name `x-aws-stickler-comparator` on an object property, and
+            # that comparator never runs, because a nested model is compared
+            # recursively. Letting it fall to `False` here suppressed the note
+            # for the one case that deserves it along with the round-tripped
+            # false positives. `to_json_schema()` writes no comparator for an
+            # object property, so only a hand-written or externally generated
+            # schema reaches this.
             comparison_field = self._make_comparison_field(
                 field_info,
                 comparator_name="LevenshteinComparator",
+                comparator_explicit=extensions.get("comparator") is not None,
                 threshold=0.7,
                 weight=extensions.get("weight", 1.0),
-                clip_under_threshold=extensions.get("clip_under_threshold", True),
+                clip_under_threshold=extensions.get("clip_under_threshold"),
             )
             return final_type, comparison_field
 
@@ -506,7 +515,7 @@ class JsonSchemaImporter:
             comparator_explicit=comparator_named_in_schema,
             threshold=extensions.get("threshold", threshold),
             weight=extensions.get("weight", 1.0),
-            clip_under_threshold=extensions.get("clip_under_threshold", True),
+            clip_under_threshold=extensions.get("clip_under_threshold"),
         )
 
     @staticmethod
@@ -518,8 +527,12 @@ class JsonSchemaImporter:
         comparator_explicit: bool = False,
         threshold: float,
         weight: float,
-        clip_under_threshold: bool,
+        clip_under_threshold: Optional[bool],
     ) -> FieldInfo:
+        # `None`, not `True`, when the schema is silent. `ComparableField`
+        # resolves `None` to `True` and records `_clip_explicit = False`, so an
+        # absent setting stays absent instead of arriving as a caller decision
+        # that `explain()` would then report having overruled.
         if comparator is None:
             comparator = create_comparator(comparator_name, {})
         default = ... if source.is_required() else source.default
