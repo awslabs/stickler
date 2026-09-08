@@ -257,6 +257,16 @@ Each release links to full notes on the
   and that wrong. `ConfigurationHelper.can_score_mapping` is now a thin wrapper
   over a shared `can_score_object`, so the mapping and model cases cannot drift.
 
+  An explicit `clip_under_threshold=True` on such a field is honoured. The
+  object-grade default turns clipping off, because a container keeps its partial
+  score, but only as a DEFAULT: the substitution used to overwrite the setting
+  outright. `_install_mapping_comparators` already gates the same amendment on
+  `_clip_explicit`, so a `dict` field carrying an explicit `True` was never
+  clobbered while a plain-model field was -- the same declared setting honoured on
+  one shape and dropped on the other, which is the divergence this entry exists to
+  remove. Measured on a half-right nested model at threshold `0.9`: `0.0` with the
+  setting honoured, against `0.5` when it was discarded.
+
   **Performance.** `get_comparison_info` runs once per field per pairwise
   comparison, so 60x60 objects of 20 fields is 72,000 calls, and the annotation
   predicates that pick the object-grade path destructure the annotation on each

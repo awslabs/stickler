@@ -41,7 +41,7 @@ See https://github.com/awslabs/stickler/issues/318 and
 https://github.com/awslabs/stickler/issues/321
 """
 
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import pytest
 from pydantic import BaseModel
@@ -734,3 +734,70 @@ class TestAnUnscoreableAnnotationIsRefused:
         assert Holder(f=self.ALL_WRONG[0]).compare_with(Holder(f=self.ALL_WRONG[0]))[
             "field_scores"
         ]["f"] == pytest.approx(1.0)
+
+
+class TestAnExplicitClipSettingSurvivesTheSubstitution:
+    """The object-grade default must not overwrite a decision the user wrote.
+
+    Installing ANLS* also turns clipping off, because a container keeps its
+    partial score. That is right as a DEFAULT and wrong as an override: the
+    substitution used to set `clip_under_threshold=False` outright, discarding an
+    explicit `True`.
+
+    `_install_mapping_comparators` already gates the same amendment on
+    `_clip_explicit`, so a `dict` field carrying an explicit `True` never reached
+    the line that clobbered it, while a plain-model field did. The same declared
+    setting was honoured on one shape and dropped on the other, which is the
+    divergence between mappings and plain models that #318 exists to remove.
+    """
+
+    class Addr(BaseModel):
+        city: Optional[str] = None
+        zip: Optional[str] = None
+
+    def _half_right(self, model):
+        return model(kid=self.Addr(city="a", zip="1")).compare_with(
+            model(kid=self.Addr(city="a", zip="2"))
+        )["field_scores"]["kid"]
+
+    def test_an_explicit_clip_is_honoured(self):
+        class Doc(StructuredModel):
+            kid: Optional["TestAnExplicitClipSettingSurvivesTheSubstitution.Addr"] = (
+                ComparableField(threshold=0.9, clip_under_threshold=True, default=None)
+            )
+
+        assert Doc._get_comparison_info("kid").clip_under_threshold is True
+        assert self._half_right(Doc) == pytest.approx(0.0)
+
+    def test_an_unstated_clip_still_defaults_to_off(self):
+        """The default is the whole reason the substitution touches clip at all."""
+
+        class Doc(StructuredModel):
+            kid: Optional["TestAnExplicitClipSettingSurvivesTheSubstitution.Addr"] = (
+                ComparableField(threshold=0.9, default=None)
+            )
+
+        assert Doc._get_comparison_info("kid").clip_under_threshold is False
+        assert self._half_right(Doc) == pytest.approx(0.5)
+
+    def test_a_bare_annotation_defaults_to_off_too(self):
+        class Doc(StructuredModel):
+            kid: Optional["TestAnExplicitClipSettingSurvivesTheSubstitution.Addr"] = (
+                None
+            )
+
+        assert Doc._get_comparison_info("kid").clip_under_threshold is False
+
+    def test_a_dict_field_answers_the_same_way(self):
+        """The consistency being claimed, asserted rather than assumed."""
+
+        class Doc(StructuredModel):
+            explicit: Optional[Dict[str, str]] = ComparableField(
+                threshold=0.9, clip_under_threshold=True, default=None
+            )
+            defaulted: Optional[Dict[str, str]] = ComparableField(
+                threshold=0.9, default=None
+            )
+
+        assert Doc._get_comparison_info("explicit").clip_under_threshold is True
+        assert Doc._get_comparison_info("defaulted").clip_under_threshold is False

@@ -555,7 +555,21 @@ class ConfigurationHelper:
                     )
                 ):
                     comparator = ANLSStarComparator()
-                    clip_under_threshold = False
+                    # A container keeps its partial score, so the object-grade
+                    # default turns clipping off -- but only as a DEFAULT. An
+                    # explicit `clip_under_threshold=True` is a decision, and
+                    # overwriting it here discarded it in silence.
+                    #
+                    # `_install_mapping_comparators` already gates the same
+                    # amendment on the same marker for a mapping annotation, so a
+                    # dict field carrying an explicit True never reached this line
+                    # to be clobbered. A plain-model annotation is not handled
+                    # there, so it did: the same declared setting was honoured on
+                    # a dict field and dropped on a plain-model field, which is
+                    # the divergence between the two shapes that #319 exists to
+                    # remove.
+                    if not getattr(json_func, "_clip_explicit", False):
+                        clip_under_threshold = False
 
                 from .comparison_info import ComparableFieldConfig
 
