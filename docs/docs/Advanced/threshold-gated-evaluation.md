@@ -194,9 +194,11 @@ ground truth is null went unseen. Such a value is `fa` at that leaf and rolls in
 `fp` is preferred only because it is one term instead of two and cannot go stale if a
 class is ever added -- not because the classes are unsafe to read.
 
-So `match_threshold` is also the knob for how much leaf detail you get. If you
-want a marginal object's leaves scored individually, lower it until that object
-qualifies as comparable. See
+So `match_threshold` is also the knob for how much leaf detail you get, for a
+**list item**. If you want a marginal item's leaves scored individually, lower it
+until that item qualifies as comparable. It does nothing for a single nested
+`StructuredModel` field, which is never gated and always reports its leaves; the
+field's own `threshold` decides that verdict. See
 [Aggregate Metrics](aggregate-metrics.md#which-node-answers-which-question).
 
 `overall_score` is the scalar summary, and `EvalResult.matched` from

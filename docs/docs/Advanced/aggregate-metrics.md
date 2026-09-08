@@ -9,7 +9,7 @@ Stickler automatically includes an `aggregate` field at every node in the confus
 ## Key Features
 
 - **Automatic** -- Every node gets an `aggregate` field, with no per-field configuration.
-- **Hierarchical** -- Parent nodes sum metrics from all child primitive fields.
+- **Hierarchical** -- Parent nodes sum metrics from all child primitive fields, except where a list's items were all rejected and the node reports object rows instead ([why](#aggregate-counts-objects-for-an-all-rejected-list)).
 - **Consistent** -- The same access pattern works at every level: `result['confusion_matrix']['aggregate']` or `result['confusion_matrix']['fields']['contact']['aggregate']`.
 - **Derived metrics included** -- Each aggregate contains precision, recall, F1, and accuracy.
 
@@ -195,8 +195,8 @@ The `overall` name predates the aggregate rollup and reads as "the whole documen
 ## Calculation Logic
 
 1. **Leaf nodes** (primitive fields): `aggregate` equals `overall`.
-2. **Parent nodes**: `aggregate` is the sum of all child `aggregate` values.
-3. **Derived metrics**: Precision, recall, F1, and accuracy are recomputed at each level from the summed counts.
+2. **Parent nodes**: `aggregate` is the sum of all child `aggregate` values, unless every one of them is zero, in which case the children's `overall` values are summed instead and the unit of the count becomes the object rather than the leaf ([why](#aggregate-counts-objects-for-an-all-rejected-list)).
+3. **Derived metrics**: Precision, recall, F1, and accuracy are recomputed at each level from the summed counts. They inherit whichever unit step 2 produced, so they are not a leaf rate on a node whose list items were all rejected.
 
 ## Hierarchical Reporting Example
 

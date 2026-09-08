@@ -37,6 +37,7 @@ deliberately deferred question, not a defect. See
 https://github.com/awslabs/stickler/issues/288
 """
 
+import re
 from pathlib import Path
 from typing import List, Optional
 
@@ -120,6 +121,24 @@ _PAGES_PUBLISHING_THE_CLEAN_CHECK = (
     "docs/docs/Advanced/aggregate-metrics.md",
     "docs/docs/Advanced/threshold-gated-evaluation.md",
     "docs/docs/Guides/Evaluation/understanding-results.md",
+    # Correct today, and nothing was stopping it drifting: the page walk named
+    # only the three doc pages and the repo walk covers `*.py` plus
+    # `docs/**/*.md`, so the release note the snippet ships in was unguarded.
+    "CHANGELOG.md",
+)
+
+# Third-party code is not ours to lint, and a contributor's environment is not
+# always `.venv`. Restricting the walk to the trees we author is both the fix for
+# that and a large speed-up over globbing the repo.
+_TREES_WE_AUTHOR = ("src", "tests", "docs", "examples")
+
+# `overall` and `fa` in ONE subscript chain, in either quoting style, with an
+# optional node variable in front (`cm['overall']['fa']`, `overall["fa"]`).
+# Deliberately not "both words appear in the block": reading `fa` off `aggregate`
+# alongside `fp` off `overall` is correct and must not be flagged.
+_READS_FA_OFF_OVERALL = re.compile(
+    r"""\[\s*['"]overall['"]\s*\]\s*\[\s*['"]fa['"]\s*\]"""
+    r"""|\boverall\s*\[\s*['"]fa['"]\s*\]"""
 )
 
 
@@ -533,14 +552,23 @@ class TestTheDocsAndTheEngineCannotDrift:
         page walk missed it because it matches on the docs' quoting style and
         that copy used different variable names. This one is quoting-agnostic:
         it finds every `clean = (` in the tree and checks the block under it.
+
+        Scoped to the trees we author rather than the whole repo. Globbing
+        `**/*.py` and skipping only `.venv` failed with third-party paths for
+        anyone whose environment is `venv/`, `env/` or `.tox/`, reporting them
+        under a message about stickler's clean check.
         """
         repo_root = Path(__file__).resolve().parents[2]
         offenders = []
 
-        for path in sorted(repo_root.glob("**/*.py")) + sorted(
-            repo_root.glob("docs/**/*.md")
-        ):
-            if path == Path(__file__).resolve() or ".venv" in path.parts:
+        candidates = [
+            path
+            for tree in _TREES_WE_AUTHOR
+            for pattern in ("**/*.py", "**/*.md")
+            for path in repo_root.glob(f"{tree}/{pattern}")
+        ]
+        for path in sorted(set(candidates)):
+            if path == Path(__file__).resolve():
                 continue
             lines = path.read_text(errors="ignore").splitlines()
             for number, line in enumerate(lines):
@@ -559,13 +587,17 @@ class TestTheDocsAndTheEngineCannotDrift:
                     if depth <= 0:
                         break
                 block = "\n".join(block_lines)
-                # `fa` read from `overall` inside the check is the retired form:
-                # a value invented on a null ground-truth leaf is `fa` on
-                # `aggregate` and leaves `overall` clean, so the check passes on
-                # a hallucination. Sum `fp` on both nodes instead.
-                if '"fa"' in block or "'fa'" in block:
-                    if "overall" in block:
-                        offenders.append(f"{path.relative_to(repo_root)}:{number + 1}")
+                # The retired form reads `fa` OFF `overall`, in one subscript
+                # chain: a value invented on a null ground-truth leaf is `fa` on
+                # `aggregate` and leaves `overall` clean, so such a check passes
+                # on a hallucination. Sum `fp` on both nodes instead.
+                #
+                # Matched as one chain rather than as "both words appear
+                # somewhere in the block", which condemned a correct check that
+                # happens to read `fa` off the OTHER node -- for example
+                # `cm['overall']['fp'] == 0 and cm['aggregate']['fa'] == 0`.
+                if _READS_FA_OFF_OVERALL.search(block):
+                    offenders.append(f"{path.relative_to(repo_root)}:{number + 1}")
 
         assert not offenders, (
             "these publish a clean check reading `fa` on `overall`, which "

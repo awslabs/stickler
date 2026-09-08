@@ -533,6 +533,19 @@ Each release links to full notes on the
   present and 15 leaves in the document, because the list contributed object rows
   to both.
 
+  Older sections of the same pages were brought into line, since a page that
+  disagrees with itself about this is the defect being fixed. `Calculation Logic`
+  and `Key Features` in `aggregate-metrics.md` stated the parent-node rule as an
+  unconditional sum of child `aggregate` values, which is the model the new
+  warning corrects, and `Field-Level Aggregate Metrics` in
+  `understanding-results.md` repeated it 350 lines below the corrected bullet --
+  with a worked snippet that ranked sections by `aggregate` error counts, mixing
+  leaf rows and object rows in one ranking. That snippet now reports which unit it
+  got. The "lower `match_threshold` to get a marginal object's leaves" remedy also
+  survived in `threshold-gated-evaluation.md` and in two headings, where
+  `test_match_threshold_is_inert_for_this_shape` pins it as a no-op; those now say
+  **list item**.
+
   Both pages carry the same two-stage framing as mean Average Precision, and now
   also name where the analogy stops: a below-threshold bounding box counts as both
   FP and FN so mAP recall falls, while a below-threshold object is `fd` only, so

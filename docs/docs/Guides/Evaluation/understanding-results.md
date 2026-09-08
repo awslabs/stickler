@@ -146,7 +146,8 @@ cm['fields']['lines']['overall'] tp=5     the item count
 ```
 
 The root number is not wrong, it is a different question: it classifies the root's
-own four fields. But it is not a count of line items, and reading it as one
+own fields, and the list field contributes one row per item pairing rather than one
+row for the field. But it is not a count of line items, and reading it as one
 overstates by the number of header fields. For "how many items did we find", read the
 list field's own node.
 
@@ -172,9 +173,9 @@ cm['aggregate']   tp=6   fd=0
 
 `overall` records the spurious non-match. `aggregate` reports the six leaves of the one comparable object, and none of them failed. The rejected object contributes no leaf rows.
 
-#### Getting leaf detail for a marginal object
+#### Getting leaf detail for a marginal list item
 
-If you want those leaves counted, lower `match_threshold` so the object qualifies as comparable. Same two items as above, with the second still at 4/6:
+If you want those leaves counted, lower `match_threshold` so the **list item** qualifies as comparable. This is the knob for a list item only: a single nested `StructuredModel` field is never gated, so lowering `match_threshold` cannot change what it reports. Same two items as above, with the second still at 4/6:
 
 ```
 match_threshold   comparable?   overall            aggregate
@@ -452,7 +453,9 @@ This displays processing statistics (document count, throughput), overall confus
 
 ## Field-Level Aggregate Metrics
 
-Every node in the confusion matrix automatically includes an `aggregate` field that sums all primitive field metrics recursively below that node. This gives you hierarchical analysis without any configuration:
+Every node in the confusion matrix automatically includes an `aggregate` field that sums all primitive field metrics recursively below that node. This gives you hierarchical analysis without any configuration.
+
+One caveat before you rank anything by these counts: where a list's items were *all* rejected, that node's `aggregate` reports one row per rejected object rather than its leaves, so counts from such a node are not comparable with leaf counts from another ([why](../../Advanced/aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list)). The check is `cm['fields'][name]['overall']['tp'] == 0` on a list field.
 
 ```python
 result = ground_truth.compare_with(prediction, include_confusion_matrix=True)
@@ -465,8 +468,11 @@ print(f"Total F1: {cm['aggregate']['derived']['cm_f1']:.3f}")
 for section, data in cm['fields'].items():
     if 'aggregate' in data:
         f1 = data['aggregate']['derived']['cm_f1']
-        errors = data['aggregate']['fd'] + data['aggregate']['fa'] + data['aggregate']['fn']
-        print(f"  {section}: F1={f1:.3f}, Errors={errors}")
+        errors = data['aggregate']['fp'] + data['aggregate']['fn']
+        # A list whose items were ALL rejected reports object rows here, not
+        # leaves, so say so rather than ranking it against leaf counts.
+        unit = 'objects' if data['overall']['tp'] == 0 else 'leaves'
+        print(f"  {section}: F1={f1:.3f}, Errors={errors} ({unit})")
 ```
 
-This is especially useful for identifying which sections of your data have the most extraction issues, without needing to manually aggregate individual field metrics.
+This is especially useful for identifying which sections of your data have the most extraction issues, without needing to manually aggregate individual field metrics. Sum `fp` rather than `fa + fd`, for the reason given under [Asking whether anything failed](#asking-whether-anything-failed): the two are equal by construction and `fp` cannot go stale if a class is ever added.
