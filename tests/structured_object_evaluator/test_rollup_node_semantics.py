@@ -468,3 +468,158 @@ class TestTheDocsAndTheEngineCannotDrift:
                 f"{relative} still reads `fa` on `overall` alone, which is clean "
                 f"on a value invented against a null ground-truth leaf"
             )
+
+    def test_no_file_anywhere_publishes_the_superseded_form(self):
+        """The page walk above cannot see a copy that is not a page.
+
+        One survived in `tests/auto/test_risk_surface.py`, under a comment
+        calling it "the reliable question", so the form this file retires was
+        still in the repo as a worked example for the next person to copy. The
+        page walk missed it because it matches on the docs' quoting style and
+        that copy used different variable names. This one is quoting-agnostic:
+        it finds every `clean = (` in the tree and checks the block under it.
+        """
+        repo_root = Path(__file__).resolve().parents[2]
+        offenders = []
+
+        for path in sorted(repo_root.glob("**/*.py")) + sorted(
+            repo_root.glob("docs/**/*.md")
+        ):
+            if path == Path(__file__).resolve() or ".venv" in path.parts:
+                continue
+            lines = path.read_text(errors="ignore").splitlines()
+            for number, line in enumerate(lines):
+                if "clean = (" not in line:
+                    continue
+                block = "\n".join(lines[number : number + 8])
+                # `fa` read from `overall` inside the check is the retired form:
+                # a value invented on a null ground-truth leaf is `fa` on
+                # `aggregate` and leaves `overall` clean, so the check passes on
+                # a hallucination. Sum `fp` on both nodes instead.
+                if '"fa"' in block or "'fa'" in block:
+                    if "overall" in block:
+                        offenders.append(f"{path.relative_to(repo_root)}:{number + 1}")
+
+        assert not offenders, (
+            "these publish a clean check reading `fa` on `overall`, which "
+            f"reports clean on a hallucinated value: {offenders}"
+        )
+
+
+class _Contact(StructuredModel):
+    """A nested object, deliberately not a list element."""
+
+    match_threshold = 0.7
+
+    a: Optional[str] = ComparableField(
+        comparator=ExactComparator(), threshold=1.0, default=None
+    )
+    b: Optional[str] = ComparableField(
+        comparator=ExactComparator(), threshold=1.0, default=None
+    )
+    c: Optional[str] = ComparableField(
+        comparator=ExactComparator(), threshold=1.0, default=None
+    )
+
+
+class TestANestedObjectIsNotThresholdGated:
+    """The gating is a property of list pairing, not of objects.
+
+    The pages said "an object below `match_threshold` is one FD and is not
+    descended into" without qualification. That is true for a
+    `List[StructuredModel]` item, which `StructuredListComparator` pairs and then
+    accepts or rejects. A single nested `StructuredModel` field goes through
+    `FieldComparator`, which has no such stage.
+
+    Two consequences a reader with a nested-object schema needs, and neither was
+    stated: the leaves are always reported, and `match_threshold` is not the knob.
+    The published remedy -- "lower `match_threshold` to get leaf detail for a
+    marginal object" -- was a no-op for this shape.
+    """
+
+    @staticmethod
+    def _compare(field_threshold=None):
+        extra = {} if field_threshold is None else {"threshold": field_threshold}
+
+        class Doc(StructuredModel):
+            contact: Optional[_Contact] = ComparableField(default=None, **extra)
+            name: Optional[str] = ComparableField(
+                comparator=ExactComparator(), threshold=1.0, default=None
+            )
+
+        return Doc(contact=_Contact(a="1", b="2", c="3"), name="n").compare_with(
+            Doc(contact=_Contact(a="1", b="2", c="WRONG"), name="n"),
+            include_confusion_matrix=True,
+        )["confusion_matrix"]
+
+    def test_the_failing_leaf_is_reported_even_when_the_object_is_rejected(self):
+        """`aggregate` shows these leaves; the docs said it hid them."""
+        cm = self._compare(field_threshold=0.9)
+        assert (cm["overall"]["tp"], cm["overall"]["fd"]) == (1, 1)
+        assert (cm["aggregate"]["tp"], cm["aggregate"]["fd"]) == (3, 1)
+
+    def test_the_leaves_are_reported_when_it_is_accepted_too(self):
+        """Same `aggregate` either way, which is the point: nothing is excluded."""
+        cm = self._compare(field_threshold=0.5)
+        assert (cm["overall"]["tp"], cm["overall"]["fd"]) == (2, 0)
+        assert (cm["aggregate"]["tp"], cm["aggregate"]["fd"]) == (3, 1)
+
+    def test_the_field_threshold_is_what_decides_the_verdict(self):
+        boundary = {t: self._compare(field_threshold=t)["overall"] for t in (0.9, 0.5)}
+        assert boundary[0.9]["fd"] == 1
+        assert boundary[0.5]["fd"] == 0
+
+    @pytest.mark.parametrize("match_threshold", (0.9, 0.7, 0.5, 0.1))
+    def test_match_threshold_is_inert_for_this_shape(self, match_threshold):
+        """The retired remedy, pinned as a no-op so it cannot be re-published."""
+        original = _Contact.match_threshold
+        try:
+            _Contact.match_threshold = match_threshold
+            cm = self._compare()
+        finally:
+            _Contact.match_threshold = original
+        assert (cm["overall"]["tp"], cm["overall"]["fd"]) == (2, 0)
+        assert (cm["aggregate"]["tp"], cm["aggregate"]["fd"]) == (3, 1)
+
+
+class TestAllRejectedAggregateCountsObjects:
+    """`aggregate` stops being a leaf count when every subtree is rejected.
+
+    `AggregateMetricsCalculator` falls back to summing children's `overall` when
+    the recursive leaf sum is all-zero, so the unit of the count changes with the
+    data. The page promised "the unit is the leaf" and "primitive field metrics",
+    so dividing an `aggregate` count by a leaf total, or calling its `derived`
+    block leaf-level precision, is wrong on an all-rejected document.
+    """
+
+    @staticmethod
+    def _two_items(rejected: int):
+        def item(index: int, wrong: bool) -> Line:
+            values = {name: f"{name}{index}" for name in FIELDS}
+            if wrong:
+                values["tax"] = "WRONG"
+                values["total"] = "WRONG"
+            return Line(**values)
+
+        class Doc(StructuredModel):
+            items: Optional[List[Line]] = ComparableField(default=None)
+
+        gt = [item(i, False) for i in range(2)]
+        pred = [item(i, i < rejected) for i in range(2)]
+        return Doc(items=gt).compare_with(
+            Doc(items=pred), include_confusion_matrix=True
+        )["confusion_matrix"]
+
+    def test_one_rejected_still_counts_leaves(self):
+        aggregate = self._two_items(rejected=1)["aggregate"]
+        assert (aggregate["tp"], aggregate["fd"]) == (6, 0)
+
+    def test_both_rejected_counts_objects_instead(self):
+        """Twelve leaves exist; `aggregate` reports two rows."""
+        cm = self._two_items(rejected=2)
+        assert (cm["aggregate"]["tp"], cm["aggregate"]["fd"]) == (0, 2)
+        assert (cm["overall"]["tp"], cm["overall"]["fd"]) == (0, 2)
+
+    def test_so_the_two_nodes_agree_only_because_the_unit_changed(self):
+        cm = self._two_items(rejected=2)
+        assert cm["aggregate"]["fd"] == cm["overall"]["fd"] == 2

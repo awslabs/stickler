@@ -185,10 +185,14 @@ clean = (
 )
 ```
 
-Read `fp`, not `fa + fd`. The two are equal by construction, and `fp` also catches
-the mirror-image case: a value invented where the ground truth is null is `fa` at
-that leaf and rolls into `aggregate`, while `overall` stays clean because the item
-still paired.
+Read **both nodes**. That is the fix: the earlier version of this snippet summed
+`fd` on `aggregate` but took `fa` from `overall` only, so a value invented where the
+ground truth is null went unseen. Such a value is `fa` at that leaf and rolls into
+`aggregate`, while `overall` stays clean because the item still paired.
+
+`fa + fd` on a node would work just as well, since `FP = FA + FD` by construction.
+`fp` is preferred only because it is one term instead of two and cannot go stale if a
+class is ever added -- not because the classes are unsafe to read.
 
 So `match_threshold` is also the knob for how much leaf detail you get. If you
 want a marginal object's leaves scored individually, lower it until that object

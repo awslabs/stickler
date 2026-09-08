@@ -58,7 +58,9 @@ clean = (
 
 `aggregate` gives leaf detail for the objects that were comparable: `fp` covers a leaf that scored below its threshold and a value invented where the ground truth was null, `fn` a leaf absent from the prediction. `overall` gives the object verdicts. Sum `fp` rather than `fa + fd`, since `FP = FA + FD` by construction and `fp` cannot go stale if a class is ever added.
 
-The second half of that check is what catches an object rejected outright. An object scoring below `match_threshold` is a spurious non-match, counted once as `fd` on `overall` and not descended into, so it contributes no leaf rows. If you want leaf detail for a marginal object, lower `match_threshold` until it qualifies as comparable. `field_comparisons` names the individual failures.
+The second half of that check is what catches an object rejected outright. A **list item** scoring below the element class's `match_threshold` is a spurious non-match, counted once as `fd` on `overall` and not descended into, so it contributes no leaf rows. If you want leaf detail for a marginal list item, lower `match_threshold` until it qualifies as comparable. `field_comparisons` names the individual failures.
+
+A single nested `StructuredModel` field behaves differently and is worth knowing separately: it is never gated, so its leaves appear on `aggregate` even when the object itself is a false discovery, and `match_threshold` is not the knob — the field's own `threshold` is.
 
 ---
 
@@ -101,7 +103,7 @@ The `confusion_matrix` object has four keys:
 - **`overall`** -- Metrics for this node's direct children. Where the field is a list, those children are item pairings rather than leaves.
 - **`fields`** -- Field-by-field breakdown, with nested structure for objects and lists.
 - **`non_matches`** -- Populated when `document_non_matches=True` (empty otherwise).
-- **`aggregate`** -- Primitive field metrics summed recursively below this node, excluding subtrees rejected at `match_threshold`. See [`overall` vs `aggregate`](#overall-vs-aggregate).
+- **`aggregate`** -- Primitive field metrics summed recursively below this node, excluding list items rejected at their element class's `match_threshold`. A single nested `StructuredModel` field is not excluded; its leaves are always counted. See [`overall` vs `aggregate`](#overall-vs-aggregate).
 
 ### `overall` vs `aggregate`
 
@@ -110,9 +112,9 @@ The two nodes are the two stages of the evaluation, and you generally want both:
 - **`overall` is detection.** The unit is the object. Did we find the right things? For a list of 5 line items that each paired above `match_threshold`, `tp = 5`.
 - **`aggregate` is extraction.** The unit is the leaf. Among the objects established to be the same object, how many field values were correct? For those same 5 items with 6 fields each, `tp` counts up to 30.
 
-`match_threshold` is the handoff, and it is really the definition of "the same object". Above it, the pair is the same thing, so grading its fields is meaningful. Below it, it is not the same thing, so grading its fields would be scoring the fields of a *different* object. Such an object is classified as a single **false discovery** and is not descended into.
+`match_threshold` is the handoff, and it is really the definition of "the same object". Above it, the pair is the same thing, so grading its fields is meaningful. Below it, it is not the same thing, so grading its fields would be scoring the fields of a *different* object. Such an **item** is classified as a single **false discovery** and is not descended into. This gating is a property of `List[StructuredModel]` pairing, not of nested objects generally: a single nested `StructuredModel` field always reports its leaves, and is judged against the field's own `threshold` rather than `match_threshold`.
 
-If that split is familiar, it should be: it is the structure of mean Average Precision, which Stickler also implements for bounding boxes. An IoU threshold decides whether a detection matched, and only matched pairs are scored further. See [Bounding Box mAP Metrics](../../Advanced/bbox-map-metrics.md#iou-thresholds).
+If that split is familiar, it should be: it is the structure of mean Average Precision, which Stickler also implements for bounding boxes. An IoU threshold decides whether a detection matched, and only matched pairs are scored further. See [Bounding Box mAP Metrics](../../Advanced/bbox-map-metrics.md#iou-calculation).
 
 The analogy stops at recall. A below-threshold *detection* counts as both a false positive and a false negative, so recall falls. A below-threshold *object* is an `fd` only, so the unmatched ground-truth item leaves no trace and `overall` recall still reads `1.0`. Pass `recall_with_fd=True` to `compare_with()` for the mAP convention:
 

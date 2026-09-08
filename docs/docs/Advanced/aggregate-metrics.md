@@ -89,9 +89,16 @@ The two nodes are the two stages of the evaluation:
 - **`overall` is detection.** The unit is the object. Did we find the right things? Five line items paired, none spurious.
 - **`aggregate` is extraction.** The unit is the leaf. Among the objects established to be the same object, how many field values were correct? 29 of 30.
 
-`match_threshold` is the handoff, and it is really the definition of "the same object". Above it, the pair is the same thing, so grading its fields is meaningful. Below it, it is not the same thing, so grading its fields would be scoring the fields of a *different* object. Such an object is classified as a single false discovery and is not descended into.
+`match_threshold` is the handoff, and it is really the definition of "the same object". Above it, the pair is the same thing, so grading its fields is meaningful. Below it, it is not the same thing, so grading its fields would be scoring the fields of a *different* object. Such an **item** is classified as a single false discovery and is not descended into.
 
-This is the same two-stage structure as mean Average Precision, which Stickler also implements for bounding boxes: an IoU threshold decides whether a detection matched, and only matched pairs are evaluated further. See [Bounding Box mAP Metrics](bbox-map-metrics.md#iou-thresholds), where a below-threshold detection is likewise a failure at the matching stage rather than a source of per-attribute errors. Nobody expects an unmatched detection to contribute attribute-level accuracy, and the reasoning for objects is the same.
+The gating applies to **`List[StructuredModel]` items only**. It is a property of `StructuredListComparator`, which pairs items and then decides which pairs are the same object. A single nested `StructuredModel` field goes through `FieldComparator`, which has no such stage, so:
+
+- its leaves are **always** reported on `aggregate`, whether or not the object was rejected;
+- its `overall` verdict comes from the **field's own `threshold`**, not from `match_threshold`, which is never consulted for that shape.
+
+The worked output above is that case, and shows it: `contact` scores 0.5 and is `fd=1` on `overall`, and its leaves are still counted (`aggregate tp=1 fd=1`) and still roll into the root. If your schema is nested objects rather than lists of them, `aggregate` is showing you your failing leaves, not hiding them.
+
+This is the same two-stage structure as mean Average Precision, which Stickler also implements for bounding boxes: an IoU threshold decides whether a detection matched, and only matched pairs are evaluated further. See [Bounding Box mAP Metrics](bbox-map-metrics.md#iou-calculation), where a below-threshold detection is likewise a failure at the matching stage rather than a source of per-attribute errors. Nobody expects an unmatched detection to contribute attribute-level accuracy, and the reasoning for objects is the same.
 
 The two paths differ on recall, though. A below-threshold detection counts as both FP and FN, so mAP recall falls; a below-threshold object is an `fd` only, so `overall` recall still reads `1.0` on a document with a spurious pairing. Pass `recall_with_fd=True` to `compare_with()` for the mAP convention.
 
@@ -119,9 +126,26 @@ cm['aggregate']   tp=24  fd=0   P=1.0000  R=1.0000  F1=1.0000
 
 The two nodes coincide only where there is no accepted subtree to expand at all: a model with no nesting, or a document in which *every* subtree was rejected. Reject all five items and both nodes read `tp=0 fd=5`.
 
-#### Getting leaf detail for a marginal object
+!!! warning "On an all-rejected document, `aggregate` counts objects, not leaves"
 
-`match_threshold` controls how much leaf detail you get. Lower it so the object qualifies as comparable, and its leaves are scored individually. Same five items, with the third still at 4/6:
+    That convergence is not the leaf view agreeing with the object view. When the
+    recursive leaf sum comes out all-zero, `aggregate` falls back to summing its
+    children's `overall`, so the **unit of the count changes with the data**:
+
+    ```
+    two items of six fields
+      1 of 2 rejected    aggregate tp=6 fd=0   P=1.0000    6 leaf rows
+      2 of 2 rejected    aggregate tp=0 fd=2   P=0.0000    2 OBJECT rows, though 12 leaves exist
+    ```
+
+    So `aggregate` counts are not a reliable denominator for a leaf total, and a
+    `derived` block from an all-rejected document is not leaf-level precision. Read
+    `overall` to know how many objects were rejected before dividing anything by an
+    `aggregate` count.
+
+#### Getting leaf detail for a marginal list item
+
+`match_threshold` controls how much leaf detail you get for a **list item**. It does nothing for a single nested `StructuredModel` field, whose leaves are always reported. Lower it so the object qualifies as comparable, and its leaves are scored individually. Same five items, with the third still at 4/6:
 
 ```
 match_threshold   comparable?   overall            aggregate

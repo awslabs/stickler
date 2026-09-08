@@ -1549,10 +1549,14 @@ class StructuredModel(BaseModel):
                 calculations. The result carries two rollup nodes answering
                 different questions: `overall` gives object verdicts (was the
                 pairing genuine or spurious), while `aggregate` gives leaf
-                detail for the objects that were comparable. An object below
-                `match_threshold` is one FD and is not descended into, so
-                lowering `match_threshold` is how you get leaf detail for a
-                marginal object. See
+                detail for the objects that were comparable. A LIST ITEM below
+                the element class's `match_threshold` is one FD and is not
+                descended into, so lowering `match_threshold` is how you get
+                leaf detail for a marginal list item. A single nested
+                `StructuredModel` field is not gated this way: its leaves are
+                always reported on `aggregate`, and its `overall` verdict comes
+                from the field's own `threshold`, not from `match_threshold`.
+                See
                 https://awslabs.github.io/stickler/Advanced/aggregate-metrics/
             document_non_matches: Whether to document non-matches for analysis
             evaluator_format: Whether to format results for the evaluator

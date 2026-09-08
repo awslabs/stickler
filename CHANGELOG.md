@@ -305,11 +305,34 @@ Each release links to full notes on the
   )
   ```
 
-  A below-threshold object is a spurious non-match, so not descending into it is
-  deliberate: `overall` carries the object verdict and `aggregate` carries leaf
-  detail for the objects that were comparable. A caller wanting leaf detail for a
-  marginal object lowers `match_threshold` until it qualifies. See
-  [#288](https://github.com/awslabs/stickler/issues/288) for the naming.
+  A below-threshold **list item** is a spurious non-match, so not descending into it
+  is deliberate: `overall` carries the object verdict and `aggregate` carries leaf
+  detail for the items that were comparable. A caller wanting leaf detail for a
+  marginal list item lowers `match_threshold` until it qualifies.
+
+  That gating is a property of `List[StructuredModel]` pairing, not of nested
+  objects generally, and the pages now say so. `StructuredListComparator` pairs
+  items and then accepts or rejects; a single nested `StructuredModel` field goes
+  through `FieldComparator`, which has no such stage. So for a nested object field
+  the leaves are **always** reported on `aggregate`, and the verdict comes from the
+  field's own `threshold` -- `match_threshold` is never consulted, which made the
+  published "lower `match_threshold`" remedy a no-op for that shape. Measured on a
+  three-leaf nested object with one leaf wrong:
+
+  ```
+  field threshold=0.9   overall tp=1 fd=1   aggregate tp=3 fd=1
+  field threshold=0.5   overall tp=2 fd=0   aggregate tp=3 fd=1
+  match_threshold  0.9 / 0.7 / 0.5 / 0.1 -> identical at every value
+  ```
+
+  Also documented: on a document where **every** subtree was rejected, `aggregate`
+  stops counting leaves. `AggregateMetricsCalculator` falls back to summing
+  children's `overall` when the recursive leaf sum is all-zero, so the unit of the
+  count changes with the data -- two rejected items of six fields report
+  `aggregate tp=0 fd=2`, two object rows where twelve leaves exist. An `aggregate`
+  count is therefore not a safe denominator for a leaf total on such a document.
+
+  See [#288](https://github.com/awslabs/stickler/issues/288) for the naming.
 
 - An unrecognized `x-aws-stickler-*` extension key in a JSON Schema now raises
   instead of being silently dropped. The sharpest shape was a typo beside a
