@@ -1,9 +1,55 @@
 """Base class for comparators."""
 
+import inspect
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Tuple
 
 from stickler.utils.deprecation import warn_once
+
+
+def _caller_named_it(comparator: "BaseComparator", threshold: float) -> bool:
+    """Whether a non-``None`` threshold really came from the caller.
+
+    ``threshold is not None`` is exact only for a comparator that defaults its own
+    parameter to ``None``, which every comparator in this repo now does. An
+    out-of-tree comparator written to the pattern the docs taught until now --
+
+        def __init__(self, threshold: float = 1.0):
+            super().__init__(threshold=threshold)
+
+    -- forwards a number on a bare construction, so the flag would read ``True``
+    and the field would adopt ``1.0``. With ``clip_under_threshold`` on, that
+    silently zeroes every imperfect score: the outcome this whole change exists to
+    prevent, reintroduced for exactly the population that cannot have migrated yet.
+
+    So for a subclass that still declares a concrete default, fall back to
+    comparing against it. That is the old heuristic, and it carries the old flaw --
+    ``RegexComparator(threshold=1.0)`` reads as unset -- but it keeps such a
+    comparator behaving as it did before this change instead of quietly becoming
+    stricter, and it warns once so the author can migrate.
+
+    Silent for a subclass that declares ``threshold: Optional[float] = None``,
+    where the flag is already exact.
+    """
+    declared = inspect.signature(type(comparator).__init__).parameters.get("threshold")
+    if declared is None or declared.default is inspect.Parameter.empty:
+        return True
+    if declared.default is None:
+        return True
+
+    warn_once(
+        "comparator-threshold-default-not-none",
+        type(comparator).__qualname__,
+        f"{type(comparator).__name__}.__init__ declares "
+        f"threshold={declared.default!r} rather than None, so stickler cannot tell "
+        f"a threshold you passed from the class default. A threshold equal to "
+        f"{declared.default!r} is treated as not set, and the field falls back to "
+        f"its own default. Declare 'threshold: Optional[float] = None' and set "
+        f"DEFAULT_THRESHOLD = {declared.default!r} on the class to have an "
+        f"explicit threshold honoured.",
+        category=UserWarning,
+    )
+    return threshold != declared.default
 
 
 class BaseComparator(ABC):
@@ -118,6 +164,8 @@ class BaseComparator(ABC):
         #: Whether the caller named a threshold. Consumed by
         #: ``stickler.structured_object_evaluator.models.comparable_field``.
         self.threshold_was_set = threshold is not None
+        if self.threshold_was_set:
+            self.threshold_was_set = _caller_named_it(self, threshold)
         self.threshold = self.DEFAULT_THRESHOLD if threshold is None else threshold
 
     def compare(self, str1: Any, str2: Any) -> float:

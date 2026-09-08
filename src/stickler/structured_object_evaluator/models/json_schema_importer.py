@@ -28,6 +28,8 @@ from json_schema_to_pydantic import create_model as create_pydantic_model
 from pydantic import AnyUrl, BaseModel, TypeAdapter
 from pydantic.fields import FieldInfo
 
+from stickler.utils.deprecation import warn_once
+
 from .comparable_field import ComparableField
 from .comparator_registry import create_comparator
 from .model_factory import ModelFactory
@@ -387,12 +389,27 @@ class JsonSchemaImporter:
                     # `None`, not the legacy 0.5. Both resolve to the same
                     # number, but passing a value marks the field as having
                     # named a threshold, and a list-of-model field is not
-                    # allowed to: Hungarian matching reads each element
-                    # class's `match_threshold` instead. A schema that names
-                    # `x-aws-stickler-threshold` here is still refused, which
-                    # is the point -- it asked for something that has no
-                    # effect.
+                    # allowed to: Hungarian matching reads each element class's
+                    # `match_threshold` instead.
                     threshold=None,
+                    # And a threshold the SCHEMA names here is dropped rather
+                    # than forwarded, because forwarding it now raises.
+                    #
+                    # Every `to_json_schema()` on a released version emitted
+                    # `x-aws-stickler-threshold` on an array-of-model property,
+                    # so every schema artifact already written to disk carries
+                    # it. Import used to pass the value through and the old
+                    # `threshold != 0.5` proxy let the placeholder slide; with
+                    # the proxy replaced by an explicitness marker, forwarding
+                    # it makes `__init_subclass__` refuse the class and no
+                    # previously exported schema containing a list of models
+                    # can be read back.
+                    #
+                    # Warned rather than raised: which is a legacy placeholder
+                    # and which a human wrote is not decidable from the value,
+                    # and refusing would break persisted artifacts to catch a
+                    # misconfiguration whose only cost is being ignored.
+                    ignore_threshold=True,
                 )
             else:
                 element = self._adapt_union_models(
@@ -494,8 +511,21 @@ class JsonSchemaImporter:
         *,
         comparator_name: str,
         threshold: Optional[float],
+        ignore_threshold: bool = False,
     ) -> FieldInfo:
         extensions = self._extract_extensions(field_info, field_path)
+        if ignore_threshold and "threshold" in extensions:
+            declared = extensions.pop("threshold")
+            warn_once(
+                "array-threshold-ignored",
+                field_path,
+                f"'x-aws-stickler-threshold' has no effect on array property "
+                f"'{field_path}' and is ignored. Pairing of array elements is "
+                f"gated by the element's own threshold, so put "
+                f"'x-aws-stickler-match-threshold': {declared} inside that "
+                f"property's 'items' if that is what you meant.",
+                category=UserWarning,
+            )
         comparator = extensions.get("comparator")
         if comparator is None:
             comparator = create_comparator(comparator_name, {})

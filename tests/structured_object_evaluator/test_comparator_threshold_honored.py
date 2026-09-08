@@ -23,10 +23,12 @@ that feature to zero.
 See https://github.com/awslabs/stickler/issues/246
 """
 
-from typing import Optional
+from copy import deepcopy
+from typing import List, Optional
 
 import pytest
 
+from stickler.comparators.base import BaseComparator
 from stickler.comparators.date import DateComparator
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
@@ -434,3 +436,163 @@ class TestExportDoesNotEmitAThresholdForAListOfModels:
         schema = self._cart().to_json_schema()
         rebuilt = StructuredModel.from_json_schema(schema)
         assert "products" in rebuilt.model_fields
+
+
+class TestAPreviouslyExportedSchemaStillImports:
+    """A schema a released version wrote must still be readable.
+
+    `to_json_schema()` on every released version emitted
+    `x-aws-stickler-threshold` on an array-of-model property, carrying the
+    placeholder the field resolved to. Import forwarded it, and the old
+    `threshold != 0.5` proxy let the placeholder slide. With the proxy replaced by
+    an explicitness marker, forwarding it makes `__init_subclass__` refuse the
+    class -- so every schema artifact already on disk containing a list of models
+    stopped importing.
+    """
+
+    LEGACY_EXPORT = {
+        "type": "object",
+        "x-aws-stickler-model-name": "Cart",
+        "properties": {
+            "products": {
+                "type": "array",
+                "x-aws-stickler-threshold": 0.5,
+                "x-aws-stickler-weight": 2.0,
+                "items": {
+                    "type": "object",
+                    "x-aws-stickler-model-name": "Product",
+                    "x-aws-stickler-match-threshold": 0.8,
+                    "properties": {"name": {"type": "string"}},
+                },
+            }
+        },
+        "required": [],
+    }
+
+    def test_it_imports(self):
+        model = StructuredModel.from_json_schema(self.LEGACY_EXPORT)
+        assert "products" in model.model_fields
+
+    def test_the_ignored_key_is_reported(self):
+        """Silently ignoring it would be the drop this work exists to remove."""
+        with pytest.warns(UserWarning, match="has no effect on array property"):
+            StructuredModel.from_json_schema(self.LEGACY_EXPORT)
+
+    def test_the_element_match_threshold_still_governs(self):
+        """What was dropped must not be information anyone needed."""
+        model = StructuredModel.from_json_schema(self.LEGACY_EXPORT)
+        element = model.model_fields["products"].annotation
+        while getattr(element, "__args__", None):
+            element = element.__args__[0]
+        assert element.match_threshold == 0.8
+
+    def test_a_non_placeholder_value_is_also_ignored_not_refused(self):
+        """0.8 here is a misconfiguration, but not one worth refusing an import for."""
+        schema = deepcopy(self.LEGACY_EXPORT)
+        schema["properties"]["products"]["x-aws-stickler-threshold"] = 0.8
+        with pytest.warns(UserWarning, match="0.8"):
+            model = StructuredModel.from_json_schema(schema)
+        assert "products" in model.model_fields
+
+
+class TestAnOutOfTreeComparatorKeepsItsOldBehaviour:
+    """`threshold is not None` is exact only for a subclass that defaults to None.
+
+    A comparator written to the pattern the docs taught until now forwards a number
+    on a bare construction, so the marker would read as set and the field would
+    adopt it -- silently zeroing every imperfect score under
+    `clip_under_threshold`. That is the outcome this change prevents, and it would
+    have landed on exactly the population that cannot have migrated yet.
+    """
+
+    class Legacy(BaseComparator):
+        """The documented pre-0.8 shape: a concrete default, forwarded."""
+
+        def __init__(self, threshold: float = 1.0):
+            super().__init__(threshold=threshold)
+
+        def _compare(self, str1, str2):
+            return 1.0 if str1 == str2 else 0.0
+
+    class Migrated(BaseComparator):
+        """The shape the docs now teach."""
+
+        DEFAULT_THRESHOLD = 1.0
+
+        def __init__(self, threshold: Optional[float] = None):
+            super().__init__(threshold=threshold)
+
+        def _compare(self, str1, str2):
+            return 1.0 if str1 == str2 else 0.0
+
+    def test_a_bare_legacy_comparator_does_not_impose_its_default(self):
+        with pytest.warns(UserWarning, match="rather than None"):
+            comparator = self.Legacy()
+        assert (
+            _threshold_of(ComparableField(comparator=comparator, default=None))
+            == _LEGACY_DEFAULT_THRESHOLD
+        )
+
+    def test_a_legacy_comparator_is_still_honoured_away_from_its_default(self):
+        with pytest.warns(UserWarning):
+            comparator = self.Legacy(threshold=0.9)
+        assert (
+            _threshold_of(ComparableField(comparator=comparator, default=None)) == 0.9
+        )
+
+    def test_the_warning_names_the_migration(self):
+        with pytest.warns(UserWarning, match="DEFAULT_THRESHOLD"):
+            self.Legacy()
+
+    def test_a_migrated_comparator_gets_exact_explicitness(self):
+        """Including at its own default, which the legacy fallback cannot manage."""
+        assert (
+            _threshold_of(
+                ComparableField(comparator=self.Migrated(threshold=1.0), default=None)
+            )
+            == 1.0
+        )
+        assert (
+            _threshold_of(ComparableField(comparator=self.Migrated(), default=None))
+            == _LEGACY_DEFAULT_THRESHOLD
+        )
+
+    def test_a_migrated_comparator_does_not_warn(self):
+        import warnings
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            self.Migrated()
+        assert not [w for w in caught if "rather than None" in str(w.message)]
+
+
+class TestAListOfModelsRefusesAFieldThresholdAtEveryValue:
+    """The guard used to be legal at exactly one value, which is not a rule.
+
+    It detected a field threshold by comparing against the literal `0.5`, so
+    `ComparableField(threshold=0.5)` was accepted on a list-of-model field while
+    `threshold=0.9` raised. Breaking, and in the breaking list.
+    """
+
+    @pytest.mark.parametrize("value", (0.0, 0.5, 0.9, 1.0))
+    def test_every_value_is_refused(self, value):
+        class Line(StructuredModel):
+            sku: Optional[str] = ComparableField(default=None)
+
+        with pytest.raises(ValueError, match="cannot have a 'threshold' parameter"):
+
+            class Doc(StructuredModel):
+                items: Optional[List[Line]] = ComparableField(
+                    threshold=value, default=None
+                )
+
+    def test_the_advice_still_names_match_threshold(self):
+        class Line(StructuredModel):
+            sku: Optional[str] = ComparableField(default=None)
+
+        with pytest.raises(ValueError, match="match_threshold"):
+
+            class Doc(StructuredModel):
+                items: Optional[List[Line]] = ComparableField(
+                    threshold=0.5, default=None
+                )

@@ -189,6 +189,26 @@ Each release links to full notes on the
   job: `DateComparator` defaults to `1.0` while awarding `0.7` for a match with no
   year, so adopting it would clip that comparator's own feature to zero.
 
+  An out-of-tree comparator that still declares a concrete default keeps its
+  pre-0.8 behaviour and warns once. `threshold is not None` is exact only for a
+  comparator that defaults its own parameter to `None`; one written to the pattern
+  the docs taught until now --
+
+  ```python
+  def __init__(self, threshold: float = 1.0):
+      super().__init__(threshold=threshold)
+  ```
+
+  -- forwards a number on a bare construction, so the marker would read as set and
+  the field would adopt `1.0`, silently zeroing every imperfect score under
+  `clip_under_threshold`. That is the outcome this change exists to prevent, and it
+  would have landed on exactly the population that cannot have migrated yet. For
+  such a subclass stickler falls back to comparing against the declared default,
+  which carries the old flaw (a threshold equal to that default reads as unset) but
+  changes nothing for them, and warns with the two-line migration. The comparator
+  docs and `Custom_Comparator_Demo.ipynb` now teach `Optional[float] = None` plus
+  `DEFAULT_THRESHOLD`.
+
   Telling the two apart required a change to `BaseComparator`, because it could
   not be done anywhere downstream. `threshold` on every comparator now defaults
   to `None`, meaning "use my `DEFAULT_THRESHOLD`", and `BaseComparator.__init__`
@@ -212,13 +232,30 @@ Each release links to full notes on the
     `overall_score` of `0.0`, where both were `0.9` before. Aggregate metrics
     move with them.
   - `to_json_schema()` no longer emits `x-aws-stickler-threshold` for a
-    `List[StructuredModel]` field. It was never read there (Hungarian matching
+    `List[StructuredModel]` field. `to_stickler_config()` still does; that is
+    inert only because `field_converter` forces `threshold=None` for the type, and
+    is left standing rather than changed in a PR about thresholds. It was never read there (Hungarian matching
     uses the element class's `match_threshold`, which the exported `items`
     schema already carries), and re-importing it now raises, so a model exported
     before this change round-trips where it previously could not.
 
-  Unchanged: `threshold=0.0` remains a value rather than an omission, a field
-  that states its own threshold, and a bare comparator with no threshold named.
+  - **`List[StructuredModel]` now refuses a field threshold at every value.**
+    `__init_subclass__` has always refused one, but detected it by comparing
+    against the literal `0.5`, so `ComparableField(threshold=0.5)` on such a field
+    was accepted while `threshold=0.9` raised -- legal at exactly one value. It now
+    reads the explicitness marker and refuses both. The remediation advice is
+    unchanged: set `match_threshold` on the element class.
+  - A JSON Schema that names `x-aws-stickler-threshold` on an array-of-model
+    property has it **ignored with a warning** rather than forwarded. Every
+    `to_json_schema()` on a released version emitted that key, so forwarding it
+    made the explicitness marker refuse the class and no previously exported schema
+    containing a list of models could be read back. Warned rather than raised
+    because a legacy placeholder is not distinguishable from a value a human wrote,
+    and refusing would break persisted artifacts to flag a key whose only cost is
+    being ignored.
+
+  Unchanged: `threshold=0.0` remains a value rather than an omission, and a bare
+  comparator with no threshold named.
 
   Also records a `_threshold_explicit` marker alongside the existing
   `_comparator_explicit` and `_clip_explicit` ones. Its only reader today is the
