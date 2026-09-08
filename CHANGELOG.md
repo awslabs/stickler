@@ -11,6 +11,67 @@ Each release links to full notes on the
 
 ### Added
 
+- Config-driven models can have their unspecified fields inferred, with
+  `infer_unspecified_fields` on a Stickler config or
+  `x-aws-stickler-infer-unspecified` on a JSON Schema object. A large extraction
+  schema usually has a handful of fields whose comparison rules matter and a long
+  tail where anything sensible will do; this covers the tail.
+
+  Before, the paths gave three different answers to "no comparator named", none of
+  them what `stickler.evaluate()` chooses for the same field:
+
+  ```
+  model_from_json()      raises
+  from_json_schema()     number -> NumericComparator @ 0.50
+  stickler.evaluate()    number -> NumericComparator @ 0.95
+  ```
+
+  Inference supplies **both** the comparator and the threshold, so an unspecified
+  field now matches `stickler.evaluate()` exactly -- asserted against `auto`'s own
+  output rather than against literals, so the two cannot drift:
+
+  | field | without the flag | with it |
+  |---|---|---|
+  | `total: float` | NumericComparator @ 0.5 | NumericComparator @ 0.95 |
+  | `paid: bool` | ExactComparator @ 0.5 | ExactComparator @ 1.0 |
+  | `issued` (`format: date`) | DateComparator @ 1.0 | DateComparator @ 0.95 |
+  | `vendor: str` | LevenshteinComparator @ 0.5 | LevenshteinComparator @ 0.85 |
+
+  A field opts in on its own with `"comparator": "auto"`
+  (`x-aws-stickler-comparator: "auto"` in a schema), and **precedence runs both
+  ways**: `"auto"` infers one field in an otherwise explicit config, and naming a
+  comparator pins one field in an otherwise inferred one.
+
+  **Partial configuration is filled in per parameter.** A field that names some
+  parameters keeps them and infers only the rest, so
+  `{"type": "float", "threshold": 0.99}` gets `NumericComparator` with the author's
+  `0.99`. Treating any config as "fully configured" was what left that field on the
+  type-blind Levenshtein default -- a threshold tuned against edit distance over
+  `"1000.00"` and `"1000.0"`.
+
+  **Off by default, and nothing existing moves.** `model_from_json()` still refuses
+  a primitive field with no comparator unless asked, and `from_json_schema()` keeps
+  its current defaults. Enabling it changes reported metrics for any field left
+  unspecified, so it is never implied. The refusal now names both ways to opt in
+  rather than only saying a comparator is required.
+
+  `explain()` no longer reports an inferred field as `explicit`. It carries the
+  inference trail instead, with the same `source` values `stickler.evaluate()` uses
+  (`type`, `name-token`), which is the reporting half of
+  [#210](https://github.com/awslabs/stickler/issues/210):
+
+  ```
+  invoice_id   ExactComparator        1.0    explicit
+  total        NumericComparator      0.95   name-token
+  paid         ExactComparator        1.0    type
+  ```
+
+  One limit worth knowing: `model_from_json()` has no `date` type, and inference
+  will not apply a comparator the declared type cannot support. A field named
+  `issued_date` declared as `str` keeps `LevenshteinComparator` and records why in
+  `why`. Use `{"type": "string", "format": "date"}` on the schema path, or name
+  `DateComparator` explicitly ([#239](https://github.com/awslabs/stickler/issues/239)).
+
 - **`NormalizedComparator`** for explicit formatting-insensitive equality.
   Its independent case, whitespace, and punctuation options round-trip through
   JSON Schema. Punctuation follows Unicode `P*` categories, whitespace follows
@@ -163,6 +224,12 @@ Each release links to full notes on the
   ([#216](https://github.com/awslabs/stickler/issues/216)).
 
 ### Fixed
+
+- The JSON Schema defaults table in the dynamic-models guide is corrected. It
+  published `boolean` as `ExactComparator @ 1.0`; the measured value is `0.5`. It
+  also omitted four rows that exist (`format: date`, `format: date-time`,
+  `format: uuid`, and `enum`, all at `1.0`) and implied `format: email` was
+  special-cased, which it is not -- it falls to the `string` row.
 
 - **Breaking:** `HungarianMatcher.calculate_metrics` no longer reports a paired
   item as missing. It derived `fn` and `fp` as `len(list) - tp`, so a pair the

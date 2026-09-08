@@ -55,6 +55,12 @@ class ModelFactory:
                    Optional keys:
                    - model_name: Name for the generated class (default: "DynamicModel")
                    - match_threshold: Overall matching threshold (default: 0.7)
+                   - infer_unspecified_fields: When true, a primitive field that
+                     names no comparator has its comparator and threshold inferred
+                     from its type and name instead of being rejected. A field can
+                     opt in on its own with "comparator": "auto", which wins over
+                     this flag in both directions. Default false, because enabling
+                     it moves reported metrics.
 
                    Field configuration format:
                    {
@@ -120,6 +126,15 @@ class ModelFactory:
         fields_config = config["fields"]
         model_name = config.get("model_name", "DynamicModel")
         match_threshold = config.get("match_threshold", 0.7)
+        # Off by default. Turning it on changes reported metrics for every field
+        # that named no comparator -- a float previously compared as text starts
+        # being compared as a number -- so it is never implied.
+        infer_unspecified = config.get("infer_unspecified_fields", False)
+        if not isinstance(infer_unspecified, bool):
+            raise ValueError(
+                "infer_unspecified_fields must be true or false, got: "
+                f"{infer_unspecified!r}"
+            )
 
         # Validate model name
         if not isinstance(model_name, str) or not model_name.isidentifier():
@@ -144,14 +159,18 @@ class ModelFactory:
 
             # Then validate nested schema rules
             for field_name, field_config in fields_config.items():
-                converter.validate_nested_field_schema(field_name, field_config)
+                converter.validate_nested_field_schema(
+                    field_name, field_config, infer_unspecified=infer_unspecified
+                )
 
         except ValueError as e:
             raise ValueError(f"Invalid field configuration: {e}")
 
         # Convert field configurations to Pydantic field definitions
         try:
-            field_definitions = convert_fields_config(fields_config)
+            field_definitions = convert_fields_config(
+                fields_config, infer_unspecified=infer_unspecified
+            )
         except ValueError as e:
             raise ValueError(f"Error converting field configurations: {e}")
 

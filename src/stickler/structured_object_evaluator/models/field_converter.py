@@ -12,6 +12,42 @@ from .comparable_field import ComparableField
 from .comparator_registry import create_comparator
 from .type_resolver import resolve_type_string
 
+#: Field-level opt-in: `"comparator": "auto"` asks for the same inference
+#: `stickler.evaluate()` uses, for this field only. Chosen over a separate key so a
+#: reader of the config sees the decision on the line that would otherwise name a
+#: comparator, and so it cannot be set alongside a real comparator name.
+AUTO_COMPARATOR = "auto"
+
+
+def _infer_spec(field_name: str, field_type: Any):
+    """Infer a comparison spec for one config-driven field from its resolved type.
+
+    ``stickler.auto`` infers from a live ``FieldInfo``, and a config-driven field
+    has none, so one is synthesised around the resolved annotation. That is enough:
+    ``infer_field_config`` reads only the annotation and the field name, so the
+    name-token heuristics work here too.
+    """
+    from pydantic.fields import FieldInfo
+
+    from stickler.auto.inference import infer_field_config
+
+    return infer_field_config(field_name, FieldInfo(annotation=field_type))
+
+
+def _wants_inference(field_config: Dict[str, Any], infer_unspecified: bool) -> bool:
+    """Whether this field's unspecified parameters should be inferred.
+
+    A field-level setting always wins over the model-level flag, in both
+    directions: ``"comparator": "auto"`` opts one field in when the model did not,
+    and naming a real comparator pins one field when the model opted everything in.
+    """
+    declared = field_config.get("comparator")
+    if declared == AUTO_COMPARATOR:
+        return True
+    if declared is not None:
+        return False
+    return infer_unspecified
+
 
 class FieldConverter:
     """Converter for JSON field configurations to Pydantic fields."""
@@ -21,13 +57,21 @@ class FieldConverter:
         pass
 
     def convert_field_config(
-        self, field_name: str, field_config: Dict[str, Any]
+        self,
+        field_name: str,
+        field_config: Dict[str, Any],
+        *,
+        infer_unspecified: bool = False,
     ) -> Tuple[Type, Any]:
         """Convert a JSON field configuration to a Pydantic field definition.
 
         Args:
             field_name: Name of the field
             field_config: JSON configuration for the field
+            infer_unspecified: When True, parameters the config does not name are
+                inferred from the field's type and name rather than defaulted.
+                Off by default, because turning it on moves reported metrics for
+                any field that named no comparator.
 
         Returns:
             Tuple of (field_type, pydantic_field)
@@ -46,7 +90,9 @@ class FieldConverter:
             "list_structured_model",
             "optional_structured_model",
         ]:
-            return self._convert_nested_model_field(field_name, field_config)
+            return self._convert_nested_model_field(
+                field_name, field_config, infer_unspecified=infer_unspecified
+            )
 
         # Handle primitive fields (existing logic)
         # Resolve the type
@@ -55,9 +101,29 @@ class FieldConverter:
         except ValueError as e:
             raise ValueError(f"Invalid type for field '{field_name}': {e}")
 
-        # Extract comparator configuration
-        comparator_name = field_config.get("comparator", "LevenshteinComparator")
-        comparator_config = field_config.get("comparator_config", {})
+        # Resolve each parameter independently, so a partly-configured field keeps
+        # what it wrote and infers only the rest. Treating any config as "fully
+        # configured" left `{"type": "float", "threshold": 0.99}` on the type-blind
+        # Levenshtein default -- a threshold tuned against edit distance over
+        # "1000.00" and "1000.0".
+        inferred = (
+            _infer_spec(field_name, field_type)
+            if _wants_inference(field_config, infer_unspecified)
+            else None
+        )
+        provenance = list(inferred.provenance) if inferred else []
+
+        declared_comparator = field_config.get("comparator")
+        if declared_comparator == AUTO_COMPARATOR:
+            declared_comparator = None
+        if declared_comparator is None and inferred is not None:
+            comparator_name = inferred.comparator_name
+            comparator_config = field_config.get(
+                "comparator_config", inferred.comparator_config
+            )
+        else:
+            comparator_name = declared_comparator or "LevenshteinComparator"
+            comparator_config = field_config.get("comparator_config", {})
 
         # Create comparator instance
         try:
@@ -66,9 +132,14 @@ class FieldConverter:
             raise ValueError(f"Invalid comparator for field '{field_name}': {e}")
 
         # Extract other field parameters
-        threshold = field_config.get("threshold", 0.5)
-        weight = field_config.get("weight", 1.0)
-        clip_under_threshold = field_config.get("clip_under_threshold", True)
+        threshold = field_config.get(
+            "threshold", inferred.threshold if inferred else 0.5
+        )
+        weight = field_config.get("weight", inferred.weight if inferred else 1.0)
+        clip_under_threshold = field_config.get(
+            "clip_under_threshold",
+            inferred.clip_under_threshold if inferred else True,
+        )
 
 
         # Extract Pydantic field parameters
@@ -108,11 +179,24 @@ class FieldConverter:
             examples=examples,
         )
 
+        # Record what was inferred, so `explain()` can report `source: inferred`
+        # and the reason rather than claiming every config-driven field was
+        # explicitly configured. Written onto the closure `ComparableField` just
+        # returned, which no caller has a reference to yet -- the shared-field
+        # hazard `structured_model.py` warns about needs sharing.
+        if provenance:
+            extra_callable = comparable_field.json_schema_extra
+            if callable(extra_callable):
+                extra_callable._inferred_provenance = tuple(provenance)
 
         return field_type, comparable_field
 
     def _convert_nested_model_field(
-        self, field_name: str, field_config: Dict[str, Any]
+        self,
+        field_name: str,
+        field_config: Dict[str, Any],
+        *,
+        infer_unspecified: bool = False,
     ) -> Tuple[Type, Any]:
         """Convert a nested structured model field configuration.
 
@@ -140,6 +224,12 @@ class FieldConverter:
             "model_name": f"{field_name.title()}Model",
             "fields": nested_fields_config,
             "match_threshold": field_config.get("match_threshold", 0.7),
+            # Forwarded, because the nested model is built by re-entering
+            # `model_from_json` with this synthesised config. Omitting it meant a
+            # model-level flag stopped at the first nesting level, so a nested
+            # field silently kept the type-blind default while its siblings one
+            # level up were inferred.
+            "infer_unspecified_fields": infer_unspecified,
         }
 
         # Create the nested model class
@@ -204,7 +294,10 @@ class FieldConverter:
         return field_type, comparable_field
 
     def convert_fields_config(
-        self, fields_config: Dict[str, Dict[str, Any]]
+        self,
+        fields_config: Dict[str, Dict[str, Any]],
+        *,
+        infer_unspecified: bool = False,
     ) -> Dict[str, Tuple[Type, Field]]:
         """Convert multiple field configurations.
 
@@ -222,7 +315,7 @@ class FieldConverter:
         for field_name, field_config in fields_config.items():
             try:
                 field_type, pydantic_field = self.convert_field_config(
-                    field_name, field_config
+                    field_name, field_config, infer_unspecified=infer_unspecified
                 )
                 field_definitions[field_name] = (field_type, pydantic_field)
             except ValueError as e:
@@ -253,8 +346,13 @@ class FieldConverter:
         except ValueError as e:
             raise ValueError(f"Invalid type for field '{field_name}': {e}")
 
-        # Validate comparator if specified
-        if "comparator" in field_config:
+        # Validate comparator if specified. `"auto"` is a request to infer, not a
+        # comparator name, so it is not resolved through the registry -- doing so
+        # reported it as an unknown comparator and listed the built-ins.
+        if (
+            "comparator" in field_config
+            and field_config["comparator"] != AUTO_COMPARATOR
+        ):
             comparator_name = field_config["comparator"]
             comparator_config = field_config.get("comparator_config", {})
             try:
@@ -303,7 +401,11 @@ class FieldConverter:
             self.validate_field_config(field_name, field_config)
 
     def validate_nested_field_schema(
-        self, field_name: str, field_config: Dict[str, Any]
+        self,
+        field_name: str,
+        field_config: Dict[str, Any],
+        *,
+        infer_unspecified: bool = False,
     ) -> None:
         """Validate schema for nested structured model fields.
 
@@ -346,7 +448,9 @@ class FieldConverter:
             # Validate each nested field
             for nested_field_name, nested_field_config in nested_fields.items():
                 self.validate_nested_field_schema(
-                    f"{field_name}.{nested_field_name}", nested_field_config
+                    f"{field_name}.{nested_field_name}",
+                    nested_field_config,
+                    infer_unspecified=infer_unspecified,
                 )
 
         else:
@@ -357,11 +461,15 @@ class FieldConverter:
                     "Only structured_model types can have nested fields."
                 )
 
-            # Primitive fields must have comparators
-            if "comparator" not in field_config:
+            # Primitive fields must have comparators, unless inference was asked
+            # for -- at which point omission is the point, not an oversight.
+            if "comparator" not in field_config and not infer_unspecified:
                 raise ValueError(
                     f"Field '{field_name}' with primitive type '{field_type}' requires a 'comparator'. "
-                    "Primitive fields need comparators to define how they should be compared."
+                    "Primitive fields need comparators to define how they should be compared. "
+                    "Set 'infer_unspecified_fields': true on the model, or "
+                    f"'comparator': '{AUTO_COMPARATOR}' on this field, to have it "
+                    "chosen from the field's type and name."
                 )
 
 
@@ -379,7 +487,10 @@ def get_global_converter() -> FieldConverter:
 
 
 def convert_field_config(
-    field_name: str, field_config: Dict[str, Any]
+    field_name: str,
+    field_config: Dict[str, Any],
+    *,
+    infer_unspecified: bool = False,
 ) -> Tuple[Type, Field]:
     """Convert a field configuration using the global converter.
 
@@ -390,11 +501,15 @@ def convert_field_config(
     Returns:
         Tuple of (field_type, pydantic_field)
     """
-    return _global_converter.convert_field_config(field_name, field_config)
+    return _global_converter.convert_field_config(
+        field_name, field_config, infer_unspecified=infer_unspecified
+    )
 
 
 def convert_fields_config(
     fields_config: Dict[str, Dict[str, Any]],
+    *,
+    infer_unspecified: bool = False,
 ) -> Dict[str, Tuple[Type, Field]]:
     """Convert multiple field configurations using the global converter.
 
@@ -404,7 +519,9 @@ def convert_fields_config(
     Returns:
         Dictionary mapping field names to (type, field) tuples
     """
-    return _global_converter.convert_fields_config(fields_config)
+    return _global_converter.convert_fields_config(
+        fields_config, infer_unspecified=infer_unspecified
+    )
 
 
 def validate_field_config(field_name: str, field_config: Dict[str, Any]) -> None:

@@ -106,13 +106,25 @@ The `x-aws-stickler-*` extensions control comparison behavior on each property:
 
 Default comparators are assigned by JSON Schema type when no extension is specified:
 
-| JSON Schema Type | Default Comparator | Default Threshold |
+| Property | Default Comparator | Default Threshold |
 |------------------|-------------------|-------------------|
 | `string` | LevenshteinComparator | 0.5 |
 | `number` / `integer` | NumericComparator | 0.5 |
-| `boolean` | ExactComparator | 1.0 |
+| `boolean` | ExactComparator | 0.5 |
+| `string` + `format: date` | DateComparator | 1.0 |
+| `string` + `format: date-time` | DateComparator | 1.0 |
+| `string` + `format: uuid` | ExactComparator | 1.0 |
+| `string` + `enum: [...]` | ExactComparator | 1.0 |
 | `array` (objects) | Hungarian matching | 0.7 |
 | `object` | Recursive comparison | 0.7 |
+
+Other `format` values, `email` among them, are not special-cased and fall to the
+`string` row.
+
+These defaults are **not** the same as the ones `stickler.evaluate()` infers, which
+are tuned per type: a `number` gets `0.95` there rather than `0.5`. See
+[Inferring unspecified fields](#inferring-unspecified-fields) to opt a
+schema-driven model into the tuned set.
 
 For the complete reference, see the [Evaluation](../Guides/Evaluation/README.md) page.
 
@@ -190,9 +202,14 @@ Person = StructuredModel.model_from_json(person_config)
 {
     "model_name": "string",
     "match_threshold": 0.7,
+    "infer_unspecified_fields": false,
     "fields": { ... }
 }
 ```
+
+`comparator` is **required** on every primitive field unless
+`infer_unspecified_fields` is true or the field sets `"comparator": "auto"`. See
+[Inferring unspecified fields](#inferring-unspecified-fields).
 
 **Primitive fields:**
 
@@ -246,6 +263,163 @@ company_config = {
 Company = StructuredModel.model_from_json(company_config)
 ```
 
+## Inferring unspecified fields
+
+A large extraction schema usually has a handful of fields whose comparison rules
+matter to you -- the invoice ID must match exactly, the total needs numeric
+tolerance -- and a long tail where you just want something sensible. Set
+`infer_unspecified_fields` and Stickler chooses for the rest, using the same
+inference `stickler.evaluate()` uses.
+
+### Turning it on
+
+Configure the fields you care about, and leave the others bare:
+
+```json
+{
+    "model_name": "Invoice",
+    "infer_unspecified_fields": true,
+    "fields": {
+        "invoice_id": {"type": "str", "comparator": "ExactComparator", "threshold": 1.0},
+        "total":      {"type": "float"},
+        "paid":       {"type": "bool"},
+        "vendor":     {"type": "str"}
+    }
+}
+```
+
+To infer only certain fields, set `"comparator": "auto"` on those instead:
+
+```json
+{
+    "fields": {
+        "invoice_id": {"type": "str", "comparator": "ExactComparator"},
+        "total":      {"type": "float", "comparator": "auto"}
+    }
+}
+```
+
+The JSON Schema path uses `x-aws-stickler-infer-unspecified` at the object level,
+and `x-aws-stickler-comparator: "auto"` on a property:
+
+```json
+{
+    "type": "object",
+    "x-aws-stickler-model-name": "Invoice",
+    "x-aws-stickler-infer-unspecified": true,
+    "properties": {
+        "invoice_id": {"type": "string", "x-aws-stickler-comparator": "ExactComparator"},
+        "total": {"type": "number"},
+        "issued": {"type": "string", "format": "date"}
+    }
+}
+```
+
+A field-level setting always wins over the model-level flag, both ways: `"auto"`
+infers one field in an otherwise explicit config, and naming a comparator pins one
+field in an otherwise inferred config.
+
+### Loading a config and checking what you got
+
+Load the config, then ask the model what it decided. `explain()` returns one row per
+field with the comparator, threshold and where each came from:
+
+```python
+import json
+import stickler
+from stickler import StructuredModel
+
+with open("invoice_eval.json") as handle:
+    config = json.load(handle)
+
+Invoice = StructuredModel.model_from_json(config)
+
+for name, row in stickler.eval_for(Invoice).explain().items():
+    print(f"{name:12} {row['comparator']:22} {row['threshold']:<6} {row['source']}")
+```
+
+```
+invoice_id   ExactComparator        1.0    explicit
+total        NumericComparator      0.95   name-token
+paid         ExactComparator        1.0    type
+vendor       LevenshteinComparator  0.85   name-token
+```
+
+`source` is `explicit` for a field you configured. Anything else is a field Stickler
+chose, and names what drove the choice: `type` from the declared type alone,
+`name-token` when the field's name refined it. These are the same values
+`stickler.evaluate()` reports, so the two paths read alike.
+
+`row['why']` gives the full reasoning:
+
+```python
+stickler.eval_for(Invoice).explain()["total"]["why"]
+# ['type:float -> NumericComparator(rel_tol=0.001)@0.95',
+#  'name-token:total -> NumericComparator@0.95']
+```
+
+Check this before a first evaluation run. It is the fastest way to catch a field you
+meant to configure and misspelled, since a misspelled key means the field gets
+inferred rather than what you intended.
+
+Use `Invoice.to_stickler_config()` if you want the resolved configuration back as
+JSON, for example to commit the fully-expanded version once you are happy with it.
+
+### What inference chooses
+
+Both the comparator and the threshold, matching `stickler.evaluate()`:
+
+| field | without the flag | with it |
+|---|---|---|
+| `total: float` | NumericComparator @ 0.5 | NumericComparator @ 0.95 |
+| `paid: bool` | ExactComparator @ 0.5 | ExactComparator @ 1.0 |
+| `issued` (`format: date`) | DateComparator @ 1.0 | DateComparator @ 0.95 |
+| `vendor: str` | LevenshteinComparator @ 0.5 | LevenshteinComparator @ 0.85 |
+
+The "without the flag" column applies to `from_json_schema()`. With
+`model_from_json()`, a primitive field that names no comparator is an error unless
+you opt in.
+
+### Partly-configured fields
+
+Name some parameters and leave others out, and only the missing ones are inferred:
+
+```json
+{"total": {"type": "float", "threshold": 0.99}}
+```
+
+```
+comparator   NumericComparator   inferred
+threshold    0.99                yours
+```
+
+So you can keep a threshold you tuned while still getting a comparator that suits
+the type.
+
+### It is off by default
+
+Enabling it changes scores for any field you left unspecified: a `float` compared as
+text starts being compared as a number, which is usually what you want but is still
+a change to your reported metrics. Turn it on deliberately, check `explain()`, and
+re-baseline.
+
+!!! note "Date fields and `model_from_json()`"
+
+    `model_from_json()` accepts `str`, `int`, `float`, `bool`, `list` and `dict`;
+    there is no `date` type. A date field declared as `str` there does **not** get
+    `DateComparator` -- inference will not apply a comparator its declared type
+    cannot support, and says so in `why`:
+
+    ```
+    ['type:str -> LevenshteinComparator@0.7',
+     'name-token:issued_date matched DateComparator but type str is
+      incompatible; keeping type default']
+    ```
+
+    Name the comparator explicitly (`"comparator": "DateComparator"`), or use the
+    JSON Schema path with `{"type": "string", "format": "date"}`, which carries the
+    date semantics in the type.
+
 ## Loading from Files
 
 ```python
@@ -268,7 +442,7 @@ Model = StructuredModel.model_from_json(config)
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `"Unknown type"` | Unsupported type string | Use one of: `str`, `int`, `float`, `bool`, `list`, `dict`, `structured_model`, `list_structured_model` |
-| `"Missing comparator"` | Primitive field without comparator | Add a `"comparator"` key |
+| `"Missing comparator"` | Primitive field without comparator | Add a `"comparator"` key, or set `"infer_unspecified_fields": true` (see [Inferring unspecified fields](#inferring-unspecified-fields)) |
 | `"Invalid threshold"` | Threshold outside 0.0--1.0 | Use a value between 0.0 and 1.0 |
 | Nested model errors | Invalid nested `fields` config | Validate nested config independently |
 

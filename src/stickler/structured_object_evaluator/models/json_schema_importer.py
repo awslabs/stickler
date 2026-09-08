@@ -30,6 +30,7 @@ from pydantic.fields import FieldInfo
 
 from .comparable_field import ComparableField
 from .comparator_registry import create_comparator
+from .field_converter import AUTO_COMPARATOR
 from .model_factory import ModelFactory
 from .optional_annotation import is_union, unwrap_optional
 
@@ -81,6 +82,7 @@ _KNOWN_MODEL_EXTENSIONS = frozenset(
     {
         "x-aws-stickler-model-name",
         "x-aws-stickler-match-threshold",
+        "x-aws-stickler-infer-unspecified",
     }
 )
 
@@ -256,9 +258,28 @@ class JsonSchemaImporter:
     annotations so malformed predictions remain scoreable.
     """
 
-    def __init__(self, schema: Dict[str, Any], field_path: str = ""):
+    def __init__(
+        self,
+        schema: Dict[str, Any],
+        field_path: str = "",
+        *,
+        infer_unspecified: bool = False,
+    ):
         self.schema = schema
         self.field_path = field_path
+        # Read from the ROOT object and inherited by every nested model, so one
+        # flag covers a whole document rather than being repeated at each level.
+        # Nested models are built through this same instance, so a nested object
+        # setting the key does NOT currently opt its subtree in or out on its own;
+        # a per-field `"comparator": "auto"` is the way to be selective.
+        declared = schema.get("x-aws-stickler-infer-unspecified", infer_unspecified)
+        if not isinstance(declared, bool):
+            raise ValueError(
+                "x-aws-stickler-infer-unspecified must be true or false"
+                + (f" at '{field_path}'" if field_path else "")
+                + f", got: {declared!r}"
+            )
+        self.infer_unspecified = declared
 
     def convert_properties_to_fields(
         self, properties: Dict[str, Any], required: List[str]
@@ -418,6 +439,7 @@ class JsonSchemaImporter:
             field_path,
             comparator_name=comparator_name,
             threshold=threshold,
+            annotation=annotation,
         )
         evaluation_annotation = self._evaluation_annotation(annotation)
         final_type = (
@@ -486,18 +508,50 @@ class JsonSchemaImporter:
         *,
         comparator_name: str,
         threshold: float,
+        annotation: Any = None,
     ) -> FieldInfo:
         extensions = self._extract_extensions(field_info, field_path)
+
+        # Inference fills only the parameters the schema left unnamed, so a
+        # property that states a threshold keeps it and still gets a comparator
+        # suited to its type. `annotation` is None on the container paths, which
+        # are not scalar fields and have nothing to infer from.
+        wants_inference = extensions.get("infer") or (
+            self.infer_unspecified
+            and extensions.get("comparator") is None
+            and annotation is not None
+        )
+        inferred = None
+        if wants_inference and annotation is not None:
+            from .field_converter import _infer_spec
+
+            inferred = _infer_spec(field_path.rsplit(".", 1)[-1] or "value", annotation)
+
         comparator = extensions.get("comparator")
+        if comparator is None and inferred is not None:
+            comparator = create_comparator(
+                inferred.comparator_name, inferred.comparator_config
+            )
         if comparator is None:
             comparator = create_comparator(comparator_name, {})
-        return self._make_comparison_field(
+
+        field = self._make_comparison_field(
             field_info,
             comparator=comparator,
-            threshold=extensions.get("threshold", threshold),
-            weight=extensions.get("weight", 1.0),
-            clip_under_threshold=extensions.get("clip_under_threshold", True),
+            threshold=extensions.get(
+                "threshold", inferred.threshold if inferred else threshold
+            ),
+            weight=extensions.get("weight", inferred.weight if inferred else 1.0),
+            clip_under_threshold=extensions.get(
+                "clip_under_threshold",
+                inferred.clip_under_threshold if inferred else True,
+            ),
         )
+        if inferred is not None and inferred.provenance:
+            extra_callable = field.json_schema_extra
+            if callable(extra_callable):
+                extra_callable._inferred_provenance = tuple(inferred.provenance)
+        return field
 
     @staticmethod
     def _make_comparison_field(
@@ -785,15 +839,21 @@ class JsonSchemaImporter:
         if "x-aws-stickler-comparator" in extra:
             comparator_name = extra["x-aws-stickler-comparator"]
             comparator_config = extra.get("x-aws-stickler-comparator-config", {})
-            try:
-                extensions["comparator"] = create_comparator(
-                    comparator_name, comparator_config
-                )
-            except Exception as exc:
-                raise ValueError(
-                    f"Invalid x-aws-stickler-comparator '{comparator_name}' "
-                    f"in field '{field_path}': {exc}"
-                ) from exc
+            if comparator_name == AUTO_COMPARATOR:
+                # A request to infer this field, not a comparator name. Resolving
+                # it through the registry reported it as an unknown comparator and
+                # listed the built-ins.
+                extensions["infer"] = True
+            else:
+                try:
+                    extensions["comparator"] = create_comparator(
+                        comparator_name, comparator_config
+                    )
+                except Exception as exc:
+                    raise ValueError(
+                        f"Invalid x-aws-stickler-comparator '{comparator_name}' "
+                        f"in field '{field_path}': {exc}"
+                    ) from exc
 
         if "x-aws-stickler-threshold" in extra:
             threshold = extra["x-aws-stickler-threshold"]
