@@ -113,13 +113,22 @@ Default comparators are assigned by JSON Schema type when no extension is specif
 | `boolean` | ExactComparator | 0.5 |
 | `string` + `format: date` | DateComparator | 1.0 |
 | `string` + `format: date-time` | DateComparator | 1.0 |
+| `string` + `format: time` | ExactComparator | 1.0 |
+| `string` + `format: uri` | ExactComparator | 1.0 |
 | `string` + `format: uuid` | ExactComparator | 1.0 |
 | `string` + `enum: [...]` | ExactComparator | 1.0 |
+| `const` | ExactComparator | 1.0 |
 | `array` (objects) | Hungarian matching | 0.7 |
+| `array` (primitives) | the element's row, applied per element | the element's |
 | `object` | Recursive comparison | 0.7 |
+| `object` with no `properties` | ExactComparator | 1.0 |
 
-Other `format` values, `email` among them, are not special-cased and fall to the
-`string` row.
+Five `format` values are special-cased, and they are exactly the ones the schema
+parser maps to a distinct Python type: `date`, `date-time`, `time`, `uri` and
+`uuid`. The three with no comparator of their own (`time`, `uri`, `uuid`) get
+`ExactComparator` at 1.0, the fallback for a type with no row of its own -- **not**
+the `string` row. Every other `format`, `email` and `ipv4` among them, is parsed as
+plain `str` and does fall to the `string` row.
 
 These defaults are **not** the same as the ones `stickler.evaluate()` infers, which
 are tuned per type: a `number` gets `0.95` there rather than `0.5`. See
@@ -319,9 +328,16 @@ A field-level setting always wins over the model-level flag, both ways: `"auto"`
 infers one field in an otherwise explicit config, and naming a comparator pins one
 field in an otherwise inferred config.
 
-On the JSON Schema path, a nested object can set
-`x-aws-stickler-infer-unspecified` to scope inference to its own subtree, in either
-direction, without affecting its parent or siblings.
+A nested model can scope inference to its own subtree, in either direction, without
+affecting its parent or siblings: `infer_unspecified_fields` on a
+`structured_model` field, or `x-aws-stickler-infer-unspecified` on a nested object
+in a JSON Schema.
+
+`"auto"` is for a scalar or a list of scalars. A nested object is compared
+recursively and an array of objects by Hungarian matching, so neither has a
+comparator for inference to choose, and
+`x-aws-stickler-comparator: "auto"` on one is an error naming
+`x-aws-stickler-infer-unspecified` as the key that does work there.
 
 ### Loading a config and checking what you got
 
@@ -351,7 +367,9 @@ vendor       LevenshteinComparator  0.85   name-token
 
 `source` is `explicit` for a field you configured. Anything else is a field Stickler
 chose, and names what drove the choice: `type` from the declared type alone,
-`name-token` when the field's name refined it. These are the same values
+`name-token` when the field's name refined it. A name that matched a rule the
+declared type cannot support reports `type`, because the type default is what
+shipped -- `row['why']` records the refusal. These are the same values
 `stickler.evaluate()` reports, so the two paths read alike.
 
 `row['why']` gives the full reasoning:
@@ -379,10 +397,29 @@ Both the comparator and the threshold, matching `stickler.evaluate()`:
 | `paid: bool` | ExactComparator @ 0.5 | ExactComparator @ 1.0 |
 | `issued` (`format: date`) | DateComparator @ 1.0 | DateComparator @ 0.95 |
 | `vendor: str` | LevenshteinComparator @ 0.5 | LevenshteinComparator @ 0.85 |
+| `amounts: List[float]` | NumericComparator @ 0.5 | NumericComparator @ 0.95 |
+| `meta: dict` | ExactComparator @ 1.0 | ANLSStarComparator @ the model's `match_threshold` |
 
 The "without the flag" column applies to `from_json_schema()`. With
 `model_from_json()`, a primitive field that names no comparator is an error unless
 you opt in.
+
+A list is inferred from its **element** type, because that is what the comparator is
+applied to. Declare the element: `{"type": "List[float]"}` in a Stickler config, or
+`{"type": "array", "items": {"type": "number"}}` in a JSON Schema.
+
+!!! warning "`{"type": "list"}` names no element type"
+
+    A bare `list` gives inference nothing to work with, so it falls to the answer
+    for any type with no scalar form: `ExactComparator` at threshold 1.0. Elements
+    are still compared one by one, so a list with two of three elements right still
+    scores 0.67 -- what you lose is the element comparator. `[1.0]` against
+    `[1.0000001]` scores **0.0**, where `{"type": "List[float]"}` scores 1.0; a
+    string element off by one character scores 0.0 where `{"type": "List[str]"}`
+    scores 0.83.
+
+    Write the element type out. `List[str]`, `List[int]`, `List[float]` and
+    `List[bool]` all resolve.
 
 ### Partly-configured fields
 
@@ -400,6 +437,9 @@ threshold    0.99                yours
 So you can keep a threshold you tuned while still getting a comparator that suits
 the type. A `comparator_config` works the same way: it is merged over the inferred
 one, so setting `absolute_tolerance` keeps the `relative_tolerance` inference chose.
+Both paths do this, from the same input --
+`x-aws-stickler-comparator-config` beside `x-aws-stickler-comparator: "auto"`
+merges exactly as `comparator_config` beside `"comparator": "auto"` does.
 
 Naming a **comparator** is different, and pins the threshold too:
 
@@ -434,9 +474,12 @@ re-baseline.
 
     ```
     ['type:str -> LevenshteinComparator@0.7',
-     'name-token:issued_date matched DateComparator but type str is
+     'name-token-unused:issued_date matched DateComparator but type str is
       incompatible; keeping type default']
     ```
+
+    `source` for such a field is `type`, not `name-token`: the name matched a rule,
+    but the type default is what shipped.
 
     Name the comparator explicitly (`"comparator": "DateComparator"`), or use the
     JSON Schema path with `{"type": "string", "format": "date"}`, which carries the

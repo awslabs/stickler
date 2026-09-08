@@ -19,7 +19,7 @@ number -- so nothing moves until it is asked for.
 See https://github.com/awslabs/stickler/issues/239
 """
 
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 import pytest
 from pydantic import BaseModel
@@ -346,26 +346,35 @@ class TestAnIncompatibleNameTokenIsNotForced:
     semantics" is one of the cases this feature was requested for.
     """
 
-    def test_a_str_named_like_a_date_keeps_the_str_default(self):
-        model = StructuredModel.model_from_json(
+    @staticmethod
+    def _issued_date():
+        return StructuredModel.model_from_json(
             {
                 "model_name": "M",
                 "infer_unspecified_fields": True,
                 "fields": {"issued_date": {"type": "str"}},
             }
         )
-        assert _resolved(model, "issued_date") == ("LevenshteinComparator", 0.7)
+
+    def test_a_str_named_like_a_date_keeps_the_str_default(self):
+        assert _resolved(self._issued_date(), "issued_date") == (
+            "LevenshteinComparator",
+            0.7,
+        )
 
     def test_the_refusal_is_recorded(self):
-        model = StructuredModel.model_from_json(
-            {
-                "model_name": "M",
-                "infer_unspecified_fields": True,
-                "fields": {"issued_date": {"type": "str"}},
-            }
-        )
-        why = stickler.eval_for(model).explain()["issued_date"]["why"]
+        why = stickler.eval_for(self._issued_date()).explain()["issued_date"]["why"]
         assert any("incompatible" in entry for entry in why)
+
+    def test_the_refused_token_is_not_reported_as_the_source(self):
+        """`source` must name what produced the comparator, not what matched.
+
+        The comparator here is the plain `str` type default; the name token was
+        refused. Reporting `name-token` said the name had been honoured in exactly
+        the case where it was not, on this feature's own headline example.
+        """
+        row = stickler.eval_for(self._issued_date()).explain()["issued_date"]
+        assert row["source"] == "type"
 
 
 class TestComparatorConfigIsMergedNotReplaced:
@@ -422,6 +431,304 @@ class TestComparatorConfigIsMergedNotReplaced:
         assert comparator.relative_tolerance == pytest.approx(0.0)
 
 
+class TestTheSchemaPathMergesComparatorConfigToo:
+    """The same merge, on the other entry point, from the same input.
+
+    `x-aws-stickler-comparator-config` was read only inside the branch that also
+    resolved a NAMED comparator, so for an inferred field it was read into a local
+    and dropped. `absolute_tolerance: 0.5` beside `"auto"` built
+    rel=0.001/abs=0.0 while the identical Stickler config built abs=0.5 -- one
+    input, two comparators, decided by which document format the author chose.
+    """
+
+    @staticmethod
+    def _numeric(property_extra, **model_extra):
+        model = StructuredModel.from_json_schema(
+            dict(
+                {
+                    "type": "object",
+                    "title": "T",
+                    "properties": {
+                        "total": dict({"type": "number"}, **property_extra)
+                    },
+                },
+                **model_extra,
+            )
+        )
+        return model._get_comparison_info("total").comparator
+
+    def test_auto_merges_the_authors_key_over_the_inferred_one(self):
+        comparator = self._numeric(
+            {
+                "x-aws-stickler-comparator": "auto",
+                "x-aws-stickler-comparator-config": {"absolute_tolerance": 0.5},
+            }
+        )
+        assert comparator.relative_tolerance == pytest.approx(0.001)
+        assert comparator.absolute_tolerance == pytest.approx(0.5)
+
+    def test_the_model_flag_merges_a_bare_config(self):
+        comparator = self._numeric(
+            {"x-aws-stickler-comparator-config": {"absolute_tolerance": 0.5}},
+            **{"x-aws-stickler-infer-unspecified": True},
+        )
+        assert comparator.relative_tolerance == pytest.approx(0.001)
+        assert comparator.absolute_tolerance == pytest.approx(0.5)
+
+    def test_the_author_can_still_override_an_inferred_key(self):
+        comparator = self._numeric(
+            {
+                "x-aws-stickler-comparator": "auto",
+                "x-aws-stickler-comparator-config": {"relative_tolerance": 0.02},
+            }
+        )
+        assert comparator.relative_tolerance == pytest.approx(0.02)
+
+    def test_a_bare_config_reaches_the_type_default_without_the_flag(self):
+        """Nothing inferred, so nothing to merge -- but still not dropped.
+
+        The Stickler-config path applies a bare `comparator_config` to the
+        comparator it falls back to, so dropping it here was the same silent drop
+        one branch over.
+        """
+        comparator = self._numeric(
+            {"x-aws-stickler-comparator-config": {"absolute_tolerance": 0.5}}
+        )
+        assert comparator.absolute_tolerance == pytest.approx(0.5)
+        assert comparator.relative_tolerance == pytest.approx(0.0)
+
+    def test_the_two_paths_build_the_same_comparator(self):
+        """The convergence, asserted directly rather than via two literal lists."""
+        from_schema = self._numeric(
+            {
+                "x-aws-stickler-comparator": "auto",
+                "x-aws-stickler-comparator-config": {"absolute_tolerance": 0.5},
+            }
+        )
+        from_config = StructuredModel.model_from_json(
+            {
+                "model_name": "M",
+                "fields": {
+                    "total": {
+                        "type": "float",
+                        "comparator": "auto",
+                        "comparator_config": {"absolute_tolerance": 0.5},
+                    }
+                },
+            }
+        )._get_comparison_info("total")
+        assert (
+            type(from_schema).__name__,
+            from_schema.relative_tolerance,
+            from_schema.absolute_tolerance,
+        ) == (
+            type(from_config.comparator).__name__,
+            from_config.comparator.relative_tolerance,
+            from_config.comparator.absolute_tolerance,
+        )
+
+
+class TestAutoIsRefusedOnAContainer:
+    """A container has no comparator, so `"auto"` there cannot be honoured.
+
+    An object is scored recursively and an array of objects by Hungarian matching,
+    so inference has nothing to choose. Before this the key was accepted and did
+    nothing: the field kept `LevenshteinComparator@0.7` / `@0.5` while the schema
+    said it had been inferred. Any OTHER unusable value at the same position
+    already raised, so adding `"auto"` turned a loud error into a silent drop --
+    the failure mode #210 and #312 exist to remove.
+    """
+
+    @staticmethod
+    def _object_property(**extra):
+        return {
+            "type": "object",
+            "title": "T",
+            "properties": {
+                "inner": dict(
+                    {
+                        "type": "object",
+                        "properties": {"amount": {"type": "number"}},
+                    },
+                    **extra,
+                )
+            },
+        }
+
+    @staticmethod
+    def _array_property(**extra):
+        return {
+            "type": "object",
+            "title": "T",
+            "properties": {
+                "rows": dict(
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {"amount": {"type": "number"}},
+                        },
+                    },
+                    **extra,
+                )
+            },
+        }
+
+    def test_an_object_property_raises(self):
+        with pytest.raises(ValueError, match="cannot be applied to field 'inner'"):
+            StructuredModel.from_json_schema(
+                self._object_property(**{"x-aws-stickler-comparator": "auto"})
+            )
+
+    def test_an_array_of_objects_raises(self):
+        with pytest.raises(ValueError, match="cannot be applied to field 'rows'"):
+            StructuredModel.from_json_schema(
+                self._array_property(**{"x-aws-stickler-comparator": "auto"})
+            )
+
+    def test_the_error_names_the_key_that_does_work_there(self):
+        """An error that does not say what to do instead is only half an error."""
+        with pytest.raises(ValueError) as caught:
+            StructuredModel.from_json_schema(
+                self._object_property(**{"x-aws-stickler-comparator": "auto"})
+            )
+        assert "x-aws-stickler-infer-unspecified" in str(caught.value)
+
+    def test_a_scalar_property_is_untouched(self):
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "title": "T",
+                "properties": {
+                    "total": {"type": "number", "x-aws-stickler-comparator": "auto"}
+                },
+            }
+        )
+        assert _resolved(model, "total") == ("NumericComparator", 0.95)
+
+    def test_a_primitive_array_is_untouched(self):
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "title": "T",
+                "properties": {
+                    "amounts": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "x-aws-stickler-comparator": "auto",
+                    }
+                },
+            }
+        )
+        assert _resolved(model, "amounts") == ("NumericComparator", 0.95)
+
+    def test_the_object_subtree_key_still_works(self):
+        """The remedy the error recommends has to actually work."""
+        model = StructuredModel.from_json_schema(
+            self._object_property(**{"x-aws-stickler-infer-unspecified": True})
+        )
+        annotation = model.model_fields["inner"].annotation
+        inner = getattr(annotation, "__args__", (annotation,))[0]
+        assert _resolved(inner, "amount") == ("NumericComparator", 0.95)
+
+
+class TestMatchThresholdReachesInference:
+    """A mapping field takes the OBJECT's threshold, so the object must supply it.
+
+    A dict declines to name its keys, so inference scores it structurally with
+    ANLS* and uses `match_threshold` as the field threshold rather than the scalar
+    default. Neither config path forwarded it, so `{"type": "dict"}` sat at 0.7
+    while `stickler.eval_for(cls, match_threshold=0.9)` gave 0.9 for the same
+    field -- the entry-point disagreement this feature exists to end.
+    """
+
+    def test_the_config_path_forwards_it(self):
+        model = StructuredModel.model_from_json(
+            {
+                "model_name": "M",
+                "match_threshold": 0.9,
+                "infer_unspecified_fields": True,
+                "fields": {"meta": {"type": "dict"}},
+            }
+        )
+        assert _resolved(model, "meta") == ("ANLSStarComparator", 0.9)
+
+    def test_it_agrees_with_stickler_eval_for(self):
+        class Plain(BaseModel):
+            meta: Optional[Dict[str, Any]] = None
+
+        auto = stickler.eval_for(Plain, match_threshold=0.9).explain()["meta"]
+        model = StructuredModel.model_from_json(
+            {
+                "model_name": "M",
+                "match_threshold": 0.9,
+                "infer_unspecified_fields": True,
+                "fields": {"meta": {"type": "dict"}},
+            }
+        )
+        assert _resolved(model, "meta") == (auto["comparator"], auto["threshold"])
+
+    def test_the_schema_path_forwards_it(self):
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "title": "T",
+                "x-aws-stickler-match-threshold": 0.9,
+                "x-aws-stickler-infer-unspecified": True,
+                "properties": {"meta": {"type": "object", "additionalProperties": True}},
+            }
+        )
+        assert _resolved(model, "meta") == ("ANLSStarComparator", 0.9)
+
+    @pytest.mark.parametrize("path", ("config", "schema"))
+    def test_the_default_is_unchanged_when_none_is_declared(self, path):
+        if path == "config":
+            model = StructuredModel.model_from_json(
+                {
+                    "model_name": "M",
+                    "infer_unspecified_fields": True,
+                    "fields": {"meta": {"type": "dict"}},
+                }
+            )
+        else:
+            model = StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "title": "T",
+                    "x-aws-stickler-infer-unspecified": True,
+                    "properties": {
+                        "meta": {"type": "object", "additionalProperties": True}
+                    },
+                }
+            )
+        assert _resolved(model, "meta") == ("ANLSStarComparator", 0.7)
+
+    def test_a_nested_object_supplies_its_own_and_does_not_leak_it(self):
+        """Scoped per subtree, like the flag beside it, and restored afterwards."""
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "title": "T",
+                "x-aws-stickler-match-threshold": 0.9,
+                "x-aws-stickler-infer-unspecified": True,
+                "properties": {
+                    "inner": {
+                        "type": "object",
+                        "x-aws-stickler-match-threshold": 0.4,
+                        "properties": {
+                            "meta": {"type": "object", "additionalProperties": True}
+                        },
+                    },
+                    "outer_meta": {"type": "object", "additionalProperties": True},
+                },
+            }
+        )
+        annotation = model.model_fields["inner"].annotation
+        inner = getattr(annotation, "__args__", (annotation,))[0]
+        assert _resolved(inner, "meta") == ("ANLSStarComparator", 0.4)
+        assert _resolved(model, "outer_meta") == ("ANLSStarComparator", 0.9)
+
+
 class TestNamingAComparatorPinsTheThreshold:
     """Per-parameter filling stops at the comparator, deliberately.
 
@@ -453,12 +760,20 @@ class TestNamingAComparatorPinsTheThreshold:
         assert _resolved(model, "total") == ("NumericComparator", 0.95)
 
 
-class TestPrimitiveListsAreInferredOnBothPaths:
-    """One flag must not mean two things depending on the entry point.
+class TestListsAreInferredFromTheDeclaredElementType:
+    """A list's comparator is inferred from its ELEMENT type, on every path.
 
-    The schema path scored a `List[number]` with the shallow default while the
-    config path inferred the same shape, because the list branch passed no
-    annotation to infer from.
+    A list field's comparator is applied per element, so that is what inference
+    reads. `{"type": "array", "items": {"type": "number"}}`,
+    `{"type": "List[float]"}` and a pydantic `List[float]` all declare a float
+    element and now all resolve to `NumericComparator@0.95`. The schema path used
+    to pass no annotation at all and the config path inferred from the whole
+    `List[float]`, landing on the exotic-type branch (whole-list canonical-JSON
+    equality) -- two ways to get the wrong answer for the same declaration.
+
+    A declaration that names NO element type is a different declaration, not the
+    same one answered differently: see
+    `TestAnUndeclaredElementTypeScoresTheWholeList`.
     """
 
     def test_the_schema_path(self):
@@ -479,11 +794,39 @@ class TestPrimitiveListsAreInferredOnBothPaths:
             {
                 "model_name": "M",
                 "infer_unspecified_fields": True,
-                "fields": {"amounts": {"type": "list"}},
+                "fields": {"amounts": {"type": "List[float]"}},
             }
         )
-        comparator, _ = _resolved(model, "amounts")
-        assert comparator == "ExactComparator"  # canonical JSON string for a list
+        assert _resolved(model, "amounts") == ("NumericComparator", 0.95)
+
+    def test_and_so_does_stickler_eval_for(self):
+        class Plain(BaseModel):
+            amounts: Optional[List[float]] = None
+
+        auto = stickler.eval_for(Plain).explain()["amounts"]
+        assert (auto["comparator"], auto["threshold"]) == ("NumericComparator", 0.95)
+
+    def test_a_string_element_gets_the_string_answer(self):
+        """Not a NumericComparator special case: the element type decides."""
+        model = StructuredModel.model_from_json(
+            {
+                "model_name": "M",
+                "infer_unspecified_fields": True,
+                "fields": {"tags": {"type": "List[str]"}},
+            }
+        )
+        assert _resolved(model, "tags") == ("LevenshteinComparator", 0.7)
+
+    def test_the_trail_says_the_spec_is_per_element(self):
+        model = StructuredModel.model_from_json(
+            {
+                "model_name": "M",
+                "infer_unspecified_fields": True,
+                "fields": {"amounts": {"type": "List[float]"}},
+            }
+        )
+        why = stickler.eval_for(model).explain()["amounts"]["why"]
+        assert why[0] == "list: spec applies to each element"
 
     def test_the_schema_path_still_defaults_without_the_flag(self):
         model = StructuredModel.from_json_schema(
@@ -496,6 +839,179 @@ class TestPrimitiveListsAreInferredOnBothPaths:
             }
         )
         assert _resolved(model, "amounts") == ("NumericComparator", 0.5)
+
+
+class TestAnUndeclaredElementTypeComparesElementsExactly:
+    """`{"type": "list"}` names no element type, so there is nothing to infer.
+
+    Inference sees a bare `list`, which has no scalar form of its own, and returns
+    the exotic-type answer: `ExactComparator@1.0`. The engine still applies that
+    per element, so the list keeps positional partial credit -- what it loses is
+    the ELEMENT comparator. A float element differing by 1e-7 scores 0.0 where a
+    declared `List[float]` scores 1.0, and a string element off by one character
+    scores 0.0 where `List[str]` scores 0.83.
+
+    This is a gotcha rather than an entry-point divergence: `stickler.eval_for`
+    gives the same answer for a bare `list` annotation, so it is one rule applied
+    to the same information, and `{"type": "List[float]"}` states the thing that
+    makes an element comparator possible. Documented in
+    docs/docs/Advanced/dynamic-models.md.
+    """
+
+    @staticmethod
+    def _model(type_string, field="amounts"):
+        return StructuredModel.model_from_json(
+            {
+                "model_name": "M",
+                "infer_unspecified_fields": True,
+                "fields": {field: {"type": type_string}},
+            }
+        )
+
+    def test_a_bare_list_gets_the_exotic_type_answer(self):
+        assert _resolved(self._model("list"), "amounts") == ("ExactComparator", 1.0)
+
+    def test_stickler_eval_for_says_the_same_for_a_bare_list(self):
+        class Plain(BaseModel):
+            amounts: Optional[list] = None
+
+        auto = stickler.eval_for(Plain).explain()["amounts"]
+        assert (auto["comparator"], auto["threshold"]) == ("ExactComparator", 1.0)
+
+    def test_positional_partial_credit_survives(self):
+        """The exact comparator is applied per element, not to the list as a blob."""
+        Bare = self._model("list")
+        result = Bare(amounts=[1.0, 2.0, 3.0]).compare_with(
+            Bare(amounts=[1.0, 2.0, 99.0])
+        )
+        assert result["overall_score"] == pytest.approx(2 / 3)
+
+    def test_what_is_lost_is_the_element_comparator(self):
+        """A float within the inferred tolerance scores 0.0 without the element type."""
+        Bare, Typed = self._model("list"), self._model("List[float]")
+        assert Bare(amounts=[1.0]).compare_with(Bare(amounts=[1.0000001]))[
+            "overall_score"
+        ] == pytest.approx(0.0)
+        assert Typed(amounts=[1.0]).compare_with(Typed(amounts=[1.0000001]))[
+            "overall_score"
+        ] == pytest.approx(1.0)
+
+    def test_the_same_holds_for_string_elements(self):
+        Bare = self._model("list", field="tags")
+        Typed = self._model("List[str]", field="tags")
+        assert Bare(tags=["alpha"]).compare_with(Bare(tags=["alphaa"]))[
+            "overall_score"
+        ] == pytest.approx(0.0)
+        assert Typed(tags=["alpha"]).compare_with(Typed(tags=["alphaa"]))[
+            "overall_score"
+        ] == pytest.approx(5 / 6)
+
+
+class TestANestedConfigFieldCanScopeTheFlag:
+    """The config path matches the schema path's per-subtree scoping.
+
+    `_convert_nested_model_field` hardcoded the parent's flag into the synthesised
+    nested config, so a nested field's own `infer_unspecified_fields` was discarded
+    in both directions: a nested `false` still inferred, and a nested `true` was
+    answered with an error advising exactly what the author had already written.
+    """
+
+    def test_a_nested_field_can_opt_its_subtree_in(self):
+        model = StructuredModel.model_from_json(
+            {
+                "model_name": "M",
+                "fields": {
+                    "outer": {"type": "str", "comparator": "ExactComparator"},
+                    "inner": {
+                        "type": "structured_model",
+                        "infer_unspecified_fields": True,
+                        "fields": {"amount": {"type": "float"}},
+                    },
+                },
+            }
+        )
+        annotation = model.model_fields["inner"].annotation
+        inner = getattr(annotation, "__args__", (annotation,))[0]
+        assert _resolved(inner, "amount") == ("NumericComparator", 0.95)
+        assert _resolved(model, "outer") == ("ExactComparator", 0.5)
+
+    def test_the_refusal_no_longer_advises_what_the_author_already_did(self):
+        """Setting the flag on the nested field must satisfy the requirement.
+
+        It used to raise "Set 'infer_unspecified_fields': true on the model" for a
+        config that had done precisely that, one level down.
+        """
+        StructuredModel.model_from_json(
+            {
+                "model_name": "M",
+                "fields": {
+                    "inner": {
+                        "type": "structured_model",
+                        "infer_unspecified_fields": True,
+                        "fields": {"amount": {"type": "float"}},
+                    }
+                },
+            }
+        )
+
+    def test_a_nested_field_can_opt_out_of_a_model_flag(self):
+        with pytest.raises(ValueError, match="requires a 'comparator'"):
+            StructuredModel.model_from_json(
+                {
+                    "model_name": "M",
+                    "infer_unspecified_fields": True,
+                    "fields": {
+                        "inner": {
+                            "type": "structured_model",
+                            "infer_unspecified_fields": False,
+                            "fields": {"amount": {"type": "float"}},
+                        }
+                    },
+                }
+            )
+
+    def test_opting_out_does_not_change_the_enclosing_model(self):
+        model = StructuredModel.model_from_json(
+            {
+                "model_name": "M",
+                "infer_unspecified_fields": True,
+                "fields": {
+                    "outer_amount": {"type": "float"},
+                    "inner": {
+                        "type": "structured_model",
+                        "infer_unspecified_fields": False,
+                        "fields": {
+                            "amount": {"type": "float", "comparator": "ExactComparator"}
+                        },
+                    },
+                },
+            }
+        )
+        annotation = model.model_fields["inner"].annotation
+        inner = getattr(annotation, "__args__", (annotation,))[0]
+        assert _resolved(model, "outer_amount") == ("NumericComparator", 0.95)
+        assert _resolved(inner, "amount") == ("ExactComparator", 0.5)
+
+    @pytest.mark.parametrize("value", ("yes", 1, None, []))
+    def test_a_non_boolean_on_a_nested_field_is_refused(self, value):
+        with pytest.raises(ValueError, match="must be true or false on field 'inner'"):
+            StructuredModel.model_from_json(
+                {
+                    "model_name": "M",
+                    "fields": {
+                        "inner": {
+                            "type": "structured_model",
+                            "infer_unspecified_fields": value,
+                            "fields": {
+                                "amount": {
+                                    "type": "float",
+                                    "comparator": "ExactComparator",
+                                }
+                            },
+                        }
+                    },
+                }
+            )
 
 
 class TestANestedObjectCanScopeTheFlag:

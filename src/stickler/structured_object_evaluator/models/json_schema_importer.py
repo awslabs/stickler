@@ -267,11 +267,26 @@ class JsonSchemaImporter:
     ):
         self.schema = schema
         self.field_path = field_path
+        # The object-level match threshold, which inference uses as the FIELD
+        # threshold for a mapping field (a dict declines to name its keys, so it
+        # is judged as an object). Re-read here rather than passed in because
+        # `_build_nested_model` swaps it per subtree, exactly like the flag below.
+        # Range and type are validated by the caller
+        # (`StructuredModel._from_json_schema_internal`, `_validate_model_config`);
+        # a value that got here unvalidated must not reach inference, so anything
+        # that is not a plain number falls back to the default.
+        declared_threshold = schema.get("x-aws-stickler-match-threshold", 0.7)
+        self.match_threshold = (
+            declared_threshold
+            if isinstance(declared_threshold, (int, float))
+            and not isinstance(declared_threshold, bool)
+            else 0.7
+        )
         # Read from the ROOT object and inherited by every nested model, so one
         # flag covers a whole document rather than being repeated at each level.
-        # Nested models are built through this same instance, so a nested object
-        # setting the key does NOT currently opt its subtree in or out on its own;
-        # a per-field `"comparator": "auto"` is the way to be selective.
+        # A nested object may override it for its own subtree; see
+        # `_build_nested_model`. A per-field `"comparator": "auto"` is the way to
+        # be selective about a single scalar property.
         declared = schema.get("x-aws-stickler-infer-unspecified", infer_unspecified)
         if not isinstance(declared, bool):
             raise ValueError(
@@ -381,6 +396,13 @@ class JsonSchemaImporter:
             )
             final_type = Optional[nested] if nullable else nested
             extensions = self._extract_extensions(field_info, field_path)
+            if extensions.get("infer"):
+                raise self._auto_on_container_error(
+                    field_path,
+                    "an object",
+                    "recursive field-by-field comparison",
+                    "this object",
+                )
             comparison_field = self._make_comparison_field(
                 field_info,
                 comparator_name="LevenshteinComparator",
@@ -452,6 +474,30 @@ class JsonSchemaImporter:
         )
         return final_type, comparison_field
 
+    @staticmethod
+    def _auto_on_container_error(
+        field_path: str, shape: str, how_it_is_scored: str, where_the_flag_goes: str
+    ) -> ValueError:
+        """The error for ``x-aws-stickler-comparator: "auto"`` on a container.
+
+        Inference chooses a comparator from a scalar's type and name. A container
+        has no comparator of its own -- it is scored structurally -- so there is
+        nothing to infer, and the key cannot be honoured at this position.
+
+        Raising rather than ignoring, because every other unusable value of this
+        key raises here: `"Nonsense"` on the same property is rejected by name.
+        Accepting `"auto"` and doing nothing turned that loud error into the silent
+        drop #210 and #312 exist to remove, through a value those checks consider
+        valid everywhere.
+        """
+        return ValueError(
+            f"x-aws-stickler-comparator '{AUTO_COMPARATOR}' cannot be applied to "
+            f"field '{field_path}': it is {shape}, scored by "
+            f"{how_it_is_scored}, so there is no comparator to infer. Set "
+            f"'x-aws-stickler-infer-unspecified': true on {where_the_flag_goes} to "
+            "infer the fields inside it instead."
+        )
+
     def _adapt_union_models(
         self,
         annotation: Any,
@@ -509,9 +555,13 @@ class JsonSchemaImporter:
         # Restored in `finally`, because nested models are built through this same
         # instance: leaving the nested value in place would leak it onto the
         # OUTER object's remaining fields, so a sibling declared after a nested
-        # object would silently inherit that subtree's setting.
+        # object would silently inherit that subtree's setting. `match_threshold`
+        # is swapped alongside it for the same reason: a mapping field inside this
+        # object is judged against THIS object's threshold.
         outer_infer = self.infer_unspecified
+        outer_threshold = self.match_threshold
         self.infer_unspecified = nested_infer
+        self.match_threshold = match_threshold
         try:
             fields = self._convert_model_fields(
                 source_model,
@@ -520,6 +570,7 @@ class JsonSchemaImporter:
             )
         finally:
             self.infer_unspecified = outer_infer
+            self.match_threshold = outer_threshold
         return ModelFactory.create_model_from_fields(
             model_name=model_name,
             field_definitions=fields,
@@ -538,6 +589,19 @@ class JsonSchemaImporter:
     ) -> FieldInfo:
         extensions = self._extract_extensions(field_info, field_path)
 
+        if annotation is None and extensions.get("infer"):
+            # A list of objects is matched element-wise by Hungarian matching, so
+            # there is no comparator for inference to choose. Raising rather than
+            # dropping: every other unusable value of this key already raises, and
+            # accepting `auto` here silently would leave the field on the shallow
+            # default while the schema says it was inferred.
+            raise self._auto_on_container_error(
+                field_path,
+                "an array of objects",
+                "Hungarian matching per element",
+                "its 'items' object",
+            )
+
         # Inference fills only the parameters the schema left unnamed, so a
         # property that states a threshold keeps it and still gets a comparator
         # suited to its type. `annotation` is None on the container paths, which
@@ -551,15 +615,30 @@ class JsonSchemaImporter:
         if wants_inference and annotation is not None:
             from .field_converter import _infer_spec
 
-            inferred = _infer_spec(field_path.rsplit(".", 1)[-1] or "value", annotation)
+            inferred = _infer_spec(
+                field_path.rsplit(".", 1)[-1] or "value",
+                annotation,
+                self.match_threshold,
+            )
 
+        # MERGED over the inferred config, author's keys winning, matching the
+        # config path (`field_converter.convert_field_config`). Reading
+        # `x-aws-stickler-comparator-config` only in the branch that also names a
+        # comparator dropped it entirely for an inferred field, so
+        # `absolute_tolerance: 0.5` beside `"auto"` built rel=0.001/abs=0.0 while
+        # the identical Stickler config built abs=0.5.
+        author_config = extensions.get("comparator_config", {})
         comparator = extensions.get("comparator")
         if comparator is None and inferred is not None:
             comparator = create_comparator(
-                inferred.comparator_name, inferred.comparator_config
+                inferred.comparator_name,
+                {**inferred.comparator_config, **author_config},
             )
         if comparator is None:
-            comparator = create_comparator(comparator_name, {})
+            # No comparator named and nothing inferred: the config still belongs
+            # to the type default, as it does on the config path. Dropping it was
+            # the same silent drop one branch over.
+            comparator = create_comparator(comparator_name, author_config)
 
         field = self._make_comparison_field(
             field_info,
@@ -862,9 +941,16 @@ class JsonSchemaImporter:
         _reject_unknown_extensions(extra, field_path, scope="field_or_model")
         extensions: Dict[str, Any] = {}
 
+        # Kept whether or not a comparator is named beside it. Reading it only in
+        # the branch that resolves a named comparator meant an inferred field's
+        # config was read into a local and thrown away, so the schema path and the
+        # Stickler-config path built different comparators from the same input.
+        comparator_config = extra.get("x-aws-stickler-comparator-config", {})
+        if comparator_config:
+            extensions["comparator_config"] = comparator_config
+
         if "x-aws-stickler-comparator" in extra:
             comparator_name = extra["x-aws-stickler-comparator"]
-            comparator_config = extra.get("x-aws-stickler-comparator-config", {})
             if comparator_name == AUTO_COMPARATOR:
                 # A request to infer this field, not a comparator name. Resolving
                 # it through the registry reported it as an unknown comparator and

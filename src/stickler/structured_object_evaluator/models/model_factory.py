@@ -168,8 +168,14 @@ class ModelFactory:
 
         # Convert field configurations to Pydantic field definitions
         try:
+            # `match_threshold` reaches inference too: a mapping field is judged
+            # as an object, so it takes the object-level threshold rather than the
+            # scalar default. Without it `{"type": "dict"}` sat at 0.7 while
+            # `eval_for(cls, match_threshold=0.9)` gave 0.9 for the same field.
             field_definitions = convert_fields_config(
-                fields_config, infer_unspecified=infer_unspecified
+                fields_config,
+                infer_unspecified=infer_unspecified,
+                match_threshold=match_threshold,
             )
         except ValueError as e:
             raise ValueError(f"Error converting field configurations: {e}")

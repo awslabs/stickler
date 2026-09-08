@@ -4,7 +4,7 @@ This module provides utilities for converting JSON field configurations to
 Pydantic Field instances with ComparableField functionality.
 """
 
-from typing import Any, Dict, Optional, Tuple, Type
+from typing import Any, Dict, Optional, Tuple, Type, get_args, get_origin
 
 from pydantic import Field
 
@@ -19,19 +19,78 @@ from .type_resolver import resolve_type_string
 AUTO_COMPARATOR = "auto"
 
 
-def _infer_spec(field_name: str, field_type: Any):
+def _infer_spec(
+    field_name: str,
+    field_type: Any,
+    match_threshold: Optional[float] = None,
+):
     """Infer a comparison spec for one config-driven field from its resolved type.
 
     ``stickler.auto`` infers from a live ``FieldInfo``, and a config-driven field
     has none, so one is synthesised around the resolved annotation. That is enough:
     ``infer_field_config`` reads only the annotation and the field name, so the
     name-token heuristics work here too.
+
+    ``match_threshold`` is forwarded because inference uses it as the FIELD
+    threshold for a mapping field: a dict declines to name its keys, so it is
+    judged as an object and takes the object-level value rather than the scalar
+    default. Omitting it left ``{"type": "dict"}`` at 0.7 while
+    ``stickler.eval_for(cls, match_threshold=0.9)`` gave 0.9 for the same field.
+
+    A parameterized list infers from its ELEMENT type, because that is what the
+    comparator is applied to. Inferring from ``List[float]`` itself landed on the
+    exotic-type branch (whole-list canonical-JSON equality) while both the JSON
+    Schema path and ``stickler.evaluate()`` scored the same shape per element.
     """
     from pydantic.fields import FieldInfo
 
-    from stickler.auto.inference import infer_field_config
+    from stickler.auto.inference import infer_field_config, unwrap_optional
 
-    return infer_field_config(field_name, FieldInfo(annotation=field_type))
+    inner, _ = unwrap_optional(field_type)
+    # `list` origin only, matching ``auto.builder._field_kind``: a `Set[...]`
+    # there is a primitive, not a per-element list, and diverging here would
+    # trade one entry-point disagreement for another.
+    if get_origin(inner) is list:
+        args = get_args(inner)
+        # Unparameterized `List` has no element type; `Any` is what the builder
+        # infers from in that position, so the two agree on Exact@1.0.
+        element, _ = unwrap_optional(args[0]) if args else (Any, False)
+        spec = infer_field_config(
+            field_name,
+            FieldInfo(annotation=element),
+            match_threshold=match_threshold,
+        )
+        spec.provenance.insert(0, "list: spec applies to each element")
+        return spec
+
+    return infer_field_config(
+        field_name,
+        FieldInfo(annotation=field_type),
+        match_threshold=match_threshold,
+    )
+
+
+def _nested_infer_flag(
+    field_config: Dict[str, Any],
+    infer_unspecified: bool,
+    field_name: str,
+) -> bool:
+    """The inference flag governing a nested model's own subtree.
+
+    A nested field may set ``infer_unspecified_fields`` to scope inference to its
+    own subtree in either direction, matching what a nested object can do on the
+    JSON Schema path (``json_schema_importer._build_nested_model``). Hardcoding the
+    parent's value discarded the nested setting both ways: a nested `false` still
+    inferred, and a nested `true` was answered with an error advising exactly what
+    the author had already written.
+    """
+    declared = field_config.get("infer_unspecified_fields", infer_unspecified)
+    if not isinstance(declared, bool):
+        raise ValueError(
+            "infer_unspecified_fields must be true or false on field "
+            f"'{field_name}', got: {declared!r}"
+        )
+    return declared
 
 
 def _wants_inference(field_config: Dict[str, Any], infer_unspecified: bool) -> bool:
@@ -69,6 +128,7 @@ class FieldConverter:
         field_config: Dict[str, Any],
         *,
         infer_unspecified: bool = False,
+        match_threshold: Optional[float] = None,
     ) -> Tuple[Type, Any]:
         """Convert a JSON field configuration to a Pydantic field definition.
 
@@ -79,6 +139,8 @@ class FieldConverter:
                 inferred from the field's type and name rather than defaulted.
                 Off by default, because turning it on moves reported metrics for
                 any field that named no comparator.
+            match_threshold: The model's ``match_threshold``, forwarded to
+                inference because a mapping field takes it as its field threshold.
 
         Returns:
             Tuple of (field_type, pydantic_field)
@@ -114,7 +176,7 @@ class FieldConverter:
         # Levenshtein default -- a threshold tuned against edit distance over
         # "1000.00" and "1000.0".
         inferred = (
-            _infer_spec(field_name, field_type)
+            _infer_spec(field_name, field_type, match_threshold)
             if _wants_inference(field_config, infer_unspecified)
             else None
         )
@@ -217,6 +279,8 @@ class FieldConverter:
         Args:
             field_name: Name of the field
             field_config: JSON configuration for the nested field
+            infer_unspecified: The enclosing model's flag, used unless this field
+                sets ``infer_unspecified_fields`` itself.
 
         Returns:
             Tuple of (field_type, pydantic_field)
@@ -225,7 +289,6 @@ class FieldConverter:
             ValueError: If configuration is invalid
         """
         from typing import List, Optional
-
 
         type_string = field_config["type"]
         nested_fields_config = field_config["fields"]
@@ -242,8 +305,12 @@ class FieldConverter:
             # `model_from_json` with this synthesised config. Omitting it meant a
             # model-level flag stopped at the first nesting level, so a nested
             # field silently kept the type-blind default while its siblings one
-            # level up were inferred.
-            "infer_unspecified_fields": infer_unspecified,
+            # level up were inferred. Read from this field first, so a nested
+            # field can scope its own subtree the way a nested object does on the
+            # JSON Schema path.
+            "infer_unspecified_fields": _nested_infer_flag(
+                field_config, infer_unspecified, field_name
+            ),
         }
 
         # Create the nested model class
@@ -312,11 +379,15 @@ class FieldConverter:
         fields_config: Dict[str, Dict[str, Any]],
         *,
         infer_unspecified: bool = False,
+        match_threshold: Optional[float] = None,
     ) -> Dict[str, Tuple[Type, Field]]:
         """Convert multiple field configurations.
 
         Args:
             fields_config: Dictionary of field configurations
+            infer_unspecified: Model-level inference flag.
+            match_threshold: The model's ``match_threshold``, forwarded to
+                inference for mapping fields.
 
         Returns:
             Dictionary mapping field names to (type, field) tuples
@@ -329,7 +400,10 @@ class FieldConverter:
         for field_name, field_config in fields_config.items():
             try:
                 field_type, pydantic_field = self.convert_field_config(
-                    field_name, field_config, infer_unspecified=infer_unspecified
+                    field_name,
+                    field_config,
+                    infer_unspecified=infer_unspecified,
+                    match_threshold=match_threshold,
                 )
                 field_definitions[field_name] = (field_type, pydantic_field)
             except ValueError as e:
@@ -459,12 +533,18 @@ class FieldConverter:
                     f"Field '{field_name}' 'fields' must be a dictionary, got {type(nested_fields)}"
                 )
 
-            # Validate each nested field
+            # Validate each nested field under the flag that will actually govern
+            # the subtree. Using the parent's value made a nested
+            # `"infer_unspecified_fields": true` produce an error telling the
+            # author to set exactly what they had just set.
+            nested_infer = _nested_infer_flag(
+                field_config, infer_unspecified, field_name
+            )
             for nested_field_name, nested_field_config in nested_fields.items():
                 self.validate_nested_field_schema(
                     f"{field_name}.{nested_field_name}",
                     nested_field_config,
-                    infer_unspecified=infer_unspecified,
+                    infer_unspecified=nested_infer,
                 )
 
         else:
@@ -505,18 +585,24 @@ def convert_field_config(
     field_config: Dict[str, Any],
     *,
     infer_unspecified: bool = False,
+    match_threshold: Optional[float] = None,
 ) -> Tuple[Type, Field]:
     """Convert a field configuration using the global converter.
 
     Args:
         field_name: Name of the field
         field_config: JSON configuration for the field
+        infer_unspecified: Model-level inference flag.
+        match_threshold: The model's ``match_threshold``, forwarded to inference.
 
     Returns:
         Tuple of (field_type, pydantic_field)
     """
     return _global_converter.convert_field_config(
-        field_name, field_config, infer_unspecified=infer_unspecified
+        field_name,
+        field_config,
+        infer_unspecified=infer_unspecified,
+        match_threshold=match_threshold,
     )
 
 
@@ -524,17 +610,22 @@ def convert_fields_config(
     fields_config: Dict[str, Dict[str, Any]],
     *,
     infer_unspecified: bool = False,
+    match_threshold: Optional[float] = None,
 ) -> Dict[str, Tuple[Type, Field]]:
     """Convert multiple field configurations using the global converter.
 
     Args:
         fields_config: Dictionary of field configurations
+        infer_unspecified: Model-level inference flag.
+        match_threshold: The model's ``match_threshold``, forwarded to inference.
 
     Returns:
         Dictionary mapping field names to (type, field) tuples
     """
     return _global_converter.convert_fields_config(
-        fields_config, infer_unspecified=infer_unspecified
+        fields_config,
+        infer_unspecified=infer_unspecified,
+        match_threshold=match_threshold,
     )
 
 
