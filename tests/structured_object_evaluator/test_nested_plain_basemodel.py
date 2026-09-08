@@ -41,11 +41,12 @@ See https://github.com/awslabs/stickler/issues/318 and
 https://github.com/awslabs/stickler/issues/321
 """
 
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Union
 
 import pytest
 from pydantic import BaseModel
 
+from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.exact import ExactComparator
 from stickler.structured_object_evaluator.models.comparable_field import (
     ComparableField,
@@ -389,10 +390,18 @@ class TestTwoDifferentClassesAreNotAMatch:
         assert result["confusion_matrix"]["overall"]["fd"] == 1
 
     def test_the_same_class_on_both_sides_still_scores(self):
-        """The guard must not reject the ordinary case."""
+        """The guard must not reject the ordinary case.
+
+        The comparator is named here on purpose. A bare `Any` field keeps the
+        primitive Levenshtein default, which is refused for an object in its own
+        right, so this would pass at 0.0 for the wrong reason and prove nothing
+        about the class guard.
+        """
 
         class Holder(StructuredModel):
-            pet: Optional[Any] = ComparableField(default=None)
+            pet: Optional[Any] = ComparableField(
+                comparator=ANLSStarComparator(), default=None
+            )
 
         assert Holder(pet=self.Cat(name="rex")).compare_with(
             Holder(pet=self.Cat(name="rex"))
@@ -435,8 +444,12 @@ class TestASubclassIsADifferentShape:
         assert str(self.Base(a="x")) != str(self.Sub(a="x"))
 
     def test_a_subclass_against_itself_still_scores(self):
+        """Comparator named for the same reason as above: isolate the guard."""
+
         class Holder(StructuredModel):
-            v: Optional[Any] = ComparableField(default=None)
+            v: Optional[Any] = ComparableField(
+                comparator=ANLSStarComparator(), default=None
+            )
 
         assert Holder(v=self.Sub(a="x", b="y")).compare_with(
             Holder(v=self.Sub(a="x", b="y"))
@@ -460,13 +473,40 @@ class Sub(Base):
 
 
 class Permissive(StructuredModel):
-    """`Any` is one of the few annotations that lets two classes reach a field."""
+    """Two classes reach one field, and the field can still score an object.
 
-    pet: Optional[Any] = None
+    A bare `Any` would let two classes through but would ALSO keep the primitive
+    Levenshtein default, which is refused for an object (see
+    `TestAnUnscoreableAnnotationIsRefused`). Both refusals return 0.0, so a bare
+    `Any` cannot show which one fired. Declaring the comparator separates them:
+    everything that scores 0.0 here does so because of the class gate.
+    """
+
+    pet: Optional[Union[Cat, Dog, Base, Sub]] = ComparableField(
+        comparator=ANLSStarComparator(), default=None
+    )
 
 
 class PermissiveList(StructuredModel):
-    pets: Optional[List[Any]] = None
+    pets: Optional[List[Union[Cat, Dog]]] = ComparableField(
+        comparator=ANLSStarComparator(), default=None
+    )
+
+
+class Inherited(StructuredModel):
+    """The shape that needs no `Any` at all: a base annotation takes a subclass.
+
+    `Optional[Base]` accepts a `Sub` by ordinary subtyping and gets ANLS* from
+    its declared annotation, so the class gate is the only thing standing
+    between `Base(a="x")` / `Sub(a="x")` and a reported 1.0. This is why the gate
+    is not merely defensive.
+    """
+
+    kid: Optional[Base] = None
+
+
+class InheritedList(StructuredModel):
+    kids: Optional[List[Base]] = None
 
 
 class TestObjectGradeScoring:
@@ -540,6 +580,27 @@ class TestADifferentClassIsAFalseDiscovery:
             Permissive(pet=Cat(name="rex"))
         )["field_scores"]["pet"] == pytest.approx(1.0)
 
+    def test_a_declared_base_annotation_taking_a_subclass_is_refused(self):
+        """The gate's load-bearing case: no `Any`, no explicit comparator."""
+        result = Inherited(kid=Base(a="x")).compare_with(
+            Inherited(kid=Sub(a="x")), include_confusion_matrix=True
+        )
+        assert result["field_scores"]["kid"] == pytest.approx(0.0)
+        assert result["confusion_matrix"]["overall"]["fd"] == 1
+
+    def test_that_same_annotation_still_scores_its_own_class(self):
+        assert Inherited(kid=Base(a="x")).compare_with(Inherited(kid=Base(a="x")))[
+            "field_scores"
+        ]["kid"] == pytest.approx(1.0)
+
+    def test_the_list_form_of_that_annotation_agrees(self):
+        assert InheritedList(kids=[Base(a="x")]).compare_with(
+            InheritedList(kids=[Sub(a="x")])
+        )["field_scores"]["kids"] == pytest.approx(0.0)
+        assert InheritedList(kids=[Base(a="x")]).compare_with(
+            InheritedList(kids=[Base(a="x")])
+        )["field_scores"]["kids"] == pytest.approx(1.0)
+
 
 class TestTheClassGateHoldsInEveryPath:
     """Four readers ask the same question and must give the same answer.
@@ -583,3 +644,93 @@ class TestTheClassGateHoldsInEveryPath:
         assert PermissiveList(pets=[Cat(name="a"), Dog(name="b")]).compare_with(
             PermissiveList(pets=[Cat(name="a"), Dog(name="b")])
         )["field_scores"]["pets"] == pytest.approx(1.0)
+
+
+class TestAnUnscoreableAnnotationIsRefused:
+    """`Any`, `object` and a multi-arm `Union` are refused, not guessed at.
+
+    The object-grade configuration is keyed on the annotation, so a field that
+    declares no model type keeps the primitive `LevenshteinComparator`. On a
+    model that default is not merely wrong, it is confidently wrong: edit
+    distance over `str(model)` compares field-name boilerplate that is identical
+    on both sides, so it never scores low.
+
+        LineItem(quantity=2, unit_price=10.5, currency='USD')
+          vs LineItem(quantity=9, unit_price=99.9, currency='EUR')  ->  0.8293
+          (measured on a three-field model; the two-field `Plain` below scores
+          the same way for the same reason)
+
+    0.8293 clears the default threshold, so every value being wrong was reported
+    as a TRUE POSITIVE. Refusing is strictly better than a number that confident
+    and that wrong, and it is the treatment a mapping in the same position has
+    always had -- `dev` scores two IDENTICAL dicts in an `Any` field 0.0 with
+    `fd=1` for exactly this reason. Plain models now agree with mappings.
+    """
+
+    ALL_WRONG = (
+        Plain(sku="a", qty=1),
+        Plain(sku="z", qty=99),
+    )
+
+    @pytest.mark.parametrize(
+        "annotation",
+        (Optional[Any], Optional[object], Optional[Union[Plain, str]]),
+    )
+    def test_a_wholly_wrong_model_is_not_a_true_positive(self, annotation):
+        model = type(
+            "Holder",
+            (StructuredModel,),
+            {"__annotations__": {"f": annotation}, "f": None},
+        )
+        result = model(f=self.ALL_WRONG[0]).compare_with(
+            model(f=self.ALL_WRONG[1]), include_confusion_matrix=True
+        )
+        assert result["field_scores"]["f"] == pytest.approx(0.0)
+        assert result["confusion_matrix"]["overall"]["tp"] == 0
+        assert result["confusion_matrix"]["overall"]["fd"] == 1
+
+    def test_the_list_form_is_refused_too(self):
+        """`List[Any]` reaches the comparator through the Hungarian cost matrix.
+
+        A separate path from the singular one, and it silently matched at 0.8293
+        after the singular form was already refused.
+        """
+        model = type(
+            "Holder",
+            (StructuredModel,),
+            {"__annotations__": {"f": Optional[List[Any]]}, "f": None},
+        )
+        result = model(f=[self.ALL_WRONG[0]]).compare_with(
+            model(f=[self.ALL_WRONG[1]]), include_confusion_matrix=True
+        )
+        assert result["field_scores"]["f"] == pytest.approx(0.0)
+        assert result["confusion_matrix"]["overall"]["fd"] == 1
+
+    def test_it_says_what_to_do_about_it(self):
+        """A refusal with no remedy is just a wrong number with extra steps."""
+
+        class Holder(StructuredModel):
+            f: Optional[Any] = None
+
+        with pytest.warns(UserWarning, match="holds a pydantic model"):
+            Holder(f=self.ALL_WRONG[0]).compare_with(Holder(f=self.ALL_WRONG[1]))
+
+    def test_naming_the_annotation_is_the_remedy(self):
+        """The advice in the warning has to actually work."""
+
+        class Holder(StructuredModel):
+            f: Optional[Plain] = None
+
+        assert Holder(f=self.ALL_WRONG[0]).compare_with(Holder(f=self.ALL_WRONG[0]))[
+            "field_scores"
+        ]["f"] == pytest.approx(1.0)
+
+    def test_naming_the_comparator_is_the_other_remedy(self):
+        class Holder(StructuredModel):
+            f: Optional[Any] = ComparableField(
+                comparator=ANLSStarComparator(), default=None
+            )
+
+        assert Holder(f=self.ALL_WRONG[0]).compare_with(Holder(f=self.ALL_WRONG[0]))[
+            "field_scores"
+        ]["f"] == pytest.approx(1.0)

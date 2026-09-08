@@ -36,10 +36,23 @@ class _ClassGatedComparator(BaseComparator):
         self._field_name = field_name
 
     def _compare(self, str1: Any, str2: Any) -> float:
+        from pydantic import BaseModel
+
         from .configuration_helper import ConfigurationHelper
 
         if not ConfigurationHelper.values_are_same_model_class(
             self._model_cls, self._field_name, str1, str2
+        ):
+            return 0.0
+
+        # The element-level twin of the CASE 5 refusal in `ComparisonDispatcher`.
+        # `List[Any]` declares no element type, so the field keeps the primitive
+        # Levenshtein default and the elements are scored by edit distance over
+        # `str(model)`. That put a floor under the score -- three differing
+        # values on a `LineItem` scored 0.8293 and paired as a TRUE POSITIVE --
+        # so the singular form was refused while the list form silently matched.
+        if isinstance(str1, BaseModel) and not ConfigurationHelper.can_score_object(
+            self._model_cls, self._field_name, self._inner, shape="model"
         ):
             return 0.0
         return self._inner.compare(str1, str2)

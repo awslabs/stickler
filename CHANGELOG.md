@@ -240,6 +240,35 @@ Each release links to full notes on the
   `fn` plus `fa`, is tracked in
   [#321](https://github.com/awslabs/stickler/issues/321).
 
+  **The annotation has to name the model.** The object-grade configuration is
+  keyed on the annotation, so a field declaring no model type -- `Any`, `object`,
+  a multi-arm `Union`, `List[Any]` -- keeps the scalar default and is now
+  **refused**: `0.0`, `fd=1`, and a warning naming both remedies. This is the
+  treatment a mapping in the same position has always had; `dev` scores two
+  IDENTICAL dicts in an `Any` field `0.0` with `fd=1`, and plain models now agree
+  with mappings in every case measured, down to a model holding an
+  `arbitrary_types_allowed` value scoring the same `0.5` a dict holding one does.
+
+  Refusing is deliberate rather than conservative. The scalar default is edit
+  distance over the rendered form, and because the field names are identical on
+  both sides it cannot score low: the `LineItem` pair above scored `0.8293`,
+  which clears the default threshold, so every value being wrong was reported as
+  a true positive. A refusal that names the remedy beats a number that confident
+  and that wrong. `ConfigurationHelper.can_score_mapping` is now a thin wrapper
+  over a shared `can_score_object`, so the mapping and model cases cannot drift.
+
+  **Performance.** `get_comparison_info` runs once per field per pairwise
+  comparison, so 60x60 objects of 20 fields is 72,000 calls, and the annotation
+  predicates that pick the object-grade path destructure the annotation on each
+  one. Left unmemoised they cost 18% on that shape (2.285s -> 2.699s), against
+  the 23% regression `ComparisonHelper.compare_field_raw` already records for
+  adding work to this path. The classification is now cached per (class, field)
+  in `cls.__dict__`, which also removes work `dev` was repeating: the same
+  benchmark is 1.951s, **14% faster than `dev`**. Only the annotation is cached;
+  the comparator, threshold and weight are not, because `match_threshold` is a
+  plain class attribute a caller can reassign and `evaluate(match_threshold=...)`
+  overrides it per call.
+
   A nested `StructuredModel` is unaffected and keeps its per-field detail; the new
   branch sits after that one, which matters because `StructuredModel` subclasses
   `BaseModel`. A plain `BaseModel` still reports no per-field breakdown, because

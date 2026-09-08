@@ -168,21 +168,111 @@ class ConfigurationHelper:
         succeeding on N-1, and no test would catch it. The warning carries the
         same information without stopping.
         """
+        return ConfigurationHelper.can_score_object(
+            model_cls, field_name, comparator, shape="mapping"
+        )
+
+    @staticmethod
+    def can_score_object(model_cls, field_name: str, comparator, *, shape: str) -> bool:
+        """Whether ``comparator`` can score a whole object, warning once if not.
+
+        ``shape`` is ``"mapping"`` or ``"model"``. The two differ only in the
+        wording of the warning and in the advice it gives, because the remedy is
+        different: a mapping wants a ``Dict[...]`` annotation, a plain pydantic
+        model wants the model named as the annotation.
+
+        Both arrive here for the same reason. A field annotated ``Any``,
+        ``object``, or a multi-arm ``Union`` declares nothing that could install
+        a structural comparator, so it keeps the primitive default of
+        ``LevenshteinComparator``, which cannot score an object -- and for a
+        pydantic model does something worse than raising. Edit distance over
+        ``str(model)`` compares the field-name boilerplate that is identical on
+        both sides, so it never scores low:
+
+            LineItem(quantity=2, unit_price=10.5, currency='USD')
+              vs LineItem(quantity=9, unit_price=99.9, currency='EUR')  ->  0.8293
+
+        which clears the default threshold and reports every value being wrong
+        as a TRUE POSITIVE. Refusing is strictly better than a number that
+        confident and that wrong.
+
+        See :meth:`can_score_mapping` for why this is a denylist, and why the
+        callers report a false discovery rather than raising.
+        """
         if comparator.__class__.__name__ not in _COMPARATORS_THAT_CANNOT_SCORE_MAPPINGS:
             return True
+        if shape == "mapping":
+            noun, plural, advice = (
+                "a mapping",
+                "mappings",
+                "Annotate the field as a mapping (Dict[...] or Mapping[...]) to "
+                "get ANLSStarComparator automatically, declare "
+                "ComparableField(comparator=ANLSStarComparator()) explicitly, or "
+                "use a nested StructuredModel if you know the keys.",
+            )
+        else:
+            noun, plural, advice = (
+                "a pydantic model",
+                "models",
+                "Annotate the field with the model class instead of Any or object "
+                "to get ANLSStarComparator automatically, declare "
+                "ComparableField(comparator=ANLSStarComparator()) explicitly, or "
+                "make it a nested StructuredModel for per-field detail.",
+            )
         warn_once(
-            "dict-value-uncomparable",
+            "dict-value-uncomparable" if shape == "mapping" else "model-value-uncomparable",
             f"{getattr(model_cls, '__name__', model_cls)}.{field_name}",
-            f"Field '{field_name}' holds a mapping, but its comparator "
+            f"Field '{field_name}' holds {noun}, but its comparator "
             f"({comparator.__class__.__name__}) scores scalars, so the pair is "
-            "counted as a false discovery even if the two mappings are "
-            "identical. Annotate the field as a mapping (Dict[...] or "
-            "Mapping[...]) to get ANLSStarComparator automatically, declare "
-            "ComparableField(comparator=ANLSStarComparator()) explicitly, or "
-            "use a nested StructuredModel if you know the keys.",
+            f"counted as a false discovery even if the two {plural} are "
+            f"identical. {advice}",
             category=UserWarning,
         )
         return False
+
+    @staticmethod
+    def _wants_object_grade_comparison(cls, field_name: str, field_info) -> bool:
+        """Whether a field is judged as one object rather than as a scalar.
+
+        True for a mapping, a plain pydantic model, and a list of either. All
+        four get `ANLSStarComparator`, the class's `match_threshold`, and
+        `clip_under_threshold=False`.
+
+        Memoised per (class, field) because it reads only the annotation, which
+        is fixed once the class is defined. `get_comparison_info` runs once per
+        field per pairwise comparison -- every cell of a Hungarian cost matrix,
+        so 60x60 objects of 20 fields is 72,000 calls -- and each predicate
+        below destructures the annotation again. Evaluating all four per call
+        measured 18% slower on that shape (2.285s -> 2.699s), against the same
+        23% regression the comment in `ComparisonHelper.compare_field_raw`
+        records for adding work to this path.
+
+        ONLY the annotation is cached. The comparator, threshold and weight
+        built around it are not, because `match_threshold` is a plain class
+        attribute a caller can reassign and `evaluate(..., match_threshold=...)`
+        overrides it per call; caching those would serve a stale number.
+
+        The cache lives in `cls.__dict__`, read with `.get` rather than
+        `getattr`, so a subclass does not inherit its parent's dict and then
+        write its own fields into it. Hanging it off the class also means it is
+        collected with the class, where a module-level dict keyed on the class
+        would keep every dynamically created model alive.
+        """
+        cache = cls.__dict__.get("_stickler_object_grade_cache")
+        if cache is None:
+            cache = {}
+            setattr(cls, "_stickler_object_grade_cache", cache)
+        remembered = cache.get(field_name)
+        if remembered is not None:
+            return remembered
+        answer = (
+            ConfigurationHelper.is_dict_field_type(field_info)
+            or ConfigurationHelper._is_list_of_mappings(field_info)
+            or ConfigurationHelper.is_plain_model_field_type(field_info)
+            or ConfigurationHelper._is_list_of_plain_models(field_info)
+        )
+        cache[field_name] = answer
+        return answer
 
     @staticmethod
     def is_plain_model_annotation(annotation) -> bool:
@@ -441,14 +531,16 @@ class ConfigurationHelper:
                 if not getattr(
                     json_func, "_comparator_explicit", True
                 ) and (
-                    ConfigurationHelper.is_dict_field_type(field_info)
-                    # A list of mappings too. Testing only the field's own
-                    # annotation left `List[Dict[str, str]] = ComparableField(...)`
-                    # on Levenshtein, scored as edit distance over a canonical JSON
+                    # Mappings, plain pydantic models, and lists of either.
+                    #
+                    # A list of mappings is included because testing only the
+                    # field's own annotation left
+                    # `List[Dict[str, str]] = ComparableField(...)` on
+                    # Levenshtein, scored as edit distance over a canonical JSON
                     # blob at 0.7667 (a match), while the SAME annotation with no
                     # ComparableField got ANLS* at 0.5625. One annotation, two
                     # answers, which is the divergence this work removes.
-                    or ConfigurationHelper._is_list_of_mappings(field_info)
+                    #
                     # A plain BaseModel is scored as one object for the same
                     # reason a mapping is: it declares no per-field comparison
                     # config to recurse into. Routing it to the primitive path
@@ -458,8 +550,9 @@ class ConfigurationHelper:
                     # `LineItem(2, 10.5, 'USD')` against `LineItem(9, 99.9, 'EUR')`
                     # scored 0.8293 and classified as a true positive with every
                     # value wrong. ANLS* scores that pair 0.0. See #319.
-                    or ConfigurationHelper.is_plain_model_field_type(field_info)
-                    or ConfigurationHelper._is_list_of_plain_models(field_info)
+                    ConfigurationHelper._wants_object_grade_comparison(
+                        cls, field_name, field_info
+                    )
                 ):
                     comparator = ANLSStarComparator()
                     clip_under_threshold = False
@@ -541,14 +634,8 @@ class ConfigurationHelper:
         # against `[{"vendor": "Acme Corp"}]` scored 0.7667 and cleared a 0.7
         # threshold, while the auto path scored the same annotation 0.0. Two
         # answers for one annotation is the divergence this work removes.
-        if (
-            ConfigurationHelper.is_dict_field_type(field_info)
-            or ConfigurationHelper._is_list_of_mappings(field_info)
-            # A plain BaseModel is judged as an object, not a string. Same
-            # treatment as a mapping, and for the same reason: no declared
-            # per-field config to recurse into. See #319.
-            or ConfigurationHelper.is_plain_model_field_type(field_info)
-            or ConfigurationHelper._is_list_of_plain_models(field_info)
+        if ConfigurationHelper._wants_object_grade_comparison(
+            cls, field_name, field_info
         ):
             from .comparison_info import ComparableFieldConfig
 

@@ -544,6 +544,44 @@ accepts.
 Stickler warns once per field rather than raising, because which class arrives is
 a property of the prediction, and raising would end a bulk run partway through.
 
+### The annotation has to name the model
+
+The object-grade default is read from the annotation, so a field that declares no
+model type keeps the scalar default and is **refused** rather than scored:
+
+| Annotation | Result |
+|---|---|
+| `Optional[LineItem]` | scored, key by key |
+| `List[LineItem]` | scored, key by key |
+| `Optional[Any]`, `Optional[object]` | refused: `0.0`, `fd=1`, warning |
+| `Union[LineItem, str]` | refused: `0.0`, `fd=1`, warning |
+| `List[Any]` | refused: `0.0`, `fd=1`, warning |
+
+Refusing looks harsh next to a number, but the number was worse. The scalar
+default is edit distance over the model's rendered form, and the field names are
+identical on both sides, so it cannot score low:
+
+```
+LineItem(quantity=2, unit_price=10.5, currency='USD')
+  vs LineItem(quantity=9, unit_price=99.9, currency='EUR')   ->  0.8293
+```
+
+`0.8293` clears the default threshold, so every value being wrong was reported as
+a **true positive**. A mapping in the same position has always been refused for
+exactly this reason, and plain models now agree with mappings.
+
+The warning names both remedies. Either name the model in the annotation:
+
+```python
+address: Optional[PlainAddress] = None          # scored
+```
+
+or declare the comparator, if the annotation genuinely has to stay open:
+
+```python
+payload: Optional[Any] = ComparableField(comparator=ANLSStarComparator())
+```
+
 To get field-by-field detail, declare the nested model as a `StructuredModel`:
 
 ```python

@@ -305,17 +305,39 @@ class ComparisonDispatcher:
         # `object` -- or where a subclass was supplied for its base, which
         # `Optional[Base]` accepts.
         elif isinstance(gt_val, BaseModel) and isinstance(pred_val, BaseModel):
+            not_comparable = {
+                "overall": {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0},
+                "fields": {},
+                "raw_similarity_score": 0.0,
+                "similarity_score": 0.0,
+                "threshold_applied_score": 0.0,
+                "weight": weight,
+            }
             if not ConfigurationHelper.values_are_same_model_class(
                 self.model.__class__, field_name, gt_val, pred_val
             ):
-                return {
-                    "overall": {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0},
-                    "fields": {},
-                    "raw_similarity_score": 0.0,
-                    "similarity_score": 0.0,
-                    "threshold_applied_score": 0.0,
-                    "weight": weight,
-                }
+                return not_comparable
+
+            # The same refusal CASE 4 applies to a mapping, reachable the same
+            # way: a field annotated `Any`, `object`, or a multi-arm `Union`
+            # declares nothing that could install a structural comparator, so it
+            # keeps the primitive Levenshtein default. The annotation-keyed
+            # config in `get_comparison_info` cannot reach these fields, because
+            # there is no annotation to key on.
+            #
+            # On a model that default is not merely wrong, it is confidently
+            # wrong. Edit distance over `str(model)` compares the field-name
+            # boilerplate that is identical on both sides, so three differing
+            # values scored 0.8293 and classified as a TRUE POSITIVE. Refusing is
+            # strictly better than a number that confident and that wrong.
+            if not ConfigurationHelper.can_score_object(
+                self.model.__class__,
+                field_name,
+                self.model.__class__._get_comparison_info(field_name).comparator,
+                shape="model",
+            ):
+                return not_comparable
+
             return self.field_comparator.compare_primitive_with_scores(
                 gt_val, pred_val, field_name
             )
