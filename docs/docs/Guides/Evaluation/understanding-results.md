@@ -110,7 +110,7 @@ The `confusion_matrix` object has four keys:
 The two nodes are the two stages of the evaluation, and you generally want both:
 
 - **`overall` is detection.** The unit is whatever this node's direct children are. On a list field whose 5 items each paired above `match_threshold`, that field's `overall` reads `tp = 5`. Read it on the list field, not at the root: the root's children are its own fields, so a document with 3 header fields beside that list reads `tp = 8` at the root -- 3 leaves plus 5 pairings, mixing the two units in one number.
-- **`aggregate` is extraction.** The unit is the leaf. Among the objects established to be the same object, how many field values were correct? For those same 5 items with 6 fields each, `tp` counts up to 30.
+- **`aggregate` is extraction.** The unit is the leaf, except on a node that has no leaves left to report because every one of its list items was rejected ([why](../../Advanced/aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list)). Among the objects established to be the same object, how many field values were correct? For those same 5 items with 6 fields each, `tp` counts up to 30.
 
 `match_threshold` is the handoff, and it is really the definition of "the same object". Above it, the pair is the same thing, so grading its fields is meaningful. Below it, it is not the same thing, so grading its fields would be scoring the fields of a *different* object. Such an **item** is classified as a single **false discovery** and is not descended into. This gating is a property of `List[StructuredModel]` pairing, not of nested objects generally: a single nested `StructuredModel` field always reports its leaves, and is judged against the field's own `threshold` rather than `match_threshold`.
 
@@ -189,10 +189,10 @@ At `0.66` the marginal item is comparable, so its six leaves join the first item
 
 | Question | Node |
 |---|---|
-| Were the objects comparable, and how many were spurious? | `overall` |
-| Among comparable objects, which leaves landed? | `aggregate` |
-| How many list items did the model find? | that list field's own `overall`, e.g. `cm['fields']['lines']['overall']` |
-| Did anything at all fail? | both, see below |
+| Were the objects comparable, and how many were spurious? | that list field's own `overall`, e.g. `cm['fields']['lines']['overall']` -- not the root's, which also counts the root's own fields |
+| Among comparable objects, which leaves landed? | that same field's `aggregate`, e.g. `cm['fields']['lines']['aggregate']` |
+| How many list items did the model find? | the list field's `overall` again, `cm['fields']['lines']['overall']` |
+| Did anything at all fail? | both `overall` and `aggregate`, on whichever node you are reading, see below |
 
 Because the two nodes scope different things, a complete "did anything fail" check reads both:
 
@@ -214,9 +214,21 @@ overall     tp=1  fp=0  fn=0  fa=0  fd=0
 aggregate   tp=5  fp=1  fn=0  fa=1  fd=0
 ```
 
-!!! note "`EvalResult.precision` is the object-level metric"
+!!! note "`EvalResult.precision` comes from the root `overall`"
 
-    `EvalResult.precision`, `.recall`, `.f1` and `.accuracy` from `stickler.evaluate()` come from `cm['overall']['derived']`, so they answer "how many objects were comparable rather than spurious". On the first example above `result.precision` is `1.0` while `result.overall_score` is `0.9667`: the five items were all comparable, and the score is a weighted mean over the leaves. Both numbers are right for what they measure. For leaf-level precision, read `result.confusion_matrix['aggregate']['derived']`.
+    `EvalResult.precision`, `.recall`, `.f1` and `.accuracy` from `stickler.evaluate()` come from `cm['overall']['derived']` at the **root**, so they inherit the root's unit: they classify the root's direct children. On a model whose only field is the list that is a count of objects. Put three header fields beside it and it is a rate over 3 header leaves plus 5 item pairings, so it is not an object rate at all -- see [Read the node whose children you mean](#read-the-node-whose-children-you-mean). For an object rate, read the list field's own node.
+
+    These are attributes, so they need the entry point that returns an `EvalResult`. Every other example on this page calls `compare_with()`, which returns a plain `dict`, so reaching for `.precision` on one of those raises `AttributeError`. Run the first example above through `stickler.evaluate()` instead:
+
+    ```python
+    result = stickler.evaluate(ground_truth, prediction)   # the first example, same data
+
+    result.precision                                                # 1.0
+    result.overall_score                                            # 0.9667
+    result.confusion_matrix['aggregate']['derived']['cm_precision']  # 0.9667, per leaf
+    ```
+
+    The five items were all comparable, so the root `overall` rate is perfect; the score is a weighted mean over the leaves, and one of the thirty is wrong. Both numbers are right for what they measure.
 
     That two similar-looking numbers on one object mean different things is tracked in [#288](https://github.com/awslabs/stickler/issues/288), where the naming is under review for 1.0.
 
@@ -455,7 +467,7 @@ This displays processing statistics (document count, throughput), overall confus
 
 Every node in the confusion matrix automatically includes an `aggregate` field that sums all primitive field metrics recursively below that node. This gives you hierarchical analysis without any configuration.
 
-One caveat before you rank anything by these counts: where a list's items were *all* rejected, that node's `aggregate` reports one row per rejected object rather than its leaves, so counts from such a node are not comparable with leaf counts from another ([why](../../Advanced/aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list)). The check is `cm['fields'][name]['overall']['tp'] == 0` on a list field.
+One caveat before you rank anything by these counts: where a list's items were *all* rejected, that node's `aggregate` reports one row per rejected object rather than its leaves, so counts from such a node are not comparable with leaf counts from another ([why](../../Advanced/aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list)). The check is `'fields' in node and not node['fields']` -- a structured node with nothing left below it to descend into. A primitive field has no `fields` key at all, so it is not caught, however badly it failed.
 
 ```python
 result = ground_truth.compare_with(prediction, include_confusion_matrix=True)
@@ -469,9 +481,13 @@ for section, data in cm['fields'].items():
     if 'aggregate' in data:
         f1 = data['aggregate']['derived']['cm_f1']
         errors = data['aggregate']['fp'] + data['aggregate']['fn']
-        # A list whose items were ALL rejected reports object rows here, not
-        # leaves, so say so rather than ranking it against leaf counts.
-        unit = 'objects' if data['overall']['tp'] == 0 else 'leaves'
+        # A structured node with an empty 'fields' reports its own rows here, not
+        # leaves: a list whose items were ALL rejected, or one that was null on
+        # both sides. Say so rather than ranking it against leaf counts. Do not
+        # test `data['overall']['tp'] == 0` instead -- that is also true of a
+        # primitive field that simply failed, which is one leaf and nothing else.
+        childless = 'fields' in data and not data['fields']
+        unit = 'object rows' if childless else 'leaves'
         print(f"  {section}: F1={f1:.3f}, Errors={errors} ({unit})")
 ```
 

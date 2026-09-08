@@ -86,7 +86,7 @@ Note the difference between `overall` and `aggregate`:
 
 The two nodes are the two stages of the evaluation:
 
-- **`overall` is detection.** The unit is the object. Did we find the right things? Five line items paired, none spurious.
+- **`overall` is detection.** The unit is whatever this node's direct children are. Did we find the right things? Read it on the list field: five line items paired, none spurious. Read it at the root and the children are the root's own fields, so three header fields beside that list give `tp = 8` -- 3 leaves plus 5 pairings, two units in one number.
 - **`aggregate` is extraction.** The unit is the leaf, except where noted in the warning below. Among the objects established to be the same object, how many field values were correct? 29 of 30.
 
 `match_threshold` is the handoff, and it is really the definition of "the same object". Above it, the pair is the same thing, so grading its fields is meaningful. Below it, it is not the same thing, so grading its fields would be scoring the fields of a *different* object. Such an **item** is classified as a single false discovery and is not descended into.
@@ -131,10 +131,13 @@ Coinciding is not evidence that nothing was hidden. Put three header fields besi
 
 !!! warning "When a list's items are all rejected, `aggregate` counts objects there, not leaves"
 
-    When a node's recursive leaf sum comes out all-zero, `aggregate` falls back to
-    summing its children's `overall`, so the **unit of the count changes with the
-    data**. It fires per node, and needs only that one list's items to be rejected
-    -- not the whole document:
+    A rejected item is not descended into, so a list whose items were *all* rejected
+    has **no child field nodes at all**. `AggregateMetricsCalculator` decides leaf
+    versus parent on exactly that -- whether `fields` has any entries -- so such a
+    node is treated as a leaf and its `aggregate` becomes a copy of its own
+    `overall`: one row per rejected item. The **unit of the count changes with the
+    data**. This is decided per node, and needs only that one list's items to be
+    rejected -- not the whole document:
 
     ```
     two items of six fields
@@ -153,8 +156,11 @@ Coinciding is not evidence that nothing was hidden. Put three header fields besi
     Five rows where fifteen leaves exist. So checking whether the document was
     all-rejected does not protect you, and neither does reading the root `overall`,
     which reports the same numbers. Before dividing an `aggregate` count by a leaf
-    total, check each list field's own `overall` for `tp == 0`: that is the condition
-    under which its `aggregate` stops being a leaf count.
+    total, ask each node whether it still has children:
+    `'fields' in node and not node['fields']` is exactly the condition under which
+    its `aggregate` stopped being a leaf count. Do not test the node's `overall` for
+    `tp == 0` instead: that is also true of a primitive field that simply failed,
+    which is one leaf and was never anything else.
 
 #### Getting leaf detail for a marginal list item
 
@@ -194,9 +200,9 @@ The `overall` name predates the aggregate rollup and reads as "the whole documen
 
 ## Calculation Logic
 
-1. **Leaf nodes** (primitive fields): `aggregate` equals `overall`.
-2. **Parent nodes**: `aggregate` is the sum of all child `aggregate` values, unless every one of them is zero, in which case the children's `overall` values are summed instead and the unit of the count becomes the object rather than the leaf ([why](#aggregate-counts-objects-for-an-all-rejected-list)).
-3. **Derived metrics**: Precision, recall, F1, and accuracy are recomputed at each level from the summed counts. They inherit whichever unit step 2 produced, so they are not a leaf rate on a node whose list items were all rejected.
+1. **Leaf nodes**: `aggregate` equals `overall`. A node counts as a leaf when `fields` has no entries, which is every primitive field and also any structured node that was not descended into.
+2. **Parent nodes**: `aggregate` is the sum of the child `aggregate` values. Nothing sums a node's children's `overall`, so a list whose items were *all* rejected does not take this branch at all: with no children left it is a leaf by step 1, and reports one row per rejected item rather than one per leaf ([why](#aggregate-counts-objects-for-an-all-rejected-list)).
+3. **Derived metrics**: Precision, recall, F1, and accuracy are recomputed at each level from the summed counts. They inherit whichever unit produced those counts, so they are not a leaf rate on a node whose list items were all rejected.
 
 ## Hierarchical Reporting Example
 

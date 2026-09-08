@@ -306,9 +306,12 @@ Each release links to full notes on the
   ```
 
   A below-threshold **list item** is a spurious non-match, so not descending into it
-  is deliberate: `overall` carries the object verdict and `aggregate` carries leaf
-  detail for the items that were comparable. A caller wanting leaf detail for a
-  marginal list item lowers `match_threshold` until it qualifies.
+  is deliberate: on the list field, `overall` classifies the item pairings, and
+  `aggregate` carries leaf detail for the items that were comparable. Read that on
+  the list field rather than at the root, whose direct children are the root's own
+  fields, so a document with three header fields beside a five-item list reads
+  `tp = 8` -- 3 leaves plus 5 pairings, two units in one count. A caller wanting
+  leaf detail for a marginal list item lowers `match_threshold` until it qualifies.
 
   That gating is a property of `List[StructuredModel]` pairing, not of nested
   objects generally, and the pages now say so. `StructuredListComparator` pairs
@@ -325,12 +328,17 @@ Each release links to full notes on the
   match_threshold  0.9 / 0.7 / 0.5 / 0.1 -> identical at every value
   ```
 
-  Also documented: on a document where **every** subtree was rejected, `aggregate`
-  stops counting leaves. `AggregateMetricsCalculator` falls back to summing
-  children's `overall` when the recursive leaf sum is all-zero, so the unit of the
-  count changes with the data -- two rejected items of six fields report
-  `aggregate tp=0 fd=2`, two object rows where twelve leaves exist. An `aggregate`
-  count is therefore not a safe denominator for a leaf total on such a document.
+  Also documented: on a list whose items were **all** rejected, `aggregate` stops
+  counting leaves. A rejected item is not descended into, so such a node has no
+  child fields at all, and `AggregateMetricsCalculator` decides leaf versus parent on
+  exactly that -- so the node is treated as a leaf and its `aggregate` is a copy of
+  its own `overall`. The unit of the count changes with the data: two rejected items
+  of six fields report `aggregate tp=0 fd=2`, two object rows where twelve leaves
+  exist. It fires per node, so it can happen for one list while the document is
+  plainly not all-rejected, and an `aggregate` count is therefore not a safe
+  denominator for a leaf total. The condition to test is
+  `'fields' in node and not node['fields']`, not `overall['tp'] == 0`, which is also
+  true of a primitive field that simply failed.
 
   See [#288](https://github.com/awslabs/stickler/issues/288) for the naming.
 
@@ -552,11 +560,14 @@ Each release links to full notes on the
   `overall` recall reads `1.0` on a document with a spurious pairing unless
   `recall_with_fd=True` is passed.
 
-  Also documents that `EvalResult.precision`, `.recall`, `.f1` and `.accuracy`
-  are the object-level metrics, read from `confusion_matrix.overall.derived`, so
-  `precision` of `1.0` beside an `overall_score` of `0.9667` is two correct
-  answers to two different questions rather than a contradiction. The naming is
-  under review for 1.0 in
+  Also documents that `EvalResult.precision`, `.recall`, `.f1` and `.accuracy` are
+  read from `confusion_matrix.overall.derived` at the **root**, so they inherit the
+  root's unit and classify the root's direct children. That is an object rate only
+  where the list is the model's sole field; with header fields beside it the same
+  numbers are a rate over header leaves and item pairings mixed. On a list-only
+  five-item model, `precision` of `1.0` beside an `overall_score` of `0.9667` is two
+  correct answers to two different questions rather than a contradiction. The naming
+  is under review for 1.0 in
   [#288](https://github.com/awslabs/stickler/issues/288).
 
 ## [0.7.0] - 2026-08-18

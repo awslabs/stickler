@@ -142,6 +142,73 @@ _READS_FA_OFF_OVERALL = re.compile(
 )
 
 
+def _authored_prose(repo_root: Path):
+    """Every line this repo authors about the rollup nodes: (path, lineno, text).
+
+    `src/**/*.py` and `docs/**/*.md` are the surfaces a reader sees, and
+    `tests/**/*.py` because a worked example in a test is the next person's copy
+    source. `CHANGELOG.md` is included too, but only its `## [Unreleased]` section:
+    shipped release notes record what was said at the time and are not rewritten,
+    while the open section is authored by the same change as the docs and drifted
+    from them twice. The walk this replaces never reached the changelog at all, and
+    carried an `exempt = {Path("CHANGELOG.md")}` that therefore could not fire --
+    dead code reading as a deliberate exemption.
+
+    This file is skipped of necessity: the guards below spell the banned phrases out.
+    """
+    for path in (
+        sorted(repo_root.glob("src/**/*.py"))
+        + sorted(repo_root.glob("docs/**/*.md"))
+        + sorted(repo_root.glob("tests/**/*.py"))
+    ):
+        if path == Path(__file__).resolve() or ".venv" in path.parts:
+            continue
+        relative = path.relative_to(repo_root)
+        for number, line in enumerate(
+            path.read_text(errors="ignore").splitlines(), start=1
+        ):
+            yield relative, number, line
+
+    lines = (repo_root / "CHANGELOG.md").read_text().splitlines()
+    start = next(
+        (i for i, line in enumerate(lines) if line.startswith("## [Unreleased]")),
+        None,
+    )
+    assert start is not None, "CHANGELOG.md has no `## [Unreleased]` heading to scan"
+    end = next(
+        (
+            i
+            for i, line in enumerate(lines[start + 1 :], start + 1)
+            if line.startswith("## [")
+        ),
+        len(lines),
+    )
+    for number in range(start, end):
+        yield Path("CHANGELOG.md"), number + 1, lines[number]
+
+
+def _documented_unit_label(node: dict) -> str:
+    """Is this node's `aggregate` a count of leaves? The check the pages publish.
+
+    A primitive field has no `fields` key at all. A structured node -- a nested
+    object, or a list -- always has one, and it is empty exactly when there was
+    nothing to descend into: every item was rejected, or the field was null on both
+    sides. `AggregateMetricsCalculator` decides leaf versus parent on precisely that,
+    so this is the condition under which `aggregate` stops being a leaf count.
+
+    The retired form was `node['overall']['tp'] == 0`, which is also true of a
+    primitive field that simply failed -- one leaf, and never anything else -- so it
+    mislabelled exactly the rows a reader scans a ranking for.
+
+    Published in:
+
+        docs/docs/Advanced/aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list
+        docs/docs/Guides/Evaluation/understanding-results.md  (prose and snippet)
+    """
+    childless_structured = "fields" in node and not node["fields"]
+    return "object rows" if childless_structured else "leaves"
+
+
 def _documented_clean_check(cm: dict) -> bool:
     """The "did anything fail" check the doc pages publish, verbatim.
 
@@ -507,8 +574,10 @@ class TestTheDocsAndTheEngineCannotDrift:
 
         Prose is not usually worth a guard, but this one is the whole subject of the
         pages, it is published to the API reference through two docstrings, and every
-        recurrence has been a fresh review finding. Historical CHANGELOG entries for
-        already-shipped releases are exempt: they record what was said at the time.
+        recurrence has been a fresh review finding. The fourth recurrence was in
+        `CHANGELOG.md` under `## [Unreleased]`, which the walk did not reach, so
+        `_authored_prose` now scans that section; shipped release notes stay exempt
+        because they record what was said at the time.
 
         This file is exempt of necessity, since `banned` below spells the phrases
         out. That exemption is doing real work rather than being a formality: the
@@ -518,29 +587,125 @@ class TestTheDocsAndTheEngineCannotDrift:
         """
         repo_root = Path(__file__).resolve().parents[2]
         banned = ("object verdict", "verdicts at", "own direct classification")
-        exempt = {Path("CHANGELOG.md")}
-        offenders = []
-
-        for path in (
-            sorted(repo_root.glob("src/**/*.py"))
-            + sorted(repo_root.glob("docs/**/*.md"))
-            + sorted(repo_root.glob("tests/**/*.py"))
-        ):
-            if path == Path(__file__).resolve():
-                continue
-            if path.relative_to(repo_root) in exempt or ".venv" in path.parts:
-                continue
-            for number, line in enumerate(
-                path.read_text(errors="ignore").splitlines(), start=1
-            ):
-                lowered = line.lower()
-                if any(phrase in lowered for phrase in banned):
-                    offenders.append(f"{path.relative_to(repo_root)}:{number}")
+        offenders = [
+            f"{path}:{number}"
+            for path, number, line in _authored_prose(repo_root)
+            if any(phrase in line.lower() for phrase in banned)
+        ]
 
         assert not offenders, (
             "these describe `overall` as a verdict on the node rather than a "
             "classification of its direct children, which is false at the root "
             f"and in both docstrings published to the API reference: {offenders}"
+        )
+
+    def test_the_changelog_unreleased_section_is_the_part_that_gets_scanned(self):
+        """Both directions on the scanner, because the last exemption was dead code.
+
+        `exempt = {Path("CHANGELOG.md")}` read as a policy and was unreachable: the
+        walk covered `src`, `docs` and `tests` only. So this asserts the open section
+        really is reached, and that a shipped one really is not.
+        """
+        repo_root = Path(__file__).resolve().parents[2]
+        scanned = {
+            (path, number) for path, number, _ in _authored_prose(repo_root)
+        }
+        changelog = (repo_root / "CHANGELOG.md").read_text().splitlines()
+        unreleased = next(
+            i for i, line in enumerate(changelog, start=1) if line == "## [Unreleased]"
+        )
+        shipped = next(
+            i
+            for i, line in enumerate(changelog, start=1)
+            if line.startswith("## [") and i > unreleased
+        )
+
+        assert (Path("CHANGELOG.md"), unreleased) in scanned
+        assert (Path("CHANGELOG.md"), unreleased + 1) in scanned
+        assert (Path("CHANGELOG.md"), shipped) not in scanned
+        assert (Path("CHANGELOG.md"), len(changelog)) not in scanned
+
+    def test_no_file_states_the_retired_all_zero_fallback_mechanism(self):
+        """`aggregate` does not fall back to summing children's `overall`.
+
+        Round four wrote that story into the warning, the `Calculation Logic` step
+        beneath it and the release note, and it is not the mechanism. A rejected item
+        is not descended into, so an all-rejected list has *no* child fields;
+        `AggregateMetricsCalculator` then classes the node as a leaf and copies its
+        own `overall`. Read literally, the retired rule sums over an empty set and
+        predicts `tp=0 fd=0` where the engine reports `fd=2`, so it contradicted the
+        worked output printed beside it.
+
+        `TestAllRejectedAggregateCountsObjects` pins the real behaviour. This guard
+        exists because the observable claim was right, which is what let the wrong
+        causal story survive review.
+        """
+        repo_root = Path(__file__).resolve().parents[2]
+        banned = (
+            "falls back to summing",
+            "recursive leaf sum",
+            "leaf sum is all-zero",
+            "leaf sum comes out all-zero",
+            "unless every one of them is zero",
+            "values are summed instead",
+        )
+        offenders = [
+            f"{path}:{number}"
+            for path, number, line in _authored_prose(repo_root)
+            if any(phrase in line.lower() for phrase in banned)
+        ]
+
+        assert not offenders, (
+            "these state that `aggregate` sums its children's `overall` when the "
+            "leaf sum is all-zero. The engine instead treats a node with no child "
+            f"fields as a leaf and copies its own `overall`: {offenders}"
+        )
+
+    def test_no_page_reads_an_evalresult_attribute_off_a_compare_with_result(self):
+        """`compare_with()` returns a `dict`; only `evaluate()` returns an `EvalResult`.
+
+        The `EvalResult.precision` note was written into a page whose every example
+        is `compare_with()`, and told the reader that "on the first example above
+        `result.precision` is 1.0". Copied, that line raises `AttributeError`.
+
+        Scoped to the identifier `result`, which is what every page binds, and driven
+        by the nearest preceding `result = ` in the file, so a page is judged on the
+        binding actually in scope rather than on whether the entry point is mentioned
+        somewhere nearby -- which is exactly what made the wrong line look fine.
+        """
+        repo_root = Path(__file__).resolve().parents[2]
+        attributes = (
+            "precision",
+            "recall",
+            "f1",
+            "accuracy",
+            "overall_score",
+            "field_scores",
+            "matched",
+            "confusion_matrix",
+        )
+        reads = re.compile(r"(?<![\w.])result\.(" + "|".join(attributes) + r")\b")
+        binds = re.compile(r"(?<![\w.])result\s*=\s*(?P<rhs>.+)")
+        offenders = []
+
+        for page in sorted(repo_root.glob("docs/**/*.md")):
+            binding = None
+            for number, line in enumerate(
+                page.read_text(errors="ignore").splitlines(), start=1
+            ):
+                bound = binds.search(line)
+                if bound:
+                    binding = (number, bound.group("rhs"))
+                if reads.search(line) and binding and "evaluate(" not in binding[1]:
+                    offenders.append(
+                        f"{page.relative_to(repo_root)}:{number} reads an EvalResult "
+                        f"attribute, but `result` was bound at :{binding[0]} by "
+                        f"`{binding[1].strip()}`"
+                    )
+
+        assert not offenders, (
+            "these read an `EvalResult` attribute off something that is not an "
+            f"`EvalResult`, so the published line raises: {offenders}"
         )
 
     def test_no_file_anywhere_publishes_the_superseded_form(self):
@@ -682,13 +847,19 @@ class TestANestedObjectIsNotThresholdGated:
 
 
 class TestAllRejectedAggregateCountsObjects:
-    """`aggregate` stops being a leaf count when every subtree is rejected.
+    """`aggregate` stops being a leaf count when every item of a list is rejected.
 
-    `AggregateMetricsCalculator` falls back to summing children's `overall` when
-    the recursive leaf sum is all-zero, so the unit of the count changes with the
-    data. The page promised "the unit is the leaf" and "primitive field metrics",
-    so dividing an `aggregate` count by a leaf total, or calling its `derived`
-    block leaf-level precision, is wrong on an all-rejected document.
+    The mechanism, which an earlier round of this file got wrong: a rejected item is
+    not descended into, so a list with every item rejected has *no child fields at
+    all*. `AggregateMetricsCalculator` splits leaf from parent on exactly that test
+    (`aggregate_metrics_calculator.py`, `is_leaf_node`), so the node is treated as a
+    leaf and its `aggregate` is a copy of its own `overall` -- one row per rejected
+    item. Nothing sums the children's `overall`; there are no children to sum, and
+    `test_the_rejected_list_node_has_no_children_to_sum` pins that.
+
+    So the unit of the count changes with the data. The page promised "the unit is
+    the leaf" and "primitive field metrics", so dividing an `aggregate` count by a
+    leaf total, or calling its `derived` block leaf-level precision, is wrong here.
     """
 
     @staticmethod
@@ -723,15 +894,44 @@ class TestAllRejectedAggregateCountsObjects:
         cm = self._two_items(rejected=2)
         assert cm["aggregate"]["fd"] == cm["overall"]["fd"] == 2
 
+    def test_the_rejected_list_node_has_no_children_to_sum(self):
+        """The actual mechanism, in both directions.
+
+        A rejected item is not descended into, so the `fields` dict of the list node
+        empties out entirely. That, and not any fallback that sums children's
+        `overall`, is why the node reports object rows: with no children it is a leaf,
+        and a leaf's `aggregate` is a copy of its `overall`. Read the retired rule
+        literally and it sums over an empty set, predicting `tp=0 fd=0` where the
+        engine reports `fd=2`.
+        """
+        partly = self._two_items(rejected=1)["fields"]["items"]
+        wholly = self._two_items(rejected=2)["fields"]["items"]
+
+        assert set(partly["fields"]) == set(FIELDS)  # six leaf children to sum
+        assert wholly["fields"] == {}  # nothing to sum
+
+        # A leaf's `aggregate` is its own `overall`, which is where `fd=2` comes from.
+        metrics = ("tp", "fa", "fd", "fp", "tn", "fn")
+        assert [wholly["aggregate"][m] for m in metrics] == [
+            wholly["overall"][m] for m in metrics
+        ]
+
+        # What the retired rule predicted instead, for the record.
+        summed_child_overall = sum(
+            child["overall"]["fd"] for child in wholly["fields"].values()
+        )
+        assert summed_child_overall == 0
+        assert wholly["aggregate"]["fd"] == 2
+
 
 class _Header(StructuredModel):
     """A document with fields BESIDE the list, which is the ordinary shape.
 
     Every other fixture in this file is a model whose only field is the list, and
     that shape hides two things: `overall` at the root sums the node's direct
-    children, so header leaves and item pairings land in one count; and the
-    `aggregate` object-row fallback can fire for the list while the document as a
-    whole is plainly not all-rejected.
+    children, so header leaves and item pairings land in one count; and the list's
+    `aggregate` can switch to object rows while the document as a whole is plainly
+    not all-rejected.
     """
 
     invoice_id: Optional[str] = ComparableField(
@@ -811,11 +1011,145 @@ class TestCoincidingNodesAreNotEvidenceOfAgreement:
         cm = _header_doc(item_count=2, rejected=2)
         assert cm["overall"]["tp"] > 0
 
-    def test_the_list_fields_own_overall_is_the_signal(self):
-        """`tp == 0` on the list node is the condition that actually holds."""
+    def test_the_list_field_is_where_the_condition_shows(self):
+        """It is the list node, not the root, that lost its children.
+
+        `overall['tp'] == 0` also holds here, and was published as the check for a
+        while, but it is not the condition: a primitive field that merely failed has
+        `tp == 0` too. `_documented_unit_label` is the discriminator.
+        """
         cm = _header_doc(item_count=2, rejected=2)
-        assert cm["fields"]["lines"]["overall"]["tp"] == 0
+        lines = cm["fields"]["lines"]
+
+        assert lines["fields"] == {}
+        assert _documented_unit_label(lines) == "object rows"
+        assert _documented_unit_label(cm) == "leaves"
 
     def test_root_precision_reads_as_a_leaf_rate_and_is_not_one(self):
         cm = _header_doc(item_count=2, rejected=2)
         assert cm["aggregate"]["derived"]["cm_precision"] == pytest.approx(0.6)
+
+
+class TestTheUnitLabelPublishedForRankingSections:
+    """The ranking snippet annotates each section with the unit of its counts.
+
+    Round four added that annotation with `data['overall']['tp'] == 0` as the test,
+    which was inherited from a wrong account of the mechanism. A primitive field that
+    failed has `tp == 0`, so the annotation was wrong on precisely the rows a reader
+    scans a ranking for -- the failing ones -- and it also fired for a list that was
+    null on both sides, where no leaves exist either way.
+
+    `_documented_unit_label` is the corrected test, and these pin it in both
+    directions: it must fire on a node that really lost its children, and stay quiet
+    on every node that did not.
+    """
+
+    @staticmethod
+    def _sections(**kwargs):
+        return _header_doc(**kwargs)["fields"]
+
+    def test_a_failing_primitive_is_still_one_leaf(self):
+        """The row the retired check mislabelled."""
+
+        def item(index):
+            return Line(**{name: f"{name}{index}" for name in FIELDS})
+
+        common = {"invoice_id": "i", "date": "d"}
+        gt = _Header(**common, vendor="v", lines=[item(i) for i in range(5)])
+        pred = _Header(**common, vendor="WRONG", lines=[item(i) for i in range(5)])
+        sections = gt.compare_with(pred, include_confusion_matrix=True)[
+            "confusion_matrix"
+        ]["fields"]
+
+        assert sections["vendor"]["overall"]["tp"] == 0  # what the retired check saw
+        assert "fields" not in sections["vendor"]  # a leaf has no `fields` key
+        assert _documented_unit_label(sections["vendor"]) == "leaves"
+
+    def test_an_all_rejected_list_is_not_a_leaf_count(self):
+        sections = self._sections(item_count=2, rejected=2)
+        assert _documented_unit_label(sections["lines"]) == "object rows"
+
+    def test_a_partly_rejected_list_is_still_a_leaf_count(self):
+        sections = self._sections(item_count=2, rejected=1)
+        assert _documented_unit_label(sections["lines"]) == "leaves"
+
+    def test_a_clean_list_is_a_leaf_count(self):
+        sections = self._sections(item_count=5, rejected=0)
+        assert _documented_unit_label(sections["lines"]) == "leaves"
+
+    def test_a_list_null_on_both_sides_has_no_leaves_either_way(self):
+        """`tn=1` and no children, so it is correctly not called a leaf count."""
+        common = {"invoice_id": "i", "vendor": "v", "date": "d"}
+        cm = _Header(**common, lines=None).compare_with(
+            _Header(**common, lines=None), include_confusion_matrix=True
+        )["confusion_matrix"]
+        lines = cm["fields"]["lines"]
+
+        assert (lines["overall"]["tn"], lines["overall"]["tp"]) == (1, 0)
+        assert lines["fields"] == {}
+        assert _documented_unit_label(lines) == "object rows"
+
+    def test_a_nested_object_is_a_leaf_count(self):
+        """It is never gated, so it always still has its children."""
+
+        class Doc(StructuredModel):
+            contact: Optional[_Contact] = ComparableField(default=None, threshold=0.9)
+
+        cm = Doc(contact=_Contact(a="1", b="2", c="3")).compare_with(
+            Doc(contact=_Contact(a="1", b="2", c="WRONG")),
+            include_confusion_matrix=True,
+        )["confusion_matrix"]
+        contact = cm["fields"]["contact"]
+
+        assert contact["overall"]["fd"] == 1  # rejected at the field's own threshold
+        assert set(contact["fields"]) == {"a", "b", "c"}  # and still expanded
+        assert _documented_unit_label(contact) == "leaves"
+
+    def test_both_pages_publish_the_condition_in_prose(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        expected = "`'fields' in node and not node['fields']`"
+
+        for relative in (
+            "docs/docs/Advanced/aggregate-metrics.md",
+            "docs/docs/Guides/Evaluation/understanding-results.md",
+        ):
+            text = (repo_root / relative).read_text()
+            assert expected in text, (
+                f"{relative} no longer names the childless-node condition; the "
+                f"retired `overall['tp'] == 0` is what it drifted back to last time"
+            )
+
+    def test_the_published_snippet_agrees_with_this_helper(self):
+        """Execute the page's own two lines, rather than matching on their text.
+
+        The annotation reached review wrong because it was written into a page that
+        nothing ran. This lifts `childless = ...` and `unit = ...` straight out of the
+        published snippet and checks them against `_documented_unit_label` on every
+        node shape, so the page cannot say something the tests above do not.
+        """
+        repo_root = Path(__file__).resolve().parents[2]
+        page = (
+            repo_root / "docs/docs/Guides/Evaluation/understanding-results.md"
+        ).read_text()
+        childless_expr = re.search(r"^\s*childless = (.+)$", page, re.M)
+        unit_expr = re.search(r"^\s*unit = (.+)$", page, re.M)
+        assert childless_expr and unit_expr, "the ranking snippet lost its unit label"
+
+        def published_label(node: dict) -> str:
+            childless = eval(childless_expr.group(1), {}, {"data": node})  # noqa: S307
+            return eval(unit_expr.group(1), {}, {"childless": childless})  # noqa: S307
+
+        header = _header_doc(item_count=2, rejected=2)
+        clean = _header_doc(item_count=2, rejected=0)
+        nodes = [
+            header,  # the root, which kept its children
+            header["fields"]["lines"],  # all rejected: no children left
+            header["fields"]["vendor"],  # a matching primitive
+            clean["fields"]["lines"],  # a clean list
+            _header_doc(item_count=2, rejected=1)["fields"]["lines"],
+        ]
+        for node in nodes:
+            assert published_label(node) == _documented_unit_label(node)
+
+        # And the labels are not all the same, so the agreement above means something.
+        assert {published_label(node) for node in nodes} == {"leaves", "object rows"}
