@@ -127,6 +127,7 @@ cm['aggregate']   tp=24  fd=0   P=1.0000  R=1.0000  F1=1.0000
 The two nodes coincide wherever the node being read has no accepted subtree left to expand: a model with no nesting, or one whose every nested subtree was rejected. Reject all five items and both nodes read `tp=0 fd=5`.
 
 Coinciding is not evidence that nothing was hidden. Put three header fields beside that list and reject every item, and the root reads `overall tp=3 fd=2` and `aggregate tp=3 fd=2` -- equal, with an accepted subtree present and 15 leaves in the document. They agree because the list contributed object rows to both, not because the leaf view confirmed the object view.
+{: #aggregate-counts-objects-for-an-all-rejected-list }
 
 !!! warning "When a list's items are all rejected, `aggregate` counts objects there, not leaves"
 
@@ -189,7 +190,7 @@ overall     tp=1  fp=0  fn=0  fa=0  fd=0
 aggregate   tp=5  fp=1  fn=0  fa=1  fd=0
 ```
 
-The `overall` name predates the aggregate rollup and reads as "the whole document" when it means "object verdicts at this level". Renaming is breaking, so it is under consideration for 1.0 in [#288](https://github.com/awslabs/stickler/issues/288).
+The `overall` name predates the aggregate rollup and reads as "the whole document" when it means "a classification of this node's direct children". Renaming is breaking, so it is under consideration for 1.0 in [#288](https://github.com/awslabs/stickler/issues/288).
 
 ## Calculation Logic
 

@@ -1,8 +1,11 @@
 """The two confusion-matrix rollup nodes answer two different questions.
 
-`confusion_matrix.overall` gives object verdicts at its own level: was this
-pairing genuine, or spurious. `confusion_matrix.aggregate` gives leaf detail for
-the objects that were comparable.
+`confusion_matrix.overall` classifies a node's direct children. On a list field
+those children are the item pairings, so it reads as an object verdict: was this
+pairing genuine, or spurious. At the root they are the root's own fields, so the
+two units can mix in one count, which `TestTheRootMixesHeaderLeavesWithItemPairings`
+pins. `confusion_matrix.aggregate` gives leaf detail for the objects that were
+comparable.
 
 `match_threshold` is the line between them, and the gating is deliberate. An
 object scoring below it is classified as a single FD, a spurious non-match, and

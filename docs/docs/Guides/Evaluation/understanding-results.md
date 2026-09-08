@@ -56,11 +56,11 @@ clean = (
 )
 ```
 
-`aggregate` gives leaf detail for the objects that were comparable: `fp` covers a leaf that scored below its threshold and a value invented where the ground truth was null, `fn` a leaf absent from the prediction. `overall` gives the object verdicts. Sum `fp` rather than `fa + fd`, since `FP = FA + FD` by construction and `fp` cannot go stale if a class is ever added.
+`aggregate` gives leaf detail for the objects that were comparable: `fp` covers a leaf that scored below its threshold and a value invented where the ground truth was null, `fn` a leaf absent from the prediction. `overall` classifies the node's direct children, so on a list field it gives the per-item verdicts. Sum `fp` rather than `fa + fd`, since `FP = FA + FD` by construction and `fp` cannot go stale if a class is ever added.
 
 The second half of that check is what catches an object rejected outright. A **list item** scoring below the element class's `match_threshold` is a spurious non-match, counted once as `fd` on `overall` and not descended into, so it contributes no leaf rows. If you want leaf detail for a marginal list item, lower `match_threshold` until it qualifies as comparable. `field_comparisons` names the individual failures.
 
-A single nested `StructuredModel` field behaves differently and is worth knowing separately: it is never gated, so its leaves appear on `aggregate` even when the object itself is a false discovery, and `match_threshold` is not the knob — the field's own `threshold` is.
+A single nested `StructuredModel` field behaves differently and is worth knowing separately: it is never gated, so its leaves appear on `aggregate` even when the object itself is a false discovery, and `match_threshold` is not the knob; the field's own `threshold` is.
 
 ---
 
@@ -103,7 +103,7 @@ The `confusion_matrix` object has four keys:
 - **`overall`** -- Metrics for this node's direct children. Where the field is a list, those children are item pairings rather than leaves.
 - **`fields`** -- Field-by-field breakdown, with nested structure for objects and lists.
 - **`non_matches`** -- Populated when `document_non_matches=True` (empty otherwise).
-- **`aggregate`** -- Primitive field metrics summed recursively below this node, excluding list items rejected at their element class's `match_threshold`. A single nested `StructuredModel` field is not excluded; its leaves are always counted. Where a list's items were *all* rejected the counts become object rows rather than primitive-field metrics, so check that before computing a leaf rate ([why](../../Advanced/aggregate-metrics.md#getting-leaf-detail-for-a-marginal-list-item)). See [`overall` vs `aggregate`](#overall-vs-aggregate).
+- **`aggregate`** -- Primitive field metrics summed recursively below this node, excluding list items rejected at their element class's `match_threshold`. A single nested `StructuredModel` field is not excluded; its leaves are always counted. Where a list's items were *all* rejected the counts become object rows rather than primitive-field metrics, so check that before computing a leaf rate ([why](../../Advanced/aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list)). See [`overall` vs `aggregate`](#overall-vs-aggregate).
 
 ### `overall` vs `aggregate`
 

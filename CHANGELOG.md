@@ -507,12 +507,16 @@ Each release links to full notes on the
 
 ### Documentation
 
-- Documented what the two confusion-matrix rollup nodes answer. `overall` gives
-  object verdicts (was this pairing genuine or spurious); `aggregate` gives leaf
-  detail for the objects that were comparable. `match_threshold` is the line
-  between them: an object below it is a single FD, a spurious non-match, and is
-  not descended into, so a caller wanting leaf detail for a marginal object
-  lowers `match_threshold` until the object qualifies as comparable.
+- Documented what the two confusion-matrix rollup nodes answer. `overall`
+  classifies a node's direct children, so on a list field it reads as a per-item
+  verdict (was this pairing genuine or spurious) while at the root it classifies
+  the root's own fields; `aggregate` gives leaf detail for the objects that were
+  comparable. `match_threshold` is the line between them for a **list item**: an
+  item below it is a single FD, a spurious non-match, and is not descended into,
+  so a caller wanting leaf detail for a marginal item lowers `match_threshold`
+  until the item qualifies as comparable. A single nested `StructuredModel` field
+  is not gated this way; its leaves are always reported, and the field's own
+  `threshold` decides its verdict.
 
   Both nodes were previously described only mechanically ("this node's own direct
   classification" / "sums all primitive-field classifications beneath"), which
