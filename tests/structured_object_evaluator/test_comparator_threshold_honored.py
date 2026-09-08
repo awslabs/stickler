@@ -624,3 +624,96 @@ class TestAListOfModelsRefusesAFieldThresholdAtEveryValue:
                 items: Optional[List[Line]] = ComparableField(
                     threshold=0.5, default=None
                 )
+
+
+class _SwallowLine(StructuredModel):
+    """A list element whose own gate is deliberately not 0.9."""
+
+    match_threshold = 0.8
+
+    sku: Optional[str] = ComparableField(default=None)
+
+
+class TestAListOfModelsReportsASwallowedComparatorThreshold:
+    """The same number, two spellings, and only one of them used to be answered.
+
+    Adopting a comparator threshold makes it reachable on a shape that cannot use
+    it: it resolves, is never read (Hungarian matching pairs items with the element
+    class's `match_threshold`), and said nothing -- while the identical value
+    written as `threshold=` raises with remediation. One spelling refused loudly
+    and the other swallowed is the asymmetry this work exists to remove.
+
+    Warned rather than raised because a comparator instance can be bound to several
+    fields, so refusing the class would reject a construction that is legitimate
+    wherever else it appears. A field-level `threshold=` cannot be shared that way,
+    which is why that one stays an error.
+    """
+
+    @staticmethod
+    def _build(comparator):
+        return type(
+            "Doc",
+            (StructuredModel,),
+            {
+                "__annotations__": {"rows": List[_SwallowLine]},
+                "rows": ComparableField(comparator=comparator, default=None),
+            },
+        )
+
+    def test_it_warns(self):
+        with pytest.warns(UserWarning, match="threshold set on its comparator"):
+            self._build(LevenshteinComparator(threshold=0.9))
+
+    def test_the_warning_names_the_knob_that_works(self):
+        with pytest.warns(UserWarning) as caught:
+            self._build(LevenshteinComparator(threshold=0.91))
+        assert "match_threshold" in str(caught[0].message)
+
+    def test_a_bare_comparator_stays_quiet(self):
+        """The note keys on explicitness, not on the resolved value.
+
+        A comparator's own default is never adopted, so nothing was swallowed here
+        and there is nothing to report.
+        """
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            self._build(LevenshteinComparator())
+        assert [str(w.message) for w in caught] == []
+
+    def test_a_scalar_field_stays_quiet_and_keeps_the_value(self):
+        """The threshold IS consulted there, so reporting it would be wrong."""
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            model = type(
+                "Doc",
+                (StructuredModel,),
+                {
+                    "__annotations__": {"name": Optional[str]},
+                    "name": ComparableField(
+                        comparator=LevenshteinComparator(threshold=0.9), default=None
+                    ),
+                },
+            )
+        assert [str(w.message) for w in caught] == []
+        assert model._get_comparison_info("name").threshold == 0.9
+
+    def test_the_element_gate_still_decides_pairing(self):
+        """What is ignored must not be information anyone needed."""
+        with pytest.warns(UserWarning):
+            model = self._build(LevenshteinComparator(threshold=0.9))
+        element = model.model_fields["rows"].annotation
+        while getattr(element, "__args__", None):
+            element = element.__args__[0]
+        assert element.match_threshold == 0.8
+
+    def test_the_field_level_spelling_still_raises(self):
+        """The two spellings must not swap places: one warns, one is an error."""
+        with pytest.raises(ValueError, match="cannot have a 'threshold' parameter"):
+            type(
+                "Doc",
+                (StructuredModel,),
+                {
+                    "__annotations__": {"rows": List[_SwallowLine]},
+                    "rows": ComparableField(threshold=0.9, default=None),
+                },
+            )

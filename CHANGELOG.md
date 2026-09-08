@@ -262,6 +262,16 @@ Each release links to full notes on the
     gate is a different number, and echoing the ignored one would have a reader
     overwrite a working configuration.
 
+  - A threshold set on the **comparator** of a `List[StructuredModel]` field is
+    now **reported** rather than swallowed. Adopting comparator thresholds makes
+    the value reachable on a shape that cannot use it: it resolves, is never read
+    (Hungarian matching pairs items with the element class's `match_threshold`),
+    and said nothing, while the identical number written as `threshold=` raises
+    with remediation. Warned rather than raised because a comparator instance can
+    be bound to several fields, so refusing the class would reject a construction
+    that is legitimate wherever else it appears; a field-level `threshold=` cannot
+    be shared that way, which is why that one stays an error.
+
   Unchanged: `threshold=0.0` remains a value rather than an omission, and a bare
   comparator with no threshold named.
 

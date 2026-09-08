@@ -24,7 +24,7 @@ from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.base import BaseComparator
 from stickler.utils.deprecation import warn_once
 
-from .comparable_field import ComparableField
+from .comparable_field import ComparableField, _comparator_threshold_was_set
 from .comparison_helper import ComparisonHelper, _maybe_absent
 from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
@@ -91,7 +91,6 @@ class _AnnotationDrivenJsonSchema(GenerateJsonSchema):
         # construction-tolerance sentinel, not a statement that the field is
         # optional.
         return not _core_schema_is_nullable(wrapped.get("schema", {}))
-
 
 
 def _compose_schema_generator(
@@ -232,7 +231,9 @@ def _amend_clip_default(field_info: Any, extra: Any) -> None:
     metadata = getattr(extra, "_comparison_metadata", None)
     new_metadata = dict(metadata) if isinstance(metadata, dict) else None
 
-    def amended(schema: Dict[str, Any], _metadata=new_metadata, _original=extra) -> None:
+    def amended(
+        schema: Dict[str, Any], _metadata=new_metadata, _original=extra
+    ) -> None:
         _original(schema)
         if _metadata is not None:
             schema["x-comparison"] = _metadata
@@ -611,6 +612,48 @@ class StructuredModel(BaseModel):
                                     f"{remedy}"
                                 )
 
+                            # The same number, written on the comparator instead.
+                            #
+                            # This PR makes a comparator threshold reach the
+                            # field, which makes it reachable here too: it
+                            # resolves, is never read (Hungarian matching uses
+                            # the element class's `match_threshold`), and said
+                            # nothing -- while the identical value written as
+                            # `threshold=` raises above with remediation. One
+                            # spelling refused loudly and the other swallowed is
+                            # the asymmetry this PR exists to remove.
+                            #
+                            # Warned, not raised: a comparator instance can be
+                            # shared across several fields, so refusing the class
+                            # would reject a construction that is legitimate
+                            # wherever else it is bound. The field-level
+                            # `threshold=` argument cannot be shared that way,
+                            # which is why that one is still an error.
+                            # Read the INSTANCE off the callable. `x-comparison`
+                            # carries only `comparator_type` / `comparator_name`
+                            # strings, so asking it for a `comparator` returns
+                            # None and this branch was dead on arrival.
+                            elif (
+                                _comparator_threshold_was_set(
+                                    getattr(
+                                        field_default.json_schema_extra,
+                                        "_comparator_instance",
+                                        None,
+                                    )
+                                )
+                                is not None
+                            ):
+                                warn_once(
+                                    "list-of-models-comparator-threshold",
+                                    f"{cls.__qualname__}.{field_name}",
+                                    f"Field '{field_name}' is a List[StructuredModel], so the "
+                                    f"threshold set on its comparator is not consulted: "
+                                    f"Hungarian matching pairs items using the element class's "
+                                    f"'match_threshold'. Set 'match_threshold' on the element "
+                                    f"class if you meant to change how items are paired.",
+                                    category=UserWarning,
+                                )
+
                             # Comparator validation - only flag if explicitly set to non-default type
                             comparator_type = comparison_config.get(
                                 "comparator_type", "LevenshteinComparator"
@@ -773,8 +816,8 @@ class StructuredModel(BaseModel):
 
         if process_rich_values:
             # Only process rich values on the top-level call
-            processed_data, confidences, extras = (
-                RichValueHelper.process_rich_values(json_data)
+            processed_data, confidences, extras = RichValueHelper.process_rich_values(
+                json_data
             )
             instance = ConfigurationHelper.from_json(cls, processed_data)
             if confidences:
@@ -1117,7 +1160,6 @@ class StructuredModel(BaseModel):
             ComparableField object with comparison configuration
         """
         return ConfigurationHelper.get_comparison_info(cls, field_name)
-
 
     def _should_use_hierarchical_structure(self, val: Any, field_name: str) -> bool:
         """Check if a list value should maintain hierarchical structure.
@@ -1790,7 +1832,9 @@ class StructuredModel(BaseModel):
                 property_schema = field_type.to_json_schema()
                 metadata = converter._extract_field_metadata(field_info)
                 metadata.pop("comparator", None)
-                extensions = converter._build_comparison_extensions(metadata, output_format="json_schema")
+                extensions = converter._build_comparison_extensions(
+                    metadata, output_format="json_schema"
+                )
                 property_schema.update(extensions)
             elif get_origin(field_type) is list:
                 # Handle List[StructuredModel] or List[primitive]
@@ -1830,7 +1874,9 @@ class StructuredModel(BaseModel):
                     # and a named threshold on a list-of-model field is an error,
                     # so a model exported here could not be imported back.
                     metadata.pop("threshold", None)
-                    extensions = converter._build_comparison_extensions(metadata, output_format="json_schema")
+                    extensions = converter._build_comparison_extensions(
+                        metadata, output_format="json_schema"
+                    )
                     property_schema.update(extensions)
                 else:
                     # Primitive list - build array schema manually
@@ -1960,14 +2006,19 @@ class StructuredModel(BaseModel):
             # Check if nested StructuredModel - use "structured_model" type
             if cls._is_structured_model_type(field_type):
                 nested_config = field_type.to_stickler_config()
-                field_config = {"type": "structured_model", "fields": nested_config["fields"]}
+                field_config = {
+                    "type": "structured_model",
+                    "fields": nested_config["fields"],
+                }
                 if nested_config.get("model_name"):
                     field_config["model_name"] = nested_config["model_name"]
                 if nested_config.get("match_threshold") is not None:
                     field_config["match_threshold"] = nested_config["match_threshold"]
                 metadata = converter._extract_field_metadata(field_info)
                 metadata.pop("comparator", None)
-                extensions = converter._build_comparison_extensions(metadata, output_format="stickler_config")
+                extensions = converter._build_comparison_extensions(
+                    metadata, output_format="stickler_config"
+                )
                 field_config.update(extensions)
             elif get_origin(field_type) is list:
                 # Handle List[StructuredModel] or List[primitive]
@@ -1987,14 +2038,21 @@ class StructuredModel(BaseModel):
 
                 if cls._is_structured_model_type(element_type):
                     nested_config = element_type.to_stickler_config()
-                    field_config = {"type": "list_structured_model", "fields": nested_config["fields"]}
+                    field_config = {
+                        "type": "list_structured_model",
+                        "fields": nested_config["fields"],
+                    }
                     if nested_config.get("model_name"):
                         field_config["model_name"] = nested_config["model_name"]
                     if nested_config.get("match_threshold") is not None:
-                        field_config["match_threshold"] = nested_config["match_threshold"]
+                        field_config["match_threshold"] = nested_config[
+                            "match_threshold"
+                        ]
                     metadata = converter._extract_field_metadata(field_info)
                     metadata.pop("comparator", None)
-                    extensions = converter._build_comparison_extensions(metadata, output_format="stickler_config")
+                    extensions = converter._build_comparison_extensions(
+                        metadata, output_format="stickler_config"
+                    )
                     field_config.update(extensions)
                 else:
                     # Primitive list - pass element type, then fix up type string
