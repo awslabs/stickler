@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import re
+import warnings
 from copy import copy, deepcopy
 from datetime import date, datetime, time
 from decimal import Decimal
@@ -28,8 +29,6 @@ from json_schema_to_pydantic import create_model as create_pydantic_model
 from pydantic import AnyUrl, BaseModel, TypeAdapter
 from pydantic.fields import FieldInfo
 
-from stickler.utils.deprecation import warn_once
-
 from .comparable_field import ComparableField
 from .comparator_registry import create_comparator
 from .model_factory import ModelFactory
@@ -43,6 +42,14 @@ _JSON_DEFAULTS = {
 }
 
 _PRESERVED_EXAMPLES_KEY = "x-aws-stickler-internal-examples"
+
+# The value every released `to_json_schema()` wrote for
+# `x-aws-stickler-threshold` on a `List[StructuredModel]` property. It could
+# write nothing else: a named threshold on that shape is refused at class
+# definition. A threshold equal to it therefore carries no authorial intent and
+# must not draw a warning. This release stops emitting the key at all, so only
+# legacy artifacts reach it.
+_EXPORTED_ARRAY_THRESHOLD_SENTINEL = 0.5
 
 # Every extension key this importer honours, on a field. Anything else that LOOKS
 # like one is a typo or a wrong prefix, and is rejected rather than dropped.
@@ -516,16 +523,35 @@ class JsonSchemaImporter:
         extensions = self._extract_extensions(field_info, field_path)
         if ignore_threshold and "threshold" in extensions:
             declared = extensions.pop("threshold")
-            warn_once(
-                "array-threshold-ignored",
-                field_path,
-                f"'x-aws-stickler-threshold' has no effect on array property "
-                f"'{field_path}' and is ignored. Pairing of array elements is "
-                f"gated by the element's own threshold, so put "
-                f"'x-aws-stickler-match-threshold': {declared} inside that "
-                f"property's 'items' if that is what you meant.",
-                category=UserWarning,
-            )
+            # Ignored either way; warned about only when the author can act on it.
+            #
+            # Every `to_json_schema()` on a released version wrote `0.5` here and
+            # could write nothing else, since `__init_subclass__` refuses a named
+            # threshold on this shape. Warning on the key's mere PRESENCE therefore
+            # warned on every legacy artifact -- precisely the schemas the
+            # ignore-instead-of-raise behaviour exists to rescue -- telling the
+            # author to change a key the library itself wrote. A value equal to the
+            # export sentinel carries no authorial intent; any other value does.
+            #
+            # `warnings.warn`, not `warn_once`: the latter memoises on
+            # `(id, field_path)` for the life of the process, so a SECOND schema
+            # declaring the same property name imported silently and its author
+            # never heard about their dead key. A schema import happens once per
+            # call, so ordinary dedup by message is correct here.
+            #
+            # The message names the key to write but not `declared` as its value:
+            # the element class's gate is a different number, so echoing it would
+            # tell the reader to overwrite a working configuration with the value
+            # being discarded.
+            if declared != _EXPORTED_ARRAY_THRESHOLD_SENTINEL:
+                warnings.warn(
+                    f"'x-aws-stickler-threshold': {declared} has no effect on "
+                    f"array property '{field_path}' and is ignored. Pairing of "
+                    f"array elements is gated by the element class's own "
+                    f"'x-aws-stickler-match-threshold', declared inside that "
+                    f"property's 'items'; set it there if that is what you meant.",
+                    UserWarning,
+                )
         comparator = extensions.get("comparator")
         if comparator is None:
             comparator = create_comparator(comparator_name, {})

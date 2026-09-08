@@ -246,13 +246,21 @@ Each release links to full notes on the
     reads the explicitness marker and refuses both. The remediation advice is
     unchanged: set `match_threshold` on the element class.
   - A JSON Schema that names `x-aws-stickler-threshold` on an array-of-model
-    property has it **ignored with a warning** rather than forwarded. Every
-    `to_json_schema()` on a released version emitted that key, so forwarding it
-    made the explicitness marker refuse the class and no previously exported schema
-    containing a list of models could be read back. Warned rather than raised
-    because a legacy placeholder is not distinguishable from a value a human wrote,
-    and refusing would break persisted artifacts to flag a key whose only cost is
-    being ignored.
+    property has it **ignored** rather than forwarded. Every `to_json_schema()` on
+    a released version emitted that key, so forwarding it made the explicitness
+    marker refuse the class and no previously exported schema containing a list of
+    models could be read back. Ignored rather than raised because refusing would
+    break persisted artifacts to flag a key whose only cost is being ignored.
+
+    A warning is emitted only where the author can act on it. `0.5` is the only
+    value a released export could write there, since a named threshold on that
+    shape is refused at class definition, so a value equal to it carries no
+    authorial intent and passes silently -- warning on it would fire on every
+    artifact this change exists to rescue. Any other value is the author's, and
+    warns. The message names `x-aws-stickler-match-threshold` inside `items` as the
+    key to write, but not the discarded number as its value: the element class's
+    gate is a different number, and echoing the ignored one would have a reader
+    overwrite a working configuration.
 
   Unchanged: `threshold=0.0` remains a value rather than an omission, and a bare
   comparator with no threshold named.

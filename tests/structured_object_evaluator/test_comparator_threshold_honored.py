@@ -23,6 +23,7 @@ that feature to zero.
 See https://github.com/awslabs/stickler/issues/246
 """
 
+import warnings
 from copy import deepcopy
 from typing import List, Optional
 
@@ -473,10 +474,37 @@ class TestAPreviouslyExportedSchemaStillImports:
         model = StructuredModel.from_json_schema(self.LEGACY_EXPORT)
         assert "products" in model.model_fields
 
-    def test_the_ignored_key_is_reported(self):
-        """Silently ignoring it would be the drop this work exists to remove."""
-        with pytest.warns(UserWarning, match="has no effect on array property"):
+    def test_the_legacy_placeholder_is_ignored_silently(self):
+        """Warning here would fire on every artifact this class exists to rescue.
+
+        `0.5` is the only value a released `to_json_schema()` could write on this
+        shape, since `__init_subclass__` refuses a named threshold on it. So the
+        placeholder carries no authorial intent, and warning about it told the
+        author to change a key the library itself wrote. This asserted the opposite
+        first time -- "silently ignoring it would be the drop this work exists to
+        remove" -- which confused a value a human chose with one we emitted.
+        """
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
             StructuredModel.from_json_schema(self.LEGACY_EXPORT)
+        assert [str(w.message) for w in caught] == []
+
+    def test_a_value_a_human_chose_is_still_reported(self):
+        """Suppressing the placeholder must not suppress the real case."""
+        authored = deepcopy(self.LEGACY_EXPORT)
+        authored["properties"]["products"]["x-aws-stickler-threshold"] = 0.88
+        with pytest.warns(UserWarning, match="has no effect on array property"):
+            StructuredModel.from_json_schema(authored)
+
+    def test_that_warning_does_not_name_the_discarded_value_as_the_fix(self):
+        """The element gate is a different number; echoing 0.88 would overwrite it."""
+        authored = deepcopy(self.LEGACY_EXPORT)
+        authored["properties"]["products"]["x-aws-stickler-threshold"] = 0.88
+        with pytest.warns(UserWarning) as caught:
+            StructuredModel.from_json_schema(authored)
+        message = str(caught[0].message)
+        assert "x-aws-stickler-match-threshold" in message
+        assert "'x-aws-stickler-match-threshold': 0.88" not in message
 
     def test_the_element_match_threshold_still_governs(self):
         """What was dropped must not be information anyone needed."""
