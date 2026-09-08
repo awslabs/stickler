@@ -40,7 +40,17 @@ Each release links to full notes on the
   A field opts in on its own with `"comparator": "auto"`
   (`x-aws-stickler-comparator: "auto"` in a schema), and **precedence runs both
   ways**: `"auto"` infers one field in an otherwise explicit config, and naming a
-  comparator pins one field in an otherwise inferred one.
+  comparator pins one field in an otherwise inferred one. On the schema path a
+  nested object can scope inference to its own subtree in either direction.
+
+  Naming a comparator pins the field's **threshold** as well, rather than inferring
+  it. A threshold only means something beside the metric that produced the score, so
+  inference's threshold belongs to the comparator inference would have chosen, not to
+  one the caller named instead. Per-parameter filling covers `threshold`, `weight`,
+  `clip_under_threshold` and `comparator_config` for a field that let inference pick
+  the comparator. `comparator_config` is **merged** over the inferred one, so setting
+  `absolute_tolerance` on an inferred `NumericComparator` keeps the
+  `relative_tolerance` of `0.001` that inference chose.
 
   **Partial configuration is filled in per parameter.** A field that names some
   parameters keeps them and infers only the rest, so

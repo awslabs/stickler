@@ -425,6 +425,11 @@ class JsonSchemaImporter:
                     field_path,
                     comparator_name=comparator_name,
                     threshold=threshold,
+                    # The ELEMENT type, because a primitive list is scored per
+                    # element. Passing nothing here left `List[number]` on the
+                    # shallow default with the flag on, while the config path
+                    # inferred the same shape -- one flag, two answers.
+                    annotation=element,
                 )
             return (Optional[final_list] if nullable else final_list), comparison_field
 
@@ -487,13 +492,34 @@ class JsonSchemaImporter:
             model_extra = {}
         model_name = model_extra.get("x-aws-stickler-model-name", source_model.__name__)
         match_threshold = model_extra.get("x-aws-stickler-match-threshold", 0.7)
+        # A nested object may opt its own subtree in or out. Reading the key only
+        # at the root meant writing it on a nested object was accepted and then
+        # silently ignored -- the same silent-drop #210 and #312 exist to remove,
+        # reintroduced by a key those checks now consider valid everywhere.
+        nested_infer = model_extra.get(
+            "x-aws-stickler-infer-unspecified", self.infer_unspecified
+        )
+        if not isinstance(nested_infer, bool):
+            raise ValueError(
+                "x-aws-stickler-infer-unspecified must be true or false at "
+                f"'{field_path}', got: {nested_infer!r}"
+            )
         self._validate_model_config(model_name, match_threshold, field_path)
 
-        fields = self._convert_model_fields(
-            source_model,
-            field_path=field_path,
-            building=building,
-        )
+        # Restored in `finally`, because nested models are built through this same
+        # instance: leaving the nested value in place would leak it onto the
+        # OUTER object's remaining fields, so a sibling declared after a nested
+        # object would silently inherit that subtree's setting.
+        outer_infer = self.infer_unspecified
+        self.infer_unspecified = nested_infer
+        try:
+            fields = self._convert_model_fields(
+                source_model,
+                field_path=field_path,
+                building=building,
+            )
+        finally:
+            self.infer_unspecified = outer_infer
         return ModelFactory.create_model_from_fields(
             model_name=model_name,
             field_definitions=fields,

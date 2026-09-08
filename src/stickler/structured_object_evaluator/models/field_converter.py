@@ -40,6 +40,13 @@ def _wants_inference(field_config: Dict[str, Any], infer_unspecified: bool) -> b
     A field-level setting always wins over the model-level flag, in both
     directions: ``"comparator": "auto"`` opts one field in when the model did not,
     and naming a real comparator pins one field when the model opted everything in.
+
+    Naming a comparator pins the field's threshold too, rather than inferring it.
+    A threshold is only meaningful beside the metric that produced the score --
+    0.85 means one thing on edit distance and another on numeric tolerance -- so
+    inference's threshold belongs to the comparator inference would have chosen,
+    not to the one the caller named. Per-parameter filling applies to a field that
+    let inference pick the comparator.
     """
     declared = field_config.get("comparator")
     if declared == AUTO_COMPARATOR:
@@ -118,9 +125,16 @@ class FieldConverter:
             declared_comparator = None
         if declared_comparator is None and inferred is not None:
             comparator_name = inferred.comparator_name
-            comparator_config = field_config.get(
-                "comparator_config", inferred.comparator_config
-            )
+            # MERGED, not replaced. A `comparator_config` beside an inferred
+            # comparator is a tweak to the comparator inference chose, so
+            # replacing the whole dict silently dropped the rest of it:
+            # NumericComparator's inferred `relative_tolerance` of 0.001 fell to
+            # 0.0, turning a tolerance-based numeric comparison into an exact one
+            # for anyone who set any other key.
+            comparator_config = {
+                **inferred.comparator_config,
+                **field_config.get("comparator_config", {}),
+            }
         else:
             comparator_name = declared_comparator or "LevenshteinComparator"
             comparator_config = field_config.get("comparator_config", {})
@@ -179,9 +193,9 @@ class FieldConverter:
             examples=examples,
         )
 
-        # Record what was inferred, so `explain()` can report `source: inferred`
-        # and the reason rather than claiming every config-driven field was
-        # explicitly configured. Written onto the closure `ComparableField` just
+        # Record what was inferred, so `explain()` reports the reason and a
+        # `source` naming what drove the choice (`type`, `name-token`) rather than
+        # claiming every config-driven field was explicitly configured. Written onto the closure `ComparableField` just
         # returned, which no caller has a reference to yet -- the shared-field
         # hazard `structured_model.py` warns about needs sharing.
         if provenance:

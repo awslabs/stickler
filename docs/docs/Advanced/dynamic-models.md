@@ -319,6 +319,10 @@ A field-level setting always wins over the model-level flag, both ways: `"auto"`
 infers one field in an otherwise explicit config, and naming a comparator pins one
 field in an otherwise inferred config.
 
+On the JSON Schema path, a nested object can set
+`x-aws-stickler-infer-unspecified` to scope inference to its own subtree, in either
+direction, without affecting its parent or siblings.
+
 ### Loading a config and checking what you got
 
 Load the config, then ask the model what it decided. `explain()` returns one row per
@@ -394,7 +398,25 @@ threshold    0.99                yours
 ```
 
 So you can keep a threshold you tuned while still getting a comparator that suits
-the type.
+the type. A `comparator_config` works the same way: it is merged over the inferred
+one, so setting `absolute_tolerance` keeps the `relative_tolerance` inference chose.
+
+Naming a **comparator** is different, and pins the threshold too:
+
+```json
+{"total": {"type": "float", "comparator": "ExactComparator"}}
+```
+
+```
+comparator   ExactComparator     yours
+threshold    0.5                 the ordinary default, not inference's 0.95
+```
+
+A threshold only means something next to the metric that produced the score: 0.85
+is one thing on edit distance and another on numeric tolerance. Inference's
+threshold belongs to the comparator inference would have picked, so it is not
+carried over onto one you chose instead. Set the threshold yourself when you name a
+comparator.
 
 ### It is off by default
 
