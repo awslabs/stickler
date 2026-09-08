@@ -526,20 +526,23 @@ Each release links to full notes on the
   is not gated this way; its leaves are always reported, and the field's own
   `threshold` decides its verdict.
 
-  Both nodes were previously described only mechanically ("this node's own direct
-  classification" / "sums all primitive-field classifications beneath"), which
-  said nothing about which to read for which question, or that they diverge on
-  any model with nesting. They coincide wherever the node being read has no
-  accepted subtree left to expand: a flat model, or one whose every nested subtree
-  was rejected. One rejected subtree among several usually makes them diverge
+  Both nodes were previously described only in terms of their own mechanics -- one
+  as a classification the node makes directly, the other as a sum of the primitive
+  fields beneath it -- which said nothing about which to read for which question,
+  or that they diverge on any model with nesting. They coincide whenever every
+  child contributes the same number of rows to each: a flat model, a list whose
+  items were all rejected, and also a nested object holding exactly one leaf, where
+  the object is one row and its leaf is one row. That last case is an accepted,
+  expanded subtree, so "they coincide only where there is nothing left to expand"
+  is not the rule. One rejected subtree among several usually makes them diverge
   further rather than converge, because `aggregate` then reports a flawless
   precision over the accepted items only.
 
   Coinciding is not evidence that nothing was hidden, and the pages say so. With
-  three header fields beside a list whose items were all rejected, the root reads
-  `overall tp=3 fd=2` and `aggregate tp=3 fd=2` -- equal, with an accepted subtree
-  present and 15 leaves in the document, because the list contributed object rows
-  to both.
+  three header fields beside a two-item list whose items were both rejected, the
+  root reads `overall tp=3 fd=2` and `aggregate tp=3 fd=2` -- equal, while 15
+  leaves exist in the document and `aggregate` counted 5 rows, because the list
+  contributed object rows to both.
 
   Older sections of the same pages were brought into line, since a page that
   disagrees with itself about this is the defect being fixed. `Calculation Logic`

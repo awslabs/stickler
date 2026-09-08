@@ -14,16 +14,23 @@ whole would be scoring something declared not comparable. A caller who wants
 those leaves counted lowers `match_threshold` so the object qualifies, which
 `test_lowering_match_threshold_exposes_the_leaves` pins.
 
-The two nodes coincide wherever the node being read has no accepted subtree left
-to expand: a model with no nesting, or one whose every nested subtree was rejected.
-One rejected subtree among several usually makes them diverge further rather than
-converge, since `aggregate` then reports a flawless precision over the accepted
-items only, which `test_a_rejected_subtree_separates_the_two_numbers` pins.
+The two nodes coincide whenever every child contributes the same number of rows to
+each: a model with no nesting, a list whose items were all rejected, and also a
+nested object holding exactly one leaf, where the object is one row and its leaf is
+one row. That last case is an ACCEPTED, EXPANDED subtree, so "they coincide only
+where there is nothing left to expand" is not the rule --
+`test_an_accepted_single_leaf_subtree_also_coincides` pins it. One rejected subtree
+among several usually makes them diverge further rather than converge, since
+`aggregate` then reports a flawless precision over the accepted items only, which
+`test_a_rejected_subtree_separates_the_two_numbers` pins.
 
-Coinciding does not mean nothing was hidden. With header fields beside a list whose
-items were all rejected, both root nodes read the same numbers while leaves exist
-that neither counted -- `TestCoincidingNodesAreNotEvidenceOfAgreement` pins that
-shape, because it falsifies the simpler rule this file used to state.
+Coinciding does not mean nothing was hidden, which is the separate and more useful
+point. With header fields beside a list whose items were all rejected, both root
+nodes read the same numbers while leaves exist that neither counted --
+`TestCoincidingNodesAreNotEvidenceOfAgreement` pins that shape. Note what it does
+NOT show: that shape has no accepted subtree either (the header fields are leaves
+and the list is childless), so it is evidence about hiding, not a counter-example to
+the coincidence rule. Conflating the two is what put a false claim on the page.
 
 These tests pin the numbers and the snippet the documentation publishes, so
 neither can go stale:
@@ -185,6 +192,42 @@ def _authored_prose(repo_root: Path):
     )
     for number in range(start, end):
         yield Path("CHANGELOG.md"), number + 1, lines[number]
+
+
+def _phrase_hits(repo_root: Path, banned) -> list:
+    """Every authored line containing a banned phrase, wraps included.
+
+    Matching per line let a phrase hide in a hard wrap. `CHANGELOG.md` is wrapped
+    at ~80 columns, and a banned phrase was already split across two lines there,
+    so the guards below passed while the claim was present. This joins each file's
+    authored lines, collapses runs of whitespace, and reports the line the match
+    STARTS on, so a wrapped phrase is caught and still located.
+    """
+    per_file = {}
+    for path, number, line in _authored_prose(repo_root):
+        per_file.setdefault(path, []).append((number, line))
+
+    offenders = []
+    for path, numbered in per_file.items():
+        # Character offset -> source line, so a hit can be attributed.
+        joined_parts, starts = [], []
+        cursor = 0
+        for number, line in numbered:
+            text = line.strip()
+            starts.append((cursor, number))
+            joined_parts.append(text)
+            cursor += len(text) + 1
+        joined = " ".join(joined_parts).lower()
+        joined = re.sub(r"\s+", " ", joined)
+        for phrase in banned:
+            start = joined.find(phrase)
+            while start != -1:
+                number = next(
+                    (n for off, n in reversed(starts) if off <= start), numbered[0][0]
+                )
+                offenders.append(f"{path}:{number}")
+                start = joined.find(phrase, start + 1)
+    return sorted(set(offenders))
 
 
 def _documented_unit_label(node: dict) -> str:
@@ -551,7 +594,20 @@ class TestTheDocsAndTheEngineCannotDrift:
         for relative in _PAGES_PUBLISHING_THE_CLEAN_CHECK:
             page = repo_root / relative
             assert page.exists(), f"{relative} moved; update this list"
-            text = page.read_text()
+            # `CHANGELOG.md` is read through the same `[Unreleased]`-only window as
+            # `_authored_prose`, not whole. Reading all of it forbade the retired
+            # form anywhere in the file, including a future shipped note quoting it
+            # as history -- which contradicts the policy that shipped notes record
+            # what was said at the time and are not rewritten. It would also break
+            # on archiving old releases into a separate file.
+            if relative == "CHANGELOG.md":
+                text = "\n".join(
+                    line
+                    for path, _, line in _authored_prose(repo_root)
+                    if path == Path("CHANGELOG.md")
+                )
+            else:
+                text = page.read_text()
 
             assert "clean = (" in text, f"{relative} no longer publishes the check"
             for line in expected_lines:
@@ -598,11 +654,7 @@ class TestTheDocsAndTheEngineCannotDrift:
             "own direct classification",
             "unit is the object",
         )
-        offenders = [
-            f"{path}:{number}"
-            for path, number, line in _authored_prose(repo_root)
-            if any(phrase in line.lower() for phrase in banned)
-        ]
+        offenders = _phrase_hits(repo_root, banned)
 
         assert not offenders, (
             "these describe `overall` as a verdict on the node rather than a "
@@ -618,17 +670,35 @@ class TestTheDocsAndTheEngineCannotDrift:
         really is reached, and that a shipped one really is not.
         """
         repo_root = Path(__file__).resolve().parents[2]
-        scanned = {
-            (path, number) for path, number, _ in _authored_prose(repo_root)
-        }
+        scanned = {(path, number) for path, number, _ in _authored_prose(repo_root)}
         changelog = (repo_root / "CHANGELOG.md").read_text().splitlines()
+        # `startswith`, matching `_authored_prose`. Exact equality here meant the
+        # two disagreed the moment the heading gained a suffix (`## [Unreleased] -
+        # TBD`), and a bare `next()` then died with `StopIteration` rather than
+        # saying what was wrong.
         unreleased = next(
-            i for i, line in enumerate(changelog, start=1) if line == "## [Unreleased]"
+            (
+                i
+                for i, line in enumerate(changelog, start=1)
+                if line.startswith("## [Unreleased]")
+            ),
+            None,
+        )
+        assert unreleased is not None, (
+            "CHANGELOG.md has no `## [Unreleased]` heading; `_authored_prose` scans "
+            "that section, so this test and the walker must find it the same way"
         )
         shipped = next(
-            i
-            for i, line in enumerate(changelog, start=1)
-            if line.startswith("## [") and i > unreleased
+            (
+                i
+                for i, line in enumerate(changelog, start=1)
+                if line.startswith("## [") and i > unreleased
+            ),
+            None,
+        )
+        assert shipped is not None, (
+            "CHANGELOG.md has no shipped release heading after `## [Unreleased]`, so "
+            "the not-scanned half of this test cannot be checked"
         )
 
         assert (Path("CHANGELOG.md"), unreleased) in scanned
@@ -660,11 +730,7 @@ class TestTheDocsAndTheEngineCannotDrift:
             "unless every one of them is zero",
             "values are summed instead",
         )
-        offenders = [
-            f"{path}:{number}"
-            for path, number, line in _authored_prose(repo_root)
-            if any(phrase in line.lower() for phrase in banned)
-        ]
+        offenders = _phrase_hits(repo_root, banned)
 
         assert not offenders, (
             "these state that `aggregate` sums its children's `overall` when the "
@@ -996,10 +1062,16 @@ class TestTheRootMixesHeaderLeavesWithItemPairings:
 class TestCoincidingNodesAreNotEvidenceOfAgreement:
     """The two nodes reading alike does not mean nothing was hidden.
 
-    This file used to state that they coincide only where there is no accepted
-    subtree to expand. With correct header fields beside a list whose items were all
-    rejected, both root nodes read the same numbers while an accepted subtree is
-    present and leaves exist that neither counted.
+    With correct header fields beside a list whose items were all rejected, both
+    root nodes read the same numbers while leaves exist that neither counted.
+
+    What this shape does NOT show is that an accepted subtree can be present while
+    the nodes coincide. It has no accepted subtree: the header fields are primitive
+    leaves with no `fields` key, and the list is childless because every item was
+    rejected. An earlier revision claimed otherwise, and named a test
+    `test_and_an_accepted_subtree_is_present` whose only assertion was
+    `overall['tp'] == 3` -- three matched LEAVES, which is not what the name says.
+    That case is `test_an_accepted_single_leaf_subtree_also_coincides` below.
     """
 
     def test_both_root_nodes_read_alike(self):
@@ -1007,10 +1079,17 @@ class TestCoincidingNodesAreNotEvidenceOfAgreement:
         assert (cm["overall"]["tp"], cm["overall"]["fd"]) == (3, 2)
         assert (cm["aggregate"]["tp"], cm["aggregate"]["fd"]) == (3, 2)
 
-    def test_and_an_accepted_subtree_is_present(self):
-        """The condition the retired rule said had to be absent."""
+    def test_no_accepted_subtree_is_present_here(self):
+        """States the shape honestly, rather than asserting its own name away.
+
+        Three primitive leaves (no `fields` key at all) and one childless list. So
+        this is evidence about hiding, not a counter-example to the coincidence rule.
+        """
         cm = _header_doc(item_count=2, rejected=2)
         assert cm["overall"]["tp"] == 3  # the three header leaves matched
+        headers = ["invoice_id", "vendor", "date"]
+        assert all("fields" not in cm["fields"][name] for name in headers)
+        assert cm["fields"]["lines"]["fields"] == {}
 
     def test_while_leaves_neither_node_counted_exist(self):
         """Two items of six fields is twelve leaves; `aggregate` reports five rows."""
@@ -1164,3 +1243,60 @@ class TestTheUnitLabelPublishedForRankingSections:
 
         # And the labels are not all the same, so the agreement above means something.
         assert {published_label(node) for node in nodes} == {"leaves", "object rows"}
+
+
+class TestAnAcceptedSubtreeCanCoincideToo:
+    """The case that actually falsifies "coincide only where nothing is left to expand".
+
+    A nested object holding exactly ONE leaf: the object is one row on `overall` and
+    its single leaf is one row on `aggregate`, so the two agree while the subtree is
+    accepted AND descended into. The published rule characterised coincidence by the
+    absence of an expandable subtree, and this shape has one.
+    """
+
+    @staticmethod
+    def _one_leaf_doc():
+        Kid = type(
+            "Kid",
+            (StructuredModel,),
+            {
+                "__annotations__": {"a": Optional[str]},
+                "match_threshold": 0.5,
+                "a": ComparableField(
+                    comparator=ExactComparator(), threshold=1.0, default=None
+                ),
+            },
+        )
+        Doc = type(
+            "Doc",
+            (StructuredModel,),
+            {
+                "__annotations__": {"kid": Optional[Kid]},
+                "kid": ComparableField(
+                    comparator=ExactComparator(), threshold=1.0, default=None
+                ),
+            },
+        )
+        return Doc, Kid
+
+    def _cm(self):
+        Doc, Kid = self._one_leaf_doc()
+        return Doc(kid=Kid(a="x")).compare_with(
+            Doc(kid=Kid(a="x")), include_confusion_matrix=True
+        )["confusion_matrix"]
+
+    def test_an_accepted_single_leaf_subtree_also_coincides(self):
+        cm = self._cm()
+        assert (cm["overall"]["tp"], cm["overall"]["fd"]) == (1, 0)
+        assert (cm["aggregate"]["tp"], cm["aggregate"]["fd"]) == (1, 0)
+
+    def test_and_that_subtree_really_was_expanded(self):
+        """Without this the case would be indistinguishable from a childless node."""
+        cm = self._cm()
+        assert sorted(cm["fields"]["kid"]["fields"].keys()) == ["a"]
+
+    def test_and_it_really_was_accepted(self):
+        """A rejected subtree would coincide for the uninteresting reason."""
+        cm = self._cm()
+        assert cm["fields"]["kid"]["overall"]["fd"] == 0
+        assert cm["fields"]["kid"]["overall"]["tp"] == 1

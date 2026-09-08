@@ -96,7 +96,7 @@ The gating applies to **`List[StructuredModel]` items only**. It is a property o
 - its leaves are **always** reported on `aggregate`, whether or not the object was rejected;
 - its `overall` verdict comes from the **field's own `threshold`**, not from `match_threshold`, which is never consulted for that shape.
 
-The worked output above is that case, and shows it: `contact` scores 0.5 and is `fd=1` on `overall`, and its leaves are still counted (`aggregate tp=1 fd=1`) and still roll into the root. If your schema is nested objects rather than lists of them, `aggregate` is showing you your failing leaves, not hiding them.
+The worked output above is that case, and shows it: one of `contact`'s two leaves is wrong, so its subtree mean is 0.5, which is below the field's `threshold=1.0` and reports `fd=1` on `overall` (with `clip_under_threshold` at its default, `field_scores['contact']` reads `0.0` rather than `0.5`). Its leaves are still counted (`aggregate tp=1 fd=1`) and still roll into the root. If your schema is nested objects rather than lists of them, `aggregate` is showing you your failing leaves, not hiding them.
 
 This is the same two-stage structure as mean Average Precision, which Stickler also implements for bounding boxes: an IoU threshold decides whether a detection matched, and only matched pairs are evaluated further. See [Bounding Box mAP Metrics](bbox-map-metrics.md#iou-calculation), where a below-threshold detection is likewise a failure at the matching stage rather than a source of per-attribute errors. Nobody expects an unmatched detection to contribute attribute-level accuracy, and the reasoning for objects is the same.
 
@@ -124,9 +124,16 @@ cm['aggregate']   tp=24  fd=0   P=1.0000  R=1.0000  F1=1.0000
 
 `aggregate` now reports a flawless `P=1.0000` precisely because the rejected item contributes no leaf rows: 24 leaves from the four accepted items, all correct. Reading `aggregate` alone here is the same trap as reading `overall` alone one level up.
 
-The two nodes coincide wherever the node being read has no accepted subtree left to expand: a model with no nesting, or one whose every nested subtree was rejected. Reject all five items and both nodes read `tp=0 fd=5`.
+The two nodes coincide whenever every child contributes the same number of rows to each: a model with no nesting, a list whose items were all rejected (reject all five and both read `tp=0 fd=5`), and also a nested object holding exactly one leaf, where the object is one row and its single leaf is one row. That last case is worth stating because it is an *accepted, expanded* subtree, so "they coincide only where there is nothing left to expand" is not the rule:
 
-Coinciding is not evidence that nothing was hidden. Put three header fields beside that list and reject every item, and the root reads `overall tp=3 fd=2` and `aggregate tp=3 fd=2` -- equal, with an accepted subtree present and 15 leaves in the document. They agree because the list contributed object rows to both, not because the leaf view confirmed the object view.
+```
+one nested object, one leaf, everything correct
+
+cm['overall']     tp=1        the object
+cm['aggregate']   tp=1        its one leaf
+```
+
+Coinciding is not evidence that nothing was hidden, which is the separate and more useful point. Put three header fields beside a **two-item** list and reject both items, and the root reads `overall tp=3 fd=2` and `aggregate tp=3 fd=2` -- equal, while 15 leaves exist in the document and `aggregate` counted 5 rows. They agree because the list contributed object rows to both, not because the leaf view confirmed the object view.
 {: #aggregate-counts-objects-for-an-all-rejected-list }
 
 !!! warning "When a list's items are all rejected, `aggregate` counts objects there, not leaves"
@@ -201,7 +208,7 @@ The `overall` name predates the aggregate rollup and reads as "the whole documen
 ## Calculation Logic
 
 1. **Leaf nodes**: `aggregate` equals `overall`. A node counts as a leaf when `fields` has no entries, which is every primitive field and also any structured node that was not descended into.
-2. **Parent nodes**: `aggregate` is the sum of the child `aggregate` values. Nothing sums a node's children's `overall`, so a list whose items were *all* rejected does not take this branch at all: with no children left it is a leaf by step 1, and reports one row per rejected item rather than one per leaf ([why](#aggregate-counts-objects-for-an-all-rejected-list)).
+2. **Parent nodes**: `aggregate` is the sum of the child `aggregate` values. A list whose items were *all* rejected does not reach this step: with no children left it is a leaf by step 1, and so reports one row per rejected item rather than one per leaf ([why](#aggregate-counts-objects-for-an-all-rejected-list)). `AggregateMetricsCalculator` also carries a guard that sums the children's `overall` when the summed child aggregates come out all-zero, but it cannot be what produces that behaviour, since a childless node never gets here; instrumented across this repo's suite it contributes to no result.
 3. **Derived metrics**: Precision, recall, F1, and accuracy are recomputed at each level from the summed counts. They inherit whichever unit produced those counts, so they are not a leaf rate on a node whose list items were all rejected.
 
 ## Hierarchical Reporting Example

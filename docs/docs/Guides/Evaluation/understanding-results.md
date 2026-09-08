@@ -151,7 +151,7 @@ row for the field. But it is not a count of line items, and reading it as one
 overstates by the number of header fields. For "how many items did we find", read the
 list field's own node.
 
-Two examples make the split concrete.
+Two examples make the split concrete. Both drop the header fields and use a model whose **only** field is the list, so `cm['overall']` at the root is the list's own count and the mixing described just above does not apply. Add header fields back and the root numbers below gain one row per header field.
 
 **A wrong leaf inside a comparable object.** Five line items of six fields each, one field of one item wrong. That item scores 5/6, clears the 0.7 threshold, and is comparable:
 
@@ -218,10 +218,14 @@ aggregate   tp=5  fp=1  fn=0  fa=1  fd=0
 
     `EvalResult.precision`, `.recall`, `.f1` and `.accuracy` from `stickler.evaluate()` come from `cm['overall']['derived']` at the **root**, so they inherit the root's unit: they classify the root's direct children. On a model whose only field is the list that is a count of objects. Put three header fields beside it and it is a rate over 3 header leaves plus 5 item pairings, so it is not an object rate at all -- see [Read the node whose children you mean](#read-the-node-whose-children-you-mean). For an object rate, read the list field's own node.
 
-    These are attributes, so they need the entry point that returns an `EvalResult`. Every other example on this page calls `compare_with()`, which returns a plain `dict`, so reaching for `.precision` on one of those raises `AttributeError`. Run the first example above through `stickler.evaluate()` instead:
+    These are attributes, so they need the entry point that returns an `EvalResult`. Every other example on this page calls `compare_with()`, which returns a plain `dict`, so reaching for `.precision` on one of those raises `AttributeError`. The numbers below are the five-item, one-wrong-leaf document from [A wrong leaf inside a comparable object](#overall-vs-aggregate) above, evaluated through `stickler.evaluate()`:
 
     ```python
-    result = stickler.evaluate(ground_truth, prediction)   # the first example, same data
+    import stickler
+
+    # `ground_truth` and `prediction` are the five line items of six fields each,
+    # with one field of one item wrong -- the first worked example above.
+    result = stickler.evaluate(ground_truth, prediction)
 
     result.precision                                                # 1.0
     result.overall_score                                            # 0.9667
