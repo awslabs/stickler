@@ -1547,8 +1547,11 @@ class StructuredModel(BaseModel):
             other: Another instance of the same model to compare with
             include_confusion_matrix: Whether to include confusion matrix
                 calculations. The result carries two rollup nodes answering
-                different questions: `overall` gives object verdicts (was the
-                pairing genuine or spurious), while `aggregate` gives leaf
+                different questions: `overall` classifies this node's direct
+                children (for a list field, whether each pairing was genuine or
+                spurious; at the root, its own fields, so the two units can mix
+                in one count -- read a list field's own `overall` for a count of
+                items), while `aggregate` gives leaf
                 detail for the objects that were comparable. A LIST ITEM below
                 the element class's `match_threshold` is one FD and is not
                 descended into, so lowering `match_threshold` is how you get

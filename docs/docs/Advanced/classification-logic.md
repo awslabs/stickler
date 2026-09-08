@@ -119,7 +119,7 @@ neither term. The mixed-matching example above scores recall `1.000` even though
 `0.667`. `HungarianMatcher.calculate_metrics` always uses that second formula.
 See [FD and recall](hungarian-matching.md#fd-and-recall).
 
-These are computed at every node of the result tree, from that node's own counts, and which counts those are depends on which node you read. `overall` gives object verdicts at that level: was the pairing genuine or spurious. `aggregate` gives leaf detail, and for a list of objects that means only the items that were comparable, since a list item below the element class's `match_threshold` is one FD and is not descended into. A single nested `StructuredModel` field is not gated this way: its leaves are always reported. See [Which node answers which question](aggregate-metrics.md#which-node-answers-which-question).
+These are computed at every node of the result tree, from that node's own counts, and which counts those are depends on which node you read. `overall` classifies that node's direct children: for a list field, whether each pairing was genuine or spurious; at the root, its own fields, which means the two units can mix in a single count. `aggregate` gives leaf detail, and for a list of objects that means only the items that were comparable, since a list item below the element class's `match_threshold` is one FD and is not descended into. A single nested `StructuredModel` field is not gated this way: its leaves are always reported. See [Which node answers which question](aggregate-metrics.md#which-node-answers-which-question).
 
 ## Edge Cases
 

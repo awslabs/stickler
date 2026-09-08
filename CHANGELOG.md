@@ -517,11 +517,17 @@ Each release links to full notes on the
   Both nodes were previously described only mechanically ("this node's own direct
   classification" / "sums all primitive-field classifications beneath"), which
   said nothing about which to read for which question, or that they diverge on
-  any model with nesting. They coincide only where there is no accepted subtree
-  to expand: a flat model, or a document in which *every* subtree was rejected.
-  One rejected subtree among several makes them diverge further, not converge,
-  because `aggregate` then reports a flawless precision over the accepted items
-  only.
+  any model with nesting. They coincide wherever the node being read has no
+  accepted subtree left to expand: a flat model, or one whose every nested subtree
+  was rejected. One rejected subtree among several usually makes them diverge
+  further rather than converge, because `aggregate` then reports a flawless
+  precision over the accepted items only.
+
+  Coinciding is not evidence that nothing was hidden, and the pages say so. With
+  three header fields beside a list whose items were all rejected, the root reads
+  `overall tp=3 fd=2` and `aggregate tp=3 fd=2` -- equal, with an accepted subtree
+  present and 15 leaves in the document, because the list contributed object rows
+  to both.
 
   Both pages carry the same two-stage framing as mean Average Precision, and now
   also name where the analogy stops: a below-threshold bounding box counts as both

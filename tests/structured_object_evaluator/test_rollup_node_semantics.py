@@ -11,11 +11,16 @@ whole would be scoring something declared not comparable. A caller who wants
 those leaves counted lowers `match_threshold` so the object qualifies, which
 `test_lowering_match_threshold_exposes_the_leaves` pins.
 
-The two nodes coincide only where there is no accepted subtree to expand at all: a
-model with no nesting, or a document in which *every* subtree was rejected. One
-rejected subtree among several makes them diverge further rather than converge,
-since `aggregate` then reports a flawless precision over the accepted items only,
-which `test_a_rejected_subtree_separates_the_two_numbers` pins.
+The two nodes coincide wherever the node being read has no accepted subtree left
+to expand: a model with no nesting, or one whose every nested subtree was rejected.
+One rejected subtree among several usually makes them diverge further rather than
+converge, since `aggregate` then reports a flawless precision over the accepted
+items only, which `test_a_rejected_subtree_separates_the_two_numbers` pins.
+
+Coinciding does not mean nothing was hidden. With header fields beside a list whose
+items were all rejected, both root nodes read the same numbers while leaves exist
+that neither counted -- `TestCoincidingNodesAreNotEvidenceOfAgreement` pins that
+shape, because it falsifies the simpler rule this file used to state.
 
 These tests pin the numbers and the snippet the documentation publishes, so
 neither can go stale:
@@ -491,7 +496,19 @@ class TestTheDocsAndTheEngineCannotDrift:
             for number, line in enumerate(lines):
                 if "clean = (" not in line:
                     continue
-                block = "\n".join(lines[number : number + 8])
+                # Only the assignment itself. A fixed window read past the
+                # closing paren, so an ordinary `assert overall["fa"] == 0`
+                # written after a corrected block would fail this test, in
+                # another file, for a reason unrelated to the change being
+                # made. Stop when the parentheses balance.
+                block_lines = []
+                depth = 0
+                for candidate in lines[number:]:
+                    block_lines.append(candidate)
+                    depth += candidate.count("(") - candidate.count(")")
+                    if depth <= 0:
+                        break
+                block = "\n".join(block_lines)
                 # `fa` read from `overall` inside the check is the retired form:
                 # a value invented on a null ground-truth leaf is `fa` on
                 # `aggregate` and leaves `overall` clean, so the check passes on
@@ -623,3 +640,100 @@ class TestAllRejectedAggregateCountsObjects:
     def test_so_the_two_nodes_agree_only_because_the_unit_changed(self):
         cm = self._two_items(rejected=2)
         assert cm["aggregate"]["fd"] == cm["overall"]["fd"] == 2
+
+
+class _Header(StructuredModel):
+    """A document with fields BESIDE the list, which is the ordinary shape.
+
+    Every other fixture in this file is a model whose only field is the list, and
+    that shape hides two things: `overall` at the root sums the node's direct
+    children, so header leaves and item pairings land in one count; and the
+    `aggregate` object-row fallback can fire for the list while the document as a
+    whole is plainly not all-rejected.
+    """
+
+    invoice_id: Optional[str] = ComparableField(
+        comparator=ExactComparator(), threshold=1.0, default=None
+    )
+    vendor: Optional[str] = ComparableField(
+        comparator=ExactComparator(), threshold=1.0, default=None
+    )
+    date: Optional[str] = ComparableField(
+        comparator=ExactComparator(), threshold=1.0, default=None
+    )
+    lines: Optional[List[Line]] = ComparableField(default=None)
+
+
+def _header_doc(item_count: int, rejected: int):
+    def item(index: int, wrong: bool) -> Line:
+        values = {name: f"{name}{index}" for name in FIELDS}
+        if wrong:
+            values["tax"] = "WRONG"
+            values["total"] = "WRONG"
+        return Line(**values)
+
+    common = {"invoice_id": "i", "vendor": "v", "date": "d"}
+    gt = _Header(**common, lines=[item(i, False) for i in range(item_count)])
+    pred = _Header(**common, lines=[item(i, i < rejected) for i in range(item_count)])
+    return gt.compare_with(pred, include_confusion_matrix=True)["confusion_matrix"]
+
+
+class TestTheRootMixesHeaderLeavesWithItemPairings:
+    """`overall` at the root is not a count of list items.
+
+    The published lookup row said "How many list items did the model find? ->
+    `overall`", which is true only of a model whose sole field is the list. Add the
+    header fields a real invoice has and the root count silently becomes the sum of
+    two different units.
+    """
+
+    def test_the_root_count_is_leaves_plus_pairings(self):
+        cm = _header_doc(item_count=5, rejected=0)
+        assert cm["overall"]["tp"] == 8  # 3 header leaves + 5 item pairings
+
+    def test_the_list_field_is_the_node_that_counts_items(self):
+        cm = _header_doc(item_count=5, rejected=0)
+        assert cm["fields"]["lines"]["overall"]["tp"] == 5
+
+    def test_so_the_two_disagree_and_only_one_answers_the_question(self):
+        cm = _header_doc(item_count=5, rejected=0)
+        assert cm["overall"]["tp"] != cm["fields"]["lines"]["overall"]["tp"]
+
+
+class TestCoincidingNodesAreNotEvidenceOfAgreement:
+    """The two nodes reading alike does not mean nothing was hidden.
+
+    This file used to state that they coincide only where there is no accepted
+    subtree to expand. With correct header fields beside a list whose items were all
+    rejected, both root nodes read the same numbers while an accepted subtree is
+    present and leaves exist that neither counted.
+    """
+
+    def test_both_root_nodes_read_alike(self):
+        cm = _header_doc(item_count=2, rejected=2)
+        assert (cm["overall"]["tp"], cm["overall"]["fd"]) == (3, 2)
+        assert (cm["aggregate"]["tp"], cm["aggregate"]["fd"]) == (3, 2)
+
+    def test_and_an_accepted_subtree_is_present(self):
+        """The condition the retired rule said had to be absent."""
+        cm = _header_doc(item_count=2, rejected=2)
+        assert cm["overall"]["tp"] == 3  # the three header leaves matched
+
+    def test_while_leaves_neither_node_counted_exist(self):
+        """Two items of six fields is twelve leaves; `aggregate` reports five rows."""
+        cm = _header_doc(item_count=2, rejected=2)
+        assert cm["aggregate"]["tp"] + cm["aggregate"]["fd"] == 5
+
+    def test_the_document_is_not_all_rejected(self):
+        """So a reader checking the document-level condition is not protected."""
+        cm = _header_doc(item_count=2, rejected=2)
+        assert cm["overall"]["tp"] > 0
+
+    def test_the_list_fields_own_overall_is_the_signal(self):
+        """`tp == 0` on the list node is the condition that actually holds."""
+        cm = _header_doc(item_count=2, rejected=2)
+        assert cm["fields"]["lines"]["overall"]["tp"] == 0
+
+    def test_root_precision_reads_as_a_leaf_rate_and_is_not_one(self):
+        cm = _header_doc(item_count=2, rejected=2)
+        assert cm["aggregate"]["derived"]["cm_precision"] == pytest.approx(0.6)

@@ -211,7 +211,9 @@ class ComparisonEngine:
         Args:
             other: Another instance of the same model to compare with
             include_confusion_matrix: Whether to include confusion matrix
-                calculations. `overall` gives object verdicts at this level;
+                calculations. `overall` classifies this node's direct children,
+                which at the root are its own fields, so read a list field's own
+                `overall` for a count of items;
                 `aggregate` gives leaf detail, and for a LIST ITEM that means
                 only the items that were comparable, since an item below the
                 element class's `match_threshold` is a single FD and is not

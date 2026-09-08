@@ -79,7 +79,7 @@ print(cm['fields']['contact']['aggregate'])
 
 Note the difference between `overall` and `aggregate`:
 
-- **`overall`** reflects this node's own direct classification.
+- **`overall`** classifies this node's direct children. Where the field is a list, those children are item pairings; at the root they are the root's own fields, so the two units can mix in one count.
 - **`aggregate`** sums all primitive-field classifications beneath this node (including itself if it is a leaf).
 
 ### Which node answers which question
@@ -87,7 +87,7 @@ Note the difference between `overall` and `aggregate`:
 The two nodes are the two stages of the evaluation:
 
 - **`overall` is detection.** The unit is the object. Did we find the right things? Five line items paired, none spurious.
-- **`aggregate` is extraction.** The unit is the leaf. Among the objects established to be the same object, how many field values were correct? 29 of 30.
+- **`aggregate` is extraction.** The unit is the leaf, except where noted in the warning below. Among the objects established to be the same object, how many field values were correct? 29 of 30.
 
 `match_threshold` is the handoff, and it is really the definition of "the same object". Above it, the pair is the same thing, so grading its fields is meaningful. Below it, it is not the same thing, so grading its fields would be scoring the fields of a *different* object. Such an **item** is classified as a single false discovery and is not descended into.
 
@@ -124,13 +124,16 @@ cm['aggregate']   tp=24  fd=0   P=1.0000  R=1.0000  F1=1.0000
 
 `aggregate` now reports a flawless `P=1.0000` precisely because the rejected item contributes no leaf rows: 24 leaves from the four accepted items, all correct. Reading `aggregate` alone here is the same trap as reading `overall` alone one level up.
 
-The two nodes coincide only where there is no accepted subtree to expand at all: a model with no nesting, or a document in which *every* subtree was rejected. Reject all five items and both nodes read `tp=0 fd=5`.
+The two nodes coincide wherever the node being read has no accepted subtree left to expand: a model with no nesting, or one whose every nested subtree was rejected. Reject all five items and both nodes read `tp=0 fd=5`.
 
-!!! warning "On an all-rejected document, `aggregate` counts objects, not leaves"
+Coinciding is not evidence that nothing was hidden. Put three header fields beside that list and reject every item, and the root reads `overall tp=3 fd=2` and `aggregate tp=3 fd=2` -- equal, with an accepted subtree present and 15 leaves in the document. They agree because the list contributed object rows to both, not because the leaf view confirmed the object view.
 
-    That convergence is not the leaf view agreeing with the object view. When the
-    recursive leaf sum comes out all-zero, `aggregate` falls back to summing its
-    children's `overall`, so the **unit of the count changes with the data**:
+!!! warning "When a list's items are all rejected, `aggregate` counts objects there, not leaves"
+
+    When a node's recursive leaf sum comes out all-zero, `aggregate` falls back to
+    summing its children's `overall`, so the **unit of the count changes with the
+    data**. It fires per node, and needs only that one list's items to be rejected
+    -- not the whole document:
 
     ```
     two items of six fields
@@ -138,10 +141,19 @@ The two nodes coincide only where there is no accepted subtree to expand at all:
       2 of 2 rejected    aggregate tp=0 fd=2   P=0.0000    2 OBJECT rows, though 12 leaves exist
     ```
 
-    So `aggregate` counts are not a reliable denominator for a leaf total, and a
-    `derived` block from an all-rejected document is not leaf-level precision. Read
-    `overall` to know how many objects were rejected before dividing anything by an
-    `aggregate` count.
+    That propagates upward. With three correct header fields beside such a list, the
+    document is plainly **not** all-rejected, and the root still reads:
+
+    ```
+    root  overall    tp=3 fd=2
+    root  aggregate  tp=3 fd=2    derived.cm_precision = 0.6000
+    ```
+
+    Five rows where fifteen leaves exist. So checking whether the document was
+    all-rejected does not protect you, and neither does reading the root `overall`,
+    which reports the same numbers. Before dividing an `aggregate` count by a leaf
+    total, check each list field's own `overall` for `tp == 0`: that is the condition
+    under which its `aggregate` stops being a leaf count.
 
 #### Getting leaf detail for a marginal list item
 

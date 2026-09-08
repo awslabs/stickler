@@ -103,13 +103,13 @@ The `confusion_matrix` object has four keys:
 - **`overall`** -- Metrics for this node's direct children. Where the field is a list, those children are item pairings rather than leaves.
 - **`fields`** -- Field-by-field breakdown, with nested structure for objects and lists.
 - **`non_matches`** -- Populated when `document_non_matches=True` (empty otherwise).
-- **`aggregate`** -- Primitive field metrics summed recursively below this node, excluding list items rejected at their element class's `match_threshold`. A single nested `StructuredModel` field is not excluded; its leaves are always counted. See [`overall` vs `aggregate`](#overall-vs-aggregate).
+- **`aggregate`** -- Primitive field metrics summed recursively below this node, excluding list items rejected at their element class's `match_threshold`. A single nested `StructuredModel` field is not excluded; its leaves are always counted. Where a list's items were *all* rejected the counts become object rows rather than primitive-field metrics, so check that before computing a leaf rate ([why](../../Advanced/aggregate-metrics.md#getting-leaf-detail-for-a-marginal-list-item)). See [`overall` vs `aggregate`](#overall-vs-aggregate).
 
 ### `overall` vs `aggregate`
 
 The two nodes are the two stages of the evaluation, and you generally want both:
 
-- **`overall` is detection.** The unit is the object. Did we find the right things? For a list of 5 line items that each paired above `match_threshold`, `tp = 5`.
+- **`overall` is detection.** The unit is whatever this node's direct children are. On a list field whose 5 items each paired above `match_threshold`, that field's `overall` reads `tp = 5`. Read it on the list field, not at the root: the root's children are its own fields, so a document with 3 header fields beside that list reads `tp = 8` at the root -- 3 leaves plus 5 pairings, mixing the two units in one number.
 - **`aggregate` is extraction.** The unit is the leaf. Among the objects established to be the same object, how many field values were correct? For those same 5 items with 6 fields each, `tp` counts up to 30.
 
 `match_threshold` is the handoff, and it is really the definition of "the same object". Above it, the pair is the same thing, so grading its fields is meaningful. Below it, it is not the same thing, so grading its fields would be scoring the fields of a *different* object. Such an **item** is classified as a single **false discovery** and is not descended into. This gating is a property of `List[StructuredModel]` pairing, not of nested objects generally: a single nested `StructuredModel` field always reports its leaves, and is judged against the field's own `threshold` rather than `match_threshold`.
@@ -124,6 +124,31 @@ five items, one rejected
 recall_with_fd=False   overall tp=4 fd=1 fn=0   R=1.0000
 recall_with_fd=True    overall tp=4 fd=1 fn=0   R=0.8000
 ```
+
+### Read the node whose children you mean
+
+`overall` counts a node's direct children, so which node you read decides what the
+number means. On a document with fields beside a list:
+
+```python
+class Doc(StructuredModel):
+    invoice_id: str = ComparableField(...)
+    vendor: str = ComparableField(...)
+    date: str = ComparableField(...)
+    lines: List[Line] = ComparableField(...)      # Line has 6 leaves
+```
+
+Five items, everything correct:
+
+```
+cm['overall']                    tp=8     3 header leaves + 5 item pairings
+cm['fields']['lines']['overall'] tp=5     the item count
+```
+
+The root number is not wrong, it is a different question: it classifies the root's
+own four fields. But it is not a count of line items, and reading it as one
+overstates by the number of header fields. For "how many items did we find", read the
+list field's own node.
 
 Two examples make the split concrete.
 
@@ -165,7 +190,7 @@ At `0.66` the marginal item is comparable, so its six leaves join the first item
 |---|---|
 | Were the objects comparable, and how many were spurious? | `overall` |
 | Among comparable objects, which leaves landed? | `aggregate` |
-| How many list items did the model find? | `overall` |
+| How many list items did the model find? | that list field's own `overall`, e.g. `cm['fields']['lines']['overall']` |
 | Did anything at all fail? | both, see below |
 
 Because the two nodes scope different things, a complete "did anything fail" check reads both:
