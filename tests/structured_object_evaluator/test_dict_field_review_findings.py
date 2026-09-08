@@ -55,9 +55,7 @@ class TestPep563:
         runtime = type(M._get_comparison_info("v").comparator).__name__
         exported = M.to_json_schema()["properties"]["v"]["x-aws-stickler-comparator"]
         assert runtime == "ANLSStarComparator"
-        assert exported == runtime, (
-            "export must not report a comparator the engine does not use"
-        )
+        assert exported == runtime, "export must not report a comparator the engine does not use"
 
     def test_a_round_tripped_schema_keeps_the_comparator(self):
         """Before, re-importing installed Levenshtein EXPLICITLY, which suppressed
@@ -70,7 +68,6 @@ class TestPep563:
         is tracked separately; asserting it here so the gap is recorded rather
         than mistaken for this work.
         """
-
         class M(StructuredModel):
             v: Dict[str, Any] = ComparableField()
 
@@ -116,13 +113,10 @@ class TestComparatorsThatCanScoreAMapping:
     def test_and_key_order_does_not_matter(self, comparator):
         """ExactComparator used str(dict), so identical content scored 0.0
         whenever key order differed, and 1.0 when it happened to agree."""
-
         class M(StructuredModel):
             v: Dict[str, Any] = ComparableField(comparator=comparator())
 
-        score = M(v={"a": 1, "b": 2}).compare_with(M(v={"b": 2, "a": 1}))[
-            "field_scores"
-        ]["v"]
+        score = M(v={"a": 1, "b": 2}).compare_with(M(v={"b": 2, "a": 1}))["field_scores"]["v"]
         assert score == pytest.approx(1.0)
 
     def test_a_comparator_that_genuinely_cannot_still_degrades(self):
@@ -134,9 +128,7 @@ class TestComparatorsThatCanScoreAMapping:
             v: Dict[str, Any] = ComparableField(comparator=LevenshteinComparator())
 
         with pytest.warns(UserWarning, match="ANLSStarComparator"):
-            result = M(v={"a": 1}).compare_with(
-                M(v={"a": 1}), include_confusion_matrix=True
-            )
+            result = M(v={"a": 1}).compare_with(M(v={"a": 1}), include_confusion_matrix=True)
         assert result["field_scores"]["v"] == 0.0
         assert result["confusion_matrix"]["overall"]["fd"] == 1
 
@@ -153,14 +145,8 @@ class TestSharedComparableFieldDoesNotLeak:
         class WithDict(StructuredModel):
             v: Dict[str, Any] = shared
 
-        assert (
-            type(WithString._get_comparison_info("v").comparator).__name__
-            == "LevenshteinComparator"
-        )
-        assert (
-            type(WithDict._get_comparison_info("v").comparator).__name__
-            == "ANLSStarComparator"
-        )
+        assert type(WithString._get_comparison_info("v").comparator).__name__ == "LevenshteinComparator"
+        assert type(WithDict._get_comparison_info("v").comparator).__name__ == "ANLSStarComparator"
         assert WithString._get_comparison_info("v").clip_under_threshold is True
         assert WithDict._get_comparison_info("v").clip_under_threshold is False
 

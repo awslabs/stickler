@@ -45,7 +45,9 @@ class TestCaseInsensitiveByRule:
         ],
     )
     def test_case_only_difference_matches(self, field, gt, pred):
-        model = type("M", (BaseModel,), {"__annotations__": {field: str}})
+        model = type(
+            "M", (BaseModel,), {"__annotations__": {field: str}}
+        )
 
         assert _score(model, field, gt, pred) == 1.0
 

@@ -57,13 +57,11 @@ class TestPredictionRawInResult:
     def test_prediction_raw_present_with_rich_values(self):
         """compare_with includes prediction_raw when prediction has rich value metadata."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
-        pred = Product.from_json(
-            {
-                "name": {"_value": "Widget", "_confidence": 0.9},
-                "price": {"_value": 29.99, "_confidence": 0.8},
-                "sku": {"_value": "ABC123", "_confidence": 0.7},
-            }
-        )
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 29.99, "_confidence": 0.8},
+            "sku": {"_value": "ABC123", "_confidence": 0.7},
+        })
         result = gt.compare_with(pred, document_field_comparisons=True)
         assert "prediction_raw" in result
         assert result["prediction_raw"]["name"]["_value"] == "Widget"
@@ -72,13 +70,11 @@ class TestPredictionRawInResult:
     def test_prediction_raw_with_partial_confidence(self):
         """prediction_raw preserves the mix of rich and plain values."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
-        pred = Product.from_json(
-            {
-                "name": {"_value": "Widget", "_confidence": 0.9},
-                "price": 29.99,  # plain value
-                "sku": {"_value": "ABC123"},  # value-only rich value
-            }
-        )
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": 29.99,  # plain value
+            "sku": {"_value": "ABC123"},  # value-only rich value
+        })
         result = gt.compare_with(pred, document_field_comparisons=True)
         assert "prediction_raw" in result
         raw = result["prediction_raw"]
@@ -99,15 +95,13 @@ class TestPredictionRawInResult:
             name="Jane",
             address=Address(street="123 Main", city="Boston"),
         )
-        pred = Customer.from_json(
-            {
-                "name": {"_value": "Jane", "_confidence": 0.96},
-                "address": {
-                    "street": {"_value": "123 Main St", "_confidence": 0.85},
-                    "city": {"_value": "Chicago", "_confidence": 0.40},
-                },
-            }
-        )
+        pred = Customer.from_json({
+            "name": {"_value": "Jane", "_confidence": 0.96},
+            "address": {
+                "street": {"_value": "123 Main St", "_confidence": 0.85},
+                "city": {"_value": "Chicago", "_confidence": 0.40},
+            },
+        })
         result = gt.compare_with(pred, document_field_comparisons=True)
         assert "prediction_raw" in result
         raw = result["prediction_raw"]
@@ -122,18 +116,16 @@ class TestPredictionRawInResult:
                 Product(name="Mouse", price=29.99, sku="MOU001"),
             ],
         )
-        pred = Order.from_json(
-            {
-                "order_id": {"_value": "ORD-1", "_confidence": 0.99},
-                "items": [
-                    {
-                        "name": {"_value": "Mouse", "_confidence": 0.90},
-                        "price": {"_value": 29.99, "_confidence": 0.85},
-                        "sku": {"_value": "MOU001", "_confidence": 0.95},
-                    },
-                ],
-            }
-        )
+        pred = Order.from_json({
+            "order_id": {"_value": "ORD-1", "_confidence": 0.99},
+            "items": [
+                {
+                    "name": {"_value": "Mouse", "_confidence": 0.90},
+                    "price": {"_value": 29.99, "_confidence": 0.85},
+                    "sku": {"_value": "MOU001", "_confidence": 0.95},
+                },
+            ],
+        })
         result = gt.compare_with(pred, document_field_comparisons=True)
         raw = result["prediction_raw"]
         assert raw["items"][0]["name"]["_confidence"] == 0.90
@@ -146,13 +138,11 @@ class TestJsonRoundTrip:
     def test_prediction_raw_survives_json_serialization(self):
         """prediction_raw survives json.dumps/json.loads."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
-        pred = Product.from_json(
-            {
-                "name": {"_value": "Widget", "_confidence": 0.9},
-                "price": {"_value": 99.99, "_confidence": 0.3},
-                "sku": {"_value": "ABC123", "_confidence": 0.8},
-            }
-        )
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 99.99, "_confidence": 0.3},
+            "sku": {"_value": "ABC123", "_confidence": 0.8},
+        })
         result = gt.compare_with(
             pred,
             include_confusion_matrix=True,
@@ -175,13 +165,11 @@ class TestUpdateFromComparisonResultConfidence:
     def test_accumulates_confidence_from_prediction_raw(self):
         """update_from_comparison_result extracts confidence from prediction_raw."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
-        pred = Product.from_json(
-            {
-                "name": {"_value": "Widget", "_confidence": 0.9},
-                "price": {"_value": 99.99, "_confidence": 0.3},
-                "sku": {"_value": "ABC123", "_confidence": 0.8},
-            }
-        )
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 99.99, "_confidence": 0.3},
+            "sku": {"_value": "ABC123", "_confidence": 0.8},
+        })
         comparison = gt.compare_with(
             pred,
             include_confusion_matrix=True,
@@ -234,13 +222,11 @@ class TestUpdateFromComparisonResultConfidence:
     def test_partial_confidence(self):
         """update_from_comparison_result handles partial confidence correctly."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
-        pred = Product.from_json(
-            {
-                "name": {"_value": "Widget", "_confidence": 0.9},
-                "price": 29.99,  # no confidence
-                "sku": {"_value": "ABC123", "_confidence": 0.8},
-            }
-        )
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": 29.99,  # no confidence
+            "sku": {"_value": "ABC123", "_confidence": 0.8},
+        })
         comparison = gt.compare_with(
             pred,
             include_confusion_matrix=True,
@@ -283,13 +269,11 @@ class TestUpdateFromComparisonResultConfidence:
         confidence metrics.
         """
         gt = Product(name="Widget", price=29.99, sku="ABC123")
-        pred = Product.from_json(
-            {
-                "name": {"_value": "Widget", "_confidence": 0.9},
-                "price": {"_value": 99.99, "_confidence": 0.3},
-                "sku": {"_value": "ABC123", "_confidence": 0.8},
-            }
-        )
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 99.99, "_confidence": 0.3},
+            "sku": {"_value": "ABC123", "_confidence": 0.8},
+        })
         comparison = gt.compare_with(
             pred,
             include_confusion_matrix=True,
@@ -312,27 +296,19 @@ class TestUpdateFromComparisonResultConfidence:
         """Multiple update_from_comparison_result calls accumulate confidence."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
 
-        pred1 = Product.from_json(
-            {
-                "name": {"_value": "Widget", "_confidence": 0.9},
-                "price": {"_value": 29.99, "_confidence": 0.8},
-                "sku": {"_value": "ABC123", "_confidence": 0.7},
-            }
-        )
-        pred2 = Product.from_json(
-            {
-                "name": {"_value": "Wrong", "_confidence": 0.2},
-                "price": {"_value": 99.99, "_confidence": 0.15},
-                "sku": {"_value": "XYZ", "_confidence": 0.1},
-            }
-        )
+        pred1 = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 29.99, "_confidence": 0.8},
+            "sku": {"_value": "ABC123", "_confidence": 0.7},
+        })
+        pred2 = Product.from_json({
+            "name": {"_value": "Wrong", "_confidence": 0.2},
+            "price": {"_value": 99.99, "_confidence": 0.15},
+            "sku": {"_value": "XYZ", "_confidence": 0.1},
+        })
 
-        comp1 = gt.compare_with(
-            pred1, include_confusion_matrix=True, document_field_comparisons=True
-        )
-        comp2 = gt.compare_with(
-            pred2, include_confusion_matrix=True, document_field_comparisons=True
-        )
+        comp1 = gt.compare_with(pred1, include_confusion_matrix=True, document_field_comparisons=True)
+        comp2 = gt.compare_with(pred2, include_confusion_matrix=True, document_field_comparisons=True)
 
         evaluator = BulkStructuredModelEvaluator(target_schema=Product)
         evaluator.update_from_comparison_result(comp1)
@@ -353,28 +329,20 @@ class TestAggregateFromComparisons:
         """aggregate_from_comparisons works end-to-end with confidence."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
 
-        pred1 = Product.from_json(
-            {
-                "name": {"_value": "Widget", "_confidence": 0.9},
-                "price": {"_value": 29.99, "_confidence": 0.8},
-                "sku": {"_value": "ABC123", "_confidence": 0.7},
-            }
-        )
-        pred2 = Product.from_json(
-            {
-                "name": {"_value": "Wrong", "_confidence": 0.2},
-                "price": {"_value": 99.99, "_confidence": 0.15},
-                "sku": {"_value": "XYZ", "_confidence": 0.1},
-            }
-        )
+        pred1 = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 29.99, "_confidence": 0.8},
+            "sku": {"_value": "ABC123", "_confidence": 0.7},
+        })
+        pred2 = Product.from_json({
+            "name": {"_value": "Wrong", "_confidence": 0.2},
+            "price": {"_value": 99.99, "_confidence": 0.15},
+            "sku": {"_value": "XYZ", "_confidence": 0.1},
+        })
 
         results = [
-            gt.compare_with(
-                pred1, include_confusion_matrix=True, document_field_comparisons=True
-            ),
-            gt.compare_with(
-                pred2, include_confusion_matrix=True, document_field_comparisons=True
-            ),
+            gt.compare_with(pred1, include_confusion_matrix=True, document_field_comparisons=True),
+            gt.compare_with(pred2, include_confusion_matrix=True, document_field_comparisons=True),
         ]
 
         evaluation = aggregate_from_comparisons(results)
@@ -389,13 +357,11 @@ class TestJsonlRoundTrip:
     def test_jsonl_preserves_confidence(self, tmp_path):
         """Write comparison results to JSONL, read back, aggregate. Confidence survives."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
-        pred = Product.from_json(
-            {
-                "name": {"_value": "Widget", "_confidence": 0.9},
-                "price": {"_value": 99.99, "_confidence": 0.3},
-                "sku": {"_value": "ABC123", "_confidence": 0.8},
-            }
-        )
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 99.99, "_confidence": 0.3},
+            "sku": {"_value": "ABC123", "_confidence": 0.8},
+        })
 
         comparison = gt.compare_with(
             pred,
@@ -432,15 +398,13 @@ class TestNestedRoundTrip:
             name="Jane",
             address=Address(street="123 Main", city="Boston"),
         )
-        pred = Customer.from_json(
-            {
-                "name": {"_value": "Jane", "_confidence": 0.96},
-                "address": {
-                    "street": {"_value": "123 Main St", "_confidence": 0.85},
-                    "city": {"_value": "Chicago", "_confidence": 0.40},
-                },
-            }
-        )
+        pred = Customer.from_json({
+            "name": {"_value": "Jane", "_confidence": 0.96},
+            "address": {
+                "street": {"_value": "123 Main St", "_confidence": 0.85},
+                "city": {"_value": "Chicago", "_confidence": 0.40},
+            },
+        })
 
         comparison = gt.compare_with(
             pred,
@@ -533,8 +497,9 @@ class TestBulkVsJsonlReplay:
         )
 
         # Per-field confidence metrics must match
-        assert set(result_a.confidence_metrics["fields"].keys()) == set(
-            result_b.confidence_metrics["fields"].keys()
+        assert (
+            set(result_a.confidence_metrics["fields"].keys())
+            == set(result_b.confidence_metrics["fields"].keys())
         )
         for field in result_a.confidence_metrics["fields"]:
             assert (
@@ -548,20 +513,16 @@ class TestBulkVsJsonlReplay:
 
         gt = Product(name="Widget", price=29.99, sku="ABC123")
 
-        pred1 = Product.from_json(
-            {
-                "name": {"_value": "Widget", "_confidence": 0.9},
-                "price": {"_value": 99.99, "_confidence": 0.3},
-                "sku": {"_value": "ABC123", "_confidence": 0.8},
-            }
-        )
-        pred2 = Product.from_json(
-            {
-                "name": {"_value": "Wrong", "_confidence": 0.2},
-                "price": {"_value": 29.99, "_confidence": 0.85},
-                "sku": {"_value": "XYZ", "_confidence": 0.1},
-            }
-        )
+        pred1 = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 99.99, "_confidence": 0.3},
+            "sku": {"_value": "ABC123", "_confidence": 0.8},
+        })
+        pred2 = Product.from_json({
+            "name": {"_value": "Wrong", "_confidence": 0.2},
+            "price": {"_value": 29.99, "_confidence": 0.85},
+            "sku": {"_value": "XYZ", "_confidence": 0.1},
+        })
 
         # Path A: bulk update()
         eval_a = BulkStructuredModelEvaluator(target_schema=Product)
@@ -609,21 +570,19 @@ class TestExtrasRoundTrip:
     def test_bbox_extras_survive_compare_with(self):
         """compare_with preserves _bbox in prediction_raw alongside _confidence."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
-        pred = Product.from_json(
-            {
-                "name": {
-                    "_value": "Widget",
-                    "_confidence": 0.9,
-                    "_bbox": [0.1, 0.2, 0.3, 0.4],
-                },
-                "price": {
-                    "_value": 29.99,
-                    "_confidence": 0.8,
-                    "_bbox": [0.5, 0.6, 0.7, 0.8],
-                },
-                "sku": {"_value": "ABC123", "_confidence": 0.7},
-            }
-        )
+        pred = Product.from_json({
+            "name": {
+                "_value": "Widget",
+                "_confidence": 0.9,
+                "_bbox": [0.1, 0.2, 0.3, 0.4],
+            },
+            "price": {
+                "_value": 29.99,
+                "_confidence": 0.8,
+                "_bbox": [0.5, 0.6, 0.7, 0.8],
+            },
+            "sku": {"_value": "ABC123", "_confidence": 0.7},
+        })
         result = gt.compare_with(
             pred,
             include_confusion_matrix=True,
@@ -641,18 +600,16 @@ class TestExtrasRoundTrip:
         back, and confirm the metadata is still accessible. This is the
         primary path a future BBoxMAPAccumulator would walk."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
-        pred = Product.from_json(
-            {
-                "name": {
-                    "_value": "Widget",
-                    "_confidence": 0.9,
-                    "_bbox": [0.1, 0.2, 0.3, 0.4],
-                    "_source_span": [10, 16],
-                },
-                "price": 29.99,
-                "sku": {"_value": "ABC123", "_confidence": 0.7},
-            }
-        )
+        pred = Product.from_json({
+            "name": {
+                "_value": "Widget",
+                "_confidence": 0.9,
+                "_bbox": [0.1, 0.2, 0.3, 0.4],
+                "_source_span": [10, 16],
+            },
+            "price": 29.99,
+            "sku": {"_value": "ABC123", "_confidence": 0.7},
+        })
         result = gt.compare_with(
             pred,
             include_confusion_matrix=True,
@@ -675,21 +632,19 @@ class TestExtrasRoundTrip:
         the confidence accumulator ignores unknown metadata, and the
         bulk evaluator must not fail on extras it doesn't yet consume."""
         gt = Product(name="Widget", price=29.99, sku="ABC123")
-        pred = Product.from_json(
-            {
-                "name": {
-                    "_value": "Widget",
-                    "_confidence": 0.9,
-                    "_bbox": [0.1, 0.2, 0.3, 0.4],
-                },
-                "price": {
-                    "_value": 99.99,
-                    "_confidence": 0.3,
-                    "_bbox": [0.5, 0.6, 0.7, 0.8],
-                },
-                "sku": {"_value": "ABC123", "_confidence": 0.8},
-            }
-        )
+        pred = Product.from_json({
+            "name": {
+                "_value": "Widget",
+                "_confidence": 0.9,
+                "_bbox": [0.1, 0.2, 0.3, 0.4],
+            },
+            "price": {
+                "_value": 99.99,
+                "_confidence": 0.3,
+                "_bbox": [0.5, 0.6, 0.7, 0.8],
+            },
+            "sku": {"_value": "ABC123", "_confidence": 0.8},
+        })
         comparison = gt.compare_with(
             pred,
             include_confusion_matrix=True,
@@ -697,9 +652,7 @@ class TestExtrasRoundTrip:
         )
 
         # Round-trip through JSONL the way a real reduce step would
-        line = json.dumps(
-            {"doc_id": "doc1", "comparison_result": comparison}, default=str
-        )
+        line = json.dumps({"doc_id": "doc1", "comparison_result": comparison}, default=str)
         record = json.loads(line)
 
         evaluator = BulkStructuredModelEvaluator(target_schema=Product)

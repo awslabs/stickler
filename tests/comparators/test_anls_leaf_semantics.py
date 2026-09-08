@@ -59,13 +59,7 @@ class TestWhatTheStructuralWorkBuys:
 
     def test_a_renamed_key_is_charged_on_both_sides(self):
         """Normalization is over the union, so a rename costs twice."""
-        renamed = score(
-            GT,
-            {
-                **{k: v for k, v in GT.items() if k != "vendor"},
-                "vendor_name": GT["vendor"],
-            },
-        )
+        renamed = score(GT, {**{k: v for k, v in GT.items() if k != "vendor"}, "vendor_name": GT["vendor"]})
         dropped = score(GT, {k: v for k, v in GT.items() if k != "vendor"})
         assert renamed < dropped
 
@@ -115,7 +109,9 @@ class TestUniformTextLeavesAndTheirCost:
         wrong_account_number = c.compare(
             {"v": "DE89370400440532013000"}, {"v": "DE89370400440532013001"}
         )
-        genuine_near_miss = c.compare({"v": "Acme Corporation"}, {"v": "Acme Corp"})
+        genuine_near_miss = c.compare(
+            {"v": "Acme Corporation"}, {"v": "Acme Corp"}
+        )
         assert wrong_account_number > genuine_near_miss
 
     def test_raising_the_cutoff_cannot_fix_it(self):
@@ -127,9 +123,7 @@ class TestUniformTextLeavesAndTheirCost:
             )
             text = c.compare({"v": "Acme Corporation"}, {"v": "Acme Corp"})
             if account_number == 0.0:
-                assert text == 0.0, (
-                    "no cutoff rejects the account number while keeping text"
-                )
+                assert text == 0.0, "no cutoff rejects the account number while keeping text"
 
 
 class TestLeafThresholdStillGatesText:
@@ -191,9 +185,9 @@ class TestValuesWithNoJsonForm:
                 return isinstance(other, Eq) and self.v == other.v
 
         assert Eq(1) == Eq(1)
-        assert ANLSStarComparator().compare(
-            {"o": Eq(1)}, {"o": Eq(1)}
-        ) == pytest.approx(0.0)
+        assert ANLSStarComparator().compare({"o": Eq(1)}, {"o": Eq(1)}) == pytest.approx(
+            0.0
+        )
 
     def test_only_the_unscoreable_key_is_refused(self):
         """A neighbouring key that IS scoreable keeps its credit."""
@@ -222,9 +216,9 @@ class TestValuesWithNoJsonForm:
     def test_types_with_a_json_form_are_still_scored(self, value):
         """The refusal must not widen. Every type here is serialised natively by
         pydantic and never reaches the fallback, so identity must hold."""
-        assert ANLSStarComparator().compare(
-            {"v": value}, {"v": value}
-        ) == pytest.approx(1.0)
+        assert ANLSStarComparator().compare({"v": value}, {"v": value}) == pytest.approx(
+            1.0
+        )
 
     def test_even_an_object_with_a_good_repr_is_refused(self):
         """The refusal keys on JSON-representability, not on repr quality.

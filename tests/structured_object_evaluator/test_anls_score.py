@@ -1,5 +1,6 @@
 """Tests for the anls_score utility functions."""
 
+
 from pydantic import Field
 
 from stickler.comparators.levenshtein import LevenshteinComparator

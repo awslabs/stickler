@@ -252,11 +252,21 @@ class TestTier4bRangeVsRange:
 
     def test_endpoints_match_full_score(self):
         cmp = DateComparator()
-        assert cmp.compare("10/24/16 to 10/30/16", "10/24/2016 - 10/30/2016") == 1.0
+        assert (
+            cmp.compare(
+                "10/24/16 to 10/30/16", "10/24/2016 - 10/30/2016"
+            )
+            == 1.0
+        )
 
     def test_endpoints_match_with_dash(self):
         cmp = DateComparator()
-        assert cmp.compare("09-12-16 to 09-15-16", "09-12-2016 to 09-15-2016") == 1.0
+        assert (
+            cmp.compare(
+                "09-12-16 to 09-15-16", "09-12-2016 to 09-15-2016"
+            )
+            == 1.0
+        )
 
     def test_partial_overlap_uses_jaccard(self):
         cmp = DateComparator()
@@ -266,7 +276,12 @@ class TestTier4bRangeVsRange:
 
     def test_no_overlap_zero(self):
         cmp = DateComparator()
-        assert cmp.compare("10/24/16 to 10/30/16", "12/01/16 to 12/05/16") == 0.0
+        assert (
+            cmp.compare(
+                "10/24/16 to 10/30/16", "12/01/16 to 12/05/16"
+            )
+            == 0.0
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -283,11 +298,19 @@ class TestRangeModeStrict:
 
     def test_range_endpoints_exact(self):
         assert (
-            self.cmp.compare("10/24/16 to 10/30/16", "10/24/2016 - 10/30/2016") == 1.0
+            self.cmp.compare(
+                "10/24/16 to 10/30/16", "10/24/2016 - 10/30/2016"
+            )
+            == 1.0
         )
 
     def test_range_partial_overlap_zero(self):
-        assert self.cmp.compare("10/24/16 to 10/30/16", "10/24/16 to 10/31/16") == 0.0
+        assert (
+            self.cmp.compare(
+                "10/24/16 to 10/30/16", "10/24/16 to 10/31/16"
+            )
+            == 0.0
+        )
 
     def test_singles_unaffected(self):
         assert self.cmp.compare("10/24/16", "10/24/16") == 1.0
@@ -302,7 +325,10 @@ class TestRangeModeReject:
 
     def test_range_vs_range_zero_even_when_endpoints_match(self):
         assert (
-            self.cmp.compare("10/24/16 to 10/30/16", "10/24/2016 - 10/30/2016") == 0.0
+            self.cmp.compare(
+                "10/24/16 to 10/30/16", "10/24/2016 - 10/30/2016"
+            )
+            == 0.0
         )
 
     def test_singles_unaffected(self):
@@ -329,11 +355,19 @@ class TestRangeModeContains:
 
     def test_range_endpoints_exact(self):
         assert (
-            self.cmp.compare("10/24/16 to 10/30/16", "10/24/2016 - 10/30/2016") == 1.0
+            self.cmp.compare(
+                "10/24/16 to 10/30/16", "10/24/2016 - 10/30/2016"
+            )
+            == 1.0
         )
 
     def test_range_partial_overlap_zero(self):
-        assert self.cmp.compare("10/24/16 to 10/30/16", "10/24/16 to 10/31/16") == 0.0
+        assert (
+            self.cmp.compare(
+                "10/24/16 to 10/30/16", "10/24/16 to 10/31/16"
+            )
+            == 0.0
+        )
 
 
 class TestRangeModeGradedJaccard:
@@ -341,13 +375,21 @@ class TestRangeModeGradedJaccard:
         self.cmp = DateComparator(range_mode="graded")
 
     def test_identical_ranges_full(self):
-        assert self.cmp.compare("10/24/16 to 10/30/16", "10/24/16 to 10/30/16") == 1.0
+        assert (
+            self.cmp.compare(
+                "10/24/16 to 10/30/16", "10/24/16 to 10/30/16"
+            )
+            == 1.0
+        )
 
     def test_off_by_one_endpoint(self):
         # 7-day range vs 8-day range, 7-day overlap, 8-day union.
-        assert self.cmp.compare(
-            "10/24/16 to 10/30/16", "10/24/16 to 10/31/16"
-        ) == pytest.approx(7 / 8)
+        assert (
+            self.cmp.compare(
+                "10/24/16 to 10/30/16", "10/24/16 to 10/31/16"
+            )
+            == pytest.approx(7 / 8)
+        )
 
     def test_shifted_overlapping(self):
         # Oct 1-10 (10) vs Oct 6-15 (10); overlap Oct 6-10 (5);
@@ -355,12 +397,20 @@ class TestRangeModeGradedJaccard:
         # Pin dayfirst=False so the dayfirst=None max-of-both semantics
         # doesn't interact with Jaccard math.
         cmp = DateComparator(range_mode="graded", dayfirst=False)
-        assert cmp.compare(
-            "10/01/2016 to 10/10/2016", "10/06/2016 to 10/15/2016"
-        ) == pytest.approx(5 / 15)
+        assert (
+            cmp.compare(
+                "10/01/2016 to 10/10/2016", "10/06/2016 to 10/15/2016"
+            )
+            == pytest.approx(5 / 15)
+        )
 
     def test_no_overlap_zero(self):
-        assert self.cmp.compare("10/24/16 to 10/30/16", "12/01/16 to 12/05/16") == 0.0
+        assert (
+            self.cmp.compare(
+                "10/24/16 to 10/30/16", "12/01/16 to 12/05/16"
+            )
+            == 0.0
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -372,15 +422,21 @@ class TestSingleDayRangeCollapse:
     """``X to X`` collapses to a single date for non-reject modes so the
     degenerate range and the bare single compare consistently."""
 
-    @pytest.mark.parametrize("mode", ["strict", "contains", "graded"])
+    @pytest.mark.parametrize(
+        "mode", ["strict", "contains", "graded"]
+    )
     def test_collapse_against_single(self, mode):
         cmp = DateComparator(range_mode=mode)
         assert cmp.compare("10/28/16 to 10/28/16", "10/28/16") == 1.0
 
-    @pytest.mark.parametrize("mode", ["strict", "contains", "graded"])
+    @pytest.mark.parametrize(
+        "mode", ["strict", "contains", "graded"]
+    )
     def test_collapse_against_collapse(self, mode):
         cmp = DateComparator(range_mode=mode)
-        assert cmp.compare("10/28/16 to 10/28/16", "10/28/16 to 10/28/16") == 1.0
+        assert (
+            cmp.compare("10/28/16 to 10/28/16", "10/28/16 to 10/28/16") == 1.0
+        )
 
     def test_no_collapse_under_reject(self):
         cmp = DateComparator(range_mode="reject")
@@ -435,7 +491,10 @@ class TestMalformedRangeDelimiter:
 
     def test_legit_dash_range_unaffected(self):
         cmp = DateComparator()
-        assert cmp.compare("09-12-16 to 09-15-16", "09-12-2016 to 09-15-2016") == 1.0
+        assert (
+            cmp.compare("09-12-16 to 09-15-16", "09-12-2016 to 09-15-2016")
+            == 1.0
+        )
 
     def test_legit_spaced_dash_range_unaffected(self):
         cmp = DateComparator()
@@ -457,12 +516,16 @@ class TestYearPresenceMultiplierInRanges:
     def test_yearless_single_in_year_range_partial_year_graded(self):
         cmp = DateComparator(allow_partial_year=True)
         # graded base 0.5 × 0.7 = 0.35
-        assert cmp.compare("Oct 28", "10/24/16 to 10/30/16") == pytest.approx(0.5 * 0.7)
+        assert cmp.compare("Oct 28", "10/24/16 to 10/30/16") == pytest.approx(
+            0.5 * 0.7
+        )
 
     def test_yearless_single_in_year_range_partial_year_contains(self):
         cmp = DateComparator(allow_partial_year=True, range_mode="contains")
         # contains base 1.0 × 0.7 = 0.7
-        assert cmp.compare("Oct 28", "10/24/16 to 10/30/16") == pytest.approx(0.7)
+        assert cmp.compare("Oct 28", "10/24/16 to 10/30/16") == pytest.approx(
+            0.7
+        )
 
     def test_yearless_single_in_year_range_partial_year_strict(self):
         cmp = DateComparator(allow_partial_year=True, range_mode="strict")
@@ -472,7 +535,12 @@ class TestYearPresenceMultiplierInRanges:
     def test_year_range_vs_year_range_partial_year_irrelevant(self):
         """Both sides have year → multiplier is 1.0."""
         cmp = DateComparator(allow_partial_year=True)
-        assert cmp.compare("10/24/16 to 10/30/16", "10/24/2016 - 10/30/2016") == 1.0
+        assert (
+            cmp.compare(
+                "10/24/16 to 10/30/16", "10/24/2016 - 10/30/2016"
+            )
+            == 1.0
+        )
 
 
 class TestYearMismatchRangeVsRange:
@@ -487,23 +555,23 @@ class TestYearMismatchRangeVsRange:
     def test_graded_exact_md_overlap(self):
         cmp = DateComparator(allow_partial_year=True, range_mode="graded")
         # Same m/d span → Jaccard 1.0 × partial-year 0.7.
-        assert cmp.compare("Oct 24 to Oct 30", "10/24/16 to 10/30/16") == pytest.approx(
-            0.7
-        )
+        assert cmp.compare(
+            "Oct 24 to Oct 30", "10/24/16 to 10/30/16"
+        ) == pytest.approx(0.7)
 
     def test_graded_partial_md_overlap(self):
         cmp = DateComparator(allow_partial_year=True, range_mode="graded")
         # 7-day vs 8-day, 7 overlap, 8 union → 7/8 × 0.7.
-        assert cmp.compare("Oct 24 to Oct 30", "10/24/16 to 10/31/16") == pytest.approx(
-            (7 / 8) * 0.7
-        )
+        assert cmp.compare(
+            "Oct 24 to Oct 30", "10/24/16 to 10/31/16"
+        ) == pytest.approx((7 / 8) * 0.7)
 
     def test_contains_exact_endpoints(self):
         cmp = DateComparator(allow_partial_year=True, range_mode="contains")
         # Endpoints equal in m/d → 1.0 × 0.7.
-        assert cmp.compare("Oct 24 to Oct 30", "10/24/16 to 10/30/16") == pytest.approx(
-            0.7
-        )
+        assert cmp.compare(
+            "Oct 24 to Oct 30", "10/24/16 to 10/30/16"
+        ) == pytest.approx(0.7)
 
     def test_contains_endpoints_differ(self):
         cmp = DateComparator(allow_partial_year=True, range_mode="contains")
@@ -520,7 +588,10 @@ class TestYearMismatchRangeVsRange:
 
     def test_both_year_bearing_unaffected(self):
         cmp = DateComparator(allow_partial_year=True, range_mode="graded")
-        assert cmp.compare("10/24/16 to 10/30/16", "10/24/2016 - 10/30/2016") == 1.0
+        assert (
+            cmp.compare("10/24/16 to 10/30/16", "10/24/2016 - 10/30/2016")
+            == 1.0
+        )
         assert cmp.compare(
             "10/24/16 to 10/30/16", "10/24/16 to 10/31/16"
         ) == pytest.approx(7 / 8)
@@ -536,20 +607,24 @@ class TestYearEndWrapMonthDayRange:
 
     def test_single_inside_wrap_before_boundary(self):
         cmp = DateComparator(allow_partial_year=True, range_mode="contains")
-        assert cmp.compare("Dec 25", "Dec 20, 2024 to Jan 5, 2025") == pytest.approx(
-            0.7
-        )
+        assert cmp.compare(
+            "Dec 25", "Dec 20, 2024 to Jan 5, 2025"
+        ) == pytest.approx(0.7)
 
     def test_single_inside_wrap_after_boundary(self):
         cmp = DateComparator(allow_partial_year=True, range_mode="contains")
-        assert cmp.compare("Jan 2", "Dec 20, 2024 to Jan 5, 2025") == pytest.approx(0.7)
+        assert cmp.compare(
+            "Jan 2", "Dec 20, 2024 to Jan 5, 2025"
+        ) == pytest.approx(0.7)
 
     def test_single_on_wrap_endpoints_inclusive(self):
         cmp = DateComparator(allow_partial_year=True, range_mode="contains")
-        assert cmp.compare("Dec 20", "Dec 20, 2024 to Jan 5, 2025") == pytest.approx(
-            0.7
-        )
-        assert cmp.compare("Jan 5", "Dec 20, 2024 to Jan 5, 2025") == pytest.approx(0.7)
+        assert cmp.compare(
+            "Dec 20", "Dec 20, 2024 to Jan 5, 2025"
+        ) == pytest.approx(0.7)
+        assert cmp.compare(
+            "Jan 5", "Dec 20, 2024 to Jan 5, 2025"
+        ) == pytest.approx(0.7)
 
     def test_single_outside_wrap_is_zero(self):
         cmp = DateComparator(allow_partial_year=True, range_mode="contains")
@@ -559,13 +634,15 @@ class TestYearEndWrapMonthDayRange:
     def test_wrap_graded_mode(self):
         cmp = DateComparator(allow_partial_year=True, range_mode="graded")
         # inside → graded base 0.5 × partial-year 0.7 = 0.35
-        assert cmp.compare("Dec 25", "Dec 20, 2024 to Jan 5, 2025") == pytest.approx(
-            0.35
-        )
+        assert cmp.compare(
+            "Dec 25", "Dec 20, 2024 to Jan 5, 2025"
+        ) == pytest.approx(0.35)
 
     def test_non_wrap_md_range_unaffected(self):
         cmp = DateComparator(allow_partial_year=True, range_mode="contains")
-        assert cmp.compare("Oct 28", "10/24/16 to 10/30/16") == pytest.approx(0.7)
+        assert cmp.compare(
+            "Oct 28", "10/24/16 to 10/30/16"
+        ) == pytest.approx(0.7)
         assert cmp.compare("Nov 15", "10/24/16 to 10/30/16") == 0.0
 
 
@@ -595,7 +672,9 @@ class TestPrecisionModeExactDefault:
 
     def test_reduced_precision_compounds_in_ranges_is_zero(self):
         cmp = DateComparator()
-        assert cmp.compare("Jan 2024 to Mar 2024", "1/1/2024 to 3/1/2024") == 0.0
+        assert (
+            cmp.compare("Jan 2024 to Mar 2024", "1/1/2024 to 3/1/2024") == 0.0
+        )
 
     def test_same_resolution_year_grain_still_matches(self):
         cmp = DateComparator()
@@ -665,7 +744,9 @@ class TestPrecisionModeOverlap:
 
 
 class TestPrecisionModeValidation:
-    @pytest.mark.parametrize("bad", ["", "EXACT", "loose", "gtloose", "yes", 1, None])
+    @pytest.mark.parametrize(
+        "bad", ["", "EXACT", "loose", "gtloose", "yes", 1, None]
+    )
     def test_invalid_precision_mode_rejected(self, bad):
         with pytest.raises((ValueError, TypeError), match="precision_mode"):
             DateComparator(precision_mode=bad)  # type: ignore[arg-type]
@@ -739,7 +820,9 @@ class TestPrecisionModeWithRanges:
         cmp = DateComparator(allow_partial_year=True, range_mode="contains")
         # Both day-grain; only the year differs → resolution gate passes,
         # partial-year multiplier applies.
-        assert cmp.compare("Oct 28", "10/24/16 to 10/30/16") == pytest.approx(0.7)
+        assert cmp.compare(
+            "Oct 28", "10/24/16 to 10/30/16"
+        ) == pytest.approx(0.7)
 
     def test_reduced_precision_blocks_before_partial_year_credit(self):
         """Resolution gate fails first, so no partial-year credit leaks out."""
@@ -974,9 +1057,9 @@ class TestTimezones:
 
     def test_aware_and_naive_same_date(self):
         cmp = DateComparator()
-        assert (
-            cmp.compare("2025-01-01", datetime(2025, 1, 1, tzinfo=timezone.utc)) == 1.0
-        )
+        assert cmp.compare(
+            "2025-01-01", datetime(2025, 1, 1, tzinfo=timezone.utc)
+        ) == 1.0
 
 
 class TestMixedTimezoneRangesDoNotCrash:
@@ -991,12 +1074,16 @@ class TestMixedTimezoneRangesDoNotCrash:
     def test_range_vs_single_mixed_tz_graded(self):
         cmp = DateComparator()
         # Must not raise; 2025-02-01 is inside Jan 1–Mar 1 → graded 0.5.
-        result = cmp.compare("2025-01-01T00:00:00Z to 2025-03-01", "2025-02-01")
+        result = cmp.compare(
+            "2025-01-01T00:00:00Z to 2025-03-01", "2025-02-01"
+        )
         assert result == pytest.approx(0.5)
 
     def test_range_vs_single_mixed_tz_contains(self):
         cmp = DateComparator(range_mode="contains")
-        result = cmp.compare("2025-01-01T00:00:00Z to 2025-03-01", "2025-02-01")
+        result = cmp.compare(
+            "2025-01-01T00:00:00Z to 2025-03-01", "2025-02-01"
+        )
         assert result == 1.0
 
     def test_range_vs_range_mixed_tz_jaccard(self):
@@ -1023,7 +1110,9 @@ class TestMixedTimezoneRangesDoNotCrash:
         cmp = DateComparator()
         # Reversed mixed-tz endpoints (aware after naive) — whatever the
         # parse outcome, compare() must return a float, not raise.
-        result = cmp.compare("2025-03-01 to 2025-01-01T00:00:00Z", "2025-02-01")
+        result = cmp.compare(
+            "2025-03-01 to 2025-01-01T00:00:00Z", "2025-02-01"
+        )
         assert isinstance(result, float)
 
 
@@ -1298,7 +1387,9 @@ class TestInputLengthCap:
     def test_realistic_long_date_unaffected(self):
         cmp = DateComparator()
         # The most verbose realistic form is well under the cap.
-        assert cmp.compare("Wednesday, January 1, 2025", "2025-01-01") == 1.0
+        assert (
+            cmp.compare("Wednesday, January 1, 2025", "2025-01-01") == 1.0
+        )
 
     def test_cap_completes_quickly(self):
         import time

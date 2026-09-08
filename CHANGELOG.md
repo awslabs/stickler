@@ -188,23 +188,29 @@ Each release links to full notes on the
   direction the schema asked for. A round-trip through `to_json_schema()` and back
   now preserves the value, where it previously came back as `0.7`.
 
-  The same key one position over, on an array-of-objects property, is **ignored
-  with a warning**. It genuinely has no effect there -- array pairing is gated by
-  the element class's `match_threshold` -- and every `to_json_schema()` on a
-  released version emitted it, so refusing it would stop previously exported
-  schemas from importing in order to flag a key whose only cost is being ignored.
-  The warning names the key the author should write instead:
+  The same key one position over, on an array-of-objects property, is **ignored**.
+  It genuinely has no effect there -- array pairing is gated by the element class's
+  `match_threshold` -- and every `to_json_schema()` on a released version emitted
+  it, so refusing it would stop previously exported schemas from importing in order
+  to flag a key whose only cost is being ignored.
+
+  A warning is emitted only where the author can act on it. Export writes `0.5`
+  there and can write nothing else, since a named threshold on a
+  `List[StructuredModel]` field is refused at class definition, so a value equal to
+  `0.5` carries no intent and passes silently. Any other value is the author's, and
+  warns:
 
   ```
-  Could not import JSON Schema: 'x-aws-stickler-threshold' has no effect on array
-  property 'f' and is refused. Pairing of array elements is gated by the element's
-  own threshold, so put 'x-aws-stickler-match-threshold': 0.88 inside that
-  property's 'items' instead.
+  'x-aws-stickler-threshold': 0.88 has no effect on array property 'f' and is
+  ignored. Pairing of array elements is gated by the element class's own
+  'x-aws-stickler-match-threshold', declared inside that property's 'items'; set it
+  there if that is what you meant.
   ```
 
-  Translated at the `from_json_schema` seam rather than in `ModelFactory`, which is
-  shared, so `model_from_json` callers keep the Python-flavoured advice that is
-  correct for them ([#317](https://github.com/awslabs/stickler/issues/317)).
+  The message names the key to write but not the discarded value as its value: the
+  element class's gate is a different number, so echoing `0.88` there would tell a
+  reader to overwrite a working configuration with the value being thrown
+  away ([#317](https://github.com/awslabs/stickler/issues/317)).
 
 - **Breaking:** `HungarianMatcher.calculate_metrics` no longer reports a paired
   item as missing. It derived `fn` and `fp` as `len(list) - tp`, so a pair the

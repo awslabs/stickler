@@ -1,3 +1,5 @@
+
+
 """Test validation for StructuredModel field configurations."""
 
 from typing import List

@@ -281,3 +281,4 @@ class TestComparableFieldFix:
         assert config1.threshold == 0.8
         assert config2.threshold == 0.6
         assert config3.threshold == 1.0
+

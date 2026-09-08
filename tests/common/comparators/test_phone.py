@@ -148,7 +148,9 @@ class TestNoStringComparatorCanDoThis:
     def test_edit_distance_ranks_the_two_cases_backwards(self):
         from stickler.comparators.levenshtein import LevenshteinComparator
 
-        same_number = LevenshteinComparator().compare("206-555-0100", "(206) 555-0100")
+        same_number = LevenshteinComparator().compare(
+            "206-555-0100", "(206) 555-0100"
+        )
         different_number = LevenshteinComparator().compare(
             "206-555-0100", "206-555-0101"
         )
@@ -190,9 +192,7 @@ class TestNonePolicyAndSerialization:
             ComparatorRegistry,
         )
 
-        rebuilt = ComparatorRegistry().create_instance(
-            "PhoneComparator", {"region": "GB"}
-        )
+        rebuilt = ComparatorRegistry().create_instance("PhoneComparator", {"region": "GB"})
 
         assert isinstance(rebuilt, PhoneComparator)
         assert rebuilt.region == "GB"
@@ -201,7 +201,6 @@ class TestNonePolicyAndSerialization:
     def test_repr_names_a_non_default_region(self):
         assert "GB" in repr(PhoneComparator(region="GB"))
         assert "region" not in repr(PhoneComparator())
-
 
 class TestValidityNotJustParseability:
     """libphonenumber parses strings that are not real numbers.
@@ -242,10 +241,9 @@ class TestValidityNotJustParseability:
         parsed = phonenumbers.parse("0000000000", "US")
 
         # Parses and formats cleanly...
-        assert (
-            phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
-            == "+10000000000"
-        )
+        assert phonenumbers.format_number(
+            parsed, phonenumbers.PhoneNumberFormat.E164
+        ) == "+10000000000"
         # ...but is not a real number, which is what the guard checks.
         assert phonenumbers.is_valid_number(parsed) is False
 
@@ -279,10 +277,14 @@ class TestExtensionsAreSignificant:
     """
 
     def test_different_extensions_do_not_match(self):
-        assert PhoneComparator().compare("+12065550100x89", "+12065550100x90") == 0.0
+        assert (
+            PhoneComparator().compare("+12065550100x89", "+12065550100x90") == 0.0
+        )
 
     def test_same_extension_matches(self):
-        assert PhoneComparator().compare("+12065550100x89", "+12065550100x89") == 1.0
+        assert (
+            PhoneComparator().compare("+12065550100x89", "+12065550100x89") == 1.0
+        )
 
     def test_extension_versus_no_extension_does_not_match(self):
         assert PhoneComparator().compare("+12065550100x89", "+12065550100") == 0.0
@@ -290,7 +292,9 @@ class TestExtensionsAreSignificant:
     def test_extension_formatting_still_normalizes(self):
         """The extension is compared, but how it is written is not."""
         assert (
-            PhoneComparator().compare("+1 (206) 555-0100 ext. 89", "+12065550100x89")
+            PhoneComparator().compare(
+                "+1 (206) 555-0100 ext. 89", "+12065550100x89"
+            )
             == 1.0
         )
 
@@ -300,10 +304,9 @@ class TestExtensionsAreSignificant:
 
         with_ext = phonenumbers.parse("+12065550100x89", "US")
 
-        assert (
-            phonenumbers.format_number(with_ext, phonenumbers.PhoneNumberFormat.E164)
-            == "+12065550100"
-        )
+        assert phonenumbers.format_number(
+            with_ext, phonenumbers.PhoneNumberFormat.E164
+        ) == "+12065550100"
         assert with_ext.extension == "89"
 
 

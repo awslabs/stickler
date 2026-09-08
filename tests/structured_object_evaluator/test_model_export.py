@@ -14,32 +14,34 @@ from stickler.structured_object_evaluator.models.structured_model import Structu
 
 class SimpleProduct(StructuredModel):
     """Simple model for testing basic export."""
-
     name: str = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.8, weight=2.0, default=...
+        comparator=LevenshteinComparator(),
+        threshold=0.8,
+        weight=2.0,
+        default=...
     )
     price: float = ComparableField(
-        comparator=NumericComparator(), threshold=0.95, weight=1.5, default=...
+        comparator=NumericComparator(),
+        threshold=0.95,
+        weight=1.5,
+        default=...
     )
 
 
 class NestedModel(StructuredModel):
     """Model with nested StructuredModel for testing recursive export."""
-
     title: str = ComparableField(threshold=0.8)
     product: SimpleProduct = ComparableField()
 
 
 class ListModel(StructuredModel):
     """Model with List[StructuredModel] for testing list export."""
-
     name: str = ComparableField(threshold=0.8)
     products: List[SimpleProduct] = ComparableField()
 
 
 class PrimitiveListModel(StructuredModel):
     """Model with List[primitive] for testing primitive list export."""
-
     tags: List[str] = ComparableField(threshold=0.8)
     scores: List[int] = ComparableField(threshold=0.9)
 
@@ -47,13 +49,13 @@ class PrimitiveListModel(StructuredModel):
 def test_to_json_schema_basic():
     """Test exporting simple model to JSON Schema format."""
     schema = SimpleProduct.to_json_schema()
-
+    
     # Check basic structure
     assert schema["type"] == "object"
     assert schema["x-aws-stickler-model-name"] == "SimpleProduct"
     assert "properties" in schema
     assert "required" in schema
-
+    
     # Check name field
     assert "name" in schema["properties"]
     name_prop = schema["properties"]["name"]
@@ -61,7 +63,7 @@ def test_to_json_schema_basic():
     assert name_prop["x-aws-stickler-comparator"] == "LevenshteinComparator"
     assert name_prop["x-aws-stickler-threshold"] == 0.8
     assert name_prop["x-aws-stickler-weight"] == 2.0
-
+    
     # Check price field
     assert "price" in schema["properties"]
     price_prop = schema["properties"]["price"]
@@ -69,7 +71,7 @@ def test_to_json_schema_basic():
     assert price_prop["x-aws-stickler-comparator"] == "NumericComparator"
     assert price_prop["x-aws-stickler-threshold"] == 0.95
     assert price_prop["x-aws-stickler-weight"] == 1.5
-
+    
     # Check required fields
     assert "name" in schema["required"]
     assert "price" in schema["required"]
@@ -78,11 +80,11 @@ def test_to_json_schema_basic():
 def test_to_stickler_config_basic():
     """Test exporting simple model to Stickler config format."""
     config = SimpleProduct.to_stickler_config()
-
+    
     # Check basic structure
     assert config["model_name"] == "SimpleProduct"
     assert "fields" in config
-
+    
     # Check name field
     assert "name" in config["fields"]
     name_field = config["fields"]["name"]
@@ -91,7 +93,7 @@ def test_to_stickler_config_basic():
     assert name_field["threshold"] == 0.8
     assert name_field["weight"] == 2.0
     assert name_field["required"] is True
-
+    
     # Check price field
     assert "price" in config["fields"]
     price_field = config["fields"]["price"]
@@ -105,14 +107,14 @@ def test_to_stickler_config_basic():
 def test_to_json_schema_nested():
     """Test exporting model with nested StructuredModel."""
     schema = NestedModel.to_json_schema()
-
+    
     # Check basic structure
     assert schema["x-aws-stickler-model-name"] == "NestedModel"
-
+    
     # Check nested product field
     assert "product" in schema["properties"]
     product_prop = schema["properties"]["product"]
-
+    
     # Nested model should be recursively exported
     assert product_prop["type"] == "object"
     assert product_prop["x-aws-stickler-model-name"] == "SimpleProduct"
@@ -123,14 +125,14 @@ def test_to_json_schema_nested():
 def test_to_stickler_config_nested():
     """Test exporting model with nested StructuredModel to Stickler config."""
     config = NestedModel.to_stickler_config()
-
+    
     # Check basic structure
     assert config["model_name"] == "NestedModel"
-
+    
     # Check nested product field
     assert "product" in config["fields"]
     product_field = config["fields"]["product"]
-
+    
     # Nested model should use "structured_model" type
     assert product_field["type"] == "structured_model"
     assert "fields" in product_field
@@ -141,15 +143,15 @@ def test_to_stickler_config_nested():
 def test_to_json_schema_list():
     """Test exporting model with List[StructuredModel]."""
     schema = ListModel.to_json_schema()
-
+    
     # Check list field
     assert "products" in schema["properties"]
     products_prop = schema["properties"]["products"]
-
+    
     # Should be array type with nested items schema
     assert products_prop["type"] == "array"
     assert "items" in products_prop
-
+    
     # Items should be the nested model schema
     items_schema = products_prop["items"]
     assert items_schema["type"] == "object"
@@ -159,11 +161,11 @@ def test_to_json_schema_list():
 def test_to_stickler_config_list():
     """Test exporting model with List[StructuredModel] to Stickler config."""
     config = ListModel.to_stickler_config()
-
+    
     # Check list field
     assert "products" in config["fields"]
     products_field = config["fields"]["products"]
-
+    
     # Should use "list_structured_model" type
     assert products_field["type"] == "list_structured_model"
     assert "fields" in products_field
@@ -210,14 +212,14 @@ def test_export_preserves_metadata():
             weight=1.5,
             clip_under_threshold=False,
         )
-
+    
     # Test JSON Schema export
     schema = DetailedModel.to_json_schema()
     field_prop = schema["properties"]["field1"]
     assert field_prop["x-aws-stickler-threshold"] == 0.75
     assert field_prop["x-aws-stickler-weight"] == 1.5
     assert field_prop["x-aws-stickler-clip-under-threshold"] is False
-
+    
     # Test Stickler config export
     config = DetailedModel.to_stickler_config()
     field_config = config["fields"]["field1"]
@@ -228,7 +230,6 @@ def test_export_preserves_metadata():
 
 class OptionalFieldModel(StructuredModel):
     """Model with Optional fields for testing export."""
-
     required_name: str = ComparableField(threshold=0.8, default=...)
     optional_note: Optional[str] = ComparableField(threshold=0.6, default=None)
     optional_product: Optional[SimpleProduct] = ComparableField(default=None)

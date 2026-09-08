@@ -4,6 +4,7 @@ This module tests the functionality of all comparators in the common module
 to ensure they work correctly and maintain compatibility with existing code.
 """
 
+
 from stickler.comparators import (
     LevenshteinComparator,
     NumericComparator,
@@ -187,6 +188,7 @@ if FUZZY_AVAILABLE:
 
             # Test token methods with binary comparison
             token_set = FuzzyComparator(method="token_set_ratio", threshold=0.7)
-            assert token_set.binary_compare(
-                "python is great and fast", "python is fast"
-            ) == (1, 0)
+            assert (
+                token_set.binary_compare("python is great and fast", "python is fast")
+                == (1, 0)
+            )

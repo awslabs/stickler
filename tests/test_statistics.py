@@ -46,7 +46,9 @@ def test_clustering_metrics_match_sklearn():
         labels_true = rng.integers(0, int(rng.integers(1, 10)), size=sample_count)
         labels_pred = rng.integers(0, int(rng.integers(1, 10)), size=sample_count)
 
-        expected_h, expected_c, expected_v = sklearn_v_measure(labels_true, labels_pred)
+        expected_h, expected_c, expected_v = sklearn_v_measure(
+            labels_true, labels_pred
+        )
         actual_h, actual_c, actual_v = homogeneity_completeness_v_measure(
             labels_true, labels_pred
         )

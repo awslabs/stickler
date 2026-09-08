@@ -1,5 +1,6 @@
 """Tests for NumericComparator."""
 
+
 from stickler.comparators import NumericComparator
 
 

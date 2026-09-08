@@ -12,15 +12,22 @@ field's threshold gates the subtree mean, so it changes scores. Set through a
 configuration paths disagreeing about what is configurable is the divergence #210
 and #211 are about.
 
-The same key one position over -- on an array-of-objects property -- is refused,
-correctly, because array pairing reads the element's own threshold. But the
-refusal came from `ModelFactory` with advice written for someone holding a Python
-class, naming `ComparableField` and a class attribute. A schema author has
-neither, so it is translated into the keys they can write.
+The same key one position over -- on an array-of-objects property -- is IGNORED,
+because array pairing reads the element class's own `match_threshold`. Refusing it
+was the first attempt and would have stopped previously exported schemas from
+importing: every released `to_json_schema()` emits the key there.
+
+The warning is gated on the VALUE, not on presence. Export writes `0.5` and can
+write nothing else, since `__init_subclass__` refuses a named threshold on a
+`List[StructuredModel]` field, so `0.5` carries no authorial intent and passes
+silently; any other value is the author's and warns. Warning on presence fired on
+stickler's own export, and its advice named the discarded value as the one to
+write, which would overwrite the element class's real gate.
 
 See https://github.com/awslabs/stickler/issues/317
 """
 
+import warnings
 from typing import List, Optional
 
 import pytest
@@ -172,6 +179,9 @@ class TestAnArrayOfObjectsIgnoresItWithAWarning:
     refused: every `to_json_schema()` on a released version emitted this key on an
     array-of-model property, so refusing it would stop previously exported schemas
     from importing in order to flag a key whose only cost is being ignored.
+
+    The warning is gated on the VALUE, not on presence -- see
+    `TestOurOwnExportDoesNotWarn` for why.
     """
 
     ARRAY_OF_OBJECTS = {
@@ -197,6 +207,19 @@ class TestAnArrayOfObjectsIgnoresItWithAWarning:
     def test_the_warning_echoes_the_declared_value(self):
         with pytest.warns(UserWarning, match="0.88"):
             StructuredModel.from_json_schema(self.ARRAY_OF_OBJECTS)
+
+    def test_it_does_not_offer_the_discarded_value_as_the_fix(self):
+        """Naming it as the value to write would overwrite a working gate.
+
+        The element class's `match_threshold` is a different number, so
+        "put 'x-aws-stickler-match-threshold': 0.88 inside items" told the reader
+        to replace their real gate with the one being thrown away.
+        """
+        with pytest.warns(UserWarning) as caught:
+            StructuredModel.from_json_schema(self.ARRAY_OF_OBJECTS)
+        message = str(caught[0].message)
+        assert "x-aws-stickler-match-threshold" in message
+        assert "'x-aws-stickler-match-threshold': 0.88" not in message
 
     def test_following_the_advice_works(self):
         """A warning recommending something unusable is not an improvement."""
@@ -231,3 +254,106 @@ class TestAnArrayOfObjectsIgnoresItWithAWarning:
                 items: Optional[List[Line]] = ComparableField(
                     threshold=0.88, default=None
                 )
+
+
+class TestOurOwnExportDoesNotWarn:
+    """The warning must not fire on a schema stickler itself produced.
+
+    `to_json_schema()` emits `x-aws-stickler-threshold: 0.5` on every
+    `List[StructuredModel]` property and cannot emit anything else, because
+    `__init_subclass__` refuses a named threshold on that shape. Warning on the
+    key's mere presence therefore fired on the library's own output for every
+    model holding a list of models: a warning about a key the library wrote,
+    advising the author to change something they never wrote. `dev` round-trips
+    such a schema silently, so that was a regression created by the warning.
+    """
+
+    class Line(StructuredModel):
+        match_threshold = 0.85
+        sku: Optional[str] = ComparableField(default=None)
+
+    @staticmethod
+    def _doc():
+        class Doc(StructuredModel):
+            lines: Optional[List["TestOurOwnExportDoesNotWarn.Line"]] = ComparableField(
+                default=None
+            )
+
+        return Doc
+
+    def test_export_emits_the_sentinel_there(self):
+        """Pins the premise. If export stops writing it, this class can go."""
+        exported = self._doc().to_json_schema()["properties"]["lines"]
+        assert exported["x-aws-stickler-threshold"] == 0.5
+
+    def test_a_round_trip_of_our_own_export_is_silent(self):
+        schema = self._doc().to_json_schema()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            StructuredModel.from_json_schema(schema)
+        assert [str(w.message) for w in caught] == []
+
+    def test_the_element_gate_survives_that_round_trip(self):
+        """Silence is only correct if the ignored value really was inert."""
+        rebuilt = StructuredModel.from_json_schema(self._doc().to_json_schema())
+        element = rebuilt.model_fields["lines"].annotation
+        while getattr(element, "__args__", None):
+            element = element.__args__[0]
+        assert element.match_threshold == 0.85
+
+    def test_a_value_other_than_the_sentinel_still_warns(self):
+        """Gating on the value must not swallow a number the author chose."""
+        schema = self._doc().to_json_schema()
+        schema["properties"]["lines"]["x-aws-stickler-threshold"] = 0.8
+        with pytest.warns(UserWarning, match="has no effect on array property"):
+            StructuredModel.from_json_schema(schema)
+
+
+class TestASecondSchemaIsNotSilenced:
+    """Two schemas naming the same property must both be told.
+
+    `warn_once` memoises on `(id, context)` for the life of the process, so with
+    the field path as the context the second schema declaring an array property
+    called `f` imported silently. Its author never heard that their key was dead,
+    which is exactly the silent drop this module exists to prevent. `warn_once` is
+    right for a per-document deprecation, where the alternative is one warning per
+    row of a corpus; a schema import happens once per call.
+    """
+
+    @staticmethod
+    def _schema(threshold):
+        return {
+            "type": "object",
+            "title": "T",
+            "properties": {
+                "f": {
+                    "type": "array",
+                    "items": CHILD,
+                    "x-aws-stickler-threshold": threshold,
+                }
+            },
+        }
+
+    def test_the_same_path_warns_again_for_a_second_schema(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            StructuredModel.from_json_schema(self._schema(0.8))
+            StructuredModel.from_json_schema(self._schema(0.8))
+        assert len(caught) == 2
+
+    def test_a_different_value_at_the_same_path_also_warns(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            StructuredModel.from_json_schema(self._schema(0.8))
+            StructuredModel.from_json_schema(self._schema(0.9))
+        assert len(caught) == 2
+        assert "0.8" in str(caught[0].message)
+        assert "0.9" in str(caught[1].message)
+
+    def test_the_sentinel_is_still_silent_across_repeats(self):
+        """Gating on the value must not be undone by dropping `warn_once`."""
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            StructuredModel.from_json_schema(self._schema(0.5))
+            StructuredModel.from_json_schema(self._schema(0.5))
+        assert [str(w.message) for w in caught] == []

@@ -1,3 +1,5 @@
+
+
 """Simple test for StructuredModel compare_with functionality."""
 
 from typing import Optional

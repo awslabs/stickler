@@ -21,7 +21,7 @@ from stickler.structured_object_evaluator import (
 # Define test models
 class Address(StructuredModel):
     """Test model for an address."""
-
+    
     match_threshold = 0.8
 
     street: str = ComparableField(comparator=LevenshteinComparator(), threshold=0.8)
@@ -34,7 +34,7 @@ class Address(StructuredModel):
 
 class Person(StructuredModel):
     """Test model for a person."""
-
+    
     match_threshold = 0.8
 
     name: str = ComparableField(
@@ -79,9 +79,7 @@ def test_document_non_matches():
     )
 
     # Evaluate prediction against ground truth with non-match documentation
-    result = gt_person.compare_with(
-        pred_person, include_confusion_matrix=True, document_non_matches=True
-    )
+    result = gt_person.compare_with(pred_person, include_confusion_matrix=True, document_non_matches=True)
 
     # Verify non-matches were documented
     assert len(result["non_matches"]) > 0, "Expected non-matches to be documented"
@@ -132,9 +130,7 @@ def test_non_match_documentation_disabled():
     pred = Address(street="123 Main St", city="New Yrok", state="N.Y.", zip_code=None)
 
     # Evaluate with non-match documentation disabled
-    result = gt.compare_with(
-        pred, include_confusion_matrix=True, document_non_matches=False
-    )
+    result = gt.compare_with(pred, include_confusion_matrix=True, document_non_matches=False)
 
     # Verify no non-matches were documented
     assert "non_matches" not in result or len(result.get("non_matches", [])) == 0, (
@@ -182,7 +178,9 @@ def test_below_threshold_pairs_are_atomic_false_discoveries(n):
         nm["non_match_type"] == NonMatchType.FALSE_DISCOVERY for nm in non_matches
     ), "an assigned pair below threshold is a false discovery, not FN + FA"
 
-    assert {nm["field_path"] for nm in non_matches} == {f"lines[{i}]" for i in range(n)}
+    assert {nm["field_path"] for nm in non_matches} == {
+        f"lines[{i}]" for i in range(n)
+    }
 
     assert all(
         set(nm["ground_truth_value"]) == {"sku", "desc"} for nm in non_matches
@@ -217,9 +215,7 @@ def test_non_match_shape_is_independent_of_list_length():
         non_matches = gt.compare_with(pred, document_non_matches=True)["non_matches"]
 
         # Compare the first pair's records, which both cases share.
-        first_pair = [
-            nm for nm in non_matches if nm["field_path"].startswith("lines[0]")
-        ]
+        first_pair = [nm for nm in non_matches if nm["field_path"].startswith("lines[0]")]
         keys_by_n[n] = sorted(
             (nm["field_path"], nm["non_match_type"], sorted(nm.keys()))
             for nm in first_pair

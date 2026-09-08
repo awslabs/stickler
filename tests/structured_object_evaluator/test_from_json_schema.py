@@ -15,16 +15,19 @@ class TestFromJsonSchemaBasic:
         """Test converting a basic JSON Schema to StructuredModel."""
         schema = {
             "type": "object",
-            "properties": {"name": {"type": "string"}, "age": {"type": "integer"}},
-            "required": ["name"],
+            "properties": {
+                "name": {"type": "string"},
+                "age": {"type": "integer"}
+            },
+            "required": ["name"]
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         assert Model.__name__ == "DynamicModel"
         assert "name" in Model.model_fields
         assert "age" in Model.model_fields
-
+        
         instance = Model(name="Alice", age=30)
         assert instance.name == "Alice"
         assert instance.age == 30
@@ -37,12 +40,12 @@ class TestFromJsonSchemaBasic:
                 "name": {"type": "string"},
                 "count": {"type": "integer"},
                 "price": {"type": "number"},
-                "active": {"type": "boolean"},
-            },
+                "active": {"type": "boolean"}
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         instance = Model(name="Test", count=5, price=9.99, active=True)
         assert instance.name == "Test"
         assert instance.count == 5
@@ -55,13 +58,13 @@ class TestFromJsonSchemaBasic:
             "type": "object",
             "properties": {
                 "name": {"type": "string"},
-                "count": {"type": "integer", "default": 0},
+                "count": {"type": "integer", "default": 0}
             },
-            "required": ["name"],
+            "required": ["name"]
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         instance = Model(name="Test")
         assert instance.name == "Test"
         assert instance.count == 0
@@ -75,9 +78,11 @@ class TestFromJsonSchemaModelConfiguration:
         schema = {
             "type": "object",
             "x-aws-stickler-model-name": "Product",
-            "properties": {"name": {"type": "string"}},
+            "properties": {
+                "name": {"type": "string"}
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
         assert Model.__name__ == "Product"
 
@@ -86,23 +91,35 @@ class TestFromJsonSchemaModelConfiguration:
         schema = {
             "type": "object",
             "x-aws-stickler-match-threshold": 0.8,
-            "properties": {"name": {"type": "string"}},
+            "properties": {
+                "name": {"type": "string"}
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
         assert Model.match_threshold == 0.8
 
     def test_default_model_name(self):
         """Test default model name when not specified."""
-        schema = {"type": "object", "properties": {"name": {"type": "string"}}}
-
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"}
+            }
+        }
+        
         Model = StructuredModel.from_json_schema(schema)
         assert Model.__name__ == "DynamicModel"
 
     def test_default_match_threshold(self):
         """Test default match threshold when not specified."""
-        schema = {"type": "object", "properties": {"name": {"type": "string"}}}
-
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"}
+            }
+        }
+        
         Model = StructuredModel.from_json_schema(schema)
         assert Model.match_threshold == 0.7
 
@@ -112,15 +129,19 @@ class TestFromJsonSchemaValidation:
 
     def test_invalid_schema_raises_error(self):
         """Test that invalid JSON Schema raises ValueError."""
-        invalid_schema = {"type": "invalid_type"}
-
+        invalid_schema = {
+            "type": "invalid_type"
+        }
+        
         with pytest.raises(ValueError, match="Invalid JSON Schema"):
             StructuredModel.from_json_schema(invalid_schema)
 
     def test_missing_properties_raises_error(self):
         """Test that schema without properties raises error."""
-        schema = {"type": "object"}
-
+        schema = {
+            "type": "object"
+        }
+        
         with pytest.raises(ValueError, match="must contain 'properties'"):
             StructuredModel.from_json_schema(schema)
 
@@ -129,9 +150,11 @@ class TestFromJsonSchemaValidation:
         schema = {
             "type": "object",
             "x-aws-stickler-model-name": "123Invalid",  # Can't start with number
-            "properties": {"name": {"type": "string"}},
+            "properties": {
+                "name": {"type": "string"}
+            }
         }
-
+        
         with pytest.raises(ValueError, match="valid Python identifier"):
             StructuredModel.from_json_schema(schema)
 
@@ -140,9 +163,11 @@ class TestFromJsonSchemaValidation:
         schema = {
             "type": "object",
             "x-aws-stickler-match-threshold": "invalid",
-            "properties": {"name": {"type": "string"}},
+            "properties": {
+                "name": {"type": "string"}
+            }
         }
-
+        
         with pytest.raises(ValueError, match="must be a number"):
             StructuredModel.from_json_schema(schema)
 
@@ -151,9 +176,11 @@ class TestFromJsonSchemaValidation:
         schema = {
             "type": "object",
             "x-aws-stickler-match-threshold": 1.5,
-            "properties": {"name": {"type": "string"}},
+            "properties": {
+                "name": {"type": "string"}
+            }
         }
-
+        
         with pytest.raises(ValueError, match="between 0.0 and 1.0"):
             StructuredModel.from_json_schema(schema)
 
@@ -165,14 +192,17 @@ class TestFromJsonSchemaComparison:
         """Test basic comparison with JSON Schema model."""
         schema = {
             "type": "object",
-            "properties": {"name": {"type": "string"}, "age": {"type": "integer"}},
+            "properties": {
+                "name": {"type": "string"},
+                "age": {"type": "integer"}
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         obj1 = Model(name="Alice", age=30)
         obj2 = Model(name="Alice", age=30)
-
+        
         score = obj1.compare(obj2)
         assert score == 1.0
 
@@ -186,16 +216,16 @@ class TestFromJsonSchemaComparison:
                     "type": "string",
                     "x-aws-stickler-comparator": "LevenshteinComparator",
                     "x-aws-stickler-threshold": 0.9,
-                    "x-aws-stickler-weight": 2.0,
+                    "x-aws-stickler-weight": 2.0
                 }
-            },
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         obj1 = Model(name="Widget")
         obj2 = Model(name="Widget")
-
+        
         result = obj1.compare_with(obj2)
         assert result["overall_score"] == 1.0
 
@@ -203,14 +233,17 @@ class TestFromJsonSchemaComparison:
         """Test compare_with method with JSON Schema model."""
         schema = {
             "type": "object",
-            "properties": {"name": {"type": "string"}, "price": {"type": "number"}},
+            "properties": {
+                "name": {"type": "string"},
+                "price": {"type": "number"}
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         obj1 = Model(name="Product", price=29.99)
         obj2 = Model(name="Product", price=29.99)
-
+        
         result = obj1.compare_with(obj2)
         assert "overall_score" in result
         assert "field_scores" in result
@@ -226,43 +259,22 @@ class TestFromJsonSchemaComparison:
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "required": [
-                            "sn",
-                            "type",
-                            "brand",
-                            "reference",
-                            "productSpecsJson",
-                            "unit",
-                            "quantity",
-                        ],
+                        "required": ["sn", "type", "brand", "reference", "productSpecsJson", "unit", "quantity"],
                         "properties": {
                             "sn": {"type": "number"},
                             "type": {
-                                "enum": [
-                                    "LED Luminaire",
-                                    "Power Supply",
-                                    "Control System",
-                                    "Mounting Bracket",
-                                    "LED Driver",
-                                    "Cable Assembly",
-                                    "Junction Box",
-                                    "Sensor Module",
-                                ],
-                                "type": "string",
+                                "enum": ["LED Luminaire", "Power Supply", "Control System", "Mounting Bracket", 
+                                        "LED Driver", "Cable Assembly", "Junction Box", "Sensor Module"],
+                                "type": "string"
                             },
-                            "unit": {"enum": ["pcs", "set", "unit"], "type": "string"},
+                            "unit": {
+                                "enum": ["pcs", "set", "unit"],
+                                "type": "string"
+                            },
                             "brand": {
-                                "enum": [
-                                    "Philips",
-                                    "Osram",
-                                    "Schneider Electric",
-                                    "Siemens",
-                                    "ABB",
-                                    "Lutron",
-                                    "Legrand",
-                                    "Mean Well",
-                                ],
-                                "type": "string",
+                                "enum": ["Philips", "Osram", "Schneider Electric", "Siemens", 
+                                        "ABB", "Lutron", "Legrand", "Mean Well"],
+                                "type": "string"
                             },
                             "quantity": {"type": "number"},
                             "reference": {"type": "string"},
@@ -276,14 +288,10 @@ class TestFromJsonSchemaComparison:
                                         "properties": {
                                             "watts": {"type": "number"},
                                             "inputVoltage": {
-                                                "enum": [
-                                                    "100-240v",
-                                                    "100-277v",
-                                                    "220-240v",
-                                                ],
-                                                "type": "string",
-                                            },
-                                        },
+                                                "enum": ["100-240v", "100-277v", "220-240v"],
+                                                "type": "string"
+                                            }
+                                        }
                                     },
                                     "ratings": {
                                         "type": "object",
@@ -291,36 +299,28 @@ class TestFromJsonSchemaComparison:
                                         "properties": {
                                             "protection": {
                                                 "enum": ["ip65", "ip66", "ip67"],
-                                                "type": "string",
+                                                "type": "string"
                                             }
-                                        },
+                                        }
                                     },
                                     "physical": {
                                         "type": "object",
                                         "required": ["material", "mountingType"],
                                         "properties": {
                                             "material": {
-                                                "enum": [
-                                                    "aluminum",
-                                                    "steel",
-                                                    "plastic",
-                                                ],
-                                                "type": "string",
+                                                "enum": ["aluminum", "steel", "plastic"],
+                                                "type": "string"
                                             },
                                             "mountingType": {
-                                                "enum": [
-                                                    "surface",
-                                                    "recessed",
-                                                    "track",
-                                                ],
-                                                "type": "string",
-                                            },
-                                        },
-                                    },
-                                },
-                            },
-                        },
-                    },
+                                                "enum": ["surface", "recessed", "track"],
+                                                "type": "string"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 },
                 "header": {
                     "type": "object",
@@ -328,15 +328,7 @@ class TestFromJsonSchemaComparison:
                     "properties": {
                         "to": {
                             "type": "object",
-                            "required": [
-                                "companyName",
-                                "reference",
-                                "location",
-                                "attention",
-                                "tel",
-                                "email",
-                                "vatNumber",
-                            ],
+                            "required": ["companyName", "reference", "location", "attention", "tel", "email", "vatNumber"],
                             "properties": {
                                 "tel": {"type": "string"},
                                 "email": {"type": "string"},
@@ -344,43 +336,36 @@ class TestFromJsonSchemaComparison:
                                 "attention": {"type": "string"},
                                 "reference": {"type": "string"},
                                 "vatNumber": {"type": "string"},
-                                "companyName": {"type": "string"},
-                            },
+                                "companyName": {"type": "string"}
+                            }
                         },
                         "date": {"type": "string"},
                         "from": {
                             "type": "object",
-                            "required": [
-                                "companyName",
-                                "reference",
-                                "location",
-                                "tel",
-                                "email",
-                                "vatNumber",
-                            ],
+                            "required": ["companyName", "reference", "location", "tel", "email", "vatNumber"],
                             "properties": {
                                 "tel": {"type": "string"},
                                 "email": {"type": "string"},
                                 "location": {"type": "string"},
                                 "reference": {"type": "string"},
                                 "vatNumber": {"type": "string"},
-                                "companyName": {"type": "string"},
-                            },
+                                "companyName": {"type": "string"}
+                            }
                         },
-                        "projectName": {"type": "string"},
-                    },
-                },
-            },
+                        "projectName": {"type": "string"}
+                    }
+                }
+            }
         }
-
+        
         # Create model from complex schema
         Model = StructuredModel.from_json_schema(schema)
-
+        
         # Verify model was created
         assert Model.__name__ == "DynamicModel"
         assert "header" in Model.model_fields
         assert "items" in Model.model_fields
-
+        
         # Create instance with sample data
         instance = Model(
             header={
@@ -390,7 +375,7 @@ class TestFromJsonSchemaComparison:
                     "location": "New York",
                     "tel": "555-1234",
                     "email": "contact@acme.com",
-                    "vatNumber": "VAT123",
+                    "vatNumber": "VAT123"
                 },
                 "to": {
                     "companyName": "Beta Inc",
@@ -399,10 +384,10 @@ class TestFromJsonSchemaComparison:
                     "attention": "John Doe",
                     "tel": "555-5678",
                     "email": "john@beta.com",
-                    "vatNumber": "VAT456",
+                    "vatNumber": "VAT456"
                 },
                 "date": "2024-01-15",
-                "projectName": "LED Installation",
+                "projectName": "LED Installation"
             },
             items=[
                 {
@@ -413,17 +398,25 @@ class TestFromJsonSchemaComparison:
                     "unit": "pcs",
                     "quantity": 10,
                     "productSpecsJson": {
-                        "power": {"watts": 50, "inputVoltage": "100-240v"},
-                        "physical": {"material": "aluminum", "mountingType": "surface"},
-                        "ratings": {"protection": "ip65"},
-                    },
+                        "power": {
+                            "watts": 50,
+                            "inputVoltage": "100-240v"
+                        },
+                        "physical": {
+                            "material": "aluminum",
+                            "mountingType": "surface"
+                        },
+                        "ratings": {
+                            "protection": "ip65"
+                        }
+                    }
                 }
-            ],
+            ]
         )
-
+        
         # Verify nested structure
         # Note: 'from' is a Python keyword, but Pydantic handles it as a regular field
-        from_data = getattr(instance.header, "from")
+        from_data = getattr(instance.header, 'from')
         assert from_data.companyName == "Acme Corp"
         assert instance.header.to.companyName == "Beta Inc"
         assert instance.header.projectName == "LED Installation"
@@ -432,7 +425,7 @@ class TestFromJsonSchemaComparison:
         assert instance.items[0].type == "LED Luminaire"
         assert instance.items[0].productSpecsJson.power.watts == 50
         assert instance.items[0].productSpecsJson.physical.material == "aluminum"
-
+        
         # Test comparison
         instance2 = Model(
             header={
@@ -442,7 +435,7 @@ class TestFromJsonSchemaComparison:
                     "location": "New York",
                     "tel": "555-1234",
                     "email": "contact@acme.com",
-                    "vatNumber": "VAT123",
+                    "vatNumber": "VAT123"
                 },
                 "to": {
                     "companyName": "Beta Inc",
@@ -451,10 +444,10 @@ class TestFromJsonSchemaComparison:
                     "attention": "John Doe",
                     "tel": "555-5678",
                     "email": "john@beta.com",
-                    "vatNumber": "VAT456",
+                    "vatNumber": "VAT456"
                 },
                 "date": "2024-01-15",
-                "projectName": "LED Installation",
+                "projectName": "LED Installation"
             },
             items=[
                 {
@@ -465,18 +458,26 @@ class TestFromJsonSchemaComparison:
                     "unit": "pcs",
                     "quantity": 10,
                     "productSpecsJson": {
-                        "power": {"watts": 50, "inputVoltage": "100-240v"},
-                        "physical": {"material": "aluminum", "mountingType": "surface"},
-                        "ratings": {"protection": "ip65"},
-                    },
+                        "power": {
+                            "watts": 50,
+                            "inputVoltage": "100-240v"
+                        },
+                        "physical": {
+                            "material": "aluminum",
+                            "mountingType": "surface"
+                        },
+                        "ratings": {
+                            "protection": "ip65"
+                        }
+                    }
                 }
-            ],
+            ]
         )
-
+        
         # Compare identical instances
         score = instance.compare(instance2)
         assert score == 1.0
-
+        
         result = instance.compare_with(instance2)
         assert result["overall_score"] == 1.0
 
@@ -495,19 +496,19 @@ class TestFromJsonSchemaNestedObjects:
                     "properties": {
                         "street": {"type": "string"},
                         "city": {"type": "string"},
-                        "zipcode": {"type": "string"},
-                    },
-                },
-            },
+                        "zipcode": {"type": "string"}
+                    }
+                }
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         instance = Model(
             name="John Doe",
-            address={"street": "123 Main St", "city": "Boston", "zipcode": "02101"},
+            address={"street": "123 Main St", "city": "Boston", "zipcode": "02101"}
         )
-
+        
         assert instance.name == "John Doe"
         assert isinstance(instance.address, StructuredModel)
         assert instance.address.street == "123 Main St"
@@ -526,22 +527,25 @@ class TestFromJsonSchemaNestedObjects:
                             "type": "object",
                             "properties": {
                                 "building": {"type": "string"},
-                                "floor": {"type": "integer"},
-                            },
+                                "floor": {"type": "integer"}
+                            }
                         },
-                        "city": {"type": "string"},
-                    },
-                },
-            },
+                        "city": {"type": "string"}
+                    }
+                }
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         instance = Model(
             company="Acme Corp",
-            location={"office": {"building": "Tower A", "floor": 5}, "city": "Seattle"},
+            location={
+                "office": {"building": "Tower A", "floor": 5},
+                "city": "Seattle"
+            }
         )
-
+        
         assert instance.company == "Acme Corp"
         assert isinstance(instance.location, StructuredModel)
         assert isinstance(instance.location.office, StructuredModel)
@@ -565,28 +569,31 @@ class TestFromJsonSchemaNestedObjects:
                                     "type": "object",
                                     "properties": {
                                         "name": {"type": "string"},
-                                        "size": {"type": "integer"},
-                                    },
-                                },
-                            },
-                        },
-                    },
+                                        "size": {"type": "integer"}
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-            },
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         instance = Model(
             organization={
                 "name": "Tech Corp",
                 "department": {
                     "name": "Engineering",
-                    "team": {"name": "Backend", "size": 8},
-                },
+                    "team": {
+                        "name": "Backend",
+                        "size": 8
+                    }
+                }
             }
         )
-
+        
         assert isinstance(instance.organization, StructuredModel)
         assert isinstance(instance.organization.department, StructuredModel)
         assert isinstance(instance.organization.department.team, StructuredModel)
@@ -603,21 +610,23 @@ class TestFromJsonSchemaNestedObjects:
                     "type": "object",
                     "properties": {
                         "email": {"type": "string"},
-                        "phone": {"type": "string"},
-                    },
-                },
-            },
+                        "phone": {"type": "string"}
+                    }
+                }
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         obj1 = Model(
-            name="Alice", contact={"email": "alice@example.com", "phone": "555-1234"}
+            name="Alice",
+            contact={"email": "alice@example.com", "phone": "555-1234"}
         )
         obj2 = Model(
-            name="Alice", contact={"email": "alice@example.com", "phone": "555-1234"}
+            name="Alice",
+            contact={"email": "alice@example.com", "phone": "555-1234"}
         )
-
+        
         score = obj1.compare(obj2)
         assert score == 1.0
 
@@ -639,18 +648,18 @@ class TestFromJsonSchemaNestedObjects:
                                     "type": "object",
                                     "properties": {
                                         "name": {"type": "string"},
-                                        "role": {"type": "string"},
-                                    },
-                                },
-                            },
-                        },
-                    },
-                },
-            },
+                                        "role": {"type": "string"}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         instance = Model(
             company="Tech Inc",
             departments=[
@@ -658,12 +667,12 @@ class TestFromJsonSchemaNestedObjects:
                     "name": "Engineering",
                     "employees": [
                         {"name": "Alice", "role": "Engineer"},
-                        {"name": "Bob", "role": "Manager"},
-                    ],
+                        {"name": "Bob", "role": "Manager"}
+                    ]
                 }
-            ],
+            ]
         )
-
+        
         assert instance.company == "Tech Inc"
         assert len(instance.departments) == 1
         assert isinstance(instance.departments[0], StructuredModel)
@@ -680,12 +689,15 @@ class TestFromJsonSchemaArrays:
             "type": "object",
             "properties": {
                 "name": {"type": "string"},
-                "tags": {"type": "array", "items": {"type": "string"}},
-            },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                }
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         instance = Model(name="Product", tags=["electronics", "gadget", "new"])
         assert instance.name == "Product"
         assert isinstance(instance.tags, list)
@@ -698,12 +710,15 @@ class TestFromJsonSchemaArrays:
             "type": "object",
             "properties": {
                 "name": {"type": "string"},
-                "scores": {"type": "array", "items": {"type": "number"}},
-            },
+                "scores": {
+                    "type": "array",
+                    "items": {"type": "number"}
+                }
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         instance = Model(name="Test", scores=[95.5, 87.3, 92.1])
         assert instance.name == "Test"
         assert isinstance(instance.scores, list)
@@ -716,12 +731,15 @@ class TestFromJsonSchemaArrays:
             "type": "object",
             "properties": {
                 "name": {"type": "string"},
-                "quantities": {"type": "array", "items": {"type": "integer"}},
-            },
+                "quantities": {
+                    "type": "array",
+                    "items": {"type": "integer"}
+                }
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         instance = Model(name="Inventory", quantities=[10, 25, 5])
         assert instance.name == "Inventory"
         assert isinstance(instance.quantities, list)
@@ -740,24 +758,24 @@ class TestFromJsonSchemaArrays:
                         "properties": {
                             "name": {"type": "string"},
                             "quantity": {"type": "integer"},
-                            "price": {"type": "number"},
+                            "price": {"type": "number"}
                         },
-                        "required": ["name"],
-                    },
-                },
-            },
+                        "required": ["name"]
+                    }
+                }
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         instance = Model(
             order_id="ORD-001",
             items=[
                 {"name": "Widget", "quantity": 2, "price": 10.00},
-                {"name": "Gadget", "quantity": 1, "price": 25.00},
-            ],
+                {"name": "Gadget", "quantity": 1, "price": 25.00}
+            ]
         )
-
+        
         assert instance.order_id == "ORD-001"
         assert len(instance.items) == 2
         assert all(isinstance(item, StructuredModel) for item in instance.items)
@@ -771,15 +789,18 @@ class TestFromJsonSchemaArrays:
             "type": "object",
             "properties": {
                 "name": {"type": "string"},
-                "tags": {"type": "array", "items": {"type": "string"}},
-            },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                }
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         obj1 = Model(name="Product", tags=["electronics", "gadget"])
         obj2 = Model(name="Product", tags=["electronics", "gadget"])
-
+        
         score = obj1.compare(obj2)
         assert score == 1.0
 
@@ -794,18 +815,18 @@ class TestFromJsonSchemaArrays:
                         "type": "object",
                         "properties": {
                             "name": {"type": "string"},
-                            "value": {"type": "integer"},
-                        },
-                    },
+                            "value": {"type": "integer"}
+                        }
+                    }
                 }
-            },
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         obj1 = Model(items=[{"name": "A", "value": 1}, {"name": "B", "value": 2}])
         obj2 = Model(items=[{"name": "A", "value": 1}, {"name": "B", "value": 2}])
-
+        
         score = obj1.compare(obj2)
         assert score == 1.0
 
@@ -819,7 +840,7 @@ class TestFromJsonSchemaWithReferences:
             "type": "object",
             "properties": {
                 "name": {"type": "string"},
-                "address": {"$ref": "#/definitions/Address"},
+                "address": {"$ref": "#/definitions/Address"}
             },
             "definitions": {
                 "Address": {
@@ -827,19 +848,19 @@ class TestFromJsonSchemaWithReferences:
                     "properties": {
                         "street": {"type": "string"},
                         "city": {"type": "string"},
-                        "zipcode": {"type": "string"},
-                    },
+                        "zipcode": {"type": "string"}
+                    }
                 }
-            },
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         instance = Model(
             name="John Doe",
-            address={"street": "123 Main St", "city": "Boston", "zipcode": "02101"},
+            address={"street": "123 Main St", "city": "Boston", "zipcode": "02101"}
         )
-
+        
         assert instance.name == "John Doe"
         assert isinstance(instance.address, StructuredModel)
         assert instance.address.street == "123 Main St"
@@ -850,25 +871,26 @@ class TestFromJsonSchemaWithReferences:
             "type": "object",
             "properties": {
                 "name": {"type": "string"},
-                "contact": {"$ref": "#/$defs/Contact"},
+                "contact": {"$ref": "#/$defs/Contact"}
             },
             "$defs": {
                 "Contact": {
                     "type": "object",
                     "properties": {
                         "email": {"type": "string"},
-                        "phone": {"type": "string"},
-                    },
+                        "phone": {"type": "string"}
+                    }
                 }
-            },
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         instance = Model(
-            name="Alice", contact={"email": "alice@example.com", "phone": "555-1234"}
+            name="Alice",
+            contact={"email": "alice@example.com", "phone": "555-1234"}
         )
-
+        
         assert instance.name == "Alice"
         assert isinstance(instance.contact, StructuredModel)
         assert instance.contact.email == "alice@example.com"
@@ -879,33 +901,33 @@ class TestFromJsonSchemaWithReferences:
             "type": "object",
             "properties": {
                 "person": {"$ref": "#/definitions/Person"},
-                "company": {"$ref": "#/definitions/Company"},
+                "company": {"$ref": "#/definitions/Company"}
             },
             "definitions": {
                 "Person": {
                     "type": "object",
                     "properties": {
                         "name": {"type": "string"},
-                        "age": {"type": "integer"},
-                    },
+                        "age": {"type": "integer"}
+                    }
                 },
                 "Company": {
                     "type": "object",
                     "properties": {
                         "name": {"type": "string"},
-                        "industry": {"type": "string"},
-                    },
-                },
-            },
+                        "industry": {"type": "string"}
+                    }
+                }
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         instance = Model(
             person={"name": "Alice", "age": 30},
-            company={"name": "Tech Corp", "industry": "Software"},
+            company={"name": "Tech Corp", "industry": "Software"}
         )
-
+        
         assert isinstance(instance.person, StructuredModel)
         assert isinstance(instance.company, StructuredModel)
         assert instance.person.name == "Alice"
@@ -915,34 +937,36 @@ class TestFromJsonSchemaWithReferences:
         """Test schema with nested $ref references."""
         schema = {
             "type": "object",
-            "properties": {"employee": {"$ref": "#/definitions/Employee"}},
+            "properties": {
+                "employee": {"$ref": "#/definitions/Employee"}
+            },
             "definitions": {
                 "Employee": {
                     "type": "object",
                     "properties": {
                         "name": {"type": "string"},
-                        "address": {"$ref": "#/definitions/Address"},
-                    },
+                        "address": {"$ref": "#/definitions/Address"}
+                    }
                 },
                 "Address": {
                     "type": "object",
                     "properties": {
                         "street": {"type": "string"},
-                        "city": {"type": "string"},
-                    },
-                },
-            },
+                        "city": {"type": "string"}
+                    }
+                }
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         instance = Model(
             employee={
                 "name": "Bob",
-                "address": {"street": "456 Oak Ave", "city": "Portland"},
+                "address": {"street": "456 Oak Ave", "city": "Portland"}
             }
         )
-
+        
         assert isinstance(instance.employee, StructuredModel)
         assert isinstance(instance.employee.address, StructuredModel)
         assert instance.employee.address.city == "Portland"
@@ -954,7 +978,7 @@ class TestFromJsonSchemaWithReferences:
             "properties": {
                 "employees": {
                     "type": "array",
-                    "items": {"$ref": "#/definitions/Employee"},
+                    "items": {"$ref": "#/definitions/Employee"}
                 }
             },
             "definitions": {
@@ -962,21 +986,21 @@ class TestFromJsonSchemaWithReferences:
                     "type": "object",
                     "properties": {
                         "name": {"type": "string"},
-                        "role": {"type": "string"},
-                    },
+                        "role": {"type": "string"}
+                    }
                 }
-            },
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         instance = Model(
             employees=[
                 {"name": "Alice", "role": "Engineer"},
-                {"name": "Bob", "role": "Manager"},
+                {"name": "Bob", "role": "Manager"}
             ]
         )
-
+        
         assert len(instance.employees) == 2
         assert all(isinstance(emp, StructuredModel) for emp in instance.employees)
         assert instance.employees[0].name == "Alice"
@@ -988,8 +1012,11 @@ class TestFromJsonSchemaWithReferences:
             "type": "object",
             "x-aws-stickler-model-name": "Company",
             "properties": {
-                "name": {"type": "string", "x-aws-stickler-weight": 2.0},
-                "address": {"$ref": "#/definitions/Address"},
+                "name": {
+                    "type": "string",
+                    "x-aws-stickler-weight": 2.0
+                },
+                "address": {"$ref": "#/definitions/Address"}
             },
             "definitions": {
                 "Address": {
@@ -998,19 +1025,19 @@ class TestFromJsonSchemaWithReferences:
                         "city": {
                             "type": "string",
                             "x-aws-stickler-comparator": "LevenshteinComparator",
-                            "x-aws-stickler-threshold": 0.9,
+                            "x-aws-stickler-threshold": 0.9
                         }
-                    },
+                    }
                 }
-            },
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         assert Model.__name__ == "Company"
         instance = Model(name="Acme", address={"city": "Seattle"})
         assert isinstance(instance.address, StructuredModel)
-
+        
         # Test comparison works with extensions
         instance2 = Model(name="Acme", address={"city": "Seattle"})
         score = instance.compare(instance2)
@@ -1030,11 +1057,11 @@ class TestFromJsonSchemaExtensions:
                     "x-aws-stickler-comparator": "LevenshteinComparator",
                     "x-aws-stickler-threshold": 0.85,
                     "x-aws-stickler-weight": 2.5,
-                    "x-aws-stickler-clip-under-threshold": True,
+                    "x-aws-stickler-clip-under-threshold": True
                 }
-            },
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
         instance = Model(name="Test")
         assert instance.name == "Test"
@@ -1047,15 +1074,15 @@ class TestFromJsonSchemaExtensions:
                 "price": {
                     "type": "number",
                     "x-aws-stickler-comparator": "NumericComparator",
-                    "x-aws-stickler-threshold": 0.95,
+                    "x-aws-stickler-threshold": 0.95
                 }
-            },
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
         obj1 = Model(price=100.0)
         obj2 = Model(price=100.0)
-
+        
         score = obj1.compare(obj2)
         assert score == 1.0
 
@@ -1066,15 +1093,15 @@ class TestFromJsonSchemaExtensions:
             "properties": {
                 "active": {
                     "type": "boolean",
-                    "x-aws-stickler-comparator": "ExactComparator",
+                    "x-aws-stickler-comparator": "ExactComparator"
                 }
-            },
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
         obj1 = Model(active=True)
         obj2 = Model(active=True)
-
+        
         score = obj1.compare(obj2)
         assert score == 1.0
 
@@ -1083,15 +1110,21 @@ class TestFromJsonSchemaExtensions:
         schema = {
             "type": "object",
             "properties": {
-                "important": {"type": "string", "x-aws-stickler-weight": 5.0},
-                "minor": {"type": "string", "x-aws-stickler-weight": 0.5},
-            },
+                "important": {
+                    "type": "string",
+                    "x-aws-stickler-weight": 5.0
+                },
+                "minor": {
+                    "type": "string",
+                    "x-aws-stickler-weight": 0.5
+                }
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
         obj1 = Model(important="Critical", minor="Detail")
         obj2 = Model(important="Critical", minor="Detail")
-
+        
         result = obj1.compare_with(obj2)
         assert result["overall_score"] == 1.0
 
@@ -1103,15 +1136,15 @@ class TestFromJsonSchemaExtensions:
                 "name": {
                     "type": "string",
                     "x-aws-stickler-threshold": 0.9,
-                    "x-aws-stickler-clip-under-threshold": True,
+                    "x-aws-stickler-clip-under-threshold": True
                 }
-            },
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
         obj1 = Model(name="Test")
         obj2 = Model(name="Test")
-
+        
         score = obj1.compare(obj2)
         assert score == 1.0
 
@@ -1122,23 +1155,23 @@ class TestFromJsonSchemaExtensions:
             "properties": {
                 "text": {
                     "type": "string",
-                    "x-aws-stickler-comparator": "LevenshteinComparator",
+                    "x-aws-stickler-comparator": "LevenshteinComparator"
                 },
                 "number": {
                     "type": "number",
-                    "x-aws-stickler-comparator": "NumericComparator",
+                    "x-aws-stickler-comparator": "NumericComparator"
                 },
                 "flag": {
                     "type": "boolean",
-                    "x-aws-stickler-comparator": "ExactComparator",
-                },
-            },
+                    "x-aws-stickler-comparator": "ExactComparator"
+                }
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
         obj1 = Model(text="Hello", number=42.0, flag=True)
         obj2 = Model(text="Hello", number=42.0, flag=True)
-
+        
         score = obj1.compare(obj2)
         assert score == 1.0
 
@@ -1148,8 +1181,11 @@ class TestFromJsonSchemaEdgeCases:
 
     def test_empty_properties(self):
         """Test schema with empty properties object raises error."""
-        schema = {"type": "object", "properties": {}}
-
+        schema = {
+            "type": "object",
+            "properties": {}
+        }
+        
         # Empty properties should raise an error since models need at least one field
         with pytest.raises(ValueError, match="at least one field"):
             StructuredModel.from_json_schema(schema)
@@ -1158,9 +1194,12 @@ class TestFromJsonSchemaEdgeCases:
         """Test schema with all optional fields (no required)."""
         schema = {
             "type": "object",
-            "properties": {"name": {"type": "string"}, "age": {"type": "integer"}},
+            "properties": {
+                "name": {"type": "string"},
+                "age": {"type": "integer"}
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
         instance = Model()
         assert instance.name is None
@@ -1170,12 +1209,15 @@ class TestFromJsonSchemaEdgeCases:
         """Test schema with all fields required."""
         schema = {
             "type": "object",
-            "properties": {"name": {"type": "string"}, "age": {"type": "integer"}},
-            "required": ["name", "age"],
+            "properties": {
+                "name": {"type": "string"},
+                "age": {"type": "integer"}
+            },
+            "required": ["name", "age"]
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
+        
         # Should raise validation error if required fields missing
         with pytest.raises(Exception):
             Model()
@@ -1196,30 +1238,47 @@ class TestFromJsonSchemaEdgeCases:
                                     "properties": {
                                         "level4": {
                                             "type": "object",
-                                            "properties": {"value": {"type": "string"}},
+                                            "properties": {
+                                                "value": {"type": "string"}
+                                            }
                                         }
-                                    },
+                                    }
                                 }
-                            },
+                            }
                         }
-                    },
+                    }
                 }
-            },
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
-
-        instance = Model(level1={"level2": {"level3": {"level4": {"value": "deep"}}}})
-
+        
+        instance = Model(
+            level1={
+                "level2": {
+                    "level3": {
+                        "level4": {
+                            "value": "deep"
+                        }
+                    }
+                }
+            }
+        )
+        
         assert instance.level1.level2.level3.level4.value == "deep"
 
     def test_empty_array(self):
         """Test schema with empty array."""
         schema = {
             "type": "object",
-            "properties": {"items": {"type": "array", "items": {"type": "string"}}},
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                }
+            }
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
         instance = Model(items=[])
         assert instance.items == []
@@ -1234,14 +1293,14 @@ class TestFromJsonSchemaEdgeCases:
                     "properties": {
                         "name": {"type": "string"},
                         "age": {"type": "integer"},
-                        "email": {"type": "string"},
+                        "email": {"type": "string"}
                     },
-                    "required": ["name"],
+                    "required": ["name"]
                 }
             },
-            "required": ["person"],
+            "required": ["person"]
         }
-
+        
         Model = StructuredModel.from_json_schema(schema)
         instance = Model(person={"name": "Alice"})
         assert instance.person.name == "Alice"

@@ -184,7 +184,7 @@ Add these extensions to any property in your JSON Schema to control comparison b
 | Extension | Type | Default | Purpose |
 |-----------|------|---------|---------|
 | `x-aws-stickler-comparator` | string | Type-dependent | Comparison algorithm (e.g., `"ExactComparator"`, `"LevenshteinComparator"`) |
-| `x-aws-stickler-threshold` | number (0.0--1.0) | 0.5 or 1.0 | Match classification cutoff |
+| `x-aws-stickler-threshold` | number (0.0--1.0) | 0.5 or 1.0 | Match classification cutoff. Read on a scalar, an object, and an array of scalars. **Ignored on an array of objects**, where pairing is gated by the element class's `x-aws-stickler-match-threshold`; a value other than the exported `0.5` warns there |
 | `x-aws-stickler-weight` | number (> 0.0) | 1.0 | Field importance multiplier |
 | `x-aws-stickler-clip-under-threshold` | boolean | `false` | Zero out scores below threshold |
 | `x-aws-stickler-model-name` | string | `"DynamicModel"` | Name of the generated Python class (root level) |

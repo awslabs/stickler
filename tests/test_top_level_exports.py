@@ -41,14 +41,18 @@ MODEL_AND_EVALUATION_EXPORTS = {
 class TestReexportIdentity:
     """Verify re-exports are identical to canonical source objects."""
 
-    @pytest.mark.parametrize("name,module", ALWAYS_AVAILABLE_EXPORTS.items())
+    @pytest.mark.parametrize(
+        "name,module", ALWAYS_AVAILABLE_EXPORTS.items()
+    )
     def test_comparator_is_canonical_class(self, name, module):
         """Test that stickler.X is stickler.comparators.x.X."""
         canonical = getattr(importlib.import_module(module), name)
         exported = getattr(stickler, name)
         assert exported is canonical
 
-    @pytest.mark.parametrize("name,module", MODEL_AND_EVALUATION_EXPORTS.items())
+    @pytest.mark.parametrize(
+        "name,module", MODEL_AND_EVALUATION_EXPORTS.items()
+    )
     def test_model_export_is_canonical(self, name, module):
         """Test that model/evaluation exports are canonical objects."""
         canonical = getattr(importlib.import_module(module), name)

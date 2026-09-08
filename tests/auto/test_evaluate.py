@@ -230,7 +230,9 @@ def test_match_threshold_is_honored_regardless_of_call_order(order):
     gt = _invoice(lines=[Line(sku="S1", qty=2, price=9.99)])
     # One line item, similarity ~0.66: matched at 0.5, not matched at 0.9.
     pred = _invoice(lines=[Line(sku="S1", qty=2, price=100.00)])
-    scores = {t: stickler.evaluate(gt, pred, match_threshold=t).f1 for t in order}
+    scores = {
+        t: stickler.evaluate(gt, pred, match_threshold=t).f1 for t in order
+    }
     assert scores[0.5] > scores[0.9]
 
 

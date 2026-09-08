@@ -156,52 +156,54 @@ class TestVetRecordsMetricsCalculation:
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
         # field-level confusion metrix values - use "overall" key for primitive fields
-        assert cm["fields"]["recordId"]["overall"]["tp"] == 1, (
-            "Expected 1 true positives"
-        )
-        assert cm["fields"]["recordId"]["overall"]["fd"] == 0, (
-            "Expected 0 false discovery"
-        )
-        assert cm["fields"]["recordId"]["overall"]["fa"] == 0, "Expected 0 false alarm"
-        assert cm["fields"]["recordId"]["overall"]["fn"] == 0, (
-            "Expected 0 false negatives"
-        )
-        assert cm["fields"]["recordId"]["overall"]["tn"] == 0, (
-            "Expected 0 true negatives"
-        )
+        assert (
+            cm["fields"]["recordId"]["overall"]["tp"] == 1
+        ), "Expected 1 true positives"
+        assert (
+            cm["fields"]["recordId"]["overall"]["fd"] == 0
+        ), "Expected 0 false discovery"
+        assert (
+            cm["fields"]["recordId"]["overall"]["fa"] == 0
+        ), "Expected 0 false alarm"
+        assert (
+            cm["fields"]["recordId"]["overall"]["fn"] == 0
+        ), "Expected 0 false negatives"
+        assert (
+            cm["fields"]["recordId"]["overall"]["tn"] == 0
+        ), "Expected 0 true negatives"
 
         # The id field metrics are inside the "overall" key
-        assert cm["fields"]["owner"]["fields"]["id"]["overall"]["tp"] == 1, (
-            "Expected 1 true positives"
-        )
-        assert cm["fields"]["owner"]["fields"]["id"]["overall"]["fd"] == 0, (
-            "Expected 0 false discovery"
-        )
-        assert cm["fields"]["owner"]["fields"]["id"]["overall"]["fa"] == 0, (
-            "Expected 0 false alarm"
-        )
-        assert cm["fields"]["owner"]["fields"]["id"]["overall"]["fn"] == 0, (
-            "Expected 0 false negatives"
-        )
-        assert cm["fields"]["owner"]["fields"]["id"]["overall"]["tn"] == 0, (
-            "Expected 0 true negatives"
-        )
+        assert (
+            cm["fields"]["owner"]["fields"]["id"]["overall"]["tp"] == 1
+        ), "Expected 1 true positives"
+        assert (
+            cm["fields"]["owner"]["fields"]["id"]["overall"]["fd"] == 0
+        ), "Expected 0 false discovery"
+        assert (
+            cm["fields"]["owner"]["fields"]["id"]["overall"]["fa"] == 0
+        ), "Expected 0 false alarm"
+        assert (
+            cm["fields"]["owner"]["fields"]["id"]["overall"]["fn"] == 0
+        ), "Expected 0 false negatives"
+        assert (
+            cm["fields"]["owner"]["fields"]["id"]["overall"]["tn"] == 0
+        ), "Expected 0 true negatives"
 
-        assert cm["fields"]["owner"]["fields"]["name"]["overall"]["tp"] == 1, (
-            "Expected 1 true positives"
-        )
-        assert cm["fields"]["owner"]["fields"]["name"]["overall"]["fd"] == 0, (
-            "Expected 0 false discovery"
-        )
-        assert cm["fields"]["owner"]["fields"]["name"]["overall"]["fa"] == 0, (
-            "Expected 0 false alarm"
-        )
-        assert cm["fields"]["owner"]["fields"]["name"]["overall"]["fn"] == 0, (
-            "Expected 0 false negatives"
-        )
-        assert cm["fields"]["owner"]["fields"]["name"]["overall"]["tn"] == 0, (
-            "Expected 0 true negatives"
-        )
+        assert (
+            cm["fields"]["owner"]["fields"]["name"]["overall"]["tp"] == 1
+        ), "Expected 1 true positives"
+        assert (
+            cm["fields"]["owner"]["fields"]["name"]["overall"]["fd"] == 0
+        ), "Expected 0 false discovery"
+        assert (
+            cm["fields"]["owner"]["fields"]["name"]["overall"]["fa"] == 0
+        ), "Expected 0 false alarm"
+        assert (
+            cm["fields"]["owner"]["fields"]["name"]["overall"]["fn"] == 0
+        ), "Expected 0 false negatives"
+        assert (
+            cm["fields"]["owner"]["fields"]["name"]["overall"]["tn"] == 0
+        ), "Expected 0 true negatives"
 
         # Contact field metrics are in the nested fields
         assert (
@@ -267,34 +269,38 @@ class TestVetRecordsMetricsCalculation:
         ), "Expected 0 true negatives"
 
         # Contact overall metrics are also in an "overall" key
-        assert cm["fields"]["owner"]["fields"]["contact"]["overall"]["tp"] == 0, (
-            "Expected 0 true positives"
-        )
-        assert cm["fields"]["owner"]["fields"]["contact"]["overall"]["fd"] == 1, (
-            "Expected 1 false discovery"
-        )
-        assert cm["fields"]["owner"]["fields"]["contact"]["overall"]["fa"] == 0, (
-            "Expected 0 false alarm (object-level counting - both GT and Pred have contact objects)"
-        )
-        assert cm["fields"]["owner"]["fields"]["contact"]["overall"]["fn"] == 0, (
-            "Expected 0 false negatives"
-        )
-        assert cm["fields"]["owner"]["fields"]["contact"]["overall"]["tn"] == 0, (
-            "Expected 0 true negatives"
-        )
+        assert (
+            cm["fields"]["owner"]["fields"]["contact"]["overall"]["tp"] == 0
+        ), "Expected 0 true positives"
+        assert (
+            cm["fields"]["owner"]["fields"]["contact"]["overall"]["fd"] == 1
+        ), "Expected 1 false discovery"
+        assert (
+            cm["fields"]["owner"]["fields"]["contact"]["overall"]["fa"] == 0
+        ), "Expected 0 false alarm (object-level counting - both GT and Pred have contact objects)"
+        assert (
+            cm["fields"]["owner"]["fields"]["contact"]["overall"]["fn"] == 0
+        ), "Expected 0 false negatives"
+        assert (
+            cm["fields"]["owner"]["fields"]["contact"]["overall"]["tn"] == 0
+        ), "Expected 0 true negatives"
 
         # Owner overall metrics
-        assert cm["fields"]["owner"]["overall"]["tp"] == 0, (
-            "Expected 0 true positives (object-level counting - owner object similarity below threshold due to contact differences)"
-        )
-        assert cm["fields"]["owner"]["overall"]["fd"] == 1, (
-            "Expected 1 false discovery (object-level counting - owner objects present but don't match)"
-        )
-        assert cm["fields"]["owner"]["overall"]["fa"] == 0, (
-            "Expected 0 false alarm (object-level counting - both GT and Pred have owner objects)"
-        )
-        assert cm["fields"]["owner"]["overall"]["fn"] == 0, "Expected 0 false negatives"
-        assert cm["fields"]["owner"]["overall"]["tn"] == 0, "Expected 0 true negatives"
+        assert (
+            cm["fields"]["owner"]["overall"]["tp"] == 0
+        ), "Expected 0 true positives (object-level counting - owner object similarity below threshold due to contact differences)"
+        assert (
+            cm["fields"]["owner"]["overall"]["fd"] == 1
+        ), "Expected 1 false discovery (object-level counting - owner objects present but don't match)"
+        assert (
+            cm["fields"]["owner"]["overall"]["fa"] == 0
+        ), "Expected 0 false alarm (object-level counting - both GT and Pred have owner objects)"
+        assert (
+            cm["fields"]["owner"]["overall"]["fn"] == 0
+        ), "Expected 0 false negatives"
+        assert (
+            cm["fields"]["owner"]["overall"]["tn"] == 0
+        ), "Expected 0 true negatives"
 
     def test_pets_list_of_structured_model(self):
         """Test that list fields like 'pets' are correctly matched based on nested objects."""

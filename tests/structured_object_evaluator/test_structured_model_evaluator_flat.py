@@ -63,9 +63,7 @@ class TestVetRecordsMetricsCalculation:
         pred_owner = PetOwner(**self.pred_owner)
 
         # Test with traditional recall (default)
-        results = gold_owner.compare_with(
-            pred_owner, include_confusion_matrix=True, evaluator_format=True
-        )
+        results = gold_owner.compare_with(pred_owner, include_confusion_matrix=True, evaluator_format=True)
 
         # Expected metrics
         # 3 true positive: ownerId, firstName, lastName
@@ -132,10 +130,7 @@ class TestVetRecordsMetricsCalculation:
 
         # Test with alternative recall formula
         results_alt = gold_owner.compare_with(
-            pred_owner,
-            include_confusion_matrix=True,
-            evaluator_format=True,
-            recall_with_fd=True,
+            pred_owner, include_confusion_matrix=True, evaluator_format=True, recall_with_fd=True
         )
 
         # Expected metrics with alternative recall

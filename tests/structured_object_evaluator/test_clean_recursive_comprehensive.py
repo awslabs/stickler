@@ -1,3 +1,5 @@
+
+
 """
 Comprehensive test of the clean recursive implementation.
 This test validates that the compare_recursive method provides clean, hierarchical structure building.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import re
+import warnings
 from copy import copy, deepcopy
 from datetime import date, datetime, time
 from decimal import Decimal
@@ -28,8 +29,6 @@ from json_schema_to_pydantic import create_model as create_pydantic_model
 from pydantic import AnyUrl, BaseModel, TypeAdapter
 from pydantic.fields import FieldInfo
 
-from stickler.utils.deprecation import warn_once
-
 from .comparable_field import ComparableField
 from .comparator_registry import create_comparator
 from .model_factory import ModelFactory
@@ -43,6 +42,13 @@ _JSON_DEFAULTS = {
 }
 
 _PRESERVED_EXAMPLES_KEY = "x-aws-stickler-internal-examples"
+
+# The value `to_json_schema()` writes for `x-aws-stickler-threshold` on a
+# `List[StructuredModel]` property. It cannot write anything else: a named
+# threshold on that shape is refused at class definition. A threshold equal to it
+# therefore carries no authorial intent and must not draw a warning. Kept in step
+# with the same sentinel in `structured_model.py`.
+_EXPORTED_ARRAY_THRESHOLD_SENTINEL = 0.5
 
 # Every extension key this importer honours, on a field. Anything else that LOOKS
 # like one is a typo or a wrong prefix, and is rejected rather than dropped.
@@ -515,16 +521,45 @@ class JsonSchemaImporter:
         extensions = self._extract_extensions(field_info, field_path)
         if ignore_threshold and "threshold" in extensions:
             declared = extensions.pop("threshold")
-            warn_once(
-                "array-threshold-ignored",
-                field_path,
-                f"'x-aws-stickler-threshold' has no effect on array property "
-                f"'{field_path}' and is ignored. Pairing of array elements is "
-                f"gated by the element's own threshold, so put "
-                f"'x-aws-stickler-match-threshold': {declared} inside that "
-                f"property's 'items' if that is what you meant.",
-                category=UserWarning,
-            )
+            # Ignored either way; warned about only when the author can act on it.
+            #
+            # `to_json_schema()` writes `x-aws-stickler-threshold: 0.5` on every
+            # `List[StructuredModel]` property and cannot write anything else,
+            # since `__init_subclass__` refuses a named threshold on that shape.
+            # Warning on the key's mere PRESENCE therefore fired on stickler's own
+            # export, for every model with a list of models, telling the author to
+            # change something the library wrote. `dev` round-trips such a schema
+            # silently, so that was a regression created by the warning itself.
+            # Same sentinel comparison as `structured_model.py`.
+            #
+            # The message deliberately does not repeat `declared` as the value to
+            # write: the element class's gate is a different number, so
+            # "put 'x-aws-stickler-match-threshold': 0.88 inside items" told the
+            # reader to overwrite a working configuration with the value being
+            # discarded.
+            if declared != _EXPORTED_ARRAY_THRESHOLD_SENTINEL:
+                # `warnings.warn`, not `warn_once`. `warn_once`'s memo is keyed on
+                # `(id, context)` and lives for the process, so with `field_path`
+                # as the context a SECOND schema declaring the same property name
+                # imported silently -- the author of that schema never heard about
+                # their dead key, which is the silent drop this module exists to
+                # prevent. `warn_once` is right for a per-document deprecation,
+                # where the alternative is one warning per row of a corpus; a
+                # schema import happens once per call, so ordinary dedup by
+                # message is both sufficient and correct here.
+                #
+                # No `stacklevel`: the useful location is the property inside the
+                # schema, which the message names, not a frame in this recursive
+                # descent. Counting frames to reach `from_json_schema` would be
+                # wrong for nested properties, which arrive one level deeper.
+                warnings.warn(
+                    f"'x-aws-stickler-threshold': {declared} has no effect on "
+                    f"array property '{field_path}' and is ignored. Pairing of "
+                    f"array elements is gated by the element class's own "
+                    f"'x-aws-stickler-match-threshold', declared inside that "
+                    f"property's 'items'; set it there if that is what you meant.",
+                    UserWarning,
+                )
         comparator = extensions.get("comparator")
         if comparator is None:
             comparator = create_comparator(comparator_name, {})

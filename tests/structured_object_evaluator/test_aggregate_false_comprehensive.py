@@ -1,3 +1,5 @@
+
+
 """Comprehensive coverage for non-rolled-up nested metrics.
 
 Ensures that nested StructuredModel fields behave correctly:
@@ -465,3 +467,4 @@ def test_null_handling_aggregate_false():
         f"Expected 1 FA (GT null, pred present), got {contact_cm['fa']}"
     )
     assert contact_cm["fp"] == 1, f"Expected 1 FP, got {contact_cm['fp']}"
+

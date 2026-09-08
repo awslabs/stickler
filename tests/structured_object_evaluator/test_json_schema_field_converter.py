@@ -1,5 +1,6 @@
 """Integration tests for JsonSchemaFieldConverter.convert_properties_to_fields()."""
 
+
 import typing
 
 import pytest
@@ -188,17 +189,15 @@ class TestConvertPropertiesToFields:
 
         # Check name field extensions via function attributes
         name_field = field_definitions["name"][1]
-
-        assert isinstance(
-            name_field.json_schema_extra._comparator_instance, ExactComparator
-        )
+        
+        assert isinstance(name_field.json_schema_extra._comparator_instance, ExactComparator)
         assert name_field.json_schema_extra._threshold == 0.9
         assert name_field.json_schema_extra._weight == 2.0
         assert name_field.json_schema_extra._clip_under_threshold is False
 
         # Check age field extensions
         age_field = field_definitions["age"][1]
-
+        
         assert age_field.json_schema_extra._threshold == 0.8
         assert age_field.json_schema_extra._weight == 1.5
 
@@ -360,10 +359,8 @@ class TestConvertPropertiesToFields:
 
         # Check that extensions are applied via function attributes
         tags_field = field_definitions["tags"][1]
-
-        assert isinstance(
-            tags_field.json_schema_extra._comparator_instance, ExactComparator
-        )
+        
+        assert isinstance(tags_field.json_schema_extra._comparator_instance, ExactComparator)
         assert tags_field.json_schema_extra._threshold == 0.95
         assert tags_field.json_schema_extra._weight == 1.5
 
@@ -385,7 +382,7 @@ class TestConvertPropertiesToFields:
 
         # Verify structure: Dict[str, Tuple[Type, Field]]
         assert isinstance(field_definitions, dict)
-
+        
         for field_name, field_def in field_definitions.items():
             assert isinstance(field_name, str)
             assert isinstance(field_def, tuple)
@@ -395,7 +392,6 @@ class TestConvertPropertiesToFields:
             assert isinstance(_unwrap_optional(field_def[0]), type)
             # Second element is a Pydantic FieldInfo
             from pydantic.fields import FieldInfo
-
             assert isinstance(field_def[1], FieldInfo)
 
 
@@ -436,7 +432,6 @@ class TestRefResolution:
         from stickler.structured_object_evaluator.models.structured_model import (
             StructuredModel,
         )
-
         assert issubclass(home_type, StructuredModel)
 
     def test_resolve_ref_from_defs(self):
@@ -473,7 +468,6 @@ class TestRefResolution:
         from stickler.structured_object_evaluator.models.structured_model import (
             StructuredModel,
         )
-
         assert issubclass(contact_type, StructuredModel)
 
     def test_resolve_ref_not_found_in_definitions(self):
@@ -493,12 +487,12 @@ class TestRefResolution:
         }
 
         converter = JsonSchemaFieldConverter(schema)
-
+        
         with pytest.raises(ValueError) as exc_info:
             converter.convert_properties_to_fields(
                 schema["properties"], schema["required"]
             )
-
+        
         assert "Reference '#/definitions/NonExistent' not found" in str(exc_info.value)
         assert "Available: ['Address']" in str(exc_info.value)
 
@@ -513,16 +507,14 @@ class TestRefResolution:
         }
 
         converter = JsonSchemaFieldConverter(schema)
-
+        
         with pytest.raises(ValueError) as exc_info:
             converter.convert_properties_to_fields(
                 schema["properties"], schema["required"]
             )
-
+        
         assert "Unsupported $ref format" in str(exc_info.value)
-        assert "Only '#/definitions/' and '#/$defs/' references are supported" in str(
-            exc_info.value
-        )
+        assert "Only '#/definitions/' and '#/$defs/' references are supported" in str(exc_info.value)
 
     def test_resolve_ref_in_array_items(self):
         """Test resolving $ref in array items."""
@@ -565,7 +557,6 @@ class TestRefResolution:
         from stickler.structured_object_evaluator.models.structured_model import (
             StructuredModel,
         )
-
         assert issubclass(items_type.__args__[0], StructuredModel)
 
 
@@ -603,7 +594,6 @@ class TestNestedObjectHandling:
         from stickler.structured_object_evaluator.models.structured_model import (
             StructuredModel,
         )
-
         assert issubclass(person_type, StructuredModel)
 
         # Verify nested model has correct fields
@@ -677,7 +667,6 @@ class TestNestedObjectHandling:
         from stickler.structured_object_evaluator.models.structured_model import (
             StructuredModel,
         )
-
         assert issubclass(company_type, StructuredModel)
 
         # Verify nested fields exist
@@ -725,22 +714,15 @@ class TestArrayHandling:
         from stickler.structured_object_evaluator.models.structured_model import (
             StructuredModel,
         )
-
         element_type = employees_type.__args__[0]
         assert issubclass(element_type, StructuredModel)
-
+        
         # Verify element model has correct fields
         assert "name" in element_type.model_fields
         assert "role" in element_type.model_fields
 
     def test_array_of_objects_with_extensions(self):
-        """Weight is applied; a threshold on an array-of-models is ignored.
-
-        This asserted `_threshold == 0.8` -- a value stored and never read, since
-        Hungarian matching gates on the element class's `match_threshold`. It is now
-        dropped with a warning naming the key to use instead. Weight is the half of
-        this test that was always load-bearing.
-        """
+        """Test array of objects with custom extensions."""
         schema = {
             "type": "object",
             "properties": {
@@ -768,8 +750,12 @@ class TestArrayHandling:
         # Check extensions are applied
         products_field = field_definitions["products"][1]
         assert products_field.json_schema_extra._weight == 1.5
-        # Ignored, not stored: it has no effect on an array-of-models field.
-        assert products_field.json_schema_extra._threshold != 0.8
+        # Ignored, not stored: a threshold on an array-of-models field has no
+        # effect, since Hungarian matching gates on the element class's
+        # `match_threshold`. Pinned to the value it DOES take rather than to
+        # `!= 0.8`, which would pass for any number and prove nothing about where
+        # the 0.8 went.
+        assert products_field.json_schema_extra._threshold == 0.5
 
     def test_array_of_primitives_all_types(self):
         """Test arrays of all primitive types."""
@@ -832,15 +818,13 @@ class TestErrorHandling:
         }
 
         converter = JsonSchemaFieldConverter(schema)
-
+        
         with pytest.raises(ValueError) as exc_info:
             converter.convert_properties_to_fields(
                 schema["properties"], schema["required"]
             )
-
-        assert "x-aws-stickler-threshold must be a number between 0.0 and 1.0" in str(
-            exc_info.value
-        )
+        
+        assert "x-aws-stickler-threshold must be a number between 0.0 and 1.0" in str(exc_info.value)
         assert "1.5" in str(exc_info.value)
 
     def test_invalid_threshold_negative(self):
@@ -857,15 +841,13 @@ class TestErrorHandling:
         }
 
         converter = JsonSchemaFieldConverter(schema)
-
+        
         with pytest.raises(ValueError) as exc_info:
             converter.convert_properties_to_fields(
                 schema["properties"], schema["required"]
             )
-
-        assert "x-aws-stickler-threshold must be a number between 0.0 and 1.0" in str(
-            exc_info.value
-        )
+        
+        assert "x-aws-stickler-threshold must be a number between 0.0 and 1.0" in str(exc_info.value)
 
     def test_invalid_weight_value(self):
         """Test error when weight is not positive."""
@@ -881,12 +863,12 @@ class TestErrorHandling:
         }
 
         converter = JsonSchemaFieldConverter(schema)
-
+        
         with pytest.raises(ValueError) as exc_info:
             converter.convert_properties_to_fields(
                 schema["properties"], schema["required"]
             )
-
+        
         assert "x-aws-stickler-weight must be a positive number" in str(exc_info.value)
         assert "-1.0" in str(exc_info.value)
 
@@ -904,12 +886,12 @@ class TestErrorHandling:
         }
 
         converter = JsonSchemaFieldConverter(schema)
-
+        
         with pytest.raises(ValueError) as exc_info:
             converter.convert_properties_to_fields(
                 schema["properties"], schema["required"]
             )
-
+        
         assert "x-aws-stickler-weight must be a positive number" in str(exc_info.value)
 
     def test_invalid_comparator_name(self):
@@ -926,15 +908,13 @@ class TestErrorHandling:
         }
 
         converter = JsonSchemaFieldConverter(schema)
-
+        
         with pytest.raises(ValueError) as exc_info:
             converter.convert_properties_to_fields(
                 schema["properties"], schema["required"]
             )
-
-        assert "Invalid x-aws-stickler-comparator 'NonExistentComparator'" in str(
-            exc_info.value
-        )
+        
+        assert "Invalid x-aws-stickler-comparator 'NonExistentComparator'" in str(exc_info.value)
 
     def test_invalid_clip_under_threshold_type(self):
         """Test error when clip-under-threshold is not boolean."""
@@ -950,15 +930,13 @@ class TestErrorHandling:
         }
 
         converter = JsonSchemaFieldConverter(schema)
-
+        
         with pytest.raises(ValueError) as exc_info:
             converter.convert_properties_to_fields(
                 schema["properties"], schema["required"]
             )
-
-        assert "x-aws-stickler-clip-under-threshold must be a boolean" in str(
-            exc_info.value
-        )
+        
+        assert "x-aws-stickler-clip-under-threshold must be a boolean" in str(exc_info.value)
         assert "str" in str(exc_info.value)
 
     def test_error_includes_field_path(self):
@@ -980,12 +958,12 @@ class TestErrorHandling:
         }
 
         converter = JsonSchemaFieldConverter(schema)
-
+        
         with pytest.raises(ValueError) as exc_info:
             converter.convert_properties_to_fields(
                 schema["properties"], schema["required"]
             )
-
+        
         # Error should include the nested field path
         error_msg = str(exc_info.value)
         assert "user.email" in error_msg or "field 'user.email'" in error_msg
@@ -1589,7 +1567,9 @@ class TestNullableAnyOfAndImplicitObjects:
             }
         )
 
-        instance = Model(runtimeCycles={"qualifier": "less-than", "value": None})
+        instance = Model(
+            runtimeCycles={"qualifier": "less-than", "value": None}
+        )
         assert instance.runtimeCycles.qualifier == "less-than"
         assert instance.runtimeCycles.value is None
 
@@ -1848,14 +1828,18 @@ class TestMaintainedSchemaImporter:
         Model = StructuredModel.from_json_schema(
             {
                 "type": "object",
-                "properties": {"status": {"type": "string", "enum": ["OPEN", "PAID"]}},
+                "properties": {
+                    "status": {"type": "string", "enum": ["OPEN", "PAID"]}
+                },
                 "required": ["status"],
             }
         )
 
         field = Model.model_fields["status"]
         assert field.annotation is str
-        assert isinstance(field.json_schema_extra._comparator_instance, ExactComparator)
+        assert isinstance(
+            field.json_schema_extra._comparator_instance, ExactComparator
+        )
         assert field.json_schema_extra._threshold == 1.0
         assert Model.model_json_schema()["properties"]["status"]["enum"] == [
             "OPEN",
@@ -1880,7 +1864,9 @@ class TestMaintainedSchemaImporter:
 
         field = Model.model_fields["issued"]
         assert field.annotation is str
-        assert isinstance(field.json_schema_extra._comparator_instance, DateComparator)
+        assert isinstance(
+            field.json_schema_extra._comparator_instance, DateComparator
+        )
         assert field.json_schema_extra._threshold == 1.0
         assert Model.model_json_schema()["properties"]["issued"]["format"] == "date"
 
@@ -1964,7 +1950,9 @@ class TestMaintainedSchemaImporter:
         )
 
         rendered = Model.model_json_schema()
-        assert rendered["properties"]["name"]["x-vendor-trace"] == {"source": "fixture"}
+        assert rendered["properties"]["name"]["x-vendor-trace"] == {
+            "source": "fixture"
+        }
 
     def test_pattern_properties_has_explicit_boundary(self):
         with pytest.raises(ValueError, match="patternProperties cannot be represented"):
