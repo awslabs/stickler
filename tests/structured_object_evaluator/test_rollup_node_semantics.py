@@ -586,7 +586,18 @@ class TestTheDocsAndTheEngineCannotDrift:
         boundary this guard cannot police, not as an oversight.
         """
         repo_root = Path(__file__).resolve().parents[2]
-        banned = ("object verdict", "verdicts at", "own direct classification")
+        # "the unit is the object" is here because it is the form that actually
+        # recurred: the phrase-based guard caught `object verdict` and friends
+        # while `aggregate-metrics.md` went on saying "The unit is the object" for
+        # another review round, on the page every cross-link targets. Banning the
+        # concept in one spelling and not the other is how a guard passes while
+        # the claim survives.
+        banned = (
+            "object verdict",
+            "verdicts at",
+            "own direct classification",
+            "unit is the object",
+        )
         offenders = [
             f"{path}:{number}"
             for path, number, line in _authored_prose(repo_root)
