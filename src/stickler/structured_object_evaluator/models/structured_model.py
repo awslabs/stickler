@@ -1062,31 +1062,13 @@ class StructuredModel(BaseModel):
         converter = JsonSchemaFieldConverter(schema, field_path=field_path)
         field_definitions = converter.convert_properties_to_fields(properties, required)
 
-        # Create the model using ModelFactory.
-        #
-        # Translated on the way out, because `ModelFactory` is shared by both
-        # configuration paths and its messages are written for someone holding a
-        # Python class -- they name `ComparableField` and class attributes. A
-        # schema author has neither. Translating here rather than in the factory
-        # keeps `model_from_json` callers seeing the Python-flavoured advice that
-        # is correct for them. See JsonSchemaImporter._translate_import_error.
-        try:
-            return ModelFactory.create_model_from_fields(
-                model_name=model_name,
-                field_definitions=field_definitions,
-                match_threshold=match_threshold,
-                base_class=cls,
-            )
-        except ValueError as exc:
-            from .json_schema_importer import JsonSchemaImporter
-
-            translated = JsonSchemaImporter._translate_import_error(str(exc), schema)
-            if translated == str(exc):
-                raise
-            location = f" at '{field_path}'" if field_path else ""
-            raise ValueError(
-                f"Could not import JSON Schema{location}: {translated}"
-            ) from exc
+        # Create the model using ModelFactory
+        return ModelFactory.create_model_from_fields(
+            model_name=model_name,
+            field_definitions=field_definitions,
+            match_threshold=match_threshold,
+            base_class=cls,
+        )
 
     @classmethod
     def _is_structured_field_type(cls, field_info) -> bool:

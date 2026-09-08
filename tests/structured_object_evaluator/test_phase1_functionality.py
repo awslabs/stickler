@@ -1,5 +1,3 @@
-
-
 """Test Phase 1 refactor functionality for StructuredModel enhanced compare_with method."""
 
 from typing import List, Optional

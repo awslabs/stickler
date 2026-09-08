@@ -16,7 +16,7 @@ from stickler.structured_object_evaluator.models.structured_model import Structu
 # Test Models
 class SimpleModel(StructuredModel):
     """Simple model with basic field types for testing confusion matrix metrics."""
-    
+
     match_threshold = 0.7
 
     name: str = ComparableField(
@@ -32,7 +32,7 @@ class SimpleModel(StructuredModel):
 
 class NestedModel(StructuredModel):
     """Model with a nested structured model field."""
-    
+
     match_threshold = 0.7
 
     id: str = ComparableField(
@@ -43,7 +43,7 @@ class NestedModel(StructuredModel):
 
 class ListModel(StructuredModel):
     """Model with list fields for testing confusion matrix metrics on lists."""
-    
+
     match_threshold = 0.7
 
     id: str = ComparableField(
@@ -105,7 +105,6 @@ def get_derived_metrics(cm_result, field_name):
 # Test cases
 def test_simple_field_classification():
     """Test the basic confusion matrix classification for simple fields."""
-    
 
     # 1. True Positive - non-null values that match
     gt = SimpleModel(name="John Doe", count=42, description="Test description")
@@ -217,7 +216,6 @@ def test_simple_field_classification():
 
 def test_list_primitive_values():
     """Test confusion matrix metrics for fields containing lists of primitive values."""
-    
 
     # 1. Exact match lists
     gt = ListModel(id="list1", tags=["red", "blue", "green"], items=[])

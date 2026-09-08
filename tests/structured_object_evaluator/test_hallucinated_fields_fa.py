@@ -1,5 +1,3 @@
-
-
 """Test handling of hallucinated fields (extra_fields) as False Alarms."""
 
 from typing import ClassVar
@@ -55,9 +53,7 @@ class TestHallucinatedFieldsFA:
         assert len(getattr(gt_model, "__pydantic_extra__", {})) == 0
         assert len(getattr(pred_model, "__pydantic_extra__", {})) == 3
         assert pred_model.__pydantic_extra__["tenant_phone"] == "555-1234"
-        assert (
-            pred_model.__pydantic_extra__["property_address"] == "123 Main St"
-        )
+        assert pred_model.__pydantic_extra__["property_address"] == "123 Main St"
         assert pred_model.__pydantic_extra__["rent_amount"] == 2500.0
 
         # Compare with confusion matrix
@@ -71,9 +67,9 @@ class TestHallucinatedFieldsFA:
         actual_fa = result["confusion_matrix"]["overall"]["fa"]
 
         print(f"Expected FA: {expected_fa}, Actual FA: {actual_fa}")
-        assert (
-            actual_fa == expected_fa
-        ), "Hallucinated fields should be counted as False Alarms"
+        assert actual_fa == expected_fa, (
+            "Hallucinated fields should be counted as False Alarms"
+        )
 
     def test_bulk_evaluator_with_hallucinated_fields(self):
         """Test BulkStructuredModelEvaluator with hallucinated fields."""
@@ -131,9 +127,9 @@ class TestHallucinatedFieldsFA:
         actual_fa = results.metrics.get("fa", 0)
 
         print(f"Expected total FA: {expected_fa}, Actual FA: {actual_fa}")
-        assert (
-            actual_fa == expected_fa
-        ), "Bulk evaluator should correctly count hallucinated fields as False Alarms"
+        assert actual_fa == expected_fa, (
+            "Bulk evaluator should correctly count hallucinated fields as False Alarms"
+        )
 
     def test_nested_model_with_hallucinated_fields(self):
         """Test nested models with hallucinated fields."""
@@ -180,9 +176,7 @@ class TestHallucinatedFieldsFA:
             f"Nested __pydantic_extra__: {getattr(pred_model.address, '__pydantic_extra__', {})}"
         )
 
-        assert (
-            len(getattr(pred_model, "__pydantic_extra__", {})) == 2
-        )  # phone, website
+        assert len(getattr(pred_model, "__pydantic_extra__", {})) == 2  # phone, website
         assert (
             len(getattr(pred_model.address, "__pydantic_extra__", {})) == 1
         )  # zipcode
@@ -197,6 +191,6 @@ class TestHallucinatedFieldsFA:
         actual_fa = result["confusion_matrix"]["overall"]["fa"]
 
         print(f"Expected FA: {expected_fa}, Actual FA: {actual_fa}")
-        assert (
-            actual_fa == expected_fa
-        ), "Hallucinated fields at all nesting levels should count as False Alarms"
+        assert actual_fa == expected_fa, (
+            "Hallucinated fields at all nesting levels should count as False Alarms"
+        )

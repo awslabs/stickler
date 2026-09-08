@@ -164,13 +164,14 @@ class TestEveryPositionAnswersTheSameWay:
         assert model._get_comparison_info("f").threshold == 0.88
 
 
-class TestAnArrayOfObjectsIsRefusedInSchemaLanguage:
-    """Refusing is right; the advice has to be actionable for a schema author.
+class TestAnArrayOfObjectsIgnoresItWithAWarning:
+    """The same key one position over, where it genuinely has no effect.
 
-    Array pairing reads the element's own threshold, so a field threshold there
-    would do nothing and `__init_subclass__` refuses it. That refusal named
-    `ComparableField` and a Python class attribute, wrapped in "Error creating
-    dynamic model", which a reader writing JSON has no way to act on.
+    Array pairing reads the element class's `match_threshold`, so a field
+    threshold there does nothing. It is dropped with a warning rather than
+    refused: every `to_json_schema()` on a released version emitted this key on an
+    array-of-model property, so refusing it would stop previously exported schemas
+    from importing in order to flag a key whose only cost is being ignored.
     """
 
     ARRAY_OF_OBJECTS = {
@@ -185,26 +186,20 @@ class TestAnArrayOfObjectsIsRefusedInSchemaLanguage:
         },
     }
 
-    def test_it_names_the_key_the_author_should_write(self):
-        with pytest.raises(ValueError, match="x-aws-stickler-match-threshold"):
+    def test_the_schema_still_imports(self):
+        model = StructuredModel.from_json_schema(self.ARRAY_OF_OBJECTS)
+        assert "f" in model.model_fields
+
+    def test_it_warns_naming_the_key_the_author_should_write(self):
+        with pytest.warns(UserWarning, match="x-aws-stickler-match-threshold"):
             StructuredModel.from_json_schema(self.ARRAY_OF_OBJECTS)
 
-    def test_it_does_not_name_python_constructs(self):
-        with pytest.raises(ValueError) as caught:
+    def test_the_warning_echoes_the_declared_value(self):
+        with pytest.warns(UserWarning, match="0.88"):
             StructuredModel.from_json_schema(self.ARRAY_OF_OBJECTS)
-        message = str(caught.value)
-        assert "ComparableField" not in message
-        assert "class attribute" not in message
-        assert "Error creating dynamic model" not in message
-
-    def test_it_echoes_the_declared_value_cleanly(self):
-        """A stray quote from the source message made this unreadable at first."""
-        with pytest.raises(ValueError) as caught:
-            StructuredModel.from_json_schema(self.ARRAY_OF_OBJECTS)
-        assert "'x-aws-stickler-match-threshold': 0.88 " in str(caught.value)
 
     def test_following_the_advice_works(self):
-        """An error that recommends something unusable is not an improvement."""
+        """A warning recommending something unusable is not an improvement."""
         model = StructuredModel.from_json_schema(
             {
                 "type": "object",
@@ -224,8 +219,8 @@ class TestAnArrayOfObjectsIsRefusedInSchemaLanguage:
             element = element.__args__[0]
         assert element.match_threshold == 0.88
 
-    def test_the_python_path_keeps_its_own_advice(self):
-        """`ModelFactory` is shared, so the translation must not leak into it."""
+    def test_the_python_path_still_raises_with_its_own_advice(self):
+        """Ignoring is for a schema key. A Python declaration is still refused."""
 
         class Line(StructuredModel):
             sku: Optional[str] = ComparableField(default=None)
@@ -236,13 +231,3 @@ class TestAnArrayOfObjectsIsRefusedInSchemaLanguage:
                 items: Optional[List[Line]] = ComparableField(
                     threshold=0.88, default=None
                 )
-
-    def test_an_unrelated_import_error_is_not_mistranslated(self):
-        with pytest.raises(ValueError, match="not found"):
-            StructuredModel.from_json_schema(
-                {
-                    "type": "object",
-                    "title": "T",
-                    "properties": {"f": {"$ref": "#/$defs/missing"}},
-                }
-            )

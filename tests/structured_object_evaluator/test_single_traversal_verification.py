@@ -1,5 +1,3 @@
-
-
 """Test to verify the single traversal optimization works correctly."""
 
 import time

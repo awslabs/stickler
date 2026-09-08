@@ -66,9 +66,9 @@ class TestFieldThreshold:
         # section written for it in #235; before that section existed the target
         # was issue #234, because the only docs mention of zero was "raw
         # similarity score (0.0 -- 1.0)", which explains nothing.
-        assert (
-            "thresholds-and-metrics/#the-zero-threshold-trap" in message
-        ), "the warning must link somewhere that explains the zero-threshold cliff"
+        assert "thresholds-and-metrics/#the-zero-threshold-trap" in message, (
+            "the warning must link somewhere that explains the zero-threshold cliff"
+        )
         assert THRESHOLD_DOCS_URL in message, "the constant must be what is emitted"
 
     def test_message_claims_no_metric_outcome(self):

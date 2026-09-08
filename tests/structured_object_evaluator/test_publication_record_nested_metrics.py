@@ -1,5 +1,3 @@
-
-
 """Tests for compare_with() metrics calculation for publication records models.
 
 This test verifies that we can calculate precision, recall, F1, and accuracy metrics
@@ -170,7 +168,9 @@ class TestPublicationRecordsMetricsCalculation:
         pred_record = PublicationRecord(**self.pred_record)
 
         # Evaluate
-        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
+        results = gold_record.compare_with(
+            pred_record, include_confusion_matrix=True, evaluator_format=True
+        )
 
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
@@ -210,7 +210,9 @@ class TestPublicationRecordsMetricsCalculation:
         pred_record = PublicationRecord(**self.pred_record)
 
         # Evaluate
-        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
+        results = gold_record.compare_with(
+            pred_record, include_confusion_matrix=True, evaluator_format=True
+        )
 
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
@@ -258,7 +260,9 @@ class TestPublicationRecordsMetricsCalculation:
         pred_record = PublicationRecord(**self.pred_record)
 
         # Evaluate
-        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
+        results = gold_record.compare_with(
+            pred_record, include_confusion_matrix=True, evaluator_format=True
+        )
 
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
@@ -306,7 +310,9 @@ class TestPublicationRecordsMetricsCalculation:
         pred_record = PublicationRecord(**self.pred_record)
 
         # Evaluate
-        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
+        results = gold_record.compare_with(
+            pred_record, include_confusion_matrix=True, evaluator_format=True
+        )
 
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
@@ -364,7 +370,9 @@ class TestPublicationRecordsMetricsCalculation:
         pred_record = PublicationRecord(**self.pred_record)
 
         # Evaluate
-        results = gold_record.compare_with(pred_record, include_confusion_matrix=True, evaluator_format=True)
+        results = gold_record.compare_with(
+            pred_record, include_confusion_matrix=True, evaluator_format=True
+        )
 
         # Confusion matrix metrics
         cm = results["confusion_matrix"]
@@ -392,7 +400,10 @@ class TestPublicationRecordsMetricsCalculation:
 
         # Test with alternative recall formula (including FD in denominator)
         results_alt = gold_record.compare_with(
-            pred_record, include_confusion_matrix=True, evaluator_format=True, recall_with_fd=True
+            pred_record,
+            include_confusion_matrix=True,
+            evaluator_format=True,
+            recall_with_fd=True,
         )
         # Test with alternative recall formula
         # Expected recall option 2 = TP/(TP+FN+FD) = 9/(9+1+4) = 0.64 with recall_with_fd=True

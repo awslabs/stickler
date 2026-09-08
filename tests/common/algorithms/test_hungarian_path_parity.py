@@ -44,9 +44,7 @@ class TestZeroSimilarityIsAMatchedPair:
         Dropping it is what made a 1-item list report FN + FA where a 2-item
         list reported FD for the identical situation.
         """
-        result = _matcher(0.5).calculate_metrics(
-            DISSIMILAR_GT[:n], DISSIMILAR_PRED[:n]
-        )
+        result = _matcher(0.5).calculate_metrics(DISSIMILAR_GT[:n], DISSIMILAR_PRED[:n])
 
         assert len(result["matched_pairs"]) == n
         assert all(score == 0.0 for _, _, score in result["matched_pairs"])
@@ -63,9 +61,7 @@ class TestZeroSimilarityIsAMatchedPair:
         is left without a partner and ``fn`` is zero at every ``n``. The n
         pairs all score below the threshold, so they are false discoveries.
         """
-        result = _matcher(0.5).calculate_metrics(
-            DISSIMILAR_GT[:n], DISSIMILAR_PRED[:n]
-        )
+        result = _matcher(0.5).calculate_metrics(DISSIMILAR_GT[:n], DISSIMILAR_PRED[:n])
 
         # Below threshold, so no true positives. The n pairs are all fd, and
         # the fp rollup still counts them.
@@ -174,9 +170,7 @@ class TestUnmatchedItemsAreFnAndFa:
         #231 that could not be asserted, since ``fn`` counted the low score
         pairs as well.
         """
-        result = _matcher(0.9).calculate_metrics(
-            ["abc", "def"], ["abd", "deg"]
-        )
+        result = _matcher(0.9).calculate_metrics(["abc", "def"], ["abd", "deg"])
 
         assert len(result["matched_pairs"]) == 2, "every element is paired"
         assert result["tp"] == 0

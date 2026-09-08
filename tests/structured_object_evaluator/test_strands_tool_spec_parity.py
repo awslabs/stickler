@@ -103,9 +103,10 @@ class TestToolSpecParity:
 
         # memo is genuinely Optional on both models; the annotation, not the
         # ComparableField default, is what makes it nullable.
-        assert configured["properties"]["memo"]["type"] == plain["properties"][
-            "memo"
-        ]["type"]
+        assert (
+            configured["properties"]["memo"]["type"]
+            == plain["properties"]["memo"]["type"]
+        )
 
     def test_no_comparison_config_in_tool_spec(self):
         configured = _tool_spec_json(Invoice)

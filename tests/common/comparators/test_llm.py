@@ -111,9 +111,7 @@ class TestLLMComparator:
         )
         assert new_comp.agent is self.mock_agent_class.return_value
 
-    @pytest.mark.parametrize(
-        "response", ["true", "TRUE", "True", " true ", "  TRUE  "]
-    )
+    @pytest.mark.parametrize("response", ["true", "TRUE", "True", " true ", "  TRUE  "])
     def test_compare_values_equal(self, response):
         """Test that 'true' responses (across case/whitespace) map to 1.0."""
         self._mock_agent_response(response)

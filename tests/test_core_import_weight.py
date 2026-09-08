@@ -128,7 +128,9 @@ def test_broken_extra_does_not_break_import(tmp_path):
     ModuleNotFoundError. `import stickler` has to survive that and surface the
     failure at first use, naming the extra.
     """
-    code = "import sys, json; import stickler; print(json.dumps(sorted(stickler.__all__)))"
+    code = (
+        "import sys, json; import stickler; print(json.dumps(sorted(stickler.__all__)))"
+    )
     baseline = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True
     )

@@ -133,7 +133,10 @@ class TestUnwrapOptional:
 
     def test_the_two_spellings_unwrap_identically(self):
         assert unwrap_optional(Optional[_A]) == unwrap_optional(_A | None)
-        assert unwrap_optional(Optional[List[_A]])[1] == unwrap_optional(list[_A] | None)[1]
+        assert (
+            unwrap_optional(Optional[List[_A]])[1]
+            == unwrap_optional(list[_A] | None)[1]
+        )
 
 
 class TestUnwrapAnnotated:
@@ -147,7 +150,9 @@ class TestUnwrapAnnotated:
 
     def test_unwraps_a_pydantic_field_as_metadata(self):
         """The spelling a `Field(description=...)` produces."""
-        assert unwrap_annotated(Annotated[List[str], Field(description="d")]) == List[str]
+        assert (
+            unwrap_annotated(Annotated[List[str], Field(description="d")]) == List[str]
+        )
 
     def test_returns_anything_else_unchanged(self):
         assert unwrap_annotated(str) is str

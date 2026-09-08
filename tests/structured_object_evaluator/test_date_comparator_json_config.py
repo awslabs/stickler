@@ -426,9 +426,9 @@ class TestFromJsonSchemaIntegration:
         }
         Cls = StructuredModel.from_json_schema(schema)
         assert (
-            Cls(ship_date="2025-01-01")
-            .compare_with(Cls(ship_date="2025-01-02"))
-            ["field_scores"]["ship_date"]
+            Cls(ship_date="2025-01-01").compare_with(Cls(ship_date="2025-01-02"))[
+                "field_scores"
+            ]["ship_date"]
             == 1.0
         )
 
@@ -449,9 +449,7 @@ class TestFromJsonSchemaIntegration:
         gt = Cls(period_month="Jan 2024")
         pred = Cls(period_month="Jan 1, 2024")
         # 'exact' (default) would be 0.0; gt_loose accepts the finer pred.
-        assert (
-            gt.compare_with(pred)["field_scores"]["period_month"] == 1.0
-        )
+        assert gt.compare_with(pred)["field_scores"]["period_month"] == 1.0
 
     def test_all_options_together_via_x_aws_extensions(self):
         schema = {

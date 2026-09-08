@@ -33,7 +33,9 @@ class _Inner(StructuredModel):
 
 
 class TypingOuter(StructuredModel):
-    opt_obj: Optional[_Inner] = ComparableField(default=None, comparator=ExactComparator())
+    opt_obj: Optional[_Inner] = ComparableField(
+        default=None, comparator=ExactComparator()
+    )
     opt_list: Optional[List[_Inner]] = ComparableField(default=None)
     opt_str: Optional[str] = ComparableField(default=None, comparator=ExactComparator())
 
@@ -49,31 +51,43 @@ class TestIsStructuredFieldTypeSpellingParity:
 
     def test_optional_structured_model_is_structured_in_both_spellings(self):
         assert (
-            ConfigurationHelper.is_structured_field_type(TypingOuter.model_fields["opt_obj"])
+            ConfigurationHelper.is_structured_field_type(
+                TypingOuter.model_fields["opt_obj"]
+            )
             is True
         )
         assert (
-            ConfigurationHelper.is_structured_field_type(Pep604Outer.model_fields["opt_obj"])
+            ConfigurationHelper.is_structured_field_type(
+                Pep604Outer.model_fields["opt_obj"]
+            )
             is True
         )
 
     def test_optional_list_of_models_is_structured_in_both_spellings(self):
         assert (
-            ConfigurationHelper.is_structured_field_type(TypingOuter.model_fields["opt_list"])
+            ConfigurationHelper.is_structured_field_type(
+                TypingOuter.model_fields["opt_list"]
+            )
             is True
         )
         assert (
-            ConfigurationHelper.is_structured_field_type(Pep604Outer.model_fields["opt_list"])
+            ConfigurationHelper.is_structured_field_type(
+                Pep604Outer.model_fields["opt_list"]
+            )
             is True
         )
 
     def test_optional_primitive_is_not_structured_in_either_spelling(self):
         assert (
-            ConfigurationHelper.is_structured_field_type(TypingOuter.model_fields["opt_str"])
+            ConfigurationHelper.is_structured_field_type(
+                TypingOuter.model_fields["opt_str"]
+            )
             is False
         )
         assert (
-            ConfigurationHelper.is_structured_field_type(Pep604Outer.model_fields["opt_str"])
+            ConfigurationHelper.is_structured_field_type(
+                Pep604Outer.model_fields["opt_str"]
+            )
             is False
         )
 
@@ -119,7 +133,9 @@ def _addr_detail(doc_cls, item_cls):
 
 class TestHierarchicalBreakdownSpellingParity:
     def test_both_spellings_produce_equal_field_detail(self):
-        assert _addr_detail(TypingDoc, TypingItem) == _addr_detail(Pep604Doc, Pep604Item)
+        assert _addr_detail(TypingDoc, TypingItem) == _addr_detail(
+            Pep604Doc, Pep604Item
+        )
 
     def test_pep604_keeps_the_nested_field_breakdown(self):
         """``addr.fields.city`` was absent entirely for ``_Inner | None``."""
@@ -174,5 +190,6 @@ class TestListDispatchSpellingParity:
             is True
         )
         assert (
-            StructuredModel._is_list_of_structured_model_type(list[_Inner] | None) is True
+            StructuredModel._is_list_of_structured_model_type(list[_Inner] | None)
+            is True
         )

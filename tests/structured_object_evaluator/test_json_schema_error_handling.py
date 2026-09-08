@@ -17,29 +17,27 @@ class TestThresholdValidation:
         schema = {
             "type": "object",
             "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-threshold": -0.1
-                }
-            }
+                "name": {"type": "string", "x-aws-stickler-threshold": -0.1}
+            },
         }
-        
-        with pytest.raises(ValueError, match="x-aws-stickler-threshold must be a number between 0.0 and 1.0"):
+
+        with pytest.raises(
+            ValueError,
+            match="x-aws-stickler-threshold must be a number between 0.0 and 1.0",
+        ):
             StructuredModel.from_json_schema(schema)
 
     def test_threshold_above_one_raises_error(self):
         """Test that threshold above 1.0 raises ValueError."""
         schema = {
             "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-threshold": 1.5
-                }
-            }
+            "properties": {"name": {"type": "string", "x-aws-stickler-threshold": 1.5}},
         }
-        
-        with pytest.raises(ValueError, match="x-aws-stickler-threshold must be a number between 0.0 and 1.0"):
+
+        with pytest.raises(
+            ValueError,
+            match="x-aws-stickler-threshold must be a number between 0.0 and 1.0",
+        ):
             StructuredModel.from_json_schema(schema)
 
     def test_threshold_non_numeric_raises_error(self):
@@ -47,14 +45,14 @@ class TestThresholdValidation:
         schema = {
             "type": "object",
             "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-threshold": "0.5"
-                }
-            }
+                "name": {"type": "string", "x-aws-stickler-threshold": "0.5"}
+            },
         }
-        
-        with pytest.raises(ValueError, match="x-aws-stickler-threshold must be a number between 0.0 and 1.0"):
+
+        with pytest.raises(
+            ValueError,
+            match="x-aws-stickler-threshold must be a number between 0.0 and 1.0",
+        ):
             StructuredModel.from_json_schema(schema)
 
     def test_threshold_exactly_zero_is_valid(self):
@@ -66,14 +64,9 @@ class TestThresholdValidation:
         """
         schema = {
             "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-threshold": 0.0
-                }
-            }
+            "properties": {"name": {"type": "string", "x-aws-stickler-threshold": 0.0}},
         }
-        
+
         # Should not raise
         Model = StructuredModel.from_json_schema(schema)
         assert Model is not None
@@ -82,14 +75,9 @@ class TestThresholdValidation:
         """Test that threshold of exactly 1.0 is valid."""
         schema = {
             "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-threshold": 1.0
-                }
-            }
+            "properties": {"name": {"type": "string", "x-aws-stickler-threshold": 1.0}},
         }
-        
+
         # Should not raise
         Model = StructuredModel.from_json_schema(schema)
         assert Model is not None
@@ -102,59 +90,45 @@ class TestWeightValidation:
         """Test that weight of 0 raises ValueError."""
         schema = {
             "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-weight": 0
-                }
-            }
+            "properties": {"name": {"type": "string", "x-aws-stickler-weight": 0}},
         }
-        
-        with pytest.raises(ValueError, match="x-aws-stickler-weight must be a positive number"):
+
+        with pytest.raises(
+            ValueError, match="x-aws-stickler-weight must be a positive number"
+        ):
             StructuredModel.from_json_schema(schema)
 
     def test_weight_negative_raises_error(self):
         """Test that negative weight raises ValueError."""
         schema = {
             "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-weight": -1.5
-                }
-            }
+            "properties": {"name": {"type": "string", "x-aws-stickler-weight": -1.5}},
         }
-        
-        with pytest.raises(ValueError, match="x-aws-stickler-weight must be a positive number"):
+
+        with pytest.raises(
+            ValueError, match="x-aws-stickler-weight must be a positive number"
+        ):
             StructuredModel.from_json_schema(schema)
 
     def test_weight_non_numeric_raises_error(self):
         """Test that non-numeric weight raises ValueError."""
         schema = {
             "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-weight": "2.0"
-                }
-            }
+            "properties": {"name": {"type": "string", "x-aws-stickler-weight": "2.0"}},
         }
-        
-        with pytest.raises(ValueError, match="x-aws-stickler-weight must be a positive number"):
+
+        with pytest.raises(
+            ValueError, match="x-aws-stickler-weight must be a positive number"
+        ):
             StructuredModel.from_json_schema(schema)
 
     def test_weight_positive_is_valid(self):
         """Test that positive weight is valid."""
         schema = {
             "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-weight": 2.5
-                }
-            }
+            "properties": {"name": {"type": "string", "x-aws-stickler-weight": 2.5}},
         }
-        
+
         # Should not raise
         Model = StructuredModel.from_json_schema(schema)
         assert Model is not None
@@ -163,14 +137,9 @@ class TestWeightValidation:
         """Test that very small positive weight is valid."""
         schema = {
             "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-weight": 0.001
-                }
-            }
+            "properties": {"name": {"type": "string", "x-aws-stickler-weight": 0.001}},
         }
-        
+
         # Should not raise
         Model = StructuredModel.from_json_schema(schema)
         assert Model is not None
@@ -186,12 +155,14 @@ class TestComparatorValidation:
             "properties": {
                 "name": {
                     "type": "string",
-                    "x-aws-stickler-comparator": "NonExistentComparator"
+                    "x-aws-stickler-comparator": "NonExistentComparator",
                 }
-            }
+            },
         }
-        
-        with pytest.raises(ValueError, match="Unknown comparator.*NonExistentComparator"):
+
+        with pytest.raises(
+            ValueError, match="Unknown comparator.*NonExistentComparator"
+        ):
             StructuredModel.from_json_schema(schema)
 
     def test_invalid_comparator_shows_valid_options(self):
@@ -201,11 +172,11 @@ class TestComparatorValidation:
             "properties": {
                 "name": {
                     "type": "string",
-                    "x-aws-stickler-comparator": "InvalidComparator"
+                    "x-aws-stickler-comparator": "InvalidComparator",
                 }
-            }
+            },
         }
-        
+
         with pytest.raises(ValueError, match="Available:"):
             StructuredModel.from_json_schema(schema)
 
@@ -216,18 +187,18 @@ class TestComparatorValidation:
             "ExactComparator",
             "NumericComparator",
         ]
-        
+
         for comparator_name in valid_comparators:
             schema = {
                 "type": "object",
                 "properties": {
                     "field": {
                         "type": "string",
-                        "x-aws-stickler-comparator": comparator_name
+                        "x-aws-stickler-comparator": comparator_name,
                     }
-                }
+                },
             }
-            
+
             # Should not raise
             Model = StructuredModel.from_json_schema(schema)
             assert Model is not None
@@ -243,12 +214,14 @@ class TestBooleanExtensionValidation:
             "properties": {
                 "name": {
                     "type": "string",
-                    "x-aws-stickler-clip-under-threshold": "true"
+                    "x-aws-stickler-clip-under-threshold": "true",
                 }
-            }
+            },
         }
-        
-        with pytest.raises(ValueError, match="x-aws-stickler-clip-under-threshold must be a boolean"):
+
+        with pytest.raises(
+            ValueError, match="x-aws-stickler-clip-under-threshold must be a boolean"
+        ):
             StructuredModel.from_json_schema(schema)
 
     def test_clip_under_threshold_integer_raises_error(self):
@@ -256,14 +229,13 @@ class TestBooleanExtensionValidation:
         schema = {
             "type": "object",
             "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-clip-under-threshold": 1
-                }
-            }
+                "name": {"type": "string", "x-aws-stickler-clip-under-threshold": 1}
+            },
         }
-        
-        with pytest.raises(ValueError, match="x-aws-stickler-clip-under-threshold must be a boolean"):
+
+        with pytest.raises(
+            ValueError, match="x-aws-stickler-clip-under-threshold must be a boolean"
+        ):
             StructuredModel.from_json_schema(schema)
 
     def test_aggregate_extension_is_ignored_on_import(self):
@@ -276,11 +248,8 @@ class TestBooleanExtensionValidation:
         schema = {
             "type": "object",
             "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-aggregate": "not-a-bool"
-                }
-            }
+                "name": {"type": "string", "x-aws-stickler-aggregate": "not-a-bool"}
+            },
         }
 
         model_cls = StructuredModel.from_json_schema(schema)
@@ -293,13 +262,10 @@ class TestBooleanExtensionValidation:
         schema = {
             "type": "object",
             "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-clip-under-threshold": True
-                }
-            }
+                "name": {"type": "string", "x-aws-stickler-clip-under-threshold": True}
+            },
         }
-        
+
         # Should not raise
         Model = StructuredModel.from_json_schema(schema)
         assert Model is not None
@@ -309,13 +275,10 @@ class TestBooleanExtensionValidation:
         schema = {
             "type": "object",
             "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-clip-under-threshold": False
-                }
-            }
+                "name": {"type": "string", "x-aws-stickler-clip-under-threshold": False}
+            },
         }
-        
+
         # Should not raise
         Model = StructuredModel.from_json_schema(schema)
         assert Model is not None
@@ -329,13 +292,10 @@ class TestFieldPathInErrors:
         schema = {
             "type": "object",
             "properties": {
-                "email": {
-                    "type": "string",
-                    "x-aws-stickler-threshold": 2.0
-                }
-            }
+                "email": {"type": "string", "x-aws-stickler-threshold": 2.0}
+            },
         }
-        
+
         with pytest.raises(ValueError, match="field 'email'"):
             StructuredModel.from_json_schema(schema)
 
@@ -347,15 +307,12 @@ class TestFieldPathInErrors:
                 "user": {
                     "type": "object",
                     "properties": {
-                        "email": {
-                            "type": "string",
-                            "x-aws-stickler-threshold": 2.0
-                        }
-                    }
+                        "email": {"type": "string", "x-aws-stickler-threshold": 2.0}
+                    },
                 }
-            }
+            },
         }
-        
+
         with pytest.raises(ValueError, match="user\\.email"):
             StructuredModel.from_json_schema(schema)
 
@@ -372,15 +329,15 @@ class TestFieldPathInErrors:
                             "properties": {
                                 "zipcode": {
                                     "type": "string",
-                                    "x-aws-stickler-weight": -1
+                                    "x-aws-stickler-weight": -1,
                                 }
-                            }
+                            },
                         }
-                    }
+                    },
                 }
-            }
+            },
         }
-        
+
         with pytest.raises(ValueError, match="company\\.address\\.zipcode"):
             StructuredModel.from_json_schema(schema)
 
@@ -396,14 +353,14 @@ class TestFieldPathInErrors:
                         "properties": {
                             "name": {
                                 "type": "string",
-                                "x-aws-stickler-comparator": "InvalidComparator"
+                                "x-aws-stickler-comparator": "InvalidComparator",
                             }
-                        }
-                    }
+                        },
+                    },
                 }
-            }
+            },
         }
-        
+
         with pytest.raises(ValueError, match="items\\[\\]"):
             StructuredModel.from_json_schema(schema)
 
@@ -419,11 +376,11 @@ class TestMultipleErrorScenarios:
                 "name": {
                     "type": "string",
                     "x-aws-stickler-threshold": 2.0,  # Invalid
-                    "x-aws-stickler-weight": -1  # Also invalid
+                    "x-aws-stickler-weight": -1,  # Also invalid
                 }
-            }
+            },
         }
-        
+
         # Should raise error for threshold (processed first)
         with pytest.raises(ValueError, match="x-aws-stickler-threshold"):
             StructuredModel.from_json_schema(schema)
@@ -439,13 +396,13 @@ class TestMultipleErrorScenarios:
                     "properties": {
                         "email": {
                             "type": "string",
-                            "x-aws-stickler-threshold": 1.5  # Invalid
+                            "x-aws-stickler-threshold": 1.5,  # Invalid
                         }
-                    }
+                    },
                 }
-            }
+            },
         }
-        
+
         with pytest.raises(ValueError, match="x-aws-stickler-threshold"):
             StructuredModel.from_json_schema(schema)
 
@@ -462,14 +419,14 @@ class TestMultipleErrorScenarios:
                         "properties": {
                             "name": {
                                 "type": "string",
-                                "x-aws-stickler-comparator": "BadComparator"  # Invalid
+                                "x-aws-stickler-comparator": "BadComparator",  # Invalid
                             }
-                        }
-                    }
+                        },
+                    },
                 }
-            }
+            },
         }
-        
+
         with pytest.raises(ValueError, match="Unknown comparator.*BadComparator"):
             StructuredModel.from_json_schema(schema)
 
@@ -482,39 +439,35 @@ class TestEdgeCases:
         # Test 0.0 - should work
         schema1 = {
             "type": "object",
-            "properties": {
-                "name": {"type": "string", "x-aws-stickler-threshold": 0.0}
-            }
+            "properties": {"name": {"type": "string", "x-aws-stickler-threshold": 0.0}},
         }
         Model1 = StructuredModel.from_json_schema(schema1)
         assert Model1 is not None
-        
+
         # Test 1.0 - should work
         schema2 = {
             "type": "object",
-            "properties": {
-                "name": {"type": "string", "x-aws-stickler-threshold": 1.0}
-            }
+            "properties": {"name": {"type": "string", "x-aws-stickler-threshold": 1.0}},
         }
         Model2 = StructuredModel.from_json_schema(schema2)
         assert Model2 is not None
-        
+
         # Test just below 0.0 - should fail
         schema3 = {
             "type": "object",
             "properties": {
                 "name": {"type": "string", "x-aws-stickler-threshold": -0.0001}
-            }
+            },
         }
         with pytest.raises(ValueError):
             StructuredModel.from_json_schema(schema3)
-        
+
         # Test just above 1.0 - should fail
         schema4 = {
             "type": "object",
             "properties": {
                 "name": {"type": "string", "x-aws-stickler-threshold": 1.0001}
-            }
+            },
         }
         with pytest.raises(ValueError):
             StructuredModel.from_json_schema(schema4)
@@ -524,29 +477,25 @@ class TestEdgeCases:
         # Test very small positive - should work
         schema1 = {
             "type": "object",
-            "properties": {
-                "name": {"type": "string", "x-aws-stickler-weight": 0.0001}
-            }
+            "properties": {"name": {"type": "string", "x-aws-stickler-weight": 0.0001}},
         }
         Model1 = StructuredModel.from_json_schema(schema1)
         assert Model1 is not None
-        
+
         # Test exactly 0 - should fail
         schema2 = {
             "type": "object",
-            "properties": {
-                "name": {"type": "string", "x-aws-stickler-weight": 0}
-            }
+            "properties": {"name": {"type": "string", "x-aws-stickler-weight": 0}},
         }
         with pytest.raises(ValueError):
             StructuredModel.from_json_schema(schema2)
-        
+
         # Test negative - should fail
         schema3 = {
             "type": "object",
             "properties": {
                 "name": {"type": "string", "x-aws-stickler-weight": -0.0001}
-            }
+            },
         }
         with pytest.raises(ValueError):
             StructuredModel.from_json_schema(schema3)
@@ -555,14 +504,9 @@ class TestEdgeCases:
         """Test that empty string comparator raises error."""
         schema = {
             "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-comparator": ""
-                }
-            }
+            "properties": {"name": {"type": "string", "x-aws-stickler-comparator": ""}},
         }
-        
+
         with pytest.raises(ValueError):
             StructuredModel.from_json_schema(schema)
 
@@ -574,14 +518,9 @@ class TestErrorMessageQuality:
         """Test that threshold error includes the invalid value."""
         schema = {
             "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-threshold": 1.5
-                }
-            }
+            "properties": {"name": {"type": "string", "x-aws-stickler-threshold": 1.5}},
         }
-        
+
         with pytest.raises(ValueError, match="1.5"):
             StructuredModel.from_json_schema(schema)
 
@@ -589,14 +528,9 @@ class TestErrorMessageQuality:
         """Test that weight error includes the invalid value."""
         schema = {
             "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-weight": -2.0
-                }
-            }
+            "properties": {"name": {"type": "string", "x-aws-stickler-weight": -2.0}},
         }
-        
+
         with pytest.raises(ValueError, match="-2.0"):
             StructuredModel.from_json_schema(schema)
 
@@ -607,11 +541,11 @@ class TestErrorMessageQuality:
             "properties": {
                 "name": {
                     "type": "string",
-                    "x-aws-stickler-comparator": "MyCustomComparator"
+                    "x-aws-stickler-comparator": "MyCustomComparator",
                 }
-            }
+            },
         }
-        
+
         with pytest.raises(ValueError, match="MyCustomComparator"):
             StructuredModel.from_json_schema(schema)
 
@@ -620,12 +554,9 @@ class TestErrorMessageQuality:
         schema = {
             "type": "object",
             "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-clip-under-threshold": "yes"
-                }
-            }
+                "name": {"type": "string", "x-aws-stickler-clip-under-threshold": "yes"}
+            },
         }
-        
+
         with pytest.raises(ValueError, match="str"):
             StructuredModel.from_json_schema(schema)

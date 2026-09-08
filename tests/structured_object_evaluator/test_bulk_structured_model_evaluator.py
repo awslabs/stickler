@@ -768,9 +768,7 @@ class TestUpdateFromComparisonResult:
         comparison_result would just bump fn and look like a normal miss."""
         evaluator = BulkStructuredModelEvaluator(elide_errors=False)
         with pytest.raises(ValueError, match="confusion_matrix"):
-            evaluator.update_from_comparison_result(
-                {"overall_score": 0.5}, "bad_doc"
-            )
+            evaluator.update_from_comparison_result({"overall_score": 0.5}, "bad_doc")
         assert evaluator._errors == []
         assert evaluator._confusion_matrix["overall"]["fn"] == 0
 

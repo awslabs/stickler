@@ -34,6 +34,7 @@ from stickler.structured_object_evaluator.models.structured_model import (
 # Models — match_threshold=1.0 (strict, used in the original issue)
 # ---------------------------------------------------------------------------
 
+
 class LineItemsInfo(StructuredModel):
     LineItemDays: Optional[List[str]] | Any = ComparableField(weight=1.0)
     match_threshold = 1.0
@@ -75,7 +76,9 @@ class EveryListSpelling(StructuredModel):
     bare_typing: List = ComparableField(weight=1.0)
     param_pep604_optional: list[str] | None = ComparableField(weight=1.0)
     param_optional: Optional[List[str]] = ComparableField(weight=1.0)
-    annotated_whole: Annotated[Optional[List[str]], "meta"] = ComparableField(weight=1.0)
+    annotated_whole: Annotated[Optional[List[str]], "meta"] = ComparableField(
+        weight=1.0
+    )
     annotated_optional: Optional[Annotated[List[str], "meta"]] = ComparableField(
         weight=1.0
     )
@@ -188,6 +191,7 @@ class CompetingCandidateContainer(StructuredModel):
 # Models — lower threshold so partial-match tests get field recursion
 # ---------------------------------------------------------------------------
 
+
 class TaggedItem(StructuredModel):
     tags: List[str] = ComparableField(
         comparator=LevenshteinComparator(), threshold=0.7, weight=1.0
@@ -217,13 +221,17 @@ class TaskList(StructuredModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _overall(cm, *field_path):
     """Navigate into cm['fields'][f1]['fields'][f2]...['overall']."""
     node = cm
     for f in field_path:
         node = node["fields"][f]
-    return {k: v for k, v in node["overall"].items()
-            if k in ("tp", "fa", "fd", "fp", "tn", "fn")}
+    return {
+        k: v
+        for k, v in node["overall"].items()
+        if k in ("tp", "fa", "fd", "fp", "tn", "fn")
+    }
 
 
 class _NeverCalledComparator(BaseComparator):
@@ -242,6 +250,7 @@ class _NeverCalledComparator(BaseComparator):
 # ---------------------------------------------------------------------------
 # Tests — exact reproduction of issue #33
 # ---------------------------------------------------------------------------
+
 
 def test_issue_33_exact_repro():
     """Exact scenario from the GitHub issue — comparing identical data."""
@@ -287,6 +296,7 @@ def test_issue_33_field_level_metrics():
 # Tests — partial matches / mismatches in simple lists
 # Uses TaggedItem with low match_threshold so field recursion happens
 # ---------------------------------------------------------------------------
+
 
 def test_simple_list_missing_elements():
     """Prediction list shorter than GT → FN for missing elements."""
@@ -335,6 +345,7 @@ def test_simple_list_no_match():
 # ---------------------------------------------------------------------------
 # Tests — multiple structured list items with simple lists
 # ---------------------------------------------------------------------------
+
 
 def test_multiple_items_aggregate_correctly():
     """Element counts from multiple structured list items should sum."""
@@ -563,6 +574,7 @@ def test_pep604_optional_absent_list_agrees_across_score_readers(gt_days, pred_d
 # Tests — every spelling of a list annotation is recognized as a list field
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("field_name", LIST_SPELLINGS)
 def test_every_list_spelling_is_recognized_as_a_list_field(field_name):
     """``_is_list_field`` is true for parameterized and bare spellings alike.
@@ -737,6 +749,7 @@ def test_absent_string_field_agrees_across_score_readers(gt_note, pred_note):
 # Tests — an empty dict is absent, the third case the documented rule names
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "gt_val,pred_val",
     [({}, {}), ({}, None), (None, {}), (None, None)],
@@ -896,6 +909,7 @@ def test_absent_string_against_populated_is_not_leniently_matched(gt_note, pred_
 # Tests — true negatives are not evidence for object matching
 # ---------------------------------------------------------------------------
 
+
 def test_all_absent_fields_define_empty_denominator_as_a_match():
     """An empty denominator is 1.0, preserving the original #233 fix."""
     gt = LineItemsInfo(LineItemDays=[])
@@ -925,12 +939,8 @@ def test_absent_list_fields_do_not_lift_a_disagreeing_pair(absent):
 
 def test_prediction_that_extracts_nothing_is_not_a_perfect_match():
     """Five true negatives cannot hide the only missed value."""
-    gt_item = MissedValueItem(
-        a="VALUE", b=[], c=[], d=[], e=[], f=[]
-    )
-    pred_item = MissedValueItem(
-        a=None, b=[], c=[], d=[], e=[], f=[]
-    )
+    gt_item = MissedValueItem(a="VALUE", b=[], c=[], d=[], e=[], f=[])
+    pred_item = MissedValueItem(a=None, b=[], c=[], d=[], e=[], f=[])
 
     assert gt_item.compare(pred_item) == 0.0
 
@@ -1017,15 +1027,20 @@ def test_hungarian_prefers_content_agreement_over_an_empty_candidate():
 # Tests — unmatched structured objects remain atomic
 # ---------------------------------------------------------------------------
 
+
 def test_unmatched_gt_object_does_not_contribute_leaf_fn():
     """An unmatched GT object is one object-level FN, not leaf-level FNs."""
-    gt = TaskList(tasks=[
-        TaskItem(tags=["A", "B"], priority="high"),
-        TaskItem(tags=["X", "Y", "Z"], priority="low"),
-    ])
-    pred = TaskList(tasks=[
-        TaskItem(tags=["A", "B"], priority="high"),
-    ])
+    gt = TaskList(
+        tasks=[
+            TaskItem(tags=["A", "B"], priority="high"),
+            TaskItem(tags=["X", "Y", "Z"], priority="low"),
+        ]
+    )
+    pred = TaskList(
+        tasks=[
+            TaskItem(tags=["A", "B"], priority="high"),
+        ]
+    )
 
     result = gt.compare_with(pred, include_confusion_matrix=True)
     task_metrics = _overall(result["confusion_matrix"], "tasks")
@@ -1041,13 +1056,17 @@ def test_unmatched_gt_object_does_not_contribute_leaf_fn():
 
 def test_unmatched_pred_object_does_not_contribute_leaf_fa():
     """An unmatched prediction is one object-level FA, not leaf-level FAs."""
-    gt = TaskList(tasks=[
-        TaskItem(tags=["A", "B"], priority="high"),
-    ])
-    pred = TaskList(tasks=[
-        TaskItem(tags=["A", "B"], priority="high"),
-        TaskItem(tags=["X", "Y", "Z"], priority="low"),
-    ])
+    gt = TaskList(
+        tasks=[
+            TaskItem(tags=["A", "B"], priority="high"),
+        ]
+    )
+    pred = TaskList(
+        tasks=[
+            TaskItem(tags=["A", "B"], priority="high"),
+            TaskItem(tags=["X", "Y", "Z"], priority="low"),
+        ]
+    )
 
     result = gt.compare_with(pred, include_confusion_matrix=True)
     task_metrics = _overall(result["confusion_matrix"], "tasks")

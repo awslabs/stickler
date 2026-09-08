@@ -102,7 +102,9 @@ def test_double_nested_metrics():
     )
 
     # Evaluate prediction against ground truth
-    result = gt_person.compare_with(pred_person, include_confusion_matrix=True, document_non_matches=True)
+    result = gt_person.compare_with(
+        pred_person, include_confusion_matrix=True, document_non_matches=True
+    )
 
     # Verify non-matches were documented for double-nested fields
     assert len(result["non_matches"]) > 0, "Expected non-matches to be documented"
@@ -211,7 +213,9 @@ def test_double_nested_null_contact_info():
     )
 
     # Evaluate
-    result = gt_person.compare_with(pred_person, include_confusion_matrix=True, document_non_matches=True)
+    result = gt_person.compare_with(
+        pred_person, include_confusion_matrix=True, document_non_matches=True
+    )
 
     # There should be a false alarm for contact_info
     contact_info_non_matches = [

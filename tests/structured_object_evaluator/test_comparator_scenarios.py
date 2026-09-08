@@ -40,10 +40,9 @@ class TestComparatorsScenarios:
 
         if RAPIDFUZZ_AVAILABLE:
             # Fuzzy matching should handle these cases better
-            assert (
-                self.levenshtein.compare("John Smith", "Smith John")
-                < self.fuzzy_token_sort.compare("John Smith", "Smith John")
-            )
+            assert self.levenshtein.compare(
+                "John Smith", "Smith John"
+            ) < self.fuzzy_token_sort.compare("John Smith", "Smith John")
 
             # Partial names
             assert self.fuzzy_partial.compare("John Smith", "John") >= 0.8
@@ -89,9 +88,8 @@ class TestComparatorsScenarios:
 
         if RAPIDFUZZ_AVAILABLE:
             # Levenshtein is generally not good for differently formatted dates
-            assert (
-                self.levenshtein.compare(date1, date2)
-                < self.fuzzy_partial.compare(date1, date2)
+            assert self.levenshtein.compare(date1, date2) < self.fuzzy_partial.compare(
+                date1, date2
             )
 
     def test_numbers_and_amounts(self):
@@ -162,7 +160,9 @@ class TestComparatorsScenarios:
                     partial_score,
                     weighted_score,
                 ]
-            ), f"No significant improvement with fuzzy matching for '{str1}' and '{str2}'"
+            ), (
+                f"No significant improvement with fuzzy matching for '{str1}' and '{str2}'"
+            )
 
     def test_multilingual_handling(self):
         """Test comparators with multilingual input."""

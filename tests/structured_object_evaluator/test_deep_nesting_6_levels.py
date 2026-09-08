@@ -371,7 +371,12 @@ class TestDeepNesting6Levels:
         pred_company = self.create_test_company("base")
 
         # Evaluate
-        result = gt_company.compare_with(pred_company, include_confusion_matrix=True, document_non_matches=True, evaluator_format=True)
+        result = gt_company.compare_with(
+            pred_company,
+            include_confusion_matrix=True,
+            document_non_matches=True,
+            evaluator_format=True,
+        )
 
         # Should be perfect match
         assert result["overall"]["anls_score"] == 1.0, (
@@ -403,7 +408,12 @@ class TestDeepNesting6Levels:
 
             # Clear non-matches from previous test
 
-            result = base_company.compare_with(modified_company, include_confusion_matrix=True, document_non_matches=True, evaluator_format=True)
+            result = base_company.compare_with(
+                modified_company,
+                include_confusion_matrix=True,
+                document_non_matches=True,
+                evaluator_format=True,
+            )
 
             # Should detect differences but not be zero
             assert 0.0 < result["overall"]["anls_score"] < 1.0, (
@@ -425,7 +435,12 @@ class TestDeepNesting6Levels:
         base_company = self.create_test_company("base")
         level6_diff_company = self.create_test_company("level6_diff")
 
-        result = base_company.compare_with(level6_diff_company, include_confusion_matrix=True, document_non_matches=True, evaluator_format=True)
+        result = base_company.compare_with(
+            level6_diff_company,
+            include_confusion_matrix=True,
+            document_non_matches=True,
+            evaluator_format=True,
+        )
 
         # Should have non-matches with deep field paths
         non_matches = result["non_matches"]
@@ -461,7 +476,12 @@ class TestDeepNesting6Levels:
         base_company = self.create_test_company("base")
         mixed_diff_company = self.create_test_company("level3_diff")
 
-        result = base_company.compare_with(mixed_diff_company, include_confusion_matrix=True, document_non_matches=True, evaluator_format=True)
+        result = base_company.compare_with(
+            mixed_diff_company,
+            include_confusion_matrix=True,
+            document_non_matches=True,
+            evaluator_format=True,
+        )
 
         # Should have confusion matrix data
         assert "confusion_matrix" in result, "Expected confusion matrix in result"
@@ -539,7 +559,12 @@ class TestDeepNesting6Levels:
             modified = self.create_test_company(
                 "level6_diff" if i % 2 == 0 else "level3_diff"
             )
-            result = company.compare_with(modified, include_confusion_matrix=True, document_non_matches=True, evaluator_format=True)
+            result = company.compare_with(
+                modified,
+                include_confusion_matrix=True,
+                document_non_matches=True,
+                evaluator_format=True,
+            )
             results.append(result)
 
         end_time = time.time()
@@ -577,7 +602,12 @@ class TestDeepNesting6Levels:
             "base"
         )  # Same as base to ensure teams are present
 
-        result = base_company.compare_with(regular_company, include_confusion_matrix=True, document_non_matches=True, evaluator_format=True)
+        result = base_company.compare_with(
+            regular_company,
+            include_confusion_matrix=True,
+            document_non_matches=True,
+            evaluator_format=True,
+        )
 
         # Should be a perfect match since both are identical
         assert result["overall"]["anls_score"] == 1.0, (
@@ -635,7 +665,12 @@ class TestDeepNesting6Levels:
         for variation, scenario_name in test_scenarios:
             null_company = self.create_test_company(variation)
 
-            result = base_company.compare_with(null_company, include_confusion_matrix=True, document_non_matches=True, evaluator_format=True)
+            result = base_company.compare_with(
+                null_company,
+                include_confusion_matrix=True,
+                document_non_matches=True,
+                evaluator_format=True,
+            )
 
             # Should detect the null differences
             assert result["overall"]["anls_score"] < 1.0, (
@@ -671,7 +706,12 @@ class TestDeepNesting6Levels:
         for variation, scenario_name in empty_scenarios:
             empty_company = self.create_test_company(variation)
 
-            result = base_company.compare_with(empty_company, include_confusion_matrix=True, document_non_matches=True, evaluator_format=True)
+            result = base_company.compare_with(
+                empty_company,
+                include_confusion_matrix=True,
+                document_non_matches=True,
+                evaluator_format=True,
+            )
 
             # Should handle empty lists gracefully
             assert 0.0 <= result["overall"]["anls_score"] <= 1.0, (

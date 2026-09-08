@@ -315,7 +315,7 @@ class TestCreateModelFromFields:
 
     def test_pydantic_validation_works(self):
         """Test that Pydantic validation is properly enforced."""
-        
+
         field_definitions = {
             "required_field": (
                 str,

@@ -28,6 +28,8 @@ from json_schema_to_pydantic import create_model as create_pydantic_model
 from pydantic import AnyUrl, BaseModel, TypeAdapter
 from pydantic.fields import FieldInfo
 
+from stickler.utils.deprecation import warn_once
+
 from .comparable_field import ComparableField
 from .comparator_registry import create_comparator
 from .model_factory import ModelFactory
@@ -399,6 +401,14 @@ class JsonSchemaImporter:
                     field_path,
                     comparator_name="LevenshteinComparator",
                     threshold=0.5,
+                    # Dropped with a warning rather than forwarded. It has no
+                    # effect here -- Hungarian matching reads the element class's
+                    # `match_threshold` -- and every `to_json_schema()` on a
+                    # released version emitted the key, so refusing it would stop
+                    # previously exported schemas from importing. #316 needs the
+                    # same treatment for the same reason; keeping both PRs on
+                    # warn-and-ignore means their merge order does not matter.
+                    ignore_threshold=True,
                 )
             else:
                 element = self._adapt_union_models(
@@ -500,8 +510,21 @@ class JsonSchemaImporter:
         *,
         comparator_name: str,
         threshold: float,
+        ignore_threshold: bool = False,
     ) -> FieldInfo:
         extensions = self._extract_extensions(field_info, field_path)
+        if ignore_threshold and "threshold" in extensions:
+            declared = extensions.pop("threshold")
+            warn_once(
+                "array-threshold-ignored",
+                field_path,
+                f"'x-aws-stickler-threshold' has no effect on array property "
+                f"'{field_path}' and is ignored. Pairing of array elements is "
+                f"gated by the element's own threshold, so put "
+                f"'x-aws-stickler-match-threshold': {declared} inside that "
+                f"property's 'items' if that is what you meant.",
+                category=UserWarning,
+            )
         comparator = extensions.get("comparator")
         if comparator is None:
             comparator = create_comparator(comparator_name, {})
@@ -703,30 +726,6 @@ class JsonSchemaImporter:
             namespace = "$defs" if ref.startswith("#/$defs/") else "definitions"
             available = sorted((schema.get(namespace) or {}).keys())
             return f"Reference '{ref}' not found. Available: {available}"
-        # `__init_subclass__` refuses a threshold on a `List[StructuredModel]`
-        # field, correctly: Hungarian matching reads the element class's
-        # `match_threshold` instead, so the key would do nothing. Its advice is
-        # written for someone holding a Python class, and names
-        # `ComparableField` and a class attribute. A schema author has neither,
-        # so translate it into the keys they can actually write. The sibling
-        # object-property case used to drop the same key in silence (#317); this
-        # is the same key one position over, and both should end somewhere a
-        # schema author can act on.
-        match = re.search(
-            r"Field '(\S+?)' is a List\[StructuredModel\] and cannot have a "
-            r"'threshold' parameter",
-            message,
-        )
-        if match:
-            declared = re.search(r"match_threshold = ([^']+?)' on", message)
-            value = declared.group(1) if declared else "<value>"
-            return (
-                f"'x-aws-stickler-threshold' has no effect on array property "
-                f"'{match.group(1)}' and is refused. Pairing of array elements is "
-                f"gated by the element's own threshold, so put "
-                f"'x-aws-stickler-match-threshold': {value} inside that property's "
-                f"'items' instead."
-            )
         if "Circular reference" in message or "recursion" in message.lower():
             return (
                 "Recursive JSON Schema models are not supported by the comparison "

@@ -119,7 +119,9 @@ class TestTheComparatorItself:
 
     def test_config_round_trips_only_when_non_default(self):
         assert ANLSStarComparator().config is None
-        assert ANLSStarComparator(leaf_threshold=0.85).config == {"leaf_threshold": 0.85}
+        assert ANLSStarComparator(leaf_threshold=0.85).config == {
+            "leaf_threshold": 0.85
+        }
 
 
 class TestEveryWayToDeclareADictField:

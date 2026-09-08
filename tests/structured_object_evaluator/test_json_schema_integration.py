@@ -18,27 +18,27 @@ class TestEndToEndWorkflow:
             "properties": {
                 "name": {"type": "string"},
                 "price": {"type": "number"},
-                "in_stock": {"type": "boolean"}
+                "in_stock": {"type": "boolean"},
             },
-            "required": ["name", "price"]
+            "required": ["name", "price"],
         }
-        
+
         # Create model from schema
         ProductModel = StructuredModel.from_json_schema(schema)
-        
+
         # Instantiate objects
         product1 = ProductModel(name="Widget", price=29.99, in_stock=True)
         product2 = ProductModel(name="Widget", price=29.99, in_stock=True)
         product3 = ProductModel(name="Gadget", price=39.99, in_stock=False)
-        
+
         # Compare identical products
         score_identical = product1.compare(product2)
         assert score_identical == 1.0
-        
+
         # Compare different products
         score_different = product1.compare(product3)
         assert score_different < 1.0
-        
+
         # Use compare_with for detailed results
         result = product1.compare_with(product2)
         assert result["overall_score"] == 1.0
@@ -56,8 +56,8 @@ class TestEndToEndWorkflow:
                     "type": "object",
                     "properties": {
                         "name": {"type": "string"},
-                        "email": {"type": "string"}
-                    }
+                        "email": {"type": "string"},
+                    },
                 },
                 "items": {
                     "type": "array",
@@ -65,37 +65,37 @@ class TestEndToEndWorkflow:
                         "type": "object",
                         "properties": {
                             "product": {"type": "string"},
-                            "quantity": {"type": "integer"}
-                        }
-                    }
-                }
-            }
+                            "quantity": {"type": "integer"},
+                        },
+                    },
+                },
+            },
         }
-        
+
         OrderModel = StructuredModel.from_json_schema(schema)
-        
+
         order1 = OrderModel(
             order_id="ORD-001",
             customer={"name": "Alice Smith", "email": "alice@example.com"},
             items=[
                 {"product": "Widget", "quantity": 2},
-                {"product": "Gadget", "quantity": 1}
-            ]
+                {"product": "Gadget", "quantity": 1},
+            ],
         )
-        
+
         order2 = OrderModel(
             order_id="ORD-001",
             customer={"name": "Alice Smith", "email": "alice@example.com"},
             items=[
                 {"product": "Widget", "quantity": 2},
-                {"product": "Gadget", "quantity": 1}
-            ]
+                {"product": "Gadget", "quantity": 1},
+            ],
         )
-        
+
         # Test comparison with defaults
         score = order1.compare(order2)
         assert score == 1.0
-        
+
         result = order1.compare_with(order2)
         assert result["overall_score"] == 1.0
         assert "customer" in result["field_scores"]
@@ -110,51 +110,51 @@ class TestEndToEndWorkflow:
                 "employee_id": {
                     "type": "string",
                     "x-aws-stickler-comparator": "ExactComparator",
-                    "x-aws-stickler-weight": 3.0
+                    "x-aws-stickler-weight": 3.0,
                 },
                 "name": {
                     "type": "string",
                     "x-aws-stickler-comparator": "LevenshteinComparator",
                     "x-aws-stickler-threshold": 0.9,
-                    "x-aws-stickler-weight": 2.0
+                    "x-aws-stickler-weight": 2.0,
                 },
                 "department": {
                     "type": "string",
                     "x-aws-stickler-comparator": "LevenshteinComparator",
                     "x-aws-stickler-threshold": 0.8,
-                    "x-aws-stickler-weight": 1.0
+                    "x-aws-stickler-weight": 1.0,
                 },
                 "salary": {
                     "type": "number",
                     "x-aws-stickler-comparator": "NumericComparator",
                     "x-aws-stickler-threshold": 0.95,
-                    "x-aws-stickler-weight": 1.5
-                }
+                    "x-aws-stickler-weight": 1.5,
+                },
             },
-            "required": ["employee_id", "name"]
+            "required": ["employee_id", "name"],
         }
-        
+
         EmployeeModel = StructuredModel.from_json_schema(schema)
-        
+
         # Verify model configuration
         assert EmployeeModel.__name__ == "Employee"
         assert EmployeeModel.match_threshold == 0.85
-        
+
         # Create instances
         emp1 = EmployeeModel(
             employee_id="EMP001",
             name="John Doe",
             department="Engineering",
-            salary=75000.0
+            salary=75000.0,
         )
-        
+
         emp2 = EmployeeModel(
             employee_id="EMP001",
             name="John Doe",
             department="Engineering",
-            salary=75000.0
+            salary=75000.0,
         )
-        
+
         # Test exact match
         score = emp1.compare(emp2)
         assert score == 1.0
@@ -456,23 +456,25 @@ class TestComplexNestedStructures:
                                                         "type": "object",
                                                         "properties": {
                                                             "name": {"type": "string"},
-                                                            "members": {"type": "integer"}
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                                                            "members": {
+                                                                "type": "integer"
+                                                            },
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
                 }
-            }
+            },
         }
-        
+
         OrgModel = StructuredModel.from_json_schema(schema)
-        
+
         org1 = OrgModel(
             company={
                 "name": "Tech Corp",
@@ -484,15 +486,15 @@ class TestComplexNestedStructures:
                                 "name": "Backend",
                                 "teams": [
                                     {"name": "API Team", "members": 5},
-                                    {"name": "Database Team", "members": 3}
-                                ]
+                                    {"name": "Database Team", "members": 3},
+                                ],
                             }
-                        ]
+                        ],
                     }
-                ]
+                ],
             }
         )
-        
+
         org2 = OrgModel(
             company={
                 "name": "Tech Corp",
@@ -504,19 +506,19 @@ class TestComplexNestedStructures:
                                 "name": "Backend",
                                 "teams": [
                                     {"name": "API Team", "members": 5},
-                                    {"name": "Database Team", "members": 3}
-                                ]
+                                    {"name": "Database Team", "members": 3},
+                                ],
                             }
-                        ]
+                        ],
                     }
-                ]
+                ],
             }
         )
-        
+
         # Test comparison of complex nested structure
         score = org1.compare(org2)
         assert score == 1.0
-        
+
         result = org1.compare_with(org2)
         assert result["overall_score"] == 1.0
 
@@ -543,28 +545,30 @@ class TestComplexNestedStructures:
                                                 "task_name": {"type": "string"},
                                                 "assignees": {
                                                     "type": "array",
-                                                    "items": {"type": "string"}
+                                                    "items": {"type": "string"},
                                                 },
                                                 "metadata": {
                                                     "type": "object",
                                                     "properties": {
                                                         "priority": {"type": "string"},
-                                                        "estimated_hours": {"type": "number"}
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                                                        "estimated_hours": {
+                                                            "type": "number"
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
                 }
-            }
+            },
         }
-        
+
         ProjectModel = StructuredModel.from_json_schema(schema)
-        
+
         project = ProjectModel(
             project={
                 "name": "Website Redesign",
@@ -577,15 +581,15 @@ class TestComplexNestedStructures:
                                 "assignees": ["Alice", "Bob"],
                                 "metadata": {
                                     "priority": "high",
-                                    "estimated_hours": 40.0
-                                }
+                                    "estimated_hours": 40.0,
+                                },
                             }
-                        ]
+                        ],
                     }
-                ]
+                ],
             }
         )
-        
+
         # Verify structure is correctly created
         assert project.project.name == "Website Redesign"
         assert len(project.project.phases) == 1
@@ -612,16 +616,16 @@ class TestRealWorldSchemas:
                     "properties": {
                         "name": {"type": "string"},
                         "address": {"type": "string"},
-                        "tax_id": {"type": "string"}
-                    }
+                        "tax_id": {"type": "string"},
+                    },
                 },
                 "customer": {
                     "type": "object",
                     "properties": {
                         "name": {"type": "string"},
                         "address": {"type": "string"},
-                        "contact": {"type": "string"}
-                    }
+                        "contact": {"type": "string"},
+                    },
                 },
                 "line_items": {
                     "type": "array",
@@ -631,87 +635,94 @@ class TestRealWorldSchemas:
                             "description": {"type": "string"},
                             "quantity": {"type": "integer"},
                             "unit_price": {"type": "number"},
-                            "total": {"type": "number"}
-                        }
-                    }
+                            "total": {"type": "number"},
+                        },
+                    },
                 },
                 "subtotal": {"type": "number"},
                 "tax": {"type": "number"},
-                "total": {"type": "number"}
+                "total": {"type": "number"},
             },
-            "required": ["invoice_number", "date", "vendor", "customer", "line_items", "total"]
+            "required": [
+                "invoice_number",
+                "date",
+                "vendor",
+                "customer",
+                "line_items",
+                "total",
+            ],
         }
-        
+
         InvoiceModel = StructuredModel.from_json_schema(schema)
-        
+
         invoice1 = InvoiceModel(
             invoice_number="INV-2024-001",
             date="2024-01-15",
             vendor={
                 "name": "Acme Corp",
                 "address": "123 Main St, Boston, MA",
-                "tax_id": "12-3456789"
+                "tax_id": "12-3456789",
             },
             customer={
                 "name": "Beta Inc",
                 "address": "456 Oak Ave, Seattle, WA",
-                "contact": "john@beta.com"
+                "contact": "john@beta.com",
             },
             line_items=[
                 {
                     "description": "Widget Pro",
                     "quantity": 10,
                     "unit_price": 25.00,
-                    "total": 250.00
+                    "total": 250.00,
                 },
                 {
                     "description": "Gadget Plus",
                     "quantity": 5,
                     "unit_price": 50.00,
-                    "total": 250.00
-                }
+                    "total": 250.00,
+                },
             ],
             subtotal=500.00,
             tax=50.00,
-            total=550.00
+            total=550.00,
         )
-        
+
         invoice2 = InvoiceModel(
             invoice_number="INV-2024-001",
             date="2024-01-15",
             vendor={
                 "name": "Acme Corp",
                 "address": "123 Main St, Boston, MA",
-                "tax_id": "12-3456789"
+                "tax_id": "12-3456789",
             },
             customer={
                 "name": "Beta Inc",
                 "address": "456 Oak Ave, Seattle, WA",
-                "contact": "john@beta.com"
+                "contact": "john@beta.com",
             },
             line_items=[
                 {
                     "description": "Widget Pro",
                     "quantity": 10,
                     "unit_price": 25.00,
-                    "total": 250.00
+                    "total": 250.00,
                 },
                 {
                     "description": "Gadget Plus",
                     "quantity": 5,
                     "unit_price": 50.00,
-                    "total": 250.00
-                }
+                    "total": 250.00,
+                },
             ],
             subtotal=500.00,
             tax=50.00,
-            total=550.00
+            total=550.00,
         )
-        
+
         # Test comparison
         score = invoice1.compare(invoice2)
         assert score == 1.0
-        
+
         result = invoice1.compare_with(invoice2)
         assert result["overall_score"] == 1.0
 
@@ -737,34 +748,34 @@ class TestRealWorldSchemas:
                                         "properties": {
                                             "first_name": {"type": "string"},
                                             "last_name": {"type": "string"},
-                                            "avatar_url": {"type": "string"}
-                                        }
-                                    }
-                                }
-                            }
+                                            "avatar_url": {"type": "string"},
+                                        },
+                                    },
+                                },
+                            },
                         },
                         "pagination": {
                             "type": "object",
                             "properties": {
                                 "page": {"type": "integer"},
                                 "per_page": {"type": "integer"},
-                                "total": {"type": "integer"}
-                            }
-                        }
-                    }
+                                "total": {"type": "integer"},
+                            },
+                        },
+                    },
                 },
                 "metadata": {
                     "type": "object",
                     "properties": {
                         "request_id": {"type": "string"},
-                        "timestamp": {"type": "string"}
-                    }
-                }
-            }
+                        "timestamp": {"type": "string"},
+                    },
+                },
+            },
         }
-        
+
         ResponseModel = StructuredModel.from_json_schema(schema)
-        
+
         response = ResponseModel(
             status="success",
             data={
@@ -776,22 +787,15 @@ class TestRealWorldSchemas:
                         "profile": {
                             "first_name": "Alice",
                             "last_name": "Smith",
-                            "avatar_url": "https://example.com/avatar1.jpg"
-                        }
+                            "avatar_url": "https://example.com/avatar1.jpg",
+                        },
                     }
                 ],
-                "pagination": {
-                    "page": 1,
-                    "per_page": 10,
-                    "total": 1
-                }
+                "pagination": {"page": 1, "per_page": 10, "total": 1},
             },
-            metadata={
-                "request_id": "req-12345",
-                "timestamp": "2024-01-15T10:30:00Z"
-            }
+            metadata={"request_id": "req-12345", "timestamp": "2024-01-15T10:30:00Z"},
         )
-        
+
         # Verify structure
         assert response.status == "success"
         assert len(response.data.users) == 1
@@ -804,20 +808,15 @@ class TestComparisonBehaviorDefaults:
 
     def test_default_string_comparison(self):
         """Test default LevenshteinComparator for strings."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "text": {"type": "string"}
-            }
-        }
-        
+        schema = {"type": "object", "properties": {"text": {"type": "string"}}}
+
         Model = StructuredModel.from_json_schema(schema)
-        
+
         # Exact match
         obj1 = Model(text="hello")
         obj2 = Model(text="hello")
         assert obj1.compare(obj2) == 1.0
-        
+
         # Similar strings
         obj3 = Model(text="helo")  # Missing one 'l'
         score = obj1.compare(obj3)
@@ -825,29 +824,24 @@ class TestComparisonBehaviorDefaults:
 
     def test_default_numeric_comparison(self):
         """Test default NumericComparator for numbers.
-        
+
         Note: Default NumericComparator has zero tolerance, so it only
         returns 1.0 for exact matches and 0.0 for any difference.
         """
-        schema = {
-            "type": "object",
-            "properties": {
-                "value": {"type": "number"}
-            }
-        }
-        
+        schema = {"type": "object", "properties": {"value": {"type": "number"}}}
+
         Model = StructuredModel.from_json_schema(schema)
-        
+
         # Exact match
         obj1 = Model(value=100.0)
         obj2 = Model(value=100.0)
         assert obj1.compare(obj2) == 1.0
-        
+
         # Different values (default has zero tolerance)
         obj3 = Model(value=100.1)
         score = obj1.compare(obj3)
         assert score == 0.0  # No tolerance by default
-        
+
         # Test that integer and float exact matches work
         obj4 = Model(value=100)
         score2 = obj1.compare(obj4)
@@ -855,20 +849,15 @@ class TestComparisonBehaviorDefaults:
 
     def test_default_boolean_comparison(self):
         """Test default ExactComparator for booleans."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "flag": {"type": "boolean"}
-            }
-        }
-        
+        schema = {"type": "object", "properties": {"flag": {"type": "boolean"}}}
+
         Model = StructuredModel.from_json_schema(schema)
-        
+
         # Same value
         obj1 = Model(flag=True)
         obj2 = Model(flag=True)
         assert obj1.compare(obj2) == 1.0
-        
+
         # Different value
         obj3 = Model(flag=False)
         score = obj1.compare(obj3)
@@ -878,21 +867,16 @@ class TestComparisonBehaviorDefaults:
         """Test default array comparison with Hungarian matching."""
         schema = {
             "type": "object",
-            "properties": {
-                "tags": {
-                    "type": "array",
-                    "items": {"type": "string"}
-                }
-            }
+            "properties": {"tags": {"type": "array", "items": {"type": "string"}}},
         }
-        
+
         Model = StructuredModel.from_json_schema(schema)
-        
+
         # Same order
         obj1 = Model(tags=["python", "javascript", "go"])
         obj2 = Model(tags=["python", "javascript", "go"])
         assert obj1.compare(obj2) == 1.0
-        
+
         # Different order (should still match with Hungarian)
         obj3 = Model(tags=["go", "python", "javascript"])
         score = obj1.compare(obj3)
@@ -907,14 +891,14 @@ class TestComparisonBehaviorDefaults:
                     "type": "object",
                     "properties": {
                         "name": {"type": "string"},
-                        "age": {"type": "integer"}
-                    }
+                        "age": {"type": "integer"},
+                    },
                 }
-            }
+            },
         }
-        
+
         Model = StructuredModel.from_json_schema(schema)
-        
+
         obj1 = Model(person={"name": "Alice", "age": 30})
         obj2 = Model(person={"name": "Alice", "age": 30})
         assert obj1.compare(obj2) == 1.0
@@ -929,19 +913,16 @@ class TestComparisonBehaviorCustomExtensions:
             "type": "object",
             "x-aws-stickler-match-threshold": 0.9,
             "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-threshold": 0.95
-                }
-            }
+                "name": {"type": "string", "x-aws-stickler-threshold": 0.95}
+            },
         }
-        
+
         Model = StructuredModel.from_json_schema(schema)
         assert Model.match_threshold == 0.9
-        
+
         obj1 = Model(name="test")
         obj2 = Model(name="test")
-        
+
         result = obj1.compare_with(obj2)
         assert result["overall_score"] == 1.0
 
@@ -950,23 +931,17 @@ class TestComparisonBehaviorCustomExtensions:
         schema = {
             "type": "object",
             "properties": {
-                "critical": {
-                    "type": "string",
-                    "x-aws-stickler-weight": 10.0
-                },
-                "minor": {
-                    "type": "string",
-                    "x-aws-stickler-weight": 0.1
-                }
-            }
+                "critical": {"type": "string", "x-aws-stickler-weight": 10.0},
+                "minor": {"type": "string", "x-aws-stickler-weight": 0.1},
+            },
         }
-        
+
         Model = StructuredModel.from_json_schema(schema)
-        
+
         # When critical field matches, overall score should be high
         obj1 = Model(critical="important", minor="detail1")
         obj2 = Model(critical="important", minor="detail2")
-        
+
         result = obj1.compare_with(obj2)
         # Critical field matches perfectly, minor field differs
         # With high weight on critical, overall score should still be high
@@ -979,25 +954,25 @@ class TestComparisonBehaviorCustomExtensions:
             "properties": {
                 "exact_field": {
                     "type": "string",
-                    "x-aws-stickler-comparator": "ExactComparator"
+                    "x-aws-stickler-comparator": "ExactComparator",
                 },
                 "fuzzy_field": {
                     "type": "string",
-                    "x-aws-stickler-comparator": "LevenshteinComparator"
-                }
-            }
+                    "x-aws-stickler-comparator": "LevenshteinComparator",
+                },
+            },
         }
-        
+
         Model = StructuredModel.from_json_schema(schema)
-        
+
         obj1 = Model(exact_field="test", fuzzy_field="hello")
         obj2 = Model(exact_field="test", fuzzy_field="helo")
-        
+
         result = obj1.compare_with(obj2)
-        
+
         # Exact field should match perfectly
         assert result["field_scores"]["exact_field"] == 1.0
-        
+
         # Fuzzy field should have partial match
         assert 0.0 < result["field_scores"]["fuzzy_field"] < 1.0
 
@@ -1009,21 +984,21 @@ class TestComparisonBehaviorCustomExtensions:
                 "field1": {
                     "type": "string",
                     "x-aws-stickler-threshold": 0.8,
-                    "x-aws-stickler-clip-under-threshold": True
+                    "x-aws-stickler-clip-under-threshold": True,
                 },
                 "field2": {
                     "type": "string",
                     "x-aws-stickler-threshold": 0.8,
-                    "x-aws-stickler-clip-under-threshold": False
-                }
-            }
+                    "x-aws-stickler-clip-under-threshold": False,
+                },
+            },
         }
-        
+
         Model = StructuredModel.from_json_schema(schema)
-        
+
         obj1 = Model(field1="test", field2="test")
         obj2 = Model(field1="test", field2="test")
-        
+
         result = obj1.compare_with(obj2)
         assert result["overall_score"] == 1.0
 
@@ -1038,31 +1013,31 @@ class TestComparisonBehaviorCustomExtensions:
                     "type": "string",
                     "x-aws-stickler-comparator": "ExactComparator",
                     "x-aws-stickler-weight": 5.0,
-                    "x-aws-stickler-threshold": 1.0
+                    "x-aws-stickler-threshold": 1.0,
                 },
                 "name": {
                     "type": "string",
                     "x-aws-stickler-comparator": "LevenshteinComparator",
                     "x-aws-stickler-weight": 2.0,
                     "x-aws-stickler-threshold": 0.9,
-                    "x-aws-stickler-clip-under-threshold": True
+                    "x-aws-stickler-clip-under-threshold": True,
                 },
                 "score": {
                     "type": "number",
                     "x-aws-stickler-comparator": "NumericComparator",
                     "x-aws-stickler-weight": 1.0,
-                    "x-aws-stickler-threshold": 0.95
-                }
-            }
+                    "x-aws-stickler-threshold": 0.95,
+                },
+            },
         }
-        
+
         Model = StructuredModel.from_json_schema(schema)
-        
+
         assert Model.__name__ == "ComplexModel"
         assert Model.match_threshold == 0.85
-        
+
         obj1 = Model(id="ID001", name="Test Product", score=95.5)
         obj2 = Model(id="ID001", name="Test Product", score=95.5)
-        
+
         result = obj1.compare_with(obj2)
         assert result["overall_score"] == 1.0

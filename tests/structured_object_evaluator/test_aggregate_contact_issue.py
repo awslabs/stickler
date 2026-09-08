@@ -1,5 +1,3 @@
-
-
 """Test to investigate aggregate contact totals issue from the notebook."""
 
 from typing import Optional

@@ -188,12 +188,12 @@ Each release links to full notes on the
   direction the schema asked for. A round-trip through `to_json_schema()` and back
   now preserves the value, where it previously came back as `0.7`.
 
-  The same key one position over, on an array-of-objects property, is still
-  refused, and correctly: array pairing is gated by the element's own threshold, so
-  a field threshold there would do nothing. But the refusal came out of
-  `ModelFactory` naming `ComparableField` and a Python class attribute, wrapped in
-  "Error creating dynamic model", which a reader writing JSON cannot act on. The
-  schema path now translates it into the key they can write:
+  The same key one position over, on an array-of-objects property, is **ignored
+  with a warning**. It genuinely has no effect there -- array pairing is gated by
+  the element class's `match_threshold` -- and every `to_json_schema()` on a
+  released version emitted it, so refusing it would stop previously exported
+  schemas from importing in order to flag a key whose only cost is being ignored.
+  The warning names the key the author should write instead:
 
   ```
   Could not import JSON Schema: 'x-aws-stickler-threshold' has no effect on array
