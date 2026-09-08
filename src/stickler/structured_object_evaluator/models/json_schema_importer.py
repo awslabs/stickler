@@ -363,7 +363,21 @@ class JsonSchemaImporter:
             comparison_field = self._make_comparison_field(
                 field_info,
                 comparator_name="LevenshteinComparator",
-                threshold=0.7,
+                # Read the declared threshold, like `weight` and
+                # `clip_under_threshold` beside it. The literal used to stand
+                # here unconditionally, so `x-aws-stickler-threshold` on an
+                # object-typed property was dropped in silence while the other
+                # two field-level keys on the SAME node were honoured.
+                #
+                # Not inert in this position, which is why carrying it is the
+                # right fix rather than rejecting it the way #312 rejects a
+                # misplaced key. A nested-model field's threshold gates the
+                # subtree mean: measured on a two-leaf child scoring 0.5, a
+                # threshold of 0.6 with clipping on reports 0.0. Set through a
+                # `StructuredModel` class it worked; set in a schema it did not,
+                # so the two configuration paths disagreed about what is
+                # configurable. See #317.
+                threshold=extensions.get("threshold", 0.7),
                 weight=extensions.get("weight", 1.0),
                 clip_under_threshold=extensions.get("clip_under_threshold", True),
             )
@@ -689,6 +703,30 @@ class JsonSchemaImporter:
             namespace = "$defs" if ref.startswith("#/$defs/") else "definitions"
             available = sorted((schema.get(namespace) or {}).keys())
             return f"Reference '{ref}' not found. Available: {available}"
+        # `__init_subclass__` refuses a threshold on a `List[StructuredModel]`
+        # field, correctly: Hungarian matching reads the element class's
+        # `match_threshold` instead, so the key would do nothing. Its advice is
+        # written for someone holding a Python class, and names
+        # `ComparableField` and a class attribute. A schema author has neither,
+        # so translate it into the keys they can actually write. The sibling
+        # object-property case used to drop the same key in silence (#317); this
+        # is the same key one position over, and both should end somewhere a
+        # schema author can act on.
+        match = re.search(
+            r"Field '(\S+?)' is a List\[StructuredModel\] and cannot have a "
+            r"'threshold' parameter",
+            message,
+        )
+        if match:
+            declared = re.search(r"match_threshold = ([^']+?)' on", message)
+            value = declared.group(1) if declared else "<value>"
+            return (
+                f"'x-aws-stickler-threshold' has no effect on array property "
+                f"'{match.group(1)}' and is refused. Pairing of array elements is "
+                f"gated by the element's own threshold, so put "
+                f"'x-aws-stickler-match-threshold': {value} inside that property's "
+                f"'items' instead."
+            )
         if "Circular reference" in message or "recursion" in message.lower():
             return (
                 "Recursive JSON Schema models are not supported by the comparison "

@@ -164,6 +164,48 @@ Each release links to full notes on the
 
 ### Fixed
 
+- `x-aws-stickler-threshold` is no longer dropped on an object-typed property.
+  `from_json_schema` read `x-aws-stickler-weight` and
+  `x-aws-stickler-clip-under-threshold` from such a node's extensions but used a
+  hardcoded literal for the threshold, so one node honoured two field-level keys
+  and discarded the third, with no error and no warning:
+
+  ```
+  declared threshold=0.88  ->  0.7    (the default)
+  declared weight=3.0      ->  3.0    (honoured)
+  ```
+
+  The key is not inert in that position, which is why it is carried rather than
+  refused the way [#312](https://github.com/awslabs/stickler/issues/312) refuses a
+  genuinely misplaced key. A nested-model field's threshold gates the subtree mean,
+  measured on a two-leaf child scoring `0.5`: at `0.6` with clipping on the field
+  reports `0.0`, at `0.0` it keeps the `0.5`. It worked when set through a
+  `StructuredModel` class and not when set in a schema, so the two configuration
+  paths disagreed about what is configurable.
+
+  **Scores can move** for any imported schema that set this key: the declared
+  threshold now takes effect where it previously did nothing, which is the
+  direction the schema asked for. A round-trip through `to_json_schema()` and back
+  now preserves the value, where it previously came back as `0.7`.
+
+  The same key one position over, on an array-of-objects property, is still
+  refused, and correctly: array pairing is gated by the element's own threshold, so
+  a field threshold there would do nothing. But the refusal came out of
+  `ModelFactory` naming `ComparableField` and a Python class attribute, wrapped in
+  "Error creating dynamic model", which a reader writing JSON cannot act on. The
+  schema path now translates it into the key they can write:
+
+  ```
+  Could not import JSON Schema: 'x-aws-stickler-threshold' has no effect on array
+  property 'f' and is refused. Pairing of array elements is gated by the element's
+  own threshold, so put 'x-aws-stickler-match-threshold': 0.88 inside that
+  property's 'items' instead.
+  ```
+
+  Translated at the `from_json_schema` seam rather than in `ModelFactory`, which is
+  shared, so `model_from_json` callers keep the Python-flavoured advice that is
+  correct for them ([#317](https://github.com/awslabs/stickler/issues/317)).
+
 - **Breaking:** `HungarianMatcher.calculate_metrics` no longer reports a paired
   item as missing. It derived `fn` and `fp` as `len(list) - tp`, so a pair the
   algorithm produced, and that the method returns inside `matched_pairs`, was
