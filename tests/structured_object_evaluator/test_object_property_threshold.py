@@ -259,13 +259,18 @@ class TestAnArrayOfObjectsIgnoresItWithAWarning:
 class TestOurOwnExportDoesNotWarn:
     """The warning must not fire on a schema stickler itself produced.
 
-    `to_json_schema()` emits `x-aws-stickler-threshold: 0.5` on every
-    `List[StructuredModel]` property and cannot emit anything else, because
-    `__init_subclass__` refuses a named threshold on that shape. Warning on the
-    key's mere presence therefore fired on the library's own output for every
-    model holding a list of models: a warning about a key the library wrote,
-    advising the author to change something they never wrote. `dev` round-trips
-    such a schema silently, so that was a regression created by the warning.
+    Originally this pinned a sentinel: `to_json_schema()` emitted
+    `x-aws-stickler-threshold: 0.5` on every `List[StructuredModel]` property and
+    could emit nothing else, since `__init_subclass__` refuses a named threshold on
+    that shape. Warning on the key's mere presence fired on the library's own output
+    for every model holding a list of models, advising the author to change
+    something they never wrote.
+
+    #246 then stopped emitting the key there at all, so the silence below now has a
+    stronger cause than a value comparison: there is nothing on the property to
+    ignore. The legacy path still matters, because every schema already written to
+    disk carries the key, and `TestAPreviouslyExportedSchemaStillImports` covers
+    that side.
     """
 
     class Line(StructuredModel):
@@ -281,10 +286,17 @@ class TestOurOwnExportDoesNotWarn:
 
         return Doc
 
-    def test_export_emits_the_sentinel_there(self):
-        """Pins the premise. If export stops writing it, this class can go."""
+    def test_export_no_longer_writes_a_threshold_there(self):
+        """The premise, restated after #246 stopped emitting the key.
+
+        This asserted the sentinel `0.5` was present, and said in its own docstring
+        that the class could go if export ever stopped writing it. Export did stop,
+        so the assertion is inverted rather than deleted: an emitted key here would
+        be a regression, since a named threshold on this shape is refused at class
+        definition and the value could only ever be a placeholder.
+        """
         exported = self._doc().to_json_schema()["properties"]["lines"]
-        assert exported["x-aws-stickler-threshold"] == 0.5
+        assert "x-aws-stickler-threshold" not in exported
 
     def test_a_round_trip_of_our_own_export_is_silent(self):
         schema = self._doc().to_json_schema()

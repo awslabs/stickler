@@ -43,11 +43,12 @@ _JSON_DEFAULTS = {
 
 _PRESERVED_EXAMPLES_KEY = "x-aws-stickler-internal-examples"
 
-# The value `to_json_schema()` writes for `x-aws-stickler-threshold` on a
-# `List[StructuredModel]` property. It cannot write anything else: a named
-# threshold on that shape is refused at class definition. A threshold equal to it
-# therefore carries no authorial intent and must not draw a warning. Kept in step
-# with the same sentinel in `structured_model.py`.
+# The value every released `to_json_schema()` wrote for
+# `x-aws-stickler-threshold` on a `List[StructuredModel]` property. It could
+# write nothing else: a named threshold on that shape is refused at class
+# definition. A threshold equal to it therefore carries no authorial intent and
+# must not draw a warning. This release stops emitting the key at all, so only
+# legacy artifacts reach it.
 _EXPORTED_ARRAY_THRESHOLD_SENTINEL = 0.5
 
 # Every extension key this importer honours, on a field. Anything else that LOOKS
@@ -406,14 +407,29 @@ class JsonSchemaImporter:
                     field_info,
                     field_path,
                     comparator_name="LevenshteinComparator",
-                    threshold=0.5,
-                    # Dropped with a warning rather than forwarded. It has no
-                    # effect here -- Hungarian matching reads the element class's
-                    # `match_threshold` -- and every `to_json_schema()` on a
-                    # released version emitted the key, so refusing it would stop
-                    # previously exported schemas from importing. #316 needs the
-                    # same treatment for the same reason; keeping both PRs on
-                    # warn-and-ignore means their merge order does not matter.
+                    # `None`, not the legacy 0.5. Both resolve to the same
+                    # number, but passing a value marks the field as having
+                    # named a threshold, and a list-of-model field is not
+                    # allowed to: Hungarian matching reads each element class's
+                    # `match_threshold` instead.
+                    threshold=None,
+                    # And a threshold the SCHEMA names here is dropped rather
+                    # than forwarded, because forwarding it now raises.
+                    #
+                    # Every `to_json_schema()` on a released version emitted
+                    # `x-aws-stickler-threshold` on an array-of-model property,
+                    # so every schema artifact already written to disk carries
+                    # it. Import used to pass the value through and the old
+                    # `threshold != 0.5` proxy let the placeholder slide; with
+                    # the proxy replaced by an explicitness marker, forwarding
+                    # it makes `__init_subclass__` refuse the class and no
+                    # previously exported schema containing a list of models
+                    # can be read back.
+                    #
+                    # Warned rather than raised: which is a legacy placeholder
+                    # and which a human wrote is not decidable from the value,
+                    # and refusing would break persisted artifacts to catch a
+                    # misconfiguration whose only cost is being ignored.
                     ignore_threshold=True,
                 )
             else:
@@ -515,7 +531,7 @@ class JsonSchemaImporter:
         field_path: str,
         *,
         comparator_name: str,
-        threshold: float,
+        threshold: Optional[float],
         ignore_threshold: bool = False,
     ) -> FieldInfo:
         extensions = self._extract_extensions(field_info, field_path)
@@ -523,35 +539,25 @@ class JsonSchemaImporter:
             declared = extensions.pop("threshold")
             # Ignored either way; warned about only when the author can act on it.
             #
-            # `to_json_schema()` writes `x-aws-stickler-threshold: 0.5` on every
-            # `List[StructuredModel]` property and cannot write anything else,
-            # since `__init_subclass__` refuses a named threshold on that shape.
-            # Warning on the key's mere PRESENCE therefore fired on stickler's own
-            # export, for every model with a list of models, telling the author to
-            # change something the library wrote. `dev` round-trips such a schema
-            # silently, so that was a regression created by the warning itself.
-            # Same sentinel comparison as `structured_model.py`.
+            # Every `to_json_schema()` on a released version wrote `0.5` here and
+            # could write nothing else, since `__init_subclass__` refuses a named
+            # threshold on this shape. Warning on the key's mere PRESENCE therefore
+            # warned on every legacy artifact -- precisely the schemas the
+            # ignore-instead-of-raise behaviour exists to rescue -- telling the
+            # author to change a key the library itself wrote. A value equal to the
+            # export sentinel carries no authorial intent; any other value does.
             #
-            # The message deliberately does not repeat `declared` as the value to
-            # write: the element class's gate is a different number, so
-            # "put 'x-aws-stickler-match-threshold': 0.88 inside items" told the
-            # reader to overwrite a working configuration with the value being
-            # discarded.
+            # `warnings.warn`, not `warn_once`: the latter memoises on
+            # `(id, field_path)` for the life of the process, so a SECOND schema
+            # declaring the same property name imported silently and its author
+            # never heard about their dead key. A schema import happens once per
+            # call, so ordinary dedup by message is correct here.
+            #
+            # The message names the key to write but not `declared` as its value:
+            # the element class's gate is a different number, so echoing it would
+            # tell the reader to overwrite a working configuration with the value
+            # being discarded.
             if declared != _EXPORTED_ARRAY_THRESHOLD_SENTINEL:
-                # `warnings.warn`, not `warn_once`. `warn_once`'s memo is keyed on
-                # `(id, context)` and lives for the process, so with `field_path`
-                # as the context a SECOND schema declaring the same property name
-                # imported silently -- the author of that schema never heard about
-                # their dead key, which is the silent drop this module exists to
-                # prevent. `warn_once` is right for a per-document deprecation,
-                # where the alternative is one warning per row of a corpus; a
-                # schema import happens once per call, so ordinary dedup by
-                # message is both sufficient and correct here.
-                #
-                # No `stacklevel`: the useful location is the property inside the
-                # schema, which the message names, not a frame in this recursive
-                # descent. Counting frames to reach `from_json_schema` would be
-                # wrong for nested properties, which arrive one level deeper.
                 warnings.warn(
                     f"'x-aws-stickler-threshold': {declared} has no effect on "
                     f"array property '{field_path}' and is ignored. Pairing of "
@@ -577,7 +583,7 @@ class JsonSchemaImporter:
         *,
         comparator=None,
         comparator_name: Optional[str] = None,
-        threshold: float,
+        threshold: Optional[float],
         weight: float,
         clip_under_threshold: bool,
     ) -> FieldInfo:

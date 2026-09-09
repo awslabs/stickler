@@ -148,8 +148,10 @@ def demo_structured_model_integration():
             weight=1.0,
         )
         item_description: str = ComparableField(
-            # ComparableField.threshold is what gates the pipeline;
-            # comparator.threshold is only used when .compare() is called directly
+            # Either spelling gates the pipeline. ComparableField.threshold
+            # wins where both are given; drop it and the comparator's 0.85
+            # governs instead. Both are stated here so the field reads the
+            # same whichever line you look at.
             comparator=BERTComparator(threshold=0.85),
             threshold=0.85,
             weight=2.0,

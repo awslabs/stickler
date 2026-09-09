@@ -29,9 +29,11 @@ class NormalizedComparator(BaseComparator):
         ignore_punctuation: Remove Unicode punctuation when True (default True).
     """
 
+    DEFAULT_THRESHOLD = 1.0
+
     def __init__(
         self,
-        threshold: float = 1.0,
+        threshold: Optional[float] = None,
         case_sensitive: bool = False,
         ignore_whitespace: bool = True,
         ignore_punctuation: bool = True,

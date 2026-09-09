@@ -722,7 +722,14 @@ class TestArrayHandling:
         assert "role" in element_type.model_fields
 
     def test_array_of_objects_with_extensions(self):
-        """Test array of objects with custom extensions."""
+        """Weight is applied; a threshold on an array-of-models is ignored.
+
+        This asserted `_threshold == 0.8` -- a value that was stored and never
+        read, since Hungarian matching gates on the element class's
+        `match_threshold`. Forwarding it now trips the explicitness marker in
+        `__init_subclass__`, and it is dropped with a warning instead. Weight is
+        the half of this test that was always load-bearing.
+        """
         schema = {
             "type": "object",
             "properties": {
@@ -750,12 +757,9 @@ class TestArrayHandling:
         # Check extensions are applied
         products_field = field_definitions["products"][1]
         assert products_field.json_schema_extra._weight == 1.5
-        # Ignored, not stored: a threshold on an array-of-models field has no
-        # effect, since Hungarian matching gates on the element class's
-        # `match_threshold`. Pinned to the value it DOES take rather than to
-        # `!= 0.8`, which would pass for any number and prove nothing about where
-        # the 0.8 went.
-        assert products_field.json_schema_extra._threshold == 0.5
+        # Ignored, not stored: it has no effect on an array-of-models field.
+        assert products_field.json_schema_extra._threshold != 0.8
+        assert products_field.json_schema_extra._threshold_explicit is False
 
     def test_array_of_primitives_all_types(self):
         """Test arrays of all primitive types."""
