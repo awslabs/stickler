@@ -522,6 +522,28 @@ Each release links to full notes on the
   populated skips the annotation entirely (0.537s, within noise of the original).
   A test pins the superset property so adding a case to either rule without
   widening the guard fails loudly rather than silently skipping the check.
+### Fixed
+
+- The pretty printers accept the `EvalResult` that `stickler.evaluate()` returns,
+  and report its failures. They handled the comparison `dict` and nothing else, so
+  passing the object the public API actually hands back printed
+  `✅ No non-matches found - all fields matched successfully!` over a document with
+  a wrong field -- a false success on the most direct path through the library.
+
+  Two halves. `_normalize_results_format` and `_extract_non_matches` now unwrap
+  `EvalResult.raw`; and the records themselves are available, which they previously
+  were not at any price, because `evaluate()` never asked `compare_with` for them.
+
+  `EvalResult.non_matches` computes them on first access rather than during
+  `evaluate()`. Requesting them eagerly costs roughly 2x on a 40-item document
+  (~25ms to ~50ms), flat whether one field fails or all of them, and the callers
+  who want the records are printing a report rather than scoring a corpus. The
+  value is cached, and an `EvalResult` built directly from a raw dict keeps working:
+  a carried `non_matches` key is used as-is, and one with neither a key nor a
+  comparable pair returns `[]` instead of raising.
+
+  Unrecognized input no longer prints the success message either. It prints
+  nothing, which is the honest answer for data the printer could not read.
 
 ## [0.7.0] - 2026-08-18
 
