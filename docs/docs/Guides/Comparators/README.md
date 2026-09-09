@@ -552,8 +552,9 @@ unaffected and keep their per-field breakdown.
     `Pet` against `Cat` scores `0.0` with `fd=1` when both are plain
     `BaseModel`s, and `1.0` with `tp=1` when both are `StructuredModel`s. The
     second is the older behaviour rather than a deliberate exception; the rule is
-    the same for both and the code has caught up on one half so far. Annotate the
-    field with a single model type if you need the guarantee today.
+    the same for both and the code has caught up on one half so far. Tracked in
+    [#327](https://github.com/awslabs/stickler/issues/327). Annotate the field with
+    a single model type if you need the guarantee today.
 
 The class is part of the value's identity, not incidental to it. A correctly
 annotated field never sees this, because pydantic refuses a `Dog` for an

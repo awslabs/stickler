@@ -253,8 +253,9 @@ Each release links to full notes on the
 
   That second row is the pre-existing behaviour on `dev` rather than a deliberate
   exception, and it is the larger half, since `StructuredModel` is the documented
-  way to declare a nested object. It is called out in the docs and left to its own
-  change, because closing it touches `ComparisonDispatcher` CASE 3 and the
+  way to declare a nested object. It is called out in the docs and tracked in
+  [#327](https://github.com/awslabs/stickler/issues/327), left to its own change
+  because closing it touches `ComparisonDispatcher` CASE 3 and the
   `List[StructuredModel]` Hungarian pairing that every existing user depends on.
 
   The class is part of a value's identity. A correctly

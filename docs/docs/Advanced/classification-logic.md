@@ -140,8 +140,8 @@ where a subclass arrived for its base, which `Optional[Pet]` accepts.
                                            StructuredModel    1.0   TP
     ```
 
-    That is the older behaviour rather than a deliberate exception, and closing it
-    is planned. Until then, treat a heterogeneous `StructuredModel` pair as
+    That is the older behaviour rather than a deliberate exception, and closing it is
+    tracked in [#327](https://github.com/awslabs/stickler/issues/327). Until then, treat a heterogeneous `StructuredModel` pair as
     unverified rather than as endorsed: annotate the field with a single model type
     if you need the guarantee today.
 
