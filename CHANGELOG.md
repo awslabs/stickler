@@ -9,6 +9,519 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Added
+
+- **`NormalizedComparator`** for explicit formatting-insensitive equality.
+  Its independent case, whitespace, and punctuation options round-trip through
+  JSON Schema. Punctuation follows Unicode `P*` categories, whitespace follows
+  `str.isspace()`, and Unicode symbols and combining marks remain significant
+  ([#223](https://github.com/awslabs/stickler/issues/223)).
+
+- **`ANLSStarComparator`**, which scores a `dict` (or any nesting of dicts and
+  lists) structurally instead of by whole-object equality, and is now what
+  zero-config evaluation installs for a `dict` / `Dict[...]` / `Mapping[...]`
+  field. Ground truth
+  `{"vendor": "Acme Corporation", "terms": "Net 30", "po": "PO-88231"}`:
+
+  | prediction | before | after |
+  |---|---|---|
+  | `vendor` abbreviated to `"Acme Corp"` | 0.0 | 0.8542 |
+  | `po` key missing | 0.0 | 0.6667 |
+  | extra `currency` key | 0.0 | 0.7500 |
+  | all three values wrong | 0.0 | 0.0 |
+
+  Before, the first three were indistinguishable, so a dict field could not rank
+  two extractors, detect a regression, or say which document got worse. That is
+  the `Equals` antipattern this library exists to replace, and dict fields were
+  the one place it survived ([#277](https://github.com/awslabs/stickler/issues/277)).
+
+  The per-leaf cutoff (tau) is the comparator's `leaf_threshold`, settable per
+  field with `ComparableField(comparator=ANLSStarComparator(leaf_threshold=...))`.
+  It is deliberately not called `threshold`, which means the same thing on this
+  comparator as on every other: the score at which a field counts as a match. It
+  defaults to `0.5`, the standard ANLS value, and the default is load-bearing:
+  raising it to `0.85` makes an abbreviated value and a missing key both score
+  `0.6667` on a three-key mapping, collapsing the distinction this comparator
+  exists to provide. It is not safe at `0.0` either, since with no cutoff an
+  unrelated string earns credit for incidental character overlap. A general
+  per-field override for the zero-config path is
+  [#263](https://github.com/awslabs/stickler/issues/263).
+
+  ANLS* comes from the [`anls_star`](https://pypi.org/project/anls_star/)
+  project (Apache-2.0); see `NOTICE`. Stickler's implementation was already
+  present as `anls_score`, which now also accepts `threshold=`.
+
+### Removed
+
+- The deprecated `aggregate` parameter on `ComparableField`, along with its dead
+  code path (`_is_aggregate_field`, `ConfigurationHelper.is_aggregate_field`, and
+  the `parent_is_aggregate` plumbing in the confusion-matrix calculator). The
+  flag had no effect once aggregation moved to the comparison layer in
+  [#94](https://github.com/awslabs/stickler/issues/94): every node in
+  `compare_with()` output already carries an `aggregate` block summing the
+  primitive field metrics below it. Passing `aggregate=` now raises `TypeError`
+  instead of emitting a `DeprecationWarning`. The comparison parameters after
+  `default` (`clip_under_threshold`, `alias`, ...) are now keyword-only, so an
+  old five-positional call raises `TypeError` rather than silently rebinding its
+  fifth argument to `clip_under_threshold`. A JSON Schema carrying
+  `x-aws-stickler-aggregate` still imports — the key is accepted but ignored — so
+  existing schema files keep loading.
+  ([#226](https://github.com/awslabs/stickler/issues/226))
+
+- **Deprecation shim for `compare()` → `_compare()` rename**
+  (`BaseComparator.__init_subclass__`), removed in 1.0 as the 0.7.0
+  deprecation promised.
+
+  A comparator that extends `BaseComparator` directly and implements only
+  `compare()` is abstract again and raises `TypeError` at construction, naming
+  `_compare`. The same applies to one that inherits `compare()` from a mixin
+  over `BaseComparator`.
+
+  A comparator that extends a *concrete* comparator and supplies `compare()`
+  still constructs, because `_compare()` reaches it through the MRO. Its
+  `compare()` shadows the template method, so it can bypass the `None` policy
+  and score `None` as a present value. Python cannot prevent that shadowing,
+  so `BaseComparator.__init_subclass__` now reports it instead: a
+  `UserWarning` at class-definition time, pointing at the `class` statement.
+  This replaces the shim's `DeprecationWarning` and is visible by default,
+  which the `DeprecationWarning` was not.
+
+  The warning cannot tell a faithful `super().compare()` pass-through — which
+  keeps the policy intact and is correct — from one that transforms values
+  first, so it fires on both.
+
+  Migrate by renaming `compare()` to `_compare()` and removing any `None`
+  handling -- `_compare()` is only called when both arguments are non-`None`.
+  Grep your comparators for `def compare(` to find the overrides that need
+  renaming. If you are overriding `compare()` deliberately to customise the
+  `None` policy, define `_compare()` as well and the warning goes quiet
+  ([#215](https://github.com/awslabs/stickler/issues/215)).
+
+### Changed
+
+- `ComparableField(clip_under_threshold=...)` now defaults to `None` meaning
+  "not specified" rather than `True`. The effective default is unchanged; the
+  sentinel lets a mapping-annotated field default to `False` (so partial credit
+  is not zeroed) while an explicit `True` or `False` is always honoured.
+
+- JSON Schema import now delegates standard types, local references, combiners,
+  and constraint parsing to `json-schema-to-pydantic`. Stickler retains a narrow
+  adapter for comparison metadata and nested `StructuredModel` creation. Parsed
+  types still choose comparison behavior, but schema constraints do not reject
+  imperfect predictions before scoring: malformed enum, date, and
+  constraint-violating values remain constructible and reach their comparator.
+
+  Unconfigured enum fields now use `ExactComparator` at threshold `1.0`, and
+  `date` / `date-time` formats use `DateComparator` at threshold `1.0`; both used
+  `LevenshteinComparator` at threshold `0.5` before this change, so default scores
+  can move for those fields.
+  This adds support for valid Draft 7 multi-type unions and multi-arm `allOf`,
+  `anyOf`, and `oneOf` schemas; recursive models and `patternProperties` remain
+  explicit unsupported boundaries ([#212](https://github.com/awslabs/stickler/issues/212)).
+
+- Confidence AUROC and document-splitting statistics now use NumPy
+  implementations with randomized scikit-learn and SciPy equivalence tests.
+  `scikit-learn` is no longer a core dependency, and the `docsplit` extra now
+  adds only pandas; SciPy remains isolated to the `semantic` extra
+  ([#216](https://github.com/awslabs/stickler/issues/216)).
+
+
+- **Breaking:** `EvalResult.matched` is now `overall_score >= match_threshold`,
+  defined directly rather than read from the removed `all_fields_matched` key.
+  This is the definition its docstring already claimed ("the `match_threshold`
+  knob's model-level verdict"), and it cannot disagree with the `overall_score`
+  sitting beside it. The two definitions do diverge: with one wrong field among
+  six the score is `0.8333`, so the old key read `False` where
+  `overall_score >= match_threshold` reads `True`.
+
+- `EvalResult.matched` now honours a `StructuredModel` subclass's own declared
+  `match_threshold` when the caller does not pass one to `evaluate` / `eval_for`.
+  It previously always compared against the facade default of `0.7`, so a model
+  declaring `match_threshold = 0.95` reported a `0.80` pair as matched. Passing
+  `match_threshold=` explicitly still overrides the declaration, and a class that
+  declares nothing is unaffected.
+
+- JSON Schema import now delegates standard types, local references, combiners,
+  and constraint parsing to `json-schema-to-pydantic`. Stickler retains a narrow
+  adapter for comparison metadata and nested `StructuredModel` creation. Parsed
+  types still choose comparison behavior, but schema constraints do not reject
+  imperfect predictions before scoring: malformed enum, date, and
+  constraint-violating values remain constructible and reach their comparator.
+
+  Unconfigured enum fields now use `ExactComparator` at threshold `1.0`, and
+  `date` / `date-time` formats use `DateComparator` at threshold `1.0`; both used
+  `LevenshteinComparator` at threshold `0.5` before this change, so default scores
+  can move for those fields.
+  This adds support for valid Draft 7 multi-type unions and multi-arm `allOf`,
+  `anyOf`, and `oneOf` schemas; recursive models and `patternProperties` remain
+  explicit unsupported boundaries ([#212](https://github.com/awslabs/stickler/issues/212)).
+
+- Confidence AUROC and document-splitting statistics now use NumPy
+  implementations with randomized scikit-learn and SciPy equivalence tests.
+  `scikit-learn` is no longer a core dependency, and the `docsplit` extra now
+  adds only pandas; SciPy remains isolated to the `semantic` extra
+  ([#216](https://github.com/awslabs/stickler/issues/216)).
+
+### Fixed
+
+- **Breaking:** `HungarianMatcher.calculate_metrics` no longer reports a paired
+  item as missing. It derived `fn` and `fp` as `len(list) - tp`, so a pair the
+  algorithm produced, and that the method returns inside `matched_pairs`, was
+  also counted as a false negative when its score fell below `match_threshold`.
+  The same pair was reported as matched and as missing at once, which fixes
+  [#231](https://github.com/awslabs/stickler/issues/231).
+
+  The assignment now decides what is paired and the threshold only splits the
+  paired items into `tp` and `fd`. Two keys join the returned dict: `fd` counts
+  pairs below the threshold and `fa` counts predictions with no partner. `fn`
+  keeps its name and counts only ground truth items with no partner.
+
+  **What moves:** `fn` is lower by `fd` for any input with a pair below the
+  threshold. If you read `fn` from this method directly, the old value is
+  `fn + fd`:
+
+  ```python
+  metrics = matcher.calculate_metrics(gt, pred)
+  old_fn = metrics["fn"] + metrics["fd"]
+  ```
+
+  **What does not move:** `fp` is still the rollup `fd + fa`, which still equals
+  the number of predictions that are not true positives, and `precision`,
+  `recall`, `f1` and `matched_pairs` are unchanged for every input. No evaluator
+  score changes either, because both internal callers
+  (`HungarianHelper.get_complete_matching_info` and
+  `ComparisonHelper.compare_unordered_lists`) read only `matched_pairs` and
+  classify the scores themselves. Both are on the traditional path; ANLS Star
+  matches lists with its own `munkres` call in
+  `structured_object_evaluator/trees/list_tree.py` and is
+  untouched. The counts now agree with what
+  `ComparisonHelper.unordered_list_metrics` already produced and with the rule
+  that [Hungarian Matching](https://awslabs.github.io/stickler/Advanced/hungarian-matching/)
+  documents.
+
+- The worked list example in
+  [Classification Logic](https://awslabs.github.io/stickler/Advanced/classification-logic/)
+  reported `TP=2, FA=2, FN=1, FD=0` for a three item ground truth against a four
+  item prediction. The assignment pairs three of them, so the correct counts are
+  `TP=2, FD=1, FA=1, FN=0`. The `FP` total was right, which is why the error went
+  unnoticed.
+
+- `can_score_mapping` is a denylist, not an allowlist. It gated on a new
+  `handles_mappings` attribute, which no comparator outside this repo could carry,
+  so a user who wrote a mapping comparator and asked for it by name had their
+  score silently replaced with `0.0`. An explicit `comparator=` is consent by
+  definition. Only `LevenshteinComparator` (raises on a dict) and
+  `FuzzyComparator` (scores a changed value `0.944`, above a mere key reordering
+  at `0.667`) are refused, both on measured evidence. `handles_mappings` is
+  removed entirely rather than documented, since nothing reads it now.
+
+- `List[Dict[...]]` is routed on the explicit path too, keyed on the element type.
+  The element kept `LevenshteinComparator`, whose canonical-JSON fallback compared
+  edit distance over a serialised blob: one path scored `0.7667` and cleared a
+  `0.7` threshold while the zero-config path scored the same annotation `0.0`. Both
+  now compute the same raw score.
+
+- Documented that ANLS* compares every leaf as text, and pinned it with tests.
+  This is canonical ANLS* and is deliberate: the metric generalises the
+  *structure* of a comparison (key alignment, union normalisation, Hungarian
+  pairing of list elements), not the leaf metric, which came from scene-text VQA
+  where every answer is a string.
+
+  The consequence is stated rather than patched. Incidental character overlap on
+  a long numeric or identifier value scores high, and scores above a genuine text
+  near-miss: a one-character error in a 22-character account number is `0.9545`
+  and a 2x-wrong amount
+  `0.8571`, where `"Acme Corporation"` against `"Acme Corp"` is `0.5625`. No
+  `leaf_threshold` separates those, so a field whose values matter should be
+  declared, where it gets a comparator chosen for its type.
+
+  An earlier revision of this branch made leaves type-aware. That was reverted:
+  it amounted to a second inference table contradicting the zero-config one
+  (`amount: float` gets `NumericComparator@0.95` with tolerance when declared, and
+  would have got exact equality as a dict leaf), which is the divergence
+  [#239](https://github.com/awslabs/stickler/issues/239) exists to remove. A
+  future `infer_types=True` must delegate to `stickler.auto.inference` instead,
+  and needs [#49](https://github.com/awslabs/stickler/issues/49) settled first
+  because the two sides of a comparison can disagree about their type.
+
+- The `Mapping` family is routed on the zero-config path. `Mapping[str, str]`,
+  `MutableMapping`, `OrderedDict`, `DefaultDict` and `Counter` fell through to
+  the exotic branch and were canonicalised to a JSON string, so the auto path
+  disagreed with the explicit path about the same annotation, and with the
+  CHANGELOG, `auto/README.md` and the comparators guide. Both the wire type and
+  the inferred comparator now use `ConfigurationHelper.is_mapping_annotation`.
+
+- The mapping substitution works under `from __future__ import annotations`. It
+  read the raw `__annotations__`, which hold the STRING `"Dict[str, Any]"` under
+  PEP 563, decided that was not a mapping, and skipped every field. The engine
+  still scored with ANLS* via the read-time fallback while `to_json_schema()` and
+  `explain()` reported `LevenshteinComparator`, reintroducing exactly the
+  schema/engine divergence the substitution exists to prevent. It now runs in
+  `__pydantic_init_subclass__` over `model_fields`, whose annotations are already
+  resolved. An explicit `clip_under_threshold=True` is honoured again as a result.
+
+- `ExactComparator` and `StructuredModelComparator` can score a mapping, and are
+  no longer zeroed for trying. `ExactComparator` now canonicalises a mapping
+  first, so identical content scores `1.0` regardless of key order; it previously
+  used `str(dict)`, which made key order significant and returned `0.0` or `1.0`
+  depending only on how the JSON arrived. `LevenshteinComparator` and
+  `FuzzyComparator` stay excluded: the first raises on a dict, and the second
+  scores a changed value (`0.944`) higher than a mere reordering (`0.667`).
+
+- The mapping substitution copies the field descriptor instead of mutating it.
+  Pydantic does not clone the `json_schema_extra` closure, so one
+  `ComparableField(...)` bound to both a `str` field and a `Dict` field had ANLS*
+  and `clip=False` written onto the string field, order-dependently on which class
+  was defined first.
+
+- A dict field scored `0.0` against an identical copy of itself on the explicit
+  path, and its configured comparator was never called.
+  `ComparisonDispatcher` handled `str`/`int`/`float`, `list` and
+  `StructuredModel` only, so a mapping fell through to the mismatched-types
+  branch. A comparator hardcoded to return `1.0` still produced `0.0`
+  ([#297](https://github.com/awslabs/stickler/issues/297)).
+
+- A mapping-annotated field with no explicit comparator no longer gets the
+  type-blind `LevenshteinComparator`, which rejects mappings outright. The
+  substitution happens at class definition, so `to_json_schema()`, `explain()`,
+  the HTML reports and the comparison engine all report the same comparator; a
+  schema round-trip previously exported `LevenshteinComparator` for a field the
+  engine scored with something else, and the reimported model then raised.
+
+- A dict field whose value is a mapping but whose comparator scores scalars
+  (reachable through `Any` or `Union[str, Dict[...]]`, where no annotation
+  declares the shape) is now counted as a false discovery with a warning naming
+  the remedies, instead of raising. Value shape can be data-dependent, so
+  raising ended a corpus run on document N after succeeding on N-1.
+
+- A `dict`-typed field is no longer exempt from a `match_threshold` the caller
+  or the model class declared; it previously used a hardcoded `0.7` while sibling
+  fields honoured the declared value.
+
+- **Breaking:** `all_fields_matched` is no longer returned by `compare_with()`,
+  and no longer appears on `confusion_matrix.overall`. It quantified over
+  **top-level** fields only and did not recurse, so a nested field "matched" when
+  its own subtree mean cleared its own threshold and a failing leaf underneath was
+  invisible. Two external reports read it the way its name and the documentation
+  implied, as a quantifier over every leaf, and expected opposite behaviours from
+  each other, so no single implementation satisfied both
+  ([#23](https://github.com/awslabs/stickler/issues/23),
+  [#275](https://github.com/awslabs/stickler/issues/275),
+  [#287](https://github.com/awslabs/stickler/issues/287)).
+
+  Replacements, all of which already existed: `overall_score` for the scalar
+  summary, `EvalResult.matched` for a single object-level verdict, and
+  `field_comparisons` for the individual failures. To ask whether anything failed
+  at all, both rollup nodes have to be read, because a list item that scores
+  below `match_threshold` is recorded as one `fd` on `confusion_matrix.overall`
+  and is not descended into, so its leaves never appear under
+  `confusion_matrix.aggregate`:
+
+  ```python
+  clean = (
+      cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
+      and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
+  )
+  ```
+
+  A below-threshold object is a spurious non-match, so not descending into it is
+  deliberate: `overall` carries the object verdict and `aggregate` carries leaf
+  detail for the objects that were comparable. A caller wanting leaf detail for a
+  marginal object lowers `match_threshold` until it qualifies. See
+  [#288](https://github.com/awslabs/stickler/issues/288) for the naming.
+
+
+  Replacements, all of which already existed: `overall_score` for the scalar
+  summary, `EvalResult.matched` for a single object-level verdict, and
+  `field_comparisons` for the individual failures. To ask whether anything failed
+  at all, both rollup nodes have to be read, because a list item that scores
+  below `match_threshold` is recorded as one `fd` on `confusion_matrix.overall`
+  and is not descended into, so its leaves never appear under
+  `confusion_matrix.aggregate`:
+
+  ```python
+  clean = (
+      cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
+      and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
+  )
+  ```
+
+  A below-threshold object is a spurious non-match, so not descending into it is
+  deliberate: `overall` carries the object verdict and `aggregate` carries leaf
+  detail for the objects that were comparable. A caller wanting leaf detail for a
+  marginal object lowers `match_threshold` until it qualifies. See
+  [#288](https://github.com/awslabs/stickler/issues/288) for the naming.
+
+- An unrecognized `x-aws-stickler-*` extension key in a JSON Schema now raises
+  instead of being silently dropped. The sharpest shape was a typo beside a
+  correctly-spelled sibling, which produced a configuration nobody would choose:
+
+  ```
+  x-aws-stickler-comparitor: ExactComparator   (typo, dropped)
+  x-aws-stickler-threshold:  1.0               (honoured)
+  -> LevenshteinComparator at threshold 1.0
+  ```
+
+  A wrong prefix (`x-stickler-*`) is caught too, and the error names the offending
+  key, the field, and the closest valid key. Suggestions compare the suffix after
+  the prefix rather than the whole key, because every valid key shares
+  `x-aws-stickler-` and whole-string similarity returned a confident match for
+  anything at all. A key with no plausible correction raises without inventing
+  one. Unrelated `x-*` extensions from other tooling are left alone, and
+  `x-aws-stickler-aggregate` is still accepted so schemas exported by older
+  versions keep importing.
+
+  Raising rather than warning is safe here in a way it is not elsewhere: a schema
+  is read deterministically at import, so there is no risk of failing on document
+  N of a corpus after succeeding on N-1. The author is present and the mistake is
+  in a file they can edit, and the alternative is a model that builds and reports
+  a wrong number.
+
+  The check runs over the raw schema, so it reaches every position an extension
+  can be written in, not only the ones that produce a field: the root object,
+  `items`, and a list-form `["object", "null"]` node were all silently dropping
+  keys while the same typo one level down raised.
+
+  Position is part of validity, because the two key sets are not interchangeable.
+  `x-aws-stickler-match-threshold` and `-model-name` are read on the root object
+  and on any object-typed property, and dropped on a scalar field; the field keys
+  are the other way round. Accepting both everywhere let the suggester answer a
+  field-position typo of `-match-threshold` with "did you mean
+  `x-aws-stickler-match-threshold`", where taking that advice imported cleanly
+  and did nothing. A valid key in a position that does not read it now says so
+  and names the position it belongs in.
+
+  This also corrects two places that taught the wrong prefix: the
+  `structured_object_evaluator/README.md` extension section and
+  `examples/scripts/json_schema_demo.py`. Both used `x-stickler-*` and lowercase
+  comparator names (`"fuzzy"`, `"exact"`), neither of which works, so the
+  README's own example applied none of its settings. It now applies all of them,
+  which a test asserts verbatim. Correcting the prefix without correcting the
+  values would have turned a double no-op into a hard error for anyone copying
+  the page, so both moved together. The README now also separates the field-level
+  keys from the object-level ones and gives the real `clip-under-threshold`
+  default, which it had recorded as `false` rather than `true`.
+  ([#210](https://github.com/awslabs/stickler/issues/210))
+
+- `overall_score` and the confusion matrix no longer disagree about a field that
+  is absent on both sides. The two read different scores for the same object
+  pair: `overall_score` takes the threshold-corrected score, while object
+  classification against `match_threshold` takes the raw pairwise similarity.
+  The raw path tested absence with a bare `is None`, so it scored `[]` against
+  `None` on a list field, `""` against `None` on a string field, and two empty
+  lists against each other all as `0.0` -- while `ComparisonDispatcher` scored
+  every one of those as a true negative worth `1.0`.
+
+  The result was a pair reported as `overall_score == 1.0` and `fd == 1` at once:
+  a perfect match that is also a false discovery. Two **identical** objects were
+  enough to trigger it. Any `List[Model]` whose element model declares an
+  optional list or string field reaches this whenever that field is left absent
+  on both sides, which for a document-extraction schema is the common case, not
+  an edge one -- and the contradiction is invisible unless you read both numbers
+  together, so it silently deflated precision on object-level metrics.
+
+  Both readers now define absence the same way the dispatcher does, per field
+  kind: `None` and `[]` for a list field, `None`, `""` and `{}` for everything
+  else. This is the rule the docs already
+  [documented](https://awslabs.github.io/stickler/Advanced/classification-logic/)
+  ([#233](https://github.com/awslabs/stickler/issues/233))
+
+- An empty dict is now read as absent, the third case that documented rule
+  names. `NullHelper.is_effectively_null_for_primitives` covered `None` and `""`
+  but not `{}`, so the #233 contradiction survived for a `Dict` field in the
+  opposite direction: two **identical** objects each holding `{}` classified as
+  a false discovery instead of a match, and `{}` against `None` recorded an FN
+  while `None` against `{}` recorded an FA, where the rule calls for a TN in all
+  three.
+
+  A populated dict field was worse than misclassified, it was unscoreable. No
+  comparator accepts a dict -- `LevenshteinComparator` raises `TypeError`
+  pointing at `StructuredModel` instead -- so `{}` against `{"k": "v"}` fell
+  through to the comparator and *raised*, taking out Hungarian matching for any
+  `List[Model]` whose element model had a populated dict field. That pair is now
+  an ordinary false alarm.
+
+  Two **populated** dicts still reach the comparator and still raise. Giving
+  dicts a comparator is a separate change; this one only closes the absence
+  cases.
+
+- A field annotated `Optional[Annotated[List[str], ...]]` is now recognized as a
+  list field. Pydantic strips `Annotated` when it wraps a whole annotation, so
+  `Annotated[Optional[List[str]], ...]` always worked, but it leaves the wrapper
+  on a union arm -- and `get_origin` reports `Annotated` there rather than the
+  type inside. `Annotated[List[str], ...] | None` normalises to exactly that
+  spelling, so both PEP 604 and subscript forms were affected.
+
+  This is the annotation a `Field(description=...)` produces, which makes it
+  common in extraction schemas rather than exotic. The cost landed three
+  different ways on one field, all silent: `[]` against `[]` recorded **no
+  counter at all** and the field vanished from the confusion matrix, `[]`
+  against `None` recorded an FN, and `None` against `[]` recorded an FA -- while
+  a sibling `Optional[List[str]]` recorded a TN for all three.
+
+  Union arms are unwrapped through a new shared
+  `optional_annotation.unwrap_annotated`, alongside the existing helpers for
+  destructuring a union, rather than a fourth hand-rolled check. Routing is
+  unaffected: `List[Model]` on this spelling already reached
+  `StructuredListComparator` through the dispatcher's runtime type check, so
+  only the null and empty cases move.
+
+- A field annotated `list`, `list | None`, or `Optional[list]` is now recognized
+  as a list field. `_is_list_field` tested `get_origin(...) is list`, which
+  matches only a *parameterized* spelling, so the three unparameterized ones
+  answered `False` while `List`, `list[str] | None`, and `Optional[List[str]]`
+  answered `True`. `list | None` is the incongruous case: it is a PEP 604
+  optional list, and `list[str] | None` was already handled.
+
+  An unrecognized spelling skips list null handling and falls into the primitive
+  null check, where `[]` is not "effectively null". Such a field scored `1.0`
+  when empty on both sides but recorded **no classification evidence at all** --
+  no TN, no TP, no row. Because the score was right, the missing count was easy
+  to miss; it understated `tn` and every metric derived from it. Comparing a
+  six-field model against itself with every field `[]` reported `tn == 3` where
+  the docs call for `6`.
+
+  Recognition is now spelling-independent within a union: bare and parameterized
+  members answer alike. Only the null and empty cases move -- a populated list
+  reached `PrimitiveListComparator` before and still does, and no raw score
+  changes.
+
+  One spelling is still not a list field, deliberately: `Any` holding a list.
+  Inferring list-ness from a runtime value rather than an annotation is a
+  different question from reading a spelling correctly, and every caller here
+  has only the annotation.
+
+- Raw object similarity used by Hungarian matching no longer treats a true
+  negative as evidence that two objects match. Fields absent on both sides are
+  excluded from the weighted-average numerator and denominator. If every field
+  is absent, the score is defined as `1.0`, preserving the #233 fix; otherwise,
+  empty optional fields can no longer hide a missed value or make an empty
+  candidate tie one that extracted real content.
+
+- Threshold-gated recursion now applies consistently to nested metrics,
+  `non_matches`, and `field_comparisons` for `List[StructuredModel]`. An
+  assigned pair below the element model's `match_threshold` produces one atomic
+  FD, while unmatched GT and prediction objects produce one atomic FN and FA.
+  None of these objects contributes leaf-level metrics or report entries.
+  Lower the element model's `match_threshold` to inspect leaf comparisons for
+  weaker pairs.
+
+### Performance
+
+- Restored the fast path in `ComparisonHelper.compare_field_raw`. Reading a
+  field's absence rule requires knowing whether the field is a list, and
+  `_is_list_field` re-reads `model_fields` and destructures the annotation on
+  every call. The bare `is None` check it replaced short-circuited before doing
+  any of that, so consulting the annotation unconditionally cost about 23% on a
+  60x60 Hungarian cost matrix of 20-field models -- 72,000 calls for one list
+  comparison (0.531s to 0.651s; measured best-of-three).
+
+  The lookup is now guarded by a cheap value test that is the union of both
+  `NullHelper` rules, so anything either one calls absent still reaches the full
+  check and no outcome changes, while the common case of both sides being
+  populated skips the annotation entirely (0.537s, within noise of the original).
+  A test pins the superset property so adding a case to either rule without
+  widening the guard fails loudly rather than silently skipping the check.
 ### Fixed
 
 - The pretty printers accept the `EvalResult` that `stickler.evaluate()` returns,
@@ -325,7 +838,9 @@ Each release links to full notes on the
   raises `TypeError` at construction
   ([#215](https://github.com/awslabs/stickler/issues/215)).
   <br>*Correction: the 0.8.0 milestone was renamed to 1.0 after this entry shipped.
-  The shim is removed in 1.0.*
+  The shim is removed in 1.0, and removal is narrower than stated here: only a
+  comparator with no `_compare()` raises `TypeError`. One extending a concrete
+  comparator inherits `_compare()`, so it constructs and warns instead.*
 
   Note that the pre-fix `(None, "") -> 1.0` result cannot be inherited: the
   coercion was removed from Levenshtein's algorithm rather than guarded, so

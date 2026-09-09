@@ -9,7 +9,26 @@ from typing import Any, Dict, List
 from stickler.comparators.base import BaseComparator
 
 from .hungarian_helper import HungarianHelper
+from .null_helper import NullHelper
 from .threshold_helper import ThresholdHelper
+
+
+def _maybe_absent(val: Any) -> bool:
+    """Whether ``val`` could be absent under *either* of ``NullHelper``'s rules.
+
+    A cheap over-approximation, used only to decide whether it is worth reading
+    a field's annotation to find out which rule applies. It must stay a
+    superset of both :meth:`NullHelper.is_effectively_null_for_lists` and
+    :meth:`NullHelper.is_effectively_null_for_primitives`: returning ``False``
+    for something either one calls absent would silently skip the true-negative
+    and false-negative handling in
+    :meth:`ComparisonHelper.compare_field_raw`. Returning ``True`` too often
+    only costs the lookup it was meant to avoid.
+
+    ``test_maybe_absent_is_a_superset_of_both_null_rules`` pins that property so
+    adding a case to either predicate without widening this one fails loudly.
+    """
+    return val is None or (isinstance(val, (str, list, dict)) and len(val) == 0)
 
 
 class ComparisonHelper:
@@ -36,8 +55,12 @@ class ComparisonHelper:
             - fp: Total false positives (fd + fa)
             - overall_score: Similarity score for backward compatibility
         """
-        # Empty lists are handled early on immediately.
-   
+        # Empty lists reach here and fall through to `unordered_list_metrics`,
+        # which scores two of them 1.0. `ComparisonDispatcher` short-circuits an
+        # absent list field before this function is called, but only for fields
+        # `_is_list_field` recognizes -- a list held in an `Any`-annotated field
+        # arrives here empty.
+
         # Use HungarianHelper for Hungarian matching operations
         hungarian_helper = HungarianHelper()
         from .structured_model import StructuredModel
@@ -166,7 +189,15 @@ class ComparisonHelper:
         # CRITICAL FIX: Use threshold-applied scores for consistency with individual comparison
         # This ensures list comparison matches the same scoring logic as individual comparison
         if not matched_pairs:
-            overall_score = 0.0
+            # Two empty lists agree perfectly: there is nothing to find and
+            # nothing was found. Scoring that 0.0 made an object whose only
+            # field is an empty list compare as a total mismatch against an
+            # identical object, which then classified as a false discovery even
+            # though `compare_with` reported a perfect match. The dispatcher
+            # already treats both-empty as a true negative with score 1.0; this
+            # keeps the raw path in agreement with it.
+            # See https://github.com/awslabs/stickler/issues/233
+            overall_score = 1.0 if not gt_list and not pred_list else 0.0
         else:
             # Apply threshold to each similarity score (same logic as individual comparison)
             threshold_applied_similarities = []
@@ -226,9 +257,41 @@ class ComparisonHelper:
         # Get field value from self
         self_value = getattr(structured_model_instance, field_name)
 
-        # Handle None values
-        if self_value is None or other_value is None:
-            return 1.0 if self_value == other_value else 0.0
+        # Read absence the same way `ComparisonDispatcher` does. It scores a
+        # field absent on both sides as a true negative worth 1.0 and a field
+        # absent on exactly one side as FN/FA worth 0.0 (STEP 3 for list fields,
+        # STEP 4 for everything else). Without the same rule here the two score
+        # readers disagree: `compare_with` reports a perfect match while the raw
+        # similarity lands under `match_threshold`, so the same pair is a perfect
+        # match and a false discovery at once.
+        #
+        # What counts as absent is per-kind, exactly as the dispatcher defines
+        # it: for a list field `None` and `[]` both mean "no items"; for
+        # everything else `None`, `""` and `{}` all mean "no value". Both
+        # predicates treat `None` as absent, which is why this subsumes the bare
+        # `is None` check that used to stand here.
+        # See https://github.com/awslabs/stickler/issues/233
+        #
+        # `_maybe_absent` guards the annotation lookup rather than duplicating
+        # it. This function runs once per field per pairwise comparison, which
+        # is every cell of a Hungarian cost matrix -- 60x60 objects of 20 fields
+        # is 72,000 calls -- and `_is_list_field` re-reads `model_fields` and
+        # destructures the annotation on each one. The bare `is None` check this
+        # replaced short-circuited before doing any of that, so consulting the
+        # annotation unconditionally cost ~23% on that shape. The guard is the
+        # union of the two predicates below, so anything either one would call
+        # absent still reaches it and the outcome is unchanged; both sides being
+        # populated, the overwhelmingly common case, now skips the lookup.
+        if _maybe_absent(self_value) or _maybe_absent(other_value):
+            if structured_model_instance._is_list_field(field_name):
+                is_absent = NullHelper.is_effectively_null_for_lists
+            else:
+                is_absent = NullHelper.is_effectively_null_for_primitives
+
+            self_is_null = is_absent(self_value)
+            other_is_null = is_absent(other_value)
+            if self_is_null or other_is_null:
+                return 1.0 if self_is_null and other_is_null else 0.0
 
         # Handle lists with special processing
         if isinstance(self_value, list) and isinstance(other_value, list):

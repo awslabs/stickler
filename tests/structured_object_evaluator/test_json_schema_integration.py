@@ -1001,35 +1001,6 @@ class TestComparisonBehaviorCustomExtensions:
         # Fuzzy field should have partial match
         assert 0.0 < result["field_scores"]["fuzzy_field"] < 1.0
 
-    def test_aggregate_extension_in_nested_structure(self):
-        """Test x-aws-stickler-aggregate in nested structures."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {
-                                "type": "string",
-                                "x-aws-stickler-aggregate": True
-                            },
-                            "value": {"type": "number"}
-                        }
-                    }
-                }
-            }
-        }
-        
-        Model = StructuredModel.from_json_schema(schema)
-        
-        obj1 = Model(items=[{"name": "A", "value": 1}, {"name": "B", "value": 2}])
-        obj2 = Model(items=[{"name": "A", "value": 1}, {"name": "B", "value": 2}])
-        
-        result = obj1.compare_with(obj2)
-        assert result["overall_score"] == 1.0
-
     def test_clip_under_threshold_behavior(self):
         """Test x-aws-stickler-clip-under-threshold behavior."""
         schema = {
@@ -1080,8 +1051,7 @@ class TestComparisonBehaviorCustomExtensions:
                     "type": "number",
                     "x-aws-stickler-comparator": "NumericComparator",
                     "x-aws-stickler-weight": 1.0,
-                    "x-aws-stickler-threshold": 0.95,
-                    "x-aws-stickler-aggregate": True
+                    "x-aws-stickler-threshold": 0.95
                 }
             }
         }

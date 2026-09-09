@@ -114,12 +114,14 @@ def test_a_raw_dict_that_already_carries_non_matches_is_used_as_is():
         "field_scores": {"name": 0.0},
         "non_matches": [{"field_path": "name", "type": "mismatch"}],
     }
-    assert EvalResult(raw, spec=None).non_matches == raw["non_matches"]
+    spec = stickler.eval_for(_Person)
+    assert EvalResult(raw, spec).non_matches == raw["non_matches"]
 
 
 def test_a_raw_dict_with_no_pair_and_no_key_is_empty_not_an_error():
     """It must not try to recompare a pair it was never given."""
-    assert EvalResult({"overall_score": 1.0}, spec=None).non_matches == []
+    spec = stickler.eval_for(_Person)
+    assert EvalResult({"overall_score": 1.0}, spec).non_matches == []
 
 
 def test_the_lazy_computation_happens_once(evaluation_result, monkeypatch):

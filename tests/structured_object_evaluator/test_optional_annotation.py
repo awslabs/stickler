@@ -4,12 +4,15 @@ Every spelling of "may be None" must be recognised, and a genuine multi-arm
 union must not be mistaken for one.
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Annotated, Any, Dict, List, Optional, Union
+
+from pydantic import Field
 
 from stickler.structured_object_evaluator.models.optional_annotation import (
     is_optional_union,
     is_union,
     union_args,
+    unwrap_annotated,
     unwrap_optional,
 )
 
@@ -131,3 +134,44 @@ class TestUnwrapOptional:
     def test_the_two_spellings_unwrap_identically(self):
         assert unwrap_optional(Optional[_A]) == unwrap_optional(_A | None)
         assert unwrap_optional(Optional[List[_A]])[1] == unwrap_optional(list[_A] | None)[1]
+
+
+class TestUnwrapAnnotated:
+    def test_strips_the_wrapper_down_to_the_wrapped_type(self):
+        assert unwrap_annotated(Annotated[str, "m"]) is str
+        assert unwrap_annotated(Annotated[List[str], "m"]) == List[str]
+        assert unwrap_annotated(Annotated[list, "m"]) is list
+
+    def test_keeps_multiple_metadata_entries_out_of_the_result(self):
+        assert unwrap_annotated(Annotated[int, "a", "b", "c"]) is int
+
+    def test_unwraps_a_pydantic_field_as_metadata(self):
+        """The spelling a `Field(description=...)` produces."""
+        assert unwrap_annotated(Annotated[List[str], Field(description="d")]) == List[str]
+
+    def test_returns_anything_else_unchanged(self):
+        assert unwrap_annotated(str) is str
+        assert unwrap_annotated(List[str]) == List[str]
+        assert unwrap_annotated(Optional[str]) == Optional[str]
+        assert unwrap_annotated(list) is list
+
+    def test_does_not_reach_inside_a_union(self):
+        """A union is not `Annotated`; destructuring it is `union_args`' job.
+
+        `Optional[Annotated[T, ...]]` therefore comes back untouched -- the
+        wrapper is on the *arm*, so a caller has to unwrap after descending.
+        """
+        wrapped = Optional[Annotated[List[str], "m"]]
+        assert unwrap_annotated(wrapped) == wrapped
+
+    def test_composes_with_union_args_to_reach_the_inner_type(self):
+        """How the readers actually use it: descend, then unwrap."""
+        arms = union_args(Optional[Annotated[List[str], "m"]])
+        assert [unwrap_annotated(arm) for arm in arms] == [List[str]]
+
+    def test_nested_annotated_is_flattened_by_typing_so_one_pass_suffices(self):
+        assert unwrap_annotated(Annotated[Annotated[str, "a"], "b"]) is str
+
+    def test_pep604_annotated_optional_normalises_to_the_subscript_form(self):
+        """`Annotated[T, ...] | None` and `Optional[Annotated[T, ...]]` are one type."""
+        assert (Annotated[List[str], "m"] | None) == Optional[Annotated[List[str], "m"]]

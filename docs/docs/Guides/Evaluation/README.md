@@ -49,7 +49,6 @@ When defining a `StructuredModel` subclass in Python, each field is declared wit
 | `threshold` | `float` (0.0--1.0) | `0.5` | Minimum similarity score required for a field to be classified as a match. |
 | `weight` | `float` (> 0.0) | `1.0` | Relative importance of this field when computing aggregate scores. |
 | `clip_under_threshold` | `bool` | `True` | When `True`, scores below `threshold` are zeroed out before contributing to the weighted average. |
-| `aggregate` | `bool` | `False` | **Deprecated, removed in 1.0.** Has no effect: every node already carries an `aggregate` block in the `compare_with()` output summing the primitive field metrics below it. Passing it at all emits a `DeprecationWarning`; remove the argument, there is no replacement to adopt ([#226](https://github.com/awslabs/stickler/issues/226)). |
 
 ### How Each Parameter Affects Scoring
 
@@ -126,17 +125,15 @@ Once you have two model instances -- a ground truth and a prediction -- call `co
 result = ground_truth.compare_with(prediction)
 
 print(f"Overall score: {result['overall_score']:.2%}")
-print(f"All fields matched: {result['all_fields_matched']}")
 
 for field, score in result['field_scores'].items():
     print(f"  {field}: {score:.3f}")
 ```
 
-The default output contains three keys:
+The default output contains two keys:
 
 - **`overall_score`** (float) -- Weighted average of all field scores (0.0 to 1.0).
 - **`field_scores`** (dict) -- Maps each field name to its similarity score.
-- **`all_fields_matched`** (bool) -- `True` when every field meets or exceeds its threshold.
 
 ### Key Parameters
 
@@ -190,7 +187,6 @@ Add these extensions to any property in your JSON Schema to control comparison b
 | `x-aws-stickler-threshold` | number (0.0--1.0) | 0.5 or 1.0 | Match classification cutoff |
 | `x-aws-stickler-weight` | number (> 0.0) | 1.0 | Field importance multiplier |
 | `x-aws-stickler-clip-under-threshold` | boolean | `false` | Zero out scores below threshold |
-| `x-aws-stickler-aggregate` | boolean | `false` | Include in parent-level aggregate metrics |
 | `x-aws-stickler-model-name` | string | `"DynamicModel"` | Name of the generated Python class (root level) |
 | `x-aws-stickler-match-threshold` | number (0.0--1.0) | 0.7 | Model-level matching threshold for Hungarian algorithm (root level) |
 
@@ -253,8 +249,7 @@ print(f"Overall Score: {result['overall_score']:.3f}")
         "customer_name": 0.0,
         "total_amount": 1.0
       },
-      "overall_score": 0.786,
-      "all_fields_matched": false
+      "overall_score": 0.786
     }
     ```
 

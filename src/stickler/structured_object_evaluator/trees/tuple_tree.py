@@ -20,7 +20,12 @@ class ANLSTuple(ANLSTree):
     """
 
     def __init__(
-        self, obj: Any, *, is_gt: bool, comparator: Optional[BaseComparator] = None
+        self,
+        obj: Any,
+        *,
+        is_gt: bool,
+        comparator: Optional[BaseComparator] = None,
+        threshold: Optional[float] = None,
     ):
         """Initialize a tuple node.
 
@@ -28,6 +33,7 @@ class ANLSTuple(ANLSTree):
             obj: The tuple object.
             is_gt: Whether this is a ground truth node. Only ground truths can be tuples.
             comparator: Optional comparator for string comparison.
+            threshold: Tau, the per-leaf cutoff. Passed to every child.
 
         Raises:
             ValueError: If obj is not a tuple, or if is_gt is False (predictions cannot be tuples),
@@ -42,9 +48,12 @@ class ANLSTuple(ANLSTree):
         if len(obj) == 0:
             raise ValueError("Expected at least 1 valid ground truth option")
 
-        super().__init__(obj, comparator)
+        super().__init__(obj, comparator, threshold)
         self.tree: Tuple[ANLSTree, ...] = tuple(
-            ANLSTree.make_tree(x, is_gt=is_gt, comparator=comparator) for x in obj
+            ANLSTree.make_tree(
+                x, is_gt=is_gt, comparator=comparator, threshold=threshold
+            )
+            for x in obj
         )
 
     def __len__(self) -> int:

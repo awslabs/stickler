@@ -15,6 +15,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, field_validator
 
+from stickler.utils.statistics import binary_roc_auc
+
 
 class ConfidencePair(BaseModel):
     """A single observation pairing a match result with confidence and similarity.
@@ -94,25 +96,11 @@ class AUROCMetric(ConfidenceMetric):
     def compute(self, pairs: ConfidencePairs) -> Dict[str, Any]:
         if not pairs or len(set(p.is_match for p in pairs)) < 2:
             return {"value": None}
-        # scikit-learn is a core dependency, so this import is guaranteed to
-        # resolve. It stays function-local rather than at module scope because
-        # this module IS on the `import stickler` path, and importing sklearn
-        # eagerly would put ~33MB of it there for every user whether or not
-        # they compute AUROC. Issue #216 removes the dependency entirely by
-        # implementing the Mann-Whitney form in numpy.
-        try:
-            from sklearn.metrics import roc_auc_score
-        except ImportError as exc:  # pragma: no cover - core dep, should not happen
-            raise ImportError(
-                "AUROCMetric requires scikit-learn, which is a core dependency "
-                "of stickler-eval. Your environment looks broken; reinstall "
-                "with: pip install --force-reinstall stickler-eval"
-            ) from exc
-
-        y_true = [1 if p.is_match else 0 for p in pairs]
-        y_scores = [p.confidence for p in pairs]
-        # float() defends against numpy scalars from future ndarray callers.
-        return {"value": float(roc_auc_score(y_true, y_scores))}
+        return {
+            "value": binary_roc_auc(
+                [p.is_match for p in pairs], [p.confidence for p in pairs]
+            )
+        }
 
 
 class BrierScoreMetric(ConfidenceMetric):

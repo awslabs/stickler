@@ -276,7 +276,6 @@ def compare_with(self, other: "StructuredModel") -> dict:
         Dictionary containing:
             - overall_score: Weighted average of field scores (0.0-1.0)
             - field_scores: Dict mapping field names to scores
-            - all_fields_matched: Boolean if all fields meet thresholds
 
     Raises:
         TypeError: If other is not a StructuredModel instance.

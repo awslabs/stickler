@@ -111,7 +111,6 @@ class FieldComparator:
                     "tp": int, "fa": int, "fd": int, 
                     "fp": int, "tn": int, "fn": int,
                     "similarity_score": float,
-                    "all_fields_matched": bool
                 },
                 "fields": dict,  # Nested field comparison details
                 "raw_similarity_score": float,
@@ -171,7 +170,6 @@ class FieldComparator:
             "overall": {
                 **object_metrics,
                 "similarity_score": raw_score,
-                "all_fields_matched": raw_score >= threshold,
             },
             "fields": nested_details,  # Nested details available for debugging
             "raw_similarity_score": raw_score,

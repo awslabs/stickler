@@ -70,13 +70,12 @@ All paths are relative to `src/stickler/structured_object_evaluator/`.
 The engine iterates through every field in the ground truth model **once**, dispatching each comparison and collecting scores, confusion matrix counts, and non-match data in the same pass.
 
 ```python
-# See: comparison_engine.py:128-192
-# Simplified flow — see source for full implementation
+# See: comparison_engine.py:84-180
+# Simplified flow, see source for full implementation
 
 result = {"overall": {metrics}, "fields": {}, "non_matches": []}
 total_score = 0.0
 total_weight = 0.0
-threshold_matched_fields = set()
 
 for field_name in model.model_fields:
     field_result = dispatcher.dispatch_field_comparison(field_name, gt_val, pred_val)
@@ -89,22 +88,18 @@ for field_name in model.model_fields:
 
 ### Score Percolation Variables
 
-Three tracking variables accumulate during traversal:
+Two tracking variables accumulate during traversal:
 
-- **`total_score`** — Running sum of `threshold_applied_score * weight` per field
-- **`total_weight`** — Running sum of field weights (denominator for weighted average)
-- **`threshold_matched_fields`** — Set of fields where `raw_similarity_score >= threshold`
+- **`total_score`**: Running sum of `threshold_applied_score * weight` per field
+- **`total_weight`**: Running sum of field weights (denominator for weighted average)
 
 ### Overall Score Determination
 
 After the field loop completes:
 
 ```python
-# See: comparison_engine.py:181-191
+# See: comparison_engine.py:176-178
 overall_score = total_score / total_weight  # Weighted average
-
-# all_fields_matched is True only when EVERY field meets its threshold
-all_fields_matched = len(threshold_matched_fields) == len(model_fields)
 ```
 
 ### Extra Field Handling

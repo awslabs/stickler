@@ -52,11 +52,18 @@ class LevenshteinComparator(BaseComparator):
                       here (BaseComparator.compare handles None before delegating), so
                       this only ever fires for an actual dict value.
         """
-        # Reject dictionaries - they should be broken down into proper StructuredModel subclasses
+        # Reject dictionaries. Edit distance over str(dict) makes key order
+        # significant, so two mappings with identical content can score well
+        # below 1.0. Two remedies exist and the message names both, since which
+        # one applies depends on whether the keys are known up front.
         if isinstance(s1, dict) or isinstance(s2, dict):
             raise TypeError(
                 "Dictionary objects cannot be compared using LevenshteinComparator. "
-                "Use a StructuredModel subclass with properly defined fields instead."
+                "If you know the keys, declare a nested StructuredModel: each field "
+                "then carries its own comparator and threshold, and results are "
+                "reported per field. If the keys are not known when the model is "
+                "written, use ANLSStarComparator, which scores the mapping "
+                "structurally and gives partial credit."
             )
 
         # Convert to strings

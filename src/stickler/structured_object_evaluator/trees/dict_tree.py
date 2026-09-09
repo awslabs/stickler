@@ -22,7 +22,12 @@ class ANLSDict(ANLSTree):
     """
 
     def __init__(
-        self, obj: Any, *, is_gt: bool, comparator: Optional[BaseComparator] = None
+        self,
+        obj: Any,
+        *,
+        is_gt: bool,
+        comparator: Optional[BaseComparator] = None,
+        threshold: Optional[float] = None,
     ):
         """Initialize a dictionary node.
 
@@ -30,6 +35,7 @@ class ANLSDict(ANLSTree):
             obj: The dictionary object.
             is_gt: Whether this is a ground truth node.
             comparator: Optional comparator for string comparison.
+            threshold: Tau, the per-leaf cutoff. Passed to every child.
 
         Raises:
             ValueError: If obj is not a dictionary.
@@ -37,9 +43,11 @@ class ANLSDict(ANLSTree):
         if not isinstance(obj, dict):
             raise ValueError(f"ANLSDict expects a dict, got {type(obj)}")
 
-        super().__init__(obj, comparator)
+        super().__init__(obj, comparator, threshold)
         self.tree: PyDict[Any, ANLSTree] = {
-            k: ANLSTree.make_tree(v, is_gt=is_gt, comparator=comparator)
+            k: ANLSTree.make_tree(
+                v, is_gt=is_gt, comparator=comparator, threshold=threshold
+            )
             for k, v in obj.items()
         }
 

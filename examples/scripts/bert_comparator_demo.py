@@ -193,7 +193,6 @@ def demo_structured_model_integration():
 
     print("\n📊 Results:")
     print(f"  Overall Score:    {result['overall_score']:.3f}")
-    print(f"  All Fields Match: {result['all_fields_matched']}")
     print("\n📋 Field Scores:")
     for field, score in result["field_scores"].items():
         print(f"  {field:<20}: {score:.3f}")

@@ -27,11 +27,13 @@ class ComparatorRegistry:
     _BUILTINS = {
         "LevenshteinComparator": ("stickler.comparators.levenshtein", None, None),
         "ExactComparator": ("stickler.comparators.exact", None, None),
+        "NormalizedComparator": ("stickler.comparators.normalized", None, None),
         "PhoneComparator": ("stickler.comparators.phone", None, None),
         "NumericComparator": ("stickler.comparators.numeric", None, None),
         "DateComparator": ("stickler.comparators.date", None, None),
         "FuzzyComparator": ("stickler.comparators.fuzzy", None, None),
         "StructuredModelComparator": ("stickler.comparators.structured", None, None),
+        "ANLSStarComparator": ("stickler.comparators.anls", None, None),
         "BBoxIoUComparator": ("stickler.comparators.bbox", None, None),
         "SemanticComparator": ("stickler.comparators.semantic", None, None),
         "BERTComparator": ("stickler.comparators.bert", "evaluate", "bert"),

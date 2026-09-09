@@ -18,6 +18,12 @@ When comparing `List[StructuredModel]` fields, Stickler only performs detailed n
 
 This keeps metrics focused on meaningful comparisons and avoids generating misleading field-level statistics for object pairs that are fundamentally different.
 
+The gate applies to nested confusion-matrix metrics, `non_matches`, and
+`field_comparisons`. A rejected or unmatched object produces one object-level
+entry in those reports, not one entry per leaf. To inspect leaves for weaker
+pairs, lower the list element model's `match_threshold` to a small positive
+value; this intentionally broadens which pairs count as the same object.
+
 ## Algorithm Flow
 
 ### 1. Hungarian Matching
@@ -138,7 +144,10 @@ No nested analysis for either.
 }
 ```
 
-Field-level metrics appear only for the single TP pair. The `non_matches` list documents every FD, FN, and FA for diagnostic purposes.
+Field-level metrics appear only for the single TP pair. The `non_matches` list
+documents each FD, FN, and FA once at object level; `field_comparisons` uses the
+same boundary. Neither report expands a rejected or unmatched object into
+leaves.
 
 ## Delegation Pattern
 
@@ -163,7 +172,29 @@ Scores percolate upward from leaf fields to the top-level result using weighted 
 3. Clipped scores are multiplied by the field weight and summed.
 4. The overall similarity is `total_weighted_score / total_weight`.
 
-The `all_fields_matched` flag is `True` only when every field's raw similarity meets its individual threshold.
+This gating is also why asking "did anything fail" reads both rollup nodes. A
+list item scoring below `match_threshold` is a spurious non-match: it is recorded
+as one `fd` on `overall` and is **not descended into**, so it contributes no leaf
+rows to `aggregate`. Reporting the leaves of an object already rejected as a
+whole would score something the comparison declared not comparable.
+
+```python
+clean = (
+    cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
+    and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
+)
+```
+
+So `match_threshold` is also the knob for how much leaf detail you get. If you
+want a marginal object's leaves scored individually, lower it until that object
+qualifies as comparable. See
+[Aggregate Metrics](aggregate-metrics.md#which-node-answers-which-question).
+
+`overall_score` is the scalar summary, and `EvalResult.matched` from
+`stickler.evaluate()` is the object-level verdict
+(`overall_score >= match_threshold`).
+
+For the raw object similarity used by Hungarian matching, fields absent on both sides are omitted from both totals. They remain TNs in the confusion matrix, but do not help a pair clear `match_threshold`. If no fields remain, the similarity is defined as `1.0`, because nothing disagreed.
 
 ## Edge Cases
 

@@ -20,16 +20,18 @@ from typing import (
 from pydantic import BaseModel, Field
 from pydantic.json_schema import GenerateJsonSchema
 
+from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.base import BaseComparator
 from stickler.utils.deprecation import warn_once
 
 from .comparable_field import ComparableField
-from .comparison_helper import ComparisonHelper
+from .comparison_helper import ComparisonHelper, _maybe_absent
 from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
-from .optional_annotation import union_args, unwrap_optional
+from .null_helper import NullHelper
+from .optional_annotation import union_args, unwrap_annotated, unwrap_optional
 from .rich_value_helper import RichValueHelper
 from .threshold_helper import THRESHOLD_DOCS_URL
 from .threshold_helper import model_identity as _model_identity
@@ -163,6 +165,86 @@ def _strip_extra_fields_property(schema_obj: Dict[str, Any]) -> None:
     required = schema_obj.get("required")
     if isinstance(required, list) and _EXTRA_FIELDS_KEY in required:
         schema_obj["required"] = [r for r in required if r != _EXTRA_FIELDS_KEY]
+
+
+def _annotation_is_list(annotation: Any) -> bool:
+    """Check whether a type annotation denotes a list, parameterized or not.
+
+    Every spelling of a list annotation has to answer the same way, because the
+    answer decides whether a field gets list null semantics (``None`` and ``[]``
+    both meaning "no items") or primitive ones. A spelling that reads as
+    non-list records no TN when both sides are empty, so it silently drops
+    classification evidence rather than failing loudly.
+
+    Three traps make that easy to get wrong, and all three are handled here:
+
+    - ``get_origin`` returns ``list`` only for a *parameterized* spelling, so
+      bare ``list`` needs an identity test alongside it. Without one, ``list``
+      and ``list | None`` read as non-list while ``list[str]`` and
+      ``list[str] | None`` read as lists. ``typing.List`` needs no special case
+      -- ``get_origin`` already normalizes it to ``list``.
+    - A PEP 604 union (``list | None``) reports ``types.UnionType`` as its
+      origin, not ``typing.Union``, so its arms are reached through
+      :func:`optional_annotation.union_args` -- the package's single source for
+      destructuring a union in every spelling -- rather than a hand-rolled
+      origin check.
+    - ``Annotated`` survives inside a union, where pydantic does not strip it,
+      and ``get_origin`` reports ``Annotated`` rather than the type inside. So
+      ``Optional[Annotated[List[str], ...]]`` -- the spelling a
+      ``Field(description=...)`` produces, and what ``Annotated[List[str], ...]
+      | None`` normalises to -- read as non-list. Arms are unwrapped through
+      :func:`optional_annotation.unwrap_annotated` before being tested.
+
+    Union members are recursed with the same rules rather than a bare ``is
+    list``, so a bare and a parameterized member inside one union answer alike.
+    Depth needs no special handling: ``typing`` flattens nested unions, so
+    ``Optional[list[str] | None]`` is stored as ``Optional[list[str]]``.
+
+    One spelling is still deliberately *not* covered: ``Any`` holding a list at
+    runtime. Inferring list-ness from a value rather than an annotation is a
+    different question from reading a spelling correctly, and every caller here
+    has only the annotation.
+    """
+    # `Annotated` first: everything below asks about the type inside it, and a
+    # wrapper reaching the `get_origin` test would answer for the wrapper.
+    annotation = unwrap_annotated(annotation)
+
+    if annotation is list:
+        return True
+
+    if get_origin(annotation) is list:
+        return True
+
+    # Any union arm being a list is enough, in every spelling. `union_args`
+    # is the package's single source for a union's non-None arms and returns
+    # `()` for a non-union, so this also bottoms out the recursion.
+    return any(_annotation_is_list(arg) for arg in union_args(annotation))
+
+
+def _amend_clip_default(field_info: Any, extra: Any) -> None:
+    """Turn clipping off for a mapping field, on a COPY of the metadata.
+
+    Split out because it must run whether or not the comparator was named, while
+    the comparator substitution must not run when it was. Copies for the same
+    reason the substitution does: one `ComparableField(...)` can be bound to
+    several fields and pydantic does not clone the closure.
+    """
+    metadata = getattr(extra, "_comparison_metadata", None)
+    new_metadata = dict(metadata) if isinstance(metadata, dict) else None
+
+    def amended(schema: Dict[str, Any], _metadata=new_metadata, _original=extra) -> None:
+        _original(schema)
+        if _metadata is not None:
+            schema["x-comparison"] = _metadata
+
+    for attribute in dir(extra):
+        if attribute.startswith("_") and not attribute.startswith("__"):
+            setattr(amended, attribute, getattr(extra, attribute))
+    amended._clip_under_threshold = False
+    if new_metadata is not None:
+        new_metadata["clip_under_threshold"] = False
+        amended._comparison_metadata = new_metadata
+    field_info.json_schema_extra = amended
 
 
 class StructuredModel(BaseModel):
@@ -324,12 +406,137 @@ class StructuredModel(BaseModel):
     # Default match threshold - can be overridden in subclasses
     match_threshold: ClassVar[float] = 0.7
 
+    @classmethod
+    def _install_mapping_comparators(cls) -> None:
+        """Give mapping-annotated fields a comparator that can score a mapping.
+
+        ``ComparableField`` resolves its comparator default before the field's
+        annotation exists, so it cannot know a field is a dict and installs the
+        type-blind ``LevenshteinComparator``, which REJECTS mappings. Deciding
+        here instead is the earliest point where the annotation and the field
+        metadata are both available.
+
+        Substituting here rather than at read time (in
+        ``ConfigurationHelper.get_comparison_info``) is what keeps the EXPORTED
+        configuration honest. The metadata dict mutated below is the same object
+        ``json_schema_extra`` writes as ``x-comparison``, so ``to_json_schema()``,
+        ``explain()``, the HTML reports and the comparison engine all read one
+        consistent answer. Substituting at read time made ``to_json_schema()``
+        report ``LevenshteinComparator`` for a field the engine scored with
+        ANLS*, and re-importing that schema installed Levenshtein *explicitly*,
+        which suppressed the substitution and made the round-tripped model raise
+        on a field the original scored fine.
+
+        Nothing the caller stated is overridden: an explicit ``comparator`` or an
+        explicit ``clip_under_threshold`` is left exactly as written.
+        """
+        # Resolve annotations before testing them. Under `from __future__ import
+        # annotations` (PEP 563) or with a quoted annotation, `__annotations__`
+        # holds the STRING "Dict[str, Any]", which is not a mapping annotation,
+        # so every field was skipped and the substitution silently did nothing --
+        # reintroducing the exact schema/engine divergence this method exists to
+        # prevent, in any module that uses PEP 563.
+        # `model_fields` rather than `__annotations__`: its annotations are
+        # already resolved, so a module using `from __future__ import annotations`
+        # (PEP 563) is handled without special-casing the string form, and its
+        # `FieldInfo` is the object every reader consults.
+        for field_name, field_info in cls.model_fields.items():
+            if field_name == _EXTRA_FIELDS_KEY:
+                continue
+            if not ConfigurationHelper.is_mapping_annotation(field_info.annotation):
+                continue
+
+            field_default = field_info
+            extra = getattr(field_default, "json_schema_extra", None)
+            if not callable(extra):
+                # A bare annotation with no ComparableField metadata to amend.
+                # ConfigurationHelper supplies the default for those instead.
+                continue
+            # The clip default follows the ANNOTATION, so it applies even when the
+            # caller named the comparator. Tying it to the substitution meant
+            # `ComparableField(comparator=ANLSStarComparator(leaf_threshold=...))`
+            # -- the form the docs recommend for setting the leaf cutoff -- kept
+            # clipping on and zeroed exactly the partial credit ANLS* produces.
+            # A mapping is a container: a partly-correct one keeps its score,
+            # the same policy nested objects and lists use.
+            if not getattr(extra, "_clip_explicit", False) and getattr(
+                extra, "_clip_under_threshold", True
+            ):
+                _amend_clip_default(field_default, extra)
+
+            if getattr(extra, "_comparator_explicit", True):
+                continue
+
+            # Substitute onto a COPY, never onto the shared object. A single
+            # `ComparableField(...)` result can be bound to more than one field,
+            # and pydantic does not clone the `json_schema_extra` closure, so
+            # mutating it in place retroactively rewrote the other field:
+            #
+            #     SHARED = ComparableField(threshold=0.8)
+            #     class M1(StructuredModel): v: str = SHARED
+            #     class M2(StructuredModel): v: Dict[str, Any] = SHARED
+            #
+            # left M1.v -- a plain string field -- scored by ANLS* with clipping
+            # off, order-dependently on which class was defined first.
+            comparator = ANLSStarComparator()
+            metadata = getattr(extra, "_comparison_metadata", None)
+            new_metadata = dict(metadata) if isinstance(metadata, dict) else None
+            clip = (
+                getattr(extra, "_clip_under_threshold", True)
+                if getattr(extra, "_clip_explicit", False)
+                # A mapping is a container, so a partly-correct one keeps its
+                # score rather than being zeroed by the field threshold -- the
+                # same policy nested objects and lists use. An explicit choice
+                # still wins.
+                else False
+            )
+
+            def substituted(
+                schema: Dict[str, Any], _metadata=new_metadata, _original=extra
+            ) -> None:
+                _original(schema)
+                if _metadata is not None:
+                    schema["x-comparison"] = _metadata
+
+            for attribute in dir(extra):
+                if attribute.startswith("_") and not attribute.startswith("__"):
+                    setattr(substituted, attribute, getattr(extra, attribute))
+            substituted._comparator_instance = comparator
+            # Now effectively explicit: the decision has been made, and a
+            # subclass re-running this must not treat it as unset.
+            substituted._comparator_explicit = True
+            substituted._clip_under_threshold = clip
+
+            if new_metadata is not None:
+                new_metadata["comparator_type"] = comparator.__class__.__name__
+                new_metadata["comparator_name"] = comparator.name
+                new_metadata["comparator_config"] = comparator.config or {}
+                new_metadata["clip_under_threshold"] = clip
+                substituted._comparison_metadata = new_metadata
+
+            field_default.json_schema_extra = substituted
+
     extra_fields: Dict[str, Any] = Field(default_factory=dict, exclude=True)
 
     model_config = {
         "arbitrary_types_allowed": True,
         "extra": "allow",  # Allow extra fields to be stored in extra_fields
     }
+
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs):
+        """Amend field metadata once pydantic has populated ``model_fields``.
+
+        Runs after ``__init_subclass__``, which is the point of using it: the
+        mapping substitution needs the RESOLVED annotation and needs to write to
+        the ``FieldInfo`` that ``model_fields`` actually holds. Doing it earlier
+        meant writing to a ``FieldInfo`` pydantic had not yet copied, so the
+        substitution was silently discarded and the read-time fallback in
+        ``ConfigurationHelper`` took over -- which is exactly the schema/engine
+        divergence ``_install_mapping_comparators`` exists to prevent.
+        """
+        super().__pydantic_init_subclass__(**kwargs)
+        cls._install_mapping_comparators()
 
     def __init_subclass__(cls, **kwargs):
         """Validate field configurations when a StructuredModel subclass is defined."""
@@ -652,7 +859,6 @@ class StructuredModel(BaseModel):
         - x-aws-stickler-threshold: Similarity threshold for match/no-match (0.0-1.0, default: 0.5)
         - x-aws-stickler-weight: Field importance in overall scoring (>0.0, default: 1.0)
         - x-aws-stickler-clip-under-threshold: Clip scores below threshold to 0.0 (bool, default: false)
-        - x-aws-stickler-aggregate: Include field metrics in parent aggregation (bool, default: false)
 
         Model-Level Extensions:
         -----------------------
@@ -661,13 +867,12 @@ class StructuredModel(BaseModel):
 
         Supported Features:
         -------------------
-        - Primitive types: string, number, integer, boolean
-        - Nullable list-form types, e.g. {"type": ["string", "null"]}
-        - Nullable two-branch anyOf types with one explicit null branch
-        - oneOf alternatives are not interpreted or enforced
+        - Primitive types: string, number, integer, boolean, null
+        - Draft 7 list-form type unions, including nullable types
+        - allOf object composition and multi-arm anyOf / oneOf unions
         - Object schemas inferred from properties when type is omitted
         - Nested objects and arrays (primitive/object items)
-        - Required fields, defaults, descriptions
+        - Required fields, defaults, descriptions, and validation constraints
         - Schema references ($ref with #/definitions/ and #/$defs/)
 
         Default Type Mappings:
@@ -716,7 +921,6 @@ class StructuredModel(BaseModel):
             ...             "x-aws-stickler-comparator": "LevenshteinComparator",
             ...             "x-aws-stickler-threshold": 0.9,
             ...             "x-aws-stickler-weight": 2.0,
-            ...             "x-aws-stickler-aggregate": true
             ...         },
             ...         "price": {
             ...             "type": "number",
@@ -820,6 +1024,11 @@ class StructuredModel(BaseModel):
                 f"Please ensure the schema conforms to JSON Schema draft-07 specification."
             )
 
+        if "properties" not in schema and not any(
+            keyword in schema for keyword in ("allOf", "anyOf", "oneOf", "$ref")
+        ):
+            raise ValueError("JSON Schema must contain 'properties'")
+
         # Subtask 4.3: Extract model-level configuration
         model_name = schema.get("x-aws-stickler-model-name", "DynamicModel")
         match_threshold = schema.get("x-aws-stickler-match-threshold", 0.7)
@@ -844,13 +1053,8 @@ class StructuredModel(BaseModel):
                 f"got: {match_threshold}"
             )
 
-        # Subtask 4.4: Convert fields and create model
-        # Ensure schema has properties
-        if "properties" not in schema:
-            raise ValueError(
-                "JSON Schema must contain 'properties' key for object type"
-            )
-
+        # Convert through the schema library. Composed/root-ref schemas may not
+        # carry ``properties`` at this level; the importer resolves them first.
         properties = schema.get("properties", {})
         required = schema.get("required", [])
 
@@ -890,17 +1094,6 @@ class StructuredModel(BaseModel):
         """
         return ConfigurationHelper.get_comparison_info(cls, field_name)
 
-    @classmethod
-    def _is_aggregate_field(cls, field_name: str) -> bool:
-        """Check if field is marked for confusion matrix aggregation.
-
-        Args:
-            field_name: Name of the field to check
-
-        Returns:
-            True if the field is marked for aggregation, False otherwise
-        """
-        return ConfigurationHelper.is_aggregate_field(cls, field_name)
 
     def _should_use_hierarchical_structure(self, val: Any, field_name: str) -> bool:
         """Check if a list value should maintain hierarchical structure.
@@ -936,23 +1129,7 @@ class StructuredModel(BaseModel):
             return False
 
         field_type = field_info.annotation
-
-        # Use get_origin rather than reading `__origin__` directly: a PEP 604
-        # union (`list[T] | None`) has no `__origin__` attribute at all, so the
-        # old `hasattr` guard skipped it entirely and such a field was not
-        # recognised as a list.
-        origin = get_origin(field_type)
-        if origin is list or origin is List:
-            return True
-
-        # Optional[List[...]] case, in every spelling. Any arm being a list is
-        # enough, so a wider union like `Optional[List[str]] | Any` still counts.
-        for arg in union_args(field_type):
-            arg_origin = get_origin(arg)
-            if arg_origin is list or arg_origin is List:
-                return True
-
-        return False
+        return _annotation_is_list(field_type)
 
     def _handle_list_field_dispatch(
         self, gt_val: Any, pred_val: Any, weight: float
@@ -1073,6 +1250,16 @@ class StructuredModel(BaseModel):
         # Get our field value
         my_value = getattr(self, field_name)
 
+        # A mapping pair whose comparator scores scalars: report 0.0 with a
+        # warning rather than letting the comparator raise. Same gate the
+        # dispatcher uses, so compare() and compare_with() agree.
+        if isinstance(my_value, dict) and isinstance(other_value, dict):
+            info = self.__class__._get_comparison_info(field_name)
+            if not ConfigurationHelper.can_score_mapping(
+                self.__class__, field_name, info.comparator
+            ):
+                return 0.0
+
         # If both values are StructuredModel instances, use recursive compare_with
         if isinstance(my_value, StructuredModel) and isinstance(
             other_value, StructuredModel
@@ -1103,7 +1290,7 @@ class StructuredModel(BaseModel):
 
         Returns:
             Dictionary with clean hierarchical structure:
-            - overall: TP, FP, TN, FN, FD, FA counts + similarity_score + all_fields_matched
+            - overall: TP, FP, TN, FN, FD, FA counts + similarity_score
             - fields: Recursive structure for each field with scores
             - non_matches: List of non-matching items
         """
@@ -1238,7 +1425,6 @@ class StructuredModel(BaseModel):
         parent_field_name: str,
         gt_nested: "StructuredModel",
         pred_nested: "StructuredModel",
-        parent_is_aggregate: bool = False,
     ) -> Dict[str, Dict[str, Any]]:
         """Calculate confusion matrix metrics for fields within a single nested StructuredModel.
 
@@ -1248,7 +1434,6 @@ class StructuredModel(BaseModel):
             parent_field_name: Name of the parent field (e.g., "address")
             gt_nested: Ground truth nested StructuredModel
             pred_nested: Predicted nested StructuredModel
-            parent_is_aggregate: Whether the parent field should aggregate child metrics
 
         Returns:
             Dictionary mapping nested field paths to their confusion matrix metrics
@@ -1258,7 +1443,7 @@ class StructuredModel(BaseModel):
 
         calculator = ConfusionMatrixCalculator(self)
         return calculator.calculate_single_nested_field_metrics(
-            parent_field_name, gt_nested, pred_nested, parent_is_aggregate
+            parent_field_name, gt_nested, pred_nested
         )
 
     def _collect_enhanced_non_matches(
@@ -1304,15 +1489,29 @@ class StructuredModel(BaseModel):
             if field_name == "extra_fields":
                 continue
             if hasattr(other, field_name):
+                self_value = getattr(self, field_name)
+                other_value = getattr(other, field_name)
+
+                # A true negative is absence of evidence, not evidence that two
+                # objects match. Omit absent-on-both fields from the weighted
+                # average that Hungarian matching uses. The cheap guard preserves
+                # the populated-value fast path in pairwise cost matrices.
+                if _maybe_absent(self_value) and _maybe_absent(other_value):
+                    is_absent = (
+                        NullHelper.is_effectively_null_for_lists
+                        if self._is_list_field(field_name)
+                        else NullHelper.is_effectively_null_for_primitives
+                    )
+                    if is_absent(self_value) and is_absent(other_value):
+                        continue
+
                 # Get field configuration
                 info = self.__class__._get_comparison_info(field_name)
                 # Use weight from ComparableField object
                 weight = info.weight
 
                 # Compare field values WITHOUT applying thresholds
-                field_score = self.compare_field_raw(
-                    field_name, getattr(other, field_name)
-                )
+                field_score = self.compare_field_raw(field_name, other_value)
 
                 # Update total score
                 total_score += field_score * weight
@@ -1321,8 +1520,10 @@ class StructuredModel(BaseModel):
         # Calculate overall score
         if total_weight > 0:
             return total_score / total_weight
-        else:
-            return 0.0
+
+        # Every compared field was absent on both sides. Nothing disagreed, so
+        # identical empty objects remain a perfect match (#233).
+        return 1.0
 
     def compare_with(
         self,
@@ -1370,7 +1571,6 @@ class StructuredModel(BaseModel):
             Dictionary with comparison results including:
             - field_scores: Scores for each field
             - overall_score: Weighted average score
-            - all_fields_matched: Whether all fields matched
             - confusion_matrix: (optional) Confusion matrix data if requested
             - non_matches: (optional) Non-match documentation if requested
             - field_comparisons: (optional) Field level comparison information if requested
