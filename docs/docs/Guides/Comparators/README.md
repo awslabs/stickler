@@ -4,6 +4,31 @@ Comparators are the algorithms that determine how similar two field values are. 
 
 ---
 
+## Where the threshold comes from
+
+Every comparator below except [`LLMComparator`](#llmcomparator) takes a `threshold`, and it can also be set on the field. Both spellings gate the same thing, TP vs FD classification and score clipping:
+
+```python
+# These two fields behave identically.
+ComparableField(comparator=LevenshteinComparator(threshold=0.8))
+ComparableField(comparator=LevenshteinComparator(), threshold=0.8)
+```
+
+Precedence is field, then comparator, then `0.5`:
+
+| You write | Effective threshold |
+|---|---|
+| `ComparableField(threshold=0.9, comparator=Lev(threshold=0.8))` | `0.9`, the field wins |
+| `ComparableField(comparator=Lev(threshold=0.8))` | `0.8`, from the comparator |
+| `ComparableField(comparator=Lev())` | `0.5`, not Levenshtein's `0.7` |
+| `ComparableField()` | `0.5` |
+
+The third row is the one to know: a comparator's *default* threshold is never adopted. Those defaults were chosen for `binary_compare()`, not as classification cutoffs, and at least one is actively wrong for the job. `DateComparator` defaults to `1.0` while awarding `0.7` partial credit for a match with no year, so adopting it would clip that feature to zero. If you want a comparator's default to act as the cutoff, name it.
+
+See [Thresholds and Metrics](../../Getting-Started/thresholds-and-metrics.md) for how this interacts with model and runtime match thresholds.
+
+---
+
 ## Which Comparator Should I Use?
 
 | Comparator | Best For | Speed | Needs AWS? | Score Type |
@@ -646,12 +671,53 @@ You can create your own comparator by extending `BaseComparator`. The only requi
 
 `compare` is a template method: it applies the shared `None` policy, then delegates to `_compare`. You implement `_compare`; callers call `compare`.
 
+Declare `threshold` as `Optional[float] = None` and put your default in
+`DEFAULT_THRESHOLD`. That is what lets a threshold the caller named be told apart
+from your class default, so `ComparableField(comparator=YourComparator(threshold=0.9))`
+is honoured while a bare `YourComparator()` leaves the field on its own default.
+
+A comparator that declares a concrete default instead (`threshold: float = 1.0`)
+still works, and warns once. Stickler cannot then tell your default from a caller's
+value, so it treats a threshold equal to your default as unset -- the pre-0.8
+behaviour -- rather than silently making the field stricter than either of you asked
+for.
+
+!!! warning "Pass `threshold` straight through; do not resolve your default first"
+
+    Changing the signature but keeping the old resolution is worse than not
+    migrating at all:
+
+    ```python
+    # WRONG -- every bare construction now looks caller-named
+    def __init__(self, threshold: Optional[float] = None):
+        super().__init__(threshold if threshold is not None else 0.9)
+    ```
+
+    `BaseComparator` decides explicitness from what it receives, so this hands it
+    `0.9` for a bare `YourComparator()`. The field adopts `0.9` as its verdict
+    threshold with clipping on, and nothing warns, because from the inside it is
+    indistinguishable from a caller who asked for `0.9`. Forward the parameter
+    unchanged and put the default in `DEFAULT_THRESHOLD`:
+
+    ```python
+    DEFAULT_THRESHOLD = 0.9
+
+    def __init__(self, threshold: Optional[float] = None):
+        super().__init__(threshold=threshold)
+    ```
+
 ```python
 from stickler import BaseComparator
 
 class BaseComparator(ABC):
-    def __init__(self, threshold: float = 0.7):
-        self.threshold = threshold
+    #: The threshold to use when the caller does not name one. Override per class.
+    DEFAULT_THRESHOLD: float = 0.7
+
+    def __init__(self, threshold: Optional[float] = None):
+        # None, not a number, so a threshold the caller named stays
+        # distinguishable from one nobody asked for. See below.
+        self.threshold_was_set = threshold is not None
+        self.threshold = self.DEFAULT_THRESHOLD if threshold is None else threshold
 
     def compare(self, str1: Any, str2: Any) -> float:
         """Apply the shared None policy, then delegate to _compare."""
@@ -701,7 +767,9 @@ from stickler import BaseComparator
 class RegexComparator(BaseComparator):
     """Comparator that checks if a value matches a reference regex pattern."""
 
-    def __init__(self, threshold: float = 1.0):
+    DEFAULT_THRESHOLD = 1.0
+
+    def __init__(self, threshold: Optional[float] = None):
         super().__init__(threshold=threshold)
 
     def _compare(self, pattern: Any, value: Any) -> float:

@@ -1,6 +1,6 @@
 """BERT-based semantic comparator."""
 
-from typing import Any
+from typing import Any, Optional
 
 import evaluate
 
@@ -30,7 +30,9 @@ class BERTComparator(BaseComparator):
         ```
     """
 
-    def __init__(self, threshold: float = 0.7):
+    DEFAULT_THRESHOLD = 0.7
+
+    def __init__(self, threshold: Optional[float] = None):
         """Initialize the BERTComparator.
 
         Args:

@@ -1,9 +1,61 @@
 """Base class for comparators."""
 
+import inspect
 from abc import ABC, abstractmethod
-from typing import Any, Tuple
+from typing import Any, Optional, Tuple
 
 from stickler.utils.deprecation import warn_once
+
+
+def _caller_named_it(comparator: "BaseComparator", threshold: float) -> bool:
+    """Whether a non-``None`` threshold really came from the caller.
+
+    ``threshold is not None`` is exact only for a comparator that defaults its own
+    parameter to ``None``, which every comparator in this repo now does. An
+    out-of-tree comparator written to the pattern the docs taught until now --
+
+        def __init__(self, threshold: float = 1.0):
+            super().__init__(threshold=threshold)
+
+    -- forwards a number on a bare construction, so the flag would read ``True``
+    and the field would adopt ``1.0``. With ``clip_under_threshold`` on, that
+    silently zeroes every imperfect score: the outcome this whole change exists to
+    prevent, reintroduced for exactly the population that cannot have migrated yet.
+
+    So for a subclass that still declares a concrete default, fall back to
+    comparing against it. That is the old heuristic, and it carries the old flaw --
+    ``RegexComparator(threshold=1.0)`` reads as unset -- but it keeps such a
+    comparator behaving as it did before this change instead of quietly becoming
+    stricter, and it warns once so the author can migrate.
+
+    Silent for a subclass that declares ``threshold: Optional[float] = None``,
+    where the flag is already exact.
+    """
+    declared = inspect.signature(type(comparator).__init__).parameters.get("threshold")
+    if declared is None or declared.default is inspect.Parameter.empty:
+        return True
+    if declared.default is None:
+        return True
+
+    warn_once(
+        "comparator-threshold-default-not-none",
+        type(comparator).__qualname__,
+        f"{type(comparator).__name__}.__init__ declares "
+        f"threshold={declared.default!r} rather than None, so stickler cannot tell "
+        f"a threshold you passed from the class default. A threshold equal to "
+        f"{declared.default!r} is treated as not set, and the field falls back to "
+        f"its own default. Declare 'threshold: Optional[float] = None' and set "
+        f"DEFAULT_THRESHOLD = {declared.default!r} on the class to have an "
+        f"explicit threshold honoured. Pass the threshold straight through to "
+        f"super().__init__ -- do NOT resolve your own default first. Changing the "
+        f"signature but keeping "
+        f"'super().__init__(threshold if threshold is not None else "
+        f"{declared.default!r})' makes every bare construction look caller-named, "
+        f"so the default silently becomes the field's verdict threshold with "
+        f"clipping on, which is worse than the behaviour this warning describes.",
+        category=UserWarning,
+    )
+    return threshold != declared.default
 
 
 class BaseComparator(ABC):
@@ -84,13 +136,43 @@ class BaseComparator(ABC):
             stacklevel=4,
         )
 
-    def __init__(self, threshold: float = 0.7):
+    #: The threshold this comparator uses when the caller does not name one.
+    #: Overridden per subclass. Read through ``self`` so a subclass's value
+    #: wins, which is what lets ``__init__`` below resolve ``None`` without
+    #: every subclass repeating its own default in two places.
+    DEFAULT_THRESHOLD: float = 0.7
+
+    def __init__(self, threshold: Optional[float] = None):
         """Initialize the comparator.
 
+        ``threshold`` defaults to ``None`` rather than to a number so that a
+        threshold the caller named stays distinguishable from one nobody
+        asked for. The two are not interchangeable: a named threshold is a
+        statement about the field being compared and is adopted as the
+        verdict threshold, while a class default was only ever read by
+        ``binary_compare()`` and has not been audited as a verdict threshold.
+        ``DateComparator``'s default of ``1.0`` would clip its own
+        ``allow_partial_year`` partial credit of ``0.7`` to zero, so adopting
+        defaults is not safe.
+
+        Recording it here is the only place that can. Each subclass resolves
+        its own default before calling ``super().__init__``, so by the time a
+        concrete number arrives, comparing it against the signature default
+        cannot tell ``DateComparator()`` from ``DateComparator(threshold=1.0)``
+        -- both hold ``1.0``. Passing ``None`` through preserves the
+        distinction, and it survives a subclass that forwards ``**kwargs``,
+        which signature inspection does not.
+
         Args:
-            threshold: Similarity threshold (0.0-1.0)
+            threshold: Similarity threshold (0.0-1.0), or None to use
+                :attr:`DEFAULT_THRESHOLD`.
         """
-        self.threshold = threshold
+        #: Whether the caller named a threshold. Consumed by
+        #: ``stickler.structured_object_evaluator.models.comparable_field``.
+        self.threshold_was_set = threshold is not None
+        if self.threshold_was_set:
+            self.threshold_was_set = _caller_named_it(self, threshold)
+        self.threshold = self.DEFAULT_THRESHOLD if threshold is None else threshold
 
     def compare(self, str1: Any, str2: Any) -> float:
         """Compare two values and return a similarity score.

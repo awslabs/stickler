@@ -1094,10 +1094,15 @@ class TestMatchedHasOneDefinition:
         assert overall["tp"] == 1
         assert overall["fd"] == 1
 
-        # So the reliable question is the conjunction of both nodes.
+        # The published clean check, which reads `fp` on BOTH nodes. An earlier
+        # form summed `fd` on `aggregate` and took `fa` from `overall` only,
+        # which reports clean on a value invented where the ground truth is
+        # null; `test_the_clean_check_catches_a_value_invented_on_a_null_leaf`
+        # pins that. Kept in the same shape as the docs so this file is not a
+        # worked example of the retired form.
         clean = (
-            aggregate["fd"] + aggregate["fn"] == 0
-            and overall["fd"] + overall["fn"] + overall["fa"] == 0
+            aggregate["fp"] + aggregate["fn"] == 0
+            and overall["fp"] + overall["fn"] == 0
         )
         assert clean is False
 
