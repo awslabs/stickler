@@ -69,8 +69,14 @@ _FLOAT_RELATIVE_TOLERANCE = 0.001
 # `InferredSpec.source` can tell "the name chose this comparator" from "the name
 # matched a rule that could not be used". Sharing one prefix made a refusal read
 # as a refinement in `explain()`, which is the opposite of what happened.
-_NAME_TOKEN_APPLIED = "name-token:"
-_NAME_TOKEN_REFUSED = "name-token-unused:"
+#
+# `nosec B105`: bandit's hardcoded-password check keys on the VARIABLE name, and
+# these contain "TOKEN". The values are `explain()` provenance labels that get
+# prefixed onto a field name for human output -- no credential is involved, and
+# renaming them would cost the domain term ("name-token" heuristics) that the
+# rest of this module and the docs use.
+_NAME_TOKEN_APPLIED = "name-token:"  # nosec B105
+_NAME_TOKEN_REFUSED = "name-token-unused:"  # nosec B105
 
 
 @dataclass
