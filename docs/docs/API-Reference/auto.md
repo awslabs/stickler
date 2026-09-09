@@ -12,7 +12,7 @@
 !!! tip "Which path is this?"
     This is the inference path: it takes a live Pydantic **class** and infers a comparator and
     threshold per field from the type *and* the field name. The JSON Schema path takes a schema
-    **dict** and infers from type alone, with different thresholds. See
+    **dict** and reads structure only, never names, with different thresholds. See
     [Choosing a Configuration Path](../Getting-Started/choosing-a-configuration-path.md).
 
 ::: stickler.auto.facade

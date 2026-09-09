@@ -11,7 +11,7 @@ Stickler can create `StructuredModel` classes at runtime from JSON configuration
 | Method | Input Format | Infers comparators? | Best For |
 |--------|-------------|---------------------|----------|
 | `from_pydantic()` | A Pydantic `BaseModel` class | Yes — from the Python type *and* the field name | You already have a model and want sensible defaults |
-| `from_json_schema()` | Standard JSON Schema with `x-aws-stickler-*` extensions | Type only, coarsely — every `string` becomes Levenshtein at `0.5` | Interoperability, external tooling, config files |
+| `from_json_schema()` | Standard JSON Schema with `x-aws-stickler-*` extensions | From structure, never names — a plain `string` becomes Levenshtein at `0.5` | Interoperability, external tooling, config files |
 | `model_from_json()` | Custom Stickler JSON configuration | No — a primitive field without a `comparator` is an error | Concise hand-edited configs |
 
 All three produce fully functional `StructuredModel` classes with comparison capabilities, nested hierarchies, custom comparators, and Hungarian matching for lists. They differ only in how much you have to say.
@@ -109,15 +109,21 @@ The `x-aws-stickler-*` extensions control comparison behavior on each property:
 | `x-aws-stickler-model-name` | Class name (object-level) | `"Invoice"` |
 | `x-aws-stickler-match-threshold` | Hungarian match threshold (object-level) | `0.75` |
 
-Default comparators are assigned by JSON Schema type when no extension is specified:
+With no extension specified, the property is resolved to a Python annotation and the comparator
+follows from that — so `format`, `enum` and `const` participate, while field names never do:
 
 | JSON Schema Type | Default Comparator | Default Threshold |
 |------------------|-------------------|-------------------|
 | `string` | LevenshteinComparator | 0.5 |
 | `number` / `integer` | NumericComparator | 0.5 |
 | `boolean` | ExactComparator | 0.5 |
-| `array` (objects) | Hungarian matching | 0.7 |
+| `string` + `"format": "date"` / `"date-time"` | DateComparator | 1.0 |
+| `string` + `"enum"` / single-value `const` | ExactComparator | 1.0 |
+| `array` (objects) | Hungarian matching | 0.5, pairing elements at 0.7 |
 | `object` | Recursive comparison | 0.7 |
+
+A `format` with no distinct annotation (`"email"`, `"hostname"`, `"duration"`) stays `str` and keeps
+LevenshteinComparator at 0.5.
 
 For the complete reference, see the [Evaluation](../Guides/Evaluation/README.md) page.
 

@@ -249,8 +249,8 @@ This pattern is particularly useful for:
 - Automated pipelines where schemas are generated programmatically
 
 Note that this is the other of Stickler's two configuration paths, not a refinement of the ones
-above: `from_json_schema` takes a schema dict, infers a comparator from the JSON type alone, and
-defaults every threshold to `0.5`. See [Choosing a Configuration
+above: `from_json_schema` takes a schema dict, reads structure rather than field names, and
+thresholds the four primitives at `0.5`. See [Choosing a Configuration
 Path](../../Getting-Started/choosing-a-configuration-path.md).
 
 See the [Evaluation](../Evaluation/README.md) documentation for the complete extension reference.

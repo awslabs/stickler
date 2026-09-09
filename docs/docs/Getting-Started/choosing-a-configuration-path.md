@@ -18,10 +18,10 @@ the other's input, so this is a choice you make once per project.
 
 | | Inference | JSON Schema |
 |---|---|---|
-| From the type | yes — `bool`/`Enum` → Exact, `int` → Numeric(exact), `float` → Numeric(rel_tol 0.001), `date` → Date, `str` → Levenshtein | yes, coarser — only `string` → Levenshtein, `number`/`integer` → Numeric, `boolean` → Exact |
+| From the type | yes — `bool`/`Enum` → Exact, `int` → Numeric(exact), `float` → Numeric(rel_tol 0.001), `date` → Date, `str` → Levenshtein | yes, coarser — the schema is resolved to a Python annotation first, so `string` → Levenshtein, `number`/`integer` → Numeric, `boolean` → Exact, and anything else → Exact |
 | From the field name | yes — `*_id` → Exact(case-sensitive), `notes` → Fuzzy(token_set), `total` → Numeric(rel_tol), `phone` → Phone | no |
-| `"format": "date"` | n/a — a `date` annotation is already Date | ignored — the field stays Levenshtein |
-| Default threshold | per comparator, 0.6–1.0 | `0.5` for every field |
+| `"format": "date"` | n/a — a `date` annotation is already Date | honoured — resolves to `date`, so the field gets Date @ 1.0. `"enum"`, `"const"`, `"uri"`, `"uuid"` likewise get Exact @ 1.0; a `format` with no distinct type (`"email"`, `"hostname"`) stays Levenshtein |
+| Default threshold | per comparator, 0.6–1.0 | `0.5` for the four primitives, `1.0` for anything resolved from a `format`, `enum` or `const` |
 | Introspection | `.explain()`, with a provenance trail per field | none; round-trip the class through `to_json_schema()` to read back what it resolved to |
 | Takes the other's input | no — `eval_for({...})` raises `TypeError` | no — `from_json_schema(MyModel)` raises `ValueError` |
 
@@ -47,12 +47,15 @@ class Invoice(BaseModel):
 | `invoice_id` | `ExactComparator` @ 1.0 | `LevenshteinComparator` @ 0.5 |
 | `customer_name` | `LevenshteinComparator` @ 0.85 | `LevenshteinComparator` @ 0.5 |
 | `notes` | `FuzzyComparator` @ 0.6 | `LevenshteinComparator` @ 0.5 |
-| `issue_date` | `DateComparator` @ 0.95 | `LevenshteinComparator` @ 0.5 |
+| `issue_date` | `DateComparator` @ 0.95 | `DateComparator` @ 1.0 |
 | `total` | `NumericComparator` @ 0.95 | `NumericComparator` @ 0.5 |
 | `quantity` | `NumericComparator` @ 1.0 | `NumericComparator` @ 0.5 |
 
-Three of six comparators and six of six thresholds differ. `customer_name` is the subtle case: the
-same comparator on both paths, separated only by the threshold. Scoring one realistic prediction
+Two of six comparators and **six of six** thresholds differ. The schema here is
+`Invoice.model_json_schema()`, so `issue_date` carries `"format": "date"` and both paths reach
+`DateComparator` — hand-write the property as a bare `{"type": "string"}` and the schema path drops
+to Levenshtein instead. `customer_name` is the subtle case: the same comparator on both paths,
+separated only by the threshold. Scoring one realistic prediction
 (`"inv-001"` for `"INV-001"`, `"Acme Corp."` for `"Acme Corporation"`, `"friday delivery"` for
 `"deliver by friday"`) gives **0.646** by inference and **0.760** by schema — and the two disagree
 in *opposite directions* on three fields:
@@ -64,9 +67,9 @@ in *opposite directions* on three fields:
 | `customer_name` | 0.000 | 0.562 | same comparator, but 0.562 falls under inference's 0.85 threshold and is clipped |
 
 Neither number is wrong. Inference encodes what the field *means* — an ID that differs in case may
-be a different ID, and reordered free text usually is not an error. The schema path treats all six
-as interchangeable strings and numbers. Pick the one that matches the question you are asking, and
-do not compare scores across the two.
+be a different ID, and reordered free text usually is not an error. The schema path reads structure,
+not meaning: it can tell a date from a string, but not an identifier from a paragraph of notes. Pick
+the one that matches the question you are asking, and do not compare scores across the two.
 
 ## Moving between them
 

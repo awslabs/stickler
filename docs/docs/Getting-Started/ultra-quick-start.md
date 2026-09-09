@@ -217,7 +217,7 @@ By default every field weighs the same (`weight=1.0`), because business-critical
 !!! tip "Want full control?"
     When you outgrow inference, graduate to a hand-authored [`StructuredModel`](README.md) with explicit `ComparableField` comparators, thresholds, and weights. `stickler.evaluate` is the on-ramp, not a ceiling.
 
-    JSON Schema is not that next step. It is Stickler's *other* configuration path: it takes a schema dict rather than a Pydantic class, infers from the JSON type alone, and thresholds everything at `0.5`. See [Choosing a Configuration Path](choosing-a-configuration-path.md).
+    JSON Schema is not that next step. It is Stickler's *other* configuration path: it takes a schema dict rather than a Pydantic class, reads structure rather than field names, and thresholds the primitives at `0.5`. See [Choosing a Configuration Path](choosing-a-configuration-path.md).
 
 ## Next steps
 

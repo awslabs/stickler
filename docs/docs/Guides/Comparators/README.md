@@ -492,7 +492,9 @@ class Address(StructuredModel):
 
 ## Default Comparators by Type
 
-When you do not specify a comparator in `ComparableField`, Stickler assigns one based on the JSON schema type of the field:
+These are the defaults on the **JSON Schema path** — what `from_json_schema` picks for a property
+carrying no `x-aws-stickler-comparator`. The schema is resolved to a Python annotation first and the
+comparator follows from that, so `format`, `enum` and `const` participate; field names never do.
 
 | JSON Schema Type | Default Comparator | Default Threshold | Rationale |
 |---|---|---|---|
@@ -500,9 +502,20 @@ When you do not specify a comparator in `ComparableField`, Stickler assigns one 
 | `number` | NumericComparator | 0.5 | Tolerates small numeric differences |
 | `integer` | NumericComparator | 0.5 | Tolerates small numeric differences |
 | `boolean` | ExactComparator | 0.5 | Must be exactly true or false (Exact returns only 0.0 or 1.0, so the threshold is immaterial) |
+| `string` + `"format": "date"` or `"date-time"` | DateComparator | 1.0 | Resolves to `date`/`datetime`, which compares across formats |
+| `string` + `"enum"` or a single-value `const` | ExactComparator | 1.0 | Resolves to an `Enum`/`Literal`, so only a listed value is valid |
 | `array` (primitives) | Based on item type | Based on item type | Inherits from element type |
-| `array` (objects) | Hungarian matching | 0.7 | Optimal pairing of list elements |
+| `array` (objects) | Hungarian matching | 0.5, pairing elements at 0.7 | Optimal pairing of list elements |
 | `object` | Recursive comparison | 0.7 | Field-by-field nested comparison |
+
+A `format` the schema library does not map to a distinct type (`"email"`, `"hostname"`, `"duration"`)
+stays `str`, so the field keeps LevenshteinComparator at 0.5.
+
+The two paths do not share these defaults. Inference — `stickler.evaluate`, `eval_for`,
+`from_pydantic` — reads field *names* as well as types and picks different thresholds; see
+[Choosing a Configuration Path](../../Getting-Started/choosing-a-configuration-path.md). And a bare
+`ComparableField()` is a third case again: with no `comparator=`, it is LevenshteinComparator at 0.5
+whatever the annotation.
 
 ---
 

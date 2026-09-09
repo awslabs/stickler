@@ -45,7 +45,7 @@ print(result.explain())   # per-field: comparator, threshold, weight, and why
 
 See the [Ultra Quick Start](https://awslabs.github.io/stickler/Getting-Started/ultra-quick-start/) for the full walkthrough.
 
-This is one of two independent configuration paths, not the first rung of one ladder. It takes a live Pydantic class; the [JSON Schema path](#json-schema-extensions-x-aws-stickler--complete-reference) below takes a schema dict, infers from type alone, and uses different thresholds. Neither accepts the other's input — `stickler.evaluate` cannot take a JSON Schema. [Choosing a Configuration Path](https://awslabs.github.io/stickler/Getting-Started/choosing-a-configuration-path/) compares them field by field and shows how far the two scores drift on the same data.
+This is one of two independent configuration paths, not the first rung of one ladder. It takes a live Pydantic class; the [JSON Schema path](#json-schema-extensions-x-aws-stickler--complete-reference) below takes a schema dict, reads structure rather than field names, and uses different thresholds. Neither accepts the other's input — `stickler.evaluate` cannot take a JSON Schema. [Choosing a Configuration Path](https://awslabs.github.io/stickler/Getting-Started/choosing-a-configuration-path/) compares them field by field and shows how far the two scores drift on the same data.
 
 ## Get Started in 30 Seconds
 
@@ -273,7 +273,7 @@ Add these to any property in your JSON Schema to control comparison behavior:
 
 Specifies the comparison algorithm for this field.
 
-Omitting it is safe but blunt. The fallback reads the JSON type and nothing else: field names and `format` are ignored, so every `"type": "string"` becomes `LevenshteinComparator` at threshold `0.5` whether it holds an invoice ID, a person's name, or a paragraph of notes. This is a different mechanism from the inference behind `stickler.evaluate`, which reads field names and Python types and would give those three fields three different comparators. See [Choosing a Configuration Path](https://awslabs.github.io/stickler/Getting-Started/choosing-a-configuration-path/) before relying on either default.
+Omitting it is safe but blunt. The fallback reads structure and never field names: the schema is resolved to a Python annotation and the comparator comes from that, so a `"format": "date"`, an `enum` or a `const` does sharpen the choice, but every plain `"type": "string"` becomes `LevenshteinComparator` at threshold `0.5` whether it holds an invoice ID, a person's name, or a paragraph of notes. This is a different mechanism from the inference behind `stickler.evaluate`, which also reads field names and would give those three fields three different comparators. See [Choosing a Configuration Path](https://awslabs.github.io/stickler/Getting-Started/choosing-a-configuration-path/) before relying on either default.
 
 **Available Comparators:**
 
@@ -287,15 +287,24 @@ Omitting it is safe but blunt. The fallback reads the JSON type and nothing else
 | `"BERTComparator"` | Deep semantic understanding | BERT model for contextual similarity. Needs the `[bert]` extra |
 | `"LLMComparator"` | Complex semantic evaluation | LLM-powered comparison with reasoning. Needs the `[llm]` extra |
 | `"BBoxIoUComparator"` | Bounding boxes, spatial localization | Intersection over Union (IoU) between two boxes; accepts `[[x1,y1],[x2,y2]]` or `[x1,y1,x2,y2]`. See [Bounding Box mAP Metrics](docs/docs/Advanced/bbox-map-metrics.md) for end-to-end mAP scoring |
+| `"NormalizedComparator"` | Formatting-insensitive equality | Compares after an explicit set of normalizations — by default case, whitespace, and punctuation |
+| `"ANLSStarComparator"` | Dicts and nesting with keys unknown up front | Scores structured values by ANLS*. Where the keys *are* known, a nested model is the better tool |
+| `"DateComparator"` | Dates in mixed formats, partial dates, ranges | Parses both sides as dates and scores on a tier system |
+| `"PhoneComparator"` | Phone numbers | Compares after normalizing formatting |
+| `"StructuredModelComparator"` | Nested models | Recursive field-by-field comparison |
 
 **Default Comparators by JSON Schema Type:**
 
-| JSON Schema Type | Default Comparator | Default Threshold | Rationale |
+The schema is resolved to a Python annotation first, and the comparator follows from that:
+
+| JSON Schema | Default Comparator | Default Threshold | Rationale |
 |------------------|-------------------|-------------------|-----------|
 | `"string"` | `LevenshteinComparator` | `0.5` | Handles typos and minor variations |
 | `"number"` | `NumericComparator` | `0.5` | Tolerates small numeric differences |
 | `"integer"` | `NumericComparator` | `0.5` | Tolerates small numeric differences |
 | `"boolean"` | `ExactComparator` | `0.5` | Must be exactly true or false (Exact scores only 0.0 or 1.0, so the threshold is immaterial) |
+| `"format": "date"` or `"date-time"` | `DateComparator` | `1.0` | Resolves to `date`/`datetime`, so dates compare as dates |
+| `"enum"`, `"const"`, `"format": "uri"`/`"uuid"`/`"time"` | `ExactComparator` | `1.0` | A closed set or an opaque identifier has no partial credit |
 | `"array"` (primitives) | Based on item type | Based on item type | Inherits from element type |
 | `"array"` (objects) | Hungarian matching | `0.7` | Optimal pairing of list elements |
 | `"object"` | Recursive comparison | `0.7` | Field-by-field nested comparison |
