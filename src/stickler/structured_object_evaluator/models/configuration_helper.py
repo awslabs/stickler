@@ -14,6 +14,7 @@ from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.utils.deprecation import warn_once
 
+from .comparable_field import _LEGACY_DEFAULT_THRESHOLD
 from .optional_annotation import (
     is_union,
     union_args,
@@ -700,7 +701,9 @@ class ConfigurationHelper:
             if hasattr(json_func, "_comparator_instance"):
                 # Direct instance storage on function - this is the new, reliable approach
                 comparator = getattr(json_func, "_comparator_instance")
-                threshold = getattr(json_func, "_threshold", 0.5)
+                threshold = getattr(
+                    json_func, "_threshold", _LEGACY_DEFAULT_THRESHOLD
+                )
                 weight = getattr(json_func, "_weight", 1.0)
                 clip_under_threshold = getattr(json_func, "_clip_under_threshold", True)
 
