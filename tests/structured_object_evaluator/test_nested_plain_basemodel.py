@@ -1538,3 +1538,117 @@ class TestAModelAgainstSomethingElseIsAMismatch:
         assert Doc(kid=self.Item(a="x")).compare_field_raw(
             "kid", self.Item(a="x")
         ) == pytest.approx(1.0)
+
+
+class TestTheRuleIsNotYetEnforcedForStructuredModels:
+    """The documented gap, pinned so the docs cannot quietly become wrong.
+
+    The rule is that two objects of different classes are a false discovery,
+    whatever their attributes say. It is stated in
+    `docs/docs/Advanced/classification-logic.md` under "Objects of different
+    classes", and this release enforces it for a plain `BaseModel` and for the
+    elements of a list of them.
+
+    It is NOT enforced for two `StructuredModel` classes: `CASE 3` requires only
+    that BOTH sides be a `StructuredModel` and then recurses field by field, so
+    the class gate is never consulted. That is the pre-existing behaviour on `dev`
+    rather than a deliberate exception, and closing it touches `CASE 3` and the
+    `List[StructuredModel]` Hungarian pairing, so it is its own change.
+
+    This test asserts the CURRENT behaviour, not the desired behaviour. When the
+    rule is extended it will fail, which is the point: the failure is the reminder
+    to update the two doc sections that describe the gap in the same commit.
+    """
+
+    class PetSM(StructuredModel):
+        name: Optional[str] = ComparableField(default=None)
+
+    class CatSM(PetSM):
+        """A SUBCLASS, which is the only way the gap is reachable on a declared field.
+
+        Pydantic refuses a sibling class outright -- `Optional[PetSM]` will not
+        accept a `DogSM` at construction -- so a declared annotation can only reach
+        a heterogeneous pair through subtyping. That makes `Pet` against `Cat` the
+        exact shape the rule is written about.
+        """
+
+        name: Optional[str] = ComparableField(default=None)
+
+    def _holder(self):
+        PetSM = self.PetSM
+
+        class Doc(StructuredModel):
+            pet: Optional[PetSM] = ComparableField(default=None)
+
+        return Doc
+
+    def test_the_plain_half_of_the_rule_is_enforced(self):
+        """The half this release delivers, stated beside the half it does not."""
+
+        class PetPlain(BaseModel):
+            name: Optional[str] = None
+
+        class CatPlain(PetPlain):
+            name: Optional[str] = None
+
+        class Doc(StructuredModel):
+            pet: Optional[PetPlain] = ComparableField(default=None)
+
+        result = Doc(pet=PetPlain(name="rex")).compare_with(
+            Doc(pet=CatPlain(name="rex")), include_confusion_matrix=True
+        )
+        assert result["field_scores"]["pet"] == pytest.approx(0.0)
+        assert result["confusion_matrix"]["overall"]["fd"] == 1
+
+    def test_two_structured_model_classes_are_still_scored_field_by_field(self):
+        """Currently a true positive. The docs say so; this holds them to it.
+
+        The same `Pet` / `Cat` pair that is `0.0` with `fd=1` when both are plain
+        models. Asserting `tp=1` here is deliberately asserting the WRONG answer,
+        because an undisclosed gap is worse than a disclosed one.
+        """
+        Doc = self._holder()
+        result = Doc(pet=self.PetSM(name="rex")).compare_with(
+            Doc(pet=self.CatSM(name="rex")), include_confusion_matrix=True
+        )
+        assert result["field_scores"]["pet"] == pytest.approx(1.0)
+        assert result["confusion_matrix"]["overall"]["tp"] == 1
+        assert result["confusion_matrix"]["overall"]["fd"] == 0
+
+    def test_a_sibling_class_cannot_even_be_constructed(self):
+        """Why the fixture above uses a subclass, measured rather than asserted.
+
+        This bounds the gap: on a field that names its model type, only subtyping
+        can produce a heterogeneous pair, because pydantic rejects anything else
+        before stickler sees it. The unbounded version needs `Any` or a union.
+        """
+
+        class DogSM(StructuredModel):
+            name: Optional[str] = ComparableField(default=None)
+
+        Doc = self._holder()
+        with pytest.raises(Exception, match="PetSM"):
+            Doc(pet=DogSM(name="rex"))
+
+    def test_both_doc_sections_disclose_the_gap(self):
+        """A gap the docs stop mentioning is a gap that reads as endorsed.
+
+        Wrap-aware: the pages are read with whitespace collapsed, so the sentence
+        is found whether or not a reflow moved it across a line break.
+        """
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[2]
+        disclosure = "older behaviour rather than a deliberate exception"
+        pages = (
+            root / "docs" / "docs" / "Advanced" / "classification-logic.md",
+            root / "docs" / "docs" / "Guides" / "Comparators" / "README.md",
+        )
+        for page in pages:
+            assert page.exists(), page
+            text = " ".join(page.read_text().split())
+            assert disclosure in text, (
+                f"{page.name} no longer discloses that the different-class rule is "
+                f"unenforced for two StructuredModel classes, which the test above "
+                f"measures as still true. Remove both together or neither."
+            )

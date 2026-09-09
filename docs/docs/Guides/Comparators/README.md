@@ -526,12 +526,19 @@ Declaring a comparator overrides that default, exactly as it does for a `dict`.
 
 ### A different class is a false discovery
 
-Two models of different classes score `0.0` and count as one false discovery,
-however well their field names and values line up:
+**The rule:** two objects of different classes are a false discovery, whatever
+their attributes say. Identical field names and identical values do not make them
+a match, because the class is part of a value's identity rather than metadata
+about it. See
+[Classification Logic](../../Advanced/classification-logic.md#objects-of-different-classes)
+for the full statement.
+
+**What this release enforces**, for a plain `pydantic.BaseModel` and for the
+elements of a list of them:
 
 ```python
-Cat(name="rex")             vs  Dog(name="rex")    ->  0.0, fd=1   (not 1.0)
-Base(a="x")                 vs  Sub(a="x")         ->  0.0, fd=1
+Cat(name="rex")             vs  Dog(name="rex")         ->  0.0, fd=1   (not 1.0)
+Base(a="x")                 vs  Sub(a="x")              ->  0.0, fd=1
 StructuredShape(name="rex") vs  PlainShape(name="rex")  ->  0.0, fd=1
 ```
 
@@ -539,6 +546,14 @@ The last row is the mixed case: a `StructuredModel` on one side and a plain
 `BaseModel` on the other are still two different classes, and one is not even the
 same kind of model. Two `StructuredModel` instances of the **same** class are
 unaffected and keep their per-field breakdown.
+
+!!! warning "Two `StructuredModel` classes are not covered yet"
+
+    `Pet` against `Cat` scores `0.0` with `fd=1` when both are plain
+    `BaseModel`s, and `1.0` with `tp=1` when both are `StructuredModel`s. The
+    second is the older behaviour rather than a deliberate exception; the rule is
+    the same for both and the code has caught up on one half so far. Annotate the
+    field with a single model type if you need the guarantee today.
 
 The class is part of the value's identity, not incidental to it. A correctly
 annotated field never sees this, because pydantic refuses a `Dog` for an

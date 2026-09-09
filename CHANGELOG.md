@@ -233,10 +233,31 @@ Each release links to full notes on the
   semantics; `ConfigurationHelper.strip_annotation_wrappers` applies it to the
   four object-grade predicates.
 
-  **Breaking: two pydantic models of different classes are a false discovery**,
-  whatever their field names and values. `Cat(name="rex")` against
+  **Breaking: two plain `BaseModel` objects of different classes are a false
+  discovery**, whatever their field names and values. `Cat(name="rex")` against
   `Dog(name="rex")` scores `0.0` with `fd=1`, not `1.0`; so does `Base(a="x")`
-  against `Sub(a="x")`. The class is part of a value's identity. A correctly
+  against `Sub(a="x")`.
+
+  The RULE is not limited to plain models: two objects of different classes are a
+  false discovery, and that is now written down in
+  [Classification Logic](https://awslabs.github.io/stickler/Advanced/classification-logic/#objects-of-different-classes),
+  where it had never been stated. This release enforces it for a plain
+  `BaseModel` and for the elements of a list of them. It is NOT yet enforced for
+  two `StructuredModel` classes, which are still scored field by field and can
+  report a true positive:
+
+  ```
+  Pet(name="rex") vs Cat(name="rex")     plain BaseModel    0.0   fd=1
+                                         StructuredModel    1.0   tp=1
+  ```
+
+  That second row is the pre-existing behaviour on `dev` rather than a deliberate
+  exception, and it is the larger half, since `StructuredModel` is the documented
+  way to declare a nested object. It is called out in the docs and left to its own
+  change, because closing it touches `ComparisonDispatcher` CASE 3 and the
+  `List[StructuredModel]` Hungarian pairing that every existing user depends on.
+
+  The class is part of a value's identity. A correctly
   annotated field never reaches this, because pydantic refuses a `Dog` for an
   `Optional[Cat]` field at construction; it applies where the annotation
   permitted both (`Union[Cat, Dog]`, `Any`, `object`) or where a subclass arrived
