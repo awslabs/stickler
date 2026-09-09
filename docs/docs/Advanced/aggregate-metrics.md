@@ -162,12 +162,39 @@ Coinciding is not evidence that nothing was hidden, which is the separate and mo
 
     Five rows where fifteen leaves exist. So checking whether the document was
     all-rejected does not protect you, and neither does reading the root `overall`,
-    which reports the same numbers. Before dividing an `aggregate` count by a leaf
-    total, ask each node whether it still has children:
-    `'fields' in node and not node['fields']` is exactly the condition under which
-    its `aggregate` stopped being a leaf count. Do not test the node's `overall` for
-    `tp == 0` instead: that is also true of a primitive field that simply failed,
-    which is one leaf and was never anything else.
+    which reports the same numbers.
+
+    **The unit cannot be derived from the confusion matrix.** Deciding it needs to
+    know which fields are `List[StructuredModel]`, and the matrix does not carry
+    that. A **list of primitives** with one element wrong is indistinguishable from
+    an object list whose only item was rejected:
+
+    ```
+    tags   List[str],   one of two elements wrong    fields={}   aggregate tp=1 fd=1
+    rows   List[Line],  its only item rejected       fields={}   aggregate tp=0 fd=1
+    ```
+
+    Same empty `fields`, same non-zero counts, different unit: the first is two
+    element comparisons, and an element of a primitive list **is** a leaf, while the
+    second is one row for one rejected object.
+
+    Two conditions were published here before this and both were wrong, in opposite
+    directions. `node['overall']['tp'] == 0` is also true of a primitive field that
+    simply failed, which is one leaf and was never anything else.
+    `'fields' in node and not node['fields']` is also true of the `tags` row above,
+    and of a scalar that was null on both sides.
+
+    So supply the answer from the model, and read `overall['tp'] == 0` as "every item
+    in this list was rejected":
+
+    ```python
+    OBJECT_LISTS = {'lines'}      # the List[StructuredModel] fields of your model
+
+    counts_objects = section in OBJECT_LISTS and node['overall']['tp'] == 0
+    ```
+
+    See [the ranking snippet](../Guides/Evaluation/understanding-results.md#field-level-aggregate-metrics)
+    for this in context.
 
 #### Getting leaf detail for a marginal list item
 

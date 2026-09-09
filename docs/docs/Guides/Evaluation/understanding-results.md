@@ -471,11 +471,24 @@ This displays processing statistics (document count, throughput), overall confus
 
 Every node in the confusion matrix automatically includes an `aggregate` field that sums all primitive field metrics recursively below that node. This gives you hierarchical analysis without any configuration.
 
-One caveat before you rank anything by these counts: where a list's items were *all* rejected, that node's `aggregate` reports one row per rejected object rather than its leaves, so counts from such a node are not comparable with leaf counts from another ([why](../../Advanced/aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list)). The check is `'fields' in node and not node['fields']` -- a structured node with nothing left below it to descend into. A primitive field has no `fields` key at all, so it is not caught, however badly it failed.
+One caveat before you rank anything by these counts: where a list's items were *all* rejected, that node's `aggregate` reports one row per rejected object rather than its leaves, so counts from such a node are not comparable with leaf counts from another ([why](../../Advanced/aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list)).
+
+**The unit cannot be derived from the confusion matrix.** You have to tell the snippet which fields are `List[StructuredModel]`, because the matrix does not carry that. A list of primitives with one element wrong and a list of objects whose only item was rejected are *identical* in shape -- both have `fields == {}` with non-zero `aggregate` counts -- and yet the first counts element comparisons, which are leaves, and the second counts one row per rejected object:
+
+```
+tags   List[str],   one of two elements wrong    fields={}   aggregate tp=1 fd=1   leaves
+rows   List[Line],  its only item rejected       fields={}   aggregate tp=0 fd=1   object rows
+```
+
+Two earlier versions of this snippet tried to derive it and were wrong in opposite directions. `data['overall']['tp'] == 0` is also true of a primitive field that simply failed, which is one leaf and nothing else. `'fields' in data and not data['fields']` is also true of the primitive list above, and of a scalar that was null on both sides. So the schema has to supply the answer, and `overall['tp'] == 0` then means every item in that list was rejected.
 
 ```python
 result = ground_truth.compare_with(prediction, include_confusion_matrix=True)
 cm = result['confusion_matrix']
+
+# The List[StructuredModel] fields of your model. Only you know these; the
+# confusion matrix cannot tell them from a list of primitives.
+OBJECT_LISTS = {'lines'}
 
 # Top-level aggregate: all primitive fields in the entire document
 print(f"Total F1: {cm['aggregate']['derived']['cm_f1']:.3f}")
@@ -485,13 +498,11 @@ for section, data in cm['fields'].items():
     if 'aggregate' in data:
         f1 = data['aggregate']['derived']['cm_f1']
         errors = data['aggregate']['fp'] + data['aggregate']['fn']
-        # A structured node with an empty 'fields' reports its own rows here, not
-        # leaves: a list whose items were ALL rejected, or one that was null on
-        # both sides. Say so rather than ranking it against leaf counts. Do not
-        # test `data['overall']['tp'] == 0` instead -- that is also true of a
-        # primitive field that simply failed, which is one leaf and nothing else.
-        childless = 'fields' in data and not data['fields']
-        unit = 'object rows' if childless else 'leaves'
+        # An object list whose items were ALL rejected reports its own rows here
+        # rather than leaves, so say which unit the numbers are in instead of
+        # ranking the two against each other.
+        counts_objects = section in OBJECT_LISTS and data['overall']['tp'] == 0
+        unit = 'object rows' if counts_objects else 'leaves'
         print(f"  {section}: F1={f1:.3f}, Errors={errors} ({unit})")
 ```
 

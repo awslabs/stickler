@@ -336,9 +336,21 @@ Each release links to full notes on the
   of six fields report `aggregate tp=0 fd=2`, two object rows where twelve leaves
   exist. It fires per node, so it can happen for one list while the document is
   plainly not all-rejected, and an `aggregate` count is therefore not a safe
-  denominator for a leaf total. The condition to test is
-  `'fields' in node and not node['fields']`, not `overall['tp'] == 0`, which is also
-  true of a primitive field that simply failed.
+  denominator for a leaf total.
+
+  The unit **cannot be derived from the confusion matrix**, which is why the
+  published snippet takes the answer from the model. A list of primitives with one
+  element wrong and an object list whose only item was rejected are identical in the
+  matrix -- both `fields == {}` with non-zero `aggregate` counts -- and yet the first
+  counts element comparisons, which are leaves. Two derived conditions were tried
+  and both were wrong, in opposite directions: `overall['tp'] == 0` is also true of a
+  primitive field that simply failed, and `'fields' in node and not node['fields']`
+  is also true of that primitive list and of a scalar null on both sides. The
+  documented form names the `List[StructuredModel]` fields explicitly:
+
+  ```python
+  counts_objects = section in OBJECT_LISTS and node['overall']['tp'] == 0
+  ```
 
   See [#288](https://github.com/awslabs/stickler/issues/288) for the naming.
 

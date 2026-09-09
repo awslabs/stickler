@@ -230,26 +230,34 @@ def _phrase_hits(repo_root: Path, banned) -> list:
     return sorted(set(offenders))
 
 
-def _documented_unit_label(node: dict) -> str:
+def _documented_unit_label(node: dict, *, is_object_list: bool) -> str:
     """Is this node's `aggregate` a count of leaves? The check the pages publish.
 
-    A primitive field has no `fields` key at all. A structured node -- a nested
-    object, or a list -- always has one, and it is empty exactly when there was
-    nothing to descend into: every item was rejected, or the field was null on both
-    sides. `AggregateMetricsCalculator` decides leaf versus parent on precisely that,
-    so this is the condition under which `aggregate` stops being a leaf count.
+    The unit CANNOT be derived from the confusion matrix. Measured:
 
-    The retired form was `node['overall']['tp'] == 0`, which is also true of a
-    primitive field that simply failed -- one leaf, and never anything else -- so it
-    mislabelled exactly the rows a reader scans a ranking for.
+        prims      (List[str], one element wrong)   fields={}  aggregate tp=1 fd=1
+        items_bad  (List[Model], item rejected)     fields={}  aggregate tp=0 fd=1
+
+    The first is two element comparisons, which are leaves; the second is one
+    rejected object. Both are childless structured nodes with non-zero counts, so
+    `"fields" in node and not node["fields"]` -- the form this replaces -- called the
+    primitive list's leaf counts "object rows". It also mislabelled a scalar that was
+    null on both sides, which carries `fields == {}` as well.
+
+    The earlier form before that, `node["overall"]["tp"] == 0`, was wrong in the
+    other direction: true of a primitive field that simply failed.
+
+    So the caller has to supply what only the schema knows -- whether the field is a
+    `List[StructuredModel]` -- and `overall["tp"] == 0` then means every item was
+    rejected.
 
     Published in:
 
         docs/docs/Advanced/aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list
         docs/docs/Guides/Evaluation/understanding-results.md  (prose and snippet)
     """
-    childless_structured = "fields" in node and not node["fields"]
-    return "object rows" if childless_structured else "leaves"
+    counts_objects = is_object_list and node["overall"]["tp"] == 0
+    return "object rows" if counts_objects else "leaves"
 
 
 def _documented_clean_check(cm: dict) -> bool:
@@ -1023,7 +1031,15 @@ class _Header(StructuredModel):
     lines: Optional[List[Line]] = ComparableField(default=None)
 
 
-def _header_doc(item_count: int, rejected: int):
+def _header_doc(item_count: int, rejected: int, vendor_wrong: bool = False):
+    """Three header leaves beside a list of `item_count` items, `rejected` of them bad.
+
+    `vendor_wrong` breaks one HEADER field. Needed because a correct header leaf has
+    `overall['tp'] == 1`, so a document built without it cannot tell the published
+    unit condition from the retired `overall['tp'] == 0` one -- the failing primitive
+    is the only node where those two disagree.
+    """
+
     def item(index: int, wrong: bool) -> Line:
         values = {name: f"{name}{index}" for name in FIELDS}
         if wrong:
@@ -1031,10 +1047,33 @@ def _header_doc(item_count: int, rejected: int):
             values["total"] = "WRONG"
         return Line(**values)
 
-    common = {"invoice_id": "i", "vendor": "v", "date": "d"}
-    gt = _Header(**common, lines=[item(i, False) for i in range(item_count)])
-    pred = _Header(**common, lines=[item(i, i < rejected) for i in range(item_count)])
+    common = {"invoice_id": "i", "date": "d"}
+    gt = _Header(
+        **common, vendor="v", lines=[item(i, False) for i in range(item_count)]
+    )
+    pred = _Header(
+        **common,
+        vendor="WRONG" if vendor_wrong else "v",
+        lines=[item(i, i < rejected) for i in range(item_count)],
+    )
     return gt.compare_with(pred, include_confusion_matrix=True)["confusion_matrix"]
+
+
+def _primitive_list_doc():
+    """A `List[str]` with one of two elements wrong.
+
+    Childless with non-zero `aggregate` counts, exactly like an all-rejected object
+    list, and yet its rows are element comparisons, which are leaves. The pair of
+    shapes the published unit condition has to tell apart without help from the
+    matrix, because the matrix cannot tell them apart.
+    """
+
+    class Doc(StructuredModel):
+        tags: Optional[List[str]] = ComparableField(default=None)
+
+    return Doc(tags=["a", "b"]).compare_with(
+        Doc(tags=["a", "Z"]), include_confusion_matrix=True
+    )["confusion_matrix"]
 
 
 class TestTheRootMixesHeaderLeavesWithItemPairings:
@@ -1106,14 +1145,17 @@ class TestCoincidingNodesAreNotEvidenceOfAgreement:
 
         `overall['tp'] == 0` also holds here, and was published as the check for a
         while, but it is not the condition: a primitive field that merely failed has
-        `tp == 0` too. `_documented_unit_label` is the discriminator.
+        `tp == 0` too. `_documented_unit_label` is the discriminator, and it needs
+        the schema's answer for the field, which is why `is_object_list` is passed
+        explicitly on both calls -- `lines` is a `List[StructuredModel]`, the root
+        document is not a list at all.
         """
         cm = _header_doc(item_count=2, rejected=2)
         lines = cm["fields"]["lines"]
 
         assert lines["fields"] == {}
-        assert _documented_unit_label(lines) == "object rows"
-        assert _documented_unit_label(cm) == "leaves"
+        assert _documented_unit_label(lines, is_object_list=True) == "object rows"
+        assert _documented_unit_label(cm, is_object_list=False) == "leaves"
 
     def test_root_precision_reads_as_a_leaf_rate_and_is_not_one(self):
         cm = _header_doc(item_count=2, rejected=2)
@@ -1123,15 +1165,20 @@ class TestCoincidingNodesAreNotEvidenceOfAgreement:
 class TestTheUnitLabelPublishedForRankingSections:
     """The ranking snippet annotates each section with the unit of its counts.
 
-    Round four added that annotation with `data['overall']['tp'] == 0` as the test,
-    which was inherited from a wrong account of the mechanism. A primitive field that
-    failed has `tp == 0`, so the annotation was wrong on precisely the rows a reader
-    scans a ranking for -- the failing ones -- and it also fired for a list that was
-    null on both sides, where no leaves exist either way.
+    Two earlier forms of that annotation were wrong in opposite directions:
 
-    `_documented_unit_label` is the corrected test, and these pin it in both
-    directions: it must fire on a node that really lost its children, and stay quiet
-    on every node that did not.
+        node["overall"]["tp"] == 0            also true of a FAILING PRIMITIVE
+        "fields" in node and not node["fields"]   also true of a PRIMITIVE LIST
+
+    The second is the subtler one and is why the annotation now needs the schema. A
+    `List[str]` with one element wrong and a `List[Model]` with its only item
+    rejected are indistinguishable in the confusion matrix -- both `fields == {}`
+    with non-zero counts -- yet the first is element comparisons, which are leaves,
+    and the second is one row per rejected object. A scalar null on both sides also
+    carries `fields == {}`.
+
+    So `_documented_unit_label` takes `is_object_list` from the caller, which is what
+    only the model knows, and these pin it in both directions.
     """
 
     @staticmethod
@@ -1139,7 +1186,7 @@ class TestTheUnitLabelPublishedForRankingSections:
         return _header_doc(**kwargs)["fields"]
 
     def test_a_failing_primitive_is_still_one_leaf(self):
-        """The row the retired check mislabelled."""
+        """The row the first retired check mislabelled."""
 
         def item(index):
             return Line(**{name: f"{name}{index}" for name in FIELDS})
@@ -1151,24 +1198,79 @@ class TestTheUnitLabelPublishedForRankingSections:
             "confusion_matrix"
         ]["fields"]
 
-        assert sections["vendor"]["overall"]["tp"] == 0  # what the retired check saw
+        assert sections["vendor"]["overall"]["tp"] == 0  # what the first check saw
         assert "fields" not in sections["vendor"]  # a leaf has no `fields` key
-        assert _documented_unit_label(sections["vendor"]) == "leaves"
+        assert (
+            _documented_unit_label(sections["vendor"], is_object_list=False) == "leaves"
+        )
+
+    def test_a_primitive_list_is_a_leaf_count(self):
+        """The row the second retired check mislabelled.
+
+        Two elements, one wrong: `aggregate tp=1 fd=1` really is two ELEMENT
+        comparisons, and an element of a primitive list is a leaf. The node is
+        childless all the same, so a check keyed on that called it object rows.
+        """
+
+        class Doc(StructuredModel):
+            tags: Optional[List[str]] = ComparableField(default=None)
+
+        cm = Doc(tags=["a", "b"]).compare_with(
+            Doc(tags=["a", "Z"]), include_confusion_matrix=True
+        )["confusion_matrix"]
+        tags = cm["fields"]["tags"]
+
+        assert tags["fields"] == {}  # childless, like an all-rejected object list
+        assert (tags["aggregate"]["tp"], tags["aggregate"]["fd"]) == (1, 1)
+        assert _documented_unit_label(tags, is_object_list=False) == "leaves"
+
+    def test_the_two_shapes_are_indistinguishable_in_the_matrix(self):
+        """Why the schema has to supply the answer, stated as an assertion.
+
+        If these two ever became distinguishable, the annotation could be derived
+        again and this whole parameter could go.
+        """
+
+        class Doc(StructuredModel):
+            tags: Optional[List[str]] = ComparableField(default=None)
+            rows: Optional[List[Line]] = ComparableField(default=None)
+
+        wrong = Line(**{**{n: f"{n}0" for n in FIELDS}, "tax": "X", "total": "X"})
+        cm = Doc(
+            tags=["a", "b"], rows=[Line(**{n: f"{n}0" for n in FIELDS})]
+        ).compare_with(
+            Doc(tags=["a", "Z"], rows=[wrong]), include_confusion_matrix=True
+        )["confusion_matrix"]
+
+        tags, rows = cm["fields"]["tags"], cm["fields"]["rows"]
+        assert tags["fields"] == rows["fields"] == {}
+        assert tags["aggregate"]["tp"] + tags["aggregate"]["fd"] > 0
+        assert rows["aggregate"]["tp"] + rows["aggregate"]["fd"] > 0
+        # Same shape, different unit. Only the annotation tells them apart.
+        assert _documented_unit_label(tags, is_object_list=False) == "leaves"
+        assert _documented_unit_label(rows, is_object_list=True) == "object rows"
 
     def test_an_all_rejected_list_is_not_a_leaf_count(self):
         sections = self._sections(item_count=2, rejected=2)
-        assert _documented_unit_label(sections["lines"]) == "object rows"
+        assert _documented_unit_label(sections["lines"], is_object_list=True) == (
+            "object rows"
+        )
 
     def test_a_partly_rejected_list_is_still_a_leaf_count(self):
         sections = self._sections(item_count=2, rejected=1)
-        assert _documented_unit_label(sections["lines"]) == "leaves"
+        assert (
+            _documented_unit_label(sections["lines"], is_object_list=True) == "leaves"
+        )
 
     def test_a_clean_list_is_a_leaf_count(self):
         sections = self._sections(item_count=5, rejected=0)
-        assert _documented_unit_label(sections["lines"]) == "leaves"
+        assert (
+            _documented_unit_label(sections["lines"], is_object_list=True) == "leaves"
+        )
 
-    def test_a_list_null_on_both_sides_has_no_leaves_either_way(self):
-        """`tn=1` and no children, so it is correctly not called a leaf count."""
+    def test_a_list_null_on_both_sides_reports_no_rows_at_all(self):
+        """`tn=1` and no children. Calling it either unit is vacuous, but it must
+        not be reported as a leaf rate, since there are no leaves."""
         common = {"invoice_id": "i", "vendor": "v", "date": "d"}
         cm = _Header(**common, lines=None).compare_with(
             _Header(**common, lines=None), include_confusion_matrix=True
@@ -1177,7 +1279,8 @@ class TestTheUnitLabelPublishedForRankingSections:
 
         assert (lines["overall"]["tn"], lines["overall"]["tp"]) == (1, 0)
         assert lines["fields"] == {}
-        assert _documented_unit_label(lines) == "object rows"
+        assert lines["aggregate"]["tp"] + lines["aggregate"]["fd"] == 0
+        assert _documented_unit_label(lines, is_object_list=True) == "object rows"
 
     def test_a_nested_object_is_a_leaf_count(self):
         """It is never gated, so it always still has its children."""
@@ -1193,56 +1296,94 @@ class TestTheUnitLabelPublishedForRankingSections:
 
         assert contact["overall"]["fd"] == 1  # rejected at the field's own threshold
         assert set(contact["fields"]) == {"a", "b", "c"}  # and still expanded
-        assert _documented_unit_label(contact) == "leaves"
+        assert _documented_unit_label(contact, is_object_list=False) == "leaves"
 
-    def test_both_pages_publish_the_condition_in_prose(self):
+    def test_both_pages_say_the_unit_cannot_be_derived_from_the_matrix(self):
+        """Both claims, matched on their full phrases rather than on substrings.
+
+        An earlier version of this guard tested for `"cannot be"`, which
+        `aggregate-metrics.md` also contains in an unrelated sentence about the
+        all-zero fallback, so deleting the actual claim left the guard passing.
+        Whitespace is collapsed first so a reflow across a line break still matches.
+        """
         repo_root = Path(__file__).resolve().parents[2]
-        expected = "`'fields' in node and not node['fields']`"
-
+        required = (
+            "cannot be derived from the confusion matrix",
+            "list of primitives",
+        )
         for relative in (
             "docs/docs/Advanced/aggregate-metrics.md",
             "docs/docs/Guides/Evaluation/understanding-results.md",
         ):
-            text = (repo_root / relative).read_text()
-            assert expected in text, (
-                f"{relative} no longer names the childless-node condition; the "
-                f"retired `overall['tp'] == 0` is what it drifted back to last time"
-            )
+            page = repo_root / relative
+            assert page.exists(), page
+            text = " ".join(page.read_text().split()).lower()
+            for phrase in required:
+                assert phrase in text, (
+                    f"{relative} no longer says '{phrase}'. The unit cannot be read "
+                    f"off the matrix, and both derived conditions published before "
+                    f"this were wrong, in opposite directions."
+                )
 
     def test_the_published_snippet_agrees_with_this_helper(self):
-        """Execute the page's own two lines, rather than matching on their text.
+        """Execute the page's own lines rather than matching on their text.
 
-        The annotation reached review wrong because it was written into a page that
-        nothing ran. This lifts `childless = ...` and `unit = ...` straight out of the
-        published snippet and checks them against `_documented_unit_label` on every
-        node shape, so the page cannot say something the tests above do not.
+        Both wrong annotations reached review because they were written into a page
+        that nothing ran. This lifts the published condition out of the snippet and
+        checks it against `_documented_unit_label` on every node shape.
         """
         repo_root = Path(__file__).resolve().parents[2]
         page = (
             repo_root / "docs/docs/Guides/Evaluation/understanding-results.md"
         ).read_text()
-        childless_expr = re.search(r"^\s*childless = (.+)$", page, re.M)
-        unit_expr = re.search(r"^\s*unit = (.+)$", page, re.M)
-        assert childless_expr and unit_expr, "the ranking snippet lost its unit label"
+        cond = re.search(r"^\s*counts_objects = (.+)$", page, re.M)
+        unit = re.search(r"^\s*unit = (.+)$", page, re.M)
+        assert cond and unit, "the ranking snippet lost its unit label"
 
-        def published_label(node: dict) -> str:
-            childless = eval(childless_expr.group(1), {}, {"data": node})  # noqa: S307
-            return eval(unit_expr.group(1), {}, {"childless": childless})  # noqa: S307
+        def published_label(node: dict, section: str, object_lists: set) -> str:
+            counts_objects = eval(  # noqa: S307
+                cond.group(1),
+                {},
+                {"data": node, "section": section, "OBJECT_LISTS": object_lists},
+            )
+            return eval(unit.group(1), {}, {"counts_objects": counts_objects})  # noqa: S307
 
         header = _header_doc(item_count=2, rejected=2)
         clean = _header_doc(item_count=2, rejected=0)
-        nodes = [
-            header,  # the root, which kept its children
-            header["fields"]["lines"],  # all rejected: no children left
-            header["fields"]["vendor"],  # a matching primitive
-            clean["fields"]["lines"],  # a clean list
-            _header_doc(item_count=2, rejected=1)["fields"]["lines"],
+        partial = _header_doc(item_count=2, rejected=1)
+        # A header field that FAILED. This is the discriminating case: it is the only
+        # node where the published condition and the retired `overall['tp'] == 0`
+        # form disagree, so without it the snippet could drop `section in
+        # OBJECT_LISTS` and every assertion here would still pass. Verified: with
+        # that guard removed, this case is what fails.
+        failed_leaf = _header_doc(item_count=2, rejected=0, vendor_wrong=True)
+        # A list of PRIMITIVES that is childless with non-zero counts, which is the
+        # shape the other retired form (`'fields' in data and not data['fields']`)
+        # mislabelled.
+        primitive_list = _primitive_list_doc()
+        cases = [
+            (header["fields"]["lines"], "lines", {"lines"}),
+            (clean["fields"]["lines"], "lines", {"lines"}),
+            (partial["fields"]["lines"], "lines", {"lines"}),
+            (header["fields"]["vendor"], "vendor", {"lines"}),
+            (failed_leaf["fields"]["vendor"], "vendor", {"lines"}),
+            (primitive_list["fields"]["tags"], "tags", {"lines"}),
+            (header, "root", {"lines"}),
         ]
-        for node in nodes:
-            assert published_label(node) == _documented_unit_label(node)
+        assert failed_leaf["fields"]["vendor"]["overall"]["tp"] == 0, (
+            "the discriminating case must actually have tp == 0, or it discriminates "
+            "nothing"
+        )
+        assert primitive_list["fields"]["tags"]["fields"] == {}, (
+            "the primitive-list case must actually be childless"
+        )
+        for node, section, object_lists in cases:
+            assert published_label(node, section, object_lists) == (
+                _documented_unit_label(node, is_object_list=section in object_lists)
+            ), section
 
-        # And the labels are not all the same, so the agreement above means something.
-        assert {published_label(node) for node in nodes} == {"leaves", "object rows"}
+        labels = {published_label(n, s, o) for n, s, o in cases}
+        assert labels == {"leaves", "object rows"}
 
 
 class TestAnAcceptedSubtreeCanCoincideToo:
