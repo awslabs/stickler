@@ -81,11 +81,30 @@ Each release links to full notes on the
   type-blind Levenshtein default -- a threshold tuned against edit distance over
   `"1000.00"` and `"1000.0"`.
 
-  **Off by default, and nothing existing moves.** `model_from_json()` still refuses
-  a primitive field with no comparator unless asked, and `from_json_schema()` keeps
-  its current defaults. Enabling it changes reported metrics for any field left
-  unspecified, so it is never implied. The refusal now names both ways to opt in
-  rather than only saying a comparator is required.
+  **Off by default.** `model_from_json()` still refuses a primitive field with no
+  comparator unless asked, and `from_json_schema()` keeps its comparator defaults.
+  Enabling it changes reported metrics for any field left unspecified, so it is
+  never implied. The refusal now names both ways to opt in rather than only saying a
+  comparator is required.
+
+  **One thing does move with the flag off**, and it is a silent-drop fix rather than
+  part of the feature. `x-aws-stickler-comparator-config` was read only in the branch
+  that also named `x-aws-stickler-comparator`, so a schema that configured the type
+  default without naming it had its config discarded:
+
+  ```
+  {"type": "number", "x-aws-stickler-comparator-config": {"relative_tolerance": 0.5}}
+    before   NumericComparator()                          config dropped
+    after    NumericComparator(relative_tolerance=0.5)
+  ```
+
+  The Stickler-config path has always honoured this, so the two front doors
+  disagreed on identical input, and the schema side was silently losing a setting
+  the author wrote -- the class of defect
+  [#210](https://github.com/awslabs/stickler/issues/210) is about. It is not gated
+  behind `infer_unspecified_fields` because it has nothing to do with inference: the
+  author named a config and it is now applied. **Scores move for any existing schema
+  that carries `x-aws-stickler-comparator-config` with no comparator beside it.**
 
   `explain()` no longer reports an inferred field as `explicit`. It carries the
   inference trail instead, with the same `source` values `stickler.evaluate()` uses

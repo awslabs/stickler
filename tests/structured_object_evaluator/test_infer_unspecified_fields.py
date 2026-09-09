@@ -448,9 +448,7 @@ class TestTheSchemaPathMergesComparatorConfigToo:
                 {
                     "type": "object",
                     "title": "T",
-                    "properties": {
-                        "total": dict({"type": "number"}, **property_extra)
-                    },
+                    "properties": {"total": dict({"type": "number"}, **property_extra)},
                 },
                 **model_extra,
             )
@@ -675,7 +673,9 @@ class TestMatchThresholdReachesInference:
                 "title": "T",
                 "x-aws-stickler-match-threshold": 0.9,
                 "x-aws-stickler-infer-unspecified": True,
-                "properties": {"meta": {"type": "object", "additionalProperties": True}},
+                "properties": {
+                    "meta": {"type": "object", "additionalProperties": True}
+                },
             }
         )
         assert _resolved(model, "meta") == ("ANLSStarComparator", 0.9)
@@ -1065,3 +1065,227 @@ class TestANestedObjectCanScopeTheFlag:
     def test_a_non_boolean_on_a_nested_object_is_refused(self):
         with pytest.raises(ValueError, match="must be true or false at 'inner'"):
             self._build(root=None, nested="yes")
+
+
+class TestAnAuthoredComparatorConfigIsNotSilentlyLost:
+    """A bad key must not discard the config, and must not be silent.
+
+    `ComparatorRegistry.create_instance` used to try `comparator_class(**config)`
+    and, on `TypeError`, retry `comparator_class()` -- dropping the WHOLE config.
+    Since `comparator_class(**{})` is already `comparator_class()`, that fallback
+    could only ever fire when the author DID supply keys, so it turned one bad key
+    into a lost configuration and a wrong number:
+
+        comparator_config {"relative_tolerence": 0.001}   (note the typo)
+          built NumericComparator() with NO tolerance, discarding the inferred
+          {"relative_tolerance": 0.001} merged in beside it
+
+    Keys are now filtered rather than abandoned, and the dropped ones are named.
+    """
+
+    @staticmethod
+    def _field(config):
+        return {
+            "model_name": "C",
+            "infer_unspecified_fields": True,
+            "fields": {
+                "total": {
+                    "type": "float",
+                    "comparator": "auto",
+                    "comparator_config": config,
+                    "required": False,
+                }
+            },
+        }
+
+    def test_a_typo_does_not_discard_the_inferred_tolerance(self):
+        """The defect, stated as the number it produced."""
+        model = StructuredModel.model_from_json(
+            self._field({"relative_tolerence": 0.001})
+        )
+        comparator = model._get_comparison_info("total").comparator
+        assert comparator.config == {"relative_tolerance": 0.001}
+
+    def test_the_surviving_tolerance_still_scores_a_near_match(self):
+        """What the lost config cost: an exact comparison where a tolerant one was asked for."""
+        model = StructuredModel.model_from_json(
+            self._field({"relative_tolerence": 0.001})
+        )
+        gt = model.from_json({"total": 1000.00})
+        pred = model.from_json({"total": 1000.001})
+        assert gt.compare_with(pred)["field_scores"]["total"] == pytest.approx(1.0)
+
+    def test_the_dropped_key_is_named(self):
+        """Filtering silently would trade a wrong number for a wrong config."""
+        with pytest.warns(UserWarning, match="does not accept 'relative_tolerence'"):
+            StructuredModel.model_from_json(self._field({"relative_tolerence": 0.001}))
+
+    def test_a_valid_author_key_still_wins_over_the_inferred_one(self):
+        """The merge this feature added must survive the filtering."""
+        model = StructuredModel.model_from_json(
+            self._field({"relative_tolerance": 0.5})
+        )
+        assert model._get_comparison_info("total").comparator.config == {
+            "relative_tolerance": 0.5
+        }
+
+    def test_an_exported_config_edited_by_hand_still_imports(self):
+        """Why filtering, rather than raising, is the right answer here.
+
+        `to_stickler_config()` exports the comparator's own config, so editing the
+        exported `comparator` and rebuilding -- a documented workflow -- leaves the
+        previous comparator's keys behind. Raising would reject a config stickler
+        itself produced.
+        """
+        config = {
+            "model_name": "C",
+            "fields": {
+                "note": {
+                    "type": "str",
+                    "comparator": "ExactComparator",
+                    "comparator_config": {
+                        "method": "token_set_ratio",
+                        "normalize": True,
+                    },
+                    "required": False,
+                }
+            },
+        }
+        with pytest.warns(UserWarning, match="ExactComparator does not accept"):
+            model = StructuredModel.model_from_json(config)
+        assert type(model._get_comparison_info("note").comparator).__name__ == (
+            "ExactComparator"
+        )
+
+    @pytest.mark.parametrize("bad", ("oops", ["a"], 5), ids=("str", "list", "int"))
+    def test_a_non_mapping_config_names_the_field(self, bad):
+        """It escaped as a bare `TypeError: 'str' object is not a mapping`.
+
+        Only `ValueError` is wrapped with the field name, so the author of a
+        hand-written JSON config -- the population this feature is for -- got a
+        traceback naming neither the field nor the key.
+        """
+        with pytest.raises(ValueError, match="'comparator_config' on field 'total'"):
+            StructuredModel.model_from_json(self._field(bad))
+
+
+class TestTheTwoFrontDoorsAgreeOnMisplacedAndInferredKeys:
+    """The config path and the JSON Schema path must answer the same input alike."""
+
+    def test_the_list_element_note_appears_on_both_paths(self):
+        """`explain()` reported an array field with a scalar-looking trail.
+
+        Inference reads the ELEMENT type, so the comparator and threshold apply per
+        element. The config path says so; the schema path passes the element already
+        unwrapped, so it could not see that this was a list.
+        """
+        config = StructuredModel.model_from_json(
+            {
+                "model_name": "C",
+                "infer_unspecified_fields": True,
+                "fields": {
+                    "tags": {
+                        "type": "List[str]",
+                        "comparator": "auto",
+                        "required": False,
+                    }
+                },
+            }
+        )
+        schema = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "title": "D",
+                "x-aws-stickler-infer-unspecified": True,
+                "properties": {
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "x-aws-stickler-comparator": "auto",
+                    }
+                },
+            }
+        )
+        from_config = stickler.eval_for(config).explain()["tags"]["why"]
+        from_schema = stickler.eval_for(schema).explain()["tags"]["why"]
+        assert from_config == from_schema
+        assert from_config[0] == "list: spec applies to each element"
+
+    def test_the_flag_on_a_primitive_field_is_refused_on_both_paths(self):
+        """It scopes a subtree, so on a leaf it was accepted and dropped.
+
+        The schema path already refused the same misplacement precisely. Accepting
+        it here left a config that looked configured and was not.
+        """
+        with pytest.raises(ValueError, match="not read on primitive field 'f'"):
+            StructuredModel.model_from_json(
+                {
+                    "model_name": "C",
+                    "fields": {
+                        "f": {
+                            "type": "float",
+                            "comparator": "ExactComparator",
+                            "infer_unspecified_fields": True,
+                            "required": False,
+                        }
+                    },
+                }
+            )
+
+    def test_it_still_scopes_a_nested_model_subtree(self):
+        """The legitimate use must keep working, in both directions."""
+        model = StructuredModel.model_from_json(
+            {
+                "model_name": "C",
+                "infer_unspecified_fields": False,
+                "fields": {
+                    "inner": {
+                        "type": "structured_model",
+                        "infer_unspecified_fields": True,
+                        "required": False,
+                        "fields": {"total": {"type": "float", "required": False}},
+                    }
+                },
+            }
+        )
+        inner = model.model_fields["inner"].annotation
+        nested = inner.__args__[0] if hasattr(inner, "__args__") else inner
+        assert type(nested._get_comparison_info("total").comparator).__name__ == (
+            "NumericComparator"
+        )
+
+
+class TestAPartlyConfiguredFieldRecordsWhatTheAuthorTookBack:
+    """The trail must not contradict the row it sits under.
+
+    Inference fills only what the config left unnamed, so a partly configured field
+    reported the author's numbers while the trail quoted the inferred ones -- a
+    field with `threshold: 0.99` carried `@0.95` twice and no record of the
+    override. The docs recommend `explain()` for catching a misspelled key, which is
+    exactly the read that obscured.
+    """
+
+    @staticmethod
+    def _explain(**overrides):
+        field = {"type": "float", "required": False, **overrides}
+        model = StructuredModel.model_from_json(
+            {
+                "model_name": "C",
+                "infer_unspecified_fields": True,
+                "fields": {"total": field},
+            }
+        )
+        return stickler.eval_for(model).explain()["total"]
+
+    def test_the_overrides_are_named_in_the_trail(self):
+        entry = self._explain(threshold=0.99, weight=3.0, clip_under_threshold=False)
+        assert entry["threshold"] == pytest.approx(0.99)
+        trail = " | ".join(entry["why"])
+        assert "threshold=0.99" in trail
+        assert "weight=3.0" in trail
+        assert "clip_under_threshold=False" in trail
+
+    def test_a_fully_inferred_field_gains_no_override_entry(self):
+        """The control: nothing was taken back, so nothing is claimed."""
+        entry = self._explain()
+        assert not any("overrides above" in w for w in entry["why"])

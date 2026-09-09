@@ -387,6 +387,24 @@ inferred rather than what you intended.
 Use `Invoice.to_stickler_config()` if you want the resolved configuration back as
 JSON, for example to commit the fully-expanded version once you are happy with it.
 
+!!! warning "The export is lossy for a `dict` field, so the round trip does not hold"
+
+    `to_stickler_config()` writes a mapping field as `"type": "str"`:
+
+    ```json
+    {"type": "str", "comparator": "ANLSStarComparator", "threshold": 0.7, ...}
+    ```
+
+    Re-importing that config gives a model whose field is a `str`, which then
+    rejects dict input with `Input should be a valid string`. The comparator and
+    threshold survive; the type does not.
+
+    This is not specific to inference -- an explicitly configured `dict` field
+    exports the same way -- but a bare `{"type": "dict"}` only became legal to write
+    with this feature, so following the advice above can now reach it. Until the
+    export is fixed, either keep `"type": "dict"` by hand in the committed config,
+    or treat the export as a readable record rather than a re-importable one.
+
 ### What inference chooses
 
 Both the comparator and the threshold, matching `stickler.evaluate()`:

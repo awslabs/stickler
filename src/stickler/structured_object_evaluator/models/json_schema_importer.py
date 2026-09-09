@@ -29,7 +29,7 @@ from pydantic import AnyUrl, BaseModel, TypeAdapter
 from pydantic.fields import FieldInfo
 
 from .comparable_field import ComparableField
-from .comparator_registry import create_comparator
+from .comparator_registry import create_comparator, normalize_comparator_config
 from .field_converter import AUTO_COMPARATOR
 from .model_factory import ModelFactory
 from .optional_annotation import is_union, unwrap_optional
@@ -452,6 +452,7 @@ class JsonSchemaImporter:
                     # shallow default with the flag on, while the config path
                     # inferred the same shape -- one flag, two answers.
                     annotation=element,
+                    element_of_list=True,
                 )
             return (Optional[final_list] if nullable else final_list), comparison_field
 
@@ -586,6 +587,7 @@ class JsonSchemaImporter:
         comparator_name: str,
         threshold: float,
         annotation: Any = None,
+        element_of_list: bool = False,
     ) -> FieldInfo:
         extensions = self._extract_extensions(field_info, field_path)
 
@@ -613,13 +615,20 @@ class JsonSchemaImporter:
         )
         inferred = None
         if wants_inference and annotation is not None:
-            from .field_converter import _infer_spec
+            from .field_converter import LIST_ELEMENT_PROVENANCE, _infer_spec
 
             inferred = _infer_spec(
                 field_path.rsplit(".", 1)[-1] or "value",
                 annotation,
                 self.match_threshold,
             )
+            # `_infer_spec` prepends this itself when it is handed a list
+            # annotation, but the array branch above passes the ELEMENT type, so it
+            # cannot see that this is a list. Without it, `explain()` reported an
+            # array field with a scalar-looking trail here while the config path
+            # and `stickler.evaluate()` both said "spec applies to each element".
+            if element_of_list:
+                inferred.provenance.insert(0, LIST_ELEMENT_PROVENANCE)
 
         # MERGED over the inferred config, author's keys winning, matching the
         # config path (`field_converter.convert_field_config`). Reading
@@ -627,7 +636,9 @@ class JsonSchemaImporter:
         # comparator dropped it entirely for an inferred field, so
         # `absolute_tolerance: 0.5` beside `"auto"` built rel=0.001/abs=0.0 while
         # the identical Stickler config built abs=0.5.
-        author_config = extensions.get("comparator_config", {})
+        author_config = normalize_comparator_config(
+            extensions.get("comparator_config"), f"field '{field_path}'"
+        )
         comparator = extensions.get("comparator")
         if comparator is None and inferred is not None:
             comparator = create_comparator(

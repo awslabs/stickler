@@ -9,8 +9,15 @@ from typing import Any, Dict, Optional, Tuple, Type, get_args, get_origin
 from pydantic import Field
 
 from .comparable_field import ComparableField
-from .comparator_registry import create_comparator
+from .comparator_registry import create_comparator, normalize_comparator_config
 from .type_resolver import resolve_type_string
+
+# Prepended to an inferred spec whose field is a LIST, because inference reads the
+# ELEMENT type and the resulting comparator/threshold apply per element rather than
+# to the list as a whole. Shared with the JSON Schema importer, which reaches the
+# same inference with the element already unwrapped: spelling it in both places let
+# `explain()` report an array field with a scalar-looking trail on one path only.
+LIST_ELEMENT_PROVENANCE = "list: spec applies to each element"
 
 #: Field-level opt-in: `"comparator": "auto"` asks for the same inference
 #: `stickler.evaluate()` uses, for this field only. Chosen over a separate key so a
@@ -60,7 +67,7 @@ def _infer_spec(
             FieldInfo(annotation=element),
             match_threshold=match_threshold,
         )
-        spec.provenance.insert(0, "list: spec applies to each element")
+        spec.provenance.insert(0, LIST_ELEMENT_PROVENANCE)
         return spec
 
     return infer_field_config(
@@ -163,6 +170,23 @@ class FieldConverter:
                 field_name, field_config, infer_unspecified=infer_unspecified
             )
 
+        # `infer_unspecified_fields` scopes a SUBTREE, so it is meaningful only on
+        # a nested model, which the branch above handles. On a primitive field
+        # there is no subtree and nothing reads it, so it was accepted and dropped
+        # in silence -- a config declaring it on a leaf looked configured and was
+        # not. The JSON Schema path already refuses the same misplacement with a
+        # precise message ("is not read on field 'f'. It belongs on the object"),
+        # so refusing here is what makes the two front doors agree. See #210 and
+        # #312 for why a dropped key is not an acceptable outcome.
+        if "infer_unspecified_fields" in field_config:
+            raise ValueError(
+                f"'infer_unspecified_fields' is not read on primitive field "
+                f"'{field_name}'; it scopes a nested model's own subtree and has "
+                f"no effect here. Set it on the model, or on a "
+                f"'structured_model' field to scope that subtree. To infer this "
+                f'one field, set "comparator": "auto" on it.'
+            )
+
         # Handle primitive fields (existing logic)
         # Resolve the type
         try:
@@ -195,11 +219,15 @@ class FieldConverter:
             # for anyone who set any other key.
             comparator_config = {
                 **inferred.comparator_config,
-                **field_config.get("comparator_config", {}),
+                **normalize_comparator_config(
+                    field_config.get("comparator_config"), f"field '{field_name}'"
+                ),
             }
         else:
             comparator_name = declared_comparator or "LevenshteinComparator"
-            comparator_config = field_config.get("comparator_config", {})
+            comparator_config = normalize_comparator_config(
+                field_config.get("comparator_config"), f"field '{field_name}'"
+            )
 
         # Create comparator instance
         try:
@@ -217,6 +245,21 @@ class FieldConverter:
             inferred.clip_under_threshold if inferred else True,
         )
 
+        # Name the parameters the author took back, so the trail cannot contradict
+        # the row it sits under. Inference fills only what the config left unnamed,
+        # so a PARTLY configured field reported the inferred numbers while
+        # `explain()` showed the author's -- a field with `threshold: 0.99` carried
+        # a trail saying `@0.95` twice and no record of the override at all. The
+        # docs recommend `explain()` for spotting a misspelled key, which is exactly
+        # the read that obscured.
+        if inferred is not None:
+            overridden = [
+                f"{key}={field_config[key]!r}"
+                for key in ("threshold", "weight", "clip_under_threshold")
+                if key in field_config
+            ]
+            if overridden:
+                provenance.append(f"config: {', '.join(overridden)} (overrides above)")
 
         # Extract Pydantic field parameters
         default = field_config.get("default", ...)  # Use Ellipsis for required fields
@@ -344,7 +387,6 @@ class FieldConverter:
         weight = field_config.get("weight", 1.0)  # Default weight
         clip_under_threshold = field_config.get("clip_under_threshold", True)
 
-
         # For list_structured_model, don't set threshold (Hungarian matching uses model's match_threshold)
         # For single structured_model, use threshold from config
         if type_string == "list_structured_model":
@@ -370,7 +412,6 @@ class FieldConverter:
             description=description,
             examples=examples,
         )
-
 
         return field_type, comparable_field
 
