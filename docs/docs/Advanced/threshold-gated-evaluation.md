@@ -180,14 +180,25 @@ whole would score something the comparison declared not comparable.
 
 ```python
 clean = (
-    cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
-    and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
+    cm['aggregate']['fp'] + cm['aggregate']['fn'] == 0
+    and cm['overall']['fp'] + cm['overall']['fn'] == 0
 )
 ```
 
-So `match_threshold` is also the knob for how much leaf detail you get. If you
-want a marginal object's leaves scored individually, lower it until that object
-qualifies as comparable. See
+Read **both nodes**. That is the fix: the earlier version of this snippet summed
+`fd` on `aggregate` but took `fa` from `overall` only, so a value invented where the
+ground truth is null went unseen. Such a value is `fa` at that leaf and rolls into
+`aggregate`, while `overall` stays clean because the item still paired.
+
+`fa + fd` on a node would work just as well, since `FP = FA + FD` by construction.
+`fp` is preferred only because it is one term instead of two and cannot go stale if a
+class is ever added -- not because the classes are unsafe to read.
+
+So `match_threshold` is also the knob for how much leaf detail you get, for a
+**list item**. If you want a marginal item's leaves scored individually, lower it
+until that item qualifies as comparable. It does nothing for a single nested
+`StructuredModel` field, which is never gated and always reports its leaves; the
+field's own `threshold` decides that verdict. See
 [Aggregate Metrics](aggregate-metrics.md#which-node-answers-which-question).
 
 `overall_score` is the scalar summary, and `EvalResult.matched` from

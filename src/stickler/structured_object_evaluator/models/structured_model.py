@@ -1545,7 +1545,22 @@ class StructuredModel(BaseModel):
 
         Args:
             other: Another instance of the same model to compare with
-            include_confusion_matrix: Whether to include confusion matrix calculations
+            include_confusion_matrix: Whether to include confusion matrix
+                calculations. The result carries two rollup nodes answering
+                different questions: `overall` classifies this node's direct
+                children (for a list field, whether each pairing was genuine or
+                spurious; at the root, its own fields, so the two units can mix
+                in one count -- read a list field's own `overall` for a count of
+                items), while `aggregate` gives leaf
+                detail for the objects that were comparable. A LIST ITEM below
+                the element class's `match_threshold` is one FD and is not
+                descended into, so lowering `match_threshold` is how you get
+                leaf detail for a marginal list item. A single nested
+                `StructuredModel` field is not gated this way: its leaves are
+                always reported on `aggregate`, and its `overall` verdict comes
+                from the field's own `threshold`, not from `match_threshold`.
+                See
+                https://awslabs.github.io/stickler/Advanced/aggregate-metrics/
             document_non_matches: Whether to document non-matches for analysis
             evaluator_format: Whether to format results for the evaluator
             recall_with_fd: If True, include FD in recall denominator (TP/(TP+FN+FD))

@@ -141,27 +141,6 @@ Each release links to full notes on the
   `match_threshold=` explicitly still overrides the declaration, and a class that
   declares nothing is unaffected.
 
-- JSON Schema import now delegates standard types, local references, combiners,
-  and constraint parsing to `json-schema-to-pydantic`. Stickler retains a narrow
-  adapter for comparison metadata and nested `StructuredModel` creation. Parsed
-  types still choose comparison behavior, but schema constraints do not reject
-  imperfect predictions before scoring: malformed enum, date, and
-  constraint-violating values remain constructible and reach their comparator.
-
-  Unconfigured enum fields now use `ExactComparator` at threshold `1.0`, and
-  `date` / `date-time` formats use `DateComparator` at threshold `1.0`; both used
-  `LevenshteinComparator` at threshold `0.5` before this change, so default scores
-  can move for those fields.
-  This adds support for valid Draft 7 multi-type unions and multi-arm `allOf`,
-  `anyOf`, and `oneOf` schemas; recursive models and `patternProperties` remain
-  explicit unsupported boundaries ([#212](https://github.com/awslabs/stickler/issues/212)).
-
-- Confidence AUROC and document-splitting statistics now use NumPy
-  implementations with randomized scikit-learn and SciPy equivalence tests.
-  `scikit-learn` is no longer a core dependency, and the `docsplit` extra now
-  adds only pandas; SciPy remains isolated to the `semantic` extra
-  ([#216](https://github.com/awslabs/stickler/issues/216)).
-
 ### Fixed
 
 - **Breaking:** `HungarianMatcher.calculate_metrics` no longer reports a paired
@@ -312,45 +291,68 @@ Each release links to full notes on the
   Replacements, all of which already existed: `overall_score` for the scalar
   summary, `EvalResult.matched` for a single object-level verdict, and
   `field_comparisons` for the individual failures. To ask whether anything failed
-  at all, both rollup nodes have to be read, because a list item that scores
-  below `match_threshold` is recorded as one `fd` on `confusion_matrix.overall`
-  and is not descended into, so its leaves never appear under
-  `confusion_matrix.aggregate`:
+  at all, both rollup nodes have to be read, because each is blind to the other's
+  failures. A list item scoring below `match_threshold` is recorded as one `fd` on
+  `confusion_matrix.overall` and is not descended into, so its leaves never appear
+  under `confusion_matrix.aggregate`; conversely a value invented where the ground
+  truth is null is `fa` at that leaf and rolls into `confusion_matrix.aggregate`,
+  while `overall` stays clean because the item still paired:
 
   ```python
   clean = (
-      cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
-      and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
+      cm['aggregate']['fp'] + cm['aggregate']['fn'] == 0
+      and cm['overall']['fp'] + cm['overall']['fn'] == 0
   )
   ```
 
-  A below-threshold object is a spurious non-match, so not descending into it is
-  deliberate: `overall` carries the object verdict and `aggregate` carries leaf
-  detail for the objects that were comparable. A caller wanting leaf detail for a
-  marginal object lowers `match_threshold` until it qualifies. See
-  [#288](https://github.com/awslabs/stickler/issues/288) for the naming.
+  A below-threshold **list item** is a spurious non-match, so not descending into it
+  is deliberate: on the list field, `overall` classifies the item pairings, and
+  `aggregate` carries leaf detail for the items that were comparable. Read that on
+  the list field rather than at the root, whose direct children are the root's own
+  fields, so a document with three header fields beside a five-item list reads
+  `tp = 8` -- 3 leaves plus 5 pairings, two units in one count. A caller wanting
+  leaf detail for a marginal list item lowers `match_threshold` until it qualifies.
 
+  That gating is a property of `List[StructuredModel]` pairing, not of nested
+  objects generally, and the pages now say so. `StructuredListComparator` pairs
+  items and then accepts or rejects; a single nested `StructuredModel` field goes
+  through `FieldComparator`, which has no such stage. So for a nested object field
+  the leaves are **always** reported on `aggregate`, and the verdict comes from the
+  field's own `threshold` -- `match_threshold` is never consulted, which made the
+  published "lower `match_threshold`" remedy a no-op for that shape. Measured on a
+  three-leaf nested object with one leaf wrong:
 
-  Replacements, all of which already existed: `overall_score` for the scalar
-  summary, `EvalResult.matched` for a single object-level verdict, and
-  `field_comparisons` for the individual failures. To ask whether anything failed
-  at all, both rollup nodes have to be read, because a list item that scores
-  below `match_threshold` is recorded as one `fd` on `confusion_matrix.overall`
-  and is not descended into, so its leaves never appear under
-  `confusion_matrix.aggregate`:
+  ```
+  field threshold=0.9   overall tp=1 fd=1   aggregate tp=3 fd=1
+  field threshold=0.5   overall tp=2 fd=0   aggregate tp=3 fd=1
+  match_threshold  0.9 / 0.7 / 0.5 / 0.1 -> identical at every value
+  ```
+
+  Also documented: on a list whose items were **all** rejected, `aggregate` stops
+  counting leaves. A rejected item is not descended into, so such a node has no
+  child fields at all, and `AggregateMetricsCalculator` decides leaf versus parent on
+  exactly that -- so the node is treated as a leaf and its `aggregate` is a copy of
+  its own `overall`. The unit of the count changes with the data: two rejected items
+  of six fields report `aggregate tp=0 fd=2`, two object rows where twelve leaves
+  exist. It fires per node, so it can happen for one list while the document is
+  plainly not all-rejected, and an `aggregate` count is therefore not a safe
+  denominator for a leaf total.
+
+  The unit **cannot be derived from the confusion matrix**, which is why the
+  published snippet takes the answer from the model. A list of primitives with one
+  element wrong and an object list whose only item was rejected are identical in the
+  matrix -- both `fields == {}` with non-zero `aggregate` counts -- and yet the first
+  counts element comparisons, which are leaves. Two derived conditions were tried
+  and both were wrong, in opposite directions: `overall['tp'] == 0` is also true of a
+  primitive field that simply failed, and `'fields' in node and not node['fields']`
+  is also true of that primitive list and of a scalar null on both sides. The
+  documented form names the `List[StructuredModel]` fields explicitly:
 
   ```python
-  clean = (
-      cm['aggregate']['fd'] + cm['aggregate']['fn'] == 0
-      and cm['overall']['fd'] + cm['overall']['fn'] + cm['overall']['fa'] == 0
-  )
+  counts_objects = section in OBJECT_LISTS and node['overall']['tp'] == 0
   ```
 
-  A below-threshold object is a spurious non-match, so not descending into it is
-  deliberate: `overall` carries the object verdict and `aggregate` carries leaf
-  detail for the objects that were comparable. A caller wanting leaf detail for a
-  marginal object lowers `match_threshold` until it qualifies. See
-  [#288](https://github.com/awslabs/stickler/issues/288) for the naming.
+  See [#288](https://github.com/awslabs/stickler/issues/288) for the naming.
 
 - An unrecognized `x-aws-stickler-*` extension key in a JSON Schema now raises
   instead of being silently dropped. The sharpest shape was a typo beside a
@@ -544,6 +546,66 @@ Each release links to full notes on the
 
   Unrecognized input no longer prints the success message either. It prints
   nothing, which is the honest answer for data the printer could not read.
+
+### Documentation
+
+- Documented what the two confusion-matrix rollup nodes answer. `overall`
+  classifies a node's direct children, so on a list field it reads as a per-item
+  verdict (was this pairing genuine or spurious) while at the root it classifies
+  the root's own fields; `aggregate` gives leaf detail for the objects that were
+  comparable. `match_threshold` is the line between them for a **list item**: an
+  item below it is a single FD, a spurious non-match, and is not descended into,
+  so a caller wanting leaf detail for a marginal item lowers `match_threshold`
+  until the item qualifies as comparable. A single nested `StructuredModel` field
+  is not gated this way; its leaves are always reported, and the field's own
+  `threshold` decides its verdict.
+
+  Both nodes were previously described only in terms of their own mechanics -- one
+  as a classification the node makes directly, the other as a sum of the primitive
+  fields beneath it -- which said nothing about which to read for which question,
+  or that they diverge on any model with nesting. They coincide whenever every
+  child contributes the same number of rows to each: a flat model, a list whose
+  items were all rejected, and also a nested object holding exactly one leaf, where
+  the object is one row and its leaf is one row. That last case is an accepted,
+  expanded subtree, so "they coincide only where there is nothing left to expand"
+  is not the rule. One rejected subtree among several usually makes them diverge
+  further rather than converge, because `aggregate` then reports a flawless
+  precision over the accepted items only.
+
+  Coinciding is not evidence that nothing was hidden, and the pages say so. With
+  three header fields beside a two-item list whose items were both rejected, the
+  root reads `overall tp=3 fd=2` and `aggregate tp=3 fd=2` -- equal, while 15
+  leaves exist in the document and `aggregate` counted 5 rows, because the list
+  contributed object rows to both.
+
+  Older sections of the same pages were brought into line, since a page that
+  disagrees with itself about this is the defect being fixed. `Calculation Logic`
+  and `Key Features` in `aggregate-metrics.md` stated the parent-node rule as an
+  unconditional sum of child `aggregate` values, which is the model the new
+  warning corrects, and `Field-Level Aggregate Metrics` in
+  `understanding-results.md` repeated it 350 lines below the corrected bullet --
+  with a worked snippet that ranked sections by `aggregate` error counts, mixing
+  leaf rows and object rows in one ranking. That snippet now reports which unit it
+  got. The "lower `match_threshold` to get a marginal object's leaves" remedy also
+  survived in `threshold-gated-evaluation.md` and in two headings, where
+  `test_match_threshold_is_inert_for_this_shape` pins it as a no-op; those now say
+  **list item**.
+
+  Both pages carry the same two-stage framing as mean Average Precision, and now
+  also name where the analogy stops: a below-threshold bounding box counts as both
+  FP and FN so mAP recall falls, while a below-threshold object is `fd` only, so
+  `overall` recall reads `1.0` on a document with a spurious pairing unless
+  `recall_with_fd=True` is passed.
+
+  Also documents that `EvalResult.precision`, `.recall`, `.f1` and `.accuracy` are
+  read from `confusion_matrix.overall.derived` at the **root**, so they inherit the
+  root's unit and classify the root's direct children. That is an object rate only
+  where the list is the model's sole field; with header fields beside it the same
+  numbers are a rate over header leaves and item pairings mixed. On a list-only
+  five-item model, `precision` of `1.0` beside an `overall_score` of `0.9667` is two
+  correct answers to two different questions rather than a contradiction. The naming
+  is under review for 1.0 in
+  [#288](https://github.com/awslabs/stickler/issues/288).
 
 ## [0.7.0] - 2026-08-18
 
