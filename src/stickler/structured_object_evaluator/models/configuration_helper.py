@@ -14,7 +14,12 @@ from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.utils.deprecation import warn_once
 
-from .optional_annotation import is_union, union_args, unwrap_optional
+from .optional_annotation import (
+    is_union,
+    union_args,
+    unwrap_annotated,
+    unwrap_optional,
+)
 
 if TYPE_CHECKING:
     from stickler.structured_object_evaluator.models.comparison_info import (
@@ -138,43 +143,11 @@ class ConfigurationHelper:
         return instance
 
     @staticmethod
-    def can_score_mapping(model_cls, field_name: str, comparator) -> bool:
-        """Whether ``comparator`` can score a mapping, warning once if it cannot.
-
-        Both public entry points reach a field's comparator by different routes
-        (``compare_with`` through ComparisonDispatcher, ``compare`` through
-        ``compare_field_raw``), so this check lives in one place rather than
-        being written twice and drifting apart.
-
-        A DENYLIST, not an allowlist. Only the comparators known to be wrong on a
-        mapping are refused; everything else is trusted.
-
-        An allowlist keyed on an opt-in attribute looked safer and was worse: the
-        attribute is new, so no comparator outside this repo can carry it, and a
-        user who wrote a mapping comparator and asked for it BY NAME had their
-        score silently replaced with 0.0. An explicit ``comparator=`` is consent
-        by definition, and the gate was overriding it -- reproducing the very
-        symptom of #297 for a different population.
-
-        The two refused comparators are refused on evidence, not by category:
-
-            LevenshteinComparator  raises TypeError on a dict
-            FuzzyComparator        scores a CHANGED value (0.944) above a mere
-                                   key reordering (0.667), so its ordering is
-                                   not defensible as a metric
-
-        Callers report a false discovery rather than raising: the shape of a value
-        can be data-dependent, so raising ends a corpus run on document N after
-        succeeding on N-1, and no test would catch it. The warning carries the
-        same information without stopping.
-        """
-        return ConfigurationHelper.can_score_object(
-            model_cls, field_name, comparator, shape="mapping"
-        )
-
-    @staticmethod
     def can_score_object(model_cls, field_name: str, comparator, *, shape: str) -> bool:
         """Whether ``comparator`` can score a whole object, warning once if not.
+
+        Half of :meth:`can_compare_object_pair`, which is what callers use; see
+        there for why the halves are composed in one place.
 
         ``shape`` is ``"mapping"`` or ``"model"``. The two differ only in the
         wording of the warning and in the advice it gives, because the remedy is
@@ -196,8 +169,27 @@ class ConfigurationHelper:
         as a TRUE POSITIVE. Refusing is strictly better than a number that
         confident and that wrong.
 
-        See :meth:`can_score_mapping` for why this is a denylist, and why the
-        callers report a false discovery rather than raising.
+        A DENYLIST, not an allowlist. Only the comparators known to be wrong on
+        an object are refused; everything else is trusted.
+
+        An allowlist keyed on an opt-in attribute looked safer and was worse: the
+        attribute is new, so no comparator outside this repo can carry it, and a
+        user who wrote a mapping comparator and asked for it BY NAME had their
+        score silently replaced with 0.0. An explicit ``comparator=`` is consent
+        by definition, and the gate was overriding it -- reproducing the very
+        symptom of #297 for a different population.
+
+        The two refused comparators are refused on evidence, not by category:
+
+            LevenshteinComparator  raises TypeError on a dict
+            FuzzyComparator        scores a CHANGED value (0.944) above a mere
+                                   key reordering (0.667), so its ordering is
+                                   not defensible as a metric
+
+        Callers report a false discovery rather than raising: the shape of a value
+        can be data-dependent, so raising ends a corpus run on document N after
+        succeeding on N-1, and no test would catch it. The warning carries the
+        same information without stopping.
         """
         if comparator.__class__.__name__ not in _COMPARATORS_THAT_CANNOT_SCORE_MAPPINGS:
             return True
@@ -220,7 +212,9 @@ class ConfigurationHelper:
                 "make it a nested StructuredModel for per-field detail.",
             )
         warn_once(
-            "dict-value-uncomparable" if shape == "mapping" else "model-value-uncomparable",
+            "dict-value-uncomparable"
+            if shape == "mapping"
+            else "model-value-uncomparable",
             f"{getattr(model_cls, '__name__', model_cls)}.{field_name}",
             f"Field '{field_name}' holds {noun}, but its comparator "
             f"({comparator.__class__.__name__}) scores scalars, so the pair is "
@@ -231,21 +225,59 @@ class ConfigurationHelper:
         return False
 
     @staticmethod
-    def _wants_object_grade_comparison(cls, field_name: str, field_info) -> bool:
+    def is_object_grade_annotation(field_info) -> bool:
         """Whether a field is judged as one object rather than as a scalar.
 
         True for a mapping, a plain pydantic model, and a list of either. All
         four get `ANLSStarComparator`, the class's `match_threshold`, and
         `clip_under_threshold=False`.
 
-        Memoised per (class, field) because it reads only the annotation, which
-        is fixed once the class is defined. `get_comparison_info` runs once per
-        field per pairwise comparison -- every cell of a Hungarian cost matrix,
-        so 60x60 objects of 20 fields is 72,000 calls -- and each predicate
-        below destructures the annotation again. Evaluating all four per call
-        measured 18% slower on that shape (2.285s -> 2.699s), against the same
-        23% regression the comment in `ComparisonHelper.compare_field_raw`
-        records for adding work to this path.
+        Reads only the annotation, so it is safe to ask before a class finishes
+        being defined. `StructuredModel._install_object_grade_comparators` calls
+        THIS rather than the memoised wrapper below for exactly that reason: an
+        annotation that has not resolved yet answers False, and caching that
+        False at class-definition time would outlive the annotation becoming
+        readable.
+        """
+        return (
+            ConfigurationHelper.is_dict_field_type(field_info)
+            or ConfigurationHelper._is_list_of_mappings(field_info)
+            or ConfigurationHelper.is_plain_model_field_type(field_info)
+            or ConfigurationHelper._is_list_of_plain_models(field_info)
+        )
+
+    @staticmethod
+    def object_grade_clip(extra) -> bool:
+        """The ``clip_under_threshold`` an object-grade field should carry.
+
+        An object is a container: a partly-correct one keeps its partial score
+        rather than being zeroed by the field threshold, the same policy nested
+        objects and lists use. So the default is off -- but only as a DEFAULT. An
+        explicit ``clip_under_threshold=True`` is a decision, and overwriting it
+        discarded it in silence.
+
+        One function because two paths set this value and they must not disagree:
+        ``StructuredModel._install_object_grade_comparators`` writes it into the
+        ``FieldInfo`` at class-definition time, where the exported schema can see
+        it, and :meth:`get_comparison_info` applies it at read time for a field
+        that path could not reach. When each spelled the rule itself, a declared
+        ``True`` was honoured on a dict field and dropped on a plain-model one.
+        """
+        if getattr(extra, "_clip_explicit", False):
+            return bool(getattr(extra, "_clip_under_threshold", True))
+        return False
+
+    @staticmethod
+    def _wants_object_grade_comparison(cls, field_name: str, field_info) -> bool:
+        """:meth:`is_object_grade_annotation`, memoised per (class, field).
+
+        The annotation is fixed once the class is defined, and
+        `get_comparison_info` runs once per field per pairwise comparison --
+        every cell of a Hungarian cost matrix, so 60x60 objects of 20 fields is
+        72,000 calls -- while each predicate destructures the annotation again.
+        Evaluating all four per call measured 18% slower on that shape (2.285s ->
+        2.699s), against the same 23% regression the comment in
+        `ComparisonHelper.compare_field_raw` records for adding work to this path.
 
         ONLY the annotation is cached. The comparator, threshold and weight
         built around it are not, because `match_threshold` is a plain class
@@ -257,22 +289,60 @@ class ConfigurationHelper:
         write its own fields into it. Hanging it off the class also means it is
         collected with the class, where a module-level dict keyed on the class
         would keep every dynamically created model alive.
+
+        Each entry remembers the ANNOTATION it was computed from, and a miss on
+        that is what makes the cache safe. An annotation is NOT fixed for the
+        whole life of a class: a forward reference is a `ForwardRef` until
+        pydantic resolves it, which it does on `model_rebuild()` -- explicit, or
+        the implicit one it performs the first time an incomplete model is used.
+        Anything that reads a field's configuration before then (`explain()` and
+        `to_json_schema()` both do) computed False from the unresolved annotation,
+        and remembering that by field name alone made it permanent: two
+        structurally identical models scored 1.0/tp=1 or 0.0/fd=1 depending only
+        on whether something had looked at the class first. Keying on the
+        annotation object costs one identity comparison and removes the ordering
+        dependency, because pydantic installs a NEW annotation on resolution.
         """
         cache = cls.__dict__.get("_stickler_object_grade_cache")
         if cache is None:
             cache = {}
             setattr(cls, "_stickler_object_grade_cache", cache)
+        annotation = field_info.annotation
         remembered = cache.get(field_name)
-        if remembered is not None:
-            return remembered
-        answer = (
-            ConfigurationHelper.is_dict_field_type(field_info)
-            or ConfigurationHelper._is_list_of_mappings(field_info)
-            or ConfigurationHelper.is_plain_model_field_type(field_info)
-            or ConfigurationHelper._is_list_of_plain_models(field_info)
-        )
-        cache[field_name] = answer
+        if remembered is not None and remembered[0] is annotation:
+            return remembered[1]
+        answer = ConfigurationHelper.is_object_grade_annotation(field_info)
+        cache[field_name] = (annotation, answer)
         return answer
+
+    @staticmethod
+    def strip_annotation_wrappers(annotation):
+        """``Optional[...]`` and ``Annotated[...]`` removed, in any nesting order.
+
+        Pydantic strips ``Annotated`` when it wraps a WHOLE annotation but NOT
+        when it sits inside a union, so ``Annotated[List[Leaf], Field(...)] |
+        None`` -- the spelling any ``Field(description=...)`` on an optional field
+        produces -- is stored as ``Optional[Annotated[List[Leaf], FieldInfo]]``.
+        ``get_origin`` on that arm reports ``Annotated`` rather than ``list``, so
+        an origin test reads the wrapper and every object-grade predicate answers
+        False.
+
+        That is not cosmetic here. The field keeps the scalar Levenshtein
+        default, and because ``_holds_a_plain_model`` still finds plain models in
+        the list, the element comparator is still wrapped in
+        ``_ClassGatedComparator`` -- which then refuses every pair, because
+        Levenshtein is on the object denylist. Two IDENTICAL elements became two
+        false discoveries: ``Optional[Annotated[List[Leaf], Field(...)]]`` scored
+        1.0 with ``tp=2`` on ``dev`` and 0.0 with ``fd=2`` here.
+
+        ``_annotation_is_list`` in ``structured_model.py`` records the same trap
+        for the same reason; this applies that lesson to the four object-grade
+        predicates. Unwrapped on both sides of the union step so
+        ``Annotated[Optional[T], ...]`` answers the same as
+        ``Optional[Annotated[T, ...]]``.
+        """
+        annotation, _ = unwrap_optional(unwrap_annotated(annotation))
+        return unwrap_annotated(annotation)
 
     @staticmethod
     def is_plain_model_annotation(annotation) -> bool:
@@ -283,7 +353,8 @@ class ConfigurationHelper:
         per-field configuration to recurse into, so it is scored as one object,
         exactly as a mapping is. See ``ComparisonDispatcher`` CASE 5.
 
-        ``Optional[...]`` is unwrapped. A multi-arm union such as
+        ``Optional[...]`` and ``Annotated[...]`` are unwrapped; see
+        :meth:`strip_annotation_wrappers`. A multi-arm union such as
         ``Union[str, Cat]`` returns False for the same reason
         ``is_mapping_annotation`` refuses one: the field is not always an
         object, so an object-only comparator is the wrong default for it.
@@ -291,7 +362,7 @@ class ConfigurationHelper:
         from .structured_model import StructuredModel
 
         try:
-            annotation, _ = unwrap_optional(annotation)
+            annotation = ConfigurationHelper.strip_annotation_wrappers(annotation)
             return (
                 isinstance(annotation, type)
                 and issubclass(annotation, BaseModel)
@@ -317,7 +388,9 @@ class ConfigurationHelper:
         is correctly False for it, but its elements are still scored as objects.
         """
         try:
-            annotation, _ = unwrap_optional(field_info.annotation)
+            annotation = ConfigurationHelper.strip_annotation_wrappers(
+                field_info.annotation
+            )
             if get_origin(annotation) not in (list, List):
                 return False
             args = get_args(annotation)
@@ -326,17 +399,31 @@ class ConfigurationHelper:
             return False
 
     @staticmethod
-    def values_are_same_model_class(model_cls, field_name: str, gt_val, pred_val) -> bool:
-        """Whether two plain models are the same class, warning once if not.
+    def values_are_same_model_class(
+        model_cls, field_name: str, gt_val, pred_val
+    ) -> bool:
+        """Whether two pydantic models are the same class, warning once if not.
 
-        Both public entry points reach this question by different routes
-        (``compare_with`` through ComparisonDispatcher, ``compare`` through
-        ``compare_field_raw``, and the list forms of each), so it lives in one
-        place rather than being written four times and drifting apart. That is
-        the same reason ``can_score_mapping`` exists.
+        Reached only through :meth:`can_compare_object_pair`, which is the single
+        gate every reader consults; see there for why the two halves of the rule
+        are not callable separately.
 
-        Only pairs where BOTH sides are plain models are judged. Anything else
-        returns True and is left to the caller's own type dispatch.
+        Judges any pair where BOTH sides are pydantic models. Anything else
+        returns True: this answers a question about two models, and a
+        model-versus-scalar pair is a type mismatch the caller already handles.
+
+        A ``StructuredModel`` against a plain ``BaseModel`` IS judged, and is a
+        mismatch. An earlier version waved that pair through on the grounds that
+        such pairs are "left to the caller's own type dispatch", which was
+        false: ``ComparisonDispatcher`` CASE 5 is the caller, and it has no
+        further dispatch for them because CASE 3 requires BOTH sides to be
+        ``StructuredModel``. So the pair fell through to be scored as one
+        object, and two different classes -- one not even the same KIND of model
+        -- reported 1.0 and a true positive where ``dev`` reported a false
+        discovery. Two ``StructuredModel`` instances of the same class are
+        untouched: ``type(gt) is type(pred)`` is the next line. They reach here
+        only as list elements, since CASE 3 and the ``StructuredModel`` branch of
+        ``ComparisonHelper.compare_field_raw`` take the singular form first.
 
         EXACT class, not ``isinstance``, so a subclass against its base is also
         a mismatch. A subclass carries fields the base does not, so the two do
@@ -344,7 +431,7 @@ class ConfigurationHelper:
         would report a near-match for a schema difference.
 
         Scored as a false discovery rather than raised, following
-        ``can_score_mapping``: which class arrives is prediction data, so
+        ``can_score_object``: which class arrives is prediction data, so
         raising ends a corpus run on document N after succeeding on N-1. A
         correctly annotated field cannot reach here at all -- pydantic refuses
         a ``Dog`` for an ``Optional[Cat]`` field at construction -- so this only
@@ -353,15 +440,19 @@ class ConfigurationHelper:
         """
         if not (isinstance(gt_val, BaseModel) and isinstance(pred_val, BaseModel)):
             return True
-        from .structured_model import StructuredModel
-
-        if isinstance(gt_val, StructuredModel) or isinstance(pred_val, StructuredModel):
-            return True
         if type(gt_val) is type(pred_val):
             return True
+        # Keyed on `model_identity`, not `cls.__name__`. `warn_once` memoises on
+        # (id, context) for the process lifetime, and every model built by
+        # `create_model` or the JSON schema importer is named `DynamicModel`, so a
+        # bare name silently swallowed the warning for the SECOND such model -- the
+        # same collision `__init_subclass__` uses `model_identity` to avoid.
+        from .threshold_helper import model_identity
+
         warn_once(
             "plain-model-class-mismatch",
-            f"{getattr(model_cls, '__name__', model_cls)}.{field_name}",
+            f"{model_identity(getattr(model_cls, '__name__', str(model_cls)), getattr(model_cls, '__annotations__', {}))}"
+            f".{field_name}",
             f"Field '{field_name}' compared a {type(gt_val).__name__} against a "
             f"{type(pred_val).__name__}. Different classes are scored as a false "
             "discovery (0.0), even where field names and values match. Annotate "
@@ -370,6 +461,90 @@ class ConfigurationHelper:
             category=UserWarning,
         )
         return False
+
+    @staticmethod
+    def can_compare_object_pair(
+        model_cls, field_name: str, comparator, gt_val, pred_val
+    ) -> bool:
+        """The whole gate on scoring a pair of values as ONE object.
+
+        Two independent rules have to hold, and this is the only place either is
+        asked, because every reader has to apply BOTH:
+
+        1. the two values describe the same shape -- see
+           :meth:`values_are_same_model_class`;
+        2. the field's comparator can score an object at all -- see
+           :meth:`can_score_object`.
+
+        FIVE readers reach the question by different routes:
+        ``ComparisonDispatcher`` CASE 4 and CASE 5 for ``compare_with``,
+        ``StructuredModel.compare_field_raw`` and
+        ``ComparisonHelper.compare_field_raw`` for ``compare``, and
+        ``_ClassGatedComparator`` for a list element arriving through the
+        Hungarian cost matrix. Each previously spelled its own subset, and each
+        time a rule was added one of them was left behind: rule 1 landed in the
+        dispatcher and not in ``compare_field_raw``, then rule 2 landed in the
+        dispatcher and not in ``compare_field_raw``, and both times the result
+        was ``compare()`` returning a non-zero score for a pair ``compare_with()``
+        called a false discovery -- the disagreement #233 forbids, and the one
+        that decides Hungarian pairings before ``compare_with`` overrules it.
+        Composing the rules here rather than at five call sites is what makes
+        that class of drift unspellable.
+
+        The shape argument to :meth:`can_score_object` follows the VALUES, not
+        the annotation, because that is what the comparator is about to be handed.
+
+        Rule 2 reads both sides. Testing only ground truth meant a plain model
+        arriving as the PREDICTION skipped the gate, so ``gt=[model] pred=[str]``
+        scored 0.0 while the swap scored 1.0 -- a perfect match for a pair the
+        code had just decided it could not score.
+
+        Rule 2 asks about a PLAIN model only. A ``StructuredModel`` also passes
+        ``isinstance(v, BaseModel)``, and refusing on that put a floor of 0.0
+        under a shape the field has no say in: ``_ClassGatedComparator`` wraps the
+        whole list's comparator as soon as ONE element anywhere in either list is
+        a plain model, so ``[Cat(plain), Note(SM), Note(SM)]`` against an
+        identical copy scored 0.0 with ``fd=3`` where ``dev`` scored 1.0 with
+        ``tp=3``. The refusal exists because a plain model's annotation is what
+        installs an object-grade comparator and an undeclared annotation cannot;
+        a ``StructuredModel`` is scored by recursion instead and is not the
+        comparator's problem. The ``Cat`` element is still refused, which is the
+        declared treatment of a multi-arm union.
+        """
+        if not ConfigurationHelper.values_are_same_model_class(
+            model_cls, field_name, gt_val, pred_val
+        ):
+            return False
+
+        from .structured_model import StructuredModel
+
+        def is_plain_model(value) -> bool:
+            return isinstance(value, BaseModel) and not isinstance(
+                value, StructuredModel
+            )
+
+        gt_is_model, pred_is_model = is_plain_model(gt_val), is_plain_model(pred_val)
+        if gt_is_model or pred_is_model:
+            # A plain model against anything that is not one -- a bare dict, a
+            # string -- is a type mismatch, and `compare_with` says so: CASE 5
+            # needs BOTH sides to be a model, so the pair lands in the
+            # type-mismatch branch and reports fd=1. Answering anything else here
+            # is the #233 disagreement again, in the direction that matters:
+            # `compare()` scored a model against a dict of the same content 1.0
+            # while `compare_with()` called it a false discovery.
+            if gt_is_model != pred_is_model:
+                return False
+            shape = "model"
+        elif isinstance(gt_val, dict) or isinstance(pred_val, dict):
+            shape = "mapping"
+        else:
+            # Neither side is an object the annotation could have configured, so
+            # there is no object-grade comparator requirement to check. Scalars,
+            # and StructuredModel list elements, are the comparator's own business.
+            return True
+        return ConfigurationHelper.can_score_object(
+            model_cls, field_name, comparator, shape=shape
+        )
 
     @staticmethod
     def is_mapping_annotation(annotation) -> bool:
@@ -387,6 +562,11 @@ class ConfigurationHelper:
         comparator is the wrong default for it. Those land in the dispatcher's
         not-comparable branch instead.
 
+        ``Annotated[...]`` is stripped on both sides of the union step, for the
+        reason :meth:`strip_annotation_wrappers` records: pydantic leaves the
+        wrapper on a union arm, so ``Annotated[Dict[str, str], Field(...)] |
+        None`` read as a non-mapping and kept the scalar default.
+
         Args:
             annotation: A type annotation.
 
@@ -394,11 +574,12 @@ class ConfigurationHelper:
             True if values of this annotation are always mappings.
         """
         try:
+            annotation = unwrap_annotated(annotation)
             if is_union(annotation):
                 args = [a for a in union_args(annotation) if a is not type(None)]
                 if len(args) != 1:
                     return False
-                annotation = args[0]
+                annotation = unwrap_annotated(args[0])
             if annotation is dict:
                 return True
             origin = get_origin(annotation) or annotation
@@ -425,7 +606,9 @@ class ConfigurationHelper:
         can score a mapping.
         """
         try:
-            annotation, _ = unwrap_optional(field_info.annotation)
+            annotation = ConfigurationHelper.strip_annotation_wrappers(
+                field_info.annotation
+            )
             if get_origin(annotation) not in (list, List):
                 return False
             args = get_args(annotation)
@@ -521,6 +704,25 @@ class ConfigurationHelper:
                 weight = getattr(json_func, "_weight", 1.0)
                 clip_under_threshold = getattr(json_func, "_clip_under_threshold", True)
 
+                # A LAST-RESORT copy of the object-grade substitution, kept
+                # because a read-time answer is better than a wrong one.
+                #
+                # `StructuredModel._install_object_grade_comparators` performs
+                # this substitution at class-definition time for every field it
+                # can see, and that is the path that matters: the metadata it
+                # amends is the same object `json_schema_extra` writes as
+                # `x-comparison`, so `to_json_schema()`, `explain()`, the HTML
+                # reports and the engine all read one answer. Substituting only
+                # here made `to_json_schema()` report LevenshteinComparator with
+                # clipping ON for a field the engine scored with ANLS* and
+                # clipping off.
+                #
+                # It still runs for a field that path could not reach -- a field
+                # whose annotation was not yet resolvable when the class was
+                # defined -- and it must agree with it exactly, which is why the
+                # clip value comes from the shared `object_grade_clip` rather
+                # than being spelled again here.
+                #
                 # `ComparableField()` with no comparator resolves to
                 # LevenshteinComparator before the annotation is visible, and
                 # Levenshtein REJECTS a mapping. Substitute the structural
@@ -530,46 +732,13 @@ class ConfigurationHelper:
                 # would end a corpus run on document N after succeeding on N-1.
                 if not getattr(
                     json_func, "_comparator_explicit", True
-                ) and (
-                    # Mappings, plain pydantic models, and lists of either.
-                    #
-                    # A list of mappings is included because testing only the
-                    # field's own annotation left
-                    # `List[Dict[str, str]] = ComparableField(...)` on
-                    # Levenshtein, scored as edit distance over a canonical JSON
-                    # blob at 0.7667 (a match), while the SAME annotation with no
-                    # ComparableField got ANLS* at 0.5625. One annotation, two
-                    # answers, which is the divergence this work removes.
-                    #
-                    # A plain BaseModel is scored as one object for the same
-                    # reason a mapping is: it declares no per-field comparison
-                    # config to recurse into. Routing it to the primitive path
-                    # without also giving it the object-grade comparator left it
-                    # on Levenshtein over `str(model)`, where the identical field
-                    # names on both sides put a floor under the score:
-                    # `LineItem(2, 10.5, 'USD')` against `LineItem(9, 99.9, 'EUR')`
-                    # scored 0.8293 and classified as a true positive with every
-                    # value wrong. ANLS* scores that pair 0.0. See #319.
-                    ConfigurationHelper._wants_object_grade_comparison(
-                        cls, field_name, field_info
-                    )
+                ) and ConfigurationHelper._wants_object_grade_comparison(
+                    cls, field_name, field_info
                 ):
                     comparator = ANLSStarComparator()
-                    # A container keeps its partial score, so the object-grade
-                    # default turns clipping off -- but only as a DEFAULT. An
-                    # explicit `clip_under_threshold=True` is a decision, and
-                    # overwriting it here discarded it in silence.
-                    #
-                    # `_install_mapping_comparators` already gates the same
-                    # amendment on the same marker for a mapping annotation, so a
-                    # dict field carrying an explicit True never reached this line
-                    # to be clobbered. A plain-model annotation is not handled
-                    # there, so it did: the same declared setting was honoured on
-                    # a dict field and dropped on a plain-model field, which is
-                    # the divergence between the two shapes that #319 exists to
-                    # remove.
-                    if not getattr(json_func, "_clip_explicit", False):
-                        clip_under_threshold = False
+                    clip_under_threshold = ConfigurationHelper.object_grade_clip(
+                        json_func
+                    )
 
                 from .comparison_info import ComparableFieldConfig
 
@@ -671,7 +840,6 @@ class ConfigurationHelper:
         return ComparableFieldConfig(
             comparator=LevenshteinComparator(), threshold=default_threshold, weight=1.0
         )
-
 
     @staticmethod
     def is_immediate_child(nested_path: str, field_name: str) -> bool:

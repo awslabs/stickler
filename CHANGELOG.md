@@ -184,12 +184,11 @@ Each release links to full notes on the
   primitive list comparator.
 
   **A plain `BaseModel` field now gets the same configuration a `Dict[...]` field
-  gets**: `ANLSStarComparator` at object grade, `clip_under_threshold=False`, and
-  the class's `match_threshold`. Routing it to the dict code path without also
-  adopting the dict configuration was not enough. The field kept the primitive
-  default, Levenshtein at 0.5, which is edit distance over `str(model)` -- and
-  because the field names are identical on both sides, that put a floor under
-  every score:
+  gets**: `ANLSStarComparator` at object grade and `clip_under_threshold=False`.
+  Routing it to the dict code path without also adopting the dict configuration
+  was not enough. The field kept the primitive default, Levenshtein at 0.5, which
+  is edit distance over `str(model)` -- and because the field names are identical
+  on both sides, that put a floor under every score:
 
   ```
   LineItem(quantity=2, unit_price=10.5, currency='USD')
@@ -206,7 +205,35 @@ Each release links to full notes on the
   forms read one configuration rather than two. Declaring a comparator on the
   field overrides the default, exactly as it does for a `dict`.
 
-  **Breaking: two plain models of different classes are a false discovery**,
+  A `pydantic.RootModel` field is included, because it is a plain `BaseModel` by
+  every test that matters here. That is the same fix rather than a separate
+  behaviour change: `dev` scored an IDENTICAL `Money(root=5)` pair `0.0` with
+  `fd=1`, the #318 symptom exactly, and it now scores `1.0` with `tp=1`.
+
+  The THRESHOLD is unchanged and follows the same rule a `dict` field has always
+  followed: a bare annotation gets the class's `match_threshold` (`0.7` by
+  default), while writing `ComparableField(...)` with no `threshold=` gets that
+  function's own default of `0.5`. One annotation, two thresholds, according to
+  whether a `ComparableField` is present -- inherited from the dict case rather
+  than introduced here, which is why it is stated rather than fixed. It matters
+  when reading the table above: `0.6667` is a false discovery at `0.7` and a true
+  positive at `0.5`.
+
+  `Annotated` is stripped before any of this is decided. Pydantic removes
+  `Annotated` when it wraps a whole annotation but leaves it on a union arm, so
+  `Annotated[List[LineItem], Field(description=...)] | None` -- the shape any
+  documented optional field has -- is stored as
+  `Optional[Annotated[List[LineItem], FieldInfo]]`, whose origin is `Annotated`
+  rather than `list`. Every object-grade predicate read that as "not an object",
+  the field kept the scalar default, and because the element comparator is still
+  wrapped by the class gate, the refusal below turned two IDENTICAL elements into
+  two false discoveries: `1.0`/`tp=2` on `dev` against `0.0`/`fd=2`. The singular
+  `Optional[Annotated[Plain, Field(...)]]` was wrong on `dev` too and is fixed
+  with it. `_annotation_is_list` already documented this trap for list null
+  semantics; `ConfigurationHelper.strip_annotation_wrappers` applies it to the
+  four object-grade predicates.
+
+  **Breaking: two pydantic models of different classes are a false discovery**,
   whatever their field names and values. `Cat(name="rex")` against
   `Dog(name="rex")` scores `0.0` with `fd=1`, not `1.0`; so does `Base(a="x")`
   against `Sub(a="x")`. The class is part of a value's identity. A correctly
@@ -214,29 +241,65 @@ Each release links to full notes on the
   `Optional[Cat]` field at construction; it applies where the annotation
   permitted both (`Union[Cat, Dog]`, `Any`, `object`) or where a subclass arrived
   for its base, which `Optional[Base]` accepts. Stickler warns once per field
-  rather than raising, on the same reasoning as `can_score_mapping`: which class
+  rather than raising, on the same reasoning as `can_score_object`: which class
   arrives is prediction data, so raising would end a corpus run on document N
   after succeeding on N-1.
 
-  The rule lives in `ConfigurationHelper.values_are_same_model_class` because
-  four readers ask it -- `compare_with` through the dispatcher, `compare` through
-  `compare_field_raw`, and the list form of each -- and writing it four times is
-  how they drift apart. They did drift: `compare()` returned `1.0` for `Cat`/`Dog`
-  and `0.4167` for `Base`/`Sub` where `compare_with()` returned `0.0` and `fd=1`,
-  breaking the invariant [#233](https://github.com/awslabs/stickler/issues/233)
-  states, which matters because `compare()` is what the Hungarian cost matrix
-  reads: a list paired those items at zero cost and then called the field a
-  mismatch.
+  **A `StructuredModel` against a plain `BaseModel` is a mismatch too.** The two
+  are different classes and one is not even the same kind of model, so it scores
+  `0.0` with `fd=1`, which is what `dev` reported. An intermediate revision of
+  this change waved that pair through, on the reasoning that a pair involving a
+  `StructuredModel` is left to the caller's own type dispatch -- but the caller is
+  `ComparisonDispatcher` CASE 5, and it has no further dispatch for the pair,
+  because CASE 3 requires *both* sides to be a `StructuredModel`. So the pair was
+  scored as one object and reported `1.0` and a true positive, with no warning,
+  and the shape was reachable by following the advice the refusal warning gives.
+  Two `StructuredModel` instances of the same class are unaffected: CASE 3 takes
+  them first and they keep their per-field breakdown.
+
+  **Both rules are composed in one place**,
+  `ConfigurationHelper.can_compare_object_pair`: the two values must describe the
+  same shape, and the field's comparator must be able to score an object at all.
+  Five readers ask the question -- `ComparisonDispatcher` CASE 4 and CASE 5,
+  `StructuredModel.compare_field_raw`, `ComparisonHelper.compare_field_raw`, and a
+  list element arriving through the Hungarian cost matrix -- and each rule was
+  added to the dispatcher first and to `compare_field_raw` second. Both times the
+  gap produced the same defect: `compare()` returned `1.0` for `Cat`/`Dog` and
+  `0.4167` for `Base`/`Sub`, then `1.0` for two *identical* models on an `Any`
+  field and `0.7857` for a wholly wrong pair, where `compare_with()` returned
+  `0.0` and `fd=1` every time. A plain model against a bare `dict` of the same
+  content was the third instance, scoring `1.0` where `compare_with()` reports a
+  type mismatch, and it raised `TypeError` on `dev`. That breaks the invariant
+  [#233](https://github.com/awslabs/stickler/issues/233) states, and it is not
+  merely a reporting difference: `compare()` is what the Hungarian cost matrix
+  reads, so a list paired those items at zero cost and then called the field a
+  mismatch. Composing the rules rather than spelling either at a call site is
+  what makes that class of drift unspellable.
 
   In a list, a wrong-class element is **one** false discovery. It still pairs, and
   scores `0.0`:
 
   ```
+  pets: Optional[List[Union[Cat, Dog]]] = ComparableField(comparator=ANLSStarComparator())
+
   [Cat(a), Cat(b)]  vs  [Cat(a), Dog(b)]    before  1.0000  tp=2
                                              after  0.5000  tp=1 fd=1
   ```
 
-  Whether such an element should be allowed to pair at all, or should instead be
+  The comparator is declared in that example on purpose. `Union[Cat, Dog]` names
+  no single model type, so with no comparator declared the field also trips the
+  refusal below and the whole list reads `0.0` with `fd=2`: both elements refused,
+  not one class mismatch. Declaring it is what isolates the class rule.
+
+  A `StructuredModel` element is NOT refused by the comparator rule, only by the
+  class rule. The element gate wraps the whole list's comparator as soon as one
+  element anywhere in either list is a plain model, so reading the refusal as
+  "any pydantic model" made `[Cat(plain), Note(StructuredModel), Note(...)]`
+  against an identical copy score `0.0` with `fd=3`, where `dev` scored `1.0` with
+  `tp=3`. A `StructuredModel` is scored by recursion, so the field's comparator is
+  not what judges it; the plain `Cat` is still refused, giving `tp=2 fd=1`.
+
+  Whether a refused element should be allowed to pair at all, or should instead be
   `fn` plus `fa`, is tracked in
   [#321](https://github.com/awslabs/stickler/issues/321).
 
@@ -244,40 +307,108 @@ Each release links to full notes on the
   keyed on the annotation, so a field declaring no model type -- `Any`, `object`,
   a multi-arm `Union`, `List[Any]` -- keeps the scalar default and is now
   **refused**: `0.0`, `fd=1`, and a warning naming both remedies. This is the
-  treatment a mapping in the same position has always had; `dev` scores two
-  IDENTICAL dicts in an `Any` field `0.0` with `fd=1`, and plain models now agree
-  with mappings in every case measured, down to a model holding an
-  `arbitrary_types_allowed` value scoring the same `0.5` a dict holding one does.
+  treatment a mapping in the same position has always had: `dev` scores two
+  IDENTICAL dicts in an `Any` field `0.0` with `fd=1`, and a plain model in that
+  position now does the same.
+
+  The two shapes agree for a SINGULAR undeclared annotation. They do not agree
+  inside `List[Any]`, where a dict element is not refused at all -- it scores
+  `1.0` identical and `0.8182` wholly wrong, on this branch and on `dev` alike --
+  while a plain-model element is refused. That asymmetry is a pre-existing gap in
+  the mapping side rather than something this change introduces, and it is stated
+  here because an earlier draft of this entry claimed the two shapes agree "in
+  every case measured", which is not true of that one.
 
   Refusing is deliberate rather than conservative. The scalar default is edit
   distance over the rendered form, and because the field names are identical on
   both sides it cannot score low: the `LineItem` pair above scored `0.8293`,
   which clears the default threshold, so every value being wrong was reported as
   a true positive. A refusal that names the remedy beats a number that confident
-  and that wrong. `ConfigurationHelper.can_score_mapping` is now a thin wrapper
-  over a shared `can_score_object`, so the mapping and model cases cannot drift.
+  and that wrong. `ConfigurationHelper.can_score_mapping` has been folded into
+  `can_score_object`, which takes the shape as an argument, so the mapping and
+  model cases cannot drift.
 
   An explicit `clip_under_threshold=True` on such a field is honoured. The
   object-grade default turns clipping off, because a container keeps its partial
   score, but only as a DEFAULT: the substitution used to overwrite the setting
-  outright. `_install_mapping_comparators` already gates the same amendment on
+  outright. The class-definition-time pass already gated the same amendment on
   `_clip_explicit`, so a `dict` field carrying an explicit `True` was never
   clobbered while a plain-model field was -- the same declared setting honoured on
   one shape and dropped on the other, which is the divergence this entry exists to
-  remove. Measured on a half-right nested model at threshold `0.9`: `0.0` with the
+  remove. Both now read the one answer `ConfigurationHelper.object_grade_clip`
+  gives. Measured on a half-right nested model at threshold `0.9`: `0.0` with the
   setting honoured, against `0.5` when it was discarded.
 
-  **Performance.** `get_comparison_info` runs once per field per pairwise
-  comparison, so 60x60 objects of 20 fields is 72,000 calls, and the annotation
-  predicates that pick the object-grade path destructure the annotation on each
-  one. Left unmemoised they cost 18% on that shape (2.285s -> 2.699s), against
-  the 23% regression `ComparisonHelper.compare_field_raw` already records for
-  adding work to this path. The classification is now cached per (class, field)
-  in `cls.__dict__`, which also removes work `dev` was repeating: the same
-  benchmark is 1.951s, **14% faster than `dev`**. Only the annotation is cached;
-  the comparator, threshold and weight are not, because `match_threshold` is a
-  plain class attribute a caller can reassign and `evaluate(match_threshold=...)`
-  overrides it per call.
+  **The exported schema now reports the configuration the engine runs.** Four
+  annotations are scored as one object -- a mapping, a plain `BaseModel`, and a
+  list of either -- and only the singular mapping had its comparator substituted at
+  class-definition time, where `json_schema_extra` can see it. The other three
+  were substituted at read time alone, so `to_json_schema()` advertised
+  `LevenshteinComparator` with clipping on for fields the engine scored with ANLS*
+  and clipping off:
+
+  ```
+                            engine                    to_json_schema()
+  item   Optional[LineItem]        ANLS*  clip=False   Levenshtein  clip=True
+  items  Optional[List[LineItem]]  ANLS*  clip=False   Levenshtein  clip=True
+  metas  Optional[List[Dict]]      ANLS*  clip=False   Levenshtein  clip=True
+  meta   Optional[Dict]            ANLS*  clip=False   ANLS*        clip=False
+  ```
+
+  All four now take the class-definition-time path, so every reader of a field's
+  configuration -- the exported schema, `explain()`, the HTML reports and the
+  engine -- gives one answer. The two plain-model rows were introduced by this
+  change; the `List[Dict[...]]` row is a pre-existing divergence on `dev` that is
+  fixed here rather than left in place, which means **the schema exported for a
+  `List[Dict[...]]` field carrying a `ComparableField` changes**, from
+  `x-aws-stickler-comparator: LevenshteinComparator` with
+  `x-aws-stickler-clip-under-threshold: true` to `ANLSStarComparator` and `false`.
+  Scoring is unchanged; the export now matches it. An explicit `comparator=` or
+  `clip_under_threshold=` is still never overridden.
+
+  One shape is still exported wrongly, and it is the pre-existing cost of deciding
+  at class-definition time: a FORWARD-REFERENCED annotation is a `ForwardRef` while
+  the class is being built, so the field's metadata is never amended, and after
+  pydantic resolves it the engine scores with ANLS* while `to_json_schema()` still
+  reports the scalar default. `dev` behaves identically for a forward-referenced
+  mapping, so this is not new; what is new is that all four object-grade shapes
+  share it, instead of three of them also disagreeing in the ordinary resolved
+  case. Scoring is correct either way, via the read-time fallback in
+  `get_comparison_info`, and a test pins the divergence so it cannot widen
+  unnoticed. Fixing it means re-running the pass after `model_rebuild()`, which
+  requires compensating pydantic's private `_parent_namespace_depth` for the extra
+  stack frame or LOCAL forward references stop resolving at all -- verified, so it
+  is left for its own change rather than smuggled in here.
+
+  **Performance: faster than `dev`, not slower.** `get_comparison_info` runs at
+  least once per field per pairwise comparison -- a 60x60 Hungarian cost matrix
+  over 20-field objects is well over 100,000 calls -- and the annotation predicates
+  that pick the object-grade path destructure the annotation on every one. The
+  classification is therefore memoised per (class, field) in `cls.__dict__`. Two
+  benchmarks, best of three, measured on this branch against `dev` at `1c4b28f`:
+
+  ```
+                                                    dev      here
+  60x60 list of 20-field objects, compare_with     0.840s    0.519s   38% faster
+  4000 x compare() over 20 scalar fields           1.385s    1.010s   27% faster
+  ```
+
+  The second benchmark is the one to watch, because
+  `ComparisonHelper.compare_field_raw` now consults the object-pair gate for every
+  non-list pair, and that function's own comment records a 23% regression from
+  adding work there. Measured against the same branch with only the gate change
+  reverted, it costs `1.005s -> 1.010s`, i.e. nothing.
+
+  Only the annotation is cached; the comparator, threshold and weight are not,
+  because `match_threshold` is a plain class attribute a caller can reassign and
+  `evaluate(match_threshold=...)` overrides it per call. Each entry also remembers
+  the annotation it was computed from, because an annotation is NOT fixed for the
+  life of a class: a forward reference stays a `ForwardRef` until pydantic
+  resolves it on `model_rebuild()`. Caching by field name alone made the answer
+  depend on call order -- anything that read the configuration first, and both
+  `explain()` and `to_json_schema()` do, froze the unresolved answer, so two
+  structurally identical models scored `1.0`/`tp=1` or `0.0`/`fd=1` according to
+  what had touched the class.
 
   A nested `StructuredModel` is unaffected and keeps its per-field detail; the new
   branch sits after that one, which matters because `StructuredModel` subclasses
@@ -339,7 +470,9 @@ Each release links to full notes on the
   `TP=2, FD=1, FA=1, FN=0`. The `FP` total was right, which is why the error went
   unnoticed.
 
-- `can_score_mapping` is a denylist, not an allowlist. It gated on a new
+- The comparator gate for objects (`ConfigurationHelper.can_score_object`, which
+  arrived in this same unreleased block as `can_score_mapping` and was widened to
+  cover plain models) is a denylist, not an allowlist. It gated on a new
   `handles_mappings` attribute, which no comparator outside this repo could carry,
   so a user who wrote a mapping comparator and asked for it by name had their
   score silently replaced with `0.0`. An explicit `comparator=` is consent by

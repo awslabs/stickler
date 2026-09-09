@@ -240,22 +240,14 @@ class ComparisonDispatcher:
         # installs ANLSStarComparator here, which gives partial credit; see
         # stickler.comparators.anls.
         elif isinstance(gt_val, dict) and isinstance(pred_val, dict):
-            info = self.model.__class__._get_comparison_info(field_name)
-            if not ConfigurationHelper.can_score_mapping(
-                self.model.__class__, field_name, info.comparator
+            if not ConfigurationHelper.can_compare_object_pair(
+                self.model.__class__, field_name, info.comparator, gt_val, pred_val
             ):
                 # Reachable via `Any` or a multi-arm union, where no annotation
                 # declared the field a mapping so nothing could install a
                 # structural comparator. Scored, warned, and not raised -- see
-                # ConfigurationHelper.can_score_mapping.
-                return {
-                    "overall": {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0},
-                    "fields": {},
-                    "raw_similarity_score": 0.0,
-                    "similarity_score": 0.0,
-                    "threshold_applied_score": 0.0,
-                    "weight": weight,
-                }
+                # ConfigurationHelper.can_score_object.
+                return self._not_comparable(weight)
             return self.field_comparator.compare_primitive_with_scores(
                 gt_val, pred_val, field_name
             )
@@ -291,52 +283,30 @@ class ComparisonDispatcher:
         # asymmetry this branch exists to remove. The comparator decides its own
         # coercion; the dispatcher does not decide for it.
         #
-        # Both sides must be the SAME class, which
-        # `ConfigurationHelper.values_are_same_model_class` decides and warns
-        # about. The rule lives there rather than here because `compare()`
-        # reaches the same question through `compare_field_raw`, and list
-        # elements reach it through the Hungarian cost matrix; writing it three
-        # times is how the three drift apart. That is why `can_score_mapping`
-        # is shaped the same way.
+        # Two conditions have to hold before the pair is scored, and both live in
+        # `ConfigurationHelper.can_compare_object_pair` rather than here: the two
+        # values must describe the same shape, and the field's comparator must be
+        # able to score an object at all. They are composed there because
+        # `compare()` reaches the same question through `compare_field_raw` and a
+        # list element reaches it through the Hungarian cost matrix, so spelling
+        # either rule here is how the readers drift apart -- which is exactly what
+        # happened twice while this branch was in review.
         #
         # A correctly annotated field never reaches the mismatch case: pydantic
         # refuses a `Dog` for an `Optional[Cat]` field at construction. It fires
         # where the annotation permitted both -- `Union[Cat, Dog]`, `Any`,
         # `object` -- or where a subclass was supplied for its base, which
         # `Optional[Base]` accepts.
+        #
+        # `info.comparator` is the one STEP 1 already resolved. Reading it again
+        # here cost a third `_get_comparison_info` for one field in one dispatch,
+        # and that call is not free: it builds a fresh `ANLSStarComparator` every
+        # time, once per cell of a Hungarian cost matrix.
         elif isinstance(gt_val, BaseModel) and isinstance(pred_val, BaseModel):
-            not_comparable = {
-                "overall": {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0},
-                "fields": {},
-                "raw_similarity_score": 0.0,
-                "similarity_score": 0.0,
-                "threshold_applied_score": 0.0,
-                "weight": weight,
-            }
-            if not ConfigurationHelper.values_are_same_model_class(
-                self.model.__class__, field_name, gt_val, pred_val
+            if not ConfigurationHelper.can_compare_object_pair(
+                self.model.__class__, field_name, info.comparator, gt_val, pred_val
             ):
-                return not_comparable
-
-            # The same refusal CASE 4 applies to a mapping, reachable the same
-            # way: a field annotated `Any`, `object`, or a multi-arm `Union`
-            # declares nothing that could install a structural comparator, so it
-            # keeps the primitive Levenshtein default. The annotation-keyed
-            # config in `get_comparison_info` cannot reach these fields, because
-            # there is no annotation to key on.
-            #
-            # On a model that default is not merely wrong, it is confidently
-            # wrong. Edit distance over `str(model)` compares the field-name
-            # boilerplate that is identical on both sides, so three differing
-            # values scored 0.8293 and classified as a TRUE POSITIVE. Refusing is
-            # strictly better than a number that confident and that wrong.
-            if not ConfigurationHelper.can_score_object(
-                self.model.__class__,
-                field_name,
-                self.model.__class__._get_comparison_info(field_name).comparator,
-                shape="model",
-            ):
-                return not_comparable
+                return self._not_comparable(weight)
 
             return self.field_comparator.compare_primitive_with_scores(
                 gt_val, pred_val, field_name
@@ -345,14 +315,24 @@ class ComparisonDispatcher:
         # CASE 6: Mismatched types (e.g., str vs int, list vs str, struct vs primitive)
         # This is a False Discovery - types don't match
         else:
-            return {
-                "overall": {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0},
-                "fields": {},
-                "raw_similarity_score": 0.0,
-                "similarity_score": 0.0,
-                "threshold_applied_score": 0.0,
-                "weight": weight,
-            }
+            return self._not_comparable(weight)
+
+    @staticmethod
+    def _not_comparable(weight: float) -> Dict[str, Any]:
+        """One false discovery, scoring 0.0: the pair cannot be compared.
+
+        The shape three branches return. Spelled once so a later change to the
+        counts cannot reach the type-mismatch branch and miss the two refusals,
+        which report the same verdict for a more specific reason.
+        """
+        return {
+            "overall": {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0},
+            "fields": {},
+            "raw_similarity_score": 0.0,
+            "similarity_score": 0.0,
+            "threshold_applied_score": 0.0,
+            "weight": weight,
+        }
 
     def handle_list_field_dispatch(
         self, gt_val: Any, pred_val: Any, weight: float

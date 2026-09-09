@@ -14,19 +14,34 @@ from .threshold_helper import ThresholdHelper
 
 
 class _ClassGatedComparator(BaseComparator):
-    """Refuses two plain models of different classes, else delegates.
+    """Applies the object-pair gate to a list element, else delegates.
 
     List elements reach a comparator through the Hungarian cost matrix, which
     sees values and knows nothing about the field. Wrapping the comparator is
-    what makes a list element obey the same class rule as the singular form:
-    both then read the same configured comparator, with the gate in front of it.
+    what makes a list element obey the same rules as the singular form: both
+    then read the same configured comparator, with the same gate in front of it.
     Without this, `Single(pet=Cat('rex'))` against `Dog('rev')` scored 0.0 while
     `Listed(pets=[Cat('rex')])` against `[Dog('rex')]` scored 1.0 -- the parity
     #319 exists to establish, broken in the opposite direction. See #321 for
     whether a refused element should pair at all.
 
-    Applied only when an element is actually a plain model, so the ordinary
-    primitive-list path keeps its cost-matrix hot loop unwrapped.
+    The gate itself is `ConfigurationHelper.can_compare_object_pair`, the same
+    call `ComparisonDispatcher` CASE 4/CASE 5 and both `compare_field_raw`
+    readers make, so an element and a singular value are judged by one rule.
+
+    Installed only when at least one element of EITHER list is a plain model, so
+    the ordinary primitive-list path keeps its cost-matrix hot loop unwrapped. It
+    is the list that qualifies, not the element: once wrapped, every pair goes
+    through the gate, including the `StructuredModel` and scalar elements of a
+    mixed list. Those are waved through by the gate itself rather than by this
+    predicate -- a `StructuredModel` is scored by recursion and is not the
+    comparator's business -- which is a distinction worth keeping in view, because
+    reading the gate's refusal as "any pydantic model" scored an identical
+    `[Cat(plain), Note(SM), Note(SM)]` as three false discoveries.
+
+    A dict element does NOT reach the gate, because `_holds_a_plain_model` does
+    not look for one. The mapping half of the gate is reached only through the
+    singular readers.
     """
 
     def __init__(self, inner: BaseComparator, model_cls=None, field_name: str = ""):
@@ -36,23 +51,10 @@ class _ClassGatedComparator(BaseComparator):
         self._field_name = field_name
 
     def _compare(self, str1: Any, str2: Any) -> float:
-        from pydantic import BaseModel
-
         from .configuration_helper import ConfigurationHelper
 
-        if not ConfigurationHelper.values_are_same_model_class(
-            self._model_cls, self._field_name, str1, str2
-        ):
-            return 0.0
-
-        # The element-level twin of the CASE 5 refusal in `ComparisonDispatcher`.
-        # `List[Any]` declares no element type, so the field keeps the primitive
-        # Levenshtein default and the elements are scored by edit distance over
-        # `str(model)`. That put a floor under the score -- three differing
-        # values on a `LineItem` scored 0.8293 and paired as a TRUE POSITIVE --
-        # so the singular form was refused while the list form silently matched.
-        if isinstance(str1, BaseModel) and not ConfigurationHelper.can_score_object(
-            self._model_cls, self._field_name, self._inner, shape="model"
+        if not ConfigurationHelper.can_compare_object_pair(
+            self._model_cls, self._field_name, self._inner, str1, str2
         ):
             return 0.0
         return self._inner.compare(str1, str2)
@@ -394,15 +396,28 @@ class ComparisonHelper:
         if isinstance(self_value, dict) and isinstance(other_value, dict):
             return comparator.compare(self_value, other_value)
 
-        # Two plain models of different classes are not comparable, and this
+        # A pair of models this field cannot score is not comparable, and this
         # function must agree with `compare_with` about that. Its own comment
-        # above forbids the two readers disagreeing (#233), and without this
-        # gate they did: `compare()` returned 1.0 for Cat/Dog and 0.4167 for
-        # Base/Sub where `compare_with` reported 0.0 and a false discovery.
-        # `compare()` also feeds the Hungarian cost matrix, so a List[Holder]
-        # paired those items at zero cost and then called the field a mismatch.
-        if not ConfigurationHelper.values_are_same_model_class(
-            structured_model_instance.__class__, field_name, self_value, other_value
+        # above forbids the two readers disagreeing (#233), and without the gate
+        # they did, on BOTH of its rules in turn: `compare()` returned 1.0 for
+        # Cat/Dog and 0.4167 for Base/Sub, then 1.0 for two identical models on
+        # an `Any` field, where `compare_with` reported 0.0 and a false discovery
+        # each time. `compare()` also feeds the Hungarian cost matrix, so a
+        # List[Holder] paired those items at zero cost and then called the field
+        # a mismatch.
+        #
+        # `can_compare_object_pair` rather than either rule spelled out here:
+        # composing them in one place is what stops this reader adopting a new
+        # rule's first half and missing its second, which is how both of the
+        # above arrived. The mapping half of the same gate is applied one frame
+        # up, in `StructuredModel.compare_field_raw`, before a dict pair can
+        # reach here.
+        if not ConfigurationHelper.can_compare_object_pair(
+            structured_model_instance.__class__,
+            field_name,
+            comparator,
+            self_value,
+            other_value,
         ):
             return 0.0
 

@@ -526,13 +526,19 @@ Declaring a comparator overrides that default, exactly as it does for a `dict`.
 
 ### A different class is a false discovery
 
-Two plain models of different classes score `0.0` and count as one false
-discovery, however well their field names and values line up:
+Two models of different classes score `0.0` and count as one false discovery,
+however well their field names and values line up:
 
 ```python
-Cat(name="rex")  vs  Dog(name="rex")   ->  0.0, fd=1   (not 1.0)
-Base(a="x")      vs  Sub(a="x")        ->  0.0, fd=1
+Cat(name="rex")             vs  Dog(name="rex")    ->  0.0, fd=1   (not 1.0)
+Base(a="x")                 vs  Sub(a="x")         ->  0.0, fd=1
+StructuredShape(name="rex") vs  PlainShape(name="rex")  ->  0.0, fd=1
 ```
+
+The last row is the mixed case: a `StructuredModel` on one side and a plain
+`BaseModel` on the other are still two different classes, and one is not even the
+same kind of model. Two `StructuredModel` instances of the **same** class are
+unaffected and keep their per-field breakdown.
 
 The class is part of the value's identity, not incidental to it. A correctly
 annotated field never sees this, because pydantic refuses a `Dog` for an
@@ -553,9 +559,26 @@ model type keeps the scalar default and is **refused** rather than scored:
 |---|---|
 | `Optional[LineItem]` | scored, key by key |
 | `List[LineItem]` | scored, key by key |
+| `Optional[Annotated[LineItem, Field(...)]]` | scored, key by key |
 | `Optional[Any]`, `Optional[object]` | refused: `0.0`, `fd=1`, warning |
 | `Union[LineItem, str]` | refused: `0.0`, `fd=1`, warning |
 | `List[Any]` | refused: `0.0`, `fd=1`, warning |
+
+`Annotated` does not change the answer, in any nesting or spelling. That is worth
+stating because it is easy to reach by accident: `Field(description=...)` on an
+optional field produces `Annotated[T, FieldInfo] | None`, and pydantic keeps the
+wrapper on a union arm.
+
+A nested `StructuredModel` is never refused by this rule, only by the class rule
+above. It is scored by recursion, so the field's comparator is not what judges
+it. In a mixed list, the plain elements are refused and the `StructuredModel`
+elements are scored:
+
+```python
+items: Optional[List[Union[Cat, Note]]] = ComparableField()   # Note is a StructuredModel
+
+[Cat("rex"), Note("a"), Note("b")]  vs  an identical copy  ->  tp=2, fd=1
+```
 
 Refusing looks harsh next to a number, but the number was worse. The scalar
 default is edit distance over the model's rendered form, and the field names are

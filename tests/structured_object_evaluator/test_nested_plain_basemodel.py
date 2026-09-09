@@ -27,24 +27,42 @@ as a match:
 
 Under ANLS* the same pair is 0.0 and a false discovery.
 
-Two plain models of DIFFERENT classes are a false discovery, whatever their
-field names. `ConfigurationHelper.values_are_same_model_class` owns that rule
-because four paths ask the question -- `compare_with`, `compare`, and the list
-form of each -- and writing it four times is how they drift apart. A correctly
-annotated field never reaches it: pydantic refuses a `Dog` for an
+Two pydantic models of DIFFERENT classes are a false discovery, whatever their
+field names, and that includes a `StructuredModel` against a plain `BaseModel`:
+`CASE 3` requires BOTH sides to be a `StructuredModel`, so the mixed pair falls
+to `CASE 5` and nothing downstream is waiting to dispatch it. A correctly
+annotated field never reaches the rule: pydantic refuses a `Dog` for an
 `Optional[Cat]` field at construction, so it fires only where the annotation
 permitted both (`Union[Cat, Dog]`, `Any`, `object`) or where a subclass was
 supplied for its base. It warns rather than raising, because which class arrives
 is prediction data and raising would end a corpus run on document N.
 
+That rule and the "can this comparator score an object at all" rule are composed
+in ONE place, `ConfigurationHelper.can_compare_object_pair`, because five readers
+ask the question -- `ComparisonDispatcher` CASE 4 and CASE 5, both
+`compare_field_raw` implementations, and a list element arriving through the
+Hungarian cost matrix. Each rule was added to the dispatcher first and to
+`compare_field_raw` second, and both times the result was `compare()` returning a
+non-zero score for a pair `compare_with()` called a false discovery: the #233
+disagreement, deciding Hungarian pairings before `compare_with` overrules them.
+`TestTheGateHoldsInEveryPath` is the table that holds both rules to both readers.
+
+The configuration behind all of this is installed at CLASS-DEFINITION time by
+`StructuredModel._install_object_grade_comparators`, not at read time, so
+`to_json_schema()` reports what the engine actually uses. Read-time-only
+substitution is why the exported schema said `LevenshteinComparator` with
+clipping on for fields the engine scored with ANLS* and clipping off. All four
+object-grade shapes -- a mapping, a plain model, and a list of either -- now take
+that one path; see `TestTheExportedConfigurationMatchesTheEngine`.
+
 See https://github.com/awslabs/stickler/issues/318 and
 https://github.com/awslabs/stickler/issues/321
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Annotated, Any, Dict, List, Optional, Union
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.exact import ExactComparator
@@ -174,11 +192,21 @@ class TestTheDeclaredComparatorIsUsed:
         ]["kid"] == pytest.approx(0.0)
 
     def test_the_default_comparator_gives_partial_credit(self):
-        """Levenshtein over the canonical string, so a near miss is not zero."""
+        """ANLS* over the object's keys, so one wrong field is not zero.
+
+        Named for the DEFAULT comparator, which for a plain-model field is
+        `ANLSStarComparator` at object grade -- not the Levenshtein this docstring
+        used to claim. That is the whole point of the substitution: partial credit
+        counted in fields, not in characters.
+        """
         score = Nested(kid=Plain(sku="a", qty=1)).compare_with(
             Nested(kid=Plain(sku="b", qty=1))
         )["field_scores"]["kid"]
-        assert 0.0 < score < 1.0
+        # Exactly one of the two fields differs, so object-grade scoring gives
+        # 0.5. A range assertion here is what let the Levenshtein floor hide: on
+        # the rendered string the same pair scored 0.9375, which also satisfies
+        # `0.0 < score < 1.0`.
+        assert score == pytest.approx(0.5)
 
 
 class TestTheCanonicalFormIsStable:
@@ -357,8 +385,17 @@ class TestTwoDifferentClassesAreNotAMatch:
         name: Optional[str] = None
 
     def test_unrelated_models_with_equal_fields_are_a_false_discovery(self):
+        """Comparator DECLARED, so the class rule is the only thing measured.
+
+        A bare `Optional[Any]` also scores 0.0, through the `can_score_object`
+        refusal, so this test passed with the class rule deleted outright and
+        proved nothing about it.
+        """
+
         class Holder(StructuredModel):
-            pet: Optional[Any] = ComparableField(default=None)
+            pet: Optional[Any] = ComparableField(
+                comparator=ANLSStarComparator(), default=None
+            )
 
         result = Holder(pet=self.Cat(name="rex")).compare_with(
             Holder(pet=self.Dog(name="rex")), include_confusion_matrix=True
@@ -373,7 +410,20 @@ class TestTwoDifferentClassesAreNotAMatch:
         assert str(self.Cat(name="rex")) == str(self.Dog(name="rex"))
 
     def test_a_structured_model_against_a_plain_one_is_a_mismatch(self):
-        """`StructuredModel` subclasses `BaseModel`, so this pair reaches here."""
+        """`StructuredModel` subclasses `BaseModel`, so this pair reaches here.
+
+        `CASE 3` requires BOTH sides to be a `StructuredModel`, so a mixed pair
+        falls to `CASE 5` and there is no further dispatch waiting for it. An
+        earlier version of the gate waved the pair through on the assumption that
+        there was, and scored two different classes -- one not even the same KIND
+        of model -- 1.0 and a true positive, where `dev` reported a false
+        discovery.
+
+        The comparator is DECLARED, and it is the one the `can_score_object`
+        warning recommends. With a bare `Any` this test passed on the other
+        refusal and proved nothing about the class gate, which is also the route
+        a user following that advice takes to get here.
+        """
 
         class PlainShape(BaseModel):
             name: Optional[str] = None
@@ -382,12 +432,62 @@ class TestTwoDifferentClassesAreNotAMatch:
             name: Optional[str] = ComparableField(default=None)
 
         class Holder(StructuredModel):
-            thing: Optional[Any] = ComparableField(default=None)
+            thing: Optional[Any] = ComparableField(
+                comparator=ANLSStarComparator(), default=None
+            )
+
+        pair = (StructuredShape(name="rex"), PlainShape(name="rex"))
+        for gt, pred in (pair, pair[::-1]):
+            result = Holder(thing=gt).compare_with(
+                Holder(thing=pred), include_confusion_matrix=True
+            )
+            assert result["field_scores"]["thing"] == pytest.approx(0.0)
+            assert result["confusion_matrix"]["overall"]["fd"] == 1
+            assert result["confusion_matrix"]["overall"]["tp"] == 0
+
+    def test_that_pair_is_refused_by_the_class_gate_and_says_so(self):
+        """Names the rule that fired, so the test cannot drift onto the other one."""
+
+        class PlainShape(BaseModel):
+            name: Optional[str] = None
+
+        class StructuredShape(StructuredModel):
+            name: Optional[str] = ComparableField(default=None)
+
+        class Holder(StructuredModel):
+            thing: Optional[Any] = ComparableField(
+                comparator=ANLSStarComparator(), default=None
+            )
+
+        with pytest.warns(
+            UserWarning, match="compared a StructuredShape against a PlainShape"
+        ):
+            Holder(thing=StructuredShape(name="rex")).compare_with(
+                Holder(thing=PlainShape(name="rex"))
+            )
+
+    def test_two_structured_models_of_one_class_are_untouched(self):
+        """The gate must not reach the structural path it sits beside.
+
+        `CASE 3` takes a same-class `StructuredModel` pair before `CASE 5` can
+        see it, and `ComparisonHelper.compare_field_raw` does the same. Asserted
+        rather than assumed, because closing the hole above is only safe if this
+        holds.
+        """
+
+        class StructuredShape(StructuredModel):
+            name: Optional[str] = ComparableField(default=None)
+
+        class Holder(StructuredModel):
+            thing: Optional[StructuredShape] = ComparableField(default=None)
 
         result = Holder(thing=StructuredShape(name="rex")).compare_with(
-            Holder(thing=PlainShape(name="rex")), include_confusion_matrix=True
+            Holder(thing=StructuredShape(name="rex")), include_confusion_matrix=True
         )
-        assert result["confusion_matrix"]["overall"]["fd"] == 1
+        assert result["field_scores"]["thing"] == pytest.approx(1.0)
+        assert result["confusion_matrix"]["fields"]["thing"]["fields"], (
+            "a same-class StructuredModel pair must keep its per-field breakdown"
+        )
 
     def test_the_same_class_on_both_sides_still_scores(self):
         """The guard must not reject the ordinary case.
@@ -429,8 +529,12 @@ class TestASubclassIsADifferentShape:
 
     @pytest.mark.parametrize("extra", (None, "y"))
     def test_a_base_against_its_subclass_is_a_false_discovery(self, extra):
+        """Comparator declared, so only the class rule can produce the 0.0."""
+
         class Holder(StructuredModel):
-            v: Optional[Any] = ComparableField(default=None)
+            v: Optional[Any] = ComparableField(
+                comparator=ANLSStarComparator(), default=None
+            )
 
         result = Holder(v=self.Base(a="x")).compare_with(
             Holder(v=self.Sub(a="x", b=extra)), include_confusion_matrix=True
@@ -602,23 +706,123 @@ class TestADifferentClassIsAFalseDiscovery:
         )["field_scores"]["kids"] == pytest.approx(1.0)
 
 
-class TestTheClassGateHoldsInEveryPath:
+class TestTheGateHoldsInEveryPath:
     """Four readers ask the same question and must give the same answer.
 
     `compare()` feeds the Hungarian cost matrix, so a disagreement here is not
     cosmetic: a list pairs two items at zero cost and then reports the field as
     a mismatch, the contradiction #233 forbids.
+
+    Parametrised over BOTH rules the gate composes, not just the class one. Each
+    rule was added to the dispatcher first and to `compare_field_raw` second, and
+    each time the gap was invisible because this test only exercised the other
+    rule. `ConfigurationHelper.can_compare_object_pair` now composes them in one
+    place so a reader cannot hold one and miss the other, and the table below is
+    what checks that claim.
     """
 
-    @pytest.mark.parametrize(
-        "gt, pred",
-        ((Cat(name="rex"), Dog(name="rex")), (Base(a="x"), Sub(a="x"))),
+    #: Holder whose annotation declares no model type, so nothing can install an
+    #: object-grade comparator and the primitive Levenshtein default survives.
+    #: The `can_score_object` half of the gate is the only thing refusing here.
+    Unscoreable = type(
+        "Unscoreable",
+        (StructuredModel,),
+        {"__annotations__": {"pet": Optional[Any]}, "pet": None},
     )
-    def test_compare_agrees_with_compare_with(self, gt, pred):
-        raw = Permissive(pet=gt).compare(Permissive(pet=pred))
-        scored = Permissive(pet=gt).compare_with(Permissive(pet=pred))
+
+    @pytest.mark.parametrize(
+        "holder, gt, pred",
+        (
+            # The class half: comparator declared, so the class rule is alone.
+            pytest.param(Permissive, Cat(name="rex"), Dog(name="rex"), id="cat-vs-dog"),
+            pytest.param(Permissive, Base(a="x"), Sub(a="x"), id="base-vs-subclass"),
+            # The comparator half: same class on both sides, so the class rule
+            # cannot fire. The identical pair is the sharper of the two -- both
+            # readers must call two EQUAL models unscoreable, and `compare()`
+            # answered 1.0 here while `compare_with()` reported fd=1.
+            pytest.param(
+                Unscoreable,
+                Plain(sku="a", qty=1),
+                Plain(sku="a", qty=1),
+                id="identical-but-unscoreable",
+            ),
+            pytest.param(
+                Unscoreable,
+                Plain(sku="a", qty=1),
+                Plain(sku="z", qty=99),
+                id="all-wrong-and-unscoreable",
+            ),
+        ),
+    )
+    def test_compare_agrees_with_compare_with(self, holder, gt, pred):
+        raw = holder(pet=gt).compare(holder(pet=pred))
+        scored = holder(pet=gt).compare_with(
+            holder(pet=pred), include_confusion_matrix=True
+        )
         assert raw == pytest.approx(0.0)
         assert scored["field_scores"]["pet"] == pytest.approx(0.0)
+        assert scored["confusion_matrix"]["overall"]["fd"] == 1
+
+    @pytest.mark.parametrize(
+        "holder, gt, pred",
+        (
+            pytest.param(Permissive, Cat(name="rex"), Dog(name="rex"), id="cat-vs-dog"),
+            pytest.param(
+                Unscoreable,
+                Plain(sku="a", qty=1),
+                Plain(sku="a", qty=1),
+                id="identical-but-unscoreable",
+            ),
+        ),
+    )
+    def test_the_list_element_reader_agrees_with_the_singular_one(
+        self, holder, gt, pred
+    ):
+        """The third reader: an element arriving through the cost matrix.
+
+        A list element never reaches the field's own dispatch. It reaches the
+        comparator directly, which is why `_ClassGatedComparator` exists, and it
+        is the reader most easily left behind -- the element gate held only the
+        class rule for one round, then read only the ground-truth side for another.
+        """
+        listed = type(
+            f"Listed{holder.__name__}",
+            (StructuredModel,),
+            {
+                "__annotations__": {"pets": Optional[List[Any]]},
+                "pets": holder.model_fields["pet"].default,
+            },
+        )
+        singular = holder(pet=gt).compare_with(holder(pet=pred))["field_scores"]["pet"]
+        element = listed(pets=[gt]).compare_with(listed(pets=[pred]))["field_scores"][
+            "pets"
+        ]
+        assert singular == pytest.approx(0.0)
+        assert element == pytest.approx(singular)
+
+    def test_the_mapping_reader_agrees_too(self):
+        """The fourth reader: a dict pair, gated by the same call.
+
+        `StructuredModel.compare_field_raw` handles the mapping half one frame
+        above `ComparisonHelper.compare_field_raw`, and it was the site the class
+        rule reached last. Both now make the one
+        `can_compare_object_pair` call, so this is what holds the mapping shape to
+        the same agreement the model shape gets.
+        """
+
+        class Holder(StructuredModel):
+            m: Optional[Any] = ComparableField(default=None)
+
+        pair = ({"a": "1", "b": "2"}, {"a": "1", "b": "2"})
+        raw = Holder(m=pair[0]).compare(Holder(m=pair[1]))
+        scored = Holder(m=pair[0]).compare_with(
+            Holder(m=pair[1]), include_confusion_matrix=True
+        )
+        # Identical mappings, and both readers must still refuse: the annotation
+        # declares no mapping, so nothing could install a structural comparator.
+        assert raw == pytest.approx(0.0)
+        assert scored["field_scores"]["m"] == pytest.approx(0.0)
+        assert scored["confusion_matrix"]["overall"]["fd"] == 1
 
     def test_the_list_form_agrees_with_the_singular_form(self):
         singular = Permissive(pet=Cat(name="rex")).compare_with(
@@ -706,6 +910,59 @@ class TestAnUnscoreableAnnotationIsRefused:
         assert result["field_scores"]["f"] == pytest.approx(0.0)
         assert result["confusion_matrix"]["overall"]["fd"] == 1
 
+    def test_compare_refuses_it_too(self):
+        """`compare()` is the other reader, and it fills the cost matrix.
+
+        The refusal reached `compare_with` first and `compare_field_raw` two
+        rounds later, so for two releases `compare()` scored an identical pair
+        1.0 -- and 0.6875 for a wholly wrong one -- while `compare_with()` called
+        both a false discovery. A non-zero cost-matrix entry decides pairings
+        that `compare_with` then overrules.
+        """
+
+        class Holder(StructuredModel):
+            f: Optional[Any] = None
+
+        identical = Holder(f=self.ALL_WRONG[0]).compare(Holder(f=self.ALL_WRONG[0]))
+        wrong = Holder(f=self.ALL_WRONG[0]).compare(Holder(f=self.ALL_WRONG[1]))
+        assert identical == pytest.approx(0.0)
+        assert wrong == pytest.approx(0.0)
+
+    def test_the_element_refusal_reads_both_sides(self):
+        """Swapping ground truth and prediction must not change the answer.
+
+        The element gate tested only `str1`, so a plain model arriving as the
+        PREDICTION skipped it: `gt=[model] pred=[str]` scored 0.0 while the swap
+        scored 1.0 -- a perfect match, and a true positive, for a pair the code
+        had just decided it could not score. `_holds_a_plain_model` installs the
+        wrapper by scanning both lists, so the gate has to read both too.
+        """
+        model = type(
+            "Holder",
+            (StructuredModel,),
+            {"__annotations__": {"f": Optional[List[Any]]}, "f": None},
+        )
+        rendered = str(self.ALL_WRONG[0])
+        forward = model(f=[self.ALL_WRONG[0]]).compare_with(
+            model(f=[rendered]), include_confusion_matrix=True
+        )
+        backward = model(f=[rendered]).compare_with(
+            model(f=[self.ALL_WRONG[0]]), include_confusion_matrix=True
+        )
+        assert forward["field_scores"]["f"] == pytest.approx(0.0)
+        assert backward["field_scores"]["f"] == pytest.approx(0.0)
+        assert forward["confusion_matrix"]["overall"]["fd"] == 1
+        assert backward["confusion_matrix"]["overall"]["fd"] == 1
+
+    def test_the_rendered_form_really_is_what_flipped_it(self):
+        """The measurement behind the test above, so its point is visible.
+
+        The string is the model's own rendering, which is why the old gate scored
+        the swap 1.0: Levenshtein saw two equal strings once the model side was
+        coerced. Nothing about the pair being unscoreable had changed.
+        """
+        assert str(self.ALL_WRONG[0]) == "sku='a' qty=1"
+
     def test_it_says_what_to_do_about_it(self):
         """A refusal with no remedy is just a wrong number with extra steps."""
 
@@ -744,11 +1001,12 @@ class TestAnExplicitClipSettingSurvivesTheSubstitution:
     substitution used to set `clip_under_threshold=False` outright, discarding an
     explicit `True`.
 
-    `_install_mapping_comparators` already gates the same amendment on
-    `_clip_explicit`, so a `dict` field carrying an explicit `True` never reached
-    the line that clobbered it, while a plain-model field did. The same declared
-    setting was honoured on one shape and dropped on the other, which is the
-    divergence between mappings and plain models that #318 exists to remove.
+    `_install_object_grade_comparators` gates the amendment on `_clip_explicit`,
+    so a `dict` field carrying an explicit `True` never reached the line that
+    clobbered it, while a plain-model field did. The same declared setting was
+    honoured on one shape and dropped on the other, which is the divergence
+    between mappings and plain models that #318 exists to remove. Both shapes now
+    read the one answer `ConfigurationHelper.object_grade_clip` gives.
     """
 
     class Addr(BaseModel):
@@ -801,3 +1059,482 @@ class TestAnExplicitClipSettingSurvivesTheSubstitution:
 
         assert Doc._get_comparison_info("explicit").clip_under_threshold is True
         assert Doc._get_comparison_info("defaulted").clip_under_threshold is False
+
+
+class TestTheExportedConfigurationMatchesTheEngine:
+    """`to_json_schema()` must report the comparator the engine actually runs.
+
+    The object-grade substitution has two possible homes, and only one of them is
+    honest. `StructuredModel._install_object_grade_comparators` writes it into the
+    `FieldInfo` while the class is being defined, and that `FieldInfo` is the
+    object `json_schema_extra` renders as `x-comparison`, so the exported schema,
+    `explain()`, the HTML reports and the engine all read one answer.
+    `ConfigurationHelper.get_comparison_info` can also apply it at read time, and
+    when that was the ONLY place it happened the exported schema disagreed with
+    the engine:
+
+        item   (plain model)   engine ANLS*/clip off   schema Levenshtein/clip on
+        items  (list of them)  engine ANLS*/clip off   schema Levenshtein/clip on
+        metas  (list of dicts) engine ANLS*/clip off   schema Levenshtein/clip on
+        meta   (dict)          engine ANLS*/clip off   schema ANLS*/clip off
+
+    The dict row agreed because the singular mapping was the one shape the
+    definition-time path handled. The plain-model rows were introduced by #318;
+    the `List[Dict[...]]` row was inherited from before it. All four are now on
+    one path, which is what this class pins.
+    """
+
+    class Item(BaseModel):
+        quantity: Optional[int] = None
+
+    def _model(self):
+        Item = self.Item
+
+        class Invoice(StructuredModel):
+            item: Optional[Item] = ComparableField(default=None)
+            meta: Optional[Dict[str, str]] = ComparableField(default=None)
+            items: Optional[List[Item]] = ComparableField(default=None)
+            metas: Optional[List[Dict[str, str]]] = ComparableField(default=None)
+            kept: Optional[Item] = ComparableField(
+                default=None, clip_under_threshold=True
+            )
+            named: Optional[Item] = ComparableField(
+                default=None, comparator=ExactComparator()
+            )
+            scalar: Optional[str] = ComparableField(default=None)
+
+        return Invoice
+
+    @pytest.mark.parametrize(
+        "field", ("item", "meta", "items", "metas", "kept", "named", "scalar")
+    )
+    def test_the_schema_agrees_with_the_engine(self, field):
+        model = self._model()
+        info = model._get_comparison_info(field)
+        prop = model.to_json_schema()["properties"][field]
+        assert prop["x-aws-stickler-comparator"] == type(info.comparator).__name__
+        assert prop["x-aws-stickler-clip-under-threshold"] == info.clip_under_threshold
+
+    @pytest.mark.parametrize("field", ("item", "meta", "items", "metas"))
+    def test_all_four_object_grade_shapes_get_the_object_grade_default(self, field):
+        """The four shapes the substitution covers, named one by one.
+
+        Asserting agreement alone would also pass if every shape were left on
+        Levenshtein, since the engine would then agree with the schema about the
+        wrong answer.
+        """
+        info = self._model()._get_comparison_info(field)
+        assert type(info.comparator).__name__ == "ANLSStarComparator"
+        assert info.clip_under_threshold is False
+
+    def test_an_explicit_clip_survives_into_the_schema(self):
+        """The decision the user wrote, visible where they can check it."""
+        model = self._model()
+        assert model._get_comparison_info("kept").clip_under_threshold is True
+        prop = model.to_json_schema()["properties"]["kept"]
+        assert prop["x-aws-stickler-clip-under-threshold"] is True
+        assert prop["x-aws-stickler-comparator"] == "ANLSStarComparator"
+
+    def test_an_explicit_comparator_survives_into_the_schema(self):
+        """Never overridden: an explicit `comparator=` is consent by definition."""
+        model = self._model()
+        assert type(model._get_comparison_info("named").comparator).__name__ == (
+            "ExactComparator"
+        )
+        assert (
+            model.to_json_schema()["properties"]["named"]["x-aws-stickler-comparator"]
+            == "ExactComparator"
+        )
+
+    def test_a_scalar_field_is_left_alone(self):
+        """The control: the substitution must be keyed on the annotation."""
+        model = self._model()
+        info = model._get_comparison_info("scalar")
+        assert type(info.comparator).__name__ == "LevenshteinComparator"
+        assert info.clip_under_threshold is True
+
+    def test_a_shared_comparable_field_is_not_rewritten_by_the_other_field(self):
+        """One `ComparableField(...)` can be bound to two fields.
+
+        Pydantic does not clone the `json_schema_extra` closure, so substituting
+        in place retroactively rewrote the sibling -- order-dependently on which
+        class was defined first. Widening the substitution from one annotation to
+        four widens this hazard with it, so it is asserted here rather than only
+        in the comment that records it.
+        """
+        Item = self.Item
+        shared = ComparableField(threshold=0.8, default=None)
+
+        class Scalar(StructuredModel):
+            v: Optional[str] = shared
+
+        class Objectish(StructuredModel):
+            v: Optional[Item] = shared
+
+        assert type(Scalar._get_comparison_info("v").comparator).__name__ == (
+            "LevenshteinComparator"
+        )
+        assert Scalar._get_comparison_info("v").clip_under_threshold is True
+        assert type(Objectish._get_comparison_info("v").comparator).__name__ == (
+            "ANLSStarComparator"
+        )
+        assert Objectish._get_comparison_info("v").clip_under_threshold is False
+
+    def test_a_deferred_annotation_still_scores_correctly(self):
+        """A forward reference resolved after the class is built.
+
+        This is the one shape the definition-time pass cannot see: the annotation
+        is a `ForwardRef` while the class is being built, so it is not recognised
+        as object-grade, and pydantic resolves it later. The read-time fallback in
+        `get_comparison_info` is what covers it, and asserting the SCORE is what
+        proves the fallback is live rather than decorative -- an earlier version of
+        this test compared two helpers to each other and passed with the fallback
+        deleted outright.
+        """
+
+        class Doc(StructuredModel):
+            kid: Optional["DeferredLeaf"] = ComparableField(default=None)
+
+        class DeferredLeaf(BaseModel):
+            a: Optional[str] = None
+            b: Optional[str] = None
+
+        Doc.model_rebuild(force=True)
+        info = Doc._get_comparison_info("kid")
+        assert type(info.comparator).__name__ == "ANLSStarComparator"
+        assert info.clip_under_threshold is False
+        # Object-grade scoring, not edit distance over `str(model)`: one of two
+        # fields wrong is 0.5, and identical is a true positive rather than the
+        # false discovery the scalar default would report.
+        half = Doc(kid=DeferredLeaf(a="x", b="1")).compare_with(
+            Doc(kid=DeferredLeaf(a="x", b="2")), include_confusion_matrix=True
+        )
+        same = Doc(kid=DeferredLeaf(a="x", b="1")).compare_with(
+            Doc(kid=DeferredLeaf(a="x", b="1")), include_confusion_matrix=True
+        )
+        assert half["field_scores"]["kid"] == pytest.approx(0.5)
+        assert same["field_scores"]["kid"] == pytest.approx(1.0)
+        assert same["confusion_matrix"]["overall"]["tp"] == 1
+
+    def test_a_deferred_annotation_is_read_the_same_way_twice(self):
+        """Reading the configuration BEFORE the rebuild must not fix the answer.
+
+        The object-grade classification is memoised per (class, field), and an
+        annotation is not fixed for the life of a class: it is a `ForwardRef` until
+        pydantic resolves it. Caching the False computed from the unresolved form
+        made scoring depend on whether anything had looked at the class first --
+        two structurally identical models, identical data, 1.0/tp=1 or 0.0/fd=1
+        according to call order. The cache remembers the annotation it was
+        computed from, so resolution invalidates it.
+        """
+
+        class Doc(StructuredModel):
+            kid: Optional["EarlyReadLeaf"] = ComparableField(default=None)
+
+        # The early read: this is what `explain()` and `to_json_schema()` do.
+        before = type(Doc._get_comparison_info("kid").comparator).__name__
+
+        class EarlyReadLeaf(BaseModel):
+            a: Optional[str] = None
+
+        Doc.model_rebuild(force=True)
+        after = type(Doc._get_comparison_info("kid").comparator).__name__
+
+        assert before == "LevenshteinComparator", (
+            "an unresolved annotation cannot be classified, which is the premise"
+        )
+        assert after == "ANLSStarComparator", (
+            "the memo must not outlive the annotation it was computed from"
+        )
+        result = Doc(kid=EarlyReadLeaf(a="x")).compare_with(
+            Doc(kid=EarlyReadLeaf(a="x")), include_confusion_matrix=True
+        )
+        assert result["field_scores"]["kid"] == pytest.approx(1.0)
+        assert result["confusion_matrix"]["overall"]["tp"] == 1
+
+    def test_a_deferred_annotation_is_the_one_shape_the_schema_cannot_report(self):
+        """The limitation, pinned so it cannot widen or vanish unnoticed.
+
+        The definition-time pass is what keeps `to_json_schema()` honest, and it
+        runs once, while the class is being built. A forward reference is not
+        resolved yet at that point, so the field's metadata is never amended and
+        the exported schema keeps the scalar default even though the engine scores
+        with ANLS*.
+
+        `dev` behaves identically for a deferred MAPPING annotation, so this is
+        the pre-existing cost of substituting at definition time rather than
+        something this change introduced; what changed is that all four
+        object-grade shapes now share it instead of three of them being wrong in
+        the resolved case too. Re-running the pass after `model_rebuild()` is the
+        fix, and it needs pydantic's private `_parent_namespace_depth` to be
+        compensated for the extra stack frame or local forward references stop
+        resolving at all. Tracked separately rather than smuggled in here.
+        """
+
+        class Doc(StructuredModel):
+            kid: Optional["UnexportedLeaf"] = ComparableField(default=None)
+
+        class UnexportedLeaf(BaseModel):
+            a: Optional[str] = None
+
+        Doc.model_rebuild(force=True)
+        engine = Doc._get_comparison_info("kid")
+        prop = Doc.to_json_schema()["properties"]["kid"]
+        assert type(engine.comparator).__name__ == "ANLSStarComparator"
+        assert prop["x-aws-stickler-comparator"] == "LevenshteinComparator"
+
+
+class TestTheFieldConfigurationIsLookedUpOnce:
+    """`get_comparison_info` is not free, and it runs per cost-matrix cell.
+
+    It builds a fresh `ANLSStarComparator` on every call -- only the annotation
+    predicate is memoised -- so a redundant lookup is real work once per field per
+    pair. `CASE 5` asked for the same field a THIRD time in one dispatch, on the
+    branch whose own comment argues for memoising exactly this lookup, while
+    `STEP 1` had already bound the identical object.
+    """
+
+    def test_a_plain_model_field_is_not_looked_up_a_third_time(self):
+        from stickler.structured_object_evaluator.models import configuration_helper
+
+        class Item(BaseModel):
+            quantity: Optional[int] = None
+
+        class Doc(StructuredModel):
+            item: Optional[Item] = ComparableField(default=None)
+
+        original = configuration_helper.ConfigurationHelper.get_comparison_info
+        seen = []
+
+        def counting(cls, field_name):
+            seen.append(field_name)
+            return original(cls, field_name)
+
+        configuration_helper.ConfigurationHelper.get_comparison_info = staticmethod(
+            counting
+        )
+        try:
+            Doc(item=Item(quantity=2)).compare_with(Doc(item=Item(quantity=2)))
+        finally:
+            configuration_helper.ConfigurationHelper.get_comparison_info = staticmethod(
+                original
+            )
+
+        # STEP 1 in the dispatcher, then `compare_primitive_with_scores`. The
+        # third call was the one this removes; asserting the exact count rather
+        # than a bound is what stops a fourth arriving unnoticed.
+        assert seen.count("item") == 2, seen
+
+
+class TestAnnotatedDoesNotHideTheAnnotation:
+    """`Field(description=...)` on an optional field must not change the score.
+
+    Pydantic strips `Annotated` when it wraps a WHOLE annotation but leaves it on
+    a union arm, so `Annotated[List[Leaf], Field(...)] | None` is stored as
+    `Optional[Annotated[List[Leaf], FieldInfo]]`. `get_origin` on that arm reports
+    `Annotated`, not `list`, so every object-grade predicate answered False and
+    the field kept the scalar Levenshtein default.
+
+    On `dev` that was a missed substitution and nothing more. Here it was fatal:
+    `_holds_a_plain_model` still finds plain models in the list, so the element
+    comparator is still wrapped in `_ClassGatedComparator`, which then refuses
+    every pair because Levenshtein is on the object denylist. Two IDENTICAL
+    elements became two false discoveries -- `dev` scored 1.0 with `tp=2`, this
+    branch scored 0.0 with `fd=2`.
+
+    `_annotation_is_list` in `structured_model.py` documents the same trap for the
+    same reason. `ConfigurationHelper.strip_annotation_wrappers` is that lesson
+    applied to the four object-grade predicates.
+    """
+
+    class Leaf(BaseModel):
+        a: Optional[str] = None
+        b: Optional[str] = None
+
+    def _models(self):
+        Leaf = self.Leaf
+
+        class Bare(StructuredModel):
+            v: Optional[List[Leaf]] = ComparableField(default=None)
+
+        class Wrapped(StructuredModel):
+            v: Optional[Annotated[List[Leaf], Field(description="d")]] = (
+                ComparableField(default=None)
+            )
+
+        class Pep604(StructuredModel):
+            v: Annotated[List[Leaf], Field(description="d")] | None = ComparableField(
+                default=None
+            )
+
+        class SingularWrapped(StructuredModel):
+            v: Optional[Annotated[Leaf, Field(description="d")]] = ComparableField(
+                default=None
+            )
+
+        class WrappedMapping(StructuredModel):
+            v: Optional[Annotated[Dict[str, str], Field(description="d")]] = (
+                ComparableField(default=None)
+            )
+
+        return Bare, Wrapped, Pep604, SingularWrapped, WrappedMapping
+
+    @pytest.mark.parametrize("index", range(5))
+    def test_every_spelling_gets_the_object_grade_comparator(self, index):
+        model = self._models()[index]
+        info = model._get_comparison_info("v")
+        assert type(info.comparator).__name__ == "ANLSStarComparator"
+        assert info.clip_under_threshold is False
+
+    def test_an_identical_wrapped_list_is_not_a_false_discovery(self):
+        """The regression, on data that cannot be wrong."""
+        Bare, Wrapped, Pep604, _, _ = self._models()
+        items = [self.Leaf(a="x", b="1"), self.Leaf(a="y", b="2")]
+        for model in (Bare, Wrapped, Pep604):
+            result = model(v=list(items)).compare_with(
+                model(v=list(items)), include_confusion_matrix=True
+            )
+            overall = result["confusion_matrix"]["overall"]
+            assert result["overall_score"] == pytest.approx(1.0), model.__name__
+            assert (overall["tp"], overall["fd"]) == (2, 0), model.__name__
+
+    def test_the_wrapped_and_bare_spellings_score_identically(self):
+        """One annotation, one answer: the divergence this work removes."""
+        Bare, Wrapped, Pep604, _, _ = self._models()
+        gt = [self.Leaf(a="x", b="1")]
+        pred = [self.Leaf(a="x", b="2")]
+        scores = {
+            m.__name__: m(v=list(gt)).compare_with(m(v=list(pred)))["field_scores"]["v"]
+            for m in (Bare, Wrapped, Pep604)
+        }
+        assert len(set(round(s, 6) for s in scores.values())) == 1, scores
+        assert scores["Bare"] == pytest.approx(0.5)
+
+    def test_the_singular_wrapped_form_agrees_too(self):
+        """Broken on `dev` as well as here, so this one is a fix, not a repair."""
+        _, _, _, SingularWrapped, _ = self._models()
+        result = SingularWrapped(v=self.Leaf(a="x", b="1")).compare_with(
+            SingularWrapped(v=self.Leaf(a="x", b="1")), include_confusion_matrix=True
+        )
+        assert result["field_scores"]["v"] == pytest.approx(1.0)
+        assert result["confusion_matrix"]["overall"]["tp"] == 1
+
+
+class TestAStructuredModelElementIsNotRefused:
+    """The comparator refusal is about PLAIN models, and must stay that way.
+
+    `_ClassGatedComparator` wraps the whole list's element comparator as soon as
+    ONE element anywhere in either list is a plain model. If the refusal read
+    `isinstance(v, BaseModel)`, a `StructuredModel` element -- which passes that
+    test -- was refused as collateral: `[Cat(plain), Note(SM), Note(SM)]` against
+    an IDENTICAL copy scored 0.0 with `fd=3`, where `dev` scored 1.0 with `tp=3`.
+
+    The refusal exists because a plain model's ANNOTATION is what installs an
+    object-grade comparator, and an undeclared annotation cannot. A
+    `StructuredModel` is scored by recursion instead, so the field's comparator is
+    not what judges it and has no business refusing it.
+    """
+
+    class Cat(BaseModel):
+        name: Optional[str] = None
+
+    class Note(StructuredModel):
+        text: Optional[str] = ComparableField(default=None)
+
+    def _holder(self):
+        Cat, Note = self.Cat, self.Note
+
+        class Doc(StructuredModel):
+            items: Optional[List[Union[Cat, Note]]] = ComparableField(default=None)
+
+        return Doc
+
+    def test_a_pure_structured_model_list_is_untouched(self):
+        """The control: no plain model, so the wrapper is never installed."""
+        Doc = self._holder()
+        rows = [self.Note(text=t) for t in "abc"]
+        result = Doc(items=list(rows)).compare_with(
+            Doc(items=list(rows)), include_confusion_matrix=True
+        )
+        overall = result["confusion_matrix"]["overall"]
+        assert (overall["tp"], overall["fd"]) == (3, 0)
+
+    def test_one_plain_model_does_not_condemn_the_structured_elements(self):
+        """The regression: the plain element is refused, the others are not.
+
+        `tp=2 fd=1` is the declared policy -- a multi-arm union cannot configure an
+        object-grade comparator for the `Cat`, so that element is refused, and the
+        two `Note`s are `StructuredModel`s scored by recursion. `fd=3` was the
+        defect; `fd=0` would mean the plain element is no longer refused at all.
+        """
+        Doc = self._holder()
+
+        def rows():
+            return [self.Cat(name="rex"), self.Note(text="a"), self.Note(text="b")]
+
+        result = Doc(items=rows()).compare_with(
+            Doc(items=rows()), include_confusion_matrix=True
+        )
+        overall = result["confusion_matrix"]["overall"]
+        assert (overall["tp"], overall["fd"]) == (2, 1)
+        assert result["field_scores"]["items"] == pytest.approx(2 / 3)
+
+    def test_the_gate_answers_the_two_element_kinds_differently(self):
+        """Stated at the gate, so the distinction cannot be read as incidental."""
+        from stickler.comparators.levenshtein import LevenshteinComparator
+        from stickler.structured_object_evaluator.models.configuration_helper import (
+            ConfigurationHelper,
+        )
+
+        Doc = self._holder()
+        scalar_default = LevenshteinComparator()
+        assert (
+            ConfigurationHelper.can_compare_object_pair(
+                Doc, "items", scalar_default, self.Note(text="x"), self.Note(text="x")
+            )
+            is True
+        )
+        assert (
+            ConfigurationHelper.can_compare_object_pair(
+                Doc, "items", scalar_default, self.Cat(name="x"), self.Cat(name="x")
+            )
+            is False
+        )
+
+
+class TestAModelAgainstSomethingElseIsAMismatch:
+    """`compare()` must agree with `compare_with()` on a mixed-kind pair.
+
+    `compare_with` has no branch for a plain model against a bare dict: CASE 5
+    needs BOTH sides to be a model, so the pair lands in the type-mismatch branch
+    and reports `fd=1`. `compare()` reached the field's comparator instead and
+    scored the same content 1.0 -- the #233 disagreement again, and again on the
+    reader that fills the Hungarian cost matrix. On `dev` the same call raised
+    `TypeError`, so this is a crash and a disagreement replaced by one answer.
+    """
+
+    class Item(BaseModel):
+        a: Optional[str] = None
+
+    def _holder(self):
+        Item = self.Item
+
+        class Doc(StructuredModel):
+            kid: Optional[Item] = ComparableField(default=None)
+
+        return Doc
+
+    @pytest.mark.parametrize(
+        "other", ({"a": "x"}, "a='x'", 7), ids=("dict", "str", "int")
+    )
+    def test_compare_agrees_with_compare_with(self, other):
+        Doc = self._holder()
+        raw = Doc(kid=self.Item(a="x")).compare_field_raw("kid", other)
+        assert raw == pytest.approx(0.0)
+
+    def test_the_same_kind_on_both_sides_still_scores(self):
+        """The gate must not swallow the ordinary case."""
+        Doc = self._holder()
+        assert Doc(kid=self.Item(a="x")).compare_field_raw(
+            "kid", self.Item(a="x")
+        ) == pytest.approx(1.0)
