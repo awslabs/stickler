@@ -204,9 +204,11 @@ class ANLSStarComparator(BaseComparator):
     .. versionadded:: 1.0
     """
 
+    DEFAULT_THRESHOLD = DEFAULT_VERDICT_THRESHOLD
+
     def __init__(
         self,
-        threshold: float = DEFAULT_VERDICT_THRESHOLD,
+        threshold: Optional[float] = None,
         leaf_threshold: float = DEFAULT_LEAF_THRESHOLD,
     ):
         """Initialize the comparator.

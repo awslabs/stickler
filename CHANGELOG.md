@@ -143,6 +143,183 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **Breaking:** a threshold set on a comparator now reaches the field that names
+  it. `Comparator(threshold=...)` was accepted everywhere and read almost
+  nowhere: the only functional reader outside ANLS\* is `binary_compare()`, which
+  has no callers in `src/`, so
+
+  ```python
+  ComparableField(comparator=LevenshteinComparator(threshold=0.95))
+  ```
+
+  produced a field whose verdict threshold was `0.5`. The value was stored on the
+  comparator and visible in its `repr`, and never consulted. A threshold is only
+  meaningful beside the metric that produced the score, since `0.85` means one
+  thing on edit distance and another on a semantic embedding, so discarding one
+  the caller wrote was the wrong default.
+
+  `ComparableField(threshold=...)` now defaults to `None` meaning "not
+  specified". A threshold stated on the field always wins; otherwise one
+  explicitly set on the comparator is adopted; otherwise `0.5` stands in until
+  inference owns that case ([#239](https://github.com/awslabs/stickler/issues/239)).
+
+  A comparator's own **default** threshold is deliberately not adopted. Those
+  defaults were never audited as verdict thresholds and several are wrong for the
+  job: `DateComparator` defaults to `1.0` while awarding `0.7` for a match with no
+  year, so adopting it would clip that comparator's own feature to zero.
+
+  An out-of-tree comparator that still declares a concrete default keeps its
+  pre-0.8 behaviour and warns once. `threshold is not None` is exact only for a
+  comparator that defaults its own parameter to `None`; one written to the pattern
+  the docs taught until now --
+
+  ```python
+  def __init__(self, threshold: float = 1.0):
+      super().__init__(threshold=threshold)
+  ```
+
+  -- forwards a number on a bare construction, so the marker would read as set and
+  the field would adopt `1.0`, silently zeroing every imperfect score under
+  `clip_under_threshold`. That is the outcome this change exists to prevent, and it
+  would have landed on exactly the population that cannot have migrated yet. For
+  such a subclass stickler falls back to comparing against the declared default,
+  which carries the old flaw (a threshold equal to that default reads as unset) but
+  changes nothing for them, and warns with the two-line migration. The comparator
+  docs and `Custom_Comparator_Demo.ipynb` now teach `Optional[float] = None` plus
+  `DEFAULT_THRESHOLD`.
+
+  Telling the two apart required a change to `BaseComparator`, because it could
+  not be done anywhere downstream. `threshold` on every comparator now defaults
+  to `None`, meaning "use my `DEFAULT_THRESHOLD`", and `BaseComparator.__init__`
+  records `threshold_was_set`. Previously each comparator resolved its own
+  default before calling `super().__init__`, so `DateComparator()` and
+  `DateComparator(threshold=1.0)` both arrived holding `1.0` and were
+  indistinguishable. `.threshold` still reads back the same number it always
+  did; what changes is that the signature default is `None` rather than a
+  literal, and a comparator that forwards `**kwargs` to `super().__init__` now
+  propagates the caller's threshold correctly.
+
+  **What moves:**
+
+  - Any field that named a comparator threshold and no field threshold. Its
+    verdict threshold changes from `0.5` to that value, so a score between the
+    two flips from true positive to false discovery.
+  - **Scores move too, not just verdicts.** `clip_under_threshold` defaults to
+    `True`, so an adopted threshold also zeroes a below-threshold field score.
+    `ComparableField(comparator=LevenshteinComparator(threshold=0.95))` on
+    `"abcdefghij"` against `"abcdefghiX"` reports `field_scores` of `0.0` and an
+    `overall_score` of `0.0`, where both were `0.9` before. Aggregate metrics
+    move with them.
+  - `to_json_schema()` no longer emits `x-aws-stickler-threshold` for a
+    `List[StructuredModel]` field. `to_stickler_config()` still does; that is
+    inert only because `field_converter` forces `threshold=None` for the type, and
+    is left standing rather than changed in a PR about thresholds. It was never read there (Hungarian matching
+    uses the element class's `match_threshold`, which the exported `items`
+    schema already carries), and re-importing it now raises, so a model exported
+    before this change round-trips where it previously could not.
+
+  - **`List[StructuredModel]` now refuses a field threshold at every value.**
+    `__init_subclass__` has always refused one, but detected it by comparing
+    against the literal `0.5`, so `ComparableField(threshold=0.5)` on such a field
+    was accepted while `threshold=0.9` raised -- legal at exactly one value. It now
+    reads the explicitness marker and refuses both. The remediation advice is
+    unchanged: set `match_threshold` on the element class.
+  - A JSON Schema that names `x-aws-stickler-threshold` on an array-of-model
+    property has it **ignored** rather than forwarded. Every `to_json_schema()` on
+    a released version emitted that key, so forwarding it made the explicitness
+    marker refuse the class and no previously exported schema containing a list of
+    models could be read back. Ignored rather than raised because refusing would
+    break persisted artifacts to flag a key whose only cost is being ignored.
+
+    A warning is emitted only where the author can act on it. `0.5` is the only
+    value a released export could write there, since a named threshold on that
+    shape is refused at class definition, so a value equal to it carries no
+    authorial intent and passes silently -- warning on it would fire on every
+    artifact this change exists to rescue. Any other value is the author's, and
+    warns. The message names `x-aws-stickler-match-threshold` inside `items` as the
+    key to write, but not the discarded number as its value: the element class's
+    gate is a different number, and echoing the ignored one would have a reader
+    overwrite a working configuration.
+
+  - A threshold set on the **comparator** of a `List[StructuredModel]` field is
+    now **reported** rather than swallowed. Adopting comparator thresholds makes
+    the value reachable on a shape that cannot use it: it resolves, is never read
+    (Hungarian matching pairs items with the element class's `match_threshold`),
+    and said nothing, while the identical number written as `threshold=` raises
+    with remediation. Warned rather than raised because a comparator instance can
+    be bound to several fields, so refusing the class would reject a construction
+    that is legitimate wherever else it appears; a field-level `threshold=` cannot
+    be shared that way, which is why that one stays an error.
+
+  Unchanged: `threshold=0.0` remains a value rather than an omission, and a bare
+  comparator with no threshold named.
+
+  **`clip_under_threshold` now works on a list field, and that moves two scores.**
+  The flag was documented as applying to every field and was silently inert on
+  every list: `PrimitiveListComparator` sets `threshold_applied_score =
+  raw_similarity` under a comment saying lists never clip, but `raw_similarity`
+  arrives from `ComparisonHelper.unordered_list_metrics`, which had already zeroed
+  each sub-threshold pair before averaging, regardless of the field's setting. So
+  the line preserving partial credit was preserving a score already thrown away,
+  and a list field could not opt out while a scalar field could:
+
+  ```
+  raw 0.5625, threshold 0.9, clip_under_threshold=False
+    scalar field   0.5625
+    list field     0.0000    <- opted out, still clipped
+  ```
+
+  It is now applied per ELEMENT, so the flag means one thing on a scalar and on a
+  list. The default is `True`, so any list that did not ask to keep partial credit
+  is byte-identical to before. Classification is deliberately untouched: a
+  sub-threshold pair is still one `fd`, so no confusion-matrix count moves.
+
+  **Scores move for list-of-mapping fields, including ones that configure nothing.**
+  A `List[Dict[...]]` / `List[Mapping[...]]` field resolves
+  `clip_under_threshold=False` because a mapping is a container, so it was asking
+  to keep partial credit all along and the list path was discarding it. With one of
+  two values wrong, `{"a": "Acme Corporation"}` against `{"a": "Acme Corp"}`:
+
+  ```
+                                          d: Dict    ld: List[Dict]
+  dev, bare annotation                    0.5625     0.0
+  dev, ComparableField(threshold=0.9)     0.5625     0.0
+  now, both spellings                     0.5625     0.5625
+  ```
+
+  Expect list-of-mapping field scores to RISE where an element is partly correct,
+  whether or not the model configures anything. The singular form was always the
+  correct one and the list form now agrees with it.
+
+  Note both `dev` rows: the `Dict` / `List[Dict]` split is **pre-existing `dev`
+  behaviour**, in a bare annotation and in an explicit field threshold alike. This
+  change did not introduce it. Honouring comparator thresholds is what made it
+  reachable from a third spelling, which is how it was found.
+
+  Also moving, and unrelated to comparator thresholds: any list field that
+  **explicitly declared `clip_under_threshold=False`** now gets what it asked for,
+  so a `List[str]` with a sub-threshold element scores its partial similarity
+  instead of `0.0`. Disclosed here because nothing else would have.
+
+  Two limits worth stating rather than discovering. `List[StructuredModel]` still
+  ignores the flag, because its pairs are scored by each item's own `compare_with`
+  before they reach the mean, so clipping has already happened per item and the
+  field-level flag has nothing left to apply. And `raw_similarity_score` on a list
+  node is not raw: it is the clipped mean, which contradicts the name and
+  `compare_field_raw()`. Both, and the doc inconsistency behind them, are tracked
+  in [#330](https://github.com/awslabs/stickler/issues/330).
+
+  Also records a `_threshold_explicit` marker alongside the existing
+  `_comparator_explicit` and `_clip_explicit` ones. Its only reader today is the
+  `List[StructuredModel]` guard in `StructuredModel.__init_subclass__`, which
+  refuses a threshold on a list-of-model field and used to detect one by
+  comparing the resolved value against the literal `0.5`. That proxy would now
+  reject `ComparableField(comparator=Lev(threshold=0.9))` on such a field,
+  blaming a `threshold` parameter absent from the call site. Wiring the marker
+  into `explain()` provenance is left to
+  [#210](https://github.com/awslabs/stickler/issues/210)
+  ([#246](https://github.com/awslabs/stickler/issues/246)).
+
 - **Breaking:** `HungarianMatcher.calculate_metrics` no longer reports a paired
   item as missing. It derived `fn` and `fp` as `len(list) - tp`, so a pair the
   algorithm produced, and that the method returns inside `matched_pairs`, was
