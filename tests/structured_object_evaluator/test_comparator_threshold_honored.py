@@ -25,7 +25,7 @@ See https://github.com/awslabs/stickler/issues/246
 
 import warnings
 from copy import deepcopy
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import pytest
 
@@ -799,3 +799,134 @@ class TestAZeroThresholdNamesWhereItWasWritten:
         message = str(caught[0].message)
         assert "sets threshold=0.0" in message
         assert "comparator threshold" not in message
+
+
+class TestAContainerKeepsItsPartialCreditInBothShapes:
+    """`Dict[...]` and `List[Dict[...]]` must answer a named threshold the same way.
+
+    Honouring a comparator's threshold exposed two gaps that together zeroed a
+    real number. Same annotation shape, same comparator, same content:
+
+        d:  Dict[str, str]       = ComparableField(comparator=ANLSStarComparator(threshold=0.9))
+        ld: List[Dict[str, str]] = ComparableField(comparator=ANLSStarComparator(threshold=0.9))
+
+                                    d         ld
+        dev                         0.5625    0.5625
+        before this fix             0.5625    0.0
+
+    1. `_install_mapping_comparators` gated the clip-default amendment on
+       `is_mapping_annotation` alone, so a `List[Dict[...]]` field never got
+       `clip_under_threshold=False` and kept clipping on. `get_comparison_info`
+       does cover the list shape, but only when the comparator is NOT explicit,
+       which is why naming one is what broke it.
+
+    2. Turning the flag off was not enough, because `clip_under_threshold` was a
+       no-op on every list path. `PrimitiveListComparator` says "for lists we
+       NEVER clip" and sets `threshold_applied_score = raw_similarity`, but the
+       zeroing had already happened upstream in
+       `ComparisonHelper.unordered_list_metrics`, which clipped each sub-threshold
+       pair before averaging regardless of the field's setting. So the line
+       claiming lists preserve partial credit was preserving a score that had
+       already been thrown away.
+
+    The flag now means one thing everywhere, applied per ELEMENT on a list.
+    Classification is untouched: a sub-threshold pair is still one `fd`. Only the
+    score moves, and only for a field that asked to keep partial credit.
+    """
+
+    GT = {"a": "Acme Corporation"}
+    PRED = {"a": "Acme Corp"}
+
+    def _model(self):
+        from stickler.comparators.anls import ANLSStarComparator
+
+        class M(StructuredModel):
+            d: Optional[Dict[str, str]] = ComparableField(
+                comparator=ANLSStarComparator(threshold=0.9), default=None
+            )
+            ld: Optional[List[Dict[str, str]]] = ComparableField(
+                comparator=ANLSStarComparator(threshold=0.9), default=None
+            )
+
+        return M
+
+    def test_the_two_shapes_score_identically(self):
+        """The reviewer's blocker, stated as the invariant it violates."""
+        M = self._model()
+        scores = M(d=dict(self.GT), ld=[dict(self.GT)]).compare_with(
+            M(d=dict(self.PRED), ld=[dict(self.PRED)])
+        )["field_scores"]
+        assert scores["d"] == pytest.approx(0.5625)
+        assert scores["ld"] == pytest.approx(scores["d"])
+
+    def test_both_shapes_resolve_the_named_threshold(self):
+        """Neither shape may quietly keep 0.5; that is what this PR is for."""
+        M = self._model()
+        for field in ("d", "ld"):
+            assert M._get_comparison_info(field).threshold == pytest.approx(0.9), field
+
+    def test_both_shapes_turn_clipping_off_as_containers(self):
+        """The container policy, which is why partial credit survives at all."""
+        M = self._model()
+        for field in ("d", "ld"):
+            assert M._get_comparison_info(field).clip_under_threshold is False, field
+
+    def test_the_element_is_still_classified_as_a_false_discovery(self):
+        """Keeping the score must NOT launder the verdict.
+
+        0.5625 is below the declared 0.9, so the element missed its bar and the
+        confusion matrix has to say so. If this ever reads `tp=1`, the fix has
+        turned a scoring change into a classification change.
+        """
+        M = self._model()
+        cm = M(ld=[dict(self.GT)]).compare_with(
+            M(ld=[dict(self.PRED)]), include_confusion_matrix=True
+        )["confusion_matrix"]
+        node = cm["fields"]["ld"]
+        assert node["similarity_score"] == pytest.approx(0.5625)
+        assert (node["overall"]["tp"], node["overall"]["fd"]) == (0, 1)
+
+    def test_a_default_clip_list_still_zeroes_a_sub_threshold_element(self):
+        """The blast radius, bounded: an ordinary list is unchanged.
+
+        `clip_under_threshold` defaults to True, so a `List[str]` that never asked
+        to keep partial credit still contributes 0.0 for a missed element, exactly
+        as on `dev`. Without this, the fix would silently raise scores on every
+        list field in every existing model.
+        """
+
+        class Plain(StructuredModel):
+            tags: Optional[List[str]] = ComparableField(
+                comparator=LevenshteinComparator(threshold=0.9), default=None
+            )
+
+        assert Plain._get_comparison_info("tags").clip_under_threshold is True
+        score = Plain(tags=["Acme Corporation"]).compare_with(
+            Plain(tags=["Acme Corp"])
+        )["field_scores"]["tags"]
+        assert score == pytest.approx(0.0)
+
+    def test_an_explicit_clip_choice_is_honoured_on_a_list(self):
+        """Both directions, since the flag was previously inert on lists."""
+
+        class KeepIt(StructuredModel):
+            tags: Optional[List[str]] = ComparableField(
+                comparator=LevenshteinComparator(threshold=0.9),
+                clip_under_threshold=False,
+                default=None,
+            )
+
+        class ZeroIt(StructuredModel):
+            tags: Optional[List[str]] = ComparableField(
+                comparator=LevenshteinComparator(threshold=0.9),
+                clip_under_threshold=True,
+                default=None,
+            )
+
+        def score(model):
+            return model(tags=["Acme Corporation"]).compare_with(
+                model(tags=["Acme Corp"])
+            )["field_scores"]["tags"]
+
+        assert score(KeepIt) == pytest.approx(0.5625)
+        assert score(ZeroIt) == pytest.approx(0.0)

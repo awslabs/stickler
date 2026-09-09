@@ -242,18 +242,48 @@ Weights are configured per-field via `ComparableField` metadata. Default weight 
 
 ### `clip_under_threshold`
 
-When enabled on a field (the default), `FieldComparator` clips scores below the threshold to 0.0 when producing `threshold_applied_score`. The engine's percolation loop then uses the already-clipped score. Lists are exempt — both `PrimitiveListComparator` and `StructuredListComparator` always preserve partial match scores:
+When enabled on a field (the default), a score below the threshold contributes 0.0 instead of its partial similarity. This holds for **every** field kind; the layer that applies it differs.
+
+For a primitive or a single nested `StructuredModel`, `FieldComparator` clips when producing `threshold_applied_score`, and the engine's percolation loop uses the already-clipped score:
 
 ```python
-# See: field_comparator.py:73-76 — where clipping happens for primitives
+# See: field_comparator.py:73-76 — clipping for primitives and nested models
 threshold_applied_score = (
     0.0 if info.clip_under_threshold else raw_similarity
 )
-
-# See: structured_list_comparator.py:84-85 — lists bypass clipping
-# CRITICAL FIX: For structured lists, we NEVER clip under threshold
-threshold_applied_score = raw_similarity  # Always use raw score for lists
 ```
+
+For a **list**, it is applied per ELEMENT, inside `ComparisonHelper.unordered_list_metrics`, before the matched pairs are averaged:
+
+```python
+# See: comparison_helper.py — clipping for list elements
+if ThresholdHelper.is_above_threshold(score, classification_threshold):
+    threshold_applied_similarities.append(score)
+elif clip_under_threshold:
+    threshold_applied_similarities.append(0.0)
+else:
+    threshold_applied_similarities.append(score)
+```
+
+!!! warning "`PrimitiveListComparator` and `StructuredListComparator` do not clip, and that is not the whole story"
+
+    Both carry a line reading `threshold_applied_score = raw_similarity` with a
+    comment saying lists never clip. That is true of those two functions and
+    misleading as a description of list behaviour: `raw_similarity` arrives from
+    `unordered_list_metrics`, which has already applied the rule above. This page
+    previously documented only that layer and stated that lists are exempt from
+    `clip_under_threshold` entirely, which was wrong in both directions -- lists
+    did clip, and a field asking to keep partial credit was ignored.
+
+    Classification is separate and is never affected by this setting. A pair below
+    the threshold is one `fd` whether or not its score is kept.
+
+    Two gaps remain, tracked in
+    [#330](https://github.com/awslabs/stickler/issues/330):
+    `List[StructuredModel]` does not honour the flag, because each pair is scored
+    through the item's own `compare_with` and clipping has already happened per
+    item; and `raw_similarity_score` on a list node is the CLIPPED mean, which
+    contradicts both its name and `compare_field_raw()`.
 
 ### `_aggregate_to_overall()`
 

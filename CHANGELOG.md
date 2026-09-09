@@ -275,6 +275,45 @@ Each release links to full notes on the
   Unchanged: `threshold=0.0` remains a value rather than an omission, and a bare
   comparator with no threshold named.
 
+  **`clip_under_threshold` now works on a list field, and that moves two scores.**
+  The flag was documented as applying to every field and was silently inert on
+  every list: `PrimitiveListComparator` sets `threshold_applied_score =
+  raw_similarity` under a comment saying lists never clip, but `raw_similarity`
+  arrives from `ComparisonHelper.unordered_list_metrics`, which had already zeroed
+  each sub-threshold pair before averaging, regardless of the field's setting. So
+  the line preserving partial credit was preserving a score already thrown away,
+  and a list field could not opt out while a scalar field could:
+
+  ```
+  raw 0.5625, threshold 0.9, clip_under_threshold=False
+    scalar field   0.5625
+    list field     0.0000    <- opted out, still clipped
+  ```
+
+  It is now applied per ELEMENT, so the flag means one thing on a scalar and on a
+  list. The default is `True`, so an ordinary list is byte-identical to before.
+  Classification is deliberately untouched: a sub-threshold pair is still one
+  `fd`, so no confusion-matrix count moves. Two scores do:
+
+  - a **`List[Dict[...]]`** field keeps its partial credit, like the singular
+    `Dict[...]` form always has, because the container clip default now reaches the
+    list shape. `ComparableField(comparator=ANLSStarComparator(threshold=0.9))` on
+    both shapes scored `0.5625` / `0.0`; both now read `0.5625`. This is the
+    divergence honouring comparator thresholds exposed, and the singular form was
+    always the correct one.
+  - any list field that **explicitly declared `clip_under_threshold=False`** now
+    gets what it asked for. A `List[str]` with a sub-threshold element scores its
+    partial similarity instead of `0.0`. Unrelated to comparator thresholds, and
+    disclosed here because nothing else would have.
+
+  Two limits worth stating rather than discovering. `List[StructuredModel]` still
+  ignores the flag, because its pairs are scored by each item's own `compare_with`
+  before they reach the mean, so clipping has already happened per item and the
+  field-level flag has nothing left to apply. And `raw_similarity_score` on a list
+  node is not raw: it is the clipped mean, which contradicts the name and
+  `compare_field_raw()`. Both, and the doc inconsistency behind them, are tracked
+  in [#330](https://github.com/awslabs/stickler/issues/330).
+
   Also records a `_threshold_explicit` marker alongside the existing
   `_comparator_explicit` and `_clip_explicit` ones. Its only reader today is the
   `List[StructuredModel]` guard in `StructuredModel.__init_subclass__`, which

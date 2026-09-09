@@ -36,7 +36,11 @@ class ComparisonHelper:
 
     @staticmethod
     def compare_unordered_lists(
-        gt_list: List[Any], pred_list: List[Any], comparator: BaseComparator, threshold: float
+        gt_list: List[Any],
+        pred_list: List[Any],
+        comparator: BaseComparator,
+        threshold: float,
+        clip_under_threshold: bool = True,
     ) -> Dict[str, Any]:
         """Compare two lists as unordered collections using Hungarian matching.
 
@@ -73,7 +77,9 @@ class ComparisonHelper:
         ):
             # For StructuredModel lists, we need to use individual comparison scoring for consistency
             # Use HungarianHelper to get optimal pairings - OPTIMIZED: Single call gets all info
-            hungarian_info = hungarian_helper.get_complete_matching_info(gt_list, pred_list)
+            hungarian_info = hungarian_helper.get_complete_matching_info(
+                gt_list, pred_list
+            )
             matched_pairs = hungarian_info["matched_pairs"]
 
             # CRITICAL FIX: Replace raw scores with threshold-applied scores from individual comparison
@@ -142,16 +148,22 @@ class ComparisonHelper:
             metrics = hungarian.calculate_metrics(gt_list, pred_list)
             matched_pairs = metrics["matched_pairs"]
 
-        return ComparisonHelper.unordered_list_metrics(matched_pairs=matched_pairs,
-                                                       gt_list=gt_list,
-                                                       pred_list=pred_list,
-                                                       classification_threshold=classification_threshold)
-    
+        return ComparisonHelper.unordered_list_metrics(
+            matched_pairs=matched_pairs,
+            clip_under_threshold=clip_under_threshold,
+            gt_list=gt_list,
+            pred_list=pred_list,
+            classification_threshold=classification_threshold,
+        )
+
     @staticmethod
-    def unordered_list_metrics(matched_pairs:List[Any],
-                        gt_list: List[Any],
-                        pred_list: List[Any],
-                        classification_threshold: float):
+    def unordered_list_metrics(
+        matched_pairs: List[Any],
+        gt_list: List[Any],
+        pred_list: List[Any],
+        classification_threshold: float,
+        clip_under_threshold: bool = True,
+    ):
         """
         Compare two lists as unordered collections using Hungarian matching.
 
@@ -199,15 +211,35 @@ class ComparisonHelper:
             # See https://github.com/awslabs/stickler/issues/233
             overall_score = 1.0 if not gt_list and not pred_list else 0.0
         else:
-            # Apply threshold to each similarity score (same logic as individual comparison)
+            # Apply threshold to each similarity score (same logic as individual
+            # comparison), UNLESS the field turned clipping off.
+            #
+            # `clip_under_threshold` means one thing everywhere: a value that
+            # missed its bar contributes 0.0 rather than its partial similarity.
+            # This is the list spelling of it, per ELEMENT, and it used to be
+            # unconditional here -- so a list field could not opt out while a
+            # scalar field could, and `clip_under_threshold=False` was silently a
+            # no-op on every list. Two fields declaring the same comparator, the
+            # same threshold and the same values then disagreed:
+            #
+            #     raw 0.5625, threshold 0.9, clip_under_threshold=False
+            #       scalar field   0.5625
+            #       list field     0.0000     <- opted out, still clipped
+            #
+            # The default is True, so an ordinary `List[str]` is unchanged; only a
+            # field that asked to keep partial credit now gets it. Classification
+            # is deliberately NOT affected: the counts above already ran, so a
+            # sub-threshold pair stays one `fd` either way. Only the score moves.
             threshold_applied_similarities = []
             for _, _, score in matched_pairs:
                 # Use ThresholdHelper for consistent threshold checking
                 if ThresholdHelper.is_above_threshold(score, classification_threshold):
                     threshold_applied_similarities.append(score)
-                else:
+                elif clip_under_threshold:
                     # Below threshold gets 0.0 (same as individual comparison clipping)
                     threshold_applied_similarities.append(0.0)
+                else:
+                    threshold_applied_similarities.append(score)
 
             # Average the threshold-applied similarities
             avg_threshold_similarity = sum(threshold_applied_similarities) / len(

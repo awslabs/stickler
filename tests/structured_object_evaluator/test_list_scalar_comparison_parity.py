@@ -311,9 +311,17 @@ class TestItemTypesReachTheComparatorIntact:
         # Same keys, different values: a key-wise comparator says 1.0 where JSON
         # string similarity would not.
         assert score({"a": 1, "b": 2}, {"a": 9, "b": 8}) == 1.0
-        # Half the keys shared is below the field's threshold, so it scores 0.0
-        # rather than being rescued by canonicalization.
-        assert score({"a": 1, "b": 2}, {"a": 1, "c": 3}) == 0.0
+        # One shared key of three in the union, so `KeyOverlap` says 1/3. That
+        # exact number is what proves the comparator received the dicts: JSON
+        # string similarity would not land on a third.
+        #
+        # This asserted 0.0 before. The change is the clip default, not the
+        # routing: a `List[Dict[...]]` field is a container, so it now carries
+        # `clip_under_threshold=False` like the singular `Dict[...]` form always
+        # has, and a partly-correct element keeps its score instead of being
+        # zeroed by the field threshold. On `dev` this field resolved `clip=True`
+        # purely because the amendment never reached the list shape.
+        assert score({"a": 1, "b": 2}, {"a": 1, "c": 3}) == pytest.approx(1 / 3)
 
     def test_an_explicitly_declared_levenshtein_cannot_score_a_dict(self):
         """Declaring Levenshtein on a dict field is reported, not scored.

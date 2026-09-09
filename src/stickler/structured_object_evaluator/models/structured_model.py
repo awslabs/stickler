@@ -444,7 +444,16 @@ class StructuredModel(BaseModel):
         for field_name, field_info in cls.model_fields.items():
             if field_name == _EXTRA_FIELDS_KEY:
                 continue
-            if not ConfigurationHelper.is_mapping_annotation(field_info.annotation):
+            # A singular mapping, or a list of them. The list form is admitted for
+            # the CLIP amendment only; the comparator substitution below stays on
+            # the singular annotation, because widening that changes the exported
+            # schema for `List[Dict[...]]` and belongs with the reader alignment in
+            # #319 rather than here.
+            is_mapping = ConfigurationHelper.is_mapping_annotation(
+                field_info.annotation
+            )
+            is_mapping_list = ConfigurationHelper._is_list_of_mappings(field_info)
+            if not (is_mapping or is_mapping_list):
                 continue
 
             field_default = field_info
@@ -465,7 +474,12 @@ class StructuredModel(BaseModel):
             ):
                 _amend_clip_default(field_default, extra)
 
-            if getattr(extra, "_comparator_explicit", True):
+            # The comparator substitution is for the singular annotation only. A
+            # `List[Dict[...]]` gets its object-grade comparator at read time in
+            # `ConfigurationHelper.get_comparison_info`; installing it here as well
+            # would change what `to_json_schema()` exports for that shape, which is
+            # a separate (real) divergence tracked with the reader alignment work.
+            if is_mapping_list or getattr(extra, "_comparator_explicit", True):
                 continue
 
             # Substitute onto a COPY, never onto the shared object. A single
@@ -1296,6 +1310,7 @@ class StructuredModel(BaseModel):
         pred_list: List[Any],
         comparator: BaseComparator,
         threshold: float,
+        clip_under_threshold: bool = True,
     ) -> Dict[str, Any]:
         """Compare two lists as unordered collections using Hungarian matching.
 
@@ -1315,7 +1330,7 @@ class StructuredModel(BaseModel):
             - overall_score: Similarity score for backward compatibility
         """
         return ComparisonHelper.compare_unordered_lists(
-            gt_list, pred_list, comparator, threshold
+            gt_list, pred_list, comparator, threshold, clip_under_threshold
         )
 
     def compare_field_raw(self, field_name: str, other_value: Any) -> float:
