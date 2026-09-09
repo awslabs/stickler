@@ -37,7 +37,7 @@ from stickler.comparators.numeric import NumericComparator
 from stickler.structured_object_evaluator.models.comparable_field import (
     _LEGACY_DEFAULT_THRESHOLD,
     ComparableField,
-    _comparator_threshold_was_set,
+    _named_comparator_threshold,
 )
 from stickler.structured_object_evaluator.models.structured_model import (
     StructuredModel,
@@ -171,12 +171,10 @@ class TestAComparatorDefaultIsNotAdopted:
 
 class TestTheHelperInIsolation:
     def test_it_returns_none_for_a_default_construction(self):
-        assert _comparator_threshold_was_set(LevenshteinComparator()) is None
+        assert _named_comparator_threshold(LevenshteinComparator()) is None
 
     def test_it_returns_the_value_for_an_explicit_one(self):
-        assert (
-            _comparator_threshold_was_set(LevenshteinComparator(threshold=0.9)) == 0.9
-        )
+        assert _named_comparator_threshold(LevenshteinComparator(threshold=0.9)) == 0.9
 
     def test_it_returns_none_for_a_comparator_with_no_threshold_parameter(self):
         """Must not assume every comparator takes a threshold."""
@@ -184,7 +182,7 @@ class TestTheHelperInIsolation:
         class NoThreshold:
             pass
 
-        assert _comparator_threshold_was_set(NoThreshold()) is None
+        assert _named_comparator_threshold(NoThreshold()) is None
 
 
 class TestZeroIsAValueNotAnOmission:
@@ -717,3 +715,87 @@ class TestAListOfModelsReportsASwallowedComparatorThreshold:
                     "rows": ComparableField(threshold=0.9, default=None),
                 },
             )
+
+
+class TestTheWarningKeyDoesNotCollideAcrossDynamicModels:
+    """Two anonymous models sharing a field name must both be told.
+
+    The swallowed-comparator-threshold warning keyed on `cls.__qualname__`. Every
+    dynamically built model is named `DynamicModel`, so two unrelated ones sharing a
+    field name -- `lines`, `amount`, `date`, the names that recur across document
+    schemas -- collided in `warn_once`'s process-global memo and only the first ever
+    warned. The sibling zero-threshold check thirty lines below already used
+    `_model_identity` for exactly this reason.
+    """
+
+    @staticmethod
+    def _dynamic(extra_field: str):
+        annotations = {"rows": List[_SwallowLine], extra_field: Optional[str]}
+        body = {
+            "rows": ComparableField(
+                comparator=LevenshteinComparator(threshold=0.9), default=None
+            ),
+            extra_field: ComparableField(default=None),
+        }
+        return type(
+            "DynamicModel",
+            (StructuredModel,),
+            {"__annotations__": annotations, **body},
+        )
+
+    def test_both_models_warn(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            self._dynamic("alpha")
+            self._dynamic("beta")
+        assert len(caught) == 2
+
+    def test_the_same_model_still_warns_only_once(self):
+        """Deduplication must survive the key change, or every field spams."""
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            model = self._dynamic("gamma")
+            model.to_json_schema()
+            model.to_json_schema()
+        assert len(caught) == 1
+
+
+class TestAZeroThresholdNamesWhereItWasWritten:
+    """`0.0` adopted from a comparator must not be reported as a field argument.
+
+    The zero-threshold warning said "M.f sets threshold=0.0", naming a
+    `ComparableField` parameter absent from the call site -- the same
+    misattribution this work fixes for the `List[StructuredModel]` error.
+    """
+
+    def test_a_comparator_zero_is_attributed_to_the_comparator(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            type(
+                "Doc",
+                (StructuredModel,),
+                {
+                    "__annotations__": {"f": Optional[str]},
+                    "f": ComparableField(
+                        comparator=LevenshteinComparator(threshold=0.0), default=None
+                    ),
+                },
+            )
+        assert len(caught) == 1
+        assert "sets comparator threshold=0.0" in str(caught[0].message)
+
+    def test_a_field_zero_is_still_attributed_to_the_field(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            type(
+                "Doc",
+                (StructuredModel,),
+                {
+                    "__annotations__": {"g": Optional[str]},
+                    "g": ComparableField(threshold=0.0, default=None),
+                },
+            )
+        assert len(caught) == 1
+        message = str(caught[0].message)
+        assert "sets threshold=0.0" in message
+        assert "comparator threshold" not in message

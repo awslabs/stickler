@@ -550,6 +550,30 @@ value, so it treats a threshold equal to your default as unset -- the pre-0.8
 behaviour -- rather than silently making the field stricter than either of you asked
 for.
 
+!!! warning "Pass `threshold` straight through; do not resolve your default first"
+
+    Changing the signature but keeping the old resolution is worse than not
+    migrating at all:
+
+    ```python
+    # WRONG -- every bare construction now looks caller-named
+    def __init__(self, threshold: Optional[float] = None):
+        super().__init__(threshold if threshold is not None else 0.9)
+    ```
+
+    `BaseComparator` decides explicitness from what it receives, so this hands it
+    `0.9` for a bare `YourComparator()`. The field adopts `0.9` as its verdict
+    threshold with clipping on, and nothing warns, because from the inside it is
+    indistinguishable from a caller who asked for `0.9`. Forward the parameter
+    unchanged and put the default in `DEFAULT_THRESHOLD`:
+
+    ```python
+    DEFAULT_THRESHOLD = 0.9
+
+    def __init__(self, threshold: Optional[float] = None):
+        super().__init__(threshold=threshold)
+    ```
+
 ```python
 from stickler import BaseComparator
 

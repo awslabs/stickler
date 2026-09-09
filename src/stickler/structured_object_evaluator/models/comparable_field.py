@@ -19,7 +19,7 @@ from stickler.comparators.levenshtein import LevenshteinComparator
 _LEGACY_DEFAULT_THRESHOLD = 0.5
 
 
-def _comparator_threshold_was_set(comparator: BaseComparator) -> Optional[float]:
+def _named_comparator_threshold(comparator: BaseComparator) -> Optional[float]:
     """Return the comparator's threshold if the caller named one, else ``None``.
 
     A field with no threshold of its own adopts one the caller put on the
@@ -43,6 +43,11 @@ def _comparator_threshold_was_set(comparator: BaseComparator) -> Optional[float]
     ``getattr`` with a default rather than a bare attribute read: a comparator
     that never chains to ``BaseComparator.__init__`` has no such attribute, and
     the safe reading of "cannot tell" is "not set".
+
+    Named for what it RETURNS -- the threshold, or None -- not as a predicate.
+    A boolean-sounding name invites `if _named_comparator_threshold(c):`, which
+    silently drops a deliberate `0.0`; this codebase treats that value as
+    meaningful enough to carry its own warning. Both callers test `is not None`.
     """
     if not getattr(comparator, "threshold_was_set", False):
         return None
@@ -83,7 +88,7 @@ def ComparableField(
 
                       ComparableField(comparator=ExactComparator())
                       # 0.5. A comparator's *default* threshold is not adopted;
-                      # see _comparator_threshold_was_set for why.
+                      # see _named_comparator_threshold for why.
         weight: Weight of this field in overall score calculation (default: 1.0)
         default: Default value for the field (default: None)
         clip_under_threshold: Whether to zero out scores below threshold
@@ -139,11 +144,11 @@ def ComparableField(
     # 0.85 means one thing on edit distance and another on a semantic embedding.
     # So a threshold the caller put on the comparator is a statement of intent
     # about this field, and it used to be discarded in silence. A comparator's
-    # *default* threshold is not adopted; see _comparator_threshold_was_set.
+    # *default* threshold is not adopted; see _named_comparator_threshold.
     threshold_was_explicit = threshold is not None
     if threshold is None:
         from_comparator = (
-            _comparator_threshold_was_set(actual_comparator)
+            _named_comparator_threshold(actual_comparator)
             if comparator_was_explicit
             else None
         )

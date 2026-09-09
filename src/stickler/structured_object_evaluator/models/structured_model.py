@@ -24,7 +24,7 @@ from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.base import BaseComparator
 from stickler.utils.deprecation import warn_once
 
-from .comparable_field import ComparableField, _comparator_threshold_was_set
+from .comparable_field import ComparableField, _named_comparator_threshold
 from .comparison_helper import ComparisonHelper, _maybe_absent
 from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
@@ -634,7 +634,7 @@ class StructuredModel(BaseModel):
                             # strings, so asking it for a `comparator` returns
                             # None and this branch was dead on arrival.
                             elif (
-                                _comparator_threshold_was_set(
+                                _named_comparator_threshold(
                                     getattr(
                                         field_default.json_schema_extra,
                                         "_comparator_instance",
@@ -643,9 +643,17 @@ class StructuredModel(BaseModel):
                                 )
                                 is not None
                             ):
+                                # `_model_identity`, not `__qualname__`. Every
+                                # dynamically built model is named `DynamicModel`,
+                                # so two unrelated ones sharing a field name key
+                                # to the same string and only the first ever
+                                # warns. The sibling `_warn_if_threshold_is_zero`
+                                # call below uses this helper for exactly that
+                                # reason, and I keyed on the name anyway.
                                 warn_once(
                                     "list-of-models-comparator-threshold",
-                                    f"{cls.__qualname__}.{field_name}",
+                                    f"{_model_identity(cls.__name__, cls.__annotations__)}"
+                                    f".{field_name}",
                                     f"Field '{field_name}' is a List[StructuredModel], so the "
                                     f"threshold set on its comparator is not consulted: "
                                     f"Hungarian matching pairs items using the element class's "
@@ -674,10 +682,19 @@ class StructuredModel(BaseModel):
                     # anonymous configs that share a field name (amount, date,
                     # id -- these recur constantly across document schemas)
                     # would otherwise collide and the second would be silent.
+                    # Name the parameter the caller actually wrote. Adopting a
+                    # comparator threshold means a `0.0` can arrive here from
+                    # `Comparator(threshold=0.0)`, and reporting that as
+                    # "sets threshold=0.0" points at a `ComparableField` argument
+                    # absent from the call site -- the same misattribution this
+                    # PR fixes for the `List[StructuredModel]` error one screen up.
+                    field_wrote_it = getattr(
+                        field_default.json_schema_extra, "_threshold_explicit", True
+                    )
                     _warn_if_threshold_is_zero(
                         temp_schema["x-comparison"].get("threshold"),
                         f"{_model_identity(cls.__name__, cls.__annotations__)}.{field_name}",
-                        "threshold",
+                        "threshold" if field_wrote_it else "comparator threshold",
                     )
 
         # `match_threshold` is a plain class attribute rather than a field, so

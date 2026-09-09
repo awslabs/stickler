@@ -46,7 +46,13 @@ def _caller_named_it(comparator: "BaseComparator", threshold: float) -> bool:
         f"{declared.default!r} is treated as not set, and the field falls back to "
         f"its own default. Declare 'threshold: Optional[float] = None' and set "
         f"DEFAULT_THRESHOLD = {declared.default!r} on the class to have an "
-        f"explicit threshold honoured.",
+        f"explicit threshold honoured. Pass the threshold straight through to "
+        f"super().__init__ -- do NOT resolve your own default first. Changing the "
+        f"signature but keeping "
+        f"'super().__init__(threshold if threshold is not None else "
+        f"{declared.default!r})' makes every bare construction look caller-named, "
+        f"so the default silently becomes the field's verdict threshold with "
+        f"clipping on, which is worse than the behaviour this warning describes.",
         category=UserWarning,
     )
     return threshold != declared.default
