@@ -930,3 +930,33 @@ class TestAContainerKeepsItsPartialCreditInBothShapes:
 
         assert score(KeepIt) == pytest.approx(0.5625)
         assert score(ZeroIt) == pytest.approx(0.0)
+
+    def test_a_bare_list_of_mappings_also_keeps_its_partial_credit(self):
+        """The broadest of the score movements, and the one nobody opted into.
+
+        No `ComparableField`, no comparator, no threshold: a bare
+        `List[Dict[str, str]]` annotation. It resolves `clip_under_threshold=False`
+        on `dev` too, because a mapping is a container -- so it was already asking
+        to keep partial credit and the list path was discarding it regardless.
+
+            dev   d=0.5625   ld=0.0
+            now   d=0.5625   ld=0.5625
+
+        Pinned separately from the configured cases because this one reaches any
+        model with such a field, so a regression here is a silent change to
+        someone's published numbers.
+        """
+
+        class BareDoc(StructuredModel):
+            d: Optional[Dict[str, str]] = None
+            ld: Optional[List[Dict[str, str]]] = None
+
+        for field in ("d", "ld"):
+            assert BareDoc._get_comparison_info(field).clip_under_threshold is False, (
+                field
+            )
+        scores = BareDoc(d=dict(self.GT), ld=[dict(self.GT)]).compare_with(
+            BareDoc(d=dict(self.PRED), ld=[dict(self.PRED)])
+        )["field_scores"]
+        assert scores["d"] == pytest.approx(0.5625)
+        assert scores["ld"] == pytest.approx(scores["d"])

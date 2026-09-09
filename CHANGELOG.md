@@ -291,20 +291,36 @@ Each release links to full notes on the
   ```
 
   It is now applied per ELEMENT, so the flag means one thing on a scalar and on a
-  list. The default is `True`, so an ordinary list is byte-identical to before.
-  Classification is deliberately untouched: a sub-threshold pair is still one
-  `fd`, so no confusion-matrix count moves. Two scores do:
+  list. The default is `True`, so any list that did not ask to keep partial credit
+  is byte-identical to before. Classification is deliberately untouched: a
+  sub-threshold pair is still one `fd`, so no confusion-matrix count moves.
 
-  - a **`List[Dict[...]]`** field keeps its partial credit, like the singular
-    `Dict[...]` form always has, because the container clip default now reaches the
-    list shape. `ComparableField(comparator=ANLSStarComparator(threshold=0.9))` on
-    both shapes scored `0.5625` / `0.0`; both now read `0.5625`. This is the
-    divergence honouring comparator thresholds exposed, and the singular form was
-    always the correct one.
-  - any list field that **explicitly declared `clip_under_threshold=False`** now
-    gets what it asked for. A `List[str]` with a sub-threshold element scores its
-    partial similarity instead of `0.0`. Unrelated to comparator thresholds, and
-    disclosed here because nothing else would have.
+  **Scores move for list-of-mapping fields, including ones that configure nothing.**
+  A `List[Dict[...]]` / `List[Mapping[...]]` field resolves
+  `clip_under_threshold=False` because a mapping is a container, so it was asking
+  to keep partial credit all along and the list path was discarding it. With one of
+  two values wrong, `{"a": "Acme Corporation"}` against `{"a": "Acme Corp"}`:
+
+  ```
+                                          d: Dict    ld: List[Dict]
+  dev, bare annotation                    0.5625     0.0
+  dev, ComparableField(threshold=0.9)     0.5625     0.0
+  now, both spellings                     0.5625     0.5625
+  ```
+
+  Expect list-of-mapping field scores to RISE where an element is partly correct,
+  whether or not the model configures anything. The singular form was always the
+  correct one and the list form now agrees with it.
+
+  Note both `dev` rows: the `Dict` / `List[Dict]` split is **pre-existing `dev`
+  behaviour**, in a bare annotation and in an explicit field threshold alike. This
+  change did not introduce it. Honouring comparator thresholds is what made it
+  reachable from a third spelling, which is how it was found.
+
+  Also moving, and unrelated to comparator thresholds: any list field that
+  **explicitly declared `clip_under_threshold=False`** now gets what it asked for,
+  so a `List[str]` with a sub-threshold element scores its partial similarity
+  instead of `0.0`. Disclosed here because nothing else would have.
 
   Two limits worth stating rather than discovering. `List[StructuredModel]` still
   ignores the flag, because its pairs are scored by each item's own `compare_with`
