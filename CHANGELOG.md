@@ -527,10 +527,30 @@ Each release links to full notes on the
   worse than the silence it replaced: it invents a user decision rather than
   dropping one. Absent now stays absent at all three points, and
   `x-aws-stickler-clip-under-threshold` is written only where the setting was
-  actually stated. Scoring is unaffected, since an absent key imports as `None`
-  and `ComparableField` resolves that to `True` exactly as before. Where stickler
-  itself installs the container default for a mapping field, that value is marked
-  explicit so it still survives export.
+  actually stated. Where stickler itself installs the container default for a
+  mapping field, that value is marked explicit so it still survives export.
+
+  **This moves a score for an imported mapping field, in the direction that closes
+  a divergence.** `_clip_explicit` is not only a label: it is the gate
+  `_install_object_grade_comparators` reads before amending the clip default, so
+  letting an absent key stay absent makes that amendment reachable on a field where
+  it previously was not. An imported `Dict[str, str]` declaring
+  `threshold=0.9` and `ANLSStarComparator`, compared against a copy with one of two
+  values wrong:
+
+  ```
+                                  _clip_explicit   resolved clip   score
+  before                          True             True            0.0
+  after                           False -> True    False           0.5
+  hand-written equivalent         (unchanged)       False           0.5
+  ```
+
+  The third row is why this is the right answer rather than a regression: a
+  hand-written `Dict[str, str] = ComparableField(threshold=0.9,
+  comparator=ANLSStarComparator())` has always scored `0.5`, so the imported field
+  now agrees with the declared one instead of clipping partial credit the container
+  default exists to preserve. Both import routes are affected and both were
+  measured: `from_json_schema` and `model_from_json`.
 
   The built model agrees with the row, for both list kinds. The inference path
   installed the ELEMENT spec's inherited `True` on the list row while `explain()`
@@ -543,27 +563,27 @@ Each release links to full notes on the
   surfaces say the same inert thing rather than correcting only the one a human
   reads.
 
-  The Hungarian-gate caveat is unconditional on `List[StructuredModel]`. It was
-  gated on a nullable element, but `StructuredListComparator` reads the gate from
-  the RUNTIME class of the first ground-truth element, which the annotation does
-  not determine: pydantic preserves a subclass instance on a base-annotated field,
-  so `List[Base]` holding a `Sub` gates on `Sub.match_threshold` while the row
-  reports `Base`'s. Same declared shape, TP or FD depending only on what the caller
-  constructed. The caveat now states the general rule instead of testing for one
-  way to hit it.
+  A reported Hungarian gate that the engine might not use now says so, on **every**
+  `List[StructuredModel]` row rather than only the nullable-element ones.
+  `StructuredListComparator` reads the gate off `gt_list[0].__class__`, which the
+  annotation does not determine, and there are two ways to reach a value the row
+  does not report:
 
-  A reported Hungarian gate that the engine might not use now says so.
-  `StructuredListComparator` reads the gate off `gt_list[0].__class__`, so for
-  `List[Optional[Model]]` a leading `None` makes that `NoneType` and the gate
-  falls back to the parent's `match_threshold`: the same declared shape classifies
-  a pair `tp` or `fd` depending on ground-truth element order, while a static row
-  reports the declared number either way. Nullable-element rows carry a caveat
-  naming [#322](https://github.com/awslabs/stickler/issues/322), which tracks the
-  engine fix; the caveat goes away with it.
+  - pydantic preserves a subclass instance on a base-annotated field, so
+    `List[Base]` holding a `Sub` gates on `Sub.match_threshold`;
+  - for `List[Optional[Model]]` a leading `None` makes that class `NoneType`, and
+    the gate falls back to the parent's `match_threshold`.
 
-  No scores change. `_comparator_explicit` is deliberately left alone even though
+  Either way the same declared shape classifies a pair `tp` or `fd` according to
+  what the caller happened to construct, while a static row reports the declared
+  number. The caveat was gated on a nullable element, which caught only the second
+  route; it now states the general rule and names
+  [#322](https://github.com/awslabs/stickler/issues/322), which tracks the engine
+  fix. The caveat goes away with it.
+
+  No other scores change. `_comparator_explicit` is deliberately left alone even though
   its name suggests provenance: `ConfigurationHelper` and
-  `_install_mapping_comparators` gate mapping-comparator substitution on it, so
+  `_install_object_grade_comparators` gate mapping-comparator substitution on it, so
   correcting it moved a schema-imported `dict` field from `ExactComparator` to
   `ANLSStarComparator` and its score from `0.0` to `0.9792`. That may be an
   improvement, but it is a scoring change and does not belong in a labelling fix.

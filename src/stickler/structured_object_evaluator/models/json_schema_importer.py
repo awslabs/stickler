@@ -368,10 +368,45 @@ class JsonSchemaImporter:
             # false positives. `to_json_schema()` writes no comparator for an
             # object property, so only a hand-written or externally generated
             # schema reaches this.
+            # The DECLARED name, not the default, so the note names the class the
+            # author wrote. Reporting the default instead told them
+            # `LevenshteinComparator` was being ignored on a schema that said
+            # `ExactComparator`, which reads as stickler ignoring its own default
+            # rather than as their setting being dead -- and the whole point of the
+            # note is that the previous output at least revealed the dead setting
+            # by printing its name.
+            #
+            # Installing it is safe and is what makes the name honest: a nested
+            # `StructuredModel` pair is dispatched by CASE 3 and by the
+            # `StructuredModel` branch of `compare_field_raw`, both of which recurse
+            # without consulting the field's comparator. Verified by measurement --
+            # scores are identical whichever class is installed here.
+            # `extensions["comparator"]` is an INSTANCE, already built by
+            # `_extract_extensions`, not a name. Passing it as `comparator_name`
+            # raises `KeyError: Unknown comparator` on every schema that names one
+            # here, so it goes in as `comparator=` with the name kept as the
+            # fallback for when the schema is silent.
             comparison_field = self._make_comparison_field(
                 field_info,
+                comparator=extensions.get("comparator"),
                 comparator_name="LevenshteinComparator",
                 comparator_explicit=extensions.get("comparator") is not None,
+                # KNOWN GAP, pre-existing and deliberately not fixed here:
+                # `x-aws-stickler-threshold` on an object property is DISCARDED,
+                # while `clip_under_threshold` on the same property survives. So
+                # the one setting on this call that is inert now carries a note,
+                # and the one that moves scores is dropped in silence -- and
+                # `explain()` presents this 0.7 under "explicit: configured on the
+                # StructuredModel class", which is a threshold the author did not
+                # write. Measured on a five-leaf subtree with one leaf wrong:
+                #
+                #     schema declares 0.95 -> engine uses 0.7 -> score 0.8
+                #     honouring 0.95 would clip that 0.8 to 0.0
+                #
+                # `threshold=extensions.get("threshold", 0.7)` looks like the whole
+                # fix, but it moves scores, so it belongs in its own change rather
+                # than in a labelling PR. Recorded here so it is not rediscovered
+                # from scratch.
                 threshold=0.7,
                 weight=extensions.get("weight", 1.0),
                 clip_under_threshold=extensions.get("clip_under_threshold"),
@@ -501,7 +536,7 @@ class JsonSchemaImporter:
         # Only the schema saying `x-aws-stickler-comparator` counts as a choice.
         # Recorded separately from `_comparator_explicit`, which is NOT a
         # provenance flag despite its name: `ConfigurationHelper` and
-        # `_install_mapping_comparators` both gate mapping-comparator
+        # `_install_object_grade_comparators` both gate mapping-comparator
         # substitution on it, so making it honest here switched dict fields from
         # `ExactComparator` to `ANLSStarComparator` and moved their scores from
         # 0.0 to 0.9792. That may well be an improvement, but it is a scoring
@@ -574,7 +609,7 @@ class JsonSchemaImporter:
         # another's. That hazard needs sharing, and it cannot happen here --
         # `comparison` is constructed a few lines above and no
         # caller has a reference yet. `_amend_clip_default` and
-        # `_install_mapping_comparators` build a copy because they run over
+        # `_install_object_grade_comparators` build a copy because they run over
         # fields they did not create.
         extra_callable = comparison.json_schema_extra
         if callable(extra_callable):

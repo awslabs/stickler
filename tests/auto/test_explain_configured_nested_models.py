@@ -605,7 +605,62 @@ class TestExplicitnessSurvivesARoundTrip:
             }
         )
         why = stickler.eval_for(rebuilt).explain()["addr"]["why"]
-        assert any("is not consulted for a nested StructuredModel" in w for w in why)
+        note = next(
+            (w for w in why if "is not consulted for a nested StructuredModel" in w),
+            None,
+        )
+        assert note is not None, why
+        # The class the AUTHOR wrote, not the importer's default. This assertion is
+        # the finding: the note used to report `LevenshteinComparator`, which the
+        # schema never mentions, so it read as stickler ignoring its own default
+        # rather than as the author's setting being dead -- and the note exists
+        # precisely because the previous output revealed the dead setting by
+        # printing its name.
+        assert "ExactComparator" in note, note
+        assert "LevenshteinComparator" not in note, note
+
+    def test_naming_the_comparator_there_does_not_move_the_score(self):
+        """Installing the declared class is safe, which is why the name can be honest.
+
+        A nested `StructuredModel` pair is dispatched by CASE 3 and by the
+        `StructuredModel` branch of `compare_field_raw`, both of which recurse
+        without consulting the field's comparator. `ExactComparator` is
+        all-or-nothing, so a half-right subtree scoring 0.5 is the proof that it
+        never ran.
+
+        Clipping is turned OFF in the schema on purpose. Left on, the field
+        threshold of 0.7 zeroes that 0.5 and the field reads 0.0 -- which is also
+        what `ExactComparator` would return, so the test could not tell the two
+        apart and would pass whichever class was installed. That is the trap this
+        assertion exists to avoid, and it caught itself here on the first run.
+        """
+
+        def build(comparator: Optional[str]):
+            addr = {
+                "type": "object",
+                "x-aws-stickler-clip-under-threshold": False,
+                "properties": {
+                    "city": {"type": "string"},
+                    "zip": {"type": "string"},
+                },
+            }
+            if comparator is not None:
+                addr["x-aws-stickler-comparator"] = comparator
+            return StructuredModel.from_json_schema(
+                {"type": "object", "title": "Doc", "properties": {"addr": addr}}
+            )
+
+        # The declared class, and the importer's default, must score identically.
+        for comparator in ("ExactComparator", None):
+            rebuilt = build(comparator)
+            gt = rebuilt.from_json({"addr": {"city": "Seattle", "zip": "98101"}})
+            half = rebuilt.from_json({"addr": {"city": "Seattle", "zip": "WRONG"}})
+            assert gt.compare_with(gt)["field_scores"]["addr"] == pytest.approx(1.0), (
+                comparator
+            )
+            assert gt.compare_with(half)["field_scores"]["addr"] == pytest.approx(
+                0.5
+            ), comparator
 
 
 class TestAnIgnoredClipSettingLeavesATrail:

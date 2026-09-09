@@ -1109,11 +1109,40 @@ class TestTheExportedConfigurationMatchesTheEngine:
         "field", ("item", "meta", "items", "metas", "kept", "named", "scalar")
     )
     def test_the_schema_agrees_with_the_engine(self, field):
+        """Whatever the schema states about a field must be what the engine runs.
+
+        `clip_under_threshold` is exported only where a decision was actually made,
+        which is #250's rule: the exporter stopped inventing one for a field nobody
+        configured. So the assertion is conditional on the key being present, and
+        `test_the_clip_key_is_exported_only_where_a_decision_was_made` below pins
+        which fields those are. Asserting the key unconditionally would force the
+        exporter back to inventing it.
+        """
         model = self._model()
         info = model._get_comparison_info(field)
         prop = model.to_json_schema()["properties"][field]
         assert prop["x-aws-stickler-comparator"] == type(info.comparator).__name__
-        assert prop["x-aws-stickler-clip-under-threshold"] == info.clip_under_threshold
+        if "x-aws-stickler-clip-under-threshold" in prop:
+            assert (
+                prop["x-aws-stickler-clip-under-threshold"] == info.clip_under_threshold
+            )
+
+    def test_the_clip_key_is_exported_only_where_a_decision_was_made(self):
+        """The other half of the rule above, so neither can drift alone.
+
+        Stickler decides `clip_under_threshold=False` for every object-grade shape,
+        and the user decided `True` on `kept`; all of those are exported. A bare
+        scalar carries no decision from anyone, so exporting one would state a
+        setting nobody chose, and re-importing it would make that invention
+        explicit.
+        """
+        prop = self._model().to_json_schema()["properties"]
+        key = "x-aws-stickler-clip-under-threshold"
+        for field in ("item", "meta", "items", "metas", "kept"):
+            assert key in prop[field], f"{field} carries a decision and must export it"
+        assert key not in prop["scalar"], (
+            "a bare scalar field has no clip decision to export"
+        )
 
     @pytest.mark.parametrize("field", ("item", "meta", "items", "metas"))
     def test_all_four_object_grade_shapes_get_the_object_grade_default(self, field):

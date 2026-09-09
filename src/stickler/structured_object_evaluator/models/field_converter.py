@@ -74,7 +74,6 @@ class FieldConverter:
         # `explain()` from reporting an overruled setting nobody wrote.
         clip_under_threshold = field_config.get("clip_under_threshold")
 
-
         # Extract Pydantic field parameters
         default = field_config.get("default", ...)  # Use Ellipsis for required fields
         required = field_config.get("required", False)
@@ -131,7 +130,6 @@ class FieldConverter:
         """
         from typing import List, Optional
 
-
         type_string = field_config["type"]
         nested_fields_config = field_config["fields"]
 
@@ -177,7 +175,6 @@ class FieldConverter:
         # See the note on the primitive path: absent must stay absent.
         clip_under_threshold = field_config.get("clip_under_threshold")
 
-
         # For list_structured_model, don't set threshold (Hungarian matching uses model's match_threshold)
         # For single structured_model, use threshold from config
         if type_string == "list_structured_model":
@@ -220,12 +217,11 @@ class FieldConverter:
         # another's. That hazard needs sharing, and it cannot happen here --
         # `comparable_field` is constructed a few lines above and no
         # caller has a reference yet. `_amend_clip_default` and
-        # `_install_mapping_comparators` build a copy because they run over
+        # `_install_object_grade_comparators` build a copy because they run over
         # fields they did not create.
         extra_callable = comparable_field.json_schema_extra
         if callable(extra_callable):
             extra_callable._comparator_named_in_schema = False
-
 
         return field_type, comparable_field
 

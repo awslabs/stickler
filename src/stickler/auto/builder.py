@@ -164,7 +164,8 @@ def _is_structured_model(annotation: Any) -> bool:
     plain ``BaseModel`` the field's own comparator genuinely runs, so the two
     cases must not share a label. Since #319 that comparator is
     ``ANLSStarComparator`` over the models themselves, not Levenshtein over their
-    string forms; see the measurement in ``_explain_field``.
+    string forms; the measurement is in the comment block inside
+    :func:`_collect_specs`, on the branch that builds ``element``.
     """
     return isinstance(annotation, type) and issubclass(annotation, StructuredModel)
 
@@ -179,7 +180,7 @@ def _comparator_was_explicit(cls: Type[BaseModel], name: str) -> bool:
 
     ``_comparator_named_in_schema`` wins where present. ``_comparator_explicit``
     is not a pure provenance flag despite its name: ``ConfigurationHelper`` and
-    ``_install_mapping_comparators`` gate mapping-comparator substitution on it,
+    ``_install_object_grade_comparators`` gate mapping-comparator substitution on it,
     so it means "was a comparator supplied" rather than "did a human choose one".
     ``from_json_schema`` supplies an inferred comparator when the schema names
     none, which made every nested-model field of a round-tripped schema claim to
