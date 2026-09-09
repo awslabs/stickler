@@ -983,14 +983,18 @@ def _extract_non_matches(results: Union[Dict[str, Any], Any]) -> List[Dict[str, 
     Returns:
         List of non-match dictionaries
     """
-    # EvalResult exposes the original comparison dictionary through ``raw``.
+    # Ask the object for its non-matches BEFORE unwrapping ``raw``. `EvalResult`
+    # computes them lazily, so they are not in `raw`, and unwrapping first turned
+    # `results` into a plain dict whose `non_matches` key does not exist -- which
+    # is why the printer reported "all fields matched" over a failing document.
+    # This also still covers ProcessEvaluation from the bulk evaluator.
+    if hasattr(results, "non_matches") and results.non_matches:
+        return results.non_matches
+
+    # Otherwise fall through to the dictionary formats, unwrapping `EvalResult`.
     raw_results = getattr(results, "raw", None)
     if isinstance(raw_results, dict):
         results = raw_results
-
-    # Handle ProcessEvaluation objects (from bulk evaluator)
-    if hasattr(results, "non_matches") and results.non_matches:
-        return results.non_matches
 
     # Handle regular single document results
     elif isinstance(results, dict):
