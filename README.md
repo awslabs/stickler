@@ -295,7 +295,11 @@ Omitting it is safe but blunt. The fallback reads structure and never field name
 
 **Default Comparators by JSON Schema Type:**
 
-The schema is resolved to a Python annotation first, and the comparator follows from that:
+Each property is parsed to a strict Python annotation, the comparator is chosen from that
+annotation, and the annotation is then widened back to the JSON value type so that an invalid
+extraction scores `0.0` instead of raising. So `format`, `enum` and `const` do change the comparator,
+even though the field on the built class ends up a plain `str` — read the choice back with
+`to_json_schema()`, not from `model_fields`:
 
 | JSON Schema | Default Comparator | Default Threshold | Rationale |
 |------------------|-------------------|-------------------|-----------|
@@ -303,10 +307,10 @@ The schema is resolved to a Python annotation first, and the comparator follows 
 | `"number"` | `NumericComparator` | `0.5` | Tolerates small numeric differences |
 | `"integer"` | `NumericComparator` | `0.5` | Tolerates small numeric differences |
 | `"boolean"` | `ExactComparator` | `0.5` | Must be exactly true or false (Exact scores only 0.0 or 1.0, so the threshold is immaterial) |
-| `"format": "date"` or `"date-time"` | `DateComparator` | `1.0` | Resolves to `date`/`datetime`, so dates compare as dates |
+| `"format": "date"` or `"date-time"` | `DateComparator` | `1.0` | Parses as `date`/`datetime`, so dates compare as dates |
 | `"enum"`, `"const"`, `"format": "uri"`/`"uuid"`/`"time"` | `ExactComparator` | `1.0` | A closed set or an opaque identifier has no partial credit |
 | `"array"` (primitives) | Based on item type | Based on item type | Inherits from element type |
-| `"array"` (objects) | Hungarian matching | `0.7` | Optimal pairing of list elements |
+| `"array"` (objects) | Hungarian matching | `0.5`, pairing elements at `0.7` | Optimal pairing of list elements |
 | `"object"` | Recursive comparison | `0.7` | Field-by-field nested comparison |
 
 **Example:**
