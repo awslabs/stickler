@@ -101,6 +101,54 @@ EST = {name: "John", age: 31, phone: "555-1234"}
 
 Result: TP=1, FA=1, FN=1, FD=1
 
+### Objects of different classes {: #objects-of-different-classes }
+
+Two objects of different classes are **always an FD**, whatever their attributes
+say. Identical field names and identical values do not make them a match:
+
+```
+Pet(name="rex")  vs  Cat(name="rex")   ->  FD
+```
+
+This is the one FD in the table above that is not a threshold decision. Every
+other row compares a similarity against a cutoff; this one is settled before any
+comparator runs, because the class is part of the value's identity rather than
+metadata about it. A `Cat` is not a `Pet` that happens to score well.
+
+The rule uses the EXACT class, so a subclass against its base is also an FD. A
+subclass carries fields the base does not, so the two do not describe the same
+shape, and scoring them on their shared fields would report a near-match for what
+is really a schema difference.
+
+Stickler warns once per field rather than raising. Which class arrives is a
+property of the prediction, so raising would end a bulk run on document N after
+succeeding on N-1.
+
+A correctly annotated field never reaches this rule: pydantic refuses a `Dog` for
+an `Optional[Cat]` field when the object is constructed. It applies where the
+annotation permitted more than one class (`Union[Cat, Dog]`, `Any`, `object`) or
+where a subclass arrived for its base, which `Optional[Pet]` accepts.
+
+!!! warning "Enforced for plain `BaseModel` objects, not yet for `StructuredModel`"
+
+    As of this release the rule is applied to plain `pydantic.BaseModel` objects
+    and to the elements of a list of them. Two **`StructuredModel`** objects of
+    different classes are still scored field by field and can report `TP`:
+
+    ```
+    Pet(name="rex") vs Cat(name="rex")     plain BaseModel    0.0   FD
+                                           StructuredModel    1.0   TP
+    ```
+
+    That is the older behaviour rather than a deliberate exception, and closing it is
+    tracked in [#327](https://github.com/awslabs/stickler/issues/327). Until then, treat a heterogeneous `StructuredModel` pair as
+    unverified rather than as endorsed: annotate the field with a single model type
+    if you need the guarantee today.
+
+    Whether a refused object should still *pair* inside a list, or should instead
+    be counted as a missed ground truth plus an invented prediction, is the open
+    question in [#321](https://github.com/awslabs/stickler/issues/321).
+
 ## Derived Metrics
 
 From the base counts:

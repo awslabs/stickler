@@ -814,11 +814,12 @@ class TestAContainerKeepsItsPartialCreditInBothShapes:
         dev                         0.5625    0.5625
         before this fix             0.5625    0.0
 
-    1. `_install_mapping_comparators` gated the clip-default amendment on
-       `is_mapping_annotation` alone, so a `List[Dict[...]]` field never got
-       `clip_under_threshold=False` and kept clipping on. `get_comparison_info`
-       does cover the list shape, but only when the comparator is NOT explicit,
-       which is why naming one is what broke it.
+    1. The definition-time installer (now `_install_object_grade_comparators`)
+       gated the clip-default amendment on `is_mapping_annotation` alone, so a
+       `List[Dict[...]]` field never got `clip_under_threshold=False` and kept
+       clipping on. `get_comparison_info` does cover the list shape, but only
+       when the comparator is NOT explicit, which is why naming one is what
+       broke it.
 
     2. Turning the flag off was not enough, because `clip_under_threshold` was a
        no-op on every list path. `PrimitiveListComparator` says "for lists we
