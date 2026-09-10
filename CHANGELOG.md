@@ -491,9 +491,11 @@ Each release links to full notes on the
 
   The two shapes agree for a SINGULAR undeclared annotation. They do not agree
   inside `List[Any]`, where a dict element is not refused at all -- it scores
-  `1.0` identical and `0.8182` wholly wrong, on this branch and on `dev` alike --
-  while a plain-model element is refused. That asymmetry is a pre-existing gap in
-  the mapping side rather than something this change introduces, and it is stated
+  `1.0` identical, and a wholly wrong pair scores whatever the scalar default
+  makes of the rendered dict, byte for byte the same number this branch and `dev`
+  produce -- while a plain-model element is refused. That asymmetry is a
+  pre-existing gap in the mapping side rather than something this change
+  introduces, and it is stated
   here because an earlier draft of this entry claimed the two shapes agree "in
   every case measured", which is not true of that one.
 
@@ -593,7 +595,9 @@ Each release links to full notes on the
   `BaseModel`. A plain `BaseModel` still reports no per-field breakdown, because
   it carries no per-field comparison configuration; declaring it as a
   `StructuredModel` is how to get that, and `stickler.evaluate()` does exactly
-  that for you ([#135](https://github.com/awslabs/stickler/issues/135)).
+  that for you -- it wraps the plain model in a generated `StructuredModel` with
+  inferred comparators, so `confusion_matrix["fields"]["address"]["fields"]["city"]`
+  is populated on the zero-config path with nothing declared.
 
   Two of the three limitations recorded under
   [#320](https://github.com/awslabs/stickler/issues/320) are resolved by moving

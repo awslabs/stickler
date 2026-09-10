@@ -992,6 +992,43 @@ class TestAnUnscoreableAnnotationIsRefused:
             "field_scores"
         ]["f"] == pytest.approx(1.0)
 
+    def test_a_dict_element_in_the_same_list_is_still_not_refused(self):
+        """The one place the two shapes DISAGREE, pinned so it cannot drift.
+
+        The refusal reaches a plain-model element of a `List[Any]` but not a dict
+        element: `_holds_a_plain_model` does not look for a mapping, so the
+        wrapper is never installed and the dict is scored by the scalar default.
+        The CHANGELOG states this asymmetry as a pre-existing gap on the mapping
+        side rather than something this change introduces, and that sentence is
+        only worth anything if something checks it.
+
+        Asserted as a bound rather than a number. The exact score is edit
+        distance over the rendered dict, so pinning it would pin the repr of a
+        dict literal; what matters is that the pair was SCORED at all -- a
+        refusal would read 0.0 with `fd=1`, and the identical pair would not
+        reach 1.0.
+        """
+        model = type(
+            "Holder",
+            (StructuredModel,),
+            {"__annotations__": {"f": Optional[List[Any]]}, "f": None},
+        )
+        as_dict = (self.ALL_WRONG[0].model_dump(), self.ALL_WRONG[1].model_dump())
+
+        identical = model(f=[as_dict[0]]).compare_with(
+            model(f=[as_dict[0]]), include_confusion_matrix=True
+        )
+        wrong = model(f=[as_dict[0]]).compare_with(
+            model(f=[as_dict[1]]), include_confusion_matrix=True
+        )
+
+        assert identical["field_scores"]["f"] == pytest.approx(1.0)
+        assert identical["confusion_matrix"]["overall"]["tp"] == 1
+        # Scored, not refused: a refusal is 0.0 with fd=1, which is exactly what
+        # the plain-model element two tests up gets for the same content.
+        assert wrong["field_scores"]["f"] > 0.0
+        assert wrong["confusion_matrix"]["overall"]["fd"] == 0
+
 
 class TestAnExplicitClipSettingSurvivesTheSubstitution:
     """The object-grade default must not overwrite a decision the user wrote.

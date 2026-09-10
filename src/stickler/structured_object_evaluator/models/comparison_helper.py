@@ -107,15 +107,22 @@ class ComparisonHelper:
         clip_under_threshold: bool = True,
         model_cls=None,
         field_name: str = "",
-
     ) -> Dict[str, Any]:
         """Compare two lists as unordered collections using Hungarian matching.
 
         Args:
-            list1: First list
-            list2: Second list
+            gt_list: Ground truth list
+            pred_list: Prediction list
             comparator: Comparator to use for item comparison
             threshold: Minimum score to consider a match
+            clip_under_threshold: Whether a sub-threshold element contributes 0.0
+                rather than its own score
+            model_cls: Owning model, passed to the element gate. Names the field
+                in the gate's warning; the verdict does not depend on it.
+            field_name: Field being compared, likewise for the warning. Both
+                default to a falsy value so a caller with no field in hand still
+                gets the gate -- it refuses the same pairs either way, and only
+                the warning is less specific.
 
         Returns:
             Dictionary with confusion matrix metrics including:
