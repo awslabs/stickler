@@ -98,7 +98,7 @@ The `x-aws-stickler-*` extensions control comparison behavior on each property:
 | Extension | Purpose | Example |
 |-----------|---------|---------|
 | `x-aws-stickler-comparator` | Comparison algorithm | `"LevenshteinComparator"` |
-| `x-aws-stickler-threshold` | Match threshold (0.0--1.0). Read on a scalar, an object, and an array of scalars; **ignored on an array of objects**, where the element class's `x-aws-stickler-match-threshold` is the gate | `0.8` |
+| `x-aws-stickler-threshold` | Match threshold (0.0--1.0). Read on a scalar, an object, and an array of scalars; **ignored on an array of models** -- an array whose `items` declare `properties` -- where the element class's `x-aws-stickler-match-threshold` is the gate. Read, not ignored, on an array of free-form `{"type": "object"}` items, which become `List[dict]` | `0.8` |
 | `x-aws-stickler-weight` | Field importance weight | `2.0` |
 | `x-aws-stickler-clip-under-threshold` | Zero out scores below threshold | `true` |
 | `x-aws-stickler-model-name` | Class name (object-level) | `"Invoice"` |

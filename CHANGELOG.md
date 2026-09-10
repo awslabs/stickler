@@ -320,16 +320,40 @@ Each release links to full notes on the
   [#210](https://github.com/awslabs/stickler/issues/210)
   ([#246](https://github.com/awslabs/stickler/issues/246)).
 
-- `x-aws-stickler-threshold` is no longer dropped on an object-typed property.
+- **Breaking:** `x-aws-stickler-threshold` is no longer dropped on an object-typed
+  property, so a schema that declared one now scores differently.
   `from_json_schema` read `x-aws-stickler-weight` and
   `x-aws-stickler-clip-under-threshold` from such a node's extensions but used a
-  hardcoded literal for the threshold, so one node honoured two field-level keys
-  and discarded the third, with no error and no warning:
+  hardcoded literal for the threshold, so one node honoured two of the field-level
+  keys it was given and discarded this one, with no error and no warning:
 
   ```
   declared threshold=0.88  ->  0.7    (the default)
   declared weight=3.0      ->  3.0    (honoured)
   ```
+
+  Measured on a four-leaf child with one leaf wrong, the schema declaring
+  `x-aws-stickler-threshold: 0.88` and nothing else:
+
+  ```
+             resolved threshold    field score
+  dev                      0.70           0.75
+  here                     0.88           0.00
+  ```
+
+  The drop needs no `clip_under_threshold` declaration to appear: the importer
+  defaults that key to `true` in every position, so a subtree mean below the
+  declared threshold is zeroed. Marked breaking on the same grounds as the
+  comparator-threshold entry above, which moves scores through the same knob.
+
+  `x-aws-stickler-comparator` on that same node is still discarded, and that is
+  NOT fixed here. It is parsed and validated -- a bogus name still raises -- and
+  then dropped without being stored or exported, because the object branch passes a
+  fixed `comparator_name` rather than the node's extensions. It is score-inert for
+  a nested model, which is scored by recursion rather than by the field's
+  comparator, which is why it is recorded rather than carried:
+  `x-aws-stickler-comparator: ExactComparator` on an object property resolves to
+  `LevenshteinComparator` on `dev` and here alike. Tracked separately.
 
   The key is not inert in that position, which is why it is carried rather than
   refused the way [#312](https://github.com/awslabs/stickler/issues/312) refuses a
@@ -339,22 +363,49 @@ Each release links to full notes on the
   `StructuredModel` class and not when set in a schema, so the two configuration
   paths disagreed about what is configurable.
 
-  **Scores can move** for any imported schema that set this key: the declared
-  threshold now takes effect where it previously did nothing, which is the
-  direction the schema asked for. A round-trip through `to_json_schema()` and back
-  now preserves the value, where it previously came back as `0.7`.
+  Scores move only where the key was DECLARED. A schema that declared nothing is
+  unaffected end to end: `to_json_schema()` writes `0.7` on a nested object
+  property, and re-importing that export resolves `0.7` and scores identically on
+  `dev` and here, so the export/import cycle moves nothing by itself. A round-trip
+  of a DECLARED value now preserves it (`0.88` in, `0.88` out) where it previously
+  came back as `0.7`.
 
-  The same key one position over, on an array-of-objects property, is **ignored**.
-  It genuinely has no effect there -- array pairing is gated by the element class's
-  `match_threshold` -- and every `to_json_schema()` on a released version emitted
-  it, so refusing it would stop previously exported schemas from importing in order
-  to flag a key whose only cost is being ignored.
+  **Known gap: the key is still dropped when the object lives in `$defs`.** The
+  same child node reached through `{"$ref": "#/$defs/R"}` resolves `0.7`, with no
+  warning, while the inline spelling now resolves `0.88`. A misspelling is not
+  caught there either, where inline it raises:
 
-  A warning is emitted only where the author can act on it. Export writes `0.5`
-  there and can write nothing else, since a named threshold on a
-  `List[StructuredModel]` field is refused at class definition, so a value equal to
-  `0.5` carries no intent and passes silently. Any other value is the author's, and
-  warns:
+  ```
+  child node inline          ->  0.88
+  same node via $defs        ->  0.70   (silently)
+  typo inline                ->  ValueError, "Did you mean ...?"
+  typo inside $defs          ->  accepted silently
+  ```
+
+  Both halves are pre-existing on `dev` -- the extension walk does not descend into
+  `$defs` -- but `$ref` is how a generated schema expresses a reusable nested
+  object, so this release makes the loss score-relevant for the one key it ships.
+  Fixing it means deciding whether an extension on a `$defs` node belongs to the
+  definition or to each referencing site, which is a schema-semantics question
+  rather than a threshold one. Declared and pinned by a test rather than guessed at.
+
+  The same key one position over, on an array-of-MODELS property -- an array whose
+  `items` declare `properties` -- is **ignored**. It genuinely has no effect there
+  -- array pairing is gated by the element class's `match_threshold` -- and every
+  `to_json_schema()` on a released version emitted it, so refusing it would stop
+  previously exported schemas from importing in order to flag a key whose only cost
+  is being ignored.
+
+  "Models", not "objects": an array of free-form `{"type": "object"}` items becomes
+  `List[dict]`, which READS the declared threshold and warns about nothing. Only
+  the declared-`properties` spelling ignores it.
+
+  A warning is emitted only where the author can act on it. Every released
+  `to_json_schema()` wrote `0.5` there and could write nothing else, since a named
+  threshold on a `List[StructuredModel]` field is refused at class definition, so a
+  value equal to `0.5` carries no intent and passes silently. This release stops
+  emitting the key on that shape altogether, so only legacy artifacts reach the
+  sentinel. Any other value is the author's, and warns:
 
   ```
   'x-aws-stickler-threshold': 0.88 has no effect on array property 'f' and is
