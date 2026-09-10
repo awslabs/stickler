@@ -59,6 +59,7 @@ See https://github.com/awslabs/stickler/issues/318 and
 https://github.com/awslabs/stickler/issues/321
 """
 
+import warnings
 from typing import Annotated, Any, Dict, List, Optional, Union
 
 import pytest
@@ -1689,3 +1690,283 @@ class TestTheRuleIsNotYetEnforcedForStructuredModels:
                 f"unenforced for two StructuredModel classes, which the test above "
                 f"measures as still true. Remove both together or neither."
             )
+
+
+class TestTheElementGateJudgesAPairNotAList:
+    """An element's verdict must not depend on what ELSE the list holds.
+
+    `_ClassGatedComparator` wraps the whole list's comparator as soon as one
+    element anywhere in either list is a plain model. Wrapping is a property of
+    the LIST; which pairs the wrapper then judges has to be a property of the
+    PAIR. Conflating the two applied both rules to every cell of the cost matrix,
+    and two kinds of pair were caught as collateral -- each one a pair with a
+    plain model on NEITHER side:
+
+        f: Optional[List[Any]]                    dev    list-wide    now
+        [{'a':1},{'b':2},{'c':3}]                 1.0    1.0          1.0
+        [{'a':1},{'b':2},{'c':3}, Plain('p')]     1.0    0.0          0.75
+        ['x','y','z', Plain('p')]                 1.0    0.75         0.75
+        [NoteSM]        vs [Note2SM]              1.0    1.0          1.0
+        [Plain, NoteSM] vs [Plain, Note2SM]       1.0    0.5          1.0
+
+    The string row is the shape the refusal is FOR: one element out of four cannot
+    be scored, and the field loses a quarter. The dict row zeroed three elements
+    that score 1.0 on their own, in the same list, on `dev`, and here the moment
+    the plain model is removed. The last row enforced the cross-class rule that
+    #327 is deliberately holding open, so the answer depended on whether an
+    unrelated plain model shared the list.
+    """
+
+    class Plain(BaseModel):
+        sku: Optional[str] = None
+
+    class NoteA(StructuredModel):
+        sku: Optional[str] = ComparableField(default=None)
+
+    class NoteB(StructuredModel):
+        sku: Optional[str] = ComparableField(default=None)
+
+    def _bare(self):
+        class Bare(StructuredModel):
+            f: Optional[List[Any]] = ComparableField(default=None)
+
+        return Bare
+
+    def _declared(self):
+        class Declared(StructuredModel):
+            f: Optional[List[Any]] = ComparableField(
+                default=None, comparator=ANLSStarComparator()
+            )
+
+        return Declared
+
+    DICTS = ({"a": 1}, {"b": 2}, {"c": 3})
+
+    def _score(self, model, items):
+        return model(f=list(items)).compare_with(model(f=list(items)))["field_scores"][
+            "f"
+        ]
+
+    def test_dicts_alone_are_scored(self):
+        """The control, and the row every other dict row is measured against."""
+        assert self._score(self._bare(), self.DICTS) == pytest.approx(1.0)
+
+    def test_a_plain_model_does_not_condemn_the_dict_elements(self):
+        """The regression: 0.0 here meant three 1.0 elements were thrown away.
+
+        `0.75` is three scored dicts and one refused model, which is the same
+        arithmetic the string row below produces -- the plain model is the only
+        element the field's comparator cannot score, so it is the only one that
+        loses its point.
+        """
+        assert self._score(
+            self._bare(), (*self.DICTS, self.Plain(sku="p"))
+        ) == pytest.approx(0.75)
+
+    def test_a_plain_model_among_scalars_is_still_refused(self):
+        """The narrowing must not turn into "never refuse anything"."""
+        assert self._score(
+            self._bare(), ("x", "y", "z", self.Plain(sku="p"))
+        ) == pytest.approx(0.75)
+
+    def test_no_mapping_warning_on_a_field_that_declares_no_mapping(self):
+        """The signal half of the same defect.
+
+        A dict pair reaching the gate landed in the `shape="mapping"` branch and
+        told the author their comparator cannot score a mapping -- on a field
+        annotated `List[Any]`, about a value the annotation says nothing about.
+        """
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            self._score(self._bare(), (*self.DICTS, self.Plain(sku="p")))
+        assert not [w for w in caught if "holds a mapping" in str(w.message)]
+
+    def test_two_structured_model_classes_keep_the_declared_gap(self):
+        """#327's answer must not arrive by accident, in only some lists.
+
+        Both rows hold the same `NoteA`/`NoteB` pair. If they ever disagree again,
+        the cross-class rule is being applied to `StructuredModel`s in one list
+        shape and not another, which is neither the shipped scope nor #327's.
+        """
+        Declared = self._declared()
+        alone = Declared(f=[self.NoteA(sku="a")]).compare_with(
+            Declared(f=[self.NoteB(sku="a")])
+        )["field_scores"]["f"]
+        beside_a_plain_model = Declared(
+            f=[self.Plain(sku="p"), self.NoteA(sku="a")]
+        ).compare_with(Declared(f=[self.Plain(sku="p"), self.NoteB(sku="a")]))[
+            "field_scores"
+        ]["f"]
+        assert alone == pytest.approx(1.0)
+        assert beside_a_plain_model == pytest.approx(alone)
+
+    def test_a_plain_model_against_a_structured_model_is_still_a_mismatch(self):
+        """The pair `and` would have waved through, which is why the rule reads `or`.
+
+        Narrowing the gate to pairs with a plain model on BOTH sides is the
+        tempting reading and it silently un-fixes a documented mismatch: CASE 5
+        cannot dispatch this pair, because CASE 3 needs both sides to be a
+        `StructuredModel`, so waving it through scores it as one object.
+        """
+        Declared = self._declared()
+        result = Declared(f=[self.Plain(sku="a")]).compare_with(
+            Declared(f=[self.NoteA(sku="a")]), include_confusion_matrix=True
+        )
+        node = result["confusion_matrix"]["fields"]["f"]["overall"]
+        assert result["field_scores"]["f"] == pytest.approx(0.0)
+        assert (node["tp"], node["fd"]) == (0, 1)
+
+
+class TestTheGateDoesNotWarnAboutDiscardedPairs:
+    """A warning has to describe an outcome that happened.
+
+    The gate is asked once per CELL of the Hungarian cost matrix and the matcher
+    keeps one cell per row. Warning from inside the cost function therefore
+    reported class mismatches for pairs nothing was decided from -- and because
+    `warn_once` spends one message per field for the life of the process, the
+    discarded cell silenced the genuine mismatch that came later.
+    """
+
+    class Plain(BaseModel):
+        sku: Optional[str] = None
+
+    class Other(BaseModel):
+        sku: Optional[str] = None
+
+    class Note(StructuredModel):
+        txt: Optional[str] = ComparableField(default=None)
+
+    def _model(self):
+        class L(StructuredModel):
+            f: Optional[List[Any]] = ComparableField(
+                default=None, comparator=ANLSStarComparator()
+            )
+
+        return L
+
+    @staticmethod
+    def _mismatch_warnings(caught):
+        return [w for w in caught if "Different classes are scored" in str(w.message)]
+
+    def test_a_perfect_score_does_not_report_a_mismatch(self):
+        """The measurement: `tp=2`, `fd=0`, and it warned anyway."""
+        L = self._model()
+        items = (self.Plain(sku="aaa"), self.Note(txt="bbb"))
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = L(f=list(items)).compare_with(
+                L(f=[self.Plain(sku="aaa"), self.Note(txt="bbb")]),
+                include_confusion_matrix=True,
+            )
+        node = result["confusion_matrix"]["fields"]["f"]["overall"]
+        assert (node["tp"], node["fd"]) == (2, 0)
+        assert result["field_scores"]["f"] == pytest.approx(1.0)
+        assert not self._mismatch_warnings(caught)
+
+    def test_a_mismatch_that_was_counted_is_still_reported(self):
+        """The other half: silence must come from the timing, not from muting it."""
+        L = self._model()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = L(f=[self.Plain(sku="a")]).compare_with(
+                L(f=[self.Other(sku="a")]), include_confusion_matrix=True
+            )
+        node = result["confusion_matrix"]["fields"]["f"]["overall"]
+        assert (node["tp"], node["fd"]) == (0, 1)
+        assert self._mismatch_warnings(caught)
+
+    def test_the_probe_does_not_spend_the_one_warning_the_field_gets(self):
+        """The second-order effect, which is the reason this matters.
+
+        `warn_once` memoises per field for the life of the process. A discarded
+        cell that warns leaves the genuine wrong-class prediction on the SAME
+        field silent, which is the failure this ordering prevents.
+        """
+        L = self._model()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            # A clean list first: every selected pair is same-class.
+            L(f=[self.Plain(sku="aaa"), self.Note(txt="bbb")]).compare_with(
+                L(f=[self.Plain(sku="aaa"), self.Note(txt="bbb")])
+            )
+            # Then the real mismatch, on the same field of the same class.
+            L(f=[self.Plain(sku="a")]).compare_with(L(f=[self.Other(sku="a")]))
+        assert self._mismatch_warnings(caught)
+
+
+class TestARefusedElementIsCountedButNotReported:
+    """The declared gap, pinned so it cannot widen unnoticed.
+
+    There is a sixth reader of the pair question and it cannot consult the gate.
+    The confusion-matrix counts come through the wrapped element comparator; the
+    item-level report comes through `ComparisonHelperBase.get_optimal_assignments`,
+    which runs its own `HungarianHelper.get_complete_matching_info(gt_list,
+    pred_list)` with no comparator argument at all. It scores the refused pair as a
+    match and emits nothing.
+
+    So the counts say one false discovery and the report says there is nothing to
+    report. An ordinary below-threshold element IS documented, which is what makes
+    the omission specific to a refusal.
+
+    This asserts the CURRENT behaviour. Fixing it means threading the field's
+    comparator into `get_optimal_assignments`, which changes `non_matches` for
+    every list of plain models, so it is its own change. When that lands this test
+    fails, which is the reminder to update the CHANGELOG's "Known gap" paragraph in
+    the same commit.
+    """
+
+    class Plain(BaseModel):
+        sku: Optional[str] = None
+
+    class Other(BaseModel):
+        sku: Optional[str] = None
+
+    def _model(self):
+        class L(StructuredModel):
+            f: Optional[List[Any]] = ComparableField(
+                default=None, comparator=ANLSStarComparator()
+            )
+
+        return L
+
+    def _result(self, gt, pred):
+        L = self._model()
+        return L(f=gt).compare_with(
+            L(f=pred), include_confusion_matrix=True, document_non_matches=True
+        )
+
+    def test_the_refusal_is_counted(self):
+        """The half that works: the score and the counts agree with each other."""
+        result = self._result([self.Plain(sku="a")], [self.Other(sku="a")])
+        node = result["confusion_matrix"]["fields"]["f"]["overall"]
+        assert result["field_scores"]["f"] == pytest.approx(0.0)
+        assert (node["tp"], node["fd"]) == (0, 1)
+
+    def test_the_refusal_is_not_reported(self):
+        """The gap itself."""
+        result = self._result([self.Plain(sku="a")], [self.Other(sku="a")])
+        assert not (result.get("non_matches") or [])
+
+    def test_an_ordinary_below_threshold_element_still_is_reported(self):
+        """The contrast that makes the gap specific rather than general.
+
+        Without this, the test above would also pass if non-match reporting were
+        broken outright, and the gap would look larger than it is.
+        """
+        result = self._result(["aaa"], ["zzz"])
+        assert result["non_matches"]
+        assert any(
+            "below threshold" in str(nm.get("reason", "")) for nm in result["non_matches"]
+        )
+
+    def test_the_changelog_still_declares_it(self):
+        """A gap the CHANGELOG stops mentioning is a gap that reads as fixed."""
+        from pathlib import Path
+
+        changelog = Path(__file__).resolve().parents[2] / "CHANGELOG.md"
+        text = " ".join(changelog.read_text().split())
+        assert "a refused list element is counted but not reported" in text.lower(), (
+            "CHANGELOG no longer declares that a refused element produces no "
+            "non-match record, which the tests above measure as still true. "
+            "Remove both together or neither."
+        )

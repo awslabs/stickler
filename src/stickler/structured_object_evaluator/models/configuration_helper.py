@@ -144,8 +144,18 @@ class ConfigurationHelper:
         return instance
 
     @staticmethod
-    def can_score_object(model_cls, field_name: str, comparator, *, shape: str) -> bool:
+    def can_score_object(
+        model_cls, field_name: str, comparator, *, shape: str, warn: bool = True
+    ) -> bool:
         """Whether ``comparator`` can score a whole object, warning once if not.
+
+        ``warn=False`` returns the same verdict silently. A list element is asked
+        this question once per cell of the Hungarian cost matrix, and the matcher
+        discards all but one cell per row, so warning while probing described an
+        outcome that did not happen -- and, because ``warn_once`` spends its one
+        message per field for the life of the process, spent it on a pair nothing
+        was decided from. ``_ClassGatedComparator`` probes silently and replays
+        the gate on the pairs the matcher actually selected.
 
         Half of :meth:`can_compare_object_pair`, which is what callers use; see
         there for why the halves are composed in one place.
@@ -194,6 +204,8 @@ class ConfigurationHelper:
         """
         if comparator.__class__.__name__ not in _COMPARATORS_THAT_CANNOT_SCORE_MAPPINGS:
             return True
+        if not warn:
+            return False
         if shape == "mapping":
             noun, plural, advice = (
                 "a mapping",
@@ -401,9 +413,12 @@ class ConfigurationHelper:
 
     @staticmethod
     def values_are_same_model_class(
-        model_cls, field_name: str, gt_val, pred_val
+        model_cls, field_name: str, gt_val, pred_val, *, warn: bool = True
     ) -> bool:
         """Whether two pydantic models are the same class, warning once if not.
+
+        ``warn=False`` returns the same verdict silently; see
+        :meth:`can_score_object` for why a cost-matrix probe must not warn.
 
         Reached only through :meth:`can_compare_object_pair`, which is the single
         gate every reader consults; see there for why the two halves of the rule
@@ -443,6 +458,8 @@ class ConfigurationHelper:
             return True
         if type(gt_val) is type(pred_val):
             return True
+        if not warn:
+            return False
         # Keyed on `model_identity`, not `cls.__name__`. `warn_once` memoises on
         # (id, context) for the process lifetime, and every model built by
         # `create_model` or the JSON schema importer is named `DynamicModel`, so a
@@ -465,7 +482,7 @@ class ConfigurationHelper:
 
     @staticmethod
     def can_compare_object_pair(
-        model_cls, field_name: str, comparator, gt_val, pred_val
+        model_cls, field_name: str, comparator, gt_val, pred_val, *, warn: bool = True
     ) -> bool:
         """The whole gate on scoring a pair of values as ONE object.
 
@@ -511,9 +528,12 @@ class ConfigurationHelper:
         a ``StructuredModel`` is scored by recursion instead and is not the
         comparator's problem. The ``Cat`` element is still refused, which is the
         declared treatment of a multi-arm union.
+
+        ``warn=False`` gives the same verdict silently; see
+        :meth:`can_score_object`.
         """
         if not ConfigurationHelper.values_are_same_model_class(
-            model_cls, field_name, gt_val, pred_val
+            model_cls, field_name, gt_val, pred_val, warn=warn
         ):
             return False
 
@@ -544,7 +564,7 @@ class ConfigurationHelper:
             # and StructuredModel list elements, are the comparator's own business.
             return True
         return ConfigurationHelper.can_score_object(
-            model_cls, field_name, comparator, shape=shape
+            model_cls, field_name, comparator, shape=shape, warn=warn
         )
 
     @staticmethod

@@ -29,19 +29,46 @@ class _ClassGatedComparator(BaseComparator):
     call `ComparisonDispatcher` CASE 4/CASE 5 and both `compare_field_raw`
     readers make, so an element and a singular value are judged by one rule.
 
-    Installed only when at least one element of EITHER list is a plain model, so
-    the ordinary primitive-list path keeps its cost-matrix hot loop unwrapped. It
-    is the list that qualifies, not the element: once wrapped, every pair goes
-    through the gate, including the `StructuredModel` and scalar elements of a
-    mixed list. Those are waved through by the gate itself rather than by this
-    predicate -- a `StructuredModel` is scored by recursion and is not the
-    comparator's business -- which is a distinction worth keeping in view, because
-    reading the gate's refusal as "any pydantic model" scored an identical
-    `[Cat(plain), Note(SM), Note(SM)]` as three false discoveries.
+    Installed when at least one element of EITHER list is a plain model, so the
+    ordinary primitive-list path keeps its cost-matrix hot loop unwrapped. The
+    LIST is what qualifies for wrapping; which PAIRS are then judged is
+    `_judges`, and it is a pair with a plain model on at least one side. A pair
+    with a plain model on neither -- dict against dict, `StructuredModel` against
+    `StructuredModel` -- is delegated untouched.
 
-    A dict element does NOT reach the gate, because `_holds_a_plain_model` does
-    not look for one. The mapping half of the gate is reached only through the
-    singular readers.
+    That narrowing is the whole correctness of this wrapper, and it was wrong in
+    both directions before. Judging every pair because the list qualified made an
+    element's verdict depend on what ELSE the list happened to hold:
+
+        f: Optional[List[Any]]                          dev    list-wide gate
+        [{'a':1},{'b':2},{'c':3}]                       1.0    1.0
+        [{'a':1},{'b':2},{'c':3}, Plain('p')]           1.0    0.0   <- fd on all four
+        [NoteSM]      vs [Note2SM]                      1.0    1.0
+        [Plain, NoteSM] vs [Plain, Note2SM]             1.0    0.5
+
+    The dict row zeroed three elements that score 1.0 on their own, in the same
+    list, on `dev`, and here the moment the plain model is removed -- and it drew
+    a "holds a mapping" warning on a field whose annotation says nothing about
+    mappings. The `StructuredModel` row is worse than wrong-looking: it enforces
+    the cross-class rule that #327 is explicitly holding open, so a user got the
+    #327 answer or the documented one according to whether an unrelated plain
+    model shared the list. Both rules now apply to exactly the population the
+    wrapper was installed for.
+
+    A dict element does not reach the gate -- neither because
+    `_holds_a_plain_model` does not look for one, which was the old and only
+    conditionally true reason, nor by accident: `_is_plain_model` is asked of both
+    sides here.
+
+    WARNING TIMING. The matcher asks this comparator for every cell of the cost
+    matrix and keeps one per row, so warning from inside `_compare` announced an
+    outcome that never happened -- an identical `[Plain('aaa'), Note('bbb')]` pair
+    scored 1.0 with `tp=2` and still warned that a `Plain` had been compared
+    against a `Note`, from the cross cell the matcher discarded. Worse, `warn_once`
+    spends one message per field for the life of the process, so that probe cell
+    silenced the genuine wrong-class prediction later in the same corpus. Probing
+    is therefore silent, and `warn_for_selected` replays the gate on the pairs the
+    matcher actually chose.
     """
 
     def __init__(self, inner: BaseComparator, model_cls=None, field_name: str = ""):
@@ -50,14 +77,62 @@ class _ClassGatedComparator(BaseComparator):
         self._model_cls = model_cls
         self._field_name = field_name
 
-    def _compare(self, str1: Any, str2: Any) -> float:
+    def _judges(self, gt_val: Any, pred_val: Any) -> bool:
+        """Whether this pair is the wrapper's business at all.
+
+        EITHER side, not both. `and` is the tempting reading and it is wrong: it
+        waves through a plain model against a `StructuredModel`, which is a
+        documented mismatch that `dev` also reports, and which CASE 5 cannot
+        dispatch because CASE 3 needs both sides to be a `StructuredModel`.
+
+        `or` is already enough to exclude both defects this predicate exists for,
+        because each is a pair with NEITHER side plain: dict against dict, and
+        `StructuredModel` against `StructuredModel`.
+        """
+        return _is_plain_model(gt_val) or _is_plain_model(pred_val)
+
+    def _refuses(self, gt_val: Any, pred_val: Any, *, warn: bool) -> bool:
         from .configuration_helper import ConfigurationHelper
 
-        if not ConfigurationHelper.can_compare_object_pair(
-            self._model_cls, self._field_name, self._inner, str1, str2
-        ):
+        return not ConfigurationHelper.can_compare_object_pair(
+            self._model_cls, self._field_name, self._inner, gt_val, pred_val, warn=warn
+        )
+
+    def _compare(self, str1: Any, str2: Any) -> float:
+        if self._judges(str1, str2) and self._refuses(str1, str2, warn=False):
             return 0.0
         return self._inner.compare(str1, str2)
+
+    def warn_for_selected(
+        self, gt_list: List[Any], pred_list: List[Any], matched_pairs: List[Any]
+    ) -> None:
+        """Emit the gate's warnings for the pairs the matcher selected.
+
+        Replays the gate rather than recording verdicts during probing: the
+        verdict is a pure function of the pair, so a replay cannot disagree with
+        what scoring did, while a cache keyed on `id()` can be wrong the moment a
+        list holds two equal-but-distinct objects.
+        """
+        for gt_idx, pred_idx, *_ in matched_pairs:
+            if not (0 <= gt_idx < len(gt_list) and 0 <= pred_idx < len(pred_list)):
+                continue
+            gt_val, pred_val = gt_list[gt_idx], pred_list[pred_idx]
+            if self._judges(gt_val, pred_val):
+                self._refuses(gt_val, pred_val, warn=True)
+
+
+def _is_plain_model(value: Any) -> bool:
+    """Whether a value is a pydantic model that is NOT a `StructuredModel`.
+
+    The distinction the whole element gate turns on. A `StructuredModel` also
+    passes `isinstance(v, BaseModel)`, and it is scored by recursion rather than
+    by the field's comparator, so it is not what this gate is about.
+    """
+    from pydantic import BaseModel
+
+    from .structured_model import StructuredModel
+
+    return isinstance(value, BaseModel) and not isinstance(value, StructuredModel)
 
 
 def _holds_a_plain_model(items: List[Any]) -> bool:
@@ -66,15 +141,13 @@ def _holds_a_plain_model(items: List[Any]) -> bool:
     Scans the whole list rather than the first element: a heterogeneous list is
     exactly the case that needs the gate, and keying on `items[0]` would miss
     `[Cat(...), "text"]`.
+
+    Decides only whether the list is WRAPPED. Which pairs the wrapper then judges
+    is `_ClassGatedComparator._judges`, and the two must not be conflated: reading
+    this predicate as the gate's population is what made a dict element's score
+    depend on whether a plain model shared its list.
     """
-    from pydantic import BaseModel
-
-    from .structured_model import StructuredModel
-
-    return any(
-        isinstance(item, BaseModel) and not isinstance(item, StructuredModel)
-        for item in items
-    )
+    return any(_is_plain_model(item) for item in items)
 
 
 def _maybe_absent(val: Any) -> bool:
@@ -230,6 +303,15 @@ class ComparisonHelper:
             # Get detailed metrics from HungarianMatcher
             metrics = hungarian.calculate_metrics(gt_list, pred_list)
             matched_pairs = metrics["matched_pairs"]
+
+            # Only now is it known which pairs were chosen. The gate ran silently
+            # over the whole cost matrix; warning from inside it described
+            # discarded cells and spent `warn_once`'s single message per field on
+            # them. See `_ClassGatedComparator.warn_for_selected`.
+            if isinstance(element_comparator, _ClassGatedComparator):
+                element_comparator.warn_for_selected(
+                    gt_list, pred_list, matched_pairs
+                )
 
         return ComparisonHelper.unordered_list_metrics(
             matched_pairs=matched_pairs,
