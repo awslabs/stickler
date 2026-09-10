@@ -529,6 +529,153 @@ When you do not specify a comparator in `ComparableField`, Stickler assigns one 
 | `array` (objects) | Hungarian matching | 0.7 | Optimal pairing of list elements |
 | `object` | Recursive comparison | 0.7 | Field-by-field nested comparison |
 
+### Nested models: `StructuredModel` versus plain `BaseModel`
+
+The `object` row above applies to a nested **`StructuredModel`**. A nested plain
+`pydantic.BaseModel` is a different case, and the difference is worth knowing
+because a plain model is what you already have if you are bringing a schema from
+elsewhere.
+
+| Nested annotation | How it is compared | Default comparator | Per-field detail |
+|---|---|---|---|
+| `StructuredModel` | recursively, field by field | each field's own | yes, one row per field |
+| plain `BaseModel` | as one object, key by key | `ANLSStarComparator` | no |
+
+A plain `BaseModel` carries no per-field comparison configuration, so there is
+nothing to score per field and nothing to report per field. It gets the same
+treatment a `Dict[...]` field gets, and for the same reason: the whole thing is
+one object, judged key by key, with partial credit and no score clipping. The
+elements of a `List[plain BaseModel]` get it too, so the two shapes agree.
+
+Declaring a comparator overrides that default, exactly as it does for a `dict`.
+
+### A different class is a false discovery
+
+**The rule:** two objects of different classes are a false discovery, whatever
+their attributes say. Identical field names and identical values do not make them
+a match, because the class is part of a value's identity rather than metadata
+about it. See
+[Classification Logic](../../Advanced/classification-logic.md#objects-of-different-classes)
+for the full statement.
+
+**What this release enforces**, for a plain `pydantic.BaseModel` and for the
+elements of a list of them:
+
+```python
+Cat(name="rex")             vs  Dog(name="rex")         ->  0.0, fd=1   (not 1.0)
+Base(a="x")                 vs  Sub(a="x")              ->  0.0, fd=1
+StructuredShape(name="rex") vs  PlainShape(name="rex")  ->  0.0, fd=1
+```
+
+The last row is the mixed case: a `StructuredModel` on one side and a plain
+`BaseModel` on the other are still two different classes, and one is not even the
+same kind of model. Two `StructuredModel` instances of the **same** class are
+unaffected and keep their per-field breakdown.
+
+!!! warning "Two `StructuredModel` classes are not covered yet"
+
+    `Pet` against `Cat` scores `0.0` with `fd=1` when both are plain
+    `BaseModel`s, and `1.0` with `tp=1` when both are `StructuredModel`s. The
+    second is the older behaviour rather than a deliberate exception; the rule is
+    the same for both and the code has caught up on one half so far. Tracked in
+    [#327](https://github.com/awslabs/stickler/issues/327). Annotate the field with
+    a single model type if you need the guarantee today.
+
+The class is part of the value's identity, not incidental to it. A correctly
+annotated field never sees this, because pydantic refuses a `Dog` for an
+`Optional[Cat]` field when the model is constructed. It applies where you
+declared that more than one class is allowed (`Union[Cat, Dog]`, `Any`,
+`object`), or where a subclass arrived for its base, which `Optional[Base]`
+accepts.
+
+Stickler warns once per field rather than raising, because which class arrives is
+a property of the prediction, and raising would end a bulk run partway through.
+
+!!! warning "A refused list element is counted but not reported"
+
+    A refused element is one `fd` in the confusion matrix, but it produces no
+    entry in `non_matches`, so the counts and the item-level report disagree:
+
+    ```
+    [Plain(sku='a')]  vs  [Cat(sku='a')]     ->  fd=1,  non_matches: []
+    ```
+
+    An ordinary below-threshold element *is* reported, so this is specific to a
+    refusal. The item-level report re-derives its own pairing without the field's
+    comparator, which is why it cannot see the refusal. Read the counts, not
+    `non_matches`, when you need to know whether a list element was refused.
+    Tracked in [#332](https://github.com/awslabs/stickler/issues/332).
+
+### The annotation has to name the model
+
+The object-grade default is read from the annotation, so a field that declares no
+model type keeps the scalar default and is **refused** rather than scored:
+
+| Annotation | Result |
+|---|---|
+| `Optional[LineItem]` | scored, key by key |
+| `List[LineItem]` | scored, key by key |
+| `Optional[Annotated[LineItem, Field(...)]]` | scored, key by key |
+| `Optional[Any]`, `Optional[object]` | refused: `0.0`, `fd=1`, warning |
+| `Union[LineItem, str]` | refused: `0.0`, `fd=1`, warning |
+| `List[Any]` | refused: `0.0`, `fd=1`, warning |
+
+`Annotated` does not change the answer, in any nesting or spelling. That is worth
+stating because it is easy to reach by accident: `Field(description=...)` on an
+optional field produces `Annotated[T, FieldInfo] | None`, and pydantic keeps the
+wrapper on a union arm.
+
+A nested `StructuredModel` is never refused by this rule, only by the class rule
+above. It is scored by recursion, so the field's comparator is not what judges
+it. In a mixed list, the plain elements are refused and the `StructuredModel`
+elements are scored:
+
+```python
+items: Optional[List[Union[Cat, Note]]] = ComparableField()   # Note is a StructuredModel
+
+[Cat("rex"), Note("a"), Note("b")]  vs  an identical copy  ->  tp=2, fd=1
+```
+
+Refusing looks harsh next to a number, but the number was worse. The scalar
+default is edit distance over the model's rendered form, and the field names are
+identical on both sides, so it cannot score low:
+
+```
+LineItem(quantity=2, unit_price=10.5, currency='USD')
+  vs LineItem(quantity=9, unit_price=99.9, currency='EUR')   ->  0.8293
+```
+
+`0.8293` clears the default threshold, so every value being wrong was reported as
+a **true positive**. A mapping in the same position has always been refused for
+exactly this reason, and plain models now agree with mappings.
+
+The warning names both remedies. Either name the model in the annotation:
+
+```python
+address: Optional[PlainAddress] = None          # scored
+```
+
+or declare the comparator, if the annotation genuinely has to stay open:
+
+```python
+payload: Optional[Any] = ComparableField(comparator=ANLSStarComparator())
+```
+
+To get field-by-field detail, declare the nested model as a `StructuredModel`:
+
+```python
+class Address(StructuredModel):                    # per-field detail
+    city: str = ComparableField(threshold=0.9)
+    postcode: str = ComparableField(comparator=ExactComparator())
+
+class Invoice(StructuredModel):
+    address: Address = ComparableField()
+```
+
+`stickler.evaluate()` does this for you: it wraps a plain `BaseModel` in a
+generated `StructuredModel` with inferred comparators, so the zero-config path
+scores nested models field by field without you declaring anything.
+
 ---
 
 ## Custom Comparators
