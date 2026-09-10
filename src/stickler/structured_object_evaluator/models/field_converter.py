@@ -30,6 +30,8 @@ def _infer_spec(
     field_name: str,
     field_type: Any,
     match_threshold: Optional[float] = None,
+    *,
+    already_element: bool = False,
 ):
     """Infer a comparison spec for one config-driven field from its resolved type.
 
@@ -48,6 +50,27 @@ def _infer_spec(
     comparator is applied to. Inferring from ``List[float]`` itself landed on the
     exotic-type branch (whole-list canonical-JSON equality) while both the JSON
     Schema path and ``stickler.evaluate()`` scored the same shape per element.
+
+    ``already_element`` says the CALLER has already unwrapped one list level, so
+    this function must not unwrap another. Only the JSON Schema path passes it,
+    because its array branch hands over the element type rather than the list.
+
+    Without it a NESTED array was unwrapped twice and inferred from the innermost
+    scalar, so the field's comparator was handed a ``list`` it could not read and
+    an IDENTICAL pair scored 0.0:
+
+        {"type": "array", "items": {"type": "array", "items": {"type": "number"}}}
+
+                                     comparator            [[1,2,3,4]] vs itself
+        flag off                      Exact@1.0             1.0
+        flag on, unwrapped twice      Numeric@0.95          0.0
+        flag on, this fix             Exact@1.0             1.0
+
+    ``stickler.eval_for`` on the same shape unwraps ONCE and lands on the
+    whole-list canonical-JSON branch, which is the answer this now matches -- the
+    parity the docs promise for this flag. The deliberate whole-list branch exists
+    because edit distance over a JSON blob is not a defensible metric, so
+    descending past it was losing that decision as well as the score.
     """
     from pydantic.fields import FieldInfo
 
@@ -57,7 +80,7 @@ def _infer_spec(
     # `list` origin only, matching ``auto.builder._field_kind``: a `Set[...]`
     # there is a primitive, not a per-element list, and diverging here would
     # trade one entry-point disagreement for another.
-    if get_origin(inner) is list:
+    if get_origin(inner) is list and not already_element:
         args = get_args(inner)
         # Unparameterized `List` has no element type; `Any` is what the builder
         # infers from in that position, so the two agree on Exact@1.0.
@@ -490,7 +513,16 @@ class FieldConverter:
             and field_config["comparator"] != AUTO_COMPARATOR
         ):
             comparator_name = field_config["comparator"]
-            comparator_config = field_config.get("comparator_config", {})
+            # Normalised here too, not only on the `"auto"` path. `create_instance`
+            # does `config.items()`, which raises `AttributeError` for a non-mapping
+            # -- and `AttributeError` is in neither the `except` below nor the one in
+            # `convert_fields_config`, so it escaped `model_from_json` raw, against a
+            # docstring that documents `Raises: ValueError`. Only the inferred branch
+            # was guarded, so the clean message went to the new syntax and the crash
+            # to every pre-existing config that names a comparator.
+            comparator_config = normalize_comparator_config(
+                field_config.get("comparator_config"), f"field '{field_name}'"
+            )
             try:
                 create_comparator(comparator_name, comparator_config)
             except (KeyError, TypeError) as e:

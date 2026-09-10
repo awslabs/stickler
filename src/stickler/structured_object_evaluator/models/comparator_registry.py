@@ -348,6 +348,22 @@ def normalize_comparator_config(value: Any, where: str) -> Dict[str, Any]:
     if value is None:
         return {}
     if isinstance(value, abc_Mapping):
+        non_string = sorted(
+            (repr(key) for key in value if not isinstance(key, str)),
+        )
+        if non_string:
+            # Checked here rather than left to the caller. A parameter name is
+            # passed as a keyword argument, so a non-string key cannot become one;
+            # and the unknown-key report below joins the names with `str.join`,
+            # which raised `TypeError: sequence item 0: expected str instance, int
+            # found` from inside the reporting code -- an error about the error,
+            # naming neither the field nor the offending key.
+            raise ValueError(
+                f"'comparator_config' on {where} has non-string parameter "
+                f"{'names' if len(non_string) > 1 else 'name'} "
+                f"{', '.join(non_string)}. Parameter names are passed as keyword "
+                f"arguments, so they must be strings."
+            )
         return dict(value)
     raise ValueError(
         f"'comparator_config' on {where} must be a mapping of parameter names to "

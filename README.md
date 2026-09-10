@@ -283,6 +283,7 @@ Specifies the comparison algorithm for this field.
 | `"BertComparator"` | Deep semantic understanding | BERT model for contextual similarity |
 | `"LLMComparator"` | Complex semantic evaluation | LLM-powered comparison with reasoning |
 | `"BBoxIoUComparator"` | Bounding boxes, spatial localization | Intersection over Union (IoU) between two boxes; accepts `[[x1,y1],[x2,y2]]` or `[x1,y1,x2,y2]`. See [Bounding Box mAP Metrics](docs/docs/Advanced/bbox-map-metrics.md) for end-to-end mAP scoring |
+| `"auto"` | Letting Stickler choose per field | Not a comparator: a request to infer one from the field's type and name, using the same rules `stickler.evaluate()` uses. Per field, where `infer_unspecified_fields` is per model |
 
 **Default Comparators by JSON Schema Type:**
 
@@ -657,6 +658,8 @@ print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # ~1.0 - match
 | `x-aws-stickler-clip-under-threshold` | boolean | false | Zero out low scores |
 | `x-aws-stickler-model-name` | string | "DynamicModel" | Generated class name |
 | `x-aws-stickler-match-threshold` | number (0.0-1.0) | 0.7 | Model-level threshold |
+| `x-aws-stickler-infer-unspecified` | boolean | false | Infer comparators for properties that name none (root level) |
+| `x-aws-stickler-comparator-config` | object | `{}` | Keyword arguments for the named comparator |
 
 ### Additional Resources
 

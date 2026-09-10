@@ -19,6 +19,7 @@ number -- so nothing moves until it is asked for.
 See https://github.com/awslabs/stickler/issues/239
 """
 
+import warnings
 from typing import Any, Dict, List, Optional
 
 import pytest
@@ -1289,3 +1290,245 @@ class TestAPartlyConfiguredFieldRecordsWhatTheAuthorTookBack:
         """The control: nothing was taken back, so nothing is claimed."""
         entry = self._explain()
         assert not any("overrides above" in w for w in entry["why"])
+
+
+class TestANestedArrayIsNotUnwrappedTwice:
+    """A nested array must not descend past its own element type.
+
+    The JSON Schema array branch hands `_infer_spec` the ELEMENT type, already
+    unwrapped once. When that element is ITSELF a list, `_infer_spec` unwrapped it
+    a second time and inferred from the innermost scalar, so the field's comparator
+    was handed a `list` it cannot read. An IDENTICAL pair then scored 0.0:
+
+        {"type": "array", "items": {"type": "array", "items": {"type": "number"}}}
+
+                                  comparator        [[1,2,3,4]] vs itself
+        flag off                  Exact@1.0          1.0
+        flag on, before the fix   Numeric@0.95       0.0
+        flag on, after            Exact@1.0          1.0
+
+    Silent, and in both directions: an all-wrong text row scored well above 0 for
+    the same reason. `stickler.eval_for` on the same shape unwraps ONCE and lands
+    on the whole-list canonical-JSON branch, which is the parity the flag's docs
+    promise, and which the deliberate exotic-type branch exists to provide -- edit
+    distance over a JSON blob is not a defensible metric.
+
+    The duplicated `list: spec applies to each element` in `explain()`'s trail was
+    the visible tell, so the trail is asserted too.
+    """
+
+    NESTED_NUMBER = {
+        "type": "array",
+        "items": {"type": "array", "items": {"type": "number"}},
+    }
+
+    @staticmethod
+    def _model(prop, flag):
+        schema = {"type": "object", "title": "Doc", "properties": {"f": dict(prop)}}
+        if flag:
+            schema["x-aws-stickler-infer-unspecified"] = True
+        return StructuredModel.from_json_schema(schema)
+
+    def _info(self, prop, flag):
+        model = self._model(prop, flag)
+        return model, model._get_comparison_info("f")
+
+    def test_an_identical_nested_array_is_a_perfect_match(self):
+        """The defect, stated as the number it produced."""
+        rows = [[1.0, 2.0, 3.0, 4.0]]
+        model, _ = self._info(self.NESTED_NUMBER, True)
+        assert model(f=rows).compare_with(model(f=rows))["field_scores"][
+            "f"
+        ] == pytest.approx(1.0)
+
+    def test_the_flag_does_not_change_the_comparator_for_a_nested_array(self):
+        """Flag on and flag off must agree here: there is nothing to tune.
+
+        Pinned as an equality between the two rather than as a literal, so it
+        survives a future change to what the exotic-type branch picks.
+        """
+        _, off = self._info(self.NESTED_NUMBER, False)
+        _, on = self._info(self.NESTED_NUMBER, True)
+        assert (type(on.comparator).__name__, on.threshold) == (
+            type(off.comparator).__name__,
+            off.threshold,
+        )
+
+    def test_the_trail_records_one_list_level_not_two(self):
+        """The duplicate was the tell; one insert, not two."""
+        from stickler.structured_object_evaluator.models.field_converter import (
+            LIST_ELEMENT_PROVENANCE,
+        )
+
+        model, _ = self._info(self.NESTED_NUMBER, True)
+        trail = list(
+            getattr(model.model_fields["f"].json_schema_extra, "_inferred_provenance", ())
+        )
+        assert trail.count(LIST_ELEMENT_PROVENANCE) == 1, trail
+
+    def test_it_matches_what_eval_for_infers_for_the_same_shape(self):
+        """The parity the flag's own documentation promises.
+
+        `dynamic-models.md` says the flag uses "the same inference
+        `stickler.evaluate()` uses", so a divergence here is a documentation
+        failure as well as a scoring one.
+        """
+
+        class Doc(BaseModel):
+            f: Optional[List[List[float]]] = None
+
+        expected = stickler.eval_for(Doc).explain()["f"]
+        _, info = self._info(self.NESTED_NUMBER, True)
+        assert type(info.comparator).__name__ == expected["comparator"]
+        assert info.threshold == pytest.approx(expected["threshold"])
+
+    def test_a_single_level_array_still_infers_per_element(self):
+        """The bound: the fix must not stop ordinary arrays from being per-element.
+
+        `array<number>` keeps `NumericComparator`, which is the whole point of the
+        element unwrap that the nested case was doing twice.
+        """
+        _, info = self._info({"type": "array", "items": {"type": "number"}}, True)
+        assert type(info.comparator).__name__ == "NumericComparator"
+        assert info.threshold == pytest.approx(0.95)
+
+
+class TestANonMappingComparatorConfigNamesTheField:
+    """A bad `comparator_config` must raise `ValueError`, naming the field.
+
+    The guard was wired only into the branch that reads `"auto"`, so the clean
+    message went to the NEW syntax while every pre-existing config that names a
+    comparator got `AttributeError: 'str' object has no attribute 'items'` --
+    escaping `model_from_json`, whose docstring documents `Raises: ValueError`.
+
+    The schema path had the same hole with a worse message: it blamed
+    `x-aws-stickler-comparator 'NumericComparator'`, a perfectly valid comparator
+    name, for a fault in the config beside it.
+    """
+
+    BAD = ("oops", ["a"], 5)
+
+    @pytest.mark.parametrize("bad", BAD)
+    @pytest.mark.parametrize("comparator", ("auto", "NumericComparator"))
+    def test_the_config_path_raises_value_error_naming_the_field(
+        self, bad, comparator
+    ):
+        """Both spellings of `comparator`, since only one used to be guarded."""
+        config = {
+            "model_name": "Doc",
+            "infer_unspecified_fields": True,
+            "fields": {
+                "total": {
+                    "type": "float",
+                    "comparator": comparator,
+                    "comparator_config": bad,
+                }
+            },
+        }
+        with pytest.raises(ValueError, match="total"):
+            StructuredModel.model_from_json(config)
+
+    @pytest.mark.parametrize("bad", BAD)
+    def test_the_schema_path_blames_the_config_not_the_comparator(self, bad):
+        schema = {
+            "type": "object",
+            "title": "Doc",
+            "properties": {
+                "total": {
+                    "type": "number",
+                    "x-aws-stickler-comparator": "NumericComparator",
+                    "x-aws-stickler-comparator-config": bad,
+                }
+            },
+        }
+        with pytest.raises(ValueError, match="comparator_config") as caught:
+            StructuredModel.from_json_schema(schema)
+        assert "total" in str(caught.value)
+
+    def test_a_non_string_parameter_name_is_named(self):
+        """`str.join` used to raise from inside the error-reporting code itself."""
+        config = {
+            "model_name": "Doc",
+            "fields": {
+                "total": {
+                    "type": "float",
+                    "comparator": "NumericComparator",
+                    "comparator_config": {1: "x"},
+                }
+            },
+        }
+        with pytest.raises(ValueError, match="non-string parameter"):
+            StructuredModel.model_from_json(config)
+
+    @pytest.mark.parametrize("empty", (None, {}))
+    def test_absent_and_empty_are_both_fine(self, empty):
+        """The bound: "nothing supplied" must not become an error."""
+        config = {
+            "model_name": "Doc",
+            "fields": {
+                "total": {
+                    "type": "float",
+                    "comparator": "NumericComparator",
+                    "comparator_config": empty,
+                }
+            },
+        }
+        model = StructuredModel.model_from_json(config)
+        assert type(model._get_comparison_info("total").comparator).__name__ == (
+            "NumericComparator"
+        )
+
+
+class TestAStaleConfigKeyNoLongerDiscardsTheValidOnes:
+    """The registry rewrite, which moves a score with the flag OFF.
+
+    `create_instance` used to retry with the WHOLE `comparator_config` removed when
+    one key in it was unknown, so a single stale key silently discarded every valid
+    setting beside it. It now applies what the comparator accepts and names the
+    rest in a warning.
+
+    This is the documented hand-edit-the-exported-comparator workflow: swap
+    `comparator` in an exported config and the previous comparator's keys are left
+    behind. Declared in the CHANGELOG as the second of two flag-off movements.
+    """
+
+    CONFIG = {
+        "model_name": "Doc",
+        "fields": {
+            "v": {
+                "type": "str",
+                "comparator": "ExactComparator",
+                "comparator_config": {
+                    "case_sensitive": False,
+                    "ignore_whitespace": True,
+                },
+            }
+        },
+    }
+
+    def _model(self):
+        return StructuredModel.model_from_json(
+            {**self.CONFIG, "fields": dict(self.CONFIG["fields"])}
+        )
+
+    def test_the_valid_key_survives_the_unknown_one(self):
+        """`0.0` before, `1.0` now: the whole config used to be thrown away."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = self._model()
+        assert model(v="ACME Corp").compare_with(model(v="acme corp"))["field_scores"][
+            "v"
+        ] == pytest.approx(1.0)
+
+    def test_the_unknown_key_is_named_rather_than_dropped_in_silence(self):
+        with pytest.warns(UserWarning, match="ignore_whitespace"):
+            StructuredModel.model_from_json(
+                {**self.CONFIG, "fields": dict(self.CONFIG["fields"])}
+            )
+
+    def test_the_warning_says_what_the_comparator_does_accept(self):
+        """A refusal with no remedy is a wrong number with extra steps."""
+        with pytest.warns(UserWarning, match="case_sensitive"):
+            StructuredModel.model_from_json(
+                {**self.CONFIG, "fields": dict(self.CONFIG["fields"])}
+            )

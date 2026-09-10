@@ -70,9 +70,16 @@ Each release links to full notes on the
 
   A mapping field takes the model's `match_threshold` as its field threshold, since
   a dict with undeclared keys is judged as an object. `match_threshold` now reaches
-  inference on both config paths, so `{"match_threshold": 0.9, "fields": {"meta":
-  {"type": "dict"}}}` gives `ANLSStarComparator @ 0.9`, matching
-  `stickler.eval_for(cls, match_threshold=0.9)`.
+  inference on both config paths, so
+
+  ```json
+  {"match_threshold": 0.9, "infer_unspecified_fields": true,
+   "fields": {"meta": {"type": "dict"}}}
+  ```
+
+  gives `ANLSStarComparator @ 0.9`, matching
+  `stickler.eval_for(cls, match_threshold=0.9)`. The flag is part of the example
+  because without it that config raises, this being a field with no comparator.
 
   **Partial configuration is filled in per parameter.** A field that names some
   parameters keeps them and infers only the rest, so
@@ -87,8 +94,10 @@ Each release links to full notes on the
   never implied. The refusal now names both ways to opt in rather than only saying a
   comparator is required.
 
-  **One thing does move with the flag off**, and it is a silent-drop fix rather than
-  part of the feature. `x-aws-stickler-comparator-config` was read only in the branch
+  **Two things move with the flag off**, and both are silent-drop fixes rather than
+  part of the feature.
+
+  The FIRST: `x-aws-stickler-comparator-config` was read only in the branch
   that also named `x-aws-stickler-comparator`, so a schema that configured the type
   default without naming it had its config discarded:
 
@@ -98,13 +107,39 @@ Each release links to full notes on the
     after    NumericComparator(relative_tolerance=0.5)
   ```
 
-  The Stickler-config path has always honoured this, so the two front doors
-  disagreed on identical input, and the schema side was silently losing a setting
-  the author wrote -- the class of defect
+  The Stickler-config path honours the same key once the field is expressible there
+  at all -- with no comparator and no flag it refuses the field outright rather than
+  dropping the config -- so the schema side was silently losing a setting the author
+  wrote where the config side would have told them. That is the class of defect
   [#210](https://github.com/awslabs/stickler/issues/210) is about. It is not gated
   behind `infer_unspecified_fields` because it has nothing to do with inference: the
   author named a config and it is now applied. **Scores move for any existing schema
   that carries `x-aws-stickler-comparator-config` with no comparator beside it.**
+
+  The SECOND: `ComparatorRegistry.create_instance` no longer drops a whole
+  `comparator_config` because ONE key in it is unknown. It used to retry with the
+  config removed, so a single stale key silently discarded every valid setting
+  beside it; it now applies the keys the comparator accepts, names the ones it does
+  not in a `UserWarning`, and drops only those. Measured with the flag off, on the
+  documented hand-edit-the-exported-comparator workflow:
+
+  ```
+  {"type": "str", "comparator": "ExactComparator",
+   "comparator_config": {"case_sensitive": false, "ignore_whitespace": true}}
+
+                'ACME Corp' vs 'acme corp'
+    before        0.0     case_sensitive=True    whole config dropped, silently
+    after         1.0     case_sensitive=False   'ignore_whitespace' named, ignored
+  ```
+
+  **Scores move for any config carrying one unknown key beside valid ones**, in the
+  direction of honouring what the author wrote. Two consequences worth stating: the
+  `UserWarning` is new output on a previously silent path, so a run under
+  `python -W error::UserWarning` now raises where it used to build a model; and a
+  `comparator_config` that is not a mapping at all is now refused with a
+  `ValueError` naming the field, on both front doors, where the config path
+  previously ignored it and one revision of this change let an `AttributeError`
+  escape `model_from_json` against a docstring promising `ValueError`.
 
   `explain()` no longer reports an inferred field as `explicit`. It carries the
   inference trail instead, with the same `source` values `stickler.evaluate()` uses
@@ -450,12 +485,14 @@ Each release links to full notes on the
   with no `properties`, all at `1.0`, plus primitive arrays, which take the
   element's row.
 
-  And the note beside it said every other `format` value "falls to the `string`
-  row", which is wrong for two of them. A `format` is special-cased exactly when the
-  schema parser maps it to a distinct Python type, and `time` and `uri` do map --
-  they get the no-row fallback of `ExactComparator @ 1.0`, not
-  `LevenshteinComparator @ 0.5`. `email` and `ipv4` are parsed as plain `str` and do
-  fall to the `string` row.
+  A note is ADDED beside it saying which `format` values are special-cased and
+  which are not, because the table alone invited the reader to assume every
+  `format` falls to the `string` row, and three of them do not. A `format` is
+  special-cased exactly when the schema parser maps it to a distinct Python type.
+  Five do: `date` and `date-time` get `DateComparator @ 0.95`, while `time`, `uri`
+  and `uuid` get the no-row fallback of `ExactComparator @ 1.0` rather than
+  `LevenshteinComparator @ 0.5`. `email`, `ipv4` and `hostname` are parsed as plain
+  `str` and do fall to the `string` row. Measured for all eight.
 - **Breaking:** `x-aws-stickler-threshold` is no longer dropped on an object-typed
   property, so a schema that declared one now scores differently.
   `from_json_schema` read `x-aws-stickler-weight` and

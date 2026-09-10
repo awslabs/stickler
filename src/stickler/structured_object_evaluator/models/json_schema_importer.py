@@ -699,12 +699,21 @@ class JsonSchemaImporter:
                 field_path.rsplit(".", 1)[-1] or "value",
                 annotation,
                 self.match_threshold,
+                # The array branch above already unwrapped one list level, so
+                # `_infer_spec` must not unwrap another. A NESTED array otherwise
+                # descended to the innermost scalar and handed the field's
+                # comparator a `list`, scoring an IDENTICAL
+                # `array<array<number>>` pair 0.0 where the flag-off default and
+                # `stickler.eval_for` both say 1.0.
+                already_element=bool(element_of_list),
             )
             # `_infer_spec` prepends this itself when it is handed a list
             # annotation, but the array branch above passes the ELEMENT type, so it
             # cannot see that this is a list. Without it, `explain()` reported an
             # array field with a scalar-looking trail here while the config path
             # and `stickler.evaluate()` both said "spec applies to each element".
+            # Exactly one insert: `already_element` suppresses the one inside, and
+            # the duplicated trail was the visible tell for the double unwrap.
             if element_of_list:
                 inferred.provenance.insert(0, LIST_ELEMENT_PROVENANCE)
 
@@ -1034,7 +1043,15 @@ class JsonSchemaImporter:
         # the branch that resolves a named comparator meant an inferred field's
         # config was read into a local and thrown away, so the schema path and the
         # Stickler-config path built different comparators from the same input.
-        comparator_config = extra.get("x-aws-stickler-comparator-config", {})
+        # Normalised as it is read, so a non-mapping is named for what it is.
+        # Deferring the check to the merge below meant a bad CONFIG was reported as
+        # `Invalid x-aws-stickler-comparator 'NumericComparator'` -- blaming a
+        # perfectly valid comparator name, and telling the author to look at the
+        # wrong key.
+        comparator_config = normalize_comparator_config(
+            extra.get("x-aws-stickler-comparator-config"),
+            f"field '{field_path}' (as 'x-aws-stickler-comparator-config')",
+        )
         if comparator_config:
             extensions["comparator_config"] = comparator_config
 

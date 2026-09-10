@@ -103,6 +103,7 @@ The `x-aws-stickler-*` extensions control comparison behavior on each property:
 | `x-aws-stickler-clip-under-threshold` | Zero out scores below threshold | `true` |
 | `x-aws-stickler-model-name` | Class name (object-level) | `"Invoice"` |
 | `x-aws-stickler-match-threshold` | Hungarian match threshold (object-level) | `0.75` |
+| `x-aws-stickler-infer-unspecified` | Infer comparators for properties that name none (object-level). See [Inferring unspecified fields](#inferring-unspecified-fields) | `true` |
 
 Default comparators are assigned by JSON Schema type when no extension is specified:
 
