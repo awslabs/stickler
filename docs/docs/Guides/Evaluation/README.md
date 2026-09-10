@@ -189,6 +189,8 @@ Add these extensions to any property in your JSON Schema to control comparison b
 | `x-aws-stickler-clip-under-threshold` | boolean | `true` | Zero out scores below threshold |
 | `x-aws-stickler-model-name` | string | `"DynamicModel"` | Name of the generated Python class (root level) |
 | `x-aws-stickler-match-threshold` | number (0.0--1.0) | 0.7 | Model-level matching threshold for Hungarian algorithm (root level) |
+| `x-aws-stickler-infer-unspecified` | boolean | `false` | Infer a comparator, threshold and weight for any property that names none, using the same rules `stickler.evaluate()` uses (root level) |
+| `x-aws-stickler-comparator-config` | object | `{}` | Keyword arguments passed to the named comparator |
 
 An unstated `x-aws-stickler-threshold` does not resolve to one number. It depends
 on the position, because different positions fall back to different defaults:

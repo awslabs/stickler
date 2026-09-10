@@ -11,6 +11,155 @@ Each release links to full notes on the
 
 ### Added
 
+- Config-driven models can have their unspecified fields inferred, with
+  `infer_unspecified_fields` on a Stickler config or
+  `x-aws-stickler-infer-unspecified` on a JSON Schema object. A large extraction
+  schema usually has a handful of fields whose comparison rules matter and a long
+  tail where anything sensible will do; this covers the tail.
+
+  Before, the paths gave three different answers to "no comparator named", none of
+  them what `stickler.evaluate()` chooses for the same field:
+
+  ```
+  model_from_json()      raises
+  from_json_schema()     number -> NumericComparator @ 0.50
+  stickler.evaluate()    number -> NumericComparator @ 0.95
+  ```
+
+  Inference supplies **both** the comparator and the threshold, so an unspecified
+  field now matches `stickler.evaluate()` exactly -- asserted against `auto`'s own
+  output rather than against literals, so the two cannot drift:
+
+  | field | without the flag | with it |
+  |---|---|---|
+  | `total: float` | NumericComparator @ 0.5 | NumericComparator @ 0.95 |
+  | `paid: bool` | ExactComparator @ 0.5 | ExactComparator @ 1.0 |
+  | `issued` (`format: date`) | DateComparator @ 1.0 | DateComparator @ 0.95 |
+  | `vendor: str` | LevenshteinComparator @ 0.5 | LevenshteinComparator @ 0.85 |
+
+  A field opts in on its own with `"comparator": "auto"`
+  (`x-aws-stickler-comparator: "auto"` in a schema), and **precedence runs both
+  ways**: `"auto"` infers one field in an otherwise explicit config, and naming a
+  comparator pins one field in an otherwise inferred one. A nested model can scope
+  inference to its own subtree in either direction, on both paths:
+  `infer_unspecified_fields` on a `structured_model` field, or
+  `x-aws-stickler-infer-unspecified` on a nested object.
+
+  `"auto"` applies to a scalar or a list of scalars. A nested object is compared
+  recursively and an array of objects by Hungarian matching, so neither has a
+  comparator to infer, and `"auto"` on one raises an error naming
+  `x-aws-stickler-infer-unspecified` instead.
+
+  Naming a comparator pins the field's **threshold** as well, rather than inferring
+  it. A threshold only means something beside the metric that produced the score, so
+  inference's threshold belongs to the comparator inference would have chosen, not to
+  one the caller named instead. Per-parameter filling covers `threshold`, `weight`,
+  `clip_under_threshold` and `comparator_config` for a field that let inference pick
+  the comparator. `comparator_config` is **merged** over the inferred one on **both
+  paths**, so setting `absolute_tolerance` on an inferred `NumericComparator` keeps
+  the `relative_tolerance` of `0.001` that inference chose, whether it arrives as
+  `comparator_config` or as `x-aws-stickler-comparator-config`.
+
+  A list is inferred from its **element** type, on every path, because that is what
+  the comparator is applied to: `{"type": "List[float]"}`,
+  `{"type": "array", "items": {"type": "number"}}` and a pydantic `List[float]` all
+  resolve to `NumericComparator @ 0.95`. A bare `{"type": "list"}` declares no
+  element type, so it falls to `ExactComparator @ 1.0` -- elements are still compared
+  one by one, but without an element comparator, so `[1.0]` against `[1.0000001]`
+  scores 0.0. Write the element type out.
+
+  A mapping field takes the model's `match_threshold` as its field threshold, since
+  a dict with undeclared keys is judged as an object. `match_threshold` now reaches
+  inference on both config paths, so
+
+  ```json
+  {"match_threshold": 0.9, "infer_unspecified_fields": true,
+   "fields": {"meta": {"type": "dict"}}}
+  ```
+
+  gives `ANLSStarComparator @ 0.9`, matching
+  `stickler.eval_for(cls, match_threshold=0.9)`. The flag is part of the example
+  because without it that config raises, this being a field with no comparator.
+
+  **Partial configuration is filled in per parameter.** A field that names some
+  parameters keeps them and infers only the rest, so
+  `{"type": "float", "threshold": 0.99}` gets `NumericComparator` with the author's
+  `0.99`. Treating any config as "fully configured" was what left that field on the
+  type-blind Levenshtein default -- a threshold tuned against edit distance over
+  `"1000.00"` and `"1000.0"`.
+
+  **Off by default.** `model_from_json()` still refuses a primitive field with no
+  comparator unless asked, and `from_json_schema()` keeps its comparator defaults.
+  Enabling it changes reported metrics for any field left unspecified, so it is
+  never implied. The refusal now names both ways to opt in rather than only saying a
+  comparator is required.
+
+  **Two things move with the flag off**, and both are silent-drop fixes rather than
+  part of the feature.
+
+  The FIRST: `x-aws-stickler-comparator-config` was read only in the branch
+  that also named `x-aws-stickler-comparator`, so a schema that configured the type
+  default without naming it had its config discarded:
+
+  ```
+  {"type": "number", "x-aws-stickler-comparator-config": {"relative_tolerance": 0.5}}
+    before   NumericComparator()                          config dropped
+    after    NumericComparator(relative_tolerance=0.5)
+  ```
+
+  The Stickler-config path honours the same key once the field is expressible there
+  at all -- with no comparator and no flag it refuses the field outright rather than
+  dropping the config -- so the schema side was silently losing a setting the author
+  wrote where the config side would have told them. That is the class of defect
+  [#210](https://github.com/awslabs/stickler/issues/210) is about. It is not gated
+  behind `infer_unspecified_fields` because it has nothing to do with inference: the
+  author named a config and it is now applied. **Scores move for any existing schema
+  that carries `x-aws-stickler-comparator-config` with no comparator beside it.**
+
+  The SECOND: `ComparatorRegistry.create_instance` no longer drops a whole
+  `comparator_config` because ONE key in it is unknown. It used to retry with the
+  config removed, so a single stale key silently discarded every valid setting
+  beside it; it now applies the keys the comparator accepts, names the ones it does
+  not in a `UserWarning`, and drops only those. Measured with the flag off, on the
+  documented hand-edit-the-exported-comparator workflow:
+
+  ```
+  {"type": "str", "comparator": "ExactComparator",
+   "comparator_config": {"case_sensitive": false, "ignore_whitespace": true}}
+
+                'ACME Corp' vs 'acme corp'
+    before        0.0     case_sensitive=True    whole config dropped, silently
+    after         1.0     case_sensitive=False   'ignore_whitespace' named, ignored
+  ```
+
+  **Scores move for any config carrying one unknown key beside valid ones**, in the
+  direction of honouring what the author wrote. Two consequences worth stating: the
+  `UserWarning` is new output on a previously silent path, so a run under
+  `python -W error::UserWarning` now raises where it used to build a model; and a
+  `comparator_config` that is not a mapping at all is now refused with a
+  `ValueError` naming the field, on both front doors, where the config path
+  previously ignored it and one revision of this change let an `AttributeError`
+  escape `model_from_json` against a docstring promising `ValueError`.
+
+  `explain()` no longer reports an inferred field as `explicit`. It carries the
+  inference trail instead, with the same `source` values `stickler.evaluate()` uses
+  (`type`, `name-token`), which is the reporting half of
+  [#210](https://github.com/awslabs/stickler/issues/210):
+
+  ```
+  invoice_id   ExactComparator        1.0    explicit
+  total        NumericComparator      0.95   name-token
+  paid         ExactComparator        1.0    type
+  ```
+
+  One limit worth knowing: `model_from_json()` has no `date` type, and inference
+  will not apply a comparator the declared type cannot support. A field named
+  `issued_date` declared as `str` keeps `LevenshteinComparator` and records why in
+  `why`. Such a field reports `source: type`, because the type default is what
+  shipped; the refused rule appears in `why` under a `name-token-unused:` prefix.
+  Use `{"type": "string", "format": "date"}` on the schema path, or name
+  `DateComparator` explicitly ([#239](https://github.com/awslabs/stickler/issues/239)).
+
 - **`NormalizedComparator`** for explicit formatting-insensitive equality.
   Its independent case, whitespace, and punctuation options round-trip through
   JSON Schema. Punctuation follows Unicode `P*` categories, whitespace follows
@@ -320,6 +469,30 @@ Each release links to full notes on the
   [#210](https://github.com/awslabs/stickler/issues/210)
   ([#246](https://github.com/awslabs/stickler/issues/246)).
 
+- `explain()` no longer reports `source: name-token` for a field whose name-token
+  rule was **refused**. A rule that matched but could not be applied -- a
+  `DateComparator` rule on a `str` field named `issued_date` -- left the type
+  default in place, so `type` is what produced the comparator. Naming the token
+  told a reader the name had been honoured in exactly the case where it was not,
+  on the one signal `explain()` exists to give. The refusal is still in `why`, now
+  prefixed `name-token-unused:` rather than `name-token:` so the two outcomes are
+  distinguishable ([#239](https://github.com/awslabs/stickler/issues/239)).
+
+- The JSON Schema defaults table in the dynamic-models guide is corrected. It
+  published `boolean` as `ExactComparator @ 1.0`; the measured value is `0.5`. It
+  also omitted rows that exist: `format: date`, `format: date-time`,
+  `format: time`, `format: uri`, `format: uuid`, `enum`, `const` and an `object`
+  with no `properties`, all at `1.0`, plus primitive arrays, which take the
+  element's row.
+
+  A note is ADDED beside it saying which `format` values are special-cased and
+  which are not, because the table alone invited the reader to assume every
+  `format` falls to the `string` row, and three of them do not. A `format` is
+  special-cased exactly when the schema parser maps it to a distinct Python type.
+  Five do: `date` and `date-time` get `DateComparator @ 0.95`, while `time`, `uri`
+  and `uuid` get the no-row fallback of `ExactComparator @ 1.0` rather than
+  `LevenshteinComparator @ 0.5`. `email`, `ipv4` and `hostname` are parsed as plain
+  `str` and do fall to the `string` row. Measured for all eight.
 - **Breaking:** `x-aws-stickler-threshold` is no longer dropped on an object-typed
   property, so a schema that declared one now scores differently.
   `from_json_schema` read `x-aws-stickler-weight` and

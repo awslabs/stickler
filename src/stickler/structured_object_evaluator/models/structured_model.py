@@ -977,6 +977,9 @@ class StructuredModel(BaseModel):
         -----------------------
         - x-aws-stickler-model-name: Generated class name (default: "DynamicModel")
         - x-aws-stickler-match-threshold: Overall match threshold (default: 0.7)
+        - x-aws-stickler-infer-unspecified: Infer a comparator for any property
+          that names none, using the same rules stickler.evaluate() uses
+          (default: False)
 
         Supported Features:
         -------------------
