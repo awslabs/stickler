@@ -220,13 +220,23 @@ def _annotation_is_list(annotation: Any) -> bool:
     return any(_annotation_is_list(arg) for arg in union_args(annotation))
 
 
-def _amend_clip_default(field_info: Any, extra: Any) -> None:
-    """Turn clipping off for a mapping field, on a COPY of the metadata.
+def _amend_clip_default(field_info: Any, extra: Any, clip: bool) -> None:
+    """Write ``clip`` onto an object-grade field, on a COPY of the metadata.
 
-    Split out because it must run whether or not the comparator was named, while
-    the comparator substitution must not run when it was. Copies for the same
-    reason the substitution does: one `ComparableField(...)` can be bound to
-    several fields and pydantic does not clone the closure.
+    For the case where the caller NAMED the comparator, so the substitution below
+    does not run and this is the only amendment the field gets. The clip default
+    follows the annotation, not the comparator: tying it to the substitution meant
+    ``ComparableField(comparator=ANLSStarComparator(leaf_threshold=...))`` -- the
+    form the docs recommend for setting the leaf cutoff -- kept clipping on and
+    zeroed exactly the partial credit ANLS* produces.
+
+    Copies rather than mutating: one ``ComparableField(...)`` can be bound to
+    several fields and pydantic does not clone the closure, so writing in place
+    retroactively rewrote the sibling.
+
+    The value comes from ``ConfigurationHelper.object_grade_clip``; this function
+    only writes it, so it cannot disagree with the read-time path about what an
+    object-grade field's clip setting should be.
     """
     metadata = getattr(extra, "_comparison_metadata", None)
     new_metadata = dict(metadata) if isinstance(metadata, dict) else None
@@ -241,9 +251,9 @@ def _amend_clip_default(field_info: Any, extra: Any) -> None:
     for attribute in dir(extra):
         if attribute.startswith("_") and not attribute.startswith("__"):
             setattr(amended, attribute, getattr(extra, attribute))
-    amended._clip_under_threshold = False
+    amended._clip_under_threshold = clip
     if new_metadata is not None:
-        new_metadata["clip_under_threshold"] = False
+        new_metadata["clip_under_threshold"] = clip
         amended._comparison_metadata = new_metadata
     field_info.json_schema_extra = amended
 
@@ -408,14 +418,22 @@ class StructuredModel(BaseModel):
     match_threshold: ClassVar[float] = 0.7
 
     @classmethod
-    def _install_mapping_comparators(cls) -> None:
-        """Give mapping-annotated fields a comparator that can score a mapping.
+    def _install_object_grade_comparators(cls) -> None:
+        """Give object-grade fields a comparator that can score a whole object.
+
+        Four annotations are scored as one object rather than as a scalar: a
+        mapping, a plain pydantic ``BaseModel``, and a list of either. See
+        ``ConfigurationHelper.is_object_grade_annotation``.
 
         ``ComparableField`` resolves its comparator default before the field's
-        annotation exists, so it cannot know a field is a dict and installs the
-        type-blind ``LevenshteinComparator``, which REJECTS mappings. Deciding
-        here instead is the earliest point where the annotation and the field
-        metadata are both available.
+        annotation exists, so it cannot know a field is one of those and installs
+        the type-blind ``LevenshteinComparator``, which REJECTS mappings and,
+        on a model, does something worse than raising: edit distance over
+        ``str(model)`` compares the field-name boilerplate that is identical on
+        both sides, so ``LineItem(2, 10.5, 'USD')`` against
+        ``LineItem(9, 99.9, 'EUR')`` scored 0.8293 and classified as a true
+        positive with every value wrong. Deciding here instead is the earliest
+        point where the annotation and the field metadata are both available.
 
         Substituting here rather than at read time (in
         ``ConfigurationHelper.get_comparison_info``) is what keeps the EXPORTED
@@ -427,6 +445,12 @@ class StructuredModel(BaseModel):
         ANLS*, and re-importing that schema installed Levenshtein *explicitly*,
         which suppressed the substitution and made the round-tripped model raise
         on a field the original scored fine.
+
+        This covered ONLY the singular mapping until #319. The other three
+        shapes were substituted at read time alone, so the exported schema
+        disagreed with the engine for every one of them -- on a plain-model field
+        that divergence was introduced by #319 itself, and on ``List[Dict[...]]``
+        it was inherited. All four now take one path.
 
         Nothing the caller stated is overridden: an explicit ``comparator`` or an
         explicit ``clip_under_threshold`` is left exactly as written.
@@ -444,16 +468,18 @@ class StructuredModel(BaseModel):
         for field_name, field_info in cls.model_fields.items():
             if field_name == _EXTRA_FIELDS_KEY:
                 continue
-            # A singular mapping, or a list of them. The list form is admitted for
-            # the CLIP amendment only; the comparator substitution below stays on
-            # the singular annotation, because widening that changes the exported
-            # schema for `List[Dict[...]]` and belongs with the reader alignment in
-            # #319 rather than here.
-            is_mapping = ConfigurationHelper.is_mapping_annotation(
-                field_info.annotation
-            )
-            is_mapping_list = ConfigurationHelper._is_list_of_mappings(field_info)
-            if not (is_mapping or is_mapping_list):
+            # `is_object_grade_annotation`, not the memoised
+            # `_wants_object_grade_comparison`: this runs while the class is being
+            # built, and caching a False computed from an annotation that has not
+            # resolved yet would outlive the annotation becoming readable.
+            #
+            # This is the widening #316 deferred to here. It gated the comparator
+            # substitution to the singular mapping and admitted `List[Dict[...]]`
+            # for the clip amendment only, on the grounds that installing the
+            # comparator at definition time changes what `to_json_schema()` exports
+            # for that shape -- which is exactly the reader alignment this branch is
+            # for. All four object-grade shapes now take the one path.
+            if not ConfigurationHelper.is_object_grade_annotation(field_info):
                 continue
 
             field_default = field_info
@@ -462,24 +488,22 @@ class StructuredModel(BaseModel):
                 # A bare annotation with no ComparableField metadata to amend.
                 # ConfigurationHelper supplies the default for those instead.
                 continue
+
             # The clip default follows the ANNOTATION, so it applies even when the
             # caller named the comparator. Tying it to the substitution meant
             # `ComparableField(comparator=ANLSStarComparator(leaf_threshold=...))`
             # -- the form the docs recommend for setting the leaf cutoff -- kept
             # clipping on and zeroed exactly the partial credit ANLS* produces.
-            # A mapping is a container: a partly-correct one keeps its score,
+            # An object is a container: a partly-correct one keeps its score,
             # the same policy nested objects and lists use.
-            if not getattr(extra, "_clip_explicit", False) and getattr(
-                extra, "_clip_under_threshold", True
-            ):
-                _amend_clip_default(field_default, extra)
+            clip = ConfigurationHelper.object_grade_clip(extra)
 
-            # The comparator substitution is for the singular annotation only. A
-            # `List[Dict[...]]` gets its object-grade comparator at read time in
-            # `ConfigurationHelper.get_comparison_info`; installing it here as well
-            # would change what `to_json_schema()` exports for that shape, which is
-            # a separate (real) divergence tracked with the reader alignment work.
-            if is_mapping_list or getattr(extra, "_comparator_explicit", True):
+            if getattr(extra, "_comparator_explicit", True):
+                # Only the clip default is ours to set. Written here rather than
+                # below because the substitution sets it too, and doing both
+                # replaced `json_schema_extra` twice with the same answer.
+                if clip != getattr(extra, "_clip_under_threshold", True):
+                    _amend_clip_default(field_default, extra, clip)
                 continue
 
             # Substitute onto a COPY, never onto the shared object. A single
@@ -496,15 +520,6 @@ class StructuredModel(BaseModel):
             comparator = ANLSStarComparator()
             metadata = getattr(extra, "_comparison_metadata", None)
             new_metadata = dict(metadata) if isinstance(metadata, dict) else None
-            clip = (
-                getattr(extra, "_clip_under_threshold", True)
-                if getattr(extra, "_clip_explicit", False)
-                # A mapping is a container, so a partly-correct one keeps its
-                # score rather than being zeroed by the field threshold -- the
-                # same policy nested objects and lists use. An explicit choice
-                # still wins.
-                else False
-            )
 
             def substituted(
                 schema: Dict[str, Any], _metadata=new_metadata, _original=extra
@@ -548,10 +563,10 @@ class StructuredModel(BaseModel):
         meant writing to a ``FieldInfo`` pydantic had not yet copied, so the
         substitution was silently discarded and the read-time fallback in
         ``ConfigurationHelper`` took over -- which is exactly the schema/engine
-        divergence ``_install_mapping_comparators`` exists to prevent.
+        divergence ``_install_object_grade_comparators`` exists to prevent.
         """
         super().__pydantic_init_subclass__(**kwargs)
-        cls._install_mapping_comparators()
+        cls._install_object_grade_comparators()
 
     def __init_subclass__(cls, **kwargs):
         """Validate field configurations when a StructuredModel subclass is defined."""
@@ -1311,6 +1326,7 @@ class StructuredModel(BaseModel):
         comparator: BaseComparator,
         threshold: float,
         clip_under_threshold: bool = True,
+        field_name: str = "",
     ) -> Dict[str, Any]:
         """Compare two lists as unordered collections using Hungarian matching.
 
@@ -1330,7 +1346,13 @@ class StructuredModel(BaseModel):
             - overall_score: Similarity score for backward compatibility
         """
         return ComparisonHelper.compare_unordered_lists(
-            gt_list, pred_list, comparator, threshold, clip_under_threshold
+            gt_list,
+            pred_list,
+            comparator,
+            threshold,
+            clip_under_threshold,
+            model_cls=self.__class__,
+            field_name=field_name,
         )
 
     def compare_field_raw(self, field_name: str, other_value: Any) -> float:
@@ -1349,12 +1371,13 @@ class StructuredModel(BaseModel):
         my_value = getattr(self, field_name)
 
         # A mapping pair whose comparator scores scalars: report 0.0 with a
-        # warning rather than letting the comparator raise. Same gate the
-        # dispatcher uses, so compare() and compare_with() agree.
+        # warning rather than letting the comparator raise. The same
+        # `can_compare_object_pair` gate the dispatcher and the model half of
+        # this function use, so compare() and compare_with() agree (#233).
         if isinstance(my_value, dict) and isinstance(other_value, dict):
             info = self.__class__._get_comparison_info(field_name)
-            if not ConfigurationHelper.can_score_mapping(
-                self.__class__, field_name, info.comparator
+            if not ConfigurationHelper.can_compare_object_pair(
+                self.__class__, field_name, info.comparator, my_value, other_value
             ):
                 return 0.0
 

@@ -104,7 +104,12 @@ class PrimitiveListComparator:
         # `threshold_applied_score = raw_similarity` line below, so that line
         # preserved a score that had already been thrown away.
         match_result = self.parent_model._compare_unordered_lists(
-            gt_list, pred_list, comparator, threshold, info.clip_under_threshold
+            gt_list,
+            pred_list,
+            comparator,
+            threshold,
+            info.clip_under_threshold,
+            field_name=field_name,
         )
 
         # Extract the counts from the match result
