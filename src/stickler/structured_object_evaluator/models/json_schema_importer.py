@@ -415,7 +415,21 @@ class JsonSchemaImporter:
             comparison_field = self._make_comparison_field(
                 field_info,
                 comparator_name="LevenshteinComparator",
-                threshold=0.7,
+                # Read the declared threshold, like `weight` and
+                # `clip_under_threshold` beside it. The literal used to stand
+                # here unconditionally, so `x-aws-stickler-threshold` on an
+                # object-typed property was dropped in silence while the other
+                # two field-level keys on the SAME node were honoured.
+                #
+                # Not inert in this position, which is why carrying it is the
+                # right fix rather than rejecting it the way #312 rejects a
+                # misplaced key. A nested-model field's threshold gates the
+                # subtree mean: measured on a two-leaf child scoring 0.5, a
+                # threshold of 0.6 with clipping on reports 0.0. Set through a
+                # `StructuredModel` class it worked; set in a schema it did not,
+                # so the two configuration paths disagreed about what is
+                # configurable. See #317.
+                threshold=extensions.get("threshold", 0.7),
                 weight=extensions.get("weight", 1.0),
                 clip_under_threshold=extensions.get("clip_under_threshold", True),
             )
