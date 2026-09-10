@@ -18,15 +18,32 @@ the other's input, so this is a choice you make once per project.
 
 | | Inference | JSON Schema |
 |---|---|---|
-| From the type | yes — `bool`/`Enum` → Exact, `int` → Numeric(exact), `float` → Numeric(rel_tol 0.001), `date` → Date, `str` → Levenshtein | yes, coarser — the schema is resolved to a Python annotation first, so `string` → Levenshtein, `number`/`integer` → Numeric, `boolean` → Exact, and anything else → Exact |
+| From the type | yes — `bool`/`Enum` → Exact, `int` → Numeric(exact), `float` → Numeric(rel_tol 0.001), `date` → Date, `str` → Levenshtein | yes, coarser — the property is parsed to a Python annotation and the comparator comes from that, so `string` → Levenshtein, `number`/`integer` → Numeric, `boolean` → Exact, and any annotation outside that set → Exact @ 1.0 |
 | From the field name | yes — `*_id` → Exact(case-sensitive), `notes` → Fuzzy(token_set), `total` → Numeric(rel_tol), `phone` → Phone | no |
-| `"format": "date"` | n/a — a `date` annotation is already Date | honoured — resolves to `date`, so the field gets Date @ 1.0. `"enum"`, `"const"`, `"uri"`, `"uuid"` likewise get Exact @ 1.0; a `format` with no distinct type (`"email"`, `"hostname"`) stays Levenshtein |
-| Default threshold | per comparator, 0.6–1.0 | `0.5` for the four primitives, `1.0` for anything resolved from a `format`, `enum` or `const` |
+| `"format": "date"` | n/a — a `date` annotation is already Date | honoured — parses as `date`, so the field gets Date @ 1.0. `"enum"`, `"const"`, `"uri"`, `"uuid"`, `"time"` likewise get Exact @ 1.0; a `format` with no distinct type (`"email"`, `"hostname"`, `"duration"`) stays Levenshtein @ 0.5 |
+| Default threshold | per comparator, 0.6–1.0 | `0.5` for the four primitives, `1.0` for anything parsed from a `format`, `enum` or `const` |
 | Introspection | `.explain()`, with a provenance trail per field | none; round-trip the class through `to_json_schema()` to read back what it resolved to |
 | Takes the other's input | no — `eval_for({...})` raises `TypeError` | no — `from_json_schema(MyModel)` raises `ValueError` |
 
 Weights are `1.0` on both paths. Inference never picks `SemanticComparator`, `BERTComparator`, or
 `LLMComparator` — those need models or credentials, so they are explicit-only.
+
+The schema path keeps no separate record of what it chose, so read it back off the exported schema.
+Note that the parsed annotation is widened to the JSON value type after the comparator is picked, so
+`model_fields` reports `Optional[str]` even for the `format`/`enum` rows above — `to_json_schema()`
+is the accurate view:
+
+```python
+s = {"type": "object", "properties": {
+    "d": {"type": "string", "format": "date"},
+    "e": {"type": "string", "enum": ["ALPHA", "BETA"]},
+    "plain": {"type": "string"}}}
+props = StructuredModel.from_json_schema(s).to_json_schema()["properties"]
+{k: (v["x-aws-stickler-comparator"], v["x-aws-stickler-threshold"]) for k, v in props.items()}
+# {'d':     ('DateComparator',        1.0),
+#  'e':     ('ExactComparator',       1.0),
+#  'plain': ('LevenshteinComparator', 0.5)}
+```
 
 ## The divergence is not academic
 
@@ -54,7 +71,11 @@ class Invoice(BaseModel):
 Two of six comparators and **six of six** thresholds differ. The schema here is
 `Invoice.model_json_schema()`, so `issue_date` carries `"format": "date"` and both paths reach
 `DateComparator` — hand-write the property as a bare `{"type": "string"}` and the schema path drops
-to Levenshtein instead. `customer_name` is the subtle case: the same comparator on both paths,
+to Levenshtein instead. That one omission is worth a whole field: on `"2024-01-05"` against
+`"Jan 5, 2024"`, the `"format": "date"` property scores **1.0** where the bare `{"type": "string"}`
+scores **0.0**. The scored pair below holds `issue_date` identical, so it contributes `1.0` on both
+paths and is not one of the fields that diverges there.
+`customer_name` is the subtle case: the same comparator on both paths,
 separated only by the threshold. Scoring one realistic prediction
 (`"inv-001"` for `"INV-001"`, `"Acme Corp."` for `"Acme Corporation"`, `"friday delivery"` for
 `"deliver by friday"`) gives **0.646** by inference and **0.760** by schema — and the two disagree

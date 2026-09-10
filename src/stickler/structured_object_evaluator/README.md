@@ -253,10 +253,20 @@ Comparator names accepted by `x-aws-stickler-comparator` are the registered clas
 registered, so naming one raises `ValueError: Invalid x-aws-stickler-comparator 'BERTComparator'
 ...` and the name is absent from the "Available" list the message prints.
 
-With no comparator given, the schema is first resolved to a Python annotation and the comparator is
-chosen from that, so `format` does participate — but field names never do:
+With no comparator given, the choice is made in two steps, in `_default_comparison` and
+`_evaluation_annotation` (`models/json_schema_importer.py`):
 
-| Schema | Annotation | Comparator | Threshold |
+1. The schema library parses the property to a strict Python annotation — `format: date` becomes
+   `date`, an `enum` becomes an `Enum` subclass, a single-value `const` becomes a `Literal`.
+2. `_default_comparison` selects the comparator from *that* annotation, and the annotation is then
+   widened back to the JSON value type so an invalid extraction is an ordinary zero-score candidate
+   rather than a construction error.
+
+So `format`, `enum` and `const` do participate — while field names never do — but the widening in
+step 2 means the built field is a plain `str`. `model_fields` therefore shows `Optional[str]` for
+every row below; `to_json_schema()["properties"]` is where the chosen comparator is legible.
+
+| Schema | Parsed as (step 1) | Comparator | Threshold |
 | --- | --- | --- | --- |
 | `"string"` | `str` | `LevenshteinComparator` | `0.5` |
 | `"number"` | `float` | `NumericComparator` | `0.5` |
@@ -265,10 +275,11 @@ chosen from that, so `format` does participate — but field names never do:
 | `"string"` + `"format": "date"` or `"date-time"` | `date` / `datetime` | `DateComparator` | `1.0` |
 | `"string"` + `"enum"` or a single-value `const` | `Enum` / `Literal` | `ExactComparator` | `1.0` |
 
-Any other annotation falls back to `ExactComparator` at `1.0`, which is what a `format` the schema
-library maps to a distinct type (`"uri"`, `"uuid"`, `"time"`) resolves to. A `format` it does not
-model (`"email"`, `"hostname"`, `"duration"`) stays `str`, so the field keeps
-`LevenshteinComparator` at `0.5`.
+Any annotation not in that table falls back to `ExactComparator` at `1.0` — which is where a
+`format` the schema library maps to a distinct type (`"uri"` → `AnyUrl`, `"uuid"` → `UUID`,
+`"time"` → `time`) lands. A `format` it does not model (`"email"`, `"hostname"`, `"duration"`)
+parses as `str`, so the field keeps `LevenshteinComparator` at `0.5`. `Decimal` is the one
+non-primitive with its own entry, at `NumericComparator` `0.5`.
 
 **Supported JSON Schema Features:**
 
@@ -293,7 +304,9 @@ ComparableField(
     threshold=0.7,                       # similarity threshold, 0.0-1.0 (default: 0.5)
     weight=1.0,                          # field weight for overall score (default: 1.0)
     clip_under_threshold=True,           # zero out scores below threshold (default: True)
-    default=None,                        # field default; every ComparableField is optional
+    default=None,                        # field default; setting one does not make the field
+                                         # required — is_required() is False either way, so a
+                                         # missing prediction scores rather than failing validation
 )
 ```
 

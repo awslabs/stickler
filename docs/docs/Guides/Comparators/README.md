@@ -493,8 +493,11 @@ class Address(StructuredModel):
 ## Default Comparators by Type
 
 These are the defaults on the **JSON Schema path** — what `from_json_schema` picks for a property
-carrying no `x-aws-stickler-comparator`. The schema is resolved to a Python annotation first and the
-comparator follows from that, so `format`, `enum` and `const` participate; field names never do.
+carrying no `x-aws-stickler-comparator`. Each property is parsed to a strict Python annotation, the
+comparator is chosen from that annotation, and the annotation is then widened back to the JSON value
+type so an invalid extraction scores `0.0` instead of raising. So `format`, `enum` and `const`
+participate in the choice — while field names never do — even though the field on the built class
+ends up a plain `str`. Read the result back with `to_json_schema()`, not from `model_fields`.
 
 | JSON Schema Type | Default Comparator | Default Threshold | Rationale |
 |---|---|---|---|
@@ -502,14 +505,19 @@ comparator follows from that, so `format`, `enum` and `const` participate; field
 | `number` | NumericComparator | 0.5 | Tolerates small numeric differences |
 | `integer` | NumericComparator | 0.5 | Tolerates small numeric differences |
 | `boolean` | ExactComparator | 0.5 | Must be exactly true or false (Exact returns only 0.0 or 1.0, so the threshold is immaterial) |
-| `string` + `"format": "date"` or `"date-time"` | DateComparator | 1.0 | Resolves to `date`/`datetime`, which compares across formats |
-| `string` + `"enum"` or a single-value `const` | ExactComparator | 1.0 | Resolves to an `Enum`/`Literal`, so only a listed value is valid |
+| `string` + `"format": "date"` or `"date-time"` | DateComparator | 1.0 | Parses as `date`/`datetime`, so the field compares across formats |
+| `string` + `"enum"` or a single-value `const` | ExactComparator | 1.0 | Parses as an `Enum`/`Literal`, so only a listed value is valid |
 | `array` (primitives) | Based on item type | Based on item type | Inherits from element type |
 | `array` (objects) | Hungarian matching | 0.5, pairing elements at 0.7 | Optimal pairing of list elements |
 | `object` | Recursive comparison | 0.7 | Field-by-field nested comparison |
 
 A `format` the schema library does not map to a distinct type (`"email"`, `"hostname"`, `"duration"`)
-stays `str`, so the field keeps LevenshteinComparator at 0.5.
+parses as `str`, so the field keeps LevenshteinComparator at 0.5. To check any of this on your own
+schema:
+
+```python
+StructuredModel.from_json_schema(schema).to_json_schema()["properties"]
+```
 
 The two paths do not share these defaults. Inference — `stickler.evaluate`, `eval_for`,
 `from_pydantic` — reads field *names* as well as types and picks different thresholds; see
