@@ -558,8 +558,10 @@ Each release links to full notes on the
   `get_optimal_assignments`, a shared template-method base with two subclasses and
   two collectors whose `non_matches` output would change for every list of plain
   models. That is a reporting change with its own blast radius, so it is declared
-  and tracked rather than smuggled in here. A test pins the disagreement so it
-  cannot widen unnoticed.
+  and tracked in [#332](https://github.com/awslabs/stickler/issues/332) rather
+  than smuggled in here. Tests pin the disagreement so it cannot widen unnoticed,
+  including one asserting an ordinary below-threshold element IS still reported,
+  so the gap cannot read as larger than it is.
 
   Refusing is deliberate rather than conservative. The scalar default is edit
   distance over the rendered form, and because the field names are identical on

@@ -604,6 +604,7 @@ a property of the prediction, and raising would end a bulk run partway through.
     refusal. The item-level report re-derives its own pairing without the field's
     comparator, which is why it cannot see the refusal. Read the counts, not
     `non_matches`, when you need to know whether a list element was refused.
+    Tracked in [#332](https://github.com/awslabs/stickler/issues/332).
 
 ### The annotation has to name the model
 
