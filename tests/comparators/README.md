@@ -6,6 +6,9 @@ Most comparator tests live in `tests/common/comparators/`. This directory holds
 tests for comparators whose behaviour spans more than the comparator itself, so
 a unit test of the class alone would not catch the defect.
 
+`test_normalized_mapping.py` checks that both StructuredModel comparison APIs
+warn and complete when a text-only NormalizedComparator is named for a mapping.
+
 ## `test_anls_star.py`
 
 `ANLSStarComparator` scores mappings structurally. Its correctness depends on
