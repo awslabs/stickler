@@ -21,8 +21,10 @@ partial credit depends on the data being evaluated. It is deliberately not calle
 every comparator, and a cutoff applied inside the recursion is a different thing.
 """
 
+from collections.abc import Mapping
 from typing import Any, Dict, Optional
 
+from pydantic import BaseModel, SecretBytes, SecretStr
 from pydantic_core import to_jsonable_python
 
 from stickler.comparators.base import BaseComparator
@@ -89,6 +91,52 @@ def _jsonable_or_unscoreable(value: Any) -> Any:
         category=UserWarning,
     )
     return _UNSCOREABLE
+
+
+def _refuse_secrets(value: Any) -> Any:
+    """Replace every ``SecretStr`` / ``SecretBytes`` leaf with ``_UNSCOREABLE``.
+
+    Run before ``to_jsonable_python`` because that call is where the value is
+    lost: pydantic masks a secret to the constant ``'**********'`` there, so two
+    DIFFERENT secrets arrive at the metric byte-identical and score a perfect
+    match on a mismatch (#320). The masked form is a valid JSON string, so
+    ``_jsonable_or_unscoreable`` never fires for it -- a secret has to be caught
+    by type, here, while the real value is still intact.
+
+    A secret is refused, not unwrapped: scoring it would require holding
+    plaintext in the comparison and its ``non_matches`` payload, which is the
+    opposite of what a ``SecretStr`` field exists to guarantee. ``_UNSCOREABLE``
+    routes it to the same refusal ANLS* already uses for out-of-domain values
+    (``ANLSLeaf`` short-circuits to 0.0 without consulting equality), so an
+    identical pair is refused too -- the honest signal is "not scored", not
+    "matched".
+
+    Recurses containers and plain ``BaseModel`` values. A model is dumped with
+    ``model_dump()`` (python mode, NOT ``mode="json"``) precisely because that
+    keeps secrets as ``SecretStr`` objects instead of masking them, while still
+    lowering nested models to dicts and preserving computed fields.
+    """
+    if isinstance(value, (SecretStr, SecretBytes)):
+        warn_once(
+            "anls-secret-unscoreable",
+            type(value).__qualname__,
+            f"ANLSStarComparator refused a '{type(value).__qualname__}' value "
+            "(scored 0.0): pydantic masks it to a constant before comparison, "
+            "so two different secrets are indistinguishable and would score a "
+            "perfect match. Unwrap it with .get_secret_value() before "
+            "evaluating, or exclude the field.",
+            category=UserWarning,
+        )
+        return _UNSCOREABLE
+    if isinstance(value, BaseModel):
+        return _refuse_secrets(value.model_dump())
+    if isinstance(value, Mapping):
+        return {key: _refuse_secrets(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_refuse_secrets(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        return {_refuse_secrets(item) for item in value}
+    return value
 
 
 class ANLSStarComparator(BaseComparator):
@@ -264,8 +312,16 @@ class ANLSStarComparator(BaseComparator):
         # the normalization asymmetric, so `Dict[str, Tuple[int, int]]` scored
         # 0.0 against an identical copy and 1.0 against a truncated prediction.
         # The 1-of-n contract lives on `anls_score`, which normalizes nothing.
-        gt_value = to_jsonable_python(str1, fallback=_jsonable_or_unscoreable)
-        pred_value = to_jsonable_python(str2, fallback=_jsonable_or_unscoreable)
+        # Refuse secrets BEFORE coercion: to_jsonable_python masks a SecretStr
+        # to a constant, which destroys the difference it is supposed to score
+        # (#320). _refuse_secrets marks each secret leaf so the tree refuses it,
+        # the same treatment an out-of-domain value already gets below.
+        gt_value = to_jsonable_python(
+            _refuse_secrets(str1), fallback=_jsonable_or_unscoreable
+        )
+        pred_value = to_jsonable_python(
+            _refuse_secrets(str2), fallback=_jsonable_or_unscoreable
+        )
 
         gt_tree = ANLSTree.make_tree(
             gt_value, is_gt=True, threshold=self.leaf_threshold
