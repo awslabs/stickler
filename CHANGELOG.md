@@ -491,11 +491,77 @@ Each release links to full notes on the
 
   The two shapes agree for a SINGULAR undeclared annotation. They do not agree
   inside `List[Any]`, where a dict element is not refused at all -- it scores
-  `1.0` identical and `0.8182` wholly wrong, on this branch and on `dev` alike --
+  `1.0` identical, and a wholly wrong pair scores whatever the scalar default
+  makes of the rendered dict, byte for byte the same number `dev` produces --
   while a plain-model element is refused. That asymmetry is a pre-existing gap in
   the mapping side rather than something this change introduces, and it is stated
   here because an earlier draft of this entry claimed the two shapes agree "in
   every case measured", which is not true of that one.
+
+  **The element gate judges a PAIR, not a list.** `_ClassGatedComparator` wraps
+  the whole list's comparator as soon as one element anywhere in either list is a
+  plain model, and it used to then apply both rules to every pair the cost matrix
+  evaluated. That made an element's score depend on what ELSE the list held:
+
+  ```
+  f: Optional[List[Any]]                        dev    list-wide    now
+  [{'a':1},{'b':2},{'c':3}]                     1.0    1.0          1.0
+  [{'a':1},{'b':2},{'c':3}, Plain('p')]         1.0    0.0          0.75
+  ['x','y','z', Plain('p')]                     1.0    0.75         0.75
+  [NoteSM]        vs [Note2SM]                  1.0    1.0          1.0
+  [Plain, NoteSM] vs [Plain, Note2SM]           1.0    0.5          1.0
+  ```
+
+  The dict row zeroed three elements that score `1.0` on their own, in the same
+  list, on `dev`, and on this branch the moment the plain model is removed -- and
+  drew a "holds a mapping" warning on a field whose annotation says nothing about
+  mappings. The last row is worse than wrong-looking: it enforced the cross-class
+  rule that #327 is deliberately holding open, so a user got the #327 answer or
+  the documented one according to whether an unrelated plain model shared the
+  list. Both rules now apply to a pair with a plain model on at least one side,
+  which is the population the wrapper is installed for. `or`, not `and`: a plain
+  model against a `StructuredModel` stays the mismatch it is on `dev`.
+
+  **The gate no longer warns about pairs the matcher discarded.** It is asked once
+  per cell of the cost matrix and one cell per row survives, so warning from
+  inside the cost function announced an outcome that did not happen -- an
+  identical `[Plain('aaa'), Note('bbb')]` pair scored `1.0` with `tp=2` and still
+  reported that a `Plain` had been compared against a `Note`. Because `warn_once`
+  spends one message per field for the life of the process, that discarded cell
+  then silenced the genuine wrong-class prediction later in the same corpus. The
+  gate takes a `warn` flag, probing is silent, and the warnings are replayed on
+  the pairs the matcher selected.
+
+  **Known gap: a refused list element is counted but not reported.** There is a
+  sixth reader of the pair question and it is the one that cannot consult the
+  gate. The confusion-matrix counts come through the wrapped comparator; the
+  item-level report comes through `ComparisonHelperBase.get_optimal_assignments`,
+  which runs its own `HungarianHelper.get_complete_matching_info(gt_list,
+  pred_list)` with no comparator argument at all. It therefore scores a refused
+  pair as a match and emits nothing, so the counts and the report disagree:
+
+  ```
+  f: Optional[List[Any]] = ComparableField(comparator=ANLSStarComparator())
+  [Plain(sku='a')]  vs  [Cat(sku='a')]
+
+                        dev            here
+  field_scores          {'f': 1.0}     {'f': 0.0}
+  f counts              tp=1 fd=0      tp=0 fd=1
+  non_matches           []             []          <- an fd with no record
+  ```
+
+  An ordinary below-threshold element IS documented, so the omission is specific
+  to a refusal, and a user has no way to find out why the field lost a point.
+  Widening the `isinstance(gt_list[0], StructuredModel)` guard that skips
+  item-level collection for plain-model lists is not sufficient -- verified -- and
+  the actual fix is to thread the field's comparator into
+  `get_optimal_assignments`, a shared template-method base with two subclasses and
+  two collectors whose `non_matches` output would change for every list of plain
+  models. That is a reporting change with its own blast radius, so it is declared
+  and tracked in [#332](https://github.com/awslabs/stickler/issues/332) rather
+  than smuggled in here. Tests pin the disagreement so it cannot widen unnoticed,
+  including one asserting an ordinary below-threshold element IS still reported,
+  so the gap cannot read as larger than it is.
 
   Refusing is deliberate rather than conservative. The scalar default is edit
   distance over the rendered form, and because the field names are identical on
@@ -593,7 +659,9 @@ Each release links to full notes on the
   `BaseModel`. A plain `BaseModel` still reports no per-field breakdown, because
   it carries no per-field comparison configuration; declaring it as a
   `StructuredModel` is how to get that, and `stickler.evaluate()` does exactly
-  that for you ([#135](https://github.com/awslabs/stickler/issues/135)).
+  that for you -- it wraps the plain model in a generated `StructuredModel` with
+  inferred comparators, so `confusion_matrix["fields"]["address"]["fields"]["city"]`
+  is populated on the zero-config path with nothing declared.
 
   Two of the three limitations recorded under
   [#320](https://github.com/awslabs/stickler/issues/320) are resolved by moving

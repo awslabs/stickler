@@ -591,6 +591,21 @@ accepts.
 Stickler warns once per field rather than raising, because which class arrives is
 a property of the prediction, and raising would end a bulk run partway through.
 
+!!! warning "A refused list element is counted but not reported"
+
+    A refused element is one `fd` in the confusion matrix, but it produces no
+    entry in `non_matches`, so the counts and the item-level report disagree:
+
+    ```
+    [Plain(sku='a')]  vs  [Cat(sku='a')]     ->  fd=1,  non_matches: []
+    ```
+
+    An ordinary below-threshold element *is* reported, so this is specific to a
+    refusal. The item-level report re-derives its own pairing without the field's
+    comparator, which is why it cannot see the refusal. Read the counts, not
+    `non_matches`, when you need to know whether a list element was refused.
+    Tracked in [#332](https://github.com/awslabs/stickler/issues/332).
+
 ### The annotation has to name the model
 
 The object-grade default is read from the annotation, so a field that declares no
