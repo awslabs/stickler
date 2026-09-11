@@ -101,6 +101,21 @@ reported the issue. Please try to include as much information as you can. Detail
 * Any modifications you've made relevant to the bug
 * Anything unusual about your environment or deployment
 
+If you are reporting *measured* behaviour, in an issue or in a code review, please say which build
+produced the numbers, by **file path**:
+
+```python
+import stickler, inspect; print(inspect.getfile(stickler))
+```
+
+`stickler.__version__` is not sufficient on its own: `dev` and the latest release currently report
+the same string, so the version tells you nothing about which of the two you imported. The path does.
+
+`pip install stickler-eval` currently resolves to a release that is behind `dev`, and several
+behaviours differ between them, so a measurement taken against an installed copy can be internally
+consistent and still describe different code than the branch under discussion. To pin it, use
+`PYTHONPATH=/path/to/checkout/src` or `uv run --project /path/to/checkout`.
+
 
 ## Contributing via Pull Requests
 
