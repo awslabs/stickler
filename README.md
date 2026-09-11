@@ -273,7 +273,7 @@ Add these to any property in your JSON Schema to control comparison behavior:
 
 Specifies the comparison algorithm for this field.
 
-Omitting it is safe but blunt. The fallback is a lookup on the property's declared `"type"` and reads nothing else — not `format`, not `enum`, not `const`, and never field names. Every `"type": "string"` becomes `LevenshteinComparator` at threshold `0.5` whether it holds an invoice ID, a person's name, a date, or a paragraph of notes. This is a different mechanism from the inference behind `stickler.evaluate`, which also reads field names and would give those fields different comparators. See [Choosing a Configuration Path](https://awslabs.github.io/stickler/Getting-Started/choosing-a-configuration-path/) before relying on either default.
+Omitting it is safe but blunt. The fallback reads structure and never field names: the schema is resolved to a Python annotation and the comparator comes from that, so a `"format": "date"`, an `enum` or a `const` does sharpen the choice, but every plain `"type": "string"` becomes `LevenshteinComparator` at threshold `0.5` whether it holds an invoice ID, a person's name, or a paragraph of notes. This is a different mechanism from the inference behind `stickler.evaluate`, which also reads field names and would give those three fields three different comparators. See [Choosing a Configuration Path](https://awslabs.github.io/stickler/Getting-Started/choosing-a-configuration-path/) before relying on either default.
 
 **Available Comparators:**
 
@@ -287,16 +287,19 @@ Omitting it is safe but blunt. The fallback is a lookup on the property's declar
 | `"BERTComparator"` | Deep semantic understanding | BERT model for contextual similarity. Needs the `[bert]` extra |
 | `"LLMComparator"` | Complex semantic evaluation | LLM-powered comparison with reasoning. Needs the `[llm]` extra |
 | `"BBoxIoUComparator"` | Bounding boxes, spatial localization | Intersection over Union (IoU) between two boxes; accepts `[[x1,y1],[x2,y2]]` or `[x1,y1,x2,y2]`. See [Bounding Box mAP Metrics](docs/docs/Advanced/bbox-map-metrics.md) for end-to-end mAP scoring |
+| `"NormalizedComparator"` | Formatting-insensitive equality | Compares after an explicit set of normalizations — by default case, whitespace, and punctuation |
+| `"ANLSStarComparator"` | Dicts and nesting with keys unknown up front | Scores structured values by ANLS*. Where the keys *are* known, a nested model is the better tool |
 | `"DateComparator"` | Dates in mixed formats, partial dates, ranges | Parses both sides as dates and scores on a tier system |
 | `"PhoneComparator"` | Phone numbers | Compares after normalizing formatting |
 | `"StructuredModelComparator"` | Nested models | Recursive field-by-field comparison |
 
 **Default Comparators by JSON Schema Type:**
 
-The comparator is chosen by looking up the property's declared `"type"` in a four-entry table.
-Nothing else about the property is consulted — `format`, `enum` and `const` do not change the
-choice, so a `{"type": "string", "format": "date"}` property gets string edit distance like any
-other string. Name `x-aws-stickler-comparator` explicitly wherever that is not what you want:
+Each property is parsed to a strict Python annotation, the comparator is chosen from that
+annotation, and the annotation is then widened back to the JSON value type so that an invalid
+extraction scores `0.0` instead of raising. So `format`, `enum` and `const` do change the comparator,
+even though the field on the built class ends up a plain `str` — read the choice back with
+`to_json_schema()`, not from `model_fields`:
 
 | JSON Schema | Default Comparator | Default Threshold | Rationale |
 |------------------|-------------------|-------------------|-----------|
@@ -304,11 +307,11 @@ other string. Name `x-aws-stickler-comparator` explicitly wherever that is not w
 | `"number"` | `NumericComparator` | `0.5` | Tolerates small numeric differences |
 | `"integer"` | `NumericComparator` | `0.5` | Tolerates small numeric differences |
 | `"boolean"` | `ExactComparator` | `0.5` | Must be exactly true or false (Exact scores only 0.0 or 1.0, so the threshold is immaterial) |
+| `"format": "date"` or `"date-time"` | `DateComparator` | `1.0` | Parses as `date`/`datetime`, so dates compare as dates |
+| `"enum"`, `"const"`, `"format": "uri"`/`"uuid"`/`"time"` | `ExactComparator` | `1.0` | A closed set or an opaque identifier has no partial credit |
 | `"array"` (primitives) | Based on item type | Based on item type | Inherits from element type |
 | `"array"` (objects) | Hungarian matching | `0.5`, pairing elements at `0.7` | Optimal pairing of list elements |
 | `"object"` | Recursive comparison | `0.7` | Field-by-field nested comparison |
-
-A type outside that table raises rather than guessing a comparator.
 
 **Example:**
 

@@ -493,9 +493,11 @@ class Address(StructuredModel):
 ## Default Comparators by Type
 
 These are the defaults on the **JSON Schema path** — what `from_json_schema` picks for a property
-carrying no `x-aws-stickler-comparator`. The comparator is a lookup on the property's declared
-`"type"`, with four entries for scalars. Nothing else about the property is read: `format`, `enum`
-and `const` do not participate, and neither do field names.
+carrying no `x-aws-stickler-comparator`. Each property is parsed to a strict Python annotation, the
+comparator is chosen from that annotation, and the annotation is then widened back to the JSON value
+type so an invalid extraction scores `0.0` instead of raising. So `format`, `enum` and `const`
+participate in the choice — while field names never do — even though the field on the built class
+ends up a plain `str`. Read the result back with `to_json_schema()`, not from `model_fields`.
 
 | JSON Schema Type | Default Comparator | Default Threshold | Rationale |
 |---|---|---|---|
@@ -503,15 +505,15 @@ and `const` do not participate, and neither do field names.
 | `number` | NumericComparator | 0.5 | Tolerates small numeric differences |
 | `integer` | NumericComparator | 0.5 | Tolerates small numeric differences |
 | `boolean` | ExactComparator | 0.5 | Must be exactly true or false (Exact returns only 0.0 or 1.0, so the threshold is immaterial) |
+| `string` + `"format": "date"` or `"date-time"` | DateComparator | 1.0 | Parses as `date`/`datetime`, so the field compares across formats |
+| `string` + `"enum"` or a single-value `const` | ExactComparator | 1.0 | Parses as an `Enum`/`Literal`, so only a listed value is valid |
 | `array` (primitives) | Based on item type | Based on item type | Inherits from element type |
 | `array` (objects) | Hungarian matching | 0.5, pairing elements at 0.7 | Optimal pairing of list elements |
 | `object` | Recursive comparison | 0.7 | Field-by-field nested comparison |
 
-Every string-typed property lands on LevenshteinComparator at 0.5 regardless of what else it
-declares — `"format": "date"`, `"format": "uuid"`, an `enum` and a `const` all included. A date
-field left to the default is therefore scored by edit distance on its serialized form, which is
-rarely what you want; name `DateComparator` explicitly. A declared scalar type outside the four
-above raises rather than guessing. To check any of this on your own schema:
+A `format` the schema library does not map to a distinct type (`"email"`, `"hostname"`, `"duration"`)
+parses as `str`, so the field keeps LevenshteinComparator at 0.5. To check any of this on your own
+schema:
 
 ```python
 StructuredModel.from_json_schema(schema).to_json_schema()["properties"]

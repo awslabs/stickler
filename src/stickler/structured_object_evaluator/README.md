@@ -240,33 +240,46 @@ result = gt.compare_with(pred)
 - `x-aws-stickler-match-threshold`: the score at which two objects count as the same object (default: 0.7)
 
 The two sets are not interchangeable, and position matters. A field-level key on
-the root, or an object-level key on a scalar field, is not read; unrelated `x-*`
+the root, or an object-level key on a scalar field, is not read, so it is
+rejected rather than dropped. An unrecognized or misspelled `x-aws-stickler-*`
+key raises and names the closest valid key for that position; unrelated `x-*`
 extensions from other tooling are left alone.
 
 Comparator names accepted by `x-aws-stickler-comparator` are the registered class names:
-`LevenshteinComparator`, `ExactComparator`, `PhoneComparator`, `NumericComparator`,
-`DateComparator`, `FuzzyComparator`, `StructuredModelComparator`, `BBoxIoUComparator`,
-`SemanticComparator`, plus `BERTComparator` and
+`LevenshteinComparator`, `ExactComparator`, `NormalizedComparator`, `PhoneComparator`,
+`NumericComparator`, `DateComparator`, `FuzzyComparator`, `StructuredModelComparator`,
+`ANLSStarComparator`, `BBoxIoUComparator`, `SemanticComparator`, plus `BERTComparator` and
 `LLMComparator`, which need the `[bert]` and `[llm]` extras. Without the extra those two are not
 registered, so naming one raises `ValueError: Invalid x-aws-stickler-comparator 'BERTComparator'
 ...` and the name is absent from the "Available" list the message prints.
 
-With no comparator given, the comparator is a lookup on the property's declared `"type"` in
-`_default_comparison` (`models/json_schema_importer.py`). The table has four entries and nothing
-else about the property is read — `format`, `enum` and `const` do not participate, and neither do
-field names:
+With no comparator given, the choice is made in two steps, in `_default_comparison` and
+`_evaluation_annotation` (`models/json_schema_importer.py`):
 
-| Schema | Comparator | Threshold |
-| --- | --- | --- |
-| `"string"` | `LevenshteinComparator` | `0.5` |
-| `"number"` | `NumericComparator` | `0.5` |
-| `"integer"` | `NumericComparator` | `0.5` |
-| `"boolean"` | `ExactComparator` | `0.5` |
+1. The schema library parses the property to a strict Python annotation — `format: date` becomes
+   `date`, an `enum` becomes an `Enum` subclass, a single-value `const` becomes a `Literal`.
+2. `_default_comparison` selects the comparator from *that* annotation, and the annotation is then
+   widened back to the JSON value type so an invalid extraction is an ordinary zero-score candidate
+   rather than a construction error.
 
-Everything else declared as a string — `"format": "date"`, `"format": "uuid"`, an `enum`, a
-`const` — is `LevenshteinComparator` at `0.5` like any other string, so a date field left without
-an explicit `x-aws-stickler-comparator` is scored by edit distance on its serialized form. A
-declared type outside the four above raises rather than guessing.
+So `format`, `enum` and `const` do participate — while field names never do — but the widening in
+step 2 means the built field is a plain `str`. `model_fields` therefore shows `Optional[str]` for
+every row below; `to_json_schema()["properties"]` is where the chosen comparator is legible.
+
+| Schema | Parsed as (step 1) | Comparator | Threshold |
+| --- | --- | --- | --- |
+| `"string"` | `str` | `LevenshteinComparator` | `0.5` |
+| `"number"` | `float` | `NumericComparator` | `0.5` |
+| `"integer"` | `int` | `NumericComparator` | `0.5` |
+| `"boolean"` | `bool` | `ExactComparator` | `0.5` |
+| `"string"` + `"format": "date"` or `"date-time"` | `date` / `datetime` | `DateComparator` | `1.0` |
+| `"string"` + `"enum"` or a single-value `const` | `Enum` / `Literal` | `ExactComparator` | `1.0` |
+
+Any annotation not in that table falls back to `ExactComparator` at `1.0` — which is where a
+`format` the schema library maps to a distinct type (`"uri"` → `AnyUrl`, `"uuid"` → `UUID`,
+`"time"` → `time`) lands. A `format` it does not model (`"email"`, `"hostname"`, `"duration"`)
+parses as `str`, so the field keeps `LevenshteinComparator` at `0.5`. `Decimal` is the one
+non-primitive with its own entry, at `NumericComparator` `0.5`.
 
 **Supported JSON Schema Features:**
 
