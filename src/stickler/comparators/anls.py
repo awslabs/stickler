@@ -24,7 +24,7 @@ every comparator, and a cutoff applied inside the recursion is a different thing
 from collections.abc import Mapping
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, SecretBytes, SecretStr
+from pydantic import BaseModel
 from pydantic_core import to_jsonable_python
 
 from stickler.comparators.base import BaseComparator
@@ -94,29 +94,48 @@ def _jsonable_or_unscoreable(value: Any) -> Any:
 
 
 def _refuse_secrets(value: Any) -> Any:
-    """Replace every ``SecretStr`` / ``SecretBytes`` leaf with ``_UNSCOREABLE``.
+    """Replace every pydantic secret leaf with ``_UNSCOREABLE``.
 
     Run before ``to_jsonable_python`` because that call is where the value is
     lost: pydantic masks a secret to the constant ``'**********'`` there, so two
     DIFFERENT secrets arrive at the metric byte-identical and score a perfect
     match on a mismatch (#320). The masked form is a valid JSON string, so
     ``_jsonable_or_unscoreable`` never fires for it -- a secret has to be caught
-    by type, here, while the real value is still intact.
+    here, while the real value is still intact.
+
+    Detected by ``get_secret_value``, not by ``isinstance``. ``SecretStr``,
+    ``SecretBytes`` and ``Secret[T]`` are SIBLINGS under a private base, so
+    ``isinstance(v, Secret)`` does not match a ``SecretStr`` and naming the two
+    concrete classes misses every ``Secret[T]``. The duck-type is the only public
+    spelling that covers all three, and ``pydantic.types._SecretBase`` is private
+    so it carries no compatibility promise.
 
     A secret is refused, not unwrapped: scoring it would require holding
     plaintext in the comparison and its ``non_matches`` payload, which is the
-    opposite of what a ``SecretStr`` field exists to guarantee. ``_UNSCOREABLE``
+    opposite of what a secret field exists to guarantee. ``_UNSCOREABLE``
     routes it to the same refusal ANLS* already uses for out-of-domain values
     (``ANLSLeaf`` short-circuits to 0.0 without consulting equality), so an
     identical pair is refused too -- the honest signal is "not scored", not
     "matched".
 
-    Recurses containers and plain ``BaseModel`` values. A model is dumped with
-    ``model_dump()`` (python mode, NOT ``mode="json"``) precisely because that
-    keeps secrets as ``SecretStr`` objects instead of masking them, while still
-    lowering nested models to dicts and preserving computed fields.
+    Recurses mappings, lists, tuples, sets and plain ``BaseModel`` values. A
+    model is dumped with ``model_dump()`` (python mode, NOT ``mode="json"``)
+    precisely because that keeps secrets as secret objects instead of masking
+    them, while still lowering nested models to dicts and preserving computed
+    fields. ``by_alias=True`` because ``to_jsonable_python`` keys a model by
+    ALIAS: without it, inserting this function in front of that call silently
+    changed the key convention for every aliased model, secrets or not.
+
+    A set is rebuilt as a LIST, not a set. The tuple branch returns a list, and
+    lists are unhashable, so ``{...}`` here raised ``TypeError`` on any
+    ``Set[Tuple[...]]``. Nothing is lost: ``to_jsonable_python`` lowers a set to
+    a list regardless.
+
+    NOT reached: a secret held by a plain ``dataclass``, which falls through to
+    ``return value`` and is masked downstream like before. Out of scope here;
+    handle it by declaring the field on a ``BaseModel``.
     """
-    if isinstance(value, (SecretStr, SecretBytes)):
+    if hasattr(value, "get_secret_value"):
         warn_once(
             "anls-secret-unscoreable",
             type(value).__qualname__,
@@ -129,13 +148,13 @@ def _refuse_secrets(value: Any) -> Any:
         )
         return _UNSCOREABLE
     if isinstance(value, BaseModel):
-        return _refuse_secrets(value.model_dump())
+        return _refuse_secrets(value.model_dump(by_alias=True))
     if isinstance(value, Mapping):
         return {key: _refuse_secrets(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_refuse_secrets(item) for item in value]
     if isinstance(value, (set, frozenset)):
-        return {_refuse_secrets(item) for item in value}
+        return [_refuse_secrets(item) for item in value]
     return value
 
 

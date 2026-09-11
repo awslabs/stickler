@@ -21,7 +21,7 @@ cover ``SecretBytes`` as well as ``SecretStr``, and it must apply to a bare
 from typing import Dict, Optional
 
 import pytest
-from pydantic import BaseModel, SecretBytes, SecretStr
+from pydantic import BaseModel, Field, Secret, SecretBytes, SecretStr
 
 import stickler
 from stickler import ANLSStarComparator, StructuredModel
@@ -143,3 +143,69 @@ class TestTheModelLevelReproduction:
             Creds(api_key=SecretStr("hunter2")),
         )
         assert result.field_scores["api_key"] == pytest.approx(0.0)
+
+
+class TestTheRefusalDoesNotBreakWhatItPassesThrough:
+    """`_refuse_secrets` runs in front of EVERY `to_jsonable_python` call in
+    `_compare`, so it sees values with no secret in them at all. Whatever it
+    does to those has to be a no-op. Two ways it was not.
+    """
+
+    def test_a_set_of_tuples_still_scores(self):
+        """Rebuilding a set from the recursive results raised.
+
+        The `(list, tuple)` branch returns a LIST, and lists are unhashable, so
+        `{_refuse_secrets(item) for item in value}` raised
+        `TypeError: unhashable type: 'list'` on any set or frozenset holding a
+        tuple. No secret involved: this broke a comparison that worked before.
+        """
+        c = ANLSStarComparator()
+        assert c.compare({(1, 2), (3, 4)}, {(1, 2), (3, 4)}) == pytest.approx(1.0)
+        assert c.compare(frozenset({(1, 2)}), frozenset({(1, 2)})) == pytest.approx(1.0)
+
+    def test_an_aliased_model_keeps_its_alias_keys(self):
+        """`model_dump()` keys by FIELD NAME; `to_jsonable_python` keys by ALIAS.
+
+        Dumping without `by_alias=True` silently changed the key convention for
+        every aliased model, including models with no secret anywhere in them, so
+        a model compared against its own `model_dump(by_alias=True)` lost a field
+        per alias. It is a straight swap, so both directions are pinned.
+        """
+
+        class Aliased(BaseModel):
+            model_config = {"populate_by_name": True}
+            tok: str = Field(alias="token")
+            a: int = 1
+
+        m = Aliased(token="plain")
+        c = ANLSStarComparator()
+        assert c.compare(m, m.model_dump(by_alias=True)) == pytest.approx(1.0)
+        assert c.compare(m, m.model_dump()) < 1.0
+
+
+class TestEverySecretFamilyIsRefused:
+    def test_secret_of_t_is_refused_too(self):
+        """`Secret[T]` is a SIBLING of `SecretStr`, not a parent or a child.
+
+        `isinstance(v, Secret)` does not match a `SecretStr`, and naming the two
+        concrete classes misses every `Secret[T]`, so `Secret[int](1)` against
+        `Secret[int](2)` kept scoring 1.0 -- #320's exact symptom. The public
+        duck-type `get_secret_value` is what covers all three families.
+        """
+        c = ANLSStarComparator()
+        with pytest.warns(UserWarning, match="refused"):
+            assert c.compare(Secret[int](1), Secret[int](2)) == pytest.approx(0.0)
+
+    @pytest.mark.parametrize(
+        "make",
+        [
+            lambda v: SecretStr(str(v)),
+            lambda v: SecretBytes(str(v).encode()),
+            lambda v: Secret[int](v),
+        ],
+        ids=["SecretStr", "SecretBytes", "Secret[int]"],
+    )
+    def test_identical_secrets_are_refused_not_matched(self, make):
+        """Refusal does not consult equality, so identical is refused as well."""
+        c = ANLSStarComparator()
+        assert c.compare(make(1), make(1)) == pytest.approx(0.0)
