@@ -25,12 +25,15 @@ from stickler.comparators.base import BaseComparator
 from stickler.utils.deprecation import warn_once
 
 from .comparable_field import ComparableField, _named_comparator_threshold
-from .comparison_helper import ComparisonHelper, _maybe_absent
+from .comparison_helper import (
+    ComparisonHelper,
+    absent_on_both,
+    weighted_mean_or_default,
+)
 from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
-from .null_helper import NullHelper
 from .optional_annotation import union_args, unwrap_annotated, unwrap_optional
 from .rich_value_helper import RichValueHelper
 from .threshold_helper import THRESHOLD_DOCS_URL
@@ -1618,6 +1621,7 @@ class StructuredModel(BaseModel):
 
         total_score = 0.0
         total_weight = 0.0
+        compared_fields = 0
 
         for field_name in self.__class__.model_fields:
             # Skip the extra_fields attribute in comparison
@@ -1628,17 +1632,10 @@ class StructuredModel(BaseModel):
                 other_value = getattr(other, field_name)
 
                 # A true negative is absence of evidence, not evidence that two
-                # objects match. Omit absent-on-both fields from the weighted
-                # average that Hungarian matching uses. The cheap guard preserves
-                # the populated-value fast path in pairwise cost matrices.
-                if _maybe_absent(self_value) and _maybe_absent(other_value):
-                    is_absent = (
-                        NullHelper.is_effectively_null_for_lists
-                        if self._is_list_field(field_name)
-                        else NullHelper.is_effectively_null_for_primitives
-                    )
-                    if is_absent(self_value) and is_absent(other_value):
-                        continue
+                # objects match. Shared with `compare_recursive` so the two
+                # aggregation paths cannot drift apart again; see `absent_on_both`.
+                if absent_on_both(self, field_name, self_value, other_value):
+                    continue
 
                 # Get field configuration
                 info = self.__class__._get_comparison_info(field_name)
@@ -1649,16 +1646,15 @@ class StructuredModel(BaseModel):
                 field_score = self.compare_field_raw(field_name, other_value)
 
                 # Update total score
+                compared_fields += 1
                 total_score += field_score * weight
                 total_weight += weight
 
-        # Calculate overall score
-        if total_weight > 0:
-            return total_score / total_weight
-
-        # Every compared field was absent on both sides. Nothing disagreed, so
-        # identical empty objects remain a perfect match (#233).
-        return 1.0
+        # `compared_fields` tells "nothing was compared" (identical empty objects,
+        # a perfect match per #233) apart from "fields were compared at weights
+        # summing to zero", which must not be 1.0: this is the Hungarian cost
+        # function, so a free perfect score makes every pairing free.
+        return weighted_mean_or_default(total_score, total_weight, compared_fields)
 
     def compare_with(
         self,

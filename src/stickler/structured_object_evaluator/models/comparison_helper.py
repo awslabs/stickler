@@ -168,6 +168,78 @@ def _maybe_absent(val: Any) -> bool:
     return val is None or (isinstance(val, (str, list, dict)) and len(val) == 0)
 
 
+def absent_on_both(model: Any, field_name: str, gt_val: Any, pred_val: Any) -> bool:
+    """Whether a field is absent on BOTH sides, and so contributes no evidence.
+
+    A true negative is absence of evidence, not evidence that two objects match.
+    A field empty on both sides arrives with a perfect per-field score and full
+    weight, so folding it into a weighted average pays out an empty field as a
+    match: on a five-field model with one populated field that disagrees
+    completely, four empty fields carried the mean to 0.8 and `matched` to True
+    at an F1 of 0.0.
+
+    This lives here, called by both aggregation paths, because the two owned
+    separate copies of the decision and drifted: `compare()` skipped absent pairs
+    while `compare_recursive()` folded them in, so the same pair scored 0.174 and
+    0.8 on the two entry points. `compare()` is the Hungarian cost function, so
+    list pairing and per-item classification were decided on one number while the
+    score reported beside them was another -- the score-versus-classification
+    split #301 set out to close, still open on the aggregation path. One
+    predicate, two callers, is what keeps them from diverging a third time.
+
+    Args:
+        model: The ground-truth model, read for its list-field annotations.
+        field_name: The field being judged.
+        gt_val: The ground-truth value.
+        pred_val: The predicted value.
+
+    Returns:
+        True when both sides are absent under the rule that applies to this
+        field's annotation, and the field should be omitted from the weighted
+        average entirely.
+    """
+    # The cheap guard first: it preserves the populated-value fast path in
+    # pairwise cost matrices, where this runs once per cell.
+    if not (_maybe_absent(gt_val) and _maybe_absent(pred_val)):
+        return False
+    is_absent = (
+        NullHelper.is_effectively_null_for_lists
+        if model._is_list_field(field_name)
+        else NullHelper.is_effectively_null_for_primitives
+    )
+    return is_absent(gt_val) and is_absent(pred_val)
+
+
+def weighted_mean_or_default(
+    total_score: float, total_weight: float, compared_fields: int
+) -> float:
+    """The weighted average, with the two zero-weight cases told apart.
+
+    `total_weight == 0` has two causes that must not share an answer:
+
+    * Nothing was compared, because every field was absent on both sides. Two
+      identical empty objects have nothing that disagrees, so they stay a perfect
+      match (#233).
+    * Fields WERE compared, and their declared weights sum to zero. Returning 1.0
+      there scores two completely different objects a perfect match, and because
+      this feeds the Hungarian cost function it makes every pairing in a list of
+      such models free. `compare_with()` already returned 0.0 for this, so 0.0 is
+      both the safe direction and the one that keeps the two paths agreeing.
+
+    Args:
+        total_score: Sum of per-field score times weight.
+        total_weight: Sum of the weights actually folded in.
+        compared_fields: How many fields were folded in at all.
+
+    Returns:
+        The weighted mean, or 1.0 for nothing-compared, or 0.0 for
+        compared-at-zero-weight.
+    """
+    if total_weight > 0:
+        return total_score / total_weight
+    return 0.0 if compared_fields else 1.0
+
+
 class ComparisonHelper:
     """Helper class for StructuredModel field comparison operations."""
 

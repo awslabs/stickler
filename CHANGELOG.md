@@ -294,6 +294,43 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **Breaking: a field absent on BOTH sides no longer counts toward the score.**
+  Every score on a model with unpopulated optional fields changes, downward. An
+  empty-on-both field arrived at the weighted average with a perfect per-field
+  score and full weight, so empty fields paid out as matches. On a five-field
+  model whose one populated field disagreed completely, four empty fields carried
+  `overall_score` to `0.8` and `matched` to `True` at an F1 of `0.0` -- the pair
+  this library exists to catch, reported as passing. It now scores `0.0` with
+  `matched=False`.
+
+  The reasoning was already written down at `compare()`'s call site for
+  [#233](https://github.com/awslabs/stickler/issues/233) -- a true negative is
+  absence of evidence, not evidence that two objects match -- and simply never
+  reached the aggregation path. So `compare()` skipped absent pairs while
+  `compare_with()` folded them in, and the same pair scored `0.174` and `0.8` on
+  the two entry points. `compare()` is the Hungarian cost function, so list
+  pairing and per-item tp/fd classification were decided on one number while the
+  score printed beside them was another. That is the score-versus-classification
+  split [#301](https://github.com/awslabs/stickler/issues/301) closed for the
+  *gate* the two paths consult, still open on the arithmetic.
+
+  Both paths now share one predicate, `absent_on_both`, rather than owning a copy
+  each. Absent-on-both fields remain true negatives in the confusion matrix and
+  remain present in `field_scores`; only their contribution to the mean is gone.
+  Two identical empty objects still score `1.0` (#233).
+
+  The effect scales with how optional a schema is, so sparse documents -- the
+  common case in extraction -- are where scores drop most, and every corpus-level
+  average was inflated.
+
+- **Breaking: declared weights summing to zero no longer score `1.0`.** The
+  `total_weight == 0` guard returned a perfect match for two causes that need
+  different answers: nothing was compared (identical empty objects, correct), and
+  fields *were* compared at weights totalling zero. In the second case two
+  completely different objects scored `1.0`, and because this feeds the Hungarian
+  cost function it made every pairing in a list of such models free. It now
+  returns `0.0`, matching what `compare_with()` already returned.
+
 - **Scores change for mapping fields explicitly using `NormalizedComparator`.**
   Both `compare` and `compare_with` now warn and count the pair as a false
   discovery with score `0.0`, even for identical dictionaries. For example,
