@@ -6,11 +6,14 @@ title: Customizing Your Evaluation
 
 Stickler gives you fine-grained control over how every field in your structured data is compared. You can tune comparison algorithms, thresholds, and weights at the field level -- whether you define your models in Python or through JSON Schema configuration files.
 
-This guide covers three ways to configure evaluation behavior:
+This guide covers four ways to configure evaluation behavior:
 
-1. **ComparableField parameters** in Python model definitions
-2. **The `compare_with()` method** for running comparisons
-3. **JSON Schema extensions** for configuration-driven evaluation
+1. **Inference from a Pydantic class** — no configuration at all; `stickler.evaluate` picks a comparator and threshold per field from the type and field name. Start here if you already have a model
+2. **ComparableField parameters** in Python model definitions
+3. **The `compare_with()` method** for running comparisons
+4. **JSON Schema extensions** for configuration-driven evaluation
+
+Options 1 and 4 are independent paths that infer differently, not two steps of one workflow — see [Choosing a Configuration Path](../../Getting-Started/choosing-a-configuration-path.md).
 
 !!! tip "Evaluating a test set?"
     If you need to evaluate many document pairs (not just one), use **`BulkStructuredModelEvaluator`** — it handles streaming aggregation, progress reporting, and metrics export. See the [Bulk Evaluation](bulk-evaluation.md) guide.
@@ -222,13 +225,13 @@ it. `x-aws-stickler-clip-under-threshold` defaults to `true` in all of them.
       "x-aws-stickler-clip-under-threshold": true
     },
     "customer_name": {
-      "type": "string",
+      "type": ["string", "null"],
       "x-aws-stickler-comparator": "LevenshteinComparator",
       "x-aws-stickler-threshold": 0.8,
       "x-aws-stickler-weight": 1.5
     },
     "total_amount": {
-      "type": "number",
+      "type": ["number", "null"],
       "x-aws-stickler-comparator": "NumericComparator",
       "x-aws-stickler-threshold": 0.95,
       "x-aws-stickler-weight": 2.5
@@ -237,6 +240,8 @@ it. `x-aws-stickler-clip-under-threshold` defaults to `true` in all of them.
   "required": ["invoice_id", "customer_name", "total_amount"]
 }
 ```
+
+The two fields that a document may not show are typed `["string", "null"]` and `["number", "null"]`. A field listed in `required` and typed `"string"` alone raises `ValidationError` when the value is genuinely `None`, so a schema that omits `"null"` fails on exactly the documents that test absence handling. `invoice_id` keeps its bare `"string"`: an invoice without an identifier is a broken record, not an absent field.
 
 ### Loading a Schema
 

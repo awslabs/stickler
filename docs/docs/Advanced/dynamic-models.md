@@ -6,16 +6,21 @@ title: Dynamic Model Creation
 
 Stickler can create `StructuredModel` classes at runtime from JSON configuration, enabling model definition without writing Python class code. This is useful for configuration-driven evaluation, A/B testing of comparison strategies, and integration with external systems that produce JSON Schema.
 
-## Two Creation Methods
+## Three Creation Methods
 
-| Method | Input Format | Best For |
-|--------|-------------|----------|
-| `from_json_schema()` | Standard JSON Schema with `x-aws-stickler-*` extensions | Interoperability, external tooling |
-| `model_from_json()` | Custom Stickler JSON configuration | Concise hand-edited configs |
+| Method | Input Format | Infers comparators? | Best For |
+|--------|-------------|---------------------|----------|
+| `from_pydantic()` | A Pydantic `BaseModel` class | Yes — from the Python type *and* the field name | You already have a model and want sensible defaults |
+| `from_json_schema()` | Standard JSON Schema with `x-aws-stickler-*` extensions | From structure, never names — a plain `string` becomes Levenshtein at `0.5` | Interoperability, external tooling, config files |
+| `model_from_json()` | Custom Stickler JSON configuration | Only on request — a primitive field without a `comparator` is an error unless you set `infer_unspecified_fields` or `"comparator": "auto"` | Concise hand-edited configs |
 
-Both produce fully functional `StructuredModel` classes with comparison capabilities, nested hierarchies, custom comparators, and Hungarian matching for lists.
+All three produce fully functional `StructuredModel` classes with comparison capabilities, nested hierarchies, custom comparators, and Hungarian matching for lists. They differ only in how much you have to say.
 
-## Method 1: JSON Schema (Recommended)
+The two inferring methods do not agree with each other, and the gap is wide enough to change a score: see [Choosing a Configuration Path](../Getting-Started/choosing-a-configuration-path.md) before picking one.
+
+## Method 1: JSON Schema
+
+Recommended when your configuration lives outside Python — a file under version control, a value fetched at runtime, or a schema produced by another system. If your starting point is a Pydantic class already in the codebase, use `from_pydantic()` (Method 3) and skip writing a schema at all.
 
 ### Basic Example
 
@@ -105,7 +110,10 @@ The `x-aws-stickler-*` extensions control comparison behavior on each property:
 | `x-aws-stickler-match-threshold` | Hungarian match threshold (object-level) | `0.75` |
 | `x-aws-stickler-infer-unspecified` | Infer comparators for properties that name none (object-level). See [Inferring unspecified fields](#inferring-unspecified-fields) | `true` |
 
-Default comparators are assigned by JSON Schema type when no extension is specified:
+With no extension specified, the property is parsed to a strict Python annotation and the comparator
+is chosen from that annotation, which is then widened back to the JSON value type so an invalid
+extraction scores `0.0` instead of raising. So `format`, `enum` and `const` participate in the
+choice, while field names never do:
 
 | Property | Default Comparator | Default Threshold |
 |------------------|-------------------|-------------------|
@@ -119,7 +127,7 @@ Default comparators are assigned by JSON Schema type when no extension is specif
 | `string` + `format: uuid` | ExactComparator | 1.0 |
 | `string` + `enum: [...]` | ExactComparator | 1.0 |
 | `const` | ExactComparator | 1.0 |
-| `array` (objects) | Hungarian matching | 0.7 |
+| `array` (objects) | Hungarian matching | 0.5, pairing elements at 0.7 |
 | `array` (primitives) | the element's row, applied per element | the element's |
 | `object` | Recursive comparison | 0.7 |
 | `object` with no `properties` | ExactComparator | 1.0 |
@@ -135,6 +143,10 @@ These defaults are **not** the same as the ones `stickler.evaluate()` infers, wh
 are tuned per type: a `number` gets `0.95` there rather than `0.5`. See
 [Inferring unspecified fields](#inferring-unspecified-fields) to opt a
 schema-driven model into the tuned set.
+
+Because the annotation is widened after the comparator is chosen, `model_fields` shows
+`Optional[str]` for every row above, including the `format` and `enum` ones —
+`to_json_schema()["properties"]` is where you read back what was actually chosen.
 
 For the complete reference, see the [Evaluation](../Guides/Evaluation/README.md) page.
 
@@ -504,6 +516,39 @@ re-baseline.
     JSON Schema path with `{"type": "string", "format": "date"}`, which carries the
     date semantics in the type.
 
+## Method 3: From a Pydantic Class
+
+When the model already exists in Python, `from_pydantic()` builds the evaluator from it — no schema, no config, no comparators named anywhere:
+
+```python
+from typing import Optional
+from pydantic import BaseModel
+from stickler import StructuredModel
+
+class Product(BaseModel):
+    sku: str
+    name: str
+    price: float
+    notes: Optional[str] = None
+
+Model = StructuredModel.from_pydantic(Product)   # class is named ProductEval
+```
+
+Each field is given a comparator and threshold from its type and its name:
+
+| Field | Inferred | Why |
+|-------|----------|-----|
+| `sku` | `ExactComparator` @ 1.0 | identifier token — a SKU differing in case may be a different SKU |
+| `name` | `LevenshteinComparator` @ 0.85 | name token — tolerates typos, not substitutions |
+| `price` | `NumericComparator` @ 0.95 | `float` with a relative tolerance |
+| `notes` | `FuzzyComparator` @ 0.6 | free-text token — word order should not matter |
+
+Instances compare like any other `StructuredModel`, and `stickler.evaluate(gt, pred)` reaches the same inference without building the class yourself. Use `to_json_schema()` on the result to export those decisions as a schema — the bridge between this method and Method 1:
+
+```python
+Model.to_json_schema()   # comparators, thresholds, ["string", "null"] for Optional
+```
+
 ## Loading from Files
 
 ```python
@@ -523,12 +568,17 @@ Model = StructuredModel.model_from_json(config)
 
 ## Troubleshooting
 
-| Error | Cause | Fix |
+Every `model_from_json()` failure raises `ValueError`, and all but one are prefixed `Invalid field configuration:`. The message names the offending field and lists the valid values.
+
+| Message | Cause | Fix |
 |-------|-------|-----|
-| `"Unknown type"` | Unsupported type string | Use one of: `str`, `int`, `float`, `bool`, `list`, `dict`, `structured_model`, `list_structured_model` |
-| `"Missing comparator"` | Primitive field without comparator | Add a `"comparator"` key, or set `"infer_unspecified_fields": true` (see [Inferring unspecified fields](#inferring-unspecified-fields)) |
-| `"Invalid threshold"` | Threshold outside 0.0--1.0 | Use a value between 0.0 and 1.0 |
-| Nested model errors | Invalid nested `fields` config | Validate nested config independently |
+| `Configuration must contain 'fields' key` | Top-level `fields` missing | Wrap the field definitions in `{"fields": {...}}` |
+| `Field 'x' missing required 'type' parameter` | Field definition has no `type` | Add a `"type"` key |
+| `Unknown type: 'x'. Available types: [...]` | Unsupported type string | Use a listed type; the message enumerates them |
+| `Field 'x' with primitive type 'str' requires a 'comparator'` | Primitive field without a comparator | Add a `"comparator"` key, or set `"infer_unspecified_fields": true` (see [Inferring unspecified fields](#inferring-unspecified-fields)) |
+| `Field 'x' threshold must be between 0.0 and 1.0, got 5.0` | Threshold outside the range | Use a value in 0.0--1.0 |
+| `Unknown comparator: 'x'. Available: [...]` | Comparator name not registered | Use a class name from the list; `BERTComparator` and `LLMComparator` appear only when the `[bert]` and `[llm]` extras are installed |
+| `Field 'x' with type 'structured_model' requires a 'fields' configuration` | Nested model without its own `fields` | Add the nested `fields` block |
 
 ## See Also
 

@@ -57,14 +57,17 @@ For IDP pipelines where the extraction schema may change across document types, 
       "x-aws-stickler-weight": 3.0
     },
     "total_amount": {
-      "type": "number",
+      "type": ["number", "null"],
       "x-aws-stickler-comparator": "NumericComparator",
       "x-aws-stickler-threshold": 0.95,
       "x-aws-stickler-weight": 2.5
     }
-  }
+  },
+  "required": ["invoice_number", "total_amount"]
 }
 ```
+
+`total_amount` is typed `["number", "null"]` because IDP extraction routinely returns nothing for a field the document does not show. A field that is listed in `required` and typed `"number"` alone raises `ValidationError` on an explicit `None`, which in a bulk run fails the document rather than scoring it. With the union, ground truth `None` against prediction `None` scores `1.0` — the extractor was correctly silent — while `None` against a value scores `0.0`. Do the same for every field that can be absent, which in practice is every field except the identifier.
 
 See the [Evaluation](../Evaluation/README.md) documentation for the full extension reference.
 

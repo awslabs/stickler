@@ -971,7 +971,7 @@ class StructuredModel(BaseModel):
         - x-aws-stickler-comparator: Comparator algorithm name (built-in or registered custom)
         - x-aws-stickler-threshold: Similarity threshold for match/no-match (0.0-1.0, default: 0.5)
         - x-aws-stickler-weight: Field importance in overall scoring (>0.0, default: 1.0)
-        - x-aws-stickler-clip-under-threshold: Clip scores below threshold to 0.0 (bool, default: false)
+        - x-aws-stickler-clip-under-threshold: Clip scores below threshold to 0.0 (bool, default: true)
 
         Model-Level Extensions:
         -----------------------
@@ -988,14 +988,25 @@ class StructuredModel(BaseModel):
         - allOf object composition and multi-arm anyOf / oneOf unions
         - Object schemas inferred from properties when type is omitted
         - Nested objects and arrays (primitive/object items)
-        - Required fields, defaults, descriptions, and validation constraints
+        - Required fields, defaults, and descriptions
         - Schema references ($ref with #/definitions/ and #/$defs/)
+
+        Validation constraints (minLength, pattern, minimum, ...) are read for
+        comparator selection and then dropped, not enforced. An extraction that
+        violates one is an ordinary low-scoring candidate, not a construction error.
 
         Default Type Mappings:
         ----------------------
+        Each property is parsed to a strict Python annotation, the comparator is
+        chosen from that annotation, and the annotation is widened back to the JSON
+        value type. So format, enum and const do refine the choice even though the
+        built field ends up a plain str; read the result back with to_json_schema().
+
         - string → LevenshteinComparator (threshold: 0.5)
         - number/integer → NumericComparator (threshold: 0.5)
-        - boolean → ExactComparator (threshold: 1.0)
+        - boolean → ExactComparator (threshold: 0.5, immaterial: Exact scores 0.0 or 1.0)
+        - format date/date-time → DateComparator (threshold: 1.0)
+        - enum, const, format uri/uuid/time → ExactComparator (threshold: 1.0)
         - arrays → Hungarian matching with element-appropriate comparators
         - objects → Recursive field-by-field comparison
 

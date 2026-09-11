@@ -14,21 +14,44 @@ Stickler provides three methods for exporting model schemas. Two support round-t
 | `to_stickler_config()` | Custom Stickler JSON | Yes | `model_from_json()` | Hand-editing, version control |
 | `model_json_schema()` | Pydantic JSON Schema | No | N/A | API docs, LLM tool specs, runtime inspection |
 
+Both round-trip methods are also reachable from a plain Pydantic `BaseModel` that was never written
+as a `StructuredModel`, by converting first:
+
+```python
+StructuredModel.from_pydantic(Invoice).to_json_schema()
+```
+
+`from_pydantic()` infers a comparator and threshold per field from the Python type *and* the field
+name, so the exported schema is a full configuration rather than a bare shape — `invoice_id` comes
+out as `ExactComparator` at `1.0`, `customer_name` as `LevenshteinComparator` at `0.85`, `notes` as
+`FuzzyComparator` at `0.6`. This is the supported way to turn a Pydantic model into a schema with
+`x-aws-stickler-*` extensions; `Invoice.model_json_schema()` gives you the shape with none of them.
+See [Choosing a Configuration Path](../Getting-Started/choosing-a-configuration-path.md).
+
 ## Common Workflow: Export, Customize, Re-import
 
 ```python
-from stickler import StructuredModel, ComparableField
+from stickler import (
+    ComparableField,
+    LevenshteinComparator,
+    NumericComparator,
+    StructuredModel,
+)
 
 class Product(StructuredModel):
-    name: str = ComparableField(default=...)
-    price: float = ComparableField(default=...)
+    name: str = ComparableField(
+        comparator=LevenshteinComparator(), threshold=0.8, weight=2.0, default=...
+    )
+    price: float = ComparableField(
+        comparator=NumericComparator(), threshold=0.95, default=...
+    )
 
-# Export defaults
+# Export the configuration as written
 config = Product.to_stickler_config()
 
 # Customize
 config["fields"]["name"]["threshold"] = 0.9
-config["fields"]["name"]["weight"] = 2.0
+config["fields"]["name"]["weight"] = 3.0
 
 # Re-import
 CustomProduct = StructuredModel.model_from_json(config)
@@ -54,18 +77,30 @@ schema = Product.to_json_schema()
     "name": {
       "type": "string",
       "x-aws-stickler-comparator": "LevenshteinComparator",
+      "x-aws-stickler-comparator-config": {"normalize": true},
       "x-aws-stickler-threshold": 0.8,
-      "x-aws-stickler-weight": 2.0
+      "x-aws-stickler-weight": 2.0,
+      "x-aws-stickler-clip-under-threshold": true
     },
     "price": {
       "type": "number",
       "x-aws-stickler-comparator": "NumericComparator",
-      "x-aws-stickler-threshold": 0.95
+      "x-aws-stickler-threshold": 0.95,
+      "x-aws-stickler-weight": 1.0,
+      "x-aws-stickler-clip-under-threshold": true
     }
   },
-  "required": ["name", "price"]
+  "required": ["name", "price"],
+  "x-aws-stickler-match-threshold": 0.7
 }
 ```
+
+The export is complete, not minimal: every field carries its weight, clip flag, and comparator
+configuration even where those were left at their defaults, and the root carries its match
+threshold. This is what makes the round trip exact — the re-imported model cannot drift if a default
+changes in a later release. `price` has no `x-aws-stickler-comparator-config` only because
+`NumericComparator()` was constructed with no arguments to record. Fields declared `Optional` export
+as `{"type": ["string", "null"]}`; see [Optional fields and `null`](dynamic-models.md#optional-fields-and-null).
 
 ## to_stickler_config()
 
@@ -84,19 +119,27 @@ config = Product.to_stickler_config()
     "name": {
       "type": "str",
       "comparator": "LevenshteinComparator",
+      "comparator_config": {"normalize": true},
       "threshold": 0.8,
       "weight": 2.0,
+      "clip_under_threshold": true,
       "required": true
     },
     "price": {
       "type": "float",
       "comparator": "NumericComparator",
       "threshold": 0.95,
+      "weight": 1.0,
+      "clip_under_threshold": true,
       "required": true
     }
-  }
+  },
+  "match_threshold": 0.7
 }
 ```
+
+The same completeness applies here, and `required` is explicit per field rather than collected into
+a list as JSON Schema does.
 
 ## model_json_schema()
 
@@ -108,15 +151,16 @@ usable directly as an LLM structured-output schema.
 This method is **not** round-trip compatible. Use `to_json_schema()` or
 `to_stickler_config()` when you need the configuration back.
 
-Feeding its output to `from_json_schema()` fails or misleads depending on the
-model. A model whose fields are all required parses, but the rebuilt model
-carries default thresholds, weights and comparators, because the shape alone
+Feeding its output to `from_json_schema()` parses without error — `Optional`
+fields render as `anyOf: [{"type": ...}, {"type": "null"}]` and are read
+correctly since [#198](https://github.com/awslabs/stickler/pull/198) — but the
+result misleads. The rebuilt model is named `DynamicModel` and every field
+carries default comparators, thresholds and weights, because the shape alone
 does not describe them
-([#214](https://github.com/awslabs/stickler/issues/214)). A model with any
-`Optional` field raises `ValueError: Unsupported JSON Schema type: None`,
-because `Optional` renders as `anyOf: [{"type": ...}, {"type": "null"}]` with
-no top-level `type`
-([#198](https://github.com/awslabs/stickler/pull/198) addresses that gap).
+([#214](https://github.com/awslabs/stickler/issues/214)). A field configured
+`ExactComparator` at threshold `1.0` and weight `3.0` comes back as
+`LevenshteinComparator` at `0.5` and `1.0`, so the round trip scores differently
+while raising nothing to tell you.
 
 ```python
 schema = Product.model_json_schema()
