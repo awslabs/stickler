@@ -516,8 +516,6 @@ Key Takeaways:
    - x-aws-stickler-comparator: comparator class name, e.g. FuzzyComparator
    - x-aws-stickler-threshold: Set matching threshold (0.0 to 1.0)
    - x-aws-stickler-weight: Adjust field importance in scoring
-   Keys are matched exactly and validated per position, so a misspelling
-   raises and names the closest valid key instead of being dropped.
 4. Full compatibility with compare_with() for evaluation and metrics
 5. Works seamlessly with existing StructuredModel features
 

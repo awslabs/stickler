@@ -109,25 +109,22 @@ The `x-aws-stickler-*` extensions control comparison behavior on each property:
 | `x-aws-stickler-model-name` | Class name (object-level) | `"Invoice"` |
 | `x-aws-stickler-match-threshold` | Hungarian match threshold (object-level) | `0.75` |
 
-With no extension specified, the property is parsed to a strict Python annotation and the comparator
-is chosen from that annotation, which is then widened back to the JSON value type so an invalid
-extraction scores `0.0` instead of raising. So `format`, `enum` and `const` participate in the
-choice, while field names never do:
+With no extension specified, the comparator is a lookup on the property's declared `"type"`. The
+table has four entries for scalars and nothing else about the property is read — `format`, `enum`
+and `const` do not participate, and neither do field names:
 
 | JSON Schema Type | Default Comparator | Default Threshold |
 |------------------|-------------------|-------------------|
 | `string` | LevenshteinComparator | 0.5 |
 | `number` / `integer` | NumericComparator | 0.5 |
 | `boolean` | ExactComparator | 0.5 |
-| `string` + `"format": "date"` / `"date-time"` | DateComparator | 1.0 |
-| `string` + `"enum"` / single-value `const` | ExactComparator | 1.0 |
 | `array` (objects) | Hungarian matching | 0.5, pairing elements at 0.7 |
 | `object` | Recursive comparison | 0.7 |
 
-A `format` with no distinct annotation (`"email"`, `"hostname"`, `"duration"`) parses as `str` and
-keeps LevenshteinComparator at 0.5. Because the annotation is widened after the comparator is
-chosen, `model_fields` shows `Optional[str]` for all of these — `to_json_schema()["properties"]` is
-where you read back what was actually chosen.
+So a `{"type": "string", "format": "date"}` property gets LevenshteinComparator at 0.5 — edit
+distance on the serialized date — as do `enum`, `const`, and every other string. Set
+`x-aws-stickler-comparator` explicitly on any field where that is wrong. A declared scalar type
+outside the four above raises rather than guessing.
 
 For the complete reference, see the [Evaluation](../Guides/Evaluation/README.md) page.
 
