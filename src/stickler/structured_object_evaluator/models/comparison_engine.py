@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 from stickler.structured_object_evaluator.models.bbox import MAPCalculator
 from stickler.utils.deprecation import warn_once
 
+from .comparison_helper import absent_on_both, weighted_mean_or_default
+
 if TYPE_CHECKING:
     from .confidence import ConfidenceMetric
     from .structured_model import StructuredModel
@@ -145,6 +147,7 @@ class ComparisonEngine:
         # Score percolation variables
         total_score = 0.0
         total_weight = 0.0
+        compared_fields = 0
 
         for field_name in self.model.__class__.model_fields:
             if field_name == "extra_fields":
@@ -161,10 +164,23 @@ class ComparisonEngine:
             # Simple aggregation to overall metrics
             self._aggregate_to_overall(field_result, result["overall"])
 
+            # A field absent on BOTH sides still belongs in `fields` and still
+            # counts as a true negative in the matrix above -- it is only kept out
+            # of the weighted average, because absence of evidence is not evidence
+            # that two objects match. Without this, four empty fields on a
+            # five-field model carried a completely wrong single value to an
+            # overall of 0.8 and `matched=True` at an F1 of 0.0.
+            #
+            # `compare()` has skipped these since #233; this path had not, so the
+            # same pair scored 0.174 there and 0.8 here. Shared predicate now.
+            if absent_on_both(self.model, field_name, gt_val, pred_val):
+                continue
+
             # Score percolation - aggregate scores upward
             if "similarity_score" in field_result and "weight" in field_result:
                 weight = field_result["weight"]
                 threshold_applied_score = field_result["threshold_applied_score"]
+                compared_fields += 1
                 total_score += threshold_applied_score * weight
                 total_weight += weight
 
@@ -173,9 +189,13 @@ class ComparisonEngine:
         result["overall"]["fa"] += extra_fields_fa
         result["overall"]["fp"] += extra_fields_fa
 
-        # Calculate overall similarity score from percolated scores
-        if total_weight > 0:
-            result["overall"]["similarity_score"] = total_score / total_weight
+        # Calculate overall similarity score from percolated scores. Routed through
+        # the same helper `compare()` uses, so the two agree on both zero-weight
+        # cases too: nothing compared is 1.0 (identical empty objects, #233) and
+        # compared-at-zero-weight is 0.0.
+        result["overall"]["similarity_score"] = weighted_mean_or_default(
+            total_score, total_weight, compared_fields
+        )
 
         return result
 
