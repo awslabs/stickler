@@ -9,6 +9,8 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-11
+
 ### Added
 
 - Config-driven models can have their unspecified fields inferred, with
@@ -1330,24 +1332,6 @@ Each release links to full notes on the
   Lower the element model's `match_threshold` to inspect leaf comparisons for
   weaker pairs.
 
-### Performance
-
-- Restored the fast path in `ComparisonHelper.compare_field_raw`. Reading a
-  field's absence rule requires knowing whether the field is a list, and
-  `_is_list_field` re-reads `model_fields` and destructures the annotation on
-  every call. The bare `is None` check it replaced short-circuited before doing
-  any of that, so consulting the annotation unconditionally cost about 23% on a
-  60x60 Hungarian cost matrix of 20-field models -- 72,000 calls for one list
-  comparison (0.531s to 0.651s; measured best-of-three).
-
-  The lookup is now guarded by a cheap value test that is the union of both
-  `NullHelper` rules, so anything either one calls absent still reaches the full
-  check and no outcome changes, while the common case of both sides being
-  populated skips the annotation entirely (0.537s, within noise of the original).
-  A test pins the superset property so adding a case to either rule without
-  widening the guard fails loudly rather than silently skipping the check.
-### Fixed
-
 - The pretty printers accept the `EvalResult` that `stickler.evaluate()` returns,
   and report its failures. They handled the comparison `dict` and nothing else, so
   passing the object the public API actually hands back printed
@@ -1368,6 +1352,23 @@ Each release links to full notes on the
 
   Unrecognized input no longer prints the success message either. It prints
   nothing, which is the honest answer for data the printer could not read.
+
+### Performance
+
+- Restored the fast path in `ComparisonHelper.compare_field_raw`. Reading a
+  field's absence rule requires knowing whether the field is a list, and
+  `_is_list_field` re-reads `model_fields` and destructures the annotation on
+  every call. The bare `is None` check it replaced short-circuited before doing
+  any of that, so consulting the annotation unconditionally cost about 23% on a
+  60x60 Hungarian cost matrix of 20-field models -- 72,000 calls for one list
+  comparison (0.531s to 0.651s; measured best-of-three).
+
+  The lookup is now guarded by a cheap value test that is the union of both
+  `NullHelper` rules, so anything either one calls absent still reaches the full
+  check and no outcome changes, while the common case of both sides being
+  populated skips the annotation entirely (0.537s, within noise of the original).
+  A test pins the superset property so adding a case to either rule without
+  widening the guard fails loudly rather than silently skipping the check.
 
 ### Documentation
 
@@ -2318,7 +2319,8 @@ Initial public release: structured JSON comparison with configurable
 comparators, Hungarian-algorithm list matching, confusion-matrix metrics, and
 HTML reporting.
 
-[Unreleased]: https://github.com/awslabs/stickler/compare/v0.7.0...dev
+[Unreleased]: https://github.com/awslabs/stickler/compare/v1.0.0...dev
+[1.0.0]: https://github.com/awslabs/stickler/compare/v0.7.0...v1.0.0
 [0.7.0]: https://github.com/awslabs/stickler/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/awslabs/stickler/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/awslabs/stickler/compare/v0.4.0...v0.5.0
