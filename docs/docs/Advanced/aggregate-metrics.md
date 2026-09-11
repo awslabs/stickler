@@ -9,7 +9,7 @@ Stickler automatically includes an `aggregate` field at every node in the confus
 ## Key Features
 
 - **Automatic** -- Every node gets an `aggregate` field, with no per-field configuration.
-- **Hierarchical** -- Parent nodes sum metrics from all child primitive fields.
+- **Hierarchical** -- Parent nodes sum metrics from all child primitive fields, except where a list's items were all rejected and the node reports object rows instead ([why](#aggregate-counts-objects-for-an-all-rejected-list)).
 - **Consistent** -- The same access pattern works at every level: `result['confusion_matrix']['aggregate']` or `result['confusion_matrix']['fields']['contact']['aggregate']`.
 - **Derived metrics included** -- Each aggregate contains precision, recall, F1, and accuracy.
 
@@ -79,14 +79,164 @@ print(cm['fields']['contact']['aggregate'])
 
 Note the difference between `overall` and `aggregate`:
 
-- **`overall`** reflects this node's own direct classification.
+- **`overall`** classifies this node's direct children. Where the field is a list, those children are item pairings; at the root they are the root's own fields, so the two units can mix in one count.
 - **`aggregate`** sums all primitive-field classifications beneath this node (including itself if it is a leaf).
+
+### Which node answers which question
+
+The two nodes are the two stages of the evaluation:
+
+- **`overall` is detection.** The unit is whatever this node's direct children are. Did we find the right things? Read it on the list field: five line items paired, none spurious. Read it at the root and the children are the root's own fields, so three header fields beside that list give `tp = 8` -- 3 leaves plus 5 pairings, two units in one number.
+- **`aggregate` is extraction.** The unit is the leaf, except where noted in the warning below. Among the objects established to be the same object, how many field values were correct? 29 of 30.
+
+`match_threshold` is the handoff, and it is really the definition of "the same object". Above it, the pair is the same thing, so grading its fields is meaningful. Below it, it is not the same thing, so grading its fields would be scoring the fields of a *different* object. Such an **item** is classified as a single false discovery and is not descended into.
+
+The gating applies to **`List[StructuredModel]` items only**. It is a property of `StructuredListComparator`, which pairs items and then decides which pairs are the same object. A single nested `StructuredModel` field goes through `FieldComparator`, which has no such stage, so:
+
+- its leaves are **always** reported on `aggregate`, whether or not the object was rejected;
+- its `overall` verdict comes from the **field's own `threshold`**, not from `match_threshold`, which is never consulted for that shape.
+
+The worked output above is that case, and shows it: one of `contact`'s two leaves is wrong, so its subtree mean is 0.5, which is below the field's `threshold=1.0` and reports `fd=1` on `overall` (with `clip_under_threshold` at its default, `field_scores['contact']` reads `0.0` rather than `0.5`). Its leaves are still counted (`aggregate tp=1 fd=1`) and still roll into the root. If your schema is nested objects rather than lists of them, `aggregate` is showing you your failing leaves, not hiding them.
+
+This is the same two-stage structure as mean Average Precision, which Stickler also implements for bounding boxes: an IoU threshold decides whether a detection matched, and only matched pairs are evaluated further. See [Bounding Box mAP Metrics](bbox-map-metrics.md#iou-calculation), where a below-threshold detection is likewise a failure at the matching stage rather than a source of per-attribute errors. Nobody expects an unmatched detection to contribute attribute-level accuracy, and the reasoning for objects is the same.
+
+The two paths differ on recall, though. A below-threshold detection counts as both FP and FN, so mAP recall falls; a below-threshold object is an `fd` only, so `overall` recall still reads `1.0` on a document with a spurious pairing. Pass `recall_with_fd=True` to `compare_with()` for the mAP convention.
+
+Five line items of six fields each, one field of one item wrong. That item scores 5/6, clears a 0.7 threshold, and is comparable:
+
+```
+overall_score   0.9667
+
+cm['overall']     tp=5   fd=0   P=1.0000  R=1.0000  F1=1.0000
+cm['aggregate']   tp=29  fd=1   P=0.9667  R=1.0000  F1=0.9831
+```
+
+Five comparable objects and no spurious pairings, which is what `overall` measures. The wrong field is one of 30 leaves, which is what `aggregate` measures. Both numbers are correct for their own question.
+
+Drop the same item below the threshold (two fields wrong, so 4/6) and it becomes a rejected object. The nodes do not converge, they diverge further:
+
+```
+overall_score   0.9333
+
+cm['overall']     tp=4   fd=1   P=0.8000  R=1.0000  F1=0.8889
+cm['aggregate']   tp=24  fd=0   P=1.0000  R=1.0000  F1=1.0000
+```
+
+`aggregate` now reports a flawless `P=1.0000` precisely because the rejected item contributes no leaf rows: 24 leaves from the four accepted items, all correct. Reading `aggregate` alone here is the same trap as reading `overall` alone one level up.
+
+The two nodes coincide whenever every child contributes the same number of rows to each: a model with no nesting, a list whose items were all rejected (reject all five and both read `tp=0 fd=5`), and also a nested object holding exactly one leaf, where the object is one row and its single leaf is one row. That last case is worth stating because it is an *accepted, expanded* subtree, so "they coincide only where there is nothing left to expand" is not the rule:
+
+```
+one nested object, one leaf, everything correct
+
+cm['overall']     tp=1        the object
+cm['aggregate']   tp=1        its one leaf
+```
+
+Coinciding is not evidence that nothing was hidden, which is the separate and more useful point. Put three header fields beside a **two-item** list and reject both items, and the root reads `overall tp=3 fd=2` and `aggregate tp=3 fd=2` -- equal, while 15 leaves exist in the document and `aggregate` counted 5 rows. They agree because the list contributed object rows to both, not because the leaf view confirmed the object view.
+{: #aggregate-counts-objects-for-an-all-rejected-list }
+
+!!! warning "When a list's items are all rejected, `aggregate` counts objects there, not leaves"
+
+    A rejected item is not descended into, so a list whose items were *all* rejected
+    has **no child field nodes at all**. `AggregateMetricsCalculator` decides leaf
+    versus parent on exactly that -- whether `fields` has any entries -- so such a
+    node is treated as a leaf and its `aggregate` becomes a copy of its own
+    `overall`: one row per rejected item. The **unit of the count changes with the
+    data**. This is decided per node, and needs only that one list's items to be
+    rejected -- not the whole document:
+
+    ```
+    two items of six fields
+      1 of 2 rejected    aggregate tp=6 fd=0   P=1.0000    6 leaf rows
+      2 of 2 rejected    aggregate tp=0 fd=2   P=0.0000    2 OBJECT rows, though 12 leaves exist
+    ```
+
+    That propagates upward. With three correct header fields beside such a list, the
+    document is plainly **not** all-rejected, and the root still reads:
+
+    ```
+    root  overall    tp=3 fd=2
+    root  aggregate  tp=3 fd=2    derived.cm_precision = 0.6000
+    ```
+
+    Five rows where fifteen leaves exist. So checking whether the document was
+    all-rejected does not protect you, and neither does reading the root `overall`,
+    which reports the same numbers.
+
+    **The unit cannot be derived from the confusion matrix.** Deciding it needs to
+    know which fields are `List[StructuredModel]`, and the matrix does not carry
+    that. A **list of primitives** with one element wrong is indistinguishable from
+    an object list whose only item was rejected:
+
+    ```
+    tags   List[str],   one of two elements wrong    fields={}   aggregate tp=1 fd=1
+    rows   List[Line],  its only item rejected       fields={}   aggregate tp=0 fd=1
+    ```
+
+    Same empty `fields`, same non-zero counts, different unit: the first is two
+    element comparisons, and an element of a primitive list **is** a leaf, while the
+    second is one row for one rejected object.
+
+    Two conditions were published here before this and both were wrong, in opposite
+    directions. `node['overall']['tp'] == 0` is also true of a primitive field that
+    simply failed, which is one leaf and was never anything else.
+    `'fields' in node and not node['fields']` is also true of the `tags` row above,
+    and of a scalar that was null on both sides.
+
+    So supply the answer from the model, and read `overall['tp'] == 0` as "every item
+    in this list was rejected":
+
+    ```python
+    OBJECT_LISTS = {'lines'}      # the List[StructuredModel] fields of your model
+
+    counts_objects = section in OBJECT_LISTS and node['overall']['tp'] == 0
+    ```
+
+    See [the ranking snippet](../Guides/Evaluation/understanding-results.md#field-level-aggregate-metrics)
+    for this in context.
+
+#### Getting leaf detail for a marginal list item
+
+`match_threshold` controls how much leaf detail you get for a **list item**. It does nothing for a single nested `StructuredModel` field, whose leaves are always reported. Lower it so the object qualifies as comparable, and its leaves are scored individually. Same five items, with the third still at 4/6:
+
+```
+match_threshold   comparable?   overall            aggregate
+0.70              no            tp=4 fd=1          tp=24 fd=0
+0.66              yes           tp=5 fd=0          tp=28 fd=2
+```
+
+At `0.66` the marginal item's six leaves join the other 24, and the two wrong ones finally appear as `fd`.
+
+#### Asking whether anything failed
+
+Because the nodes scope different things, a complete check reads both:
+
+```python
+clean = (
+    cm['aggregate']['fp'] + cm['aggregate']['fn'] == 0
+    and cm['overall']['fp'] + cm['overall']['fn'] == 0
+)
+```
+
+Sum `fp` rather than `fa + fd`. `FP = FA + FD` by construction, so the two are equivalent today, and reading `fp` cannot go stale if a class is ever added.
+
+Both nodes carry `fa`. A value invented where the ground truth is null is `fa` at that leaf and rolls into `aggregate`, leaving `overall` clean because the item still paired; an item invented wholesale is `fa` on `overall`. A check that names only one node reports clean on a hallucinated value:
+
+```
+one item, ground truth total=None, prediction total="INVENTED", five other leaves exact
+
+overall     tp=1  fp=0  fn=0  fa=0  fd=0
+aggregate   tp=5  fp=1  fn=0  fa=1  fd=0
+```
+
+The `overall` name predates the aggregate rollup and reads as "the whole document" when it means "a classification of this node's direct children". Renaming is breaking, so it is under consideration for 1.0 in [#288](https://github.com/awslabs/stickler/issues/288).
 
 ## Calculation Logic
 
-1. **Leaf nodes** (primitive fields): `aggregate` equals `overall`.
-2. **Parent nodes**: `aggregate` is the sum of all child `aggregate` values.
-3. **Derived metrics**: Precision, recall, F1, and accuracy are recomputed at each level from the summed counts.
+1. **Leaf nodes**: `aggregate` equals `overall`. A node counts as a leaf when `fields` has no entries, which is every primitive field and also any structured node that was not descended into.
+2. **Parent nodes**: `aggregate` is the sum of the child `aggregate` values. A list whose items were *all* rejected does not reach this step: with no children left it is a leaf by step 1, and so reports one row per rejected item rather than one per leaf ([why](#aggregate-counts-objects-for-an-all-rejected-list)). `AggregateMetricsCalculator` also carries a guard that sums the children's `overall` when the summed child aggregates come out all-zero, but it cannot be what produces that behaviour, since a childless node never gets here; instrumented across this repo's suite it contributes to no result.
+3. **Derived metrics**: Precision, recall, F1, and accuracy are recomputed at each level from the summed counts. They inherit whichever unit produced those counts, so they are not a leaf rate on a node whose list items were all rejected.
 
 ## Hierarchical Reporting Example
 

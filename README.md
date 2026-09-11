@@ -292,6 +292,7 @@ Omitting it is safe but blunt. The fallback reads structure and never field name
 | `"DateComparator"` | Dates in mixed formats, partial dates, ranges | Parses both sides as dates and scores on a tier system |
 | `"PhoneComparator"` | Phone numbers | Compares after normalizing formatting |
 | `"StructuredModelComparator"` | Nested models | Recursive field-by-field comparison |
+| `"auto"` | Letting Stickler choose per field | Not a comparator: a request to infer one from the field's type and name, using the same rules `stickler.evaluate()` uses. Per field, where `infer_unspecified_fields` is per model |
 
 **Default Comparators by JSON Schema Type:**
 
@@ -342,7 +343,10 @@ even though the field on the built class ends up a plain `str` — read the choi
 
 **Type:** `number` (0.0 to 1.0, inclusive)  
 **Required:** No  
-**Default:** `0.5`, for every type
+**Default:** position-dependent, not one number. `0.5` for a scalar, an array of scalars, and an
+array of models; `0.7` for an object with `properties`; `1.0` for a free-form `{"type": "object"}`
+and for anything whose comparator came from a `format`, `enum` or `const`. See the table in
+[Evaluation](docs/docs/Guides/Evaluation/README.md#extension-reference).
 
 Minimum similarity score required for binary match classification.
 
@@ -674,6 +678,8 @@ print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # ~1.0 - match
 | `x-aws-stickler-clip-under-threshold` | boolean | false | Zero out low scores |
 | `x-aws-stickler-model-name` | string | "DynamicModel" | Generated class name |
 | `x-aws-stickler-match-threshold` | number (0.0-1.0) | 0.7 | Model-level threshold |
+| `x-aws-stickler-infer-unspecified` | boolean | false | Infer comparators for properties that name none (root level) |
+| `x-aws-stickler-comparator-config` | object | `{}` | Keyword arguments for the named comparator |
 
 ### Additional Resources
 

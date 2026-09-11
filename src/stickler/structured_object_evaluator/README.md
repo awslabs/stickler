@@ -283,7 +283,9 @@ non-primitive with its own entry, at `NumericComparator` `0.5`.
 
 **Supported JSON Schema Features:**
 
-- Primitive types: `string`, `number`, `integer`, `boolean` (a bare `{"type": "null"}` is rejected)
+- Primitive types: `string`, `number`, `integer`, `boolean`. A bare `{"type": "null"}` is
+  *accepted*, and builds a `string` field at `ExactComparator` `1.0` — almost certainly not what
+  the schema meant. Declare the nullable form `{"type": ["string", "null"]}` instead.
 - Complex types: `object`, `array`
 - Nested objects and arrays of objects
 - Required fields via `required` array

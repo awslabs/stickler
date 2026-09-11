@@ -4,6 +4,31 @@ Comparators are the algorithms that determine how similar two field values are. 
 
 ---
 
+## Where the threshold comes from
+
+Every comparator below except [`LLMComparator`](#llmcomparator) takes a `threshold`, and it can also be set on the field. Both spellings gate the same thing, TP vs FD classification and score clipping:
+
+```python
+# These two fields behave identically.
+ComparableField(comparator=LevenshteinComparator(threshold=0.8))
+ComparableField(comparator=LevenshteinComparator(), threshold=0.8)
+```
+
+Precedence is field, then comparator, then `0.5`:
+
+| You write | Effective threshold |
+|---|---|
+| `ComparableField(threshold=0.9, comparator=Lev(threshold=0.8))` | `0.9`, the field wins |
+| `ComparableField(comparator=Lev(threshold=0.8))` | `0.8`, from the comparator |
+| `ComparableField(comparator=Lev())` | `0.5`, not Levenshtein's `0.7` |
+| `ComparableField()` | `0.5` |
+
+The third row is the one to know: a comparator's *default* threshold is never adopted. Those defaults were chosen for `binary_compare()`, not as classification cutoffs, and at least one is actively wrong for the job. `DateComparator` defaults to `1.0` while awarding `0.7` partial credit for a match with no year, so adopting it would clip that feature to zero. If you want a comparator's default to act as the cutoff, name it.
+
+See [Thresholds and Metrics](../../Getting-Started/thresholds-and-metrics.md) for how this interacts with model and runtime match thresholds.
+
+---
+
 ## Which Comparator Should I Use?
 
 | Comparator | Best For | Speed | Needs AWS? | Score Type |
@@ -524,6 +549,152 @@ The two paths do not share these defaults. Inference — `stickler.evaluate`, `e
 [Choosing a Configuration Path](../../Getting-Started/choosing-a-configuration-path.md). And a bare
 `ComparableField()` is a third case again: with no `comparator=`, it is LevenshteinComparator at 0.5
 whatever the annotation.
+### Nested models: `StructuredModel` versus plain `BaseModel`
+
+The `object` row above applies to a nested **`StructuredModel`**. A nested plain
+`pydantic.BaseModel` is a different case, and the difference is worth knowing
+because a plain model is what you already have if you are bringing a schema from
+elsewhere.
+
+| Nested annotation | How it is compared | Default comparator | Per-field detail |
+|---|---|---|---|
+| `StructuredModel` | recursively, field by field | each field's own | yes, one row per field |
+| plain `BaseModel` | as one object, key by key | `ANLSStarComparator` | no |
+
+A plain `BaseModel` carries no per-field comparison configuration, so there is
+nothing to score per field and nothing to report per field. It gets the same
+treatment a `Dict[...]` field gets, and for the same reason: the whole thing is
+one object, judged key by key, with partial credit and no score clipping. The
+elements of a `List[plain BaseModel]` get it too, so the two shapes agree.
+
+Declaring a comparator overrides that default, exactly as it does for a `dict`.
+
+### A different class is a false discovery
+
+**The rule:** two objects of different classes are a false discovery, whatever
+their attributes say. Identical field names and identical values do not make them
+a match, because the class is part of a value's identity rather than metadata
+about it. See
+[Classification Logic](../../Advanced/classification-logic.md#objects-of-different-classes)
+for the full statement.
+
+**What this release enforces**, for a plain `pydantic.BaseModel` and for the
+elements of a list of them:
+
+```python
+Cat(name="rex")             vs  Dog(name="rex")         ->  0.0, fd=1   (not 1.0)
+Base(a="x")                 vs  Sub(a="x")              ->  0.0, fd=1
+StructuredShape(name="rex") vs  PlainShape(name="rex")  ->  0.0, fd=1
+```
+
+The last row is the mixed case: a `StructuredModel` on one side and a plain
+`BaseModel` on the other are still two different classes, and one is not even the
+same kind of model. Two `StructuredModel` instances of the **same** class are
+unaffected and keep their per-field breakdown.
+
+!!! warning "Two `StructuredModel` classes are not covered yet"
+
+    `Pet` against `Cat` scores `0.0` with `fd=1` when both are plain
+    `BaseModel`s, and `1.0` with `tp=1` when both are `StructuredModel`s. The
+    second is the older behaviour rather than a deliberate exception; the rule is
+    the same for both and the code has caught up on one half so far. Tracked in
+    [#327](https://github.com/awslabs/stickler/issues/327). Annotate the field with
+    a single model type if you need the guarantee today.
+
+The class is part of the value's identity, not incidental to it. A correctly
+annotated field never sees this, because pydantic refuses a `Dog` for an
+`Optional[Cat]` field when the model is constructed. It applies where you
+declared that more than one class is allowed (`Union[Cat, Dog]`, `Any`,
+`object`), or where a subclass arrived for its base, which `Optional[Base]`
+accepts.
+
+Stickler warns once per field rather than raising, because which class arrives is
+a property of the prediction, and raising would end a bulk run partway through.
+
+!!! warning "A refused list element is counted but not reported"
+
+    A refused element is one `fd` in the confusion matrix, but it produces no
+    entry in `non_matches`, so the counts and the item-level report disagree:
+
+    ```
+    [Plain(sku='a')]  vs  [Cat(sku='a')]     ->  fd=1,  non_matches: []
+    ```
+
+    An ordinary below-threshold element *is* reported, so this is specific to a
+    refusal. The item-level report re-derives its own pairing without the field's
+    comparator, which is why it cannot see the refusal. Read the counts, not
+    `non_matches`, when you need to know whether a list element was refused.
+    Tracked in [#332](https://github.com/awslabs/stickler/issues/332).
+
+### The annotation has to name the model
+
+The object-grade default is read from the annotation, so a field that declares no
+model type keeps the scalar default and is **refused** rather than scored:
+
+| Annotation | Result |
+|---|---|
+| `Optional[LineItem]` | scored, key by key |
+| `List[LineItem]` | scored, key by key |
+| `Optional[Annotated[LineItem, Field(...)]]` | scored, key by key |
+| `Optional[Any]`, `Optional[object]` | refused: `0.0`, `fd=1`, warning |
+| `Union[LineItem, str]` | refused: `0.0`, `fd=1`, warning |
+| `List[Any]` | refused: `0.0`, `fd=1`, warning |
+
+`Annotated` does not change the answer, in any nesting or spelling. That is worth
+stating because it is easy to reach by accident: `Field(description=...)` on an
+optional field produces `Annotated[T, FieldInfo] | None`, and pydantic keeps the
+wrapper on a union arm.
+
+A nested `StructuredModel` is never refused by this rule, only by the class rule
+above. It is scored by recursion, so the field's comparator is not what judges
+it. In a mixed list, the plain elements are refused and the `StructuredModel`
+elements are scored:
+
+```python
+items: Optional[List[Union[Cat, Note]]] = ComparableField()   # Note is a StructuredModel
+
+[Cat("rex"), Note("a"), Note("b")]  vs  an identical copy  ->  tp=2, fd=1
+```
+
+Refusing looks harsh next to a number, but the number was worse. The scalar
+default is edit distance over the model's rendered form, and the field names are
+identical on both sides, so it cannot score low:
+
+```
+LineItem(quantity=2, unit_price=10.5, currency='USD')
+  vs LineItem(quantity=9, unit_price=99.9, currency='EUR')   ->  0.8293
+```
+
+`0.8293` clears the default threshold, so every value being wrong was reported as
+a **true positive**. A mapping in the same position has always been refused for
+exactly this reason, and plain models now agree with mappings.
+
+The warning names both remedies. Either name the model in the annotation:
+
+```python
+address: Optional[PlainAddress] = None          # scored
+```
+
+or declare the comparator, if the annotation genuinely has to stay open:
+
+```python
+payload: Optional[Any] = ComparableField(comparator=ANLSStarComparator())
+```
+
+To get field-by-field detail, declare the nested model as a `StructuredModel`:
+
+```python
+class Address(StructuredModel):                    # per-field detail
+    city: str = ComparableField(threshold=0.9)
+    postcode: str = ComparableField(comparator=ExactComparator())
+
+class Invoice(StructuredModel):
+    address: Address = ComparableField()
+```
+
+`stickler.evaluate()` does this for you: it wraps a plain `BaseModel` in a
+generated `StructuredModel` with inferred comparators, so the zero-config path
+scores nested models field by field without you declaring anything.
 
 ---
 
@@ -535,12 +706,53 @@ You can create your own comparator by extending `BaseComparator`. The only requi
 
 `compare` is a template method: it applies the shared `None` policy, then delegates to `_compare`. You implement `_compare`; callers call `compare`.
 
+Declare `threshold` as `Optional[float] = None` and put your default in
+`DEFAULT_THRESHOLD`. That is what lets a threshold the caller named be told apart
+from your class default, so `ComparableField(comparator=YourComparator(threshold=0.9))`
+is honoured while a bare `YourComparator()` leaves the field on its own default.
+
+A comparator that declares a concrete default instead (`threshold: float = 1.0`)
+still works, and warns once. Stickler cannot then tell your default from a caller's
+value, so it treats a threshold equal to your default as unset -- the pre-0.8
+behaviour -- rather than silently making the field stricter than either of you asked
+for.
+
+!!! warning "Pass `threshold` straight through; do not resolve your default first"
+
+    Changing the signature but keeping the old resolution is worse than not
+    migrating at all:
+
+    ```python
+    # WRONG -- every bare construction now looks caller-named
+    def __init__(self, threshold: Optional[float] = None):
+        super().__init__(threshold if threshold is not None else 0.9)
+    ```
+
+    `BaseComparator` decides explicitness from what it receives, so this hands it
+    `0.9` for a bare `YourComparator()`. The field adopts `0.9` as its verdict
+    threshold with clipping on, and nothing warns, because from the inside it is
+    indistinguishable from a caller who asked for `0.9`. Forward the parameter
+    unchanged and put the default in `DEFAULT_THRESHOLD`:
+
+    ```python
+    DEFAULT_THRESHOLD = 0.9
+
+    def __init__(self, threshold: Optional[float] = None):
+        super().__init__(threshold=threshold)
+    ```
+
 ```python
 from stickler import BaseComparator
 
 class BaseComparator(ABC):
-    def __init__(self, threshold: float = 0.7):
-        self.threshold = threshold
+    #: The threshold to use when the caller does not name one. Override per class.
+    DEFAULT_THRESHOLD: float = 0.7
+
+    def __init__(self, threshold: Optional[float] = None):
+        # None, not a number, so a threshold the caller named stays
+        # distinguishable from one nobody asked for. See below.
+        self.threshold_was_set = threshold is not None
+        self.threshold = self.DEFAULT_THRESHOLD if threshold is None else threshold
 
     def compare(self, str1: Any, str2: Any) -> float:
         """Apply the shared None policy, then delegate to _compare."""
@@ -590,7 +802,9 @@ from stickler import BaseComparator
 class RegexComparator(BaseComparator):
     """Comparator that checks if a value matches a reference regex pattern."""
 
-    def __init__(self, threshold: float = 1.0):
+    DEFAULT_THRESHOLD = 1.0
+
+    def __init__(self, threshold: Optional[float] = None):
         super().__init__(threshold=threshold)
 
     def _compare(self, pattern: Any, value: Any) -> float:

@@ -149,6 +149,18 @@ def specs_for(
     return result
 
 
+def _inferred_provenance(cls: Type[BaseModel], name: str) -> tuple:
+    """The inference trail for a field, or empty if the author configured it.
+
+    ``field_converter`` and ``json_schema_importer`` record this on the
+    ``json_schema_extra`` callable when they fill in a parameter the config did
+    not name, so a field that was inferred can say so instead of being reported
+    as explicitly configured.
+    """
+    extra = cls.model_fields[name].json_schema_extra
+    return tuple(getattr(extra, "_inferred_provenance", ()))
+
+
 def _collect_specs(
     cls: Type[BaseModel],
     prefix: str,
@@ -188,12 +200,20 @@ def _collect_specs(
                     comp_name = (
                         type(comparator).__name__ if comparator else "default"
                     )
+                # A config-driven field whose parameters were inferred carries the
+                # reasoning that produced them. Reporting every such field as
+                # "explicit" claimed the author chose values they never wrote,
+                # which is the surface half of #210: a model that looks configured
+                # and is not.
+                inferred_trail = _inferred_provenance(cls, name)
                 result[path] = InferredSpec(
                     comparator_name=comp_name,
                     threshold=info.threshold,
                     weight=info.weight,
                     clip_under_threshold=info.clip_under_threshold,
-                    provenance=["explicit: configured on the StructuredModel class"],
+                    provenance=list(inferred_trail)
+                    if inferred_trail
+                    else ["explicit: configured on the StructuredModel class"],
                 )
                 if kind == "model":
                     _collect_specs(
