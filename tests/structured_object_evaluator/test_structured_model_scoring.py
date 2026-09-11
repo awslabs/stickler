@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from pytest import approx
 
+from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator import ComparableField, StructuredModel
 
@@ -27,7 +28,7 @@ class ComplexModel(StructuredModel):
 
     # Simplified model that just uses the details field directly
     details: Dict[str, Any] = ComparableField(
-        comparator=LevenshteinComparator(), threshold=0.7, weight=1.0
+        comparator=ANLSStarComparator(), threshold=0.7, weight=1.0
     )
 
 
@@ -98,7 +99,10 @@ def test_complex_dict_scoring():
     # 2. Force users to break down Dict[str, Any] into proper StructuredModel subclasses
     #    for type-safe, predictable comparison
     #
-    # For now, this test should raise an exception to prevent this anti-pattern.
+    # Solution 1 is now implemented: ANLSStarComparator scores the mapping
+    # structurally, so a dict field gives real partial credit instead of
+    # whole-object equality. Solution 2 remains the better choice when the keys
+    # ARE known, since a nested StructuredModel gives per-field results.
 
     # Simplified test case focusing just on the first exact match case
     gt = {"a": "Hello", "b": "World"}
@@ -112,10 +116,12 @@ def test_complex_dict_scoring():
     # Dictionary comparison now works through StructuredModel comparison
     result = gt_model.compare_with(pred_model)
 
-    # Dictionary comparison should work but may give unpredictable results
-    # due to string representation differences. For now, just test it works.
-    assert 0.0 <= result["overall_score"] <= 1.0, (
-        "Overall score should be between 0 and 1"
+    # Key order is irrelevant to a mapping, and ANLS* normalizes over the key
+    # set rather than over a string spelling, so reordered keys with identical
+    # values are a perfect match. Under the previous str(dict) handling this
+    # scored 0.5556.
+    assert result["overall_score"] == approx(1.0), (
+        "reordered keys with identical values must score 1.0"
     )
     assert "details" in result["field_scores"], "Should have score for details field"
     assert 0.0 <= result["field_scores"]["details"] <= 1.0, (

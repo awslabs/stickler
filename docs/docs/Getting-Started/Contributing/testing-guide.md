@@ -128,13 +128,11 @@ def test_structured_model_compare_with_exact_match():
     # Check result structure
     assert "field_scores" in result
     assert "overall_score" in result
-    assert "all_fields_matched" in result
 
     # Check field scores
     assert result["field_scores"]["name"] == 1.0
     assert result["field_scores"]["age"] == 1.0
     assert result["overall_score"] == 1.0
-    assert result["all_fields_matched"] is True
 ```
 
 ### Pattern 4: Parameterized Tests
@@ -190,7 +188,6 @@ def test_result_structure():
     # Required keys
     assert "field_scores" in result
     assert "overall_score" in result
-    assert "all_fields_matched" in result
 
     # Field scores should be present
     assert "name" in result["field_scores"]

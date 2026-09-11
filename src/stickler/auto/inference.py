@@ -49,6 +49,7 @@ from typing import (
 
 from pydantic.fields import FieldInfo
 
+from ..comparators.anls import DEFAULT_LEAF_THRESHOLD
 from ..structured_object_evaluator.models.comparator_registry import (
     ComparatorRegistry,
     get_global_registry,
@@ -63,6 +64,19 @@ _NEVER_AUTO = frozenset({"SemanticComparator", "BERTComparator", "LLMComparator"
 # comparator defaults to exact matching, so a field threshold alone is inert;
 # the tolerance must live on the comparator instance.
 _FLOAT_RELATIVE_TOLERANCE = 0.001
+
+# Provenance prefixes for the two outcomes of a name-token match. They differ so
+# `InferredSpec.source` can tell "the name chose this comparator" from "the name
+# matched a rule that could not be used". Sharing one prefix made a refusal read
+# as a refinement in `explain()`, which is the opposite of what happened.
+#
+# `nosec B105`: bandit's hardcoded-password check keys on the VARIABLE name, and
+# these contain "TOKEN". The values are `explain()` provenance labels that get
+# prefixed onto a field name for human output -- no credential is involved, and
+# renaming them would cost the domain term ("name-token" heuristics) that the
+# rest of this module and the docs use.
+_NAME_TOKEN_APPLIED = "name-token:"  # nosec B105
+_NAME_TOKEN_REFUSED = "name-token-unused:"  # nosec B105
 
 
 @dataclass
@@ -84,12 +98,23 @@ class InferredSpec:
 
     @property
     def source(self) -> str:
-        """Coarse origin label for the final comparator decision."""
+        """Coarse origin label for the final comparator decision.
+
+        A name-token rule that MATCHED but was refused as incompatible with the
+        field's type did not drive the decision -- the type default did -- and is
+        recorded under `_NAME_TOKEN_REFUSED` rather than `_NAME_TOKEN_APPLIED` for
+        exactly that reason. Counting it made a `str` field named `issued_date`
+        report `name-token` while carrying the plain `LevenshteinComparator@0.7`
+        that its type alone produced, telling a reader the name had been honoured
+        in the one case where it was explicitly not.
+        """
         for entry in reversed(self.provenance):
             if entry.startswith("degrade"):
                 return "degrade"
         for entry in self.provenance:
-            if entry.startswith("name-token"):
+            if entry.startswith("explicit"):
+                return "explicit"
+            if entry.startswith(_NAME_TOKEN_APPLIED):
                 return "name-token"
         return "type"
 
@@ -110,7 +135,7 @@ def unwrap_optional(annotation: Any) -> Tuple[Any, bool]:
     ``stickler.structured_object_evaluator.models.optional_annotation`` (which
     additionally exposes the permissive ``is_union`` / ``union_args`` pair, for
     sites that search a union's arms rather than unwrapping it). Keep them in
-    sync; unifying all three is tracked for 0.8.0.
+    sync; unifying all three is tracked for 1.0.
     """
     origin = get_origin(annotation)
     # PEP 604 unions (X | None) have origin types.UnionType, not typing.Union.
@@ -422,12 +447,21 @@ def _gate(
 # --- Main entry point -------------------------------------------------------
 
 
+#: Fallback field threshold for a dict-typed field, used when no
+#: ``match_threshold`` reaches inference. A dict with undeclared keys is judged
+#: as an object, so this mirrors ``match_threshold``'s own default rather than
+#: the scalar default of 0.5. Paired with ``clip_under_threshold=False`` so a
+#: partly correct mapping keeps its partial score even when classified FD.
+_DICT_FIELD_THRESHOLD = 0.7
+
+
 def infer_field_config(
     field_name: str,
     field_info: FieldInfo,
     *,
     weight_hints: bool = False,
     registry: Optional[ComparatorRegistry] = None,
+    match_threshold: Optional[float] = None,
 ) -> InferredSpec:
     """Infer a comparison spec for one pydantic field.
 
@@ -439,6 +473,9 @@ def infer_field_config(
             guessed business-criticality.
         registry: Comparator registry for the availability gate. Defaults to the
             global registry.
+        match_threshold: Object-level match threshold, used as the FIELD
+            threshold for dict-typed fields so they are not exempt from a value
+            the caller set. Defaults to ``_DICT_FIELD_THRESHOLD``.
 
     Returns:
         An :class:`InferredSpec`. Nested ``BaseModel`` / ``List[BaseModel]``
@@ -452,7 +489,9 @@ def infer_field_config(
         provenance.append("optional: unwrapped to inner type")
 
     # 1) Type signal (safe, always on).
-    comparator, config, threshold, clip = _type_default(annotation, provenance)
+    comparator, config, threshold, clip = _type_default(
+        annotation, provenance, match_threshold
+    )
 
     # 2) Name-token refinement layered on the type default, gated on type
     #    compatibility: a rule whose comparator cannot parse this type keeps
@@ -469,12 +508,13 @@ def infer_field_config(
                 rule.threshold,
             )
             provenance.append(
-                f"name-token:{field_name} -> {rule.comparator}@{rule.threshold}"
+                f"{_NAME_TOKEN_APPLIED}{field_name} -> "
+                f"{rule.comparator}@{rule.threshold}"
             )
             if weight_hints and rule.weight_hint != 1.0:
                 weight = rule.weight_hint
                 provenance.append(
-                    f"name-token:{field_name} -> weight {rule.weight_hint}"
+                    f"{_NAME_TOKEN_APPLIED}{field_name} -> weight {rule.weight_hint}"
                 )
             # Free-text fields keep partial credit rather than clipping to zero.
             if (
@@ -484,7 +524,7 @@ def infer_field_config(
                 clip = False
         else:
             provenance.append(
-                f"name-token:{field_name} matched {rule.comparator} but "
+                f"{_NAME_TOKEN_REFUSED}{field_name} matched {rule.comparator} but "
                 f"type {_annotation_label(annotation)} is incompatible; "
                 "keeping type default"
             )
@@ -502,8 +542,23 @@ def infer_field_config(
     )
 
 
+def _is_mapping(annotation: Any) -> bool:
+    """Whether an annotation describes a mapping, per ConfigurationHelper.
+
+    Imported lazily: ConfigurationHelper lives in the evaluator package, which
+    imports this module's package, so a top-level import would be circular.
+    """
+    from ..structured_object_evaluator.models.configuration_helper import (
+        ConfigurationHelper,
+    )
+
+    return ConfigurationHelper.is_mapping_annotation(annotation)
+
+
 def _type_default(
-    annotation: Any, provenance: List[str]
+    annotation: Any,
+    provenance: List[str],
+    match_threshold: Optional[float] = None,
 ) -> Tuple[str, Dict[str, Any], float, bool]:
     """Comparator/threshold/clip from the python type alone."""
     if annotation is bool:
@@ -545,7 +600,40 @@ def _type_default(
         provenance.append("type:str -> LevenshteinComparator@0.7")
         return "LevenshteinComparator", {}, 0.7, True
 
-    # Unknown / exotic (dict, tuple, set, Any, multi-arm union). These have no
+    # Reuse ConfigurationHelper's predicate rather than re-testing `dict`, which
+    # left the whole Mapping family (`Mapping`, `MutableMapping`, `OrderedDict`,
+    # `DefaultDict`, `Counter`) falling through to the exotic branch and being
+    # canonicalised to a JSON string, contradicting the docs and disagreeing with
+    # the explicit path for the same annotation.
+    if _is_mapping(annotation):
+        # A dict annotation declines to name its keys, so there is no per-key
+        # config to infer and the mapping is scored structurally: ANLS* walks
+        # it as a tree, comparing leaves as strings and normalizing over the
+        # union of both key sets. That gives partial credit, so a near miss
+        # ranks above a wholly wrong extraction -- where canonical-JSON
+        # equality scored both 0.0 and could not tell them apart.
+        #
+        # clip_under_threshold=False for the same reason nested objects and
+        # lists use it (see builder._nested_spec): a mostly-right container
+        # should keep its partial score. With clip=True the field threshold
+        # would zero out exactly the partial credit this comparator exists to
+        # produce.
+        # No per-call knob: the leaf cutoff is a property of the comparator,
+        # settable per field via
+        # ComparableField(comparator=ANLSStarComparator(leaf_threshold=...)).
+        # A general per-field override for the zero-config path is #263.
+        leaf_threshold = DEFAULT_LEAF_THRESHOLD
+        config = {}
+        field_threshold = (
+            _DICT_FIELD_THRESHOLD if match_threshold is None else match_threshold
+        )
+        provenance.append(
+            f"type:dict -> ANLSStarComparator(leaf_threshold={leaf_threshold})"
+            f"@{field_threshold} (structural, partial credit)"
+        )
+        return "ANLSStarComparator", config, field_threshold, False
+
+    # Unknown / exotic (tuple, set, Any, multi-arm union). These have no
     # scalar JSON form, so the wire layer canonicalizes them to a deterministic
     # JSON string (sorted keys; sets also sort elements). Comparison over that
     # string is all-or-nothing: edit distance on a JSON blob would award ~0.95

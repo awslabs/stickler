@@ -109,7 +109,6 @@ class ComparisonEngine:
                     "tn": int,
                     "fn": int,
                     "similarity_score": float,
-                    "all_fields_matched": bool
                 },
                 "fields": {
                     "field_name": {
@@ -138,7 +137,6 @@ class ComparisonEngine:
                 "tn": 0,
                 "fn": 0,
                 "similarity_score": 0.0,
-                "all_fields_matched": False,
             },
             "fields": {},
             "non_matches": [],
@@ -147,7 +145,6 @@ class ComparisonEngine:
         # Score percolation variables
         total_score = 0.0
         total_weight = 0.0
-        threshold_matched_fields = set()
 
         for field_name in self.model.__class__.model_fields:
             if field_name == "extra_fields":
@@ -171,11 +168,6 @@ class ComparisonEngine:
                 total_score += threshold_applied_score * weight
                 total_weight += weight
 
-                # Track threshold-matched fields
-                info = self.model._get_comparison_info(field_name)
-                if field_result["raw_similarity_score"] >= info.threshold:
-                    threshold_matched_fields.add(field_name)
-
         # CRITICAL FIX: Handle hallucinated fields (extra fields) as False Alarms
         extra_fields_fa = self._count_extra_fields_as_false_alarms(other)
         result["overall"]["fa"] += extra_fields_fa
@@ -184,14 +176,6 @@ class ComparisonEngine:
         # Calculate overall similarity score from percolated scores
         if total_weight > 0:
             result["overall"]["similarity_score"] = total_score / total_weight
-
-        # Determine all_fields_matched
-        model_fields_for_comparison = set(self.model.__class__.model_fields.keys()) - {
-            "extra_fields"
-        }
-        result["overall"]["all_fields_matched"] = len(threshold_matched_fields) == len(
-            model_fields_for_comparison
-        )
 
         return result
 
@@ -226,7 +210,16 @@ class ComparisonEngine:
         
         Args:
             other: Another instance of the same model to compare with
-            include_confusion_matrix: Whether to include confusion matrix calculations
+            include_confusion_matrix: Whether to include confusion matrix
+                calculations. `overall` classifies this node's direct children,
+                which at the root are its own fields, so read a list field's own
+                `overall` for a count of items;
+                `aggregate` gives leaf detail, and for a LIST ITEM that means
+                only the items that were comparable, since an item below the
+                element class's `match_threshold` is a single FD and is not
+                descended into. A single nested `StructuredModel` field is not
+                gated: its leaves are always reported. See
+                https://awslabs.github.io/stickler/Advanced/aggregate-metrics/
             document_non_matches: Whether to document non-matches for analysis
             evaluator_format: Whether to format results for the evaluator
             recall_with_fd: If True, include FD in recall denominator (TP/(TP+FN+FD))
@@ -239,7 +232,6 @@ class ComparisonEngine:
             {
                 "field_scores": {"field_name": float, ...},
                 "overall_score": float,
-                "all_fields_matched": bool,
                 "confusion_matrix": {...},  # If include_confusion_matrix=True
                 "non_matches": [...],  # If document_non_matches=True
                 "field_comparisons": [...] # If field_comparisons=True
@@ -273,13 +265,11 @@ class ComparisonEngine:
         # Extract overall metrics
         overall_result = recursive_result["overall"]
         overall_score = overall_result.get("similarity_score", 0.0)
-        all_fields_matched = overall_result.get("all_fields_matched", False)
 
         # Build basic result structure
         result = {
             "field_scores": field_scores,
             "overall_score": overall_score,
-            "all_fields_matched": all_fields_matched,
         }
 
         # Add optional features using already-computed recursive result

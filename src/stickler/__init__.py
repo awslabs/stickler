@@ -12,6 +12,7 @@ import sys as _sys
 # Zero-config evaluation of vanilla pydantic models (no StructuredModel
 # subclass or schema required). See stickler/auto/README.md.
 from .auto import EvalResult, EvalSpec, eval_for, evaluate
+from .comparators.anls import ANLSStarComparator
 
 # Always-available comparators (core deps)
 from .comparators.base import BaseComparator
@@ -20,6 +21,7 @@ from .comparators.date import DateComparator
 from .comparators.exact import ExactComparator
 from .comparators.fuzzy import FuzzyComparator
 from .comparators.levenshtein import LevenshteinComparator
+from .comparators.normalized import NormalizedComparator
 from .comparators.numeric import NumericComparator
 from .comparators.phone import PhoneComparator
 from .comparators.semantic import SemanticComparator
@@ -137,7 +139,7 @@ def __dir__() -> list:
     """Include lazily-available comparators in `dir(stickler)`."""
     return sorted(set(globals()) | set(__all__))
 
-__version__ = "0.7.0"
+__version__ = "1.0.0"
 __all__ = [
     # Models and evaluation
     "StructuredModel",
@@ -155,12 +157,14 @@ __all__ = [
     "EvalSpec",
     # Comparators (always available)
     "BaseComparator",
+    "ANLSStarComparator",
     "ExactComparator",
     "PhoneComparator",
     "DateComparator",
     "BBoxIoUComparator",
     "FuzzyComparator",
     "LevenshteinComparator",
+    "NormalizedComparator",
     "NumericComparator",
     "SemanticComparator",
     "StructuredModelComparator",

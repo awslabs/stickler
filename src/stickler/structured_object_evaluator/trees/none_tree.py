@@ -19,13 +19,19 @@ class ANLSNone(ANLSTree):
                     directly by this class).
     """
 
-    def __init__(self, comparator: Optional[BaseComparator] = None):
+    def __init__(
+        self,
+        comparator: Optional[BaseComparator] = None,
+        threshold: Optional[float] = None,
+    ):
         """Initialize a None node.
 
         Args:
             comparator: Optional comparator for string comparison.
+            threshold: Tau, accepted for symmetry; a None node has no leaf
+                similarity to threshold.
         """
-        super().__init__(None, comparator)
+        super().__init__(None, comparator, threshold)
 
     def __len__(self) -> int:
         """Return the length of this None node.

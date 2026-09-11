@@ -6,11 +6,14 @@ title: Customizing Your Evaluation
 
 Stickler gives you fine-grained control over how every field in your structured data is compared. You can tune comparison algorithms, thresholds, and weights at the field level -- whether you define your models in Python or through JSON Schema configuration files.
 
-This guide covers three ways to configure evaluation behavior:
+This guide covers four ways to configure evaluation behavior:
 
-1. **ComparableField parameters** in Python model definitions
-2. **The `compare_with()` method** for running comparisons
-3. **JSON Schema extensions** for configuration-driven evaluation
+1. **Inference from a Pydantic class** — no configuration at all; `stickler.evaluate` picks a comparator and threshold per field from the type and field name. Start here if you already have a model
+2. **ComparableField parameters** in Python model definitions
+3. **The `compare_with()` method** for running comparisons
+4. **JSON Schema extensions** for configuration-driven evaluation
+
+Options 1 and 4 are independent paths that infer differently, not two steps of one workflow — see [Choosing a Configuration Path](../../Getting-Started/choosing-a-configuration-path.md).
 
 !!! tip "Evaluating a test set?"
     If you need to evaluate many document pairs (not just one), use **`BulkStructuredModelEvaluator`** — it handles streaming aggregation, progress reporting, and metrics export. See the [Bulk Evaluation](bulk-evaluation.md) guide.
@@ -49,7 +52,6 @@ When defining a `StructuredModel` subclass in Python, each field is declared wit
 | `threshold` | `float` (0.0--1.0) | `0.5` | Minimum similarity score required for a field to be classified as a match. |
 | `weight` | `float` (> 0.0) | `1.0` | Relative importance of this field when computing aggregate scores. |
 | `clip_under_threshold` | `bool` | `True` | When `True`, scores below `threshold` are zeroed out before contributing to the weighted average. |
-| `aggregate` | `bool` | `False` | **Deprecated, removed in 0.8.0.** Has no effect: every node already carries an `aggregate` block in the `compare_with()` output summing the primitive field metrics below it. Passing it at all emits a `DeprecationWarning`; remove the argument, there is no replacement to adopt ([#226](https://github.com/awslabs/stickler/issues/226)). |
 
 ### How Each Parameter Affects Scoring
 
@@ -126,17 +128,15 @@ Once you have two model instances -- a ground truth and a prediction -- call `co
 result = ground_truth.compare_with(prediction)
 
 print(f"Overall score: {result['overall_score']:.2%}")
-print(f"All fields matched: {result['all_fields_matched']}")
 
 for field, score in result['field_scores'].items():
     print(f"  {field}: {score:.3f}")
 ```
 
-The default output contains three keys:
+The default output contains two keys:
 
 - **`overall_score`** (float) -- Weighted average of all field scores (0.0 to 1.0).
 - **`field_scores`** (dict) -- Maps each field name to its similarity score.
-- **`all_fields_matched`** (bool) -- `True` when every field meets or exceeds its threshold.
 
 ### Key Parameters
 
@@ -187,12 +187,27 @@ Add these extensions to any property in your JSON Schema to control comparison b
 | Extension | Type | Default | Purpose |
 |-----------|------|---------|---------|
 | `x-aws-stickler-comparator` | string | Type-dependent | Comparison algorithm (e.g., `"ExactComparator"`, `"LevenshteinComparator"`) |
-| `x-aws-stickler-threshold` | number (0.0--1.0) | 0.5 or 1.0 | Match classification cutoff |
+| `x-aws-stickler-threshold` | number (0.0--1.0) | see below | Match classification cutoff. Read on a scalar, an object, and an array of scalars. **Ignored on an array of models** -- an array whose `items` declare `properties` -- where pairing is gated by the element class's `x-aws-stickler-match-threshold`, and a declared value warns there. Read, not ignored, on an array of free-form `{"type": "object"}` items |
 | `x-aws-stickler-weight` | number (> 0.0) | 1.0 | Field importance multiplier |
-| `x-aws-stickler-clip-under-threshold` | boolean | `false` | Zero out scores below threshold |
-| `x-aws-stickler-aggregate` | boolean | `false` | Include in parent-level aggregate metrics |
+| `x-aws-stickler-clip-under-threshold` | boolean | `true` | Zero out scores below threshold |
 | `x-aws-stickler-model-name` | string | `"DynamicModel"` | Name of the generated Python class (root level) |
 | `x-aws-stickler-match-threshold` | number (0.0--1.0) | 0.7 | Model-level matching threshold for Hungarian algorithm (root level) |
+| `x-aws-stickler-infer-unspecified` | boolean | `false` | Infer a comparator, threshold and weight for any property that names none, using the same rules `stickler.evaluate()` uses (root level) |
+| `x-aws-stickler-comparator-config` | object | `{}` | Keyword arguments passed to the named comparator |
+
+An unstated `x-aws-stickler-threshold` does not resolve to one number. It depends
+on the position, because different positions fall back to different defaults:
+
+| Position | Default threshold | Where it comes from |
+|---|---|---|
+| scalar (`string`, `number`, ...) | `0.5` | `ComparableField`'s own default |
+| object with `properties` (a nested model) | `0.7` | the class's `match_threshold` |
+| free-form `{"type": "object"}` (a `Dict`) | `1.0` | the mapping default |
+| array of scalars | `0.5` | `ComparableField`'s own default |
+| array of models | `0.5`, and never read from the schema | the element class's `match_threshold` gates instead |
+
+Declaring the key explicitly overrides the default in every position that reads
+it. `x-aws-stickler-clip-under-threshold` defaults to `true` in all of them.
 
 ### Example Schema
 
@@ -210,13 +225,13 @@ Add these extensions to any property in your JSON Schema to control comparison b
       "x-aws-stickler-clip-under-threshold": true
     },
     "customer_name": {
-      "type": "string",
+      "type": ["string", "null"],
       "x-aws-stickler-comparator": "LevenshteinComparator",
       "x-aws-stickler-threshold": 0.8,
       "x-aws-stickler-weight": 1.5
     },
     "total_amount": {
-      "type": "number",
+      "type": ["number", "null"],
       "x-aws-stickler-comparator": "NumericComparator",
       "x-aws-stickler-threshold": 0.95,
       "x-aws-stickler-weight": 2.5
@@ -225,6 +240,8 @@ Add these extensions to any property in your JSON Schema to control comparison b
   "required": ["invoice_id", "customer_name", "total_amount"]
 }
 ```
+
+The two fields that a document may not show are typed `["string", "null"]` and `["number", "null"]`. A field listed in `required` and typed `"string"` alone raises `ValidationError` when the value is genuinely `None`, so a schema that omits `"null"` fails on exactly the documents that test absence handling. `invoice_id` keeps its bare `"string"`: an invoice without an identifier is a broken record, not an absent field.
 
 ### Loading a Schema
 
@@ -253,8 +270,7 @@ print(f"Overall Score: {result['overall_score']:.3f}")
         "customer_name": 0.0,
         "total_amount": 1.0
       },
-      "overall_score": 0.786,
-      "all_fields_matched": false
+      "overall_score": 0.786
     }
     ```
 

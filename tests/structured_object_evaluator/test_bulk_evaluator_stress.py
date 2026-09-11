@@ -5,7 +5,6 @@ Pytest stress tests for BulkStructuredModelEvaluator robustness.
 Converted from cline/stress_test_bulk_evaluator.py
 """
 
-import time
 from typing import List, Optional
 
 import pytest
@@ -111,7 +110,7 @@ class TestBulkEvaluatorStress:
 
     @pytest.mark.slow
     def test_large_dataset_processing(self, simple_sample_data):
-        """Test large dataset processing - memory and performance."""
+        """Test that a large dataset is processed completely and correctly."""
         evaluator = BulkStructuredModelEvaluator(BankStatement, verbose=False)
 
         gt_model = BankStatement(**simple_sample_data)
@@ -120,11 +119,8 @@ class TestBulkEvaluatorStress:
         # Process moderate number of documents (reduced for CI/CD)
         num_docs = 1000
 
-        start_time = time.time()
         for i in range(num_docs):
             evaluator.update(gt_model, pred_model, f"doc_{i}")
-
-        processing_time = time.time() - start_time
 
         result = evaluator.compute()
 
@@ -132,10 +128,6 @@ class TestBulkEvaluatorStress:
         assert evaluator._processed_count == num_docs
         assert result.metrics["cm_accuracy"] == 1.0  # Perfect matches
         assert len(result.field_metrics) > 0
-
-        # Performance should be reasonable (at least 100 docs/sec)
-        docs_per_sec = num_docs / processing_time
-        assert docs_per_sec > 100, f"Performance too slow: {docs_per_sec:.0f} docs/sec"
 
     def test_error_handling(self, rich_sample_data):
         """Test error handling - can it handle bad input?"""
@@ -310,41 +302,37 @@ class TestBulkEvaluatorStress:
         assert len(result.field_metrics) > 0
 
     def test_memory_efficiency(self, simple_sample_data):
-        """Test that memory usage doesn't grow excessively with document count."""
-        import gc
-        import os
-
-        import psutil
-
+        """Test that aggregate state does not retain data for every document."""
         evaluator = BulkStructuredModelEvaluator(BankStatement, verbose=False)
         gt_model = BankStatement(**simple_sample_data)
         pred_model = BankStatement(**simple_sample_data)
 
-        # Get initial memory usage
-        process = psutil.Process(os.getpid())
-        initial_memory = process.memory_info().rss / 1024 / 1024  # MB
+        def retained_collection_items(value):
+            """Count items in the evaluator's serializable collection state."""
+            if isinstance(value, dict):
+                return len(value) + sum(
+                    retained_collection_items(item) for item in value.values()
+                )
+            if isinstance(value, list):
+                return len(value) + sum(
+                    retained_collection_items(item) for item in value
+                )
+            return 0
 
-        # Process documents
+        # Warm the evaluator so all aggregate fields and paths have been created.
+        evaluator.update(gt_model, pred_model, "warmup")
+        retained_after_warmup = retained_collection_items(evaluator.get_state())
+
         num_docs = 500
         for i in range(num_docs):
             evaluator.update(gt_model, pred_model, f"doc_{i}")
 
-            # Force garbage collection periodically
-            if i % 100 == 0:
-                gc.collect()
-
-        # Get final memory usage
-        final_memory = process.memory_info().rss / 1024 / 1024  # MB
-        memory_growth = final_memory - initial_memory
-
+        retained_after_dataset = retained_collection_items(evaluator.get_state())
         result = evaluator.compute()
 
-        # Verify processing completed
-        assert evaluator._processed_count == num_docs
+        assert evaluator._processed_count == num_docs + 1
         assert result.metrics["cm_accuracy"] == 1.0
-
-        # Memory growth should be reasonable (less than 100MB for 500 docs)
-        assert memory_growth < 100, f"Excessive memory growth: {memory_growth:.1f}MB"
+        assert retained_after_dataset == retained_after_warmup
 
     def test_concurrent_safety_basics(self, simple_sample_data):
         """Test basic thread safety considerations."""

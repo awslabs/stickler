@@ -2,13 +2,9 @@
 Dedicated class for handling Hungarian matching of List[StructuredModel] fields.
 
 This class extracts the Hungarian matching logic from StructuredModel to improve
-code organization and maintainability. The extraction preserves existing behavior
-exactly, including current bugs that will be fixed in subsequent phases.
-
-Current Behavior Preserved (including bugs):
-- Uses parent field threshold instead of object match_threshold (bug)
-- Generates nested metrics for all matched pairs regardless of threshold (bug)
-- Object-level counting discrepancies in some scenarios (bug)
+code organization and maintainability. Object assignment and recursive field
+evaluation are separate: only assigned pairs that meet the element model's
+``match_threshold`` are evaluated field by field.
 """
 
 from typing import TYPE_CHECKING, Any, Dict, List
@@ -41,9 +37,6 @@ class StructuredListComparator:
     ) -> dict:
         """Enhanced structural list comparison that returns both metrics AND scores.
 
-        CRITICAL: This is the main entry point extracted from StructuredModel.
-        Maintains identical behavior including current bugs for Phase 2 compatibility.
-
         Args:
             gt_list: Ground truth list of StructuredModel objects
             pred_list: Predicted list of StructuredModel objects
@@ -72,8 +65,8 @@ class StructuredListComparator:
         (
             object_level_metrics,
             matched_pairs,
-            matched_gt_indices,
-            matched_pred_indices,
+            _matched_gt_indices,
+            _matched_pred_indices,
         ) = self._calculate_object_level_metrics(gt_list, pred_list, match_threshold)
 
         # Calculate raw similarity score using extracted method
@@ -91,8 +84,6 @@ class StructuredListComparator:
             gt_list,
             pred_list,
             matched_pairs,
-            matched_gt_indices,
-            matched_pred_indices,
             match_threshold,
         )
 
@@ -221,8 +212,6 @@ class StructuredListComparator:
         gt_list: List["StructuredModel"],
         pred_list: List["StructuredModel"],
         matched_pairs: List,
-        matched_gt_indices: set,
-        matched_pred_indices: set,
         match_threshold: float,
     ) -> Dict[str, Dict[str, Any]]:
         """Calculate field-level details for nested structure with threshold-gated recursion.
@@ -236,8 +225,6 @@ class StructuredListComparator:
             gt_list: Ground truth list
             pred_list: Predicted list
             matched_pairs: List of (gt_idx, pred_idx, similarity) tuples
-            matched_gt_indices: Set of matched GT indices
-            matched_pred_indices: Set of matched pred indices
             match_threshold: Match threshold for threshold-gating (NOW PROPERLY USED!)
 
         Returns:
@@ -261,13 +248,7 @@ class StructuredListComparator:
                 if similarity >= match_threshold
             ]
 
-            # Only generate field details if we have good matched pairs OR unmatched objects
-            has_good_matches = len(good_matched_pairs) > 0
-            has_unmatched = (len(matched_gt_indices) < len(gt_list)) or (
-                len(matched_pred_indices) < len(pred_list)
-            )
-
-            if has_good_matches or has_unmatched:
+            if good_matched_pairs:
                 for sub_field_name in model_class.model_fields:
                     if sub_field_name == "extra_fields":
                         continue
@@ -285,9 +266,6 @@ class StructuredListComparator:
                             gt_list,
                             pred_list,
                             good_matched_pairs,
-                            matched_gt_indices,
-                            matched_pred_indices,
-                            match_threshold,
                         )
                     else:
                         # Handle primitive fields with simple aggregation - ONLY for good matches
@@ -296,8 +274,6 @@ class StructuredListComparator:
                             gt_list,
                             pred_list,
                             good_matched_pairs,
-                            matched_gt_indices,
-                            matched_pred_indices,
                         )
 
         return field_details
@@ -308,9 +284,6 @@ class StructuredListComparator:
         gt_list: List["StructuredModel"],
         pred_list: List["StructuredModel"],
         matched_pairs: List,
-        matched_gt_indices: set,
-        matched_pred_indices: set,
-        match_threshold: float,
     ) -> Dict[str, Any]:
         """Handle hierarchical List[StructuredModel] fields with TRUE recursive aggregation.
 
@@ -479,8 +452,6 @@ class StructuredListComparator:
         gt_list: List["StructuredModel"],
         pred_list: List["StructuredModel"],
         matched_pairs: List,
-        matched_gt_indices: set,
-        matched_pred_indices: set,
     ) -> Dict[str, Any]:
         """Handle non-hierarchical fields with aggregation across matched pairs.
 
@@ -521,25 +492,6 @@ class StructuredListComparator:
 
             aggregated_result = self._recursive_aggregate_metrics(pair_results)
 
-            # Handle unmatched objects — count each list element as FN or FA
-            for gt_idx, gt_item in enumerate(gt_list):
-                if gt_idx not in matched_gt_indices and gt_item is not None:
-                    gt_sub_value = getattr(gt_item, sub_field_name)
-                    if isinstance(gt_sub_value, list) and gt_sub_value:
-                        aggregated_result["overall"]["fn"] += len(gt_sub_value)
-                    elif gt_sub_value is not None:
-                        aggregated_result["overall"]["fn"] += 1
-
-            for pred_idx, pred_item in enumerate(pred_list):
-                if pred_idx not in matched_pred_indices and pred_item is not None:
-                    pred_sub_value = getattr(pred_item, sub_field_name)
-                    if isinstance(pred_sub_value, list) and pred_sub_value:
-                        aggregated_result["overall"]["fa"] += len(pred_sub_value)
-                        aggregated_result["overall"]["fp"] += len(pred_sub_value)
-                    elif pred_sub_value is not None:
-                        aggregated_result["overall"]["fa"] += 1
-                        aggregated_result["overall"]["fp"] += 1
-
             self._add_derived_metrics_recursively(aggregated_result)
             return aggregated_result
 
@@ -562,20 +514,6 @@ class StructuredListComparator:
 
                 for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
                     sub_field_metrics[metric] += field_classification.get(metric, 0)
-
-        # Handle unmatched objects for primitive fields
-        for gt_idx, gt_item in enumerate(gt_list):
-            if gt_idx not in matched_gt_indices and gt_item is not None:
-                gt_sub_value = getattr(gt_item, sub_field_name)
-                if gt_sub_value is not None:
-                    sub_field_metrics["fn"] += 1
-
-        for pred_idx, pred_item in enumerate(pred_list):
-            if pred_idx not in matched_pred_indices and pred_item is not None:
-                pred_sub_value = getattr(pred_item, sub_field_name)
-                if pred_sub_value is not None:
-                    sub_field_metrics["fa"] += 1
-                    sub_field_metrics["fp"] += 1
 
         return {"overall": sub_field_metrics}
 

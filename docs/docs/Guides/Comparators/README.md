@@ -4,16 +4,43 @@ Comparators are the algorithms that determine how similar two field values are. 
 
 ---
 
+## Where the threshold comes from
+
+Every comparator below except [`LLMComparator`](#llmcomparator) takes a `threshold`, and it can also be set on the field. Both spellings gate the same thing, TP vs FD classification and score clipping:
+
+```python
+# These two fields behave identically.
+ComparableField(comparator=LevenshteinComparator(threshold=0.8))
+ComparableField(comparator=LevenshteinComparator(), threshold=0.8)
+```
+
+Precedence is field, then comparator, then `0.5`:
+
+| You write | Effective threshold |
+|---|---|
+| `ComparableField(threshold=0.9, comparator=Lev(threshold=0.8))` | `0.9`, the field wins |
+| `ComparableField(comparator=Lev(threshold=0.8))` | `0.8`, from the comparator |
+| `ComparableField(comparator=Lev())` | `0.5`, not Levenshtein's `0.7` |
+| `ComparableField()` | `0.5` |
+
+The third row is the one to know: a comparator's *default* threshold is never adopted. Those defaults were chosen for `binary_compare()`, not as classification cutoffs, and at least one is actively wrong for the job. `DateComparator` defaults to `1.0` while awarding `0.7` partial credit for a match with no year, so adopting it would clip that feature to zero. If you want a comparator's default to act as the cutoff, name it.
+
+See [Thresholds and Metrics](../../Getting-Started/thresholds-and-metrics.md) for how this interacts with model and runtime match thresholds.
+
+---
+
 ## Which Comparator Should I Use?
 
 | Comparator | Best For | Speed | Needs AWS? | Score Type |
 |---|---|---|---|---|
 | [**ExactComparator**](#exactcomparator) | IDs, codes, booleans | Instant | No | Binary (0.0 or 1.0) |
+| [**NormalizedComparator**](#normalizedcomparator) | Text where formatting differences are noise | Instant | No | Binary (0.0 or 1.0) |
 | [**LevenshteinComparator**](#levenshteincomparator) | Names, addresses, text with typos | Instant | No | Continuous (0.0--1.0) |
 | [**NumericComparator**](#numericcomparator) | Prices, quantities, measurements | Instant | No | Binary (0.0 or 1.0) |
 | [**DateComparator**](date-comparator.md) | Date fields with mixed formats, partial dates, ranges | Instant | No | Continuous (0.0--1.0) |
 | [**FuzzyComparator**](#fuzzycomparator) | Flexible text, descriptions, reordered tokens | Fast | No | Continuous (0.0--1.0) |
 | [**BBoxIoUComparator**](#bboxioucomparator) | Bounding boxes, spatial localization | Instant | No | Continuous (0.0--1.0) |
+| [**ANLSStarComparator**](#anlsstarcomparator) | Dicts and nested structures whose keys you do not declare | Moderate | No | Continuous (0.0--1.0) |
 | [**SemanticComparator**](#semanticcomparator) | Meaning-based text similarity | Moderate | Yes (Bedrock) | Continuous (0.0--1.0) |
 | [**BERTComparator**](#bertcomparator) | Contextual semantic similarity | Moderate | No (runs locally) | Continuous (0.0--1.0) |
 | [**LLMComparator**](#llmcomparator) | Complex semantic evaluation with reasoning | Slow | Yes (Bedrock) | Binary (0.0 or 1.0) |
@@ -24,7 +51,7 @@ Comparators are the algorithms that determine how similar two field values are. 
 
 ### ExactComparator
 
-Checks for exact string matching after normalizing whitespace, punctuation, and (by default) case. Returns 1.0 for exact matches and 0.0 otherwise.
+Checks for exact string matching. Case, whitespace, and punctuation are significant by default. Returns 1.0 for exact matches and 0.0 otherwise.
 
 **When to use:** Critical identifiers, status codes, booleans, or any field where partial matches are meaningless.
 
@@ -45,7 +72,35 @@ class Order(StructuredModel):
 | Parameter | Default | Description |
 |---|---|---|
 | `threshold` | `1.0` | Similarity threshold for binary classification |
-| `case_sensitive` | `False` | Whether comparison is case-sensitive |
+| `case_sensitive` | `True` | Whether comparison is case-sensitive |
+
+### NormalizedComparator
+
+Checks equality after a declared set of text transforms. By default it ignores
+case, Unicode whitespace, and Unicode punctuation. Punctuation means characters
+in the Unicode `P*` categories, so em dashes, curly quotes, and full-width
+punctuation are handled consistently. Symbols such as `$`, `±`, and emoji remain
+significant, as do accents. NFC normalization makes composed and decomposed
+spellings equivalent.
+
+**When to use:** OCR or LLM output where formatting drift is noise but edit
+distance is not meaningful, such as `"U.S.A."` versus `"USA"`.
+
+```python
+from stickler import ComparableField, NormalizedComparator, StructuredModel
+
+class Contact(StructuredModel):
+    name: str = ComparableField(comparator=NormalizedComparator())
+```
+
+**Key parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `threshold` | `1.0` | Similarity threshold for binary classification |
+| `case_sensitive` | `False` | Preserve case differences when `True` |
+| `ignore_whitespace` | `True` | Remove Unicode whitespace |
+| `ignore_punctuation` | `True` | Remove Unicode `P*` punctuation; symbols remain |
 
 ---
 
@@ -171,6 +226,180 @@ class Product(StructuredModel):
 
 ---
 
+### ANLSStarComparator
+
+Scores a dict whose keys you did not declare, giving partial credit instead of a
+simple pass or fail.
+
+**When to use:** a field like `metadata: Dict[str, Any]` holding whatever the
+extractor returned. Comparing such a field for equality tells you only "identical"
+or "not", so a prediction that got two keys of three right is indistinguishable
+from one that got nothing right. This comparator scores the difference.
+
+**When not to use:** if you know the keys, declare a nested [`StructuredModel`](../../API-Reference/models.md#stickler.structured_object_evaluator.models.structured_model.StructuredModel){:target="_blank"} instead. You get
+the same partial credit *plus* a score per key, and each key can have its own
+comparator and threshold. Use `ANLSStarComparator` for the case where you could
+not have declared the shape.
+
+#### A worked example
+
+```python
+from typing import Any, Dict
+
+from pydantic import BaseModel
+
+import stickler
+
+
+class Invoice(BaseModel):
+    invoice_id: str
+    metadata: Dict[str, Any] = {}
+
+
+truth = Invoice(
+    invoice_id="INV-1042",
+    metadata={"vendor": "Acme Corporation", "terms": "Net 30", "po": "PO-88231"},
+)
+prediction = Invoice(
+    invoice_id="INV-1042",
+    metadata={"vendor": "Acme Corp", "terms": "Net 30", "po": "PO-88231"},
+)
+
+result = stickler.evaluate(truth, prediction)
+print(result.field_scores["metadata"])   # 0.8542
+print(result.overall_score)              # 0.9271
+```
+
+`stickler.evaluate` picks this comparator for a `dict` field automatically, so
+there is nothing to configure.
+
+Running the same ground truth against a range of predictions shows what the score
+is actually measuring:
+
+| prediction's `metadata` | score |
+|---|---|
+| identical, in any key order | 1.0000 |
+| `vendor` abbreviated to `"Acme Corp"` | 0.8542 |
+| an extra `currency` key | 0.7500 |
+| `po` missing | 0.6667 |
+| `vendor` renamed to `vendor_name` | 0.5000 |
+| every value wrong, or empty | 0.0000 |
+
+Two things to read out of that table:
+
+- **A missing key and an extra key both cost**, because the score is averaged over
+  the union of both key sets. That is why a *renamed* key (0.5000) scores worse
+  than a simply missing one (0.6667): a rename is charged twice, once as absent
+  from the prediction and once as unexpected in it.
+- **Nesting works.** Dicts inside dicts, and lists of dicts, are walked
+  recursively, and list elements are paired by best fit rather than by position,
+  so reordering a list of items does not penalise you.
+
+#### Declaring it explicitly
+
+To set a parameter, name the comparator on the field:
+
+```python
+from stickler import ANLSStarComparator, ComparableField, StructuredModel
+
+
+class Invoice(StructuredModel):
+    metadata: dict = ComparableField(
+        comparator=ANLSStarComparator(leaf_threshold=0.85)
+    )
+```
+
+**Key parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `threshold` | `0.7` | Score at or above which the whole mapping counts as a match |
+| `leaf_threshold` | `0.5` | Cutoff below which a single value's similarity is treated as noise |
+
+`leaf_threshold` is applied to each value as the structure is walked, so it changes
+the score itself rather than only the verdict. On the abbreviated-vendor example
+above:
+
+| `leaf_threshold` | score |
+|---|---|
+| `0.5` (default) | 0.8542 |
+| `0.85` | 0.6667 |
+
+At `0.85` the abbreviation stops counting at all, so that key contributes nothing.
+
+**When to raise it.** Character similarity scales with length, so the same cutoff
+is lenient for a short value and strict for a long one. At the default, a wholly
+wrong short code still earns half credit:
+
+| kind | ground truth | prediction | `0.5` | `0.7` | `0.85` |
+|---|---|---|---|---|---|
+| state code | `CA` | `CO` | 0.5000 | 0.0000 | 0.0000 |
+| status | `PAID` | `PEND` | 0.5000 | 0.0000 | 0.0000 |
+| vendor name | `Acme Corporation` | `Acme Corp` | 0.5625 | 0.0000 | 0.0000 |
+| description | `blue widget, 3 inch` | `blue widget 3in` | 0.7895 | 0.7895 | 0.0000 |
+
+Raise it toward `0.7` if the dict holds **short codes**, where one wrong character
+means wrong rather than close. Keep the default if it holds **names or free text**,
+where a genuine abbreviation should still count. Note the two columns disagree:
+`0.7` correctly rejects the wrong status but also discards the correct vendor
+abbreviation, so if one dict holds both kinds, no single value is right for both.
+Declare the fields you care about instead.
+
+Do not set it to `0.0`: with no cutoff, an unrelated value earns credit for
+incidental character overlap.
+
+!!! warning "Every value is compared as text, whatever its type"
+    Numbers, dates and identifiers are compared character by character. Incidental
+    overlap in a long value therefore scores high, and scores *higher* than a
+    genuine near-miss in ordinary text:
+
+    | key | ground truth | prediction | score |
+    |---|---|---|---|
+    | `account` | `DE89370400440532013000` | `DE8937040044053201300`**`1`** | 0.9545 |
+    | `invoice_date` | `2024-01-15` | `2024-01-1`**`6`** | 0.9000 |
+    | `amount` | `1000000` | **`2`**`000000` | 0.8571 |
+    | `total` | `1234.56` | `1234.5`**`7`** | 0.8571 |
+    | `vendor` | `Acme Corporation` | `Acme Corp` (truncated) | 0.5625 |
+
+    A wrong account number, a date off by a day and a **2x-wrong amount** all score
+    above the one row that is a genuine near-miss.
+
+    It fails in the other direction too. Values that are *numerically equal* score
+    below 1.0, or not at all, because their text differs:
+
+    | ground truth | prediction | score |
+    |---|---|---|
+    | `5` | `5.0` | 0.0000 |
+    | `1000` | `1000.0` | 0.6667 |
+    | `Decimal("10.50")` | `Decimal("10.5")` | 0.8000 |
+
+    This is easy to hit by accident: a ground truth loaded from a database as an
+    integer, against a prediction parsed from JSON as a float, is a perfect
+    extraction scored as a miss. Declaring the field with
+    [`NumericComparator`](#numericcomparator) compares the numbers instead of their
+    spelling.
+
+    Lowering `leaf_threshold` will not separate these: a cutoff high enough to
+    reject the account number also removes the partial credit you wanted. **If a
+    value's correctness matters, declare that field** so it gets a comparator
+    chosen for its type, such as [`NumericComparator`](#numericcomparator) or
+    [`DateComparator`](date-comparator.md). If you know *some* of the keys, declare
+    those in a nested `StructuredModel` and leave the rest to this comparator.
+
+**Values with no JSON form score 0.0.** Anything with a JSON representation is
+compared normally, including `date`, `datetime`, `time`, `Decimal`, `UUID`, `Enum`,
+`set`, `tuple`, `bytes` and `Path`. An arbitrary Python object has none, so it
+cannot be compared: it scores `0.0` whether or not the two sides are equal, warns
+once per type, and leaves the other keys' credit intact. Convert it to a JSON type
+before evaluating, or declare a nested [`StructuredModel`](../../API-Reference/models.md#stickler.structured_object_evaluator.models.structured_model.StructuredModel){:target="_blank"} if you know its shape.
+
+**Performance:** walking a structure costs noticeably more than comparing two
+strings, and the cost multiplies inside a list, where every candidate pair is
+scored. If a large corpus feels slow, declare a nested [`StructuredModel`](../../API-Reference/models.md#stickler.structured_object_evaluator.models.structured_model.StructuredModel){:target="_blank"} for the keys you
+actually score.
+
+---
+
 ### BBoxIoUComparator
 
 Compares two bounding boxes using Intersection over Union (IoU) as the similarity score. Accepts both two-point (`[[x1, y1], [x2, y2]]`) and flat (`[x1, y1, x2, y2]`) formats. Coordinates are automatically normalized so that x1 <= x2 and y1 <= y2.
@@ -288,17 +517,184 @@ class Address(StructuredModel):
 
 ## Default Comparators by Type
 
-When you do not specify a comparator in `ComparableField`, Stickler assigns one based on the JSON schema type of the field:
+These are the defaults on the **JSON Schema path** — what `from_json_schema` picks for a property
+carrying no `x-aws-stickler-comparator`. Each property is parsed to a strict Python annotation, the
+comparator is chosen from that annotation, and the annotation is then widened back to the JSON value
+type so an invalid extraction scores `0.0` instead of raising. So `format`, `enum` and `const`
+participate in the choice — while field names never do — even though the field on the built class
+ends up a plain `str`. Read the result back with `to_json_schema()`, not from `model_fields`.
 
 | JSON Schema Type | Default Comparator | Default Threshold | Rationale |
 |---|---|---|---|
 | `string` | LevenshteinComparator | 0.5 | Handles typos and minor variations |
 | `number` | NumericComparator | 0.5 | Tolerates small numeric differences |
 | `integer` | NumericComparator | 0.5 | Tolerates small numeric differences |
-| `boolean` | ExactComparator | 1.0 | Must be exactly true or false |
+| `boolean` | ExactComparator | 0.5 | Must be exactly true or false (Exact returns only 0.0 or 1.0, so the threshold is immaterial) |
+| `string` + `"format": "date"` or `"date-time"` | DateComparator | 1.0 | Parses as `date`/`datetime`, so the field compares across formats |
+| `string` + `"enum"` or a single-value `const` | ExactComparator | 1.0 | Parses as an `Enum`/`Literal`, so only a listed value is valid |
 | `array` (primitives) | Based on item type | Based on item type | Inherits from element type |
-| `array` (objects) | Hungarian matching | 0.7 | Optimal pairing of list elements |
+| `array` (objects) | Hungarian matching | 0.5, pairing elements at 0.7 | Optimal pairing of list elements |
 | `object` | Recursive comparison | 0.7 | Field-by-field nested comparison |
+
+A `format` the schema library does not map to a distinct type (`"email"`, `"hostname"`, `"duration"`)
+parses as `str`, so the field keeps LevenshteinComparator at 0.5. To check any of this on your own
+schema:
+
+```python
+StructuredModel.from_json_schema(schema).to_json_schema()["properties"]
+```
+
+The two paths do not share these defaults. Inference — `stickler.evaluate`, `eval_for`,
+`from_pydantic` — reads field *names* as well as types and picks different thresholds; see
+[Choosing a Configuration Path](../../Getting-Started/choosing-a-configuration-path.md). And a bare
+`ComparableField()` is a third case again: with no `comparator=`, it is LevenshteinComparator at 0.5
+whatever the annotation.
+### Nested models: `StructuredModel` versus plain `BaseModel`
+
+The `object` row above applies to a nested **`StructuredModel`**. A nested plain
+`pydantic.BaseModel` is a different case, and the difference is worth knowing
+because a plain model is what you already have if you are bringing a schema from
+elsewhere.
+
+| Nested annotation | How it is compared | Default comparator | Per-field detail |
+|---|---|---|---|
+| `StructuredModel` | recursively, field by field | each field's own | yes, one row per field |
+| plain `BaseModel` | as one object, key by key | `ANLSStarComparator` | no |
+
+A plain `BaseModel` carries no per-field comparison configuration, so there is
+nothing to score per field and nothing to report per field. It gets the same
+treatment a `Dict[...]` field gets, and for the same reason: the whole thing is
+one object, judged key by key, with partial credit and no score clipping. The
+elements of a `List[plain BaseModel]` get it too, so the two shapes agree.
+
+Declaring a comparator overrides that default, exactly as it does for a `dict`.
+
+### A different class is a false discovery
+
+**The rule:** two objects of different classes are a false discovery, whatever
+their attributes say. Identical field names and identical values do not make them
+a match, because the class is part of a value's identity rather than metadata
+about it. See
+[Classification Logic](../../Advanced/classification-logic.md#objects-of-different-classes)
+for the full statement.
+
+**What this release enforces**, for a plain `pydantic.BaseModel` and for the
+elements of a list of them:
+
+```python
+Cat(name="rex")             vs  Dog(name="rex")         ->  0.0, fd=1   (not 1.0)
+Base(a="x")                 vs  Sub(a="x")              ->  0.0, fd=1
+StructuredShape(name="rex") vs  PlainShape(name="rex")  ->  0.0, fd=1
+```
+
+The last row is the mixed case: a `StructuredModel` on one side and a plain
+`BaseModel` on the other are still two different classes, and one is not even the
+same kind of model. Two `StructuredModel` instances of the **same** class are
+unaffected and keep their per-field breakdown.
+
+!!! warning "Two `StructuredModel` classes are not covered yet"
+
+    `Pet` against `Cat` scores `0.0` with `fd=1` when both are plain
+    `BaseModel`s, and `1.0` with `tp=1` when both are `StructuredModel`s. The
+    second is the older behaviour rather than a deliberate exception; the rule is
+    the same for both and the code has caught up on one half so far. Tracked in
+    [#327](https://github.com/awslabs/stickler/issues/327). Annotate the field with
+    a single model type if you need the guarantee today.
+
+The class is part of the value's identity, not incidental to it. A correctly
+annotated field never sees this, because pydantic refuses a `Dog` for an
+`Optional[Cat]` field when the model is constructed. It applies where you
+declared that more than one class is allowed (`Union[Cat, Dog]`, `Any`,
+`object`), or where a subclass arrived for its base, which `Optional[Base]`
+accepts.
+
+Stickler warns once per field rather than raising, because which class arrives is
+a property of the prediction, and raising would end a bulk run partway through.
+
+!!! warning "A refused list element is counted but not reported"
+
+    A refused element is one `fd` in the confusion matrix, but it produces no
+    entry in `non_matches`, so the counts and the item-level report disagree:
+
+    ```
+    [Plain(sku='a')]  vs  [Cat(sku='a')]     ->  fd=1,  non_matches: []
+    ```
+
+    An ordinary below-threshold element *is* reported, so this is specific to a
+    refusal. The item-level report re-derives its own pairing without the field's
+    comparator, which is why it cannot see the refusal. Read the counts, not
+    `non_matches`, when you need to know whether a list element was refused.
+    Tracked in [#332](https://github.com/awslabs/stickler/issues/332).
+
+### The annotation has to name the model
+
+The object-grade default is read from the annotation, so a field that declares no
+model type keeps the scalar default and is **refused** rather than scored:
+
+| Annotation | Result |
+|---|---|
+| `Optional[LineItem]` | scored, key by key |
+| `List[LineItem]` | scored, key by key |
+| `Optional[Annotated[LineItem, Field(...)]]` | scored, key by key |
+| `Optional[Any]`, `Optional[object]` | refused: `0.0`, `fd=1`, warning |
+| `Union[LineItem, str]` | refused: `0.0`, `fd=1`, warning |
+| `List[Any]` | refused: `0.0`, `fd=1`, warning |
+
+`Annotated` does not change the answer, in any nesting or spelling. That is worth
+stating because it is easy to reach by accident: `Field(description=...)` on an
+optional field produces `Annotated[T, FieldInfo] | None`, and pydantic keeps the
+wrapper on a union arm.
+
+A nested `StructuredModel` is never refused by this rule, only by the class rule
+above. It is scored by recursion, so the field's comparator is not what judges
+it. In a mixed list, the plain elements are refused and the `StructuredModel`
+elements are scored:
+
+```python
+items: Optional[List[Union[Cat, Note]]] = ComparableField()   # Note is a StructuredModel
+
+[Cat("rex"), Note("a"), Note("b")]  vs  an identical copy  ->  tp=2, fd=1
+```
+
+Refusing looks harsh next to a number, but the number was worse. The scalar
+default is edit distance over the model's rendered form, and the field names are
+identical on both sides, so it cannot score low:
+
+```
+LineItem(quantity=2, unit_price=10.5, currency='USD')
+  vs LineItem(quantity=9, unit_price=99.9, currency='EUR')   ->  0.8293
+```
+
+`0.8293` clears the default threshold, so every value being wrong was reported as
+a **true positive**. A mapping in the same position has always been refused for
+exactly this reason, and plain models now agree with mappings.
+
+The warning names both remedies. Either name the model in the annotation:
+
+```python
+address: Optional[PlainAddress] = None          # scored
+```
+
+or declare the comparator, if the annotation genuinely has to stay open:
+
+```python
+payload: Optional[Any] = ComparableField(comparator=ANLSStarComparator())
+```
+
+To get field-by-field detail, declare the nested model as a `StructuredModel`:
+
+```python
+class Address(StructuredModel):                    # per-field detail
+    city: str = ComparableField(threshold=0.9)
+    postcode: str = ComparableField(comparator=ExactComparator())
+
+class Invoice(StructuredModel):
+    address: Address = ComparableField()
+```
+
+`stickler.evaluate()` does this for you: it wraps a plain `BaseModel` in a
+generated `StructuredModel` with inferred comparators, so the zero-config path
+scores nested models field by field without you declaring anything.
 
 ---
 
@@ -310,12 +706,53 @@ You can create your own comparator by extending `BaseComparator`. The only requi
 
 `compare` is a template method: it applies the shared `None` policy, then delegates to `_compare`. You implement `_compare`; callers call `compare`.
 
+Declare `threshold` as `Optional[float] = None` and put your default in
+`DEFAULT_THRESHOLD`. That is what lets a threshold the caller named be told apart
+from your class default, so `ComparableField(comparator=YourComparator(threshold=0.9))`
+is honoured while a bare `YourComparator()` leaves the field on its own default.
+
+A comparator that declares a concrete default instead (`threshold: float = 1.0`)
+still works, and warns once. Stickler cannot then tell your default from a caller's
+value, so it treats a threshold equal to your default as unset -- the pre-0.8
+behaviour -- rather than silently making the field stricter than either of you asked
+for.
+
+!!! warning "Pass `threshold` straight through; do not resolve your default first"
+
+    Changing the signature but keeping the old resolution is worse than not
+    migrating at all:
+
+    ```python
+    # WRONG -- every bare construction now looks caller-named
+    def __init__(self, threshold: Optional[float] = None):
+        super().__init__(threshold if threshold is not None else 0.9)
+    ```
+
+    `BaseComparator` decides explicitness from what it receives, so this hands it
+    `0.9` for a bare `YourComparator()`. The field adopts `0.9` as its verdict
+    threshold with clipping on, and nothing warns, because from the inside it is
+    indistinguishable from a caller who asked for `0.9`. Forward the parameter
+    unchanged and put the default in `DEFAULT_THRESHOLD`:
+
+    ```python
+    DEFAULT_THRESHOLD = 0.9
+
+    def __init__(self, threshold: Optional[float] = None):
+        super().__init__(threshold=threshold)
+    ```
+
 ```python
 from stickler import BaseComparator
 
 class BaseComparator(ABC):
-    def __init__(self, threshold: float = 0.7):
-        self.threshold = threshold
+    #: The threshold to use when the caller does not name one. Override per class.
+    DEFAULT_THRESHOLD: float = 0.7
+
+    def __init__(self, threshold: Optional[float] = None):
+        # None, not a number, so a threshold the caller named stays
+        # distinguishable from one nobody asked for. See below.
+        self.threshold_was_set = threshold is not None
+        self.threshold = self.DEFAULT_THRESHOLD if threshold is None else threshold
 
     def compare(self, str1: Any, str2: Any) -> float:
         """Apply the shared None policy, then delegate to _compare."""
@@ -353,7 +790,7 @@ The policy lives in `BaseComparator.compare` and nowhere else. You don't write a
 !!! warning "Implement `_compare`, not `compare`"
     Overriding `compare` directly bypasses the `None` policy and reintroduces exactly the divergence this design prevents. Implement `_compare`.
 
-    A comparator written against the older interface — implementing `compare` — still constructs and behaves exactly as written, and emits a `DeprecationWarning` naming the rename. It does **not** receive the `None` policy, since its `compare` shadows the template method. That shim is removed in 0.8.0 ([#215](https://github.com/awslabs/stickler/issues/215)), after which such a comparator raises `TypeError` at construction.
+    A subclass of `BaseComparator` that does not implement `_compare` raises `TypeError` at construction. A subclass of a *concrete* comparator that supplies `compare` inherits `_compare` through the MRO, so it constructs — and emits a `UserWarning` at class definition, because its `compare` shadows the template method and can skip the `None` policy. If you are overriding `compare` deliberately, define `_compare` as well and the warning goes quiet ([#215](https://github.com/awslabs/stickler/issues/215)).
 
 ### Example: Custom RegexComparator
 
@@ -365,7 +802,9 @@ from stickler import BaseComparator
 class RegexComparator(BaseComparator):
     """Comparator that checks if a value matches a reference regex pattern."""
 
-    def __init__(self, threshold: float = 1.0):
+    DEFAULT_THRESHOLD = 1.0
+
+    def __init__(self, threshold: Optional[float] = None):
         super().__init__(threshold=threshold)
 
     def _compare(self, pattern: Any, value: Any) -> float:

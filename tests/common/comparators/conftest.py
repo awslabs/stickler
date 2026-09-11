@@ -9,11 +9,13 @@ from stickler.utils import deprecation as _deprecation
 
 @pytest.fixture(autouse=True)
 def _reset_deprecation_sentinels():
-    """Clear ``warn_once`` sentinels so each test sees fresh DeprecationWarnings.
+    """Clear ``warn_once`` sentinels so each test sees a fresh warning.
 
     ``warn_once`` remembers ``(deprecation_id, context)`` per process, so a
-    ``pytest.warns(DeprecationWarning)`` assertion would silently fail if a
-    peer test had already tripped the same sentinel. Mirrors the fixture in
+    ``pytest.warns`` assertion would silently fail if a peer test had already
+    tripped the same sentinel. ``BaseComparator.__init_subclass__`` warns
+    through ``warn_once``, and the shadowing tests in
+    ``test_none_handling.py`` assert it fires. Mirrors the fixture in
     ``tests/structured_object_evaluator/conftest.py``.
     """
     _deprecation._warned.clear()

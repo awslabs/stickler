@@ -26,20 +26,21 @@ from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
 
-# pandas, scipy, and scikit-learn are only needed by this module, so they live
-# behind the `docsplit` extra rather than in the core dependency set. Raise an
-# actionable error naming the extra instead of a bare ModuleNotFoundError.
+from stickler.utils.statistics import (
+    homogeneity_completeness_v_measure,
+    kendall_tau_b,
+    rand_index,
+)
+
+# pandas is only needed by this module, so it lives behind the `docsplit` extra
+# rather than in the core dependency set. Raise an actionable error naming the
+# extra instead of a bare ModuleNotFoundError.
 try:
     import pandas as pd
-    from scipy.stats import kendalltau
-    from sklearn.metrics import (
-        homogeneity_completeness_v_measure,
-        rand_score,
-    )
 except ImportError as exc:  # pragma: no cover - exercised by the extras gate
     raise ImportError(
-        "stickler.doc_split requires pandas, scipy, and scikit-learn. Install "
-        'them with: pip install "stickler-eval[docsplit]"'
+        "stickler.doc_split requires pandas. Install it with: "
+        'pip install "stickler-eval[docsplit]"'
     ) from exc
 
 logger = logging.getLogger(__name__)
@@ -132,7 +133,7 @@ def calculate_clustering_score(
     gt_ids, pred_ids = create_composite_group_ids(data, strict_clustering)
 
     _h, _c, v_measure = homogeneity_completeness_v_measure(gt_ids, pred_ids)
-    ri = rand_score(gt_ids, pred_ids)
+    ri = rand_index(gt_ids, pred_ids)
 
     clustering_score = v_measure_weight * v_measure + (1 - v_measure_weight) * ri
     return clustering_score, v_measure, ri
@@ -164,7 +165,7 @@ def calculate_ordering_score_per_group(
             group_scores[group_id] = 1.0
             continue
 
-        tau, _p_value = kendalltau(
+        tau = kendall_tau_b(
             group_data["page_number"], group_data["page_number_predicted"]
         )
         group_scores[group_id] = tau if not np.isnan(tau) else 0

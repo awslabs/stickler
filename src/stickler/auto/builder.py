@@ -12,17 +12,21 @@ path is lossy: it does not support general multi-type unions, enums degrade to
 bare strings, and ``datetime`` loses its type. The live annotations keep every
 signal inference needs.
 
-Wire form: fields whose JSON form is not a scalar (dict, tuple, set, Any,
-multi-arm unions, unparameterized containers, Decimal) are declared with a
-shadow type that canonicalizes the value to a deterministic string
-(``to_jsonable_python`` then ``json.dumps`` with sorted keys), so "compared as
-their JSON string form" is actually true rather than a validation error. Both
-``model_dump()`` (native ``date``/``Decimal``/``set`` objects) and
-``model_dump(mode="json")`` normalize identically.
+Wire form: fields whose JSON form is not a scalar (tuple, set, Any, multi-arm
+unions, unparameterized containers, Decimal) are declared with a shadow type
+that canonicalizes the value to a deterministic string (``to_jsonable_python``
+then ``json.dumps`` with sorted keys), so "compared as their JSON string form"
+is actually true rather than a validation error. Both ``model_dump()`` (native
+``date``/``Decimal``/``set`` objects) and ``model_dump(mode="json")`` normalize
+identically.
+
+``dict`` is the exception: it stays a mapping, normalized key-and-value-wise by
+``jsonable_mapping`` rather than stringified, because ANLS* scores it
+structurally and cannot do that with a JSON blob. The normalization still runs,
+so both dump modes agree for a ``Dict[date, X]``.
 
 Results are cached in a ``WeakKeyDictionary`` keyed on
-``(cls, weight_hints, match_threshold)`` so repeated ``evaluate`` calls in a
-loop are cheap without pinning user classes in memory.
+``(cls, weight_hints, match_threshold)`` so repeated ``evaluate`` calls in a loop are cheap without pinning user classes in memory.
 """
 
 from __future__ import annotations
@@ -54,8 +58,18 @@ from ..structured_object_evaluator.models.comparator_registry import (
 )
 from ..structured_object_evaluator.models.model_factory import ModelFactory
 from ..structured_object_evaluator.models.structured_model import StructuredModel
-from ..utils.canonical import canonicalize_json, canonicalize_json_sorted
-from .inference import InferredSpec, _is_literal, infer_field_config, unwrap_optional
+from ..utils.canonical import (
+    canonicalize_json,
+    canonicalize_json_sorted,
+    jsonable_mapping,
+)
+from .inference import (
+    InferredSpec,
+    _is_literal,
+    _is_mapping,
+    infer_field_config,
+    unwrap_optional,
+)
 
 # Cache of built shadow classes. Keyed by the source pydantic class (weak) ->
 # {cache_key: shadow_class}. Weak keys let user classes be garbage-collected.
@@ -123,8 +137,28 @@ def specs_for(
     """
     registry = get_global_registry()
     result: Dict[str, InferredSpec] = {}
-    _collect_specs(cls, "", weight_hints, match_threshold, registry, result, set())
+    _collect_specs(
+        cls,
+        "",
+        weight_hints,
+        match_threshold,
+        registry,
+        result,
+        set(),
+    )
     return result
+
+
+def _inferred_provenance(cls: Type[BaseModel], name: str) -> tuple:
+    """The inference trail for a field, or empty if the author configured it.
+
+    ``field_converter`` and ``json_schema_importer`` record this on the
+    ``json_schema_extra`` callable when they fill in a parameter the config did
+    not name, so a field that was inferred can say so instead of being reported
+    as explicitly configured.
+    """
+    extra = cls.model_fields[name].json_schema_extra
+    return tuple(getattr(extra, "_inferred_provenance", ()))
 
 
 def _collect_specs(
@@ -140,18 +174,48 @@ def _collect_specs(
         return
     _visiting.add(cls)
     try:
+        is_structured = isinstance(cls, type) and issubclass(cls, StructuredModel)
         for name, field_info in cls.model_fields.items():
+            if name in _RESERVED_FIELD_NAMES:
+                continue
             path = f"{prefix}{name}"
             annotation, _ = unwrap_optional(field_info.annotation)
             kind = _field_kind(annotation)
-            if kind == "model":
+            if is_structured:
+                info = cls._get_comparison_info(name)
+                comparator = getattr(info, "comparator", None)
+                if kind == "model":
+                    comp_name = (
+                        type(comparator).__name__
+                        if comparator
+                        else "StructuredModelComparator"
+                    )
+                elif kind == "model_list":
+                    comp_name = (
+                        type(comparator).__name__
+                        if comparator
+                        else "Hungarian (per-element StructuredModel)"
+                    )
+                else:
+                    comp_name = (
+                        type(comparator).__name__ if comparator else "default"
+                    )
+                # A config-driven field whose parameters were inferred carries the
+                # reasoning that produced them. Reporting every such field as
+                # "explicit" claimed the author chose values they never wrote,
+                # which is the surface half of #210: a model that looks configured
+                # and is not.
+                inferred_trail = _inferred_provenance(cls, name)
                 result[path] = InferredSpec(
-                    comparator_name="StructuredModelComparator",
-                    threshold=match_threshold,
-                    clip_under_threshold=False,
-                    provenance=["type:nested BaseModel -> recursive comparison"],
+                    comparator_name=comp_name,
+                    threshold=info.threshold,
+                    weight=info.weight,
+                    clip_under_threshold=info.clip_under_threshold,
+                    provenance=list(inferred_trail)
+                    if inferred_trail
+                    else ["explicit: configured on the StructuredModel class"],
                 )
-                if not issubclass(annotation, StructuredModel):
+                if kind == "model":
                     _collect_specs(
                         annotation,
                         f"{path}.",
@@ -161,14 +225,8 @@ def _collect_specs(
                         result,
                         _visiting,
                     )
-            elif kind == "model_list":
-                result[path] = InferredSpec(
-                    comparator_name="Hungarian (per-element StructuredModel)",
-                    threshold=match_threshold,
-                    provenance=["type:List[BaseModel] -> Hungarian object matching"],
-                )
-                element, _ = unwrap_optional(_list_element(annotation))
-                if not issubclass(element, StructuredModel):
+                elif kind == "model_list":
+                    element, _ = unwrap_optional(_list_element(annotation))
                     _collect_specs(
                         element,
                         f"{path}.",
@@ -178,16 +236,54 @@ def _collect_specs(
                         result,
                         _visiting,
                     )
+            elif kind == "model":
+                result[path] = InferredSpec(
+                    comparator_name="StructuredModelComparator",
+                    threshold=match_threshold,
+                    clip_under_threshold=False,
+                    provenance=["type:nested BaseModel -> recursive comparison"],
+                )
+                _collect_specs(
+                    annotation,
+                    f"{path}.",
+                    weight_hints,
+                    match_threshold,
+                    registry,
+                    result,
+                    _visiting,
+                )
+            elif kind == "model_list":
+                result[path] = InferredSpec(
+                    comparator_name="Hungarian (per-element StructuredModel)",
+                    threshold=match_threshold,
+                    provenance=["type:List[BaseModel] -> Hungarian object matching"],
+                )
+                element, _ = unwrap_optional(_list_element(annotation))
+                _collect_specs(
+                    element,
+                    f"{path}.",
+                    weight_hints,
+                    match_threshold,
+                    registry,
+                    result,
+                    _visiting,
+                )
             elif kind == "primitive_list":
                 # Report the element spec (the same one _field_definition
                 # installs) so the audit trail matches the built model.
                 element, _ = unwrap_optional(_list_element(annotation))
-                spec = _primitive_spec(name, element, weight_hints, registry)
+                spec = _primitive_spec(
+                    name, element, weight_hints, registry, match_threshold
+                )
                 spec.provenance.insert(0, "list: spec applies to each element")
                 result[path] = spec
             else:
                 result[path] = infer_field_config(
-                    name, field_info, weight_hints=weight_hints, registry=registry
+                    name,
+                    field_info,
+                    weight_hints=weight_hints,
+                    registry=registry,
+                    match_threshold=match_threshold,
                 )
     finally:
         _visiting.discard(cls)
@@ -323,7 +419,9 @@ def _field_definition(
 
     if kind == "primitive_list":
         element, element_optional = unwrap_optional(_list_element(annotation))
-        spec = _primitive_spec(name, element, weight_hints, registry)
+        spec = _primitive_spec(
+            name, element, weight_hints, registry, match_threshold
+        )
         wire = _scalar_wire_type(element)
         element_type = Optional[wire] if element_optional else wire
         list_type = List[element_type]
@@ -334,7 +432,11 @@ def _field_definition(
 
     # Primitive scalar.
     spec = infer_field_config(
-        name, field_info, weight_hints=weight_hints, registry=registry
+        name,
+        field_info,
+        weight_hints=weight_hints,
+        registry=registry,
+        match_threshold=match_threshold,
     )
     wire = _scalar_wire_type(annotation)
     default = ... if field_info.is_required() else None
@@ -368,11 +470,21 @@ def _shadow_for(
 
 
 def _primitive_spec(
-    name: str, element: Any, weight_hints: bool, registry
+    name: str,
+    element: Any,
+    weight_hints: bool,
+    registry,
+    match_threshold: Optional[float] = None,
 ) -> InferredSpec:
     """Infer a spec for the *element* type of a primitive list."""
     dummy = FieldInfo(annotation=element)
-    return infer_field_config(name, dummy, weight_hints=weight_hints, registry=registry)
+    return infer_field_config(
+        name,
+        dummy,
+        weight_hints=weight_hints,
+        registry=registry,
+        match_threshold=match_threshold,
+    )
 
 
 def _comparable_from_spec(spec: InferredSpec, *, default: Any):
@@ -440,6 +552,16 @@ def _isoformat_dates(value: Any) -> Any:
 # Shadow types for fields whose JSON wire form is not a scalar.
 _WireJson = Annotated[str, BeforeValidator(canonicalize_json)]
 _WireJsonSorted = Annotated[str, BeforeValidator(canonicalize_json_sorted)]
+#: A dict kept as a dict, with keys and values in JSON form so both
+#: model_dump modes agree. See jsonable_mapping.
+#:
+#: Annotated ``Any`` rather than ``Dict[Any, Any]`` on purpose. A prediction
+#: whose schema said "object" may arrive holding a list or a string, and
+#: rejecting that at validation time would abort the whole evaluation instead
+#: of scoring the document. Left as-is, the dispatcher sees dict-vs-list, finds
+#: no matching branch, and classifies it as a false discovery -- which is the
+#: right answer for a shape mismatch.
+_WireDict = Annotated[Any, BeforeValidator(jsonable_mapping)]
 _WireDate = Annotated[str, BeforeValidator(_isoformat_dates)]
 _WireNumeric = Annotated[str, BeforeValidator(_stringify_numeric)]
 
@@ -476,8 +598,23 @@ def _scalar_wire_type(annotation: Any) -> Any:
     origin = get_origin(annotation)
     if origin in (set, frozenset):
         return _WireJsonSorted
-    # Everything else (dict, tuple, Any, multi-arm unions, unknown objects)
-    # is compared as its canonical JSON string form.
+    # Same predicate as inference._is_mapping, so the wire type and the inferred
+    # comparator cannot disagree about what counts as a mapping.
+    if _is_mapping(annotation):
+        # Declared as `dict`, NOT canonicalized to a string. ANLS* scores the
+        # mapping structurally, which requires it to arrive as a mapping; the
+        # dispatcher has a dict branch for exactly this. Stringifying here was
+        # what forced dicts through whole-object equality, since a JSON blob
+        # can only be compared as a blob.
+        #
+        # Keys and values are normalized to their JSON form first, so a
+        # Dict[date, X] compares equal between model_dump() and
+        # model_dump(mode="json"); only the stringify step is skipped.
+        return _WireDict
+    # Everything else (tuple, Any, multi-arm unions, unknown objects) is
+    # compared as its canonical JSON string form. Only dict gets structural
+    # treatment: a tuple is positional so canonical JSON is a fair reading of
+    # it, and Any/unknown objects have no structure that can be assumed.
     return _WireJson
 
 

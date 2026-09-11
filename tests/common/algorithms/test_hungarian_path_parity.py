@@ -55,27 +55,25 @@ class TestZeroSimilarityIsAMatchedPair:
     def test_zero_similarity_counts_are_length_independent(self, n):
         """n unrelated pairs produce the same per-pair counts at any n.
 
-        The ``fp``/``fn`` values here are **descriptive of today, not the
-        intended contract**. ``calculate_metrics`` derives them as
-        ``len(list) - tp``, so a pair that is present in ``matched_pairs``
-        is also counted in ``fn`` -- matched and missing at the same time.
-        That is pre-existing at every list length and is what this test
-        holds constant across ``n``.
-
         What #224 is about is the *length independence*, not the values: a
-        1-item list must not classify differently from a 2-item one. If the
-        ``fn`` semantics are ever separated from the threshold (an explicit
-        ``fd`` key, as ``ComparisonHelper.unordered_list_metrics``
-        produces), update these numbers -- do not read them as a guarantee.
+        1-item list must not classify differently from a 2-item one.
+
+        The values themselves changed in #231, which separated the ``fn``
+        semantics from the threshold. Every item here is paired, so nothing
+        is left without a partner and ``fn`` is zero at every ``n``. The n
+        pairs all score below the threshold, so they are false discoveries.
         """
         result = _matcher(0.5).calculate_metrics(
             DISSIMILAR_GT[:n], DISSIMILAR_PRED[:n]
         )
 
-        # Below threshold, so no true positives; fp/fn reflect the n pairs.
+        # Below threshold, so no true positives. The n pairs are all fd, and
+        # the fp rollup still counts them.
         assert result["tp"] == 0
         assert result["fp"] == n
-        assert result["fn"] == n
+        assert result["fd"] == n
+        assert result["fn"] == 0
+        assert result["fa"] == 0
 
     def test_single_item_agrees_with_multi_item(self):
         """The regression in one assertion: 1-vs-1 must scale to 2-vs-2."""
@@ -84,8 +82,8 @@ class TestZeroSimilarityIsAMatchedPair:
 
         assert len(one["matched_pairs"]) == 1
         assert len(two["matched_pairs"]) == 2
-        assert (one["tp"], one["fp"], one["fn"]) == (0, 1, 1)
-        assert (two["tp"], two["fp"], two["fn"]) == (0, 2, 2)
+        assert (one["tp"], one["fp"], one["fd"], one["fn"]) == (0, 1, 1, 0)
+        assert (two["tp"], two["fp"], two["fd"], two["fn"]) == (0, 2, 2, 0)
 
 
 class TestFastPathHonorsMatchThreshold:
@@ -156,6 +154,7 @@ class TestUnmatchedItemsAreFnAndFa:
         assert result["tp"] == 1
         assert result["fn"] == 1, "the unpaired GT item is a false negative"
         assert result["fp"] == 0
+        assert result["fd"] == 0, "the one pair clears the threshold"
 
     def test_extra_prediction_items_are_false_alarms(self):
         result = _matcher(0.5).calculate_metrics(["abc"], ["abc", "QQQ"])
@@ -163,12 +162,17 @@ class TestUnmatchedItemsAreFnAndFa:
         assert result["tp"] == 1
         assert result["fp"] == 1, "the unpaired prediction item is a false alarm"
         assert result["fn"] == 0
+        assert result["fa"] == 1, "fa names the unpaired prediction on its own"
+        assert result["fd"] == 0
 
     def test_equal_length_lists_produce_no_unmatched_items(self):
         """Documented invariant: equal length means only TP and FD are possible.
 
-        With every pair below threshold, fp/fn come from below-threshold pairs
-        rather than from unmatched items -- there are none to be had.
+        Every pair here is below threshold, so all of them are false
+        discoveries. The two unmatched counts are zero because there is no item
+        without a partner, which is what the name of this test claims. Before
+        #231 that could not be asserted, since ``fn`` counted the low score
+        pairs as well.
         """
         result = _matcher(0.9).calculate_metrics(
             ["abc", "def"], ["abd", "deg"]
@@ -176,3 +180,6 @@ class TestUnmatchedItemsAreFnAndFa:
 
         assert len(result["matched_pairs"]) == 2, "every element is paired"
         assert result["tp"] == 0
+        assert result["fd"] == 2
+        assert result["fn"] == 0, "no ground truth item is without a partner"
+        assert result["fa"] == 0, "no prediction is without a partner"

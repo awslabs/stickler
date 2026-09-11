@@ -1,6 +1,7 @@
 nav:
   - README.md
   - ultra-quick-start.md
+  - choosing-a-configuration-path.md
   - thresholds-and-metrics.md
   - installation.md
   - known-issues.md
