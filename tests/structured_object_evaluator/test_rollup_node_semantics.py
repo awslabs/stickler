@@ -158,9 +158,10 @@ def _authored_prose(repo_root: Path):
     release notes record what was said at the time and are not rewritten, while the
     newest section is authored by the same change as the docs and drifted from them
     twice. "Newest" is the first heading through the end of the first section with
-    content, not the literal `## [Unreleased]`, which a release empties. The walk this replaces never reached the changelog at all, and
-    carried an `exempt = {Path("CHANGELOG.md")}` that therefore could not fire --
-    dead code reading as a deliberate exemption.
+    content, not the literal `## [Unreleased]`, which a release empties. The walk
+    this replaces never reached the changelog at all, and carried an
+    `exempt = {Path("CHANGELOG.md")}` that therefore could not fire -- dead code
+    reading as a deliberate exemption.
 
     This file is skipped of necessity: the guards below spell the banned phrases out.
     """
@@ -183,16 +184,23 @@ def _authored_prose(repo_root: Path):
     # The NEWEST notes: `## [Unreleased]` between releases, and the just-cut version
     # immediately after one. Keyed on "first section with content" rather than on the
     # literal `[Unreleased]`, because cutting a release empties that heading and moves
-    # the notes under a version number. Pinning the literal broke every guard here the
-    # moment 1.0 was cut, and an empty window cannot satisfy
-    # `test_every_page_publishes_the_current_clean_check`, which asserts it is
-    # non-empty. Older shipped sections stay out, which is the original point.
-    window_end = len(lines)
+    # the notes under a version number, which broke every guard here the moment 1.0
+    # was cut. Older shipped sections stay out, which is the original point.
+    window_end = None
     for index, start in enumerate(starts):
         section_end = starts[index + 1] if index + 1 < len(starts) else len(lines)
         if any(lines[j].strip() for j in range(start + 1, section_end)):
             window_end = section_end
             break
+    # Asserted, not defaulted. `window_end = len(lines)` as a fallback would scan
+    # every shipped release note -- the exact inverse of the intent above -- and do
+    # it silently. The paired test derives the window the same way and asserts here
+    # too, so a default would also make the two disagree in precisely the case this
+    # pair exists to keep in agreement.
+    assert window_end is not None, (
+        "every `## [...]` section in CHANGELOG.md is empty, so there are no newest "
+        "notes to scan"
+    )
     for number in range(starts[0], window_end):
         yield Path("CHANGELOG.md"), number + 1, lines[number]
 
@@ -605,7 +613,7 @@ class TestTheDocsAndTheEngineCannotDrift:
         for relative in _PAGES_PUBLISHING_THE_CLEAN_CHECK:
             page = repo_root / relative
             assert page.exists(), f"{relative} moved; update this list"
-            # `CHANGELOG.md` is read through the same `[Unreleased]`-only window as
+            # `CHANGELOG.md` is read through the same newest-notes window as
             # `_authored_prose`, not whole. Reading all of it forbade the retired
             # form anywhere in the file, including a future shipped note quoting it
             # as history -- which contradicts the policy that shipped notes record
@@ -617,12 +625,25 @@ class TestTheDocsAndTheEngineCannotDrift:
                     for path, _, line in _authored_prose(repo_root)
                     if path == Path("CHANGELOG.md")
                 )
+                # PRESENCE is not required here, unlike the doc pages. A release
+                # note publishes the snippet once and is then frozen, so the
+                # snippet leaves this window as soon as any entry is added after
+                # that release. Requiring it would fail on the first post-release
+                # PR -- which is what happened when 1.0 was cut and the window
+                # became the shipped `[1.0.0]` section.
+                #
+                # What must hold is the other two halves: if the newest notes DO
+                # publish it, it is the current form, and they never publish the
+                # retired form. Both still run below.
+                publishes = "clean = (" in text
             else:
                 text = page.read_text()
+                publishes = True
+                assert "clean = (" in text, f"{relative} no longer publishes the check"
 
-            assert "clean = (" in text, f"{relative} no longer publishes the check"
-            for line in expected_lines:
-                assert line in text, f"{relative} is missing: {line}"
+            if publishes:
+                for line in expected_lines:
+                    assert line in text, f"{relative} is missing: {line}"
 
             # The form that reported a hallucinated value as clean.
             assert superseded not in text, (
@@ -643,8 +664,8 @@ class TestTheDocsAndTheEngineCannotDrift:
         pages, it is published to the API reference through two docstrings, and every
         recurrence has been a fresh review finding. The fourth recurrence was in
         `CHANGELOG.md` under `## [Unreleased]`, which the walk did not reach, so
-        `_authored_prose` now scans that section; shipped release notes stay exempt
-        because they record what was said at the time.
+        `_authored_prose` now scans the changelog's newest notes; older shipped
+        release notes stay exempt because they record what was said at the time.
 
         This file is exempt of necessity, since `banned` below spells the phrases
         out. That exemption is doing real work rather than being a formality: the
@@ -698,8 +719,8 @@ class TestTheDocsAndTheEngineCannotDrift:
         window_end = None
         for index, start in enumerate(starts):
             section_end = starts[index + 1] if index + 1 < len(starts) else None
-            body = changelog[start : (section_end - 1) if section_end else len(changelog)]
-            if any(line.strip() for line in body):
+            body_end = (section_end - 1) if section_end else len(changelog)
+            if any(line.strip() for line in changelog[start:body_end]):
                 window_end = section_end
                 break
         assert window_end is not None, (

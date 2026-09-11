@@ -2319,7 +2319,8 @@ Initial public release: structured JSON comparison with configurable
 comparators, Hungarian-algorithm list matching, confusion-matrix metrics, and
 HTML reporting.
 
-[Unreleased]: https://github.com/awslabs/stickler/compare/v0.7.0...dev
+[Unreleased]: https://github.com/awslabs/stickler/compare/v1.0.0...dev
+[1.0.0]: https://github.com/awslabs/stickler/compare/v0.7.0...v1.0.0
 [0.7.0]: https://github.com/awslabs/stickler/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/awslabs/stickler/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/awslabs/stickler/compare/v0.4.0...v0.5.0

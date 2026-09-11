@@ -62,14 +62,28 @@ git push origin dev
 Also add a `## [X.Y.Z] - YYYY-MM-DD` section to `CHANGELOG.md` (move entries
 out of `[Unreleased]`) in the same commit.
 
-**Leave an empty `## [Unreleased]` heading above it.** Renaming the heading
-instead of adding a new one breaks the docs-drift guards in
-`tests/structured_object_evaluator/test_rollup_node_semantics.py`, which read the
-changelog's newest section and assert it is non-empty. Cutting 1.0 hit this: four
-tests failed on the rename alone. The walker now finds the newest section by
-content rather than by the literal heading, so both states work, but the empty
-`[Unreleased]` is still what Keep a Changelog expects and is where the next
-cycle's entries go.
+Three parts, and the last two are easy to miss:
+
+1. **Move the entries** out of `[Unreleased]` under the new `## [X.Y.Z]` heading.
+2. **Leave an empty `## [Unreleased]` heading above it**, for the next cycle.
+3. **Add the link definition** at the bottom of the file, and retarget
+   `[Unreleased]`:
+
+   ```
+   [Unreleased]: https://github.com/awslabs/stickler/compare/vX.Y.Z...dev
+   [X.Y.Z]: https://github.com/awslabs/stickler/compare/vPREV...vX.Y.Z
+   ```
+
+   Every version heading resolves through that block. Skip it and the new heading
+   renders on GitHub as literal bracketed text, uniquely among all releases, in
+   notes that are then permanent. Cutting 1.0 missed this step.
+
+The docs-drift guards in
+`tests/structured_object_evaluator/test_rollup_node_semantics.py` read the
+changelog's newest section, so step 2 matters to them: renaming `[Unreleased]`
+instead of adding a new one failed four of them outright when 1.0 was cut. The
+walker finds the newest section by content rather than by the literal heading, so
+it survives both states.
 
 Before opening the release PR, confirm the version really is what you think it
 is, by path and not just by string:
