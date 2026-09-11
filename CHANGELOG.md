@@ -292,6 +292,18 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **Scores change for mapping fields explicitly using `NormalizedComparator`.**
+  Both `compare` and `compare_with` now warn and count the pair as a false
+  discovery with score `0.0`, even for identical dictionaries. For example,
+  `Optional[Dict[str, Any]] = ComparableField(comparator=NormalizedComparator())`
+  with `{"k": "v", "n": 1}` on both sides previously scored `1.0`; it now scores
+  `0.0`. Reordering the prediction's keys previously scored `0.0` and still does,
+  but now warns. Use `ANLSStarComparator()` for structural comparison or
+  `ExactComparator()` for order-independent whole-mapping equality instead.
+  The refusal is unconditional, including when case, whitespace and punctuation
+  options disable those transforms. Scalar normalization is unchanged
+  ([#315](https://github.com/awslabs/stickler/issues/315)).
+
 - **Breaking:** a threshold set on a comparator now reaches the field that names
   it. `Comparator(threshold=...)` was accepted everywhere and read almost
   nowhere: the only functional reader outside ANLS\* is `binary_compare()`, which
@@ -993,9 +1005,10 @@ Each release links to full notes on the
   `handles_mappings` attribute, which no comparator outside this repo could carry,
   so a user who wrote a mapping comparator and asked for it by name had their
   score silently replaced with `0.0`. An explicit `comparator=` is consent by
-  definition. Only `LevenshteinComparator` (raises on a dict) and
+  definition. `LevenshteinComparator` (raises on a dict),
   `FuzzyComparator` (scores a changed value `0.944`, above a mere key reordering
-  at `0.667`) are refused, both on measured evidence. `handles_mappings` is
+  at `0.667`) and `NormalizedComparator` (depends on key order) are refused on
+  measured evidence. `handles_mappings` is
   removed entirely rather than documented, since nothing reads it now.
 
 - `List[Dict[...]]` is routed on the explicit path too, keyed on the element type.
@@ -1047,9 +1060,14 @@ Each release links to full notes on the
   no longer zeroed for trying. `ExactComparator` now canonicalises a mapping
   first, so identical content scores `1.0` regardless of key order; it previously
   used `str(dict)`, which made key order significant and returned `0.0` or `1.0`
-  depending only on how the JSON arrived. `LevenshteinComparator` and
-  `FuzzyComparator` stay excluded: the first raises on a dict, and the second
-  scores a changed value (`0.944`) higher than a mere reordering (`0.667`).
+  depending only on how the JSON arrived. `LevenshteinComparator`,
+  `FuzzyComparator` and `NormalizedComparator` stay excluded: the first raises
+  on a dict, the second scores a changed value (`0.944`) higher than a mere
+  reordering (`0.667`), and the third depends on key order. Canonicalization is
+  not a general fix for `NormalizedComparator`: with its default whitespace
+  and punctuation removal, canonical JSON for `{"a": "bc"}` and `{"ab": "c"}`
+  both normalize to `abc`, manufacturing an exact match between different
+  mappings.
 
 - The mapping substitution copies the field descriptor instead of mutating it.
   Pydantic does not clone the `json_schema_extra` closure, so one

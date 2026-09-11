@@ -28,14 +28,16 @@ if TYPE_CHECKING:
     )
 from stickler.comparators.structured import StructuredModelComparator
 
-# Comparators that must not be handed a mapping, by class name so an out-of-tree
-# comparator is never caught by it. Both entries are here on measured evidence:
-# Levenshtein raises, and Fuzzy ranks a changed value above a reordering.
+# Comparators that must not be handed a mapping, matched by exact class name.
+# Differently named external comparators are left alone, but this also misses
+# differently named subclasses of these comparators, even with inherited behavior.
+# Entries are here on measured evidence:
+# Levenshtein raises, Fuzzy misranks values, and Normalized depends on key order.
 #
 # Deliberately a denylist. An allowlist would silently zero any mapping-capable
 # comparator written outside this repo, since it could not know to opt in.
 _COMPARATORS_THAT_CANNOT_SCORE_MAPPINGS = frozenset(
-    {"LevenshteinComparator", "FuzzyComparator"}
+    {"LevenshteinComparator", "FuzzyComparator", "NormalizedComparator"}
 )
 
 
@@ -190,18 +192,23 @@ class ConfigurationHelper:
         by definition, and the gate was overriding it -- reproducing the very
         symptom of #297 for a different population.
 
-        The two refused comparators are refused on evidence, not by category:
+        The refused comparators are refused on evidence, not by category:
 
             LevenshteinComparator  raises TypeError on a dict
             FuzzyComparator        scores a CHANGED value (0.944) above a mere
                                    key reordering (0.667), so its ordering is
                                    not defensible as a metric
+            NormalizedComparator   flattens keys and values in insertion order,
+                                   so identical content can score 0.0
 
         Callers report a false discovery rather than raising: the shape of a value
         can be data-dependent, so raising ends a corpus run on document N after
         succeeding on N-1, and no test would catch it. The warning carries the
         same information without stopping.
         """
+        # Refusal is deliberately independent of instance options: even
+        # NormalizedComparator with its case/whitespace/punctuation transforms
+        # disabled is refused. Option-aware mapping support is a separate change.
         if comparator.__class__.__name__ not in _COMPARATORS_THAT_CANNOT_SCORE_MAPPINGS:
             return True
         if not warn:

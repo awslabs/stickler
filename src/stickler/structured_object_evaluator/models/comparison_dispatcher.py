@@ -243,9 +243,9 @@ class ComparisonDispatcher:
             if not ConfigurationHelper.can_compare_object_pair(
                 self.model.__class__, field_name, info.comparator, gt_val, pred_val
             ):
-                # Reachable via `Any` or a multi-arm union, where no annotation
-                # declared the field a mapping so nothing could install a
-                # structural comparator. Scored, warned, and not raised -- see
+                # Reachable via `Any` or a multi-arm union, or a mapping annotation
+                # (including Optional[Dict]) with an explicit comparator that
+                # prevents ANLS* substitution. Scored, warned, and not raised -- see
                 # ConfigurationHelper.can_score_object.
                 return self._not_comparable(weight)
             return self.field_comparator.compare_primitive_with_scores(
