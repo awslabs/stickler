@@ -21,8 +21,10 @@ if TYPE_CHECKING:
     )
 from stickler.comparators.structured import StructuredModelComparator
 
-# Comparators that must not be handed a mapping, by class name so an out-of-tree
-# comparator is never caught by it. Entries are here on measured evidence:
+# Comparators that must not be handed a mapping, matched by exact class name.
+# Differently named external comparators are left alone, but this also misses
+# differently named subclasses of these comparators, even with inherited behavior.
+# Entries are here on measured evidence:
 # Levenshtein raises, Fuzzy misranks values, and Normalized depends on key order.
 #
 # Deliberately a denylist. An allowlist would silently zero any mapping-capable
@@ -169,6 +171,9 @@ class ConfigurationHelper:
         succeeding on N-1, and no test would catch it. The warning carries the
         same information without stopping.
         """
+        # Refusal is deliberately independent of instance options: even
+        # NormalizedComparator with its case/whitespace/punctuation transforms
+        # disabled is refused. Option-aware mapping support is a separate change.
         if comparator.__class__.__name__ not in _COMPARATORS_THAT_CANNOT_SCORE_MAPPINGS:
             return True
         warn_once(

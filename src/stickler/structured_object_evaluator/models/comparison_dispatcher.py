@@ -229,9 +229,9 @@ class ComparisonDispatcher:
             if not ConfigurationHelper.can_score_mapping(
                 self.model.__class__, field_name, info.comparator
             ):
-                # Reachable via `Any` or a multi-arm union, where no annotation
-                # declared the field a mapping so nothing could install a
-                # structural comparator. Scored, warned, and not raised -- see
+                # Reachable via `Any` or a multi-arm union, or a mapping annotation
+                # (including Optional[Dict]) with an explicit comparator that
+                # prevents ANLS* substitution. Scored, warned, and not raised -- see
                 # ConfigurationHelper.can_score_mapping.
                 return {
                     "overall": {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0},
