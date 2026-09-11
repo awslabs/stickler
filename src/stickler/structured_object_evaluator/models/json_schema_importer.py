@@ -30,7 +30,8 @@ from pydantic import AnyUrl, BaseModel, TypeAdapter
 from pydantic.fields import FieldInfo
 
 from .comparable_field import ComparableField
-from .comparator_registry import create_comparator
+from .comparator_registry import create_comparator, normalize_comparator_config
+from .field_converter import AUTO_COMPARATOR
 from .model_factory import ModelFactory
 from .optional_annotation import is_union, unwrap_optional
 
@@ -90,6 +91,7 @@ _KNOWN_MODEL_EXTENSIONS = frozenset(
     {
         "x-aws-stickler-model-name",
         "x-aws-stickler-match-threshold",
+        "x-aws-stickler-infer-unspecified",
     }
 )
 
@@ -265,9 +267,43 @@ class JsonSchemaImporter:
     annotations so malformed predictions remain scoreable.
     """
 
-    def __init__(self, schema: Dict[str, Any], field_path: str = ""):
+    def __init__(
+        self,
+        schema: Dict[str, Any],
+        field_path: str = "",
+        *,
+        infer_unspecified: bool = False,
+    ):
         self.schema = schema
         self.field_path = field_path
+        # The object-level match threshold, which inference uses as the FIELD
+        # threshold for a mapping field (a dict declines to name its keys, so it
+        # is judged as an object). Re-read here rather than passed in because
+        # `_build_nested_model` swaps it per subtree, exactly like the flag below.
+        # Range and type are validated by the caller
+        # (`StructuredModel._from_json_schema_internal`, `_validate_model_config`);
+        # a value that got here unvalidated must not reach inference, so anything
+        # that is not a plain number falls back to the default.
+        declared_threshold = schema.get("x-aws-stickler-match-threshold", 0.7)
+        self.match_threshold = (
+            declared_threshold
+            if isinstance(declared_threshold, (int, float))
+            and not isinstance(declared_threshold, bool)
+            else 0.7
+        )
+        # Read from the ROOT object and inherited by every nested model, so one
+        # flag covers a whole document rather than being repeated at each level.
+        # A nested object may override it for its own subtree; see
+        # `_build_nested_model`. A per-field `"comparator": "auto"` is the way to
+        # be selective about a single scalar property.
+        declared = schema.get("x-aws-stickler-infer-unspecified", infer_unspecified)
+        if not isinstance(declared, bool):
+            raise ValueError(
+                "x-aws-stickler-infer-unspecified must be true or false"
+                + (f" at '{field_path}'" if field_path else "")
+                + f", got: {declared!r}"
+            )
+        self.infer_unspecified = declared
 
     def convert_properties_to_fields(
         self, properties: Dict[str, Any], required: List[str]
@@ -369,10 +405,31 @@ class JsonSchemaImporter:
             )
             final_type = Optional[nested] if nullable else nested
             extensions = self._extract_extensions(field_info, field_path)
+            if extensions.get("infer"):
+                raise self._auto_on_container_error(
+                    field_path,
+                    "an object",
+                    "recursive field-by-field comparison",
+                    "this object",
+                )
             comparison_field = self._make_comparison_field(
                 field_info,
                 comparator_name="LevenshteinComparator",
-                threshold=0.7,
+                # Read the declared threshold, like `weight` and
+                # `clip_under_threshold` beside it. The literal used to stand
+                # here unconditionally, so `x-aws-stickler-threshold` on an
+                # object-typed property was dropped in silence while the other
+                # two field-level keys on the SAME node were honoured.
+                #
+                # Not inert in this position, which is why carrying it is the
+                # right fix rather than rejecting it the way #312 rejects a
+                # misplaced key. A nested-model field's threshold gates the
+                # subtree mean: measured on a two-leaf child scoring 0.5, a
+                # threshold of 0.6 with clipping on reports 0.0. Set through a
+                # `StructuredModel` class it worked; set in a schema it did not,
+                # so the two configuration paths disagreed about what is
+                # configurable. See #317.
+                threshold=extensions.get("threshold", 0.7),
                 weight=extensions.get("weight", 1.0),
                 clip_under_threshold=extensions.get("clip_under_threshold", True),
             )
@@ -436,6 +493,12 @@ class JsonSchemaImporter:
                     field_path,
                     comparator_name=comparator_name,
                     threshold=threshold,
+                    # The ELEMENT type, because a primitive list is scored per
+                    # element. Passing nothing here left `List[number]` on the
+                    # shallow default with the flag on, while the config path
+                    # inferred the same shape -- one flag, two answers.
+                    annotation=element,
+                    element_of_list=True,
                 )
             return (Optional[final_list] if nullable else final_list), comparison_field
 
@@ -450,12 +513,37 @@ class JsonSchemaImporter:
             field_path,
             comparator_name=comparator_name,
             threshold=threshold,
+            annotation=annotation,
         )
         evaluation_annotation = self._evaluation_annotation(annotation)
         final_type = (
             Optional[evaluation_annotation] if nullable else evaluation_annotation
         )
         return final_type, comparison_field
+
+    @staticmethod
+    def _auto_on_container_error(
+        field_path: str, shape: str, how_it_is_scored: str, where_the_flag_goes: str
+    ) -> ValueError:
+        """The error for ``x-aws-stickler-comparator: "auto"`` on a container.
+
+        Inference chooses a comparator from a scalar's type and name. A container
+        has no comparator of its own -- it is scored structurally -- so there is
+        nothing to infer, and the key cannot be honoured at this position.
+
+        Raising rather than ignoring, because every other unusable value of this
+        key raises here: `"Nonsense"` on the same property is rejected by name.
+        Accepting `"auto"` and doing nothing turned that loud error into the silent
+        drop #210 and #312 exist to remove, through a value those checks consider
+        valid everywhere.
+        """
+        return ValueError(
+            f"x-aws-stickler-comparator '{AUTO_COMPARATOR}' cannot be applied to "
+            f"field '{field_path}': it is {shape}, scored by "
+            f"{how_it_is_scored}, so there is no comparator to infer. Set "
+            f"'x-aws-stickler-infer-unspecified': true on {where_the_flag_goes} to "
+            "infer the fields inside it instead."
+        )
 
     def _adapt_union_models(
         self,
@@ -497,13 +585,39 @@ class JsonSchemaImporter:
             model_extra = {}
         model_name = model_extra.get("x-aws-stickler-model-name", source_model.__name__)
         match_threshold = model_extra.get("x-aws-stickler-match-threshold", 0.7)
+        # A nested object may opt its own subtree in or out. Reading the key only
+        # at the root meant writing it on a nested object was accepted and then
+        # silently ignored -- the same silent-drop #210 and #312 exist to remove,
+        # reintroduced by a key those checks now consider valid everywhere.
+        nested_infer = model_extra.get(
+            "x-aws-stickler-infer-unspecified", self.infer_unspecified
+        )
+        if not isinstance(nested_infer, bool):
+            raise ValueError(
+                "x-aws-stickler-infer-unspecified must be true or false at "
+                f"'{field_path}', got: {nested_infer!r}"
+            )
         self._validate_model_config(model_name, match_threshold, field_path)
 
-        fields = self._convert_model_fields(
-            source_model,
-            field_path=field_path,
-            building=building,
-        )
+        # Restored in `finally`, because nested models are built through this same
+        # instance: leaving the nested value in place would leak it onto the
+        # OUTER object's remaining fields, so a sibling declared after a nested
+        # object would silently inherit that subtree's setting. `match_threshold`
+        # is swapped alongside it for the same reason: a mapping field inside this
+        # object is judged against THIS object's threshold.
+        outer_infer = self.infer_unspecified
+        outer_threshold = self.match_threshold
+        self.infer_unspecified = nested_infer
+        self.match_threshold = match_threshold
+        try:
+            fields = self._convert_model_fields(
+                source_model,
+                field_path=field_path,
+                building=building,
+            )
+        finally:
+            self.infer_unspecified = outer_infer
+            self.match_threshold = outer_threshold
         return ModelFactory.create_model_from_fields(
             model_name=model_name,
             field_definitions=fields,
@@ -519,6 +633,8 @@ class JsonSchemaImporter:
         comparator_name: str,
         threshold: Optional[float],
         ignore_threshold: bool = False,
+        annotation: Any = None,
+        element_of_list: bool = False,
     ) -> FieldInfo:
         extensions = self._extract_extensions(field_info, field_path)
         if ignore_threshold and "threshold" in extensions:
@@ -552,16 +668,93 @@ class JsonSchemaImporter:
                     f"property's 'items'; set it there if that is what you meant.",
                     UserWarning,
                 )
+
+        if annotation is None and extensions.get("infer"):
+            # A list of objects is matched element-wise by Hungarian matching, so
+            # there is no comparator for inference to choose. Raising rather than
+            # dropping: every other unusable value of this key already raises, and
+            # accepting `auto` here silently would leave the field on the shallow
+            # default while the schema says it was inferred.
+            raise self._auto_on_container_error(
+                field_path,
+                "an array of objects",
+                "Hungarian matching per element",
+                "its 'items' object",
+            )
+
+        # Inference fills only the parameters the schema left unnamed, so a
+        # property that states a threshold keeps it and still gets a comparator
+        # suited to its type. `annotation` is None on the container paths, which
+        # are not scalar fields and have nothing to infer from.
+        wants_inference = extensions.get("infer") or (
+            self.infer_unspecified
+            and extensions.get("comparator") is None
+            and annotation is not None
+        )
+        inferred = None
+        if wants_inference and annotation is not None:
+            from .field_converter import LIST_ELEMENT_PROVENANCE, _infer_spec
+
+            inferred = _infer_spec(
+                field_path.rsplit(".", 1)[-1] or "value",
+                annotation,
+                self.match_threshold,
+                # The array branch above already unwrapped one list level, so
+                # `_infer_spec` must not unwrap another. A NESTED array otherwise
+                # descended to the innermost scalar and handed the field's
+                # comparator a `list`, scoring an IDENTICAL
+                # `array<array<number>>` pair 0.0 where the flag-off default and
+                # `stickler.eval_for` both say 1.0.
+                already_element=bool(element_of_list),
+            )
+            # `_infer_spec` prepends this itself when it is handed a list
+            # annotation, but the array branch above passes the ELEMENT type, so it
+            # cannot see that this is a list. Without it, `explain()` reported an
+            # array field with a scalar-looking trail here while the config path
+            # and `stickler.evaluate()` both said "spec applies to each element".
+            # Exactly one insert: `already_element` suppresses the one inside, and
+            # the duplicated trail was the visible tell for the double unwrap.
+            if element_of_list:
+                inferred.provenance.insert(0, LIST_ELEMENT_PROVENANCE)
+
+        # MERGED over the inferred config, author's keys winning, matching the
+        # config path (`field_converter.convert_field_config`). Reading
+        # `x-aws-stickler-comparator-config` only in the branch that also names a
+        # comparator dropped it entirely for an inferred field, so
+        # `absolute_tolerance: 0.5` beside `"auto"` built rel=0.001/abs=0.0 while
+        # the identical Stickler config built abs=0.5.
+        author_config = normalize_comparator_config(
+            extensions.get("comparator_config"), f"field '{field_path}'"
+        )
         comparator = extensions.get("comparator")
+        if comparator is None and inferred is not None:
+            comparator = create_comparator(
+                inferred.comparator_name,
+                {**inferred.comparator_config, **author_config},
+            )
         if comparator is None:
-            comparator = create_comparator(comparator_name, {})
-        return self._make_comparison_field(
+            # No comparator named and nothing inferred: the config still belongs
+            # to the type default, as it does on the config path. Dropping it was
+            # the same silent drop one branch over.
+            comparator = create_comparator(comparator_name, author_config)
+
+        field = self._make_comparison_field(
             field_info,
             comparator=comparator,
-            threshold=extensions.get("threshold", threshold),
-            weight=extensions.get("weight", 1.0),
-            clip_under_threshold=extensions.get("clip_under_threshold", True),
+            threshold=extensions.get(
+                "threshold", inferred.threshold if inferred else threshold
+            ),
+            weight=extensions.get("weight", inferred.weight if inferred else 1.0),
+            clip_under_threshold=extensions.get(
+                "clip_under_threshold",
+                inferred.clip_under_threshold if inferred else True,
+            ),
         )
+        if inferred is not None and inferred.provenance:
+            extra_callable = field.json_schema_extra
+            if callable(extra_callable):
+                extra_callable._inferred_provenance = tuple(inferred.provenance)
+        return field
 
     @staticmethod
     def _make_comparison_field(
@@ -846,18 +1039,39 @@ class JsonSchemaImporter:
         _reject_unknown_extensions(extra, field_path, scope="field_or_model")
         extensions: Dict[str, Any] = {}
 
+        # Kept whether or not a comparator is named beside it. Reading it only in
+        # the branch that resolves a named comparator meant an inferred field's
+        # config was read into a local and thrown away, so the schema path and the
+        # Stickler-config path built different comparators from the same input.
+        # Normalised as it is read, so a non-mapping is named for what it is.
+        # Deferring the check to the merge below meant a bad CONFIG was reported as
+        # `Invalid x-aws-stickler-comparator 'NumericComparator'` -- blaming a
+        # perfectly valid comparator name, and telling the author to look at the
+        # wrong key.
+        comparator_config = normalize_comparator_config(
+            extra.get("x-aws-stickler-comparator-config"),
+            f"field '{field_path}' (as 'x-aws-stickler-comparator-config')",
+        )
+        if comparator_config:
+            extensions["comparator_config"] = comparator_config
+
         if "x-aws-stickler-comparator" in extra:
             comparator_name = extra["x-aws-stickler-comparator"]
-            comparator_config = extra.get("x-aws-stickler-comparator-config", {})
-            try:
-                extensions["comparator"] = create_comparator(
-                    comparator_name, comparator_config
-                )
-            except Exception as exc:
-                raise ValueError(
-                    f"Invalid x-aws-stickler-comparator '{comparator_name}' "
-                    f"in field '{field_path}': {exc}"
-                ) from exc
+            if comparator_name == AUTO_COMPARATOR:
+                # A request to infer this field, not a comparator name. Resolving
+                # it through the registry reported it as an unknown comparator and
+                # listed the built-ins.
+                extensions["infer"] = True
+            else:
+                try:
+                    extensions["comparator"] = create_comparator(
+                        comparator_name, comparator_config
+                    )
+                except Exception as exc:
+                    raise ValueError(
+                        f"Invalid x-aws-stickler-comparator '{comparator_name}' "
+                        f"in field '{field_path}': {exc}"
+                    ) from exc
 
         if "x-aws-stickler-threshold" in extra:
             threshold = extra["x-aws-stickler-threshold"]

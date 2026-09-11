@@ -6,10 +6,13 @@ enabling configuration-based comparator selection in model_from_json().
 
 import importlib
 import importlib.util
+import inspect
 import sys
-from typing import Any, Dict, List, Optional, Type
+from collections.abc import Mapping as abc_Mapping
+from typing import Any, Dict, List, Optional, Set, Tuple, Type
 
 from stickler.comparators.base import BaseComparator
+from stickler.utils.deprecation import warn_once
 
 
 class ComparatorRegistry:
@@ -183,16 +186,70 @@ class ComparatorRegistry:
         comparator_class = self.get(name)
         config = config or {}
 
+        # Drop only the keys this comparator cannot take, and say which.
+        #
+        # The previous behaviour was to try `comparator_class(**config)` and, on
+        # `TypeError`, retry `comparator_class()` -- discarding the WHOLE config in
+        # silence. Since `comparator_class(**{})` is already `comparator_class()`,
+        # that fallback could only ever fire when the caller DID supply keys, and
+        # it turned one bad key into a lost configuration and a wrong number:
+        #
+        #     comparator_config {"relative_tolerence": 0.001}   (note the typo)
+        #       built NumericComparator() with NO tolerance, discarding the
+        #       inferred {"relative_tolerance": 0.001} merged in beside it, so
+        #       1000.00 against 1000.001 scored 0.0 rather than 1.0
+        #
+        # Raising instead is not right either: `to_stickler_config()` exports the
+        # comparator's own config, so editing the exported `comparator` by hand --
+        # a documented workflow -- leaves the previous comparator's keys behind,
+        # and a hard failure there would reject a config stickler itself produced.
+        #
+        # Filtering keeps both honest. The valid keys are applied, the invalid ones
+        # are named, and nothing is dropped without being reported.
+        accepted, unknown = self._partition_config(comparator_class, config)
+        if unknown:
+            warn_once(
+                "comparator-config-unknown-keys",
+                f"{name}:{','.join(sorted(unknown))}",
+                f"{name} does not accept "
+                f"{', '.join(repr(k) for k in sorted(unknown))} in its "
+                f"comparator config; ignored. It accepts "
+                f"{', '.join(sorted(self._accepted_parameters(comparator_class)))}. "
+                f"A stale key is usually left over from editing an exported "
+                f"config's 'comparator' without clearing 'comparator_config'.",
+                category=UserWarning,
+            )
         try:
-            # Try to instantiate with config
-            return comparator_class(**config)
+            return comparator_class(**accepted)
         except TypeError as e:
-            # If config fails, try without config
-            try:
-                return comparator_class()
-            except TypeError:
-                # Re-raise original error with config
-                raise TypeError(f"Failed to create {name} with config {config}: {e}")
+            raise TypeError(f"Failed to create {name} with config {accepted}: {e}")
+
+    @staticmethod
+    def _accepted_parameters(comparator_class: Type[BaseComparator]) -> Set[str]:
+        """Keyword parameter names ``comparator_class.__init__`` will take.
+
+        ``**kwargs`` in the signature means "anything", reported as the sentinel
+        ``{"**kwargs"}`` so :meth:`_partition_config` can wave everything through
+        rather than guessing at an out-of-tree comparator's real parameter set.
+        """
+        try:
+            parameters = inspect.signature(comparator_class.__init__).parameters
+        except (TypeError, ValueError):  # pragma: no cover - exotic callables
+            return {"**kwargs"}
+        if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values()):
+            return {"**kwargs"}
+        return {name for name in parameters if name != "self"}
+
+    @classmethod
+    def _partition_config(
+        cls, comparator_class: Type[BaseComparator], config: Dict[str, Any]
+    ) -> Tuple[Dict[str, Any], Set[str]]:
+        """Split ``config`` into what this comparator takes and what it does not."""
+        accepted_names = cls._accepted_parameters(comparator_class)
+        if "**kwargs" in accepted_names:
+            return dict(config), set()
+        accepted = {k: v for k, v in config.items() if k in accepted_names}
+        return accepted, set(config) - accepted_names
 
     def list_available(self) -> List[str]:
         """List all available comparator names.
@@ -262,3 +319,53 @@ def create_comparator(
         Configured comparator instance
     """
     return _global_registry.create_instance(name, config)
+
+
+def normalize_comparator_config(value: Any, where: str) -> Dict[str, Any]:
+    """Validate an authored ``comparator_config`` and return it as a dict.
+
+    ``None`` and an absent key both mean "nothing supplied" and give ``{}``.
+    Anything that is not a mapping raises a ``ValueError`` naming ``where``.
+
+    Exists because the value is merged with ``{**inferred, **author}``, and that
+    unpack raises a bare ``TypeError: 'str' object is not a mapping`` with no field
+    in it. Only ``ValueError`` is wrapped with the field's name by
+    ``convert_fields_config``, so a mis-typed config in a hand-written JSON file --
+    the population this feature is for -- produced an unactionable traceback that
+    named neither the field nor the key.
+
+    Args:
+        value: Whatever the author put under ``comparator_config``.
+        where: Human-readable location, e.g. ``"field 'total'"``, quoted back in
+            the error so the author can find it.
+
+    Returns:
+        The config as a plain dict, empty when nothing was supplied.
+
+    Raises:
+        ValueError: If ``value`` is neither absent nor a mapping.
+    """
+    if value is None:
+        return {}
+    if isinstance(value, abc_Mapping):
+        non_string = sorted(
+            (repr(key) for key in value if not isinstance(key, str)),
+        )
+        if non_string:
+            # Checked here rather than left to the caller. A parameter name is
+            # passed as a keyword argument, so a non-string key cannot become one;
+            # and the unknown-key report below joins the names with `str.join`,
+            # which raised `TypeError: sequence item 0: expected str instance, int
+            # found` from inside the reporting code -- an error about the error,
+            # naming neither the field nor the offending key.
+            raise ValueError(
+                f"'comparator_config' on {where} has non-string parameter "
+                f"{'names' if len(non_string) > 1 else 'name'} "
+                f"{', '.join(non_string)}. Parameter names are passed as keyword "
+                f"arguments, so they must be strings."
+            )
+        return dict(value)
+    raise ValueError(
+        f"'comparator_config' on {where} must be a mapping of parameter names to "
+        f"values, got {type(value).__name__}: {value!r}"
+    )

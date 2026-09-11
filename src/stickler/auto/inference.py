@@ -65,6 +65,19 @@ _NEVER_AUTO = frozenset({"SemanticComparator", "BERTComparator", "LLMComparator"
 # the tolerance must live on the comparator instance.
 _FLOAT_RELATIVE_TOLERANCE = 0.001
 
+# Provenance prefixes for the two outcomes of a name-token match. They differ so
+# `InferredSpec.source` can tell "the name chose this comparator" from "the name
+# matched a rule that could not be used". Sharing one prefix made a refusal read
+# as a refinement in `explain()`, which is the opposite of what happened.
+#
+# `nosec B105`: bandit's hardcoded-password check keys on the VARIABLE name, and
+# these contain "TOKEN". The values are `explain()` provenance labels that get
+# prefixed onto a field name for human output -- no credential is involved, and
+# renaming them would cost the domain term ("name-token" heuristics) that the
+# rest of this module and the docs use.
+_NAME_TOKEN_APPLIED = "name-token:"  # nosec B105
+_NAME_TOKEN_REFUSED = "name-token-unused:"  # nosec B105
+
 
 @dataclass
 class InferredSpec:
@@ -85,14 +98,23 @@ class InferredSpec:
 
     @property
     def source(self) -> str:
-        """Coarse origin label for the final comparator decision."""
+        """Coarse origin label for the final comparator decision.
+
+        A name-token rule that MATCHED but was refused as incompatible with the
+        field's type did not drive the decision -- the type default did -- and is
+        recorded under `_NAME_TOKEN_REFUSED` rather than `_NAME_TOKEN_APPLIED` for
+        exactly that reason. Counting it made a `str` field named `issued_date`
+        report `name-token` while carrying the plain `LevenshteinComparator@0.7`
+        that its type alone produced, telling a reader the name had been honoured
+        in the one case where it was explicitly not.
+        """
         for entry in reversed(self.provenance):
             if entry.startswith("degrade"):
                 return "degrade"
         for entry in self.provenance:
             if entry.startswith("explicit"):
                 return "explicit"
-            if entry.startswith("name-token"):
+            if entry.startswith(_NAME_TOKEN_APPLIED):
                 return "name-token"
         return "type"
 
@@ -486,12 +508,13 @@ def infer_field_config(
                 rule.threshold,
             )
             provenance.append(
-                f"name-token:{field_name} -> {rule.comparator}@{rule.threshold}"
+                f"{_NAME_TOKEN_APPLIED}{field_name} -> "
+                f"{rule.comparator}@{rule.threshold}"
             )
             if weight_hints and rule.weight_hint != 1.0:
                 weight = rule.weight_hint
                 provenance.append(
-                    f"name-token:{field_name} -> weight {rule.weight_hint}"
+                    f"{_NAME_TOKEN_APPLIED}{field_name} -> weight {rule.weight_hint}"
                 )
             # Free-text fields keep partial credit rather than clipping to zero.
             if (
@@ -501,7 +524,7 @@ def infer_field_config(
                 clip = False
         else:
             provenance.append(
-                f"name-token:{field_name} matched {rule.comparator} but "
+                f"{_NAME_TOKEN_REFUSED}{field_name} matched {rule.comparator} but "
                 f"type {_annotation_label(annotation)} is incompatible; "
                 "keeping type default"
             )
