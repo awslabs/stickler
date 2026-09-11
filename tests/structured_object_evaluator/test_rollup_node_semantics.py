@@ -154,10 +154,11 @@ def _authored_prose(repo_root: Path):
 
     `src/**/*.py` and `docs/**/*.md` are the surfaces a reader sees, and
     `tests/**/*.py` because a worked example in a test is the next person's copy
-    source. `CHANGELOG.md` is included too, but only its `## [Unreleased]` section:
-    shipped release notes record what was said at the time and are not rewritten,
-    while the open section is authored by the same change as the docs and drifted
-    from them twice. The walk this replaces never reached the changelog at all, and
+    source. `CHANGELOG.md` is included too, but only its NEWEST notes: older shipped
+    release notes record what was said at the time and are not rewritten, while the
+    newest section is authored by the same change as the docs and drifted from them
+    twice. "Newest" is the first heading through the end of the first section with
+    content, not the literal `## [Unreleased]`, which a release empties. The walk this replaces never reached the changelog at all, and
     carried an `exempt = {Path("CHANGELOG.md")}` that therefore could not fire --
     dead code reading as a deliberate exemption.
 
@@ -177,20 +178,22 @@ def _authored_prose(repo_root: Path):
             yield relative, number, line
 
     lines = (repo_root / "CHANGELOG.md").read_text().splitlines()
-    start = next(
-        (i for i, line in enumerate(lines) if line.startswith("## [Unreleased]")),
-        None,
-    )
-    assert start is not None, "CHANGELOG.md has no `## [Unreleased]` heading to scan"
-    end = next(
-        (
-            i
-            for i, line in enumerate(lines[start + 1 :], start + 1)
-            if line.startswith("## [")
-        ),
-        len(lines),
-    )
-    for number in range(start, end):
+    starts = [i for i, line in enumerate(lines) if line.startswith("## [")]
+    assert starts, "CHANGELOG.md has no `## [...]` heading to scan"
+    # The NEWEST notes: `## [Unreleased]` between releases, and the just-cut version
+    # immediately after one. Keyed on "first section with content" rather than on the
+    # literal `[Unreleased]`, because cutting a release empties that heading and moves
+    # the notes under a version number. Pinning the literal broke every guard here the
+    # moment 1.0 was cut, and an empty window cannot satisfy
+    # `test_every_page_publishes_the_current_clean_check`, which asserts it is
+    # non-empty. Older shipped sections stay out, which is the original point.
+    window_end = len(lines)
+    for index, start in enumerate(starts):
+        section_end = starts[index + 1] if index + 1 < len(starts) else len(lines)
+        if any(lines[j].strip() for j in range(start + 1, section_end)):
+            window_end = section_end
+            break
+    for number in range(starts[0], window_end):
         yield Path("CHANGELOG.md"), number + 1, lines[number]
 
 
@@ -670,48 +673,43 @@ class TestTheDocsAndTheEngineCannotDrift:
             f"and in both docstrings published to the API reference: {offenders}"
         )
 
-    def test_the_changelog_unreleased_section_is_the_part_that_gets_scanned(self):
+    def test_only_the_newest_changelog_notes_are_scanned(self):
         """Both directions on the scanner, because the last exemption was dead code.
 
         `exempt = {Path("CHANGELOG.md")}` read as a policy and was unreachable: the
-        walk covered `src`, `docs` and `tests` only. So this asserts the open section
-        really is reached, and that a shipped one really is not.
+        walk covered `src`, `docs` and `tests` only. So this asserts the newest notes
+        really are reached, and that an older shipped release really is not.
+
+        Derives the window the same way `_authored_prose` does rather than pinning
+        the literal `## [Unreleased]`. A release empties that heading and moves the
+        notes under a version number, so the literal made this test and the walker
+        disagree exactly when a release was cut.
         """
         repo_root = Path(__file__).resolve().parents[2]
         scanned = {(path, number) for path, number, _ in _authored_prose(repo_root)}
         changelog = (repo_root / "CHANGELOG.md").read_text().splitlines()
-        # `startswith`, matching `_authored_prose`. Exact equality here meant the
-        # two disagreed the moment the heading gained a suffix (`## [Unreleased] -
-        # TBD`), and a bare `next()` then died with `StopIteration` rather than
-        # saying what was wrong.
-        unreleased = next(
-            (
-                i
-                for i, line in enumerate(changelog, start=1)
-                if line.startswith("## [Unreleased]")
-            ),
-            None,
-        )
-        assert unreleased is not None, (
-            "CHANGELOG.md has no `## [Unreleased]` heading; `_authored_prose` scans "
-            "that section, so this test and the walker must find it the same way"
-        )
-        shipped = next(
-            (
-                i
-                for i, line in enumerate(changelog, start=1)
-                if line.startswith("## [") and i > unreleased
-            ),
-            None,
-        )
-        assert shipped is not None, (
-            "CHANGELOG.md has no shipped release heading after `## [Unreleased]`, so "
-            "the not-scanned half of this test cannot be checked"
+        # `startswith`, matching `_authored_prose`. Exact equality meant the two
+        # disagreed the moment a heading gained a suffix (`## [Unreleased] - TBD`).
+        starts = [
+            i for i, line in enumerate(changelog, start=1) if line.startswith("## [")
+        ]
+        assert starts, "CHANGELOG.md has no `## [...]` heading for either side to find"
+
+        window_end = None
+        for index, start in enumerate(starts):
+            section_end = starts[index + 1] if index + 1 < len(starts) else None
+            body = changelog[start : (section_end - 1) if section_end else len(changelog)]
+            if any(line.strip() for line in body):
+                window_end = section_end
+                break
+        assert window_end is not None, (
+            "every `## [...]` section in CHANGELOG.md is empty, or the newest notes "
+            "run to end of file, so the not-scanned half cannot be checked"
         )
 
-        assert (Path("CHANGELOG.md"), unreleased) in scanned
-        assert (Path("CHANGELOG.md"), unreleased + 1) in scanned
-        assert (Path("CHANGELOG.md"), shipped) not in scanned
+        assert (Path("CHANGELOG.md"), starts[0]) in scanned
+        assert (Path("CHANGELOG.md"), window_end - 1) in scanned
+        assert (Path("CHANGELOG.md"), window_end) not in scanned
         assert (Path("CHANGELOG.md"), len(changelog)) not in scanned
 
     def test_no_file_states_the_retired_all_zero_fallback_mechanism(self):

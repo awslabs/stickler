@@ -62,6 +62,26 @@ git push origin dev
 Also add a `## [X.Y.Z] - YYYY-MM-DD` section to `CHANGELOG.md` (move entries
 out of `[Unreleased]`) in the same commit.
 
+**Leave an empty `## [Unreleased]` heading above it.** Renaming the heading
+instead of adding a new one breaks the docs-drift guards in
+`tests/structured_object_evaluator/test_rollup_node_semantics.py`, which read the
+changelog's newest section and assert it is non-empty. Cutting 1.0 hit this: four
+tests failed on the rename alone. The walker now finds the newest section by
+content rather than by the literal heading, so both states work, but the empty
+`[Unreleased]` is still what Keep a Changelog expects and is where the next
+cycle's entries go.
+
+Before opening the release PR, confirm the version really is what you think it
+is, by path and not just by string:
+
+```bash
+uv run python -c "import stickler, inspect; print(inspect.getfile(stickler), stickler.__version__)"
+uv lock --check
+```
+
+The path matters because a stale install elsewhere on the machine reports its own
+version quite happily. See [#342](https://github.com/awslabs/stickler/issues/342).
+
 ### What belongs in the changelog
 
 Entries are for changes a user can observe. A PR needs one when it changes

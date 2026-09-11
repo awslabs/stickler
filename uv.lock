@@ -4042,7 +4042,7 @@ wheels = [
 
 [[package]]
 name = "stickler-eval"
-version = "0.7.0"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "json-schema-to-pydantic" },
