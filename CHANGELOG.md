@@ -294,6 +294,43 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **Breaking: scores change for any model with fields absent on both sides.** A
+  field neither the ground truth nor the prediction populated no longer counts as
+  a match in the weighted average. `compare_field_raw` scores such a field `1.0`,
+  which is right for the question it answers -- nothing disagreed -- but folding
+  that into the mean paid out a match for evidence never observed, inflating every
+  score in proportion to how optional the schema is. Sparse real documents
+  inflated most.
+
+  A five-field optional model whose one populated field disagreed completely
+  scored `0.8`, and since `matched` is `overall_score >= match_threshold`, it
+  reported `matched=True` beside an F1 of `0.0`:
+
+  ```
+  before   overall_score 0.8   matched True    f1 0.0
+  after    overall_score 0.0   matched False   f1 0.0
+  ```
+
+  `StructuredModel.compare` already omitted these fields; the aggregation path in
+  `ComparisonEngine` did not, so the two readers returned different numbers for
+  the same pair (`0.8` vs `0.9` on a two-field model, `0.174` vs `0.8` on the
+  five-field one above). Because `compare` is the Hungarian cost function, list
+  pairing and per-item true-positive/false-discovery classification were decided
+  on a different number from the one reported next to them -- the divergence
+  [#301](https://github.com/awslabs/stickler/issues/301) closed everywhere except
+  here. Both readers now share one absence predicate and one reduction, so they
+  cannot drift apart again.
+
+  Unchanged on purpose: absent-on-both still counts as a **true negative** in the
+  confusion matrix, since "neither side had this" is a real observation; and
+  identical empty objects still score `1.0`
+  ([#233](https://github.com/awslabs/stickler/issues/233)).
+
+  Relatedly, a model whose weights sum to zero no longer scores `1.0`. That value
+  is correct when no field was compared at all, but fields compared at zero weight
+  were never examined and cannot vouch for a match -- and as the Hungarian cost,
+  `1.0` made every pairing in a list of such models free.
+
 - **Scores change for mapping fields explicitly using `NormalizedComparator`.**
   Both `compare` and `compare_with` now warn and count the pair as a false
   discovery with score `0.0`, even for identical dictionaries. For example,

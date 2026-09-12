@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 from stickler.structured_object_evaluator.models.bbox import MAPCalculator
 from stickler.utils.deprecation import warn_once
 
+from .comparison_helper import absent_on_both, resolve_weighted_mean
+
 if TYPE_CHECKING:
     from .confidence import ConfidenceMetric
     from .structured_model import StructuredModel
@@ -145,6 +147,7 @@ class ComparisonEngine:
         # Score percolation variables
         total_score = 0.0
         total_weight = 0.0
+        compared_fields = 0
 
         for field_name in self.model.__class__.model_fields:
             if field_name == "extra_fields":
@@ -158,15 +161,30 @@ class ComparisonEngine:
 
             result["fields"][field_name] = field_result
 
-            # Simple aggregation to overall metrics
+            # Simple aggregation to overall metrics. Absent-on-both fields DO
+            # belong here: "neither side had this" is a real observation and a
+            # true negative is the right way to record it.
             self._aggregate_to_overall(field_result, result["overall"])
 
-            # Score percolation - aggregate scores upward
+            # Score percolation - aggregate scores upward.
+            #
+            # Absent-on-both fields are omitted, because `compare_field_raw`
+            # scores them 1.0 and folding that into the weighted mean pays out a
+            # match for a field neither side populated -- inflating every score
+            # in proportion to how optional the schema is, and reporting
+            # `matched=True` on a pair whose only populated field disagrees.
+            # `StructuredModel.compare` omits them too, via the same predicate,
+            # so the score that pairs list items and the score reported beside
+            # it stay the same number (#301).
+            if absent_on_both(self.model, field_name, gt_val, pred_val):
+                continue
+
             if "similarity_score" in field_result and "weight" in field_result:
                 weight = field_result["weight"]
                 threshold_applied_score = field_result["threshold_applied_score"]
                 total_score += threshold_applied_score * weight
                 total_weight += weight
+                compared_fields += 1
 
         # CRITICAL FIX: Handle hallucinated fields (extra fields) as False Alarms
         extra_fields_fa = self._count_extra_fields_as_false_alarms(other)
@@ -174,8 +192,9 @@ class ComparisonEngine:
         result["overall"]["fp"] += extra_fields_fa
 
         # Calculate overall similarity score from percolated scores
-        if total_weight > 0:
-            result["overall"]["similarity_score"] = total_score / total_weight
+        result["overall"]["similarity_score"] = resolve_weighted_mean(
+            total_score, total_weight, compared_fields
+        )
 
         return result
 

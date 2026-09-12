@@ -4,13 +4,16 @@ This module provides utilities for comparing fields, lists, and nested structure
 within StructuredModel instances.
 """
 
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from stickler.comparators.base import BaseComparator
 
 from .hungarian_helper import HungarianHelper
 from .null_helper import NullHelper
 from .threshold_helper import ThresholdHelper
+
+if TYPE_CHECKING:
+    from .structured_model import StructuredModel
 
 
 class _ClassGatedComparator(BaseComparator):
@@ -166,6 +169,61 @@ def _maybe_absent(val: Any) -> bool:
     adding a case to either predicate without widening this one fails loudly.
     """
     return val is None or (isinstance(val, (str, list, dict)) and len(val) == 0)
+
+
+def absent_on_both(
+    model: "StructuredModel", field_name: str, self_value: Any, other_value: Any
+) -> bool:
+    """Whether ``field_name`` is absent on both sides under that field's own rule.
+
+    A true negative is absence of evidence, not evidence that two objects match,
+    so a field neither side populated is omitted from the weighted average
+    rather than paying out as ``1.0``. It still counts as a true negative in the
+    confusion matrix, which is the one place "neither side had this" is a real
+    observation.
+
+    Both score readers -- :meth:`StructuredModel.compare` and
+    ``ComparisonEngine.compare_recursive`` -- must ask this same question, or
+    the score used to pair list items disagrees with the score reported beside
+    it (#301). Sharing one predicate is what keeps them from drifting again.
+
+    ``_maybe_absent`` guards the annotation lookup rather than duplicating it,
+    for the reason spelled out in :meth:`ComparisonHelper.compare_field_raw`:
+    this runs once per field per pairwise comparison, which is every cell of a
+    Hungarian cost matrix.
+    """
+    if not (_maybe_absent(self_value) and _maybe_absent(other_value)):
+        return False
+    is_absent = (
+        NullHelper.is_effectively_null_for_lists
+        if model._is_list_field(field_name)
+        else NullHelper.is_effectively_null_for_primitives
+    )
+    return is_absent(self_value) and is_absent(other_value)
+
+
+def resolve_weighted_mean(
+    total_score: float, total_weight: float, compared_fields: int
+) -> float:
+    """Reduce percolated scores to one overall score.
+
+    ``total_weight`` reaches zero two different ways and they do not mean the
+    same thing:
+
+    * **Nothing was compared.** Every field was absent on both sides, so
+      nothing disagreed and identical empty objects stay a perfect match (#233).
+    * **Fields were compared at zero weight.** The caller declared the fields
+      irrelevant, not identical. Returning ``1.0`` here would make completely
+      different values a perfect match, and because
+      :meth:`StructuredModel.compare` is the Hungarian cost function it would
+      make every pairing in a list of such models free.
+
+    Both readers call this so the distinction cannot be made in one place and
+    missed in the other.
+    """
+    if total_weight > 0:
+        return total_score / total_weight
+    return 1.0 if compared_fields == 0 else 0.0
 
 
 class ComparisonHelper:

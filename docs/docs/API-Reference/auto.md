@@ -49,7 +49,7 @@ above:
 | `recall` | `float` | `cm_recall` |
 | `f1` | `float` | `cm_f1` |
 | `accuracy` | `float` | `cm_accuracy` |
-| `matched` | `bool` | `True` when every field met its threshold |
+| `matched` | `bool` | `True` when `overall_score` met the match threshold |
 | `confusion_matrix` | `dict` | The full confusion-matrix subtree |
 | `raw` | `dict` | The unmodified `compare_with()` result |
 
