@@ -161,7 +161,7 @@ def test_infer_comparator(field_name, annotation, expected):
         (datetime.datetime, "DateComparator", "type:datetime"),
         (str, "LevenshteinComparator", "type:str"),
         (Status, "ExactComparator", "type:"),
-        (dict, "ExactComparator", "type:"),
+        (dict, "ANLSStarComparator", "type:dict"),
     ],
 )
 def test_type_dispatch_table(annotation, expected, provenance_prefix):
@@ -256,3 +256,22 @@ def test_explain_has_provenance():
     spec = stickler.eval_for(Invoice).explain()
     assert spec["amount"]["why"]  # non-empty provenance trail
     assert spec["invoice_id"]["source"] == "name-token"
+
+
+def test_a_refused_name_token_is_not_reported_as_the_source():
+    """`source` names what drove the decision, not what merely matched.
+
+    A `str` field named `issued_date` matches the DateComparator rule, which is
+    then refused because a str cannot carry date semantics. The comparator that
+    ships is the plain type default, so `source` must say `type`. Reporting
+    `name-token` told a reader the name had been honoured in the one case where
+    it was explicitly not.
+    """
+
+    class Doc(BaseModel):
+        issued_date: str
+
+    row = stickler.eval_for(Doc).explain()["issued_date"]
+    assert (row["comparator"], row["threshold"]) == ("LevenshteinComparator", 0.7)
+    assert row["source"] == "type"
+    assert any("is incompatible" in entry for entry in row["why"])

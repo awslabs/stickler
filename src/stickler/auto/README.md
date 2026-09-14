@@ -81,7 +81,8 @@ call yields both `field_scores`/`overall_score` **and** precision/recall/f1/accu
    | nested `StructuredModel` | used as configured, never re-inferred | (its own) | (its own) |
    | `List[BaseModel]` | Hungarian object matching | (element `match_threshold`) | n/a |
    | `List[primitive]` | element comparator | element | yes |
-   | `dict` / `tuple` / `set` / `Any` / multi-arm unions | Exact over a canonical JSON string (sorted keys; sets also sort elements) | 1.0 | n/a (Exact is all-or-nothing) |
+   | `dict` / `Dict[...]` / `Mapping[...]` | **ANLS\*** over the mapping itself (structural, partial credit) | `match_threshold` | **no** (partial credit, same policy as a nested object) |
+   | `tuple` / `set` / `Any` / multi-arm unions | Exact over a canonical JSON string (sorted keys; sets also sort elements) | 1.0 | n/a (Exact is all-or-nothing) |
 
 2. **Name-token refinement**, gated on type compatibility (comparator/threshold
    on by default; **weight only when `weight_hints=True`**). Tokens are matched
@@ -130,13 +131,22 @@ Every decision is recorded in `InferredSpec.provenance` and surfaced by
 
 Instances are normalized before comparison: `date`/`datetime` become ISO
 strings and enums become their values, matching the wire types the inferred
-comparators expect. Fields whose JSON form is not a string scalar (`dict`,
-`tuple`, `set`, `Any`, multi-arm unions, `IntEnum`, int `Literal`, `Decimal`)
+comparators expect. Fields whose JSON form is not a string scalar (`tuple`,
+`set`, `Any`, multi-arm unions, `IntEnum`, int `Literal`, `Decimal`)
 canonicalize to a deterministic form (via `pydantic_core.to_jsonable_python`
 then sorted-key JSON), so key order, container spelling, and dump mode never
 affect scores. Both `model_dump()` (native `date`/`Decimal`/`set` objects) and
 `model_dump(mode="json")` (already-serialized) validate and score identically,
 so `Model.from_json(instance.model_dump())` is safe either way.
+
+`dict` is the exception, and deliberately so. It keeps its shape rather than
+being flattened to a string, because ANLS\* scores it structurally and cannot do
+that with a JSON blob. Keys and values are still normalized (so a
+`Dict[date, X]` compares equal between `model_dump()` and
+`model_dump(mode="json")`), but the mapping arrives at the comparator as a
+mapping. A dict field whose value is not a mapping in some document is not a
+validation error: it is left as-is and classified as a false discovery, so one
+odd document does not abort a corpus run.
 
 Nullability of a shadow field comes from the **source annotation**
 (`Optional[X]` / `X | None` / `Any`), not from required-ness: a required

@@ -201,34 +201,9 @@ def demonstrate_aggregate_feature():
     print("   ✅ Includes derived metrics (precision, recall, F1)")
 
 
-def demonstrate_deprecation_warning():
-    """Show the deprecation warning for legacy aggregate parameter."""
-
-    print("\n⚠️  DEPRECATION WARNING DEMO")
-    print("=" * 40)
-    print("The old aggregate=True parameter is now deprecated:")
-
-    import warnings
-
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-
-        # This will trigger a deprecation warning
-        ComparableField(aggregate=True, comparator=ExactComparator())
-
-        if w:
-            print(f"   Warning: {w[0].message}")
-            print(f"   Category: {w[0].category.__name__}")
-
-    print("   ✅ Use the new universal aggregate fields instead!")
-
-
 if __name__ == "__main__":
     # Run the main demonstration
     demonstrate_aggregate_feature()
-
-    # Show deprecation warning
-    demonstrate_deprecation_warning()
 
     print("\n🎉 DEMO COMPLETE!")
     print("The universal aggregate field feature provides automatic")

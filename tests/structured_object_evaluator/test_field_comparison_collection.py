@@ -95,6 +95,12 @@ class Invoice(StructuredModel):
         comparator=NumericComparator(absolute_tolerance=0.02), threshold=1.0, weight=2.0)
 
 
+class LineItemCollection(StructuredModel):
+    """Minimal wrapper for testing list-object threshold gating."""
+
+    line_items: List[LineItem] = ComparableField(weight=1.0)
+
+
 class PrimitiveListModel(StructuredModel):
     """Model with primitive list fields."""
     
@@ -314,8 +320,8 @@ class TestFieldComparisonCollection:
         # Should be matched with line_items[0] due to reordering
         assert widget_b_comp["actual_key"] == "line_items[0].product"
 
-    def test_list_field_comparisons_partial_matches(self):
-        """Test list field comparisons with partial matches and non-matches."""
+    def test_below_threshold_list_field_comparisons_are_atomic(self):
+        """Below-threshold list objects produce object-level comparisons."""
         invoice1 = Invoice(
             invoice_id="INV-001",
             customer=Person(
@@ -348,25 +354,40 @@ class TestFieldComparisonCollection:
         result = invoice1.compare_with(invoice2, document_field_comparisons=True)
         field_comparisons = result["field_comparisons"]
         
-        # Find list item comparisons
-        list_comparisons = [fc for fc in field_comparisons if fc["expected_key"].startswith("line_items[")]
-        
-        # Should have some matches and some non-matches
-        matches = [fc for fc in list_comparisons if fc["match"]]
-        non_matches = [fc for fc in list_comparisons if not fc["match"]]
-        
-        assert len(matches) > 0
-        assert len(non_matches) > 0
-        
-        # Check for partial product match
-        product_comparisons = [fc for fc in list_comparisons if fc["expected_key"].endswith(".product")]
-        widget_a_comparison = next((fc for fc in product_comparisons if fc["expected_value"] == "Widget A"), None)
-        
-        if widget_a_comparison:
-            # Should be matched with "Widget Alpha" and be a partial match
-            assert widget_a_comparison["actual_value"] == "Widget Alpha"
-            assert widget_a_comparison["match"] is False  # Should be below 0.8 threshold
-            assert widget_a_comparison["score"] == 0.0
+        list_comparisons = [
+            fc
+            for fc in field_comparisons
+            if fc["expected_key"].startswith("line_items[")
+        ]
+
+        assert len(list_comparisons) == 2
+        assert {fc["expected_key"] for fc in list_comparisons} == {
+            "line_items[0]",
+            "line_items[1]",
+        }
+        assert all(fc["match"] is False for fc in list_comparisons)
+        assert all(fc["score"] < LineItem.match_threshold for fc in list_comparisons)
+        assert all(isinstance(fc["expected_value"], dict) for fc in list_comparisons)
+
+    def test_lower_match_threshold_enables_list_leaf_comparisons(self, monkeypatch):
+        """Lowering the element PET exposes comparisons for that object pair."""
+        monkeypatch.setattr(LineItem, "match_threshold", 0.4)
+        gt = LineItemCollection(
+            line_items=[LineItem(product="Widget A", quantity=2, price=10.0)]
+        )
+        pred = LineItemCollection(
+            line_items=[LineItem(product="Widget Alpha", quantity=2, price=10.5)]
+        )
+
+        field_comparisons = gt.compare_with(
+            pred, document_field_comparisons=True
+        )["field_comparisons"]
+
+        assert {fc["expected_key"] for fc in field_comparisons} == {
+            "line_items[0].product",
+            "line_items[0].quantity",
+            "line_items[0].price",
+        }
 
     def test_primitive_list_field_comparisons(self):
         """Test field comparisons with primitive list fields."""

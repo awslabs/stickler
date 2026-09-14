@@ -17,30 +17,47 @@ class ANLSTree(abc.ABC):
     It provides functionality for calculating ANLS scores between tree nodes.
 
     Attributes:
-        THRESHOLD: ANLS threshold. 0.5 is a standard value.
+        THRESHOLD: Default ANLS threshold. 0.5 is the standard value from the
+            literature, kept as the default so ``anls_score`` is unchanged.
+            Prefer passing ``threshold=`` to :meth:`make_tree`, which sets it
+            per tree; see :attr:`threshold`.
         obj: The original object represented by this tree.
         tree: The tree structure representing the object.
+        threshold: The tau actually applied at each leaf of THIS tree.
         _comparator: The comparator used for string similarity.
     """
 
-    THRESHOLD = 0.5  # ANLS threshold. 0.5 is a standard value.
+    THRESHOLD = 0.5  # Default ANLS threshold. 0.5 is the standard value.
     obj: Any
     tree: Any
+    threshold: float
     _comparator: BaseComparator
 
-    def __init__(self, obj: Any, comparator: Optional[BaseComparator] = None):
+    def __init__(
+        self,
+        obj: Any,
+        comparator: Optional[BaseComparator] = None,
+        threshold: Optional[float] = None,
+    ):
         """Initialize the ANLSTree.
 
         Args:
             obj: The object represented by this tree.
             comparator: Optional comparator for string comparisons.
+            threshold: Tau, the per-leaf cutoff below which a leaf's similarity
+                is discarded as noise. Defaults to :attr:`THRESHOLD`.
         """
         self.obj = obj
         self._comparator = comparator or LevenshteinComparator()
+        self.threshold = self.THRESHOLD if threshold is None else threshold
 
     @staticmethod
     def make_tree(
-        obj: Any, *, is_gt: bool, comparator: Optional[BaseComparator] = None
+        obj: Any,
+        *,
+        is_gt: bool,
+        comparator: Optional[BaseComparator] = None,
+        threshold: Optional[float] = None,
     ) -> "ANLSTree":
         """Make an ANLS tree from a complex object.
 
@@ -50,6 +67,8 @@ class ANLSTree(abc.ABC):
                   to have multiple valid options via tuples. Predictions are not allowed
                   to have tuples.
             comparator: Optional comparator for string comparison.
+            threshold: Tau, applied at every leaf of the resulting tree.
+                Defaults to :attr:`THRESHOLD`.
 
         Returns:
             Parent node of the ANLS tree.
@@ -66,19 +85,30 @@ class ANLSTree(abc.ABC):
         from .tuple_tree import ANLSTuple
 
         if isinstance(obj, tuple):
-            return ANLSTuple(obj, is_gt=is_gt, comparator=comparator)
+            return ANLSTuple(
+                obj, is_gt=is_gt, comparator=comparator, threshold=threshold
+            )
         elif isinstance(obj, list):
-            return ANLSList(obj, is_gt=is_gt, comparator=comparator)
+            return ANLSList(
+                obj, is_gt=is_gt, comparator=comparator, threshold=threshold
+            )
         elif isinstance(obj, dict):
-            return ANLSDict(obj, is_gt=is_gt, comparator=comparator)
+            return ANLSDict(
+                obj, is_gt=is_gt, comparator=comparator, threshold=threshold
+            )
         elif obj is None:
-            return ANLSNone(comparator=comparator)
+            return ANLSNone(comparator=comparator, threshold=threshold)
         elif isinstance(obj, (str, float, int, bool)):
-            return ANLSLeaf(obj, comparator=comparator)
+            return ANLSLeaf(obj, comparator=comparator, threshold=threshold)
         else:
             # Handle StructuredModel objects by converting them to dictionaries
             if hasattr(obj, "model_dump") and callable(obj.model_dump):
-                return ANLSDict(obj.model_dump(), is_gt=is_gt, comparator=comparator)
+                return ANLSDict(
+                    obj.model_dump(),
+                    is_gt=is_gt,
+                    comparator=comparator,
+                    threshold=threshold,
+                )
             else:
                 raise ValueError(
                     f"Found unsupported type {type(obj)} for {obj} while creating ANLS tree"

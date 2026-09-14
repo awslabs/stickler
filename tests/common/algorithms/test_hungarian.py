@@ -42,11 +42,15 @@ class TestHungarianMatcher:
         list1 = ["apple", "banana", "cherry"]
         list2 = ["banana", "cherry", "date"]
 
-        # Test metrics calculation
+        # Equal lengths, so every item is paired and nothing is left over. The
+        # pair that scores below the threshold is a false discovery, not a
+        # missing item. See #231.
         metrics = self.matcher.calculate_metrics(list1, list2)
         assert metrics["tp"] == 2
         assert metrics["fp"] == 1
-        assert metrics["fn"] == 1
+        assert metrics["fd"] == 1
+        assert metrics["fn"] == 0
+        assert metrics["fa"] == 0
         assert metrics["precision"] == pytest.approx(2 / 3)
         assert metrics["recall"] == pytest.approx(2 / 3)
         assert metrics["f1"] == pytest.approx(2 / 3)
@@ -56,11 +60,14 @@ class TestHungarianMatcher:
         list1 = ["apple", "banana", "cherry"]
         list2 = ["date", "fig", "grape"]
 
-        # Test metrics calculation
+        # All three pairs score below the threshold, so all three are false
+        # discoveries. No item is without a partner. See #231.
         metrics = self.matcher.calculate_metrics(list1, list2)
         assert metrics["tp"] == 0
         assert metrics["fp"] == 3
-        assert metrics["fn"] == 3
+        assert metrics["fd"] == 3
+        assert metrics["fn"] == 0
+        assert metrics["fa"] == 0
         assert metrics["precision"] == 0.0
         assert metrics["recall"] == 0.0
         assert metrics["f1"] == 0.0
@@ -165,11 +172,14 @@ class TestHungarianMatcher:
         assert metrics["fp"] == 0
         assert metrics["fn"] == 0
 
-        # Non-matching single items
+        # Non matching single items. One value on each side, so the two are
+        # paired and the low score makes that pair a false discovery. See #231.
         metrics = self.matcher.calculate_metrics("apple", "banana")
         assert metrics["tp"] == 0
         assert metrics["fp"] == 1
-        assert metrics["fn"] == 1
+        assert metrics["fd"] == 1
+        assert metrics["fn"] == 0
+        assert metrics["fa"] == 0
 
     def test_string_list_parsing(self):
         """Test parsing of string representations of lists."""

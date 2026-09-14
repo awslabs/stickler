@@ -71,12 +71,14 @@ class SemanticComparator(BaseComparator):
         "cosine_similarity": lambda x, y: 1 - _cosine_distance(x, y)
     }
 
+    DEFAULT_THRESHOLD = 0.7
+
     def __init__(
         self,
         model_id: str = "amazon.titan-embed-text-v2:0",
         sim_function: str = "cosine_similarity",
         embedding_function: Optional[Callable] = None,
-        threshold: float = 0.7,
+        threshold: Optional[float] = None,
     ):
         """Initialize the SemanticComparator.
 

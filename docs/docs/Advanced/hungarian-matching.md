@@ -18,7 +18,7 @@ The algorithm has three phases:
 
 ### 1. Pairwise Similarity
 
-For each (GT[i], Pred[j]) pair, Stickler calls `GT[i].compare_with(Pred[j])` to obtain an overall similarity score. The result is an N x M cost matrix.
+For each (GT[i], Pred[j]) pair, Stickler calls `GT[i].compare(Pred[j])` to obtain a raw weighted similarity score. Fields absent on both sides are excluded because a true negative is not match evidence. If every field is absent, the score is `1.0`. The result is an N x M cost matrix.
 
 ### 2. Hungarian Assignment
 
@@ -41,6 +41,15 @@ changes the classification** -- a pair at similarity `0.0` is still an assigned
 pair and is therefore FD, not FN + FA. Only items with no partner at all
 become FN or FA. This holds identically for a one-item list and a hundred-item
 one; see `tests/common/algorithms/test_hungarian_path_parity.py`.
+
+`HungarianMatcher.calculate_metrics` returns these same four counts if you call
+it directly. Before
+[#231](https://github.com/awslabs/stickler/issues/231) it did not have an `fd`
+key and reported every low score pair in `fn` as well, which contradicted the
+rule above. `tests/common/algorithms/test_hungarian_fd_contract.py` now pins the
+agreement. Its `recall` key, however, follows the `recall_with_fd=True` row of
+the table below rather than the default, so do not recompute it from the `fn` in
+the same dict.
 
 ### FD and recall
 

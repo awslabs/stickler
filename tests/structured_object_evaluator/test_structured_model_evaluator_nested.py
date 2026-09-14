@@ -4,23 +4,10 @@ This test verifies that we can calculate precision, recall, F1, and accuracy met
 at the field level and object level for nested structures in the toy veterinary records models
 using the direct compare_with() method.
 
-IMPORTANT: This test uses the CORRECT expected values based on the actual behavior of the
-structured comparison system. The original test had incorrect expectations based on naive
-field-by-field counting, but the system actually performs sophisticated comparison logic:
-
-1. **Threshold-based matching**: Fields must meet similarity thresholds to be considered matches
-2. **Object-level similarity scoring**: Nested objects are evaluated as units, not just field sums
-3. **Weighted aggregation**: Different field types contribute differently to overall metrics
-4. **Complex nested structure handling**: Lists and nested objects have specialized comparison logic
-
-The expected values in this test (TP=5, FD=1, FA=1, FN=1, TN=3) represent the ACTUAL correct
-behavior of the system after proper threshold-based comparison and object-level aggregation.
-These values were verified through minimal test cases that confirmed the field-level metrics
-are captured correctly and the aggregation logic is working as designed.
-
-DO NOT change these expected values without understanding that the system is working correctly
-and any changes would need to be justified by actual bugs in the comparison logic, not by
-manual field counting that ignores thresholds and object-level similarity.
+The expectations follow threshold-gated evaluation: object pairs below
+``match_threshold`` are atomic false discoveries and produce no field-level
+breakdown. True negatives are excluded from the object similarity used for
+that gate.
 """
 
 from typing import List, Optional
@@ -317,97 +304,19 @@ class TestVetRecordsMetricsCalculation:
 
     def test_pets_list_of_structured_model(self):
         """Test that list fields like 'pets' are correctly matched based on nested objects."""
-
-        # Helper function to get metrics from unified structure
-        def get_metric(field_data, metric):
-            # Use "overall" key for individual field performance metrics if it exists
-            if "overall" in field_data:
-                return field_data["overall"][metric]
-            else:
-                # Fallback: metrics are directly at the field level
-                return field_data.get(metric, 0)
-
-        # Create VeterinaryRecord objects
         gold_record = VeterinaryRecord(**self.gold_record)
         pred_record = VeterinaryRecord(**self.pred_record)
 
-        # Use direct compare_with method instead of evaluator
         results = gold_record.compare_with(pred_record, include_confusion_matrix=True)
-
-        # Expected metrics
-        # 9 true positive: recordId, owner.id, owner.name, pets[0].petId, pets[0].name, pets[0].species, pets[0].breed, pets[1].petId, pets[1].name
-        # 3 true negative: pets[1].breed, pets[1].birthdate, pets[1].weight
-        # 2 false discovery: owner.contact.phone, pets[0].birthdate
-        # 2 false alarm: owner.contact.email, pets[0].weight
-        # 1 false negative: pets[1].species
-
-        # Confusion matrix metrics
         cm = results["confusion_matrix"]
 
-        # Direct access to metrics for pet fields (not in "overall")
-        assert (
-            get_metric(cm["fields"]["pets"]["fields"]["petId"], "tp") == 1
-        ), "Expected 1 true positives"
-        assert (
-            get_metric(cm["fields"]["pets"]["fields"]["petId"], "fd") == 0
-        ), "Expected 0 false discovery"
-        assert (
-            get_metric(cm["fields"]["pets"]["fields"]["petId"], "fa") == 0
-        ), "Expected 0 false alarm"
-        assert (
-            get_metric(cm["fields"]["pets"]["fields"]["petId"], "fn") == 0
-        ), "Expected 0 false negatives"
-        assert (
-            get_metric(cm["fields"]["pets"]["fields"]["petId"], "tn") == 0
-        ), "Expected 0 true negatives"
-
-        assert (
-            get_metric(cm["fields"]["pets"]["fields"]["name"], "tp") == 1
-        ), "Expected 1 true positives"
-        assert (
-            get_metric(cm["fields"]["pets"]["fields"]["name"], "fd") == 0
-        ), "Expected 0 false discovery"
-        assert (
-            get_metric(cm["fields"]["pets"]["fields"]["name"], "fa") == 0
-        ), "Expected 0 false alarm"
-        assert (
-            get_metric(cm["fields"]["pets"]["fields"]["name"], "fn") == 0
-        ), "Expected 0 false negatives"
-        assert (
-            get_metric(cm["fields"]["pets"]["fields"]["name"], "tn") == 0
-        ), "Expected 0 true negatives"
-
-        # Species metrics - Debug showed TP=0, not 1 as expected
-        assert (
-            get_metric(cm["fields"]["pets"]["fields"]["species"], "tp") == 0
-        ), "Expected 0 true positives"
-        assert (
-            get_metric(cm["fields"]["pets"]["fields"]["species"], "fd") == 0
-        ), "Expected 0 false discovery"
-        assert (
-            get_metric(cm["fields"]["pets"]["fields"]["species"], "fa") == 0
-        ), "Expected 0 false alarm"
-        assert (
-            get_metric(cm["fields"]["pets"]["fields"]["species"], "fn") == 1
-        ), "Expected 1 false negatives"
-        assert (
-            get_metric(cm["fields"]["pets"]["fields"]["species"], "tn") == 0
-        ), "Expected 0 true negatives"
-
-        # Overall pets metrics - Using "overall" key for individual pets field performance
-        assert (
-            get_metric(cm["fields"]["pets"], "tp") == 1
-        ), "Expected 1 true positive for pets field overall performance"
-        assert (
-            get_metric(cm["fields"]["pets"], "fd") == 1
-        ), "Expected 1 false discovery for pets field overall performance"
-        assert get_metric(cm["fields"]["pets"], "fa") == 0, "Expected 0 false alarm"
-        assert (
-            get_metric(cm["fields"]["pets"], "fn") == 0
-        ), "Expected 0 false negative for pets field overall performance"
-        assert (
-            get_metric(cm["fields"]["pets"], "tn") == 0
-        ), "Expected 0 true negatives for pets field overall performance"
+        assert gold_record.pets[0].compare(pred_record.pets[0]) == pytest.approx(2 / 3)
+        assert gold_record.pets[1].compare(pred_record.pets[1]) == pytest.approx(2 / 3)
+        assert cm["fields"]["pets"]["overall"]["tp"] == 0
+        assert cm["fields"]["pets"]["overall"]["fd"] == 2
+        assert cm["fields"]["pets"]["overall"]["fa"] == 0
+        assert cm["fields"]["pets"]["overall"]["fn"] == 0
+        assert cm["fields"]["pets"]["fields"] == {}
 
     def test_overall_metrics(self):
         """Test correct aggregation and calculation of overall metrics."""
@@ -418,121 +327,31 @@ class TestVetRecordsMetricsCalculation:
         # Use direct compare_with method instead of evaluator
         results = gold_record.compare_with(pred_record, include_confusion_matrix=True)
 
-        # Expected metrics WITH OBJECT-LEVEL COUNTING
-        # With object-level counting:
-        # - recordId: 1 TP (simple field match)
-        # - owner: 0 TP (owner object similarity below threshold due to contact differences)
-        # - pets[1]: 1 TP (object-level match for second pet)
-        # - pets[0]: 0 TP (object similarity below threshold due to birthdate difference)
-        # 2 true positive: recordId, pets[1] (object-level matches)
-        # 0 true negative: (no null vs null cases in this test)
-        # 2 false discovery: owner (object below threshold), pets[0] (object below threshold)
-        # 0 false alarm: (nested field-level FAs don't aggregate to overall level)
-        # 0 false negative: (no unmatched ground truth)
-
-        # Confusion matrix metrics
         cm = results["confusion_matrix"]
 
-        assert (
-            cm["overall"]["tp"] == 2
-        ), "Expected 2 true positives (object-level counting)"
-        assert cm["overall"]["tn"] == 0, "Expected 0 true negatives"
-        assert cm["overall"]["fd"] == 2, "Expected 2 false discovery"
-        assert (
-            cm["overall"]["fa"] == 0
-        ), "Expected 0 false alarm (nested field FAs don't aggregate to overall)"
-        assert (
-            cm["overall"]["fp"] == 2
-        ), "Expected 2 false positive"  # false discovery only
-        assert cm["overall"]["fn"] == 0, "Expected 0 false negative"
+        # recordId is TP; owner and both pet pairs are atomic FDs.
+        assert cm["overall"]["tp"] == 1
+        assert cm["overall"]["tn"] == 0
+        assert cm["overall"]["fd"] == 3
+        assert cm["overall"]["fa"] == 0
+        assert cm["overall"]["fp"] == 3
+        assert cm["overall"]["fn"] == 0
 
-        # Check aggregate metrics from confusion_matrix.aggregate.derived
-        # CORRECT VALUES based on actual system behavior: TP=5, FD=1, FA=1, FN=1, TN=3
-        # These values reflect the sophisticated comparison logic including:
-        # - Threshold-based matching (not just exact field equality)
-        # - Object-level similarity scoring for nested structures
-        # - Proper aggregation across complex nested hierarchies
-        # Precision = TP/(TP+FD+FA) = 5/(5+1+1) = 5/7 = 0.714
-        # Recall = TP/(TP+FN) = 5/(5+1) = 5/6 = 0.833
-        # F1 = 2*precision*recall/(precision+recall) = 2*0.714*0.833/(0.714+0.833) = 0.769
+        # Aggregate: TP=3, FD=3, FA=1, FN=0, TN=0.
         derived_metrics = cm["aggregate"]["derived"]
-        assert derived_metrics["cm_precision"] == pytest.approx(0.714, abs=0.001)
-        assert derived_metrics["cm_recall"] == pytest.approx(0.833, abs=0.001)
-        assert derived_metrics["cm_f1"] == pytest.approx(0.769, abs=0.001)
-
-        # ============================================================================
-        # Test with alternative recall formula (recall_with_fd=True)
-        # ============================================================================
-        # IMPORTANT: This test verifies that recall_with_fd=True correctly includes
-        # False Discoveries (FD) in the recall denominator.
-        #
-        # BACKGROUND:
-        # -----------
-        # The original test incorrectly expected both recall modes to return 0.833.
-        # This was mathematically impossible because this test case has FD=1.
-        #
-        # The two recall formulas are fundamentally different:
-        #   1. Traditional recall (recall_with_fd=False): TP / (TP + FN)
-        #   2. Alternative recall (recall_with_fd=True):  TP / (TP + FN + FD)
-        #
-        # When FD > 0, these formulas CANNOT return the same value.
-        #
-        # MATHEMATICAL PROOF:
-        # -------------------
-        # Given aggregate metrics: TP=5, FD=1, FA=1, FN=1, TN=3
-        #
-        # Traditional recall:
-        #   TP / (TP + FN) = 5 / (5 + 1) = 5/6 = 0.8333...
-        #
-        # Alternative recall (with FD):
-        #   TP / (TP + FN + FD) = 5 / (5 + 1 + 1) = 5/7 = 0.7142857...
-        #
-        # These are clearly different: 0.833 ≠ 0.714
-        #
-        # WHY THE CHANGE:
-        # ---------------
-        # The original test expected 0.833 for recall_with_fd=True, which would mean
-        # FD was NOT being included in the denominator. This was incorrect.
-        #
-        # The correct expectation is 0.714, which proves that FD IS being included
-        # in the denominator as intended by the recall_with_fd parameter.
-        #
-        # F1 SCORE IMPACT:
-        # ----------------
-        # Since F1 = 2 * (Precision * Recall) / (Precision + Recall), changing
-        # recall from 0.833 to 0.714 also changes F1:
-        #
-        # With traditional recall (0.833):
-        #   F1 = 2 * (0.714 * 0.833) / (0.714 + 0.833) = 0.769
-        #
-        # With alternative recall (0.714):
-        #   F1 = 2 * (0.714 * 0.714) / (0.714 + 0.714) = 0.714
-        #
-        # VERIFICATION:
-        # -------------
-        # You can verify this is correct by checking that:
-        #   cm["aggregate"]["tp"] = 5
-        #   cm["aggregate"]["fn"] = 1
-        #   cm["aggregate"]["fd"] = 1
-        #   5 / (5 + 1 + 1) = 0.7142857... ✓
-        # ============================================================================
+        assert derived_metrics["cm_precision"] == pytest.approx(3 / 7)
+        assert derived_metrics["cm_recall"] == 1.0
+        assert derived_metrics["cm_f1"] == pytest.approx(0.6)
 
         results_alt = gold_record.compare_with(
             pred_record, include_confusion_matrix=True, recall_with_fd=True
         )
         derived_metrics_alt = results_alt["confusion_matrix"]["aggregate"]["derived"]
 
-        # Verify the aggregate metrics are what we expect
         cm_alt = results_alt["confusion_matrix"]
-        assert cm_alt["aggregate"]["tp"] == 5, "Sanity check: TP should be 5"
-        assert cm_alt["aggregate"]["fn"] == 1, "Sanity check: FN should be 1"
-        assert cm_alt["aggregate"]["fd"] == 1, "Sanity check: FD should be 1"
-
-        # Now verify the derived metrics with FD included in recall denominator
-        assert derived_metrics_alt["cm_precision"] == pytest.approx(0.714, abs=0.001)
-        assert (
-            derived_metrics_alt["cm_recall"] == pytest.approx(0.714, abs=0.001)
-        ), "Recall with FD should be TP/(TP+FN+FD) = 5/(5+1+1) = 0.714, not 0.833"
-        assert (
-            derived_metrics_alt["cm_f1"] == pytest.approx(0.714, abs=0.001)
-        ), "F1 changes because recall changed from 0.833 to 0.714"
+        assert cm_alt["aggregate"]["tp"] == 3
+        assert cm_alt["aggregate"]["fn"] == 0
+        assert cm_alt["aggregate"]["fd"] == 3
+        assert derived_metrics_alt["cm_precision"] == pytest.approx(3 / 7)
+        assert derived_metrics_alt["cm_recall"] == pytest.approx(0.5)
+        assert derived_metrics_alt["cm_f1"] == pytest.approx(6 / 13)

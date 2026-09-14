@@ -266,35 +266,27 @@ class TestBooleanExtensionValidation:
         with pytest.raises(ValueError, match="x-aws-stickler-clip-under-threshold must be a boolean"):
             StructuredModel.from_json_schema(schema)
 
-    def test_aggregate_non_boolean_raises_error(self):
-        """Test that non-boolean aggregate raises ValueError."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "x-aws-stickler-aggregate": "false"
-                }
-            }
-        }
-        
-        with pytest.raises(ValueError, match="x-aws-stickler-aggregate must be a boolean"):
-            StructuredModel.from_json_schema(schema)
+    def test_aggregate_extension_is_ignored_on_import(self):
+        """The removed x-aws-stickler-aggregate key is accepted but ignored.
 
-    def test_aggregate_integer_raises_error(self):
-        """Test that integer aggregate raises ValueError."""
+        Old schema files may still carry it; importing them must not raise and
+        the key must have no effect (issue #226). Even a non-boolean value is
+        ignored, since the key is no longer read at all.
+        """
         schema = {
             "type": "object",
             "properties": {
                 "name": {
                     "type": "string",
-                    "x-aws-stickler-aggregate": 0
+                    "x-aws-stickler-aggregate": "not-a-bool"
                 }
             }
         }
-        
-        with pytest.raises(ValueError, match="x-aws-stickler-aggregate must be a boolean"):
-            StructuredModel.from_json_schema(schema)
+
+        model_cls = StructuredModel.from_json_schema(schema)
+        # Imports without error; the ignored key does not surface in the config.
+        field_config = model_cls.to_stickler_config()["fields"]["name"]
+        assert "aggregate" not in field_config
 
     def test_boolean_true_is_valid(self):
         """Test that boolean True is valid."""
@@ -303,8 +295,7 @@ class TestBooleanExtensionValidation:
             "properties": {
                 "name": {
                     "type": "string",
-                    "x-aws-stickler-clip-under-threshold": True,
-                    "x-aws-stickler-aggregate": True
+                    "x-aws-stickler-clip-under-threshold": True
                 }
             }
         }
@@ -320,8 +311,7 @@ class TestBooleanExtensionValidation:
             "properties": {
                 "name": {
                     "type": "string",
-                    "x-aws-stickler-clip-under-threshold": False,
-                    "x-aws-stickler-aggregate": False
+                    "x-aws-stickler-clip-under-threshold": False
                 }
             }
         }
@@ -632,7 +622,7 @@ class TestErrorMessageQuality:
             "properties": {
                 "name": {
                     "type": "string",
-                    "x-aws-stickler-aggregate": "yes"
+                    "x-aws-stickler-clip-under-threshold": "yes"
                 }
             }
         }

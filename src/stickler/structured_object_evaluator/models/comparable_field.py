@@ -4,46 +4,63 @@ This module provides the ComparableField function for creating fields in structu
 with comparison configuration parameters.
 """
 
-import warnings
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 from pydantic import Field
 
 from stickler.comparators.base import BaseComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 
+# The threshold a field gets when it names neither a threshold nor a comparator
+# threshold. Kept as a named constant rather than a literal because it is a
+# placeholder: the contract says an unspecified field is inferred from its type
+# and name, and this value stands in until inference owns that path (#239). It is
+# not a meaningful default, it is the historical one.
+_LEGACY_DEFAULT_THRESHOLD = 0.5
 
-class _Unset:
-    """Sentinel distinguishing "argument omitted" from "argument passed".
 
-    Needed because ``aggregate=False`` is both the historical default and a
-    value a user may pass explicitly. Only the explicit case should warn.
+def _named_comparator_threshold(comparator: BaseComparator) -> Optional[float]:
+    """Return the comparator's threshold if the caller named one, else ``None``.
 
-    Detection is by identity (``is not _UNSET``). That is sound within one
-    import namespace; a codebase importing stickler under two names (say
-    ``stickler.x`` and ``src.stickler.x``) creates two distinct sentinels, and
-    handing one namespace's to the other would read as an explicit argument.
-    Harmless -- the result is a spurious deprecation warning about a parameter
-    that is going away regardless.
+    A field with no threshold of its own adopts one the caller put on the
+    comparator, because ``LevenshteinComparator(threshold=0.9)`` is a clear
+    statement of intent that was previously discarded in silence.
+
+    It deliberately does NOT adopt a comparator's *default* threshold. Those
+    defaults were only ever read by ``binary_compare()``, never as verdict
+    thresholds, so they have not been audited as such and several are wrong for
+    the job: ``DateComparator`` defaults to ``1.0`` while awarding partial credit
+    of ``0.7`` for a year-less match, so adopting it would clip that feature to
+    zero. Auditing every comparator's default is separate work (#246).
+
+    The distinction comes from :attr:`BaseComparator.threshold_was_set`, recorded
+    at construction. It cannot be recovered here: every comparator resolves its
+    own default before calling ``super().__init__``, so ``DateComparator()`` and
+    ``DateComparator(threshold=1.0)`` both arrive holding ``1.0``, and comparing
+    against the signature default reads both as unset. That is why
+    ``BaseComparator.__init__`` takes ``Optional[float] = None``.
+
+    ``getattr`` with a default rather than a bare attribute read: a comparator
+    that never chains to ``BaseComparator.__init__`` has no such attribute, and
+    the safe reading of "cannot tell" is "not set".
+
+    Named for what it RETURNS -- the threshold, or None -- not as a predicate.
+    A boolean-sounding name invites `if _named_comparator_threshold(c):`, which
+    silently drops a deliberate `0.0`; this codebase treats that value as
+    meaningful enough to carry its own warning. Both callers test `is not None`.
     """
-
-    def __bool__(self) -> bool:  # pragma: no cover - defensive
-        return False
-
-    def __repr__(self) -> str:  # pragma: no cover - defensive
-        return "<unset>"
-
-
-_UNSET = _Unset()
+    if not getattr(comparator, "threshold_was_set", False):
+        return None
+    return getattr(comparator, "threshold", None)
 
 
 def ComparableField(
     comparator: Optional[BaseComparator] = None,
-    threshold: float = 0.5,
+    threshold: Optional[float] = None,
     weight: float = 1.0,
     default: Any = None,
-    aggregate: Union[bool, _Unset] = _UNSET,
-    clip_under_threshold: bool = True,
+    *,
+    clip_under_threshold: Optional[bool] = None,
     # Pydantic Field parameters (all optional, just like Field)
     alias: Optional[str] = None,
     description: Optional[str] = None,
@@ -57,17 +74,28 @@ def ComparableField(
 
     Args:
         comparator: Comparator to use for field comparison (default: LevenshteinComparator)
-        threshold: Minimum similarity score to consider a match (default: 0.5)
+        threshold: Minimum similarity score to consider a match. ``None`` means
+                  "not specified", in which case a threshold the caller set on
+                  the comparator applies, since a threshold is only meaningful
+                  next to the metric that produced the score. Otherwise 0.5
+                  stands in until inference owns that case (#239)::
+
+                      ComparableField(comparator=ExactComparator(threshold=0.9))
+                      # 0.9, taken from the comparator
+
+                      ComparableField(comparator=ExactComparator(), threshold=0.8)
+                      # 0.8, stated on the field, which always wins
+
+                      ComparableField(comparator=ExactComparator())
+                      # 0.5. A comparator's *default* threshold is not adopted;
+                      # see _named_comparator_threshold for why.
         weight: Weight of this field in overall score calculation (default: 1.0)
         default: Default value for the field (default: None)
-        aggregate: DEPRECATED, has no effect, and will be removed in 0.8.0.
-                  Passing it at all (either value) emits a DeprecationWarning.
-                  Aggregation is applied at the comparison layer: every node in
-                  compare_with() output already carries an 'aggregate' block
-                  summing the primitive field metrics below it. Remove the
-                  argument; there is no replacement to adopt.
-                  See https://github.com/awslabs/stickler/issues/226
-        clip_under_threshold: Whether to zero out scores below threshold (default: True)
+        clip_under_threshold: Whether to zero out scores below threshold
+                  (effective default: True). ``None`` means "not specified",
+                  which lets a dict-annotated field default it to False so
+                  partial credit survives, while an explicit True or False is
+                  always honoured. See StructuredModel.__init_subclass__.
         alias: Pydantic field alias for serialization (default: None)
         description: Field description for documentation (default: None)
         examples: Example values for the field (default: None)
@@ -89,28 +117,46 @@ def ComparableField(
                 examples=["user@example.com"]
             )
     """
-    # Warn on ANY explicit use, not just aggregate=True. Passing False was
-    # silent before, so those callers had no signal that the parameter is going
-    # away; they would have met a bare TypeError on upgrade. The value itself
-    # has no effect either way: aggregation is applied at the comparison layer
-    # and every node in compare_with() output carries an `aggregate` block.
-    if aggregate is not _UNSET:
-        warnings.warn(
-            "The 'aggregate' parameter in ComparableField is deprecated, has no "
-            "effect, and will be removed in 0.8.0. All nodes automatically "
-            "include an 'aggregate' field in the compare_with() output that "
-            "sums primitive field metrics below that node. Remove the argument; "
-            "no replacement is needed. See "
-            "https://github.com/awslabs/stickler/issues/226",
-            DeprecationWarning,
-            stacklevel=2,
+
+    if "aggregate" in field_kwargs:
+        raise TypeError(
+            "The 'aggregate' parameter was removed in 1.0; it had no effect. "
+            "Aggregation is computed automatically for every node in compare_with() "
+            "output. Remove the argument. "
+            "See https://github.com/awslabs/stickler/issues/226"
         )
-        aggregate = bool(aggregate)
-    else:
-        aggregate = False
 
     # Create the actual comparator instance
     actual_comparator = comparator or LevenshteinComparator()
+    # Whether the CALLER named a comparator. Recorded because the default is
+    # resolved here, before the field's annotation is known, so this is the only
+    # place the distinction survives. ConfigurationHelper needs it to give a
+    # dict-annotated field a comparator that can actually score a mapping
+    # without overriding a choice the user made deliberately.
+    comparator_was_explicit = comparator is not None
+    # Same reasoning for clip: the dict substitution turns it off so partial
+    # credit survives, but must not overwrite a value the caller chose.
+    clip_was_explicit = clip_under_threshold is not None
+    if clip_under_threshold is None:
+        clip_under_threshold = True
+
+    # A threshold is only meaningful next to the metric that produced the score:
+    # 0.85 means one thing on edit distance and another on a semantic embedding.
+    # So a threshold the caller put on the comparator is a statement of intent
+    # about this field, and it used to be discarded in silence. A comparator's
+    # *default* threshold is not adopted; see _named_comparator_threshold.
+    threshold_was_explicit = threshold is not None
+    if threshold is None:
+        from_comparator = (
+            _named_comparator_threshold(actual_comparator)
+            if comparator_was_explicit
+            else None
+        )
+        threshold = (
+            from_comparator
+            if from_comparator is not None
+            else _LEGACY_DEFAULT_THRESHOLD
+        )
 
     # Create serializable metadata for JSON schema compatibility
     serializable_metadata = {
@@ -120,7 +166,6 @@ def ComparableField(
         "threshold": threshold,
         "weight": weight,
         "clip_under_threshold": clip_under_threshold,
-        "aggregate": aggregate,
     }
 
     # Create json_schema_extra function that stores runtime data
@@ -130,10 +175,12 @@ def ComparableField(
     # HYBRID APPROACH: Store runtime instances as function attributes
     # This works around FieldInfo's __slots__ restriction
     json_schema_extra_func._comparator_instance = actual_comparator
+    json_schema_extra_func._comparator_explicit = comparator_was_explicit
+    json_schema_extra_func._clip_explicit = clip_was_explicit
+    json_schema_extra_func._threshold_explicit = threshold_was_explicit
     json_schema_extra_func._threshold = threshold
     json_schema_extra_func._weight = weight
     json_schema_extra_func._clip_under_threshold = clip_under_threshold
-    json_schema_extra_func._aggregate = aggregate
     json_schema_extra_func._comparison_metadata = serializable_metadata
 
     # Merge with existing json_schema_extra if provided
@@ -146,10 +193,12 @@ def ComparableField(
 
         # Copy our runtime data to the enhanced function
         enhanced_json_schema_extra._comparator_instance = actual_comparator
+        enhanced_json_schema_extra._comparator_explicit = comparator_was_explicit
+        enhanced_json_schema_extra._clip_explicit = clip_was_explicit
+        enhanced_json_schema_extra._threshold_explicit = threshold_was_explicit
         enhanced_json_schema_extra._threshold = threshold
         enhanced_json_schema_extra._weight = weight
         enhanced_json_schema_extra._clip_under_threshold = clip_under_threshold
-        enhanced_json_schema_extra._aggregate = aggregate
         enhanced_json_schema_extra._comparison_metadata = serializable_metadata
         final_json_schema_extra = enhanced_json_schema_extra
     elif isinstance(existing_json_schema_extra, dict):
@@ -160,10 +209,12 @@ def ComparableField(
 
         # Copy our runtime data to the enhanced function
         enhanced_json_schema_extra._comparator_instance = actual_comparator
+        enhanced_json_schema_extra._comparator_explicit = comparator_was_explicit
+        enhanced_json_schema_extra._clip_explicit = clip_was_explicit
+        enhanced_json_schema_extra._threshold_explicit = threshold_was_explicit
         enhanced_json_schema_extra._threshold = threshold
         enhanced_json_schema_extra._weight = weight
         enhanced_json_schema_extra._clip_under_threshold = clip_under_threshold
-        enhanced_json_schema_extra._aggregate = aggregate
         enhanced_json_schema_extra._comparison_metadata = serializable_metadata
         final_json_schema_extra = enhanced_json_schema_extra
     else:
@@ -185,30 +236,6 @@ def ComparableField(
     )
 
     return field
-
-
-
-def _restore_deprecated_aggregate(field: Any, value: Any) -> None:
-    """Set a field's stored ``aggregate`` value without emitting a warning.
-
-    Reading an exported config is not an explicit use of the deprecated
-    parameter, so ``ComparableField`` is called with the sentinel and the value
-    is written afterwards. That keeps ``to_stickler_config()`` faithful --
-    export -> import -> export is unchanged, including for ``aggregate=True``
-    -- while the warning stays reserved for code a user can actually edit.
-
-    Internal, and removed with the parameter in 0.8.0
-    (https://github.com/awslabs/stickler/issues/226).
-    """
-    if not isinstance(value, bool):
-        return
-    extra = getattr(field, "json_schema_extra", None)
-    if extra is None or not callable(extra):
-        return
-    extra._aggregate = value
-    metadata = getattr(extra, "_comparison_metadata", None)
-    if isinstance(metadata, dict):
-        metadata["aggregate"] = value
 
 
 def _reconstruct_comparator_from_type(
@@ -235,6 +262,13 @@ def _reconstruct_comparator_from_type(
         from stickler.comparators.exact import ExactComparator
 
         comparator_map["ExactComparator"] = ExactComparator
+    except ImportError:
+        pass
+
+    try:
+        from stickler.comparators.normalized import NormalizedComparator
+
+        comparator_map["NormalizedComparator"] = NormalizedComparator
     except ImportError:
         pass
 

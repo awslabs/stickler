@@ -176,7 +176,6 @@ def demonstrate_compare_with_method(gt_order, pred_order):
     result = gt_order.compare_with(pred_order, document_non_matches=True)
 
     print(f"Overall Score: {result['overall_score']:.3f}")
-    print(f"All Fields Matched: {result['all_fields_matched']}")
 
     # Show enhanced non-matches in JSON format
     non_matches = result.get("non_matches", [])

@@ -9,11 +9,13 @@ import importlib as _il
 import importlib.util as _ilu
 import sys as _sys
 
+from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.base import BaseComparator
 from stickler.comparators.bbox import BBoxIoUComparator
 from stickler.comparators.date import DateComparator
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.comparators.normalized import NormalizedComparator
 from stickler.comparators.numeric import NumericComparator, NumericExactC
 from stickler.comparators.phone import PhoneComparator
 from stickler.comparators.semantic import SemanticComparator
@@ -112,9 +114,11 @@ __all__ = [
     "BaseComparator",
     "BBoxIoUComparator",
     "LevenshteinComparator",
+    "NormalizedComparator",
     "NumericComparator",
     "NumericExactC",
     "ExactComparator",
+    "ANLSStarComparator",
     "PhoneComparator",
     "DateComparator",
     "StructuredModelComparator",

@@ -1,6 +1,6 @@
 """Structured model comparator."""
 
-from typing import Any
+from typing import Any, Optional
 
 from stickler.comparators.base import BaseComparator
 
@@ -12,7 +12,9 @@ class StructuredModelComparator(BaseComparator):
     leveraging their built-in comparison capabilities.
     """
 
-    def __init__(self, threshold: float = 0.7, strict_types: bool = False):
+    DEFAULT_THRESHOLD = 0.7
+
+    def __init__(self, threshold: Optional[float] = None, strict_types: bool = False):
         """Initialize the comparator.
 
         Args:

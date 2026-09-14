@@ -24,7 +24,12 @@ class ANLSList(ANLSTree):
     """
 
     def __init__(
-        self, obj: Any, *, is_gt: bool, comparator: Optional[BaseComparator] = None
+        self,
+        obj: Any,
+        *,
+        is_gt: bool,
+        comparator: Optional[BaseComparator] = None,
+        threshold: Optional[float] = None,
     ):
         """Initialize a list node.
 
@@ -32,6 +37,7 @@ class ANLSList(ANLSTree):
             obj: The list object.
             is_gt: Whether this is a ground truth node.
             comparator: Optional comparator for string comparison.
+            threshold: Tau, the per-leaf cutoff. Passed to every child.
 
         Raises:
             ValueError: If obj is not a list.
@@ -39,9 +45,12 @@ class ANLSList(ANLSTree):
         if not isinstance(obj, list):
             raise ValueError(f"ANLSList expects a list, got {type(obj)}")
 
-        super().__init__(obj, comparator)
+        super().__init__(obj, comparator, threshold)
         self.tree: PyList[ANLSTree] = [
-            ANLSTree.make_tree(x, is_gt=is_gt, comparator=comparator) for x in obj
+            ANLSTree.make_tree(
+                x, is_gt=is_gt, comparator=comparator, threshold=threshold
+            )
+            for x in obj
         ]
 
     def __len__(self) -> int:

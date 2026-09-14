@@ -50,16 +50,22 @@ The `x-aws-stickler-*` JSON Schema extensions are particularly valuable for AI a
       "x-aws-stickler-weight": 3.0
     },
     "extracted_text": {
-      "type": "string",
+      "type": ["string", "null"],
       "x-aws-stickler-comparator": "LevenshteinComparator",
       "x-aws-stickler-threshold": 0.7,
       "x-aws-stickler-weight": 2.0
     }
-  }
+  },
+  "required": ["document_id", "extracted_text"]
 }
 ```
 
 An AI agent can produce this schema from a natural language description of the evaluation requirements and then pass it to `StructuredModel.from_json_schema()`.
+
+!!! warning "Give every nullable field an explicit `"null"`"
+    Extraction fields are absent on real documents, and a field that is both listed in `required` and typed `"string"` raises `ValidationError: Input should be a valid string` the first time a value is genuinely `None` — so the template above types `extracted_text` as `["string", "null"]`. With the union in place, ground truth `None` against prediction `None` scores `1.0`, which is the correct reading: the model was right that the field is not there. Omitting `required` also avoids the error, but then absence is never asserted and the schema stops describing the document.
+
+Generating a schema is only one of the configuration paths, and it is the one that infers the least. If the agent already has a Pydantic model, `stickler.evaluate` needs no schema at all — see [Choosing a Configuration Path](../../Getting-Started/choosing-a-configuration-path.md).
 
 ## Markdown-Scrapable Documentation
 

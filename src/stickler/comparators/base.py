@@ -1,9 +1,61 @@
 """Base class for comparators."""
 
+import inspect
 from abc import ABC, abstractmethod
-from typing import Any, Tuple
+from typing import Any, Optional, Tuple
 
 from stickler.utils.deprecation import warn_once
+
+
+def _caller_named_it(comparator: "BaseComparator", threshold: float) -> bool:
+    """Whether a non-``None`` threshold really came from the caller.
+
+    ``threshold is not None`` is exact only for a comparator that defaults its own
+    parameter to ``None``, which every comparator in this repo now does. An
+    out-of-tree comparator written to the pattern the docs taught until now --
+
+        def __init__(self, threshold: float = 1.0):
+            super().__init__(threshold=threshold)
+
+    -- forwards a number on a bare construction, so the flag would read ``True``
+    and the field would adopt ``1.0``. With ``clip_under_threshold`` on, that
+    silently zeroes every imperfect score: the outcome this whole change exists to
+    prevent, reintroduced for exactly the population that cannot have migrated yet.
+
+    So for a subclass that still declares a concrete default, fall back to
+    comparing against it. That is the old heuristic, and it carries the old flaw --
+    ``RegexComparator(threshold=1.0)`` reads as unset -- but it keeps such a
+    comparator behaving as it did before this change instead of quietly becoming
+    stricter, and it warns once so the author can migrate.
+
+    Silent for a subclass that declares ``threshold: Optional[float] = None``,
+    where the flag is already exact.
+    """
+    declared = inspect.signature(type(comparator).__init__).parameters.get("threshold")
+    if declared is None or declared.default is inspect.Parameter.empty:
+        return True
+    if declared.default is None:
+        return True
+
+    warn_once(
+        "comparator-threshold-default-not-none",
+        type(comparator).__qualname__,
+        f"{type(comparator).__name__}.__init__ declares "
+        f"threshold={declared.default!r} rather than None, so stickler cannot tell "
+        f"a threshold you passed from the class default. A threshold equal to "
+        f"{declared.default!r} is treated as not set, and the field falls back to "
+        f"its own default. Declare 'threshold: Optional[float] = None' and set "
+        f"DEFAULT_THRESHOLD = {declared.default!r} on the class to have an "
+        f"explicit threshold honoured. Pass the threshold straight through to "
+        f"super().__init__ -- do NOT resolve your own default first. Changing the "
+        f"signature but keeping "
+        f"'super().__init__(threshold if threshold is not None else "
+        f"{declared.default!r})' makes every bare construction look caller-named, "
+        f"so the default silently becomes the field's verdict threshold with "
+        f"clipping on, which is worse than the behaviour this warning describes.",
+        category=UserWarning,
+    )
+    return threshold != declared.default
 
 
 class BaseComparator(ABC):
@@ -14,74 +66,113 @@ class BaseComparator(ABC):
     between 0.0 and 1.0, where 1.0 means the values are identical.
     """
 
-    def __init__(self, threshold: float = 0.7):
-        """Initialize the comparator.
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        """Warn when a constructible subclass's ``compare`` shadows the ``None`` policy.
 
-        Args:
-            threshold: Similarity threshold (0.0-1.0)
-        """
-        self.threshold = threshold
+        :meth:`compare` is the template method that owns the ``None`` policy.
+        A subclass supplying its own ``compare`` -- directly or through a
+        mixin -- wins over it by plain Python MRO, so ``None`` reaches user
+        code and can be scored as a present value. That shadowing cannot be
+        prevented, only reported.
 
-    def __init_subclass__(cls, **kwargs):
-        """Keep comparators written against the pre-rename interface working.
+        This only reports the subset that has no other signal. A subclass that
+        never supplies ``_compare`` leaves the abstract slot unfilled, so
+        ``ABCMeta`` already raises ``TypeError`` at construction naming
+        ``_compare``; warning as well would just add noise ahead of a hard
+        failure. The gap is the subclass of a *concrete* comparator, which
+        inherits a working ``_compare``, constructs fine, and silently skips
+        the policy. That is the one warned about here.
 
-        Before the shared ``None`` policy existed, comparators implemented
-        ``compare`` directly. Such a subclass is left exactly as written: its
-        ``compare`` still overrides the template method, so its behavior is
-        unchanged and it does not get the policy. All this does is fill the
-        ``_compare`` slot when nothing in the MRO provides one, so the class
-        is not abstract, and warn that the rename is needed.
+        The report is a warning rather than a ``TypeError`` because the
+        condition is not decidable at class-definition time: an override that
+        forwards both values to ``super().compare()`` unchanged keeps the
+        policy intact and is perfectly correct, and only the override itself
+        knows whether it does. Refusing the class would reject those along
+        with the broken ones.
 
-        Deliberately does not rewire ``compare`` to ``_compare``. Doing that
-        breaks any subclass whose body calls ``super().compare(...)``: the
-        parent would no longer have a real ``compare``, so the call lands on
-        this template, which dispatches straight back to the function that
-        made it.
-
-        Temporary. Removed in 0.8.0 (see issue #215), after which an
-        un-migrated comparator becomes abstract again.
+        Owning ``_compare`` is the escape hatch. A class defining both is
+        customising the policy deliberately rather than sitting on the
+        pre-1.0 interface, and stays quiet -- as do its subclasses.
         """
         super().__init_subclass__(**kwargs)
 
         if "_compare" in cls.__dict__:
             return
 
-        legacy_compare = cls.__dict__.get("compare")
-        if legacy_compare is None:
-            # Also catch a compare() reached through a non-BaseComparator
-            # mixin: still the old interface, just not defined on this class.
-            candidate = getattr(cls, "compare", None)
-            if candidate is None or candidate is BaseComparator.compare:
-                return
-            legacy_compare = candidate
-
-        if getattr(legacy_compare, "__isabstractmethod__", False):
+        # Abstract slot unfilled: ABCMeta raises TypeError at construction,
+        # which is a louder and more precise signal than a warning. Checked
+        # via the resolved attribute because ``cls.__abstractmethods__`` is
+        # not populated until after ``__init_subclass__`` returns.
+        if getattr(getattr(cls, "_compare", None), "__isabstractmethod__", False):
             return
 
-        inherited = getattr(cls, "_compare", None)
-        if inherited is None or getattr(inherited, "__isabstractmethod__", False):
-            # Nothing in the MRO implements _compare, so the class would be
-            # abstract. Their compare() overrides the template and is what
-            # actually runs, so this stub is only reached by an explicit
-            # super().compare() from a direct BaseComparator subclass.
-            def _unmigrated(self, str1: Any, str2: Any) -> float:
-                raise NotImplementedError(
-                    f"{type(self).__name__} implements compare() but not "
-                    f"_compare(); rename compare() to _compare()."
-                )
+        # The class that actually supplies ``compare`` -- which may be a mixin
+        # rather than ``cls`` itself. Keying on the owner rather than on
+        # ``cls.__dict__`` catches ``class M(LegacyMixin, SomeComparator)``,
+        # and keeps ordinary subclasses of a deliberate override quiet.
+        owner = next(
+            (k for k in cls.__mro__ if "compare" in k.__dict__), BaseComparator
+        )
+        if owner is BaseComparator or "_compare" in owner.__dict__:
+            return
 
-            cls._compare = _unmigrated
-
+        source = (
+            "defines compare()"
+            if owner is cls
+            else f"inherits compare() from {owner.__name__}"
+        )
         warn_once(
-            "comparator-compare-rename",
+            "comparator-compare-shadows-none-policy",
             cls.__qualname__,
-            f"{cls.__name__} implements compare(), which is no longer the "
-            f"extension point and bypasses the shared None policy. Rename "
-            f"compare() to _compare() and delete any None handling it "
-            f"contains, since _compare() never receives None. Support for "
-            f"implementing compare() directly will be removed in 0.8.0.",
+            f"{cls.__name__} {source}, which shadows BaseComparator.compare() "
+            f"and the shared None policy. Unless that compare() forwards both "
+            f"values to super().compare() unchanged, None will reach it and can "
+            f"be scored as a present value. Implement _compare() instead: it is "
+            f"only called when both values are present.",
+            category=UserWarning,
+            # warn_once(1) -> __init_subclass__(2) -> ABCMeta.__new__(3) ->
+            # the user's ``class`` statement(4). ABCMeta.__new__ is a Python
+            # frame, so the default stacklevel=3 blames ``<frozen abc>``.
             stacklevel=4,
         )
+
+    #: The threshold this comparator uses when the caller does not name one.
+    #: Overridden per subclass. Read through ``self`` so a subclass's value
+    #: wins, which is what lets ``__init__`` below resolve ``None`` without
+    #: every subclass repeating its own default in two places.
+    DEFAULT_THRESHOLD: float = 0.7
+
+    def __init__(self, threshold: Optional[float] = None):
+        """Initialize the comparator.
+
+        ``threshold`` defaults to ``None`` rather than to a number so that a
+        threshold the caller named stays distinguishable from one nobody
+        asked for. The two are not interchangeable: a named threshold is a
+        statement about the field being compared and is adopted as the
+        verdict threshold, while a class default was only ever read by
+        ``binary_compare()`` and has not been audited as a verdict threshold.
+        ``DateComparator``'s default of ``1.0`` would clip its own
+        ``allow_partial_year`` partial credit of ``0.7`` to zero, so adopting
+        defaults is not safe.
+
+        Recording it here is the only place that can. Each subclass resolves
+        its own default before calling ``super().__init__``, so by the time a
+        concrete number arrives, comparing it against the signature default
+        cannot tell ``DateComparator()`` from ``DateComparator(threshold=1.0)``
+        -- both hold ``1.0``. Passing ``None`` through preserves the
+        distinction, and it survives a subclass that forwards ``**kwargs``,
+        which signature inspection does not.
+
+        Args:
+            threshold: Similarity threshold (0.0-1.0), or None to use
+                :attr:`DEFAULT_THRESHOLD`.
+        """
+        #: Whether the caller named a threshold. Consumed by
+        #: ``stickler.structured_object_evaluator.models.comparable_field``.
+        self.threshold_was_set = threshold is not None
+        if self.threshold_was_set:
+            self.threshold_was_set = _caller_named_it(self, threshold)
+        self.threshold = self.DEFAULT_THRESHOLD if threshold is None else threshold
 
     def compare(self, str1: Any, str2: Any) -> float:
         """Compare two values and return a similarity score.

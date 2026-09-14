@@ -202,8 +202,11 @@ class HungarianMatcher:
                 - matched_indices is list of (i, j) pairs for matches
                 - similarity_matrix is the calculated similarity matrix
 
+            An empty input on either side gives an empty list and an empty
+            array. :meth:`calculate_metrics` counts on that, so it is part of
+            the contract rather than an error.
+
         Raises:
-            ValueError: If input lists are empty
             Exception: For other errors during matching
         """
         # Handle case of empty lists
@@ -249,139 +252,95 @@ class HungarianMatcher:
     def calculate_metrics(self, list1: Any, list2: Any) -> dict:
         """Calculate matching metrics between two lists.
 
-        Uses Hungarian matching to find optimal assignments and calculates
-        metrics such as true positives, false positives, and false negatives.
+        The assignment decides what is paired. ``match_threshold`` then splits
+        the paired items into TP and FD. It never puts a pair back into ``fn``
+        or ``fa``, so only an item left with no partner is counted there.
 
         Args:
-            list1: First list (typically ground truth)
-            list2: Second list (typically prediction)
+            list1: First list, typically ground truth. A bare value counts as
+                a list of one, and a JSON string holding a list is parsed into
+                one. Every count below is over the prepared list.
+            list2: Second list, typically prediction, prepared the same way.
 
         Returns:
-            Dictionary with metrics:
-                - matched_pairs: List of (i, j, score) tuples for matches
-                - tp: Count of true positives (good matches)
-                - fp: Count of false positives (extra or wrong items in list2)
-                - fn: Count of false negatives (missing items from list1)
-                - precision: Precision score
-                - recall: Recall score
-                - f1: F1 score
+            The same nine keys for every input, empty lists included. Below,
+            ``m`` and ``n`` are the two prepared lengths and ``k`` is the pair
+            count, which is always ``min(m, n)``.
+
+                matched_pairs: ``k`` tuples of ``(i, j, score)``
+                tp: pairs scoring at or above ``match_threshold``
+                fa: predictions with no partner, ``n`` minus ``k``
+                fd: pairs scoring below ``match_threshold``
+                fp: the rollup ``fd`` plus ``fa``, equal to ``n`` minus ``tp``
+                fn: ground truth items with no partner, ``m`` minus ``k``
+                precision: ``tp / (tp + fp)``, and 1.0 if both lists are empty
+                recall: ``tp / (tp + fn + fd)``, and 1.0 if list1 is empty
+                f1: the harmonic mean of precision and recall
+
+            ``recall`` follows the ``recall_with_fd=True`` convention and cannot
+            be recomputed from the ``fn`` beside it: ``fd`` is in its denominator
+            and not in ``fn``, so the project's default ``TP / (TP + FN)`` over
+            these keys gives a different, higher number.
 
         Note:
-            ``fn`` and ``fp`` here are **threshold-based, not
-            partnering-based**: they are ``len(list) - tp``, so a pair that
-            appears in ``matched_pairs`` but scored below ``match_threshold``
-            is counted in both. A below-threshold pair is therefore reported
-            as matched *and* as fn/fp by this function, at every list length.
+            ``recall`` counts an FD against the score.
+            :meth:`MetricsHelper.calculate_derived_metrics` defaults to the
+            other convention, so the same counts read lower here than they do
+            as ``cm_recall`` there.
 
-            The FD split -- "matched but below threshold" as distinct from
-            "no partner at all" -- happens downstream in
-            :class:`StructuredListComparator`, which reads ``matched_pairs``
-            and reclassifies. Callers wanting FD semantics should do the same
-            rather than reading ``fn``/``fp`` from here.
+            The threshold test here is a bare ``>=``. ``ThresholdHelper``,
+            ``ComparisonHelper`` and ``ConfusionMatrixCalculator`` use a
+            tolerant test that accepts a score up to ``1e-10`` under the
+            threshold, so a score inside that window is a TP there and an FD
+            here.
 
-            ``match_threshold=0.0`` is used elsewhere as a capture-all
+            ``match_threshold=0.0`` is used elsewhere as a capture all
             sentinel. Every score satisfies ``>= 0.0``, so ``tp`` then counts
             pairs rather than true positives and must not be read.
         """
-        # Prepare lists
         prepared_list1, prepared_list2 = self._prepare_lists(list1, list2)
+        m, n = len(prepared_list1), len(prepared_list2)
 
-        # Handle simple case efficiently: single items.
-        #
-        # This shortcut must classify exactly as the general path below, or the
-        # same situation gets a different confusion-matrix result depending on
-        # how many items happen to be in the list. One assignment exists (the
-        # only possible one), so the pair is always matched; `match_threshold`
-        # then decides TP versus below-threshold, exactly as the general path
-        # does. Similarity magnitude does not un-match a pair -- a pair at 0.0
-        # is still the assignment the algorithm made, and downstream
-        # (StructuredListComparator) classifies a below-threshold matched pair
-        # as FD. Whether an FD counts against recall is the `recall_with_fd`
-        # knob's job, not this function's.
-        #
-        # `fn`/`fp` below mirror the general path's `len(list) - tp`, which
-        # means a below-threshold pair is reported as matched and as fn/fp at
-        # the same time. That is pre-existing at every list length, not a
-        # property of this shortcut; see the Note in the docstring above.
-        if len(prepared_list1) == 1 and len(prepared_list2) == 1:
-            # Directly compare the single items
+        if m == 1 and n == 1:
+            # Fast path for the only assignment there can be, which skips
+            # match() and the solver. #224: a one item list has to classify
+            # exactly like a longer one, so this branch produces the pair and
+            # stops. The counting below is then shared, not repeated.
             score = self._score(prepared_list1[0], prepared_list2[0])
+            matched_pairs = [(0, 0, score)]
+        else:
+            # An empty list needs no branch of its own. match() returns no
+            # pairs for one, which is what the counting below expects.
+            matched_indices, similarity_matrix = self.match(
+                prepared_list1, prepared_list2
+            )
+            matched_pairs = [
+                (i, j, similarity_matrix[i, j]) for i, j in matched_indices
+            ]
 
-            is_tp = score >= self.match_threshold
-            tp = 1 if is_tp else 0
-            return {
-                # Always a matched pair: the assignment exists regardless of
-                # similarity, so downstream sees FD rather than FN+FA.
-                "matched_pairs": [(0, 0, score)],
-                "tp": tp,
-                "fp": 1 - tp,
-                "fn": 1 - tp,
-                "precision": float(tp),
-                "recall": float(tp),
-                "f1": float(tp),
-            }
+        # match() assigns exactly min(m, n) pairs, so the four counts below
+        # cover max(m, n) items once each. The threshold splits the pairs into
+        # tp and fd. It does not un-match them, which is why a paired item
+        # never reaches fn or fa.
+        tp = sum(1 for _, _, score in matched_pairs if score >= self.match_threshold)
+        k = len(matched_pairs)
+        fd, fn, fa = k - tp, m - k, n - k
+        fp = fd + fa
 
-        # Handle empty lists
-        if not prepared_list1 and not prepared_list2:
-            return {
-                "matched_pairs": [],
-                "tp": 0,
-                "fp": 0,
-                "fn": 0,
-                "precision": 1.0,
-                "recall": 1.0,
-                "f1": 1.0,
-            }
-        elif not prepared_list1:
-            return {
-                "matched_pairs": [],
-                "tp": 0,
-                "fp": len(prepared_list2),
-                "fn": 0,
-                "precision": 0.0,
-                "recall": 1.0,
-                "f1": 0.0,
-            }
-        elif not prepared_list2:
-            return {
-                "matched_pairs": [],
-                "tp": 0,
-                "fp": 0,
-                "fn": len(prepared_list1),
-                "precision": 0.0,
-                "recall": 0.0,
-                "f1": 0.0,
-            }
-
-        # Get matched indices and similarity matrix
-        matched_indices, similarity_matrix = self.match(prepared_list1, prepared_list2)
-
-        # Calculate matched pairs with scores
-        matched_pairs = []
-        tp = 0
-        for i, j in matched_indices:
-            score = similarity_matrix[i, j]
-            matched_pairs.append((i, j, score))
-            # Only count as true positive if score meets threshold
-            if score >= self.match_threshold:
-                tp += 1
-
-        # Calculate metrics
-        fp = len(prepared_list2) - tp
-        fn = len(prepared_list1) - tp
-
-        # Calculate precision, recall, F1
-        precision = tp / (tp + fp) if tp + fp > 0 else 0.0
-        recall = tp / (tp + fn) if tp + fn > 0 else 0.0
+        # tp + fp == n and tp + fn + fd == m, so the documented rates can use
+        # the two lengths as their denominators. A side with no items has
+        # nothing to be right or wrong about, so its rate is 1.0.
+        precision = tp / n if n else (1.0 if m == 0 else 0.0)
+        recall = tp / m if m else 1.0
         f1 = (
-            2 * precision * recall / (precision + recall)
-            if precision + recall > 0
-            else 0.0
+            2 * precision * recall / (precision + recall) if precision + recall else 0.0
         )
 
         return {
             "matched_pairs": matched_pairs,
             "tp": tp,
+            "fa": fa,
+            "fd": fd,
             "fp": fp,
             "fn": fn,
             "precision": precision,

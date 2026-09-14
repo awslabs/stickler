@@ -19,6 +19,7 @@ ALWAYS_AVAILABLE_EXPORTS = {
     "ExactComparator": "stickler.comparators.exact",
     "FuzzyComparator": "stickler.comparators.fuzzy",
     "LevenshteinComparator": "stickler.comparators.levenshtein",
+    "NormalizedComparator": "stickler.comparators.normalized",
     "NumericComparator": "stickler.comparators.numeric",
     "PhoneComparator": "stickler.comparators.phone",
     "SemanticComparator": "stickler.comparators.semantic",

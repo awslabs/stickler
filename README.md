@@ -24,7 +24,7 @@ That installs the comparison engine and confidence calibration, which is everyth
 | `[semantic]` | boto3, scipy | `SemanticComparator` (Bedrock embeddings) |
 | `[llm]` | strands-agents, jinja2 | `LLMComparator` (LLM-as-judge comparison) |
 | `[bert]` | evaluate, torch, bert-score | `BERTComparator` (BERTScore similarity) |
-| `[docsplit]` | pandas, scipy, scikit-learn | Document packet splitting metrics |
+| `[docsplit]` | pandas | Document packet splitting metrics |
 | `[reporting]` | pandas | Confusion-matrix tables in HTML reports |
 | `[all]` | all of the above except the ML stack | Convenience |
 
@@ -43,7 +43,9 @@ print(result.overall_score, result.f1, result.field_scores)
 print(result.explain())   # per-field: comparator, threshold, weight, and why
 ```
 
-See the [Ultra Quick Start](https://awslabs.github.io/stickler/Getting-Started/ultra-quick-start/) for the full walkthrough, or read on for the fully-configured API.
+See the [Ultra Quick Start](https://awslabs.github.io/stickler/Getting-Started/ultra-quick-start/) for the full walkthrough.
+
+This is one of two independent configuration paths, not the first rung of one ladder. It takes a live Pydantic class; the [JSON Schema path](#json-schema-extensions-x-aws-stickler--complete-reference) below takes a schema dict, reads structure rather than field names, and uses different thresholds. Neither accepts the other's input — `stickler.evaluate` cannot take a JSON Schema. [Choosing a Configuration Path](https://awslabs.github.io/stickler/Getting-Started/choosing-a-configuration-path/) compares them field by field and shows how far the two scores drift on the same data.
 
 ## Get Started in 30 Seconds
 
@@ -267,9 +269,11 @@ Add these to any property in your JSON Schema to control comparison behavior:
 
 **Type:** `string`  
 **Required:** No  
-**Default:** Type-dependent (see table below)
+**Default:** Type-dependent (see table below) — a coarse fallback, not inference
 
 Specifies the comparison algorithm for this field.
+
+Omitting it is safe but blunt. The fallback reads structure and never field names: the schema is resolved to a Python annotation and the comparator comes from that, so a `"format": "date"`, an `enum` or a `const` does sharpen the choice, but every plain `"type": "string"` becomes `LevenshteinComparator` at threshold `0.5` whether it holds an invoice ID, a person's name, or a paragraph of notes. This is a different mechanism from the inference behind `stickler.evaluate`, which also reads field names and would give those three fields three different comparators. See [Choosing a Configuration Path](https://awslabs.github.io/stickler/Getting-Started/choosing-a-configuration-path/) before relying on either default.
 
 **Available Comparators:**
 
@@ -280,20 +284,34 @@ Specifies the comparison algorithm for this field.
 | `"NumericComparator"` | Prices, quantities, measurements | Compares numbers with configurable tolerance |
 | `"FuzzyComparator"` | Flexible text, descriptions | Token-based fuzzy matching (order-independent) |
 | `"SemanticComparator"` | Semantic similarity | Embedding-based comparison for meaning |
-| `"BertComparator"` | Deep semantic understanding | BERT model for contextual similarity |
-| `"LLMComparator"` | Complex semantic evaluation | LLM-powered comparison with reasoning |
+| `"BERTComparator"` | Deep semantic understanding | BERT model for contextual similarity. Needs the `[bert]` extra |
+| `"LLMComparator"` | Complex semantic evaluation | LLM-powered comparison with reasoning. Needs the `[llm]` extra |
 | `"BBoxIoUComparator"` | Bounding boxes, spatial localization | Intersection over Union (IoU) between two boxes; accepts `[[x1,y1],[x2,y2]]` or `[x1,y1,x2,y2]`. See [Bounding Box mAP Metrics](docs/docs/Advanced/bbox-map-metrics.md) for end-to-end mAP scoring |
+| `"NormalizedComparator"` | Formatting-insensitive equality | Compares after an explicit set of normalizations — by default case, whitespace, and punctuation |
+| `"ANLSStarComparator"` | Dicts and nesting with keys unknown up front | Scores structured values by ANLS*. Where the keys *are* known, a nested model is the better tool |
+| `"DateComparator"` | Dates in mixed formats, partial dates, ranges | Parses both sides as dates and scores on a tier system |
+| `"PhoneComparator"` | Phone numbers | Compares after normalizing formatting |
+| `"StructuredModelComparator"` | Nested models | Recursive field-by-field comparison |
+| `"auto"` | Letting Stickler choose per field | Not a comparator: a request to infer one from the field's type and name, using the same rules `stickler.evaluate()` uses. Per field, where `infer_unspecified_fields` is per model |
 
 **Default Comparators by JSON Schema Type:**
 
-| JSON Schema Type | Default Comparator | Default Threshold | Rationale |
+Each property is parsed to a strict Python annotation, the comparator is chosen from that
+annotation, and the annotation is then widened back to the JSON value type so that an invalid
+extraction scores `0.0` instead of raising. So `format`, `enum` and `const` do change the comparator,
+even though the field on the built class ends up a plain `str` — read the choice back with
+`to_json_schema()`, not from `model_fields`:
+
+| JSON Schema | Default Comparator | Default Threshold | Rationale |
 |------------------|-------------------|-------------------|-----------|
 | `"string"` | `LevenshteinComparator` | `0.5` | Handles typos and minor variations |
 | `"number"` | `NumericComparator` | `0.5` | Tolerates small numeric differences |
 | `"integer"` | `NumericComparator` | `0.5` | Tolerates small numeric differences |
-| `"boolean"` | `ExactComparator` | `1.0` | Must be exactly true or false |
+| `"boolean"` | `ExactComparator` | `0.5` | Must be exactly true or false (Exact scores only 0.0 or 1.0, so the threshold is immaterial) |
+| `"format": "date"` or `"date-time"` | `DateComparator` | `1.0` | Parses as `date`/`datetime`, so dates compare as dates |
+| `"enum"`, `"const"`, `"format": "uri"`/`"uuid"`/`"time"` | `ExactComparator` | `1.0` | A closed set or an opaque identifier has no partial credit |
 | `"array"` (primitives) | Based on item type | Based on item type | Inherits from element type |
-| `"array"` (objects) | Hungarian matching | `0.7` | Optimal pairing of list elements |
+| `"array"` (objects) | Hungarian matching | `0.5`, pairing elements at `0.7` | Optimal pairing of list elements |
 | `"object"` | Recursive comparison | `0.7` | Field-by-field nested comparison |
 
 **Example:**
@@ -325,7 +343,10 @@ Specifies the comparison algorithm for this field.
 
 **Type:** `number` (0.0 to 1.0, inclusive)  
 **Required:** No  
-**Default:** `0.5` (or `1.0` for booleans)
+**Default:** position-dependent, not one number. `0.5` for a scalar, an array of scalars, and an
+array of models; `0.7` for an object with `properties`; `1.0` for a free-form `{"type": "object"}`
+and for anything whose comparator came from a `format`, `enum` or `const`. See the table in
+[Evaluation](docs/docs/Guides/Evaluation/README.md#extension-reference).
 
 Minimum similarity score required for binary match classification.
 
@@ -442,9 +463,9 @@ Relative importance of this field in aggregate scoring and weighted averages.
 
 **Type:** `boolean`  
 **Required:** No  
-**Default:** `false`
+**Default:** `true`
 
-Controls whether similarity scores below threshold are clipped to 0.0.
+Controls whether similarity scores below threshold are clipped to 0.0. Clipping is **on** unless you turn it off, so a field scoring just under its threshold reports `0.0` rather than its raw similarity.
 
 **How Clipping Works:**
 - `true`: Scores below threshold are **set to 0.0** (hard cutoff)
@@ -478,49 +499,6 @@ Controls whether similarity scores below threshold are clipped to 0.0.
       "x-aws-stickler-comparator": "LevenshteinComparator",
       "x-aws-stickler-threshold": 0.8,
       "x-aws-stickler-clip-under-threshold": false
-    }
-  }
-}
-```
-
-#### `x-aws-stickler-aggregate`
-
-**Type:** `boolean`  
-**Required:** No  
-**Default:** `false`
-
-Controls whether this field's confusion matrix metrics (TP/FP/TN/FN) are included in parent-level aggregate counts.
-
-**How Aggregation Works:**
-- `true`: Field's metrics are **included** in parent's aggregate counts
-- `false`: Field's metrics are **calculated but not aggregated** to parent
-
-**When to Use:**
-
-| Setting | Use Case |
-|---------|----------|
-| `true` | Include field in overall accuracy/precision/recall calculations |
-| `false` | Exclude field from aggregate metrics (debugging, metadata, experimental fields) |
-
-**Example:**
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "invoice_id": {
-      "type": "string",
-      "description": "Include in accuracy metrics",
-      "x-aws-stickler-comparator": "ExactComparator",
-      "x-aws-stickler-threshold": 1.0,
-      "x-aws-stickler-aggregate": true
-    },
-    "debug_field": {
-      "type": "string",
-      "description": "For debugging only - don't affect metrics",
-      "x-aws-stickler-comparator": "ExactComparator",
-      "x-aws-stickler-threshold": 1.0,
-      "x-aws-stickler-aggregate": false
     }
   }
 }
@@ -581,8 +559,7 @@ Here's a production-ready invoice schema with all extensions:
       "x-aws-stickler-comparator": "ExactComparator",
       "x-aws-stickler-threshold": 1.0,
       "x-aws-stickler-weight": 3.0,
-      "x-aws-stickler-clip-under-threshold": true,
-      "x-aws-stickler-aggregate": true
+      "x-aws-stickler-clip-under-threshold": true
     },
     "customer_name": {
       "type": "string",
@@ -591,8 +568,7 @@ Here's a production-ready invoice schema with all extensions:
       "x-aws-stickler-comparator": "LevenshteinComparator",
       "x-aws-stickler-threshold": 0.8,
       "x-aws-stickler-weight": 1.5,
-      "x-aws-stickler-clip-under-threshold": false,
-      "x-aws-stickler-aggregate": true
+      "x-aws-stickler-clip-under-threshold": false
     },
     "total_amount": {
       "type": "number",
@@ -601,8 +577,7 @@ Here's a production-ready invoice schema with all extensions:
       "x-aws-stickler-comparator": "NumericComparator",
       "x-aws-stickler-threshold": 0.95,
       "x-aws-stickler-weight": 2.5,
-      "x-aws-stickler-clip-under-threshold": false,
-      "x-aws-stickler-aggregate": true
+      "x-aws-stickler-clip-under-threshold": false
     },
     "line_items": {
       "type": "array",
@@ -641,8 +616,7 @@ Here's a production-ready invoice schema with all extensions:
       "x-aws-stickler-comparator": "FuzzyComparator",
       "x-aws-stickler-threshold": 0.5,
       "x-aws-stickler-weight": 0.2,
-      "x-aws-stickler-clip-under-threshold": false,
-      "x-aws-stickler-aggregate": false
+      "x-aws-stickler-clip-under-threshold": false
     }
   },
   "required": ["invoice_id", "customer_name", "total_amount", "line_items"]
@@ -702,9 +676,10 @@ print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # ~1.0 - match
 | `x-aws-stickler-threshold` | number (0.0-1.0) | 0.5 or 1.0 | Match classification cutoff |
 | `x-aws-stickler-weight` | number (> 0.0) | 1.0 | Field importance multiplier |
 | `x-aws-stickler-clip-under-threshold` | boolean | false | Zero out low scores |
-| `x-aws-stickler-aggregate` | boolean | false | Include in parent metrics |
 | `x-aws-stickler-model-name` | string | "DynamicModel" | Generated class name |
 | `x-aws-stickler-match-threshold` | number (0.0-1.0) | 0.7 | Model-level threshold |
+| `x-aws-stickler-infer-unspecified` | boolean | false | Infer comparators for properties that name none (root level) |
+| `x-aws-stickler-comparator-config` | object | `{}` | Keyword arguments for the named comparator |
 
 ### Additional Resources
 

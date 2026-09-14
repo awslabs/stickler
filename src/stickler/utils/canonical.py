@@ -40,6 +40,29 @@ def canonicalize_json(value: Any) -> Any:
     return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
 
 
+def jsonable_mapping(value: Any) -> Any:
+    """Normalize a mapping to its JSON form while KEEPING it a mapping.
+
+    Same normalization as :func:`canonicalize_json` -- ``to_jsonable_python``
+    converts dates, enums, Decimal, UUID and non-str dict keys to their JSON
+    representation -- but stops short of ``json.dumps``, so the result is still
+    a dict that :class:`~stickler.comparators.anls.ANLSStarComparator` can walk
+    structurally.
+
+    Needed because a dict is the one container scored by structure rather than
+    as a canonical string. Without this step, ``model_dump()`` and
+    ``model_dump(mode="json")`` produce different key types for a
+    ``Dict[date, X]`` (native ``date`` versus ISO string), and the two forms of
+    the same document would score 0.0 against each other.
+
+    Non-mappings pass through untouched, so a field annotated ``dict`` that
+    somehow holds something else is left for the dispatcher to classify.
+    """
+    if value is None or not isinstance(value, dict):
+        return value
+    return to_jsonable_python(value, fallback=str)
+
+
 def canonicalize_json_sorted(value: Any) -> Any:
     """Like :func:`canonicalize_json`, also sorting top-level arrays.
 

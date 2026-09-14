@@ -27,9 +27,11 @@ class NumericComparator(BaseComparator):
         ```
     """
 
+    DEFAULT_THRESHOLD = 1.0
+
     def __init__(
         self,
-        threshold: float = 1.0,
+        threshold: Optional[float] = None,
         relative_tolerance: float = 0.0,
         absolute_tolerance: float = 0.0,
         tolerance: Optional[float] = None,

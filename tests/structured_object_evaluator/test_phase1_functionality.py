@@ -43,7 +43,7 @@ def test_compare_with_confusion_matrix():
     # Check basic structure is preserved
     assert "field_scores" in result
     assert "overall_score" in result
-    assert "all_fields_matched" in result
+    assert "all_fields_matched" not in result  # removed in #287
 
     # Check confusion matrix is included
     assert "confusion_matrix" in result
@@ -113,7 +113,7 @@ def test_compare_with_non_matches():
     # Check basic structure is preserved
     assert "field_scores" in result
     assert "overall_score" in result
-    assert "all_fields_matched" in result
+    assert "all_fields_matched" not in result  # removed in #287
 
     # Check non-matches are included
     assert "non_matches" in result
@@ -146,7 +146,7 @@ def test_compare_with_both_features():
     # Check all features are present
     assert "field_scores" in result
     assert "overall_score" in result
-    assert "all_fields_matched" in result
+    assert "all_fields_matched" not in result  # removed in #287
     assert "confusion_matrix" in result
     assert "non_matches" in result
 
@@ -164,7 +164,7 @@ def test_compare_with_backward_compatibility():
     # Should have standard structure only
     assert "field_scores" in result
     assert "overall_score" in result
-    assert "all_fields_matched" in result
+    assert "all_fields_matched" not in result  # removed in #287
 
     # Should NOT have optional features
     assert "confusion_matrix" not in result

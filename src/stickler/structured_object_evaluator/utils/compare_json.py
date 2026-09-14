@@ -32,5 +32,4 @@ def compare_json(
             "error": str(e),
             "overall_score": 0.0,
             "field_scores": {},
-            "all_fields_matched": False,
         }

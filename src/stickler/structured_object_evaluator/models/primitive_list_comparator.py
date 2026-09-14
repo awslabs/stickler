@@ -90,13 +90,26 @@ class PrimitiveListComparator:
         weight = info.weight
         threshold = info.threshold
 
-        # All code paths already check if the lists are empty
+        # Empty lists are not filtered out before this point. `ComparisonDispatcher`
+        # short-circuits an absent list field, but only for fields
+        # `_is_list_field` recognizes -- a list held in an `Any`-annotated field
+        # arrives here empty and is scored by `_compare_unordered_lists`.
 
         # For primitive lists, use the comparison logic from _compare_unordered_lists
         # which properly handles the threshold-based matching
         comparator = info.comparator
+        # The field's own clip setting reaches the per-element decision here.
+        # Without it, `clip_under_threshold=False` was a no-op on every list:
+        # the zeroing happens inside `unordered_list_metrics`, upstream of the
+        # `threshold_applied_score = raw_similarity` line below, so that line
+        # preserved a score that had already been thrown away.
         match_result = self.parent_model._compare_unordered_lists(
-            gt_list, pred_list, comparator, threshold
+            gt_list,
+            pred_list,
+            comparator,
+            threshold,
+            info.clip_under_threshold,
+            field_name=field_name,
         )
 
         # Extract the counts from the match result

@@ -18,12 +18,17 @@ For a batch loop, compile once with :func:`eval_for` and reuse the returned
 
 from __future__ import annotations
 
-from typing import Any, Dict, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union
 
 from pydantic import BaseModel
 
 from ..structured_object_evaluator.models.structured_model import StructuredModel
 from .builder import specs_for, structured_model_for
+
+#: Object-level match threshold applied when neither the caller nor the model
+#: declares one. ``None`` is the "caller said nothing" sentinel on the public
+#: entry points, which lets a ``StructuredModel``'s own declaration win.
+DEFAULT_MATCH_THRESHOLD = 0.7
 
 
 class EvalResult:
@@ -34,9 +39,20 @@ class EvalResult:
     available via :attr:`raw`.
     """
 
-    def __init__(self, raw: Dict[str, Any], spec: "EvalSpec"):
+    def __init__(
+        self,
+        raw: Dict[str, Any],
+        spec: "EvalSpec",
+        *,
+        ground_truth: Any = None,
+        prediction: Any = None,
+    ):
         self.raw = raw
         self._spec = spec
+        # Kept only to compute `non_matches` lazily; see that property.
+        self._ground_truth = ground_truth
+        self._prediction = prediction
+        self._non_matches: Optional[List[Dict[str, Any]]] = None
         cm = raw.get("confusion_matrix", {}) or {}
         derived = (cm.get("overall", {}) or {}).get("derived", {}) or {}
         self.overall_score: float = raw.get("overall_score", 0.0)
@@ -46,9 +62,52 @@ class EvalResult:
         self.f1: float = derived.get("cm_f1", 0.0)
         self.accuracy: float = derived.get("cm_accuracy", 0.0)
         self.confusion_matrix: Dict[str, Any] = cm
-        # True when every field scored at or above its threshold (the
-        # match_threshold knob's model-level verdict).
-        self.matched: bool = bool(raw.get("all_fields_matched", False))
+        # The `match_threshold` knob's model-level verdict: did this pair match?
+        #
+        # Defined directly rather than read from the engine's former
+        # `all_fields_matched` key, which was removed in #287. That key was a
+        # quantifier over TOP-LEVEL fields only and did not recurse, so a leaf
+        # failure inside a nested field was invisible whenever the nested field's
+        # own mean cleared its own threshold. Two external reports (#23, #275)
+        # read it as a quantifier over every leaf, which is what the docs said and
+        # what the name implies.
+        #
+        # `overall_score` is the weighted mean over the whole tree, so comparing
+        # it against `match_threshold` gives one definition that cannot disagree
+        # with the score sitting beside it. The threshold is whatever the spec
+        # resolved: the caller's argument, else a StructuredModel's own declared
+        # `match_threshold`, else DEFAULT_MATCH_THRESHOLD. See `eval_for`.
+        self.matched: bool = bool(self.overall_score >= spec._match_threshold)
+
+    @property
+    def non_matches(self) -> List[Dict[str, Any]]:
+        """The per-field failure records, computed on first access.
+
+        Not requested during ``evaluate()``. ``document_non_matches=True`` costs
+        roughly 2x on a 40-item document, flat whether one field fails or all of
+        them, and the callers who want these records are printing a report rather
+        than scoring a corpus. Computed here instead, once, and cached.
+
+        Returns an empty list when the pair cannot be recompared (an
+        ``EvalResult`` built directly from a raw dict, as some tests do), falling
+        back to whatever the raw dict already carries.
+        """
+        if self._non_matches is not None:
+            return self._non_matches
+
+        carried = self.raw.get("non_matches")
+        if carried is not None:
+            self._non_matches = list(carried)
+        elif self._ground_truth is None or self._prediction is None:
+            self._non_matches = []
+        else:
+            detailed = self._ground_truth.compare_with(
+                self._prediction,
+                include_confusion_matrix=True,
+                document_non_matches=True,
+            )
+            self._non_matches = list(detailed.get("non_matches") or [])
+        return self._non_matches
 
     def explain(self) -> Dict[str, Dict[str, Any]]:
         """Per-field config + provenance, joined with THIS pair's scores.
@@ -105,7 +164,7 @@ class EvalSpec:
         eval_model: Type,
         *,
         weight_hints: bool,
-        match_threshold: float = 0.7,
+        match_threshold: float = DEFAULT_MATCH_THRESHOLD,
     ):
         self.source_cls = source_cls
         self.eval_model = eval_model
@@ -128,7 +187,12 @@ class EvalSpec:
         raw = gt.compare_with(
             pred, include_confusion_matrix=True, add_derived_metrics=True
         )
-        return EvalResult(raw, self)
+        # `gt`/`pred` are retained so `EvalResult.non_matches` can be computed on
+        # demand. Passing `document_non_matches=True` here instead would put the
+        # cost on every caller: measured on a 40-item document it is ~25ms ->
+        # ~50ms, flat regardless of how many fields actually fail, and almost
+        # nobody printing a report is in that hot path.
+        return EvalResult(raw, self, ground_truth=gt, prediction=pred)
 
     def _coerce(self, value: Union[BaseModel, Dict[str, Any]]) -> BaseModel:
         if isinstance(value, BaseModel):
@@ -147,10 +211,6 @@ class EvalSpec:
         ``source`` is a coarse label (``type`` / ``name-token`` / ``degrade``,
         or ``explicit`` for a passthrough ``StructuredModel``).
         """
-        if isinstance(self.source_cls, type) and issubclass(
-            self.source_cls, StructuredModel
-        ):
-            return self._explain_structured()
         out: Dict[str, Dict[str, Any]] = {}
         for name, spec in specs_for(
             self.source_cls,
@@ -169,28 +229,14 @@ class EvalSpec:
 
     def _explain_structured(self) -> Dict[str, Dict[str, Any]]:
         """Explain a passthrough StructuredModel from its explicit config."""
-        out: Dict[str, Dict[str, Any]] = {}
-        for name in self.source_cls.model_fields:
-            if name == "extra_fields":
-                continue
-            info = self.source_cls._get_comparison_info(name)
-            comparator = getattr(info, "comparator", None)
-            out[name] = {
-                "comparator": type(comparator).__name__ if comparator else "default",
-                "threshold": info.threshold,
-                "weight": info.weight,
-                "clip_under_threshold": info.clip_under_threshold,
-                "source": "explicit",
-                "why": ["explicit: configured on the StructuredModel class"],
-            }
-        return out
+        return self.explain()
 
 
 def eval_for(
     cls: Type[BaseModel],
     *,
     weight_hints: bool = False,
-    match_threshold: float = 0.7,
+    match_threshold: Optional[float] = None,
 ) -> EvalSpec:
     """Compile a reusable :class:`EvalSpec` for a pydantic class.
 
@@ -206,18 +252,29 @@ def eval_for(
             ``List[Model]`` fields, the Hungarian TP/FN/FA classification of
             each element (at every nesting level). It does NOT change
             per-field similarity scores or ``overall_score``.
+
+            Left unset, a ``StructuredModel`` subclass's own declared
+            ``match_threshold`` wins, so the AS CONFIGURED promise above holds
+            for this knob too; any other class gets
+            ``DEFAULT_MATCH_THRESHOLD``. Passing a value overrides both.
     """
     if isinstance(cls, type) and issubclass(cls, StructuredModel):
         # Explicit configuration wins: never re-infer over a model the user
         # already tuned. weight_hints has nothing to apply to here.
-        return EvalSpec(cls, cls, weight_hints=False, match_threshold=match_threshold)
+        #
+        # `match_threshold` is a ClassVar on StructuredModel defaulting to
+        # DEFAULT_MATCH_THRESHOLD, so reading it needs no hasattr guard and an
+        # undeclared subclass lands on the same default a plain BaseModel gets.
+        resolved = cls.match_threshold if match_threshold is None else match_threshold
+        return EvalSpec(cls, cls, weight_hints=False, match_threshold=resolved)
+    resolved = DEFAULT_MATCH_THRESHOLD if match_threshold is None else match_threshold
     eval_model = structured_model_for(
         cls,
         weight_hints=weight_hints,
-        match_threshold=match_threshold,
+        match_threshold=resolved,
     )
     return EvalSpec(
-        cls, eval_model, weight_hints=weight_hints, match_threshold=match_threshold
+        cls, eval_model, weight_hints=weight_hints, match_threshold=resolved
     )
 
 
@@ -226,7 +283,7 @@ def evaluate(
     prediction: BaseModel,
     *,
     weight_hints: bool = False,
-    match_threshold: float = 0.7,
+    match_threshold: Optional[float] = None,
 ) -> EvalResult:
     """Evaluate a prediction against ground truth with zero configuration.
 
@@ -240,7 +297,9 @@ def evaluate(
         weight_hints: Enable name-token weight heuristics (default off).
         match_threshold: The similarity score at or above which an object
             counts as a match (drives ``EvalResult.matched`` and list-element
-            TP/FN classification; does not change similarity scores).
+            TP/FN classification; does not change similarity scores). Left
+            unset, a ``StructuredModel``'s own declaration wins; see
+            :func:`eval_for`.
 
     Returns:
         An :class:`EvalResult` with ``overall_score``, ``precision``,

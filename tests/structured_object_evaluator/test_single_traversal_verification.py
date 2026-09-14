@@ -51,13 +51,12 @@ class TestSingleTraversalOptimization:
         assert "field_scores" in result
         assert "confusion_matrix" in result
         assert "overall_score" in result
-        assert "all_fields_matched" in result
+        assert "all_fields_matched" not in result  # removed in #287
 
         # Extract scores from both places
         field_scores = result["field_scores"]
         confusion_matrix = result["confusion_matrix"]
         overall_score = result["overall_score"]
-        all_fields_matched = result["all_fields_matched"]
 
         # Verify field scores are consistent with confusion matrix scoring data
         for field_name, field_score in field_scores.items():
@@ -74,12 +73,6 @@ class TestSingleTraversalOptimization:
         cm_overall_score = confusion_matrix["overall"]["similarity_score"]
         assert abs(overall_score - cm_overall_score) < 1e-10, (
             f"Overall score mismatch: {overall_score} vs {cm_overall_score}"
-        )
-
-        # Verify all_fields_matched consistency
-        cm_all_fields_matched = confusion_matrix["overall"]["all_fields_matched"]
-        assert all_fields_matched == cm_all_fields_matched, (
-            f"All fields matched mismatch: {all_fields_matched} vs {cm_all_fields_matched}"
         )
 
         # Verify we have the expected scores for this test case

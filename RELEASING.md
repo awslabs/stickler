@@ -62,6 +62,40 @@ git push origin dev
 Also add a `## [X.Y.Z] - YYYY-MM-DD` section to `CHANGELOG.md` (move entries
 out of `[Unreleased]`) in the same commit.
 
+Three parts, and the last two are easy to miss:
+
+1. **Move the entries** out of `[Unreleased]` under the new `## [X.Y.Z]` heading.
+2. **Leave an empty `## [Unreleased]` heading above it**, for the next cycle.
+3. **Add the link definition** at the bottom of the file, and retarget
+   `[Unreleased]`:
+
+   ```
+   [Unreleased]: https://github.com/awslabs/stickler/compare/vX.Y.Z...dev
+   [X.Y.Z]: https://github.com/awslabs/stickler/compare/vPREV...vX.Y.Z
+   ```
+
+   Every version heading resolves through that block. Skip it and the new heading
+   renders on GitHub as literal bracketed text, uniquely among all releases, in
+   notes that are then permanent. Cutting 1.0 missed this step.
+
+The docs-drift guards in
+`tests/structured_object_evaluator/test_rollup_node_semantics.py` read the
+changelog's newest section, so step 2 matters to them: renaming `[Unreleased]`
+instead of adding a new one failed four of them outright when 1.0 was cut. The
+walker finds the newest section by content rather than by the literal heading, so
+it survives both states.
+
+Before opening the release PR, confirm the version really is what you think it
+is, by path and not just by string:
+
+```bash
+uv run python -c "import stickler, inspect; print(inspect.getfile(stickler), stickler.__version__)"
+uv lock --check
+```
+
+The path matters because a stale install elsewhere on the machine reports its own
+version quite happily. See [#342](https://github.com/awslabs/stickler/issues/342).
+
 ### What belongs in the changelog
 
 Entries are for changes a user can observe. A PR needs one when it changes
