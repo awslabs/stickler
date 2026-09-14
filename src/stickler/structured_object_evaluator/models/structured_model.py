@@ -1618,6 +1618,7 @@ class StructuredModel(BaseModel):
 
         total_score = 0.0
         total_weight = 0.0
+        compared_fields = 0
 
         for field_name in self.__class__.model_fields:
             # Skip the extra_fields attribute in comparison
@@ -1649,6 +1650,7 @@ class StructuredModel(BaseModel):
                 field_score = self.compare_field_raw(field_name, other_value)
 
                 # Update total score
+                compared_fields += 1
                 total_score += field_score * weight
                 total_weight += weight
 
@@ -1656,8 +1658,18 @@ class StructuredModel(BaseModel):
         if total_weight > 0:
             return total_score / total_weight
 
-        # Every compared field was absent on both sides. Nothing disagreed, so
-        # identical empty objects remain a perfect match (#233).
+        # `total_weight == 0` has two causes and they are not the same result.
+        #
+        # Fields were compared, but every declared weight was zero. The values
+        # may disagree completely, so a perfect score is unjustified and would
+        # make every pairing in a list of such models free under Hungarian
+        # matching. Return 0.0, which is also what `compare_with()` reports.
+        if compared_fields:
+            return 0.0
+
+        # Nothing was compared: every field was absent on both sides, or the two
+        # objects share no fields. Nothing disagreed, so identical empty objects
+        # remain a perfect match (#233).
         return 1.0
 
     def compare_with(

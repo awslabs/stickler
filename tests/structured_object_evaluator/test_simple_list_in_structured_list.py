@@ -904,6 +904,38 @@ def test_all_absent_fields_define_empty_denominator_as_a_match():
     assert gt.compare(pred) == 1.0
 
 
+def test_zero_weights_are_not_an_empty_denominator():
+    """A zero denominator has two causes and only one of them is a match.
+
+    #233 makes an empty denominator 1.0 because nothing was compared, so nothing
+    disagreed. Declared weights summing to zero produces the same zero
+    denominator by a different route: fields *were* compared and may disagree
+    completely. Paying out 1.0 there makes every pairing in a list of such models
+    free, since ``compare()`` is the Hungarian cost function.
+    """
+
+    class ZeroWeighted(StructuredModel):
+        x: str = ComparableField(comparator=ExactComparator(), weight=0.0)
+
+    disagreeing = ZeroWeighted(x="aaa").compare(ZeroWeighted(x="zzz"))
+    assert disagreeing == 0.0, "compared-at-zero-weight is not a perfect match"
+
+    # And it agrees with the score reader beside it, rather than diverging.
+    assert (
+        ZeroWeighted(x="aaa").compare_with(ZeroWeighted(x="zzz"))["overall_score"]
+        == disagreeing
+    )
+
+    # Absent on both sides still reaches the #233 branch even at zero weight,
+    # because that field is skipped before any weight is consulted.
+    class ZeroWeightedOptional(StructuredModel):
+        x: Optional[str] = ComparableField(
+            default=None, comparator=ExactComparator(), weight=0.0
+        )
+
+    assert ZeroWeightedOptional().compare(ZeroWeightedOptional()) == 1.0
+
+
 @pytest.mark.parametrize("absent", [[], None], ids=["empty-list", "none"])
 def test_absent_list_fields_do_not_lift_a_disagreeing_pair(absent):
     """True negatives are excluded from object similarity in either spelling."""

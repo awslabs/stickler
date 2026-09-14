@@ -294,6 +294,18 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **A model whose declared weights sum to zero no longer scores `1.0` for
+  disagreeing values.** `compare()` returned `1.0` whenever its weighted
+  denominator was zero, which conflated two causes: nothing was compared
+  (identical empty objects, the intent of
+  [#233](https://github.com/awslabs/stickler/issues/233)) and fields were
+  compared but every declared weight was `0.0`. In the second case the values
+  can disagree completely, and because `compare()` is the Hungarian cost
+  function, a spurious `1.0` made every pairing in a list of such models free.
+  `ComparableField(weight=0.0)` on `"aaa"` vs `"zzz"` scored `1.0`; it now
+  scores `0.0`, matching both `compare_with()` and the 0.7.0 behaviour.
+  Identical empty objects still score `1.0`.
+
 - **Scores change for mapping fields explicitly using `NormalizedComparator`.**
   Both `compare` and `compare_with` now warn and count the pair as a false
   discovery with score `0.0`, even for identical dictionaries. For example,
