@@ -1,0 +1,4306 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://awslabs.github.io/stickler/API-Reference/auto/">
+      
+      
+        <link rel="prev" href="../api/">
+      
+      
+        <link rel="next" href="../comparators/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Auto (Zero-Config Evaluation) - Stickler</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#auto-zero-config-evaluation" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Stickler" class="md-header__button md-logo" aria-label="Stickler" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Stickler
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Auto (Zero-Config Evaluation)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/awslabs/stickler" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    awslabs/stickler
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../.." class="md-tabs__link">
+          
+  
+  
+  Home
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../Getting-Started/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../Guides/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../Advanced/" class="md-tabs__link">
+          
+  
+  
+  Advanced
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Stickler" class="md-nav__button md-logo" aria-label="Stickler" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Stickler
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/awslabs/stickler" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    awslabs/stickler
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Home
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stickler Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/ultra-quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ultra Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/choosing-a-configuration-path/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Choosing a Configuration Path
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/thresholds-and-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Thresholds and Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/known-issues/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Known Issues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_7" id="__nav_2_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/Contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing to Stickler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/Contributing/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Engine Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/Contributing/development-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development Environment Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/Contributing/testing-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/Contributing/code-style/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Style Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/Contributing/pull-request-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pull Request Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/Contributing/maintainers-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintainer's Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparators
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Comparators
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Comparators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Comparators/date-comparator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Date Comparator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Comparators/postal-codes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Postal Codes and Addresses
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Comparators/llm-as-a-judge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM-as-a-Judge Comparators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Evaluation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Customizing Your Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Evaluation/bulk-evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bulk Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Evaluation/confidence-evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Confidence Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Evaluation/understanding-results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Understanding Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use Cases
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Use Cases
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Use-Cases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use Cases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Use-Cases/evaluate-strands-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluating a Strands Agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Use-Cases/idp-accelerator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IDP Accelerator Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Best Practices
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Best Practices
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Best-Practices/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Best Practices
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Best-Practices/agentic-development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentic Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Advanced
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced Topics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/rich-value-pattern/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rich Value Pattern
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/classification-logic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Classification Logic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/hungarian-matching/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hungarian Matching
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/threshold-gated-evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How Below-Threshold Pairs Are Classified
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/dynamic-models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dynamic Model Creation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/confidence-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Confidence Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/bbox-map-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bounding Box mAP Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/map-reduce-evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Map/Reduce Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/aggregate-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Aggregate Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Advanced/model-export/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Export
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SDK Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auto (Zero-Config Evaluation)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../comparators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../utils/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Utils
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+  
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="auto-zero-config-evaluation">Auto (Zero-Config Evaluation)</h1>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h1 id="stickler.auto" class="doc doc-heading">
+            <code>stickler.auto</code>
+
+
+</h1>
+
+    <div class="doc doc-contents first">
+
+        <p>Zero-config evaluation of vanilla pydantic models.</p>
+<p>Turn any <code>pydantic.BaseModel</code> (e.g. a Strands agent <code>response_model</code>) into a
+scored stickler evaluation with a single call, with no <code>StructuredModel</code> subclass,
+no JSON schema, no per-field configuration:</p>
+<div class="codehilite"><pre><span></span><code><span class="o">&gt;&gt;&gt;</span> <span class="kn">import</span><span class="w"> </span><span class="nn">stickler</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">result</span> <span class="o">=</span> <span class="n">stickler</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">ground_truth</span><span class="p">,</span> <span class="n">prediction</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">result</span><span class="o">.</span><span class="n">f1</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">field_scores</span>
+</code></pre></div>
+
+<p>The comparison config (comparator, threshold, weight per field) is inferred
+from each field's python type and name. See <code>auto/README.md</code> for the
+inference rules and precedence.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div><p><code>evaluate</code>, <code>eval_for</code>, <code>EvalResult</code> and <code>EvalSpec</code> are re-exported at the top level, so
+<code>stickler.evaluate</code> and <code>stickler.auto.evaluate</code> are the same function. <code>InferredSpec</code> and
+<code>infer_field_config</code> are public but only under <code>stickler.auto</code>.</p>
+<div class="admonition tip">
+<p class="admonition-title">Which path is this?</p>
+<p>This is the inference path: it takes a live Pydantic <strong>class</strong> and infers a comparator and
+threshold per field from the type <em>and</em> the field name. The JSON Schema path takes a schema
+<strong>dict</strong> and reads structure only, never names, with different thresholds. See
+<a href="../../Getting-Started/choosing-a-configuration-path/">Choosing a Configuration Path</a>.</p>
+</div>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="stickler.auto.facade" class="doc doc-heading">
+            <code>stickler.auto.facade</code>
+
+
+</h2>
+
+    <div class="doc doc-contents first">
+
+        <p>Public zero-config evaluation surface.</p>
+<p>The dead-simple entry point for evaluating structured output from a Strands
+agent (or any pydantic-producing system):</p>
+<div class="codehilite"><pre><span></span><code><span class="o">&gt;&gt;&gt;</span> <span class="kn">import</span><span class="w"> </span><span class="nn">stickler</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">pred</span> <span class="o">=</span> <span class="n">agent</span><span class="o">.</span><span class="n">structured_output</span><span class="p">(</span><span class="n">Invoice</span><span class="p">,</span> <span class="s2">&quot;Extract the invoice: ...&quot;</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">result</span> <span class="o">=</span> <span class="n">stickler</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">ground_truth</span><span class="p">,</span> <span class="n">pred</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">f1</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">recall</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">field_scores</span><span class="p">)</span>
+</code></pre></div>
+
+<p>No <code>StructuredModel</code> subclass, no JSON schema, no <code>x-aws-stickler-*</code>
+annotations. Both arguments are ordinary pydantic instances; the comparison
+config is inferred from their class (see :mod:<code>.inference</code>).</p>
+<p>For a batch loop, compile once with :func:<code>eval_for</code> and reuse the returned
+:class:<code>EvalSpec</code>.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="stickler.auto.facade.evaluate" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">stickler</span><span class="o">.</span><span class="n">auto</span><span class="o">.</span><span class="n">facade</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">ground_truth</span><span class="p">,</span> <span class="n">prediction</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">weight_hints</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">match_threshold</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents first">
+
+        <p>Evaluate a prediction against ground truth with zero configuration.</p>
+<p><code>ground_truth</code> and <code>prediction</code> must be pydantic instances of the same
+class (or a compatible superset, so extra/missing fields are tolerated). The
+comparison config is inferred from their class.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>ground_truth</code>
+            </td>
+            <td>
+                  <code><span title="pydantic.BaseModel">BaseModel</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The reference instance.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>prediction</code>
+            </td>
+            <td>
+                  <code><span title="pydantic.BaseModel">BaseModel</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The instance to score (e.g. a Strands <code>response_model</code>).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>weight_hints</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Enable name-token weight heuristics (default off).</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>match_threshold</code>
+            </td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="float">float</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The similarity score at or above which an object
+counts as a match (drives <code>EvalResult.matched</code> and list-element
+TP/FN classification; does not change similarity scores). Left
+unset, a <code>StructuredModel</code>'s own declaration wins; see
+:func:<code>eval_for</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>An</code></td>            <td>
+                  <code><a class="autorefs autorefs-internal" title="stickler.auto.facade.EvalResult" href="#stickler.auto.facade.EvalResult">EvalResult</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>class:<code>EvalResult</code> with <code>overall_score</code>, <code>precision</code>,</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td></td>            <td>
+                  <code><a class="autorefs autorefs-internal" title="stickler.auto.facade.EvalResult" href="#stickler.auto.facade.EvalResult">EvalResult</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>recall</code>, <code>f1</code>, <code>accuracy</code>, <code>field_scores</code>, <code>matched</code> and</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td></td>            <td>
+                  <code><a class="autorefs autorefs-internal" title="stickler.auto.facade.EvalResult" href="#stickler.auto.facade.EvalResult">EvalResult</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>.explain()</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>stickler/auto/facade.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">281</span>
+<span class="normal">282</span>
+<span class="normal">283</span>
+<span class="normal">284</span>
+<span class="normal">285</span>
+<span class="normal">286</span>
+<span class="normal">287</span>
+<span class="normal">288</span>
+<span class="normal">289</span>
+<span class="normal">290</span>
+<span class="normal">291</span>
+<span class="normal">292</span>
+<span class="normal">293</span>
+<span class="normal">294</span>
+<span class="normal">295</span>
+<span class="normal">296</span>
+<span class="normal">297</span>
+<span class="normal">298</span>
+<span class="normal">299</span>
+<span class="normal">300</span>
+<span class="normal">301</span>
+<span class="normal">302</span>
+<span class="normal">303</span>
+<span class="normal">304</span>
+<span class="normal">305</span>
+<span class="normal">306</span>
+<span class="normal">307</span>
+<span class="normal">308</span>
+<span class="normal">309</span>
+<span class="normal">310</span>
+<span class="normal">311</span>
+<span class="normal">312</span>
+<span class="normal">313</span>
+<span class="normal">314</span>
+<span class="normal">315</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">evaluate</span><span class="p">(</span>
+    <span class="n">ground_truth</span><span class="p">:</span> <span class="n">BaseModel</span><span class="p">,</span>
+    <span class="n">prediction</span><span class="p">:</span> <span class="n">BaseModel</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">weight_hints</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">match_threshold</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">EvalResult</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Evaluate a prediction against ground truth with zero configuration.</span>
+
+<span class="sd">    ``ground_truth`` and ``prediction`` must be pydantic instances of the same</span>
+<span class="sd">    class (or a compatible superset, so extra/missing fields are tolerated). The</span>
+<span class="sd">    comparison config is inferred from their class.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        ground_truth: The reference instance.</span>
+<span class="sd">        prediction: The instance to score (e.g. a Strands ``response_model``).</span>
+<span class="sd">        weight_hints: Enable name-token weight heuristics (default off).</span>
+<span class="sd">        match_threshold: The similarity score at or above which an object</span>
+<span class="sd">            counts as a match (drives ``EvalResult.matched`` and list-element</span>
+<span class="sd">            TP/FN classification; does not change similarity scores). Left</span>
+<span class="sd">            unset, a ``StructuredModel``&#39;s own declaration wins; see</span>
+<span class="sd">            :func:`eval_for`.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        An :class:`EvalResult` with ``overall_score``, ``precision``,</span>
+<span class="sd">        ``recall``, ``f1``, ``accuracy``, ``field_scores``, ``matched`` and</span>
+<span class="sd">        ``.explain()``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="bp">cls</span> <span class="o">=</span> <span class="n">_shared_class</span><span class="p">(</span><span class="n">ground_truth</span><span class="p">,</span> <span class="n">prediction</span><span class="p">)</span>
+    <span class="n">spec</span> <span class="o">=</span> <span class="n">eval_for</span><span class="p">(</span>
+        <span class="bp">cls</span><span class="p">,</span>
+        <span class="n">weight_hints</span><span class="o">=</span><span class="n">weight_hints</span><span class="p">,</span>
+        <span class="n">match_threshold</span><span class="o">=</span><span class="n">match_threshold</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">spec</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">ground_truth</span><span class="p">,</span> <span class="n">prediction</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="stickler.auto.facade.eval_for" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">stickler</span><span class="o">.</span><span class="n">auto</span><span class="o">.</span><span class="n">facade</span><span class="o">.</span><span class="n">eval_for</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">weight_hints</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">match_threshold</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents first">
+
+        <p>Compile a reusable :class:<code>EvalSpec</code> for a pydantic class.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>cls</code>
+            </td>
+            <td>
+                  <code><span title="typing.Type">Type</span>[<span title="pydantic.BaseModel">BaseModel</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The pydantic <code>BaseModel</code> subclass to evaluate instances of. A
+<code>StructuredModel</code> subclass is used AS CONFIGURED: its explicit
+comparators/thresholds are respected and nothing is inferred.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>weight_hints</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Apply name-token weight heuristics (default off, so
+weights stay uniform and precision/recall are not skewed by guessed
+business-criticality). Ignored for <code>StructuredModel</code> classes.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>match_threshold</code>
+            </td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="float">float</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The similarity score at or above which an OBJECT
+counts as a match. It drives <code>EvalResult.matched</code> and, for
+<code>List[Model]</code> fields, the Hungarian TP/FN/FA classification of
+each element (at every nesting level). It does NOT change
+per-field similarity scores or <code>overall_score</code>.</p>
+<p>Left unset, a <code>StructuredModel</code> subclass's own declared
+<code>match_threshold</code> wins, so the AS CONFIGURED promise above holds
+for this knob too; any other class gets
+<code>DEFAULT_MATCH_THRESHOLD</code>. Passing a value overrides both.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>stickler/auto/facade.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">235</span>
+<span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span>
+<span class="normal">256</span>
+<span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">eval_for</span><span class="p">(</span>
+    <span class="bp">cls</span><span class="p">:</span> <span class="n">Type</span><span class="p">[</span><span class="n">BaseModel</span><span class="p">],</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">weight_hints</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">match_threshold</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">EvalSpec</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compile a reusable :class:`EvalSpec` for a pydantic class.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        cls: The pydantic ``BaseModel`` subclass to evaluate instances of. A</span>
+<span class="sd">            ``StructuredModel`` subclass is used AS CONFIGURED: its explicit</span>
+<span class="sd">            comparators/thresholds are respected and nothing is inferred.</span>
+<span class="sd">        weight_hints: Apply name-token weight heuristics (default off, so</span>
+<span class="sd">            weights stay uniform and precision/recall are not skewed by guessed</span>
+<span class="sd">            business-criticality). Ignored for ``StructuredModel`` classes.</span>
+<span class="sd">        match_threshold: The similarity score at or above which an OBJECT</span>
+<span class="sd">            counts as a match. It drives ``EvalResult.matched`` and, for</span>
+<span class="sd">            ``List[Model]`` fields, the Hungarian TP/FN/FA classification of</span>
+<span class="sd">            each element (at every nesting level). It does NOT change</span>
+<span class="sd">            per-field similarity scores or ``overall_score``.</span>
+
+<span class="sd">            Left unset, a ``StructuredModel`` subclass&#39;s own declared</span>
+<span class="sd">            ``match_threshold`` wins, so the AS CONFIGURED promise above holds</span>
+<span class="sd">            for this knob too; any other class gets</span>
+<span class="sd">            ``DEFAULT_MATCH_THRESHOLD``. Passing a value overrides both.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="nb">type</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">issubclass</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">StructuredModel</span><span class="p">):</span>
+        <span class="c1"># Explicit configuration wins: never re-infer over a model the user</span>
+        <span class="c1"># already tuned. weight_hints has nothing to apply to here.</span>
+        <span class="c1">#</span>
+        <span class="c1"># `match_threshold` is a ClassVar on StructuredModel defaulting to</span>
+        <span class="c1"># DEFAULT_MATCH_THRESHOLD, so reading it needs no hasattr guard and an</span>
+        <span class="c1"># undeclared subclass lands on the same default a plain BaseModel gets.</span>
+        <span class="n">resolved</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">match_threshold</span> <span class="k">if</span> <span class="n">match_threshold</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">match_threshold</span>
+        <span class="k">return</span> <span class="n">EvalSpec</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="bp">cls</span><span class="p">,</span> <span class="n">weight_hints</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">match_threshold</span><span class="o">=</span><span class="n">resolved</span><span class="p">)</span>
+    <span class="n">resolved</span> <span class="o">=</span> <span class="n">DEFAULT_MATCH_THRESHOLD</span> <span class="k">if</span> <span class="n">match_threshold</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">match_threshold</span>
+    <span class="n">eval_model</span> <span class="o">=</span> <span class="n">structured_model_for</span><span class="p">(</span>
+        <span class="bp">cls</span><span class="p">,</span>
+        <span class="n">weight_hints</span><span class="o">=</span><span class="n">weight_hints</span><span class="p">,</span>
+        <span class="n">match_threshold</span><span class="o">=</span><span class="n">resolved</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">EvalSpec</span><span class="p">(</span>
+        <span class="bp">cls</span><span class="p">,</span> <span class="n">eval_model</span><span class="p">,</span> <span class="n">weight_hints</span><span class="o">=</span><span class="n">weight_hints</span><span class="p">,</span> <span class="n">match_threshold</span><span class="o">=</span><span class="n">resolved</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="stickler.auto.facade.EvalSpec" class="doc doc-heading">
+            <code>stickler.auto.facade.EvalSpec</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents first">
+
+
+
+        <p>A compiled, reusable evaluator for one pydantic class.</p>
+<p>Build once with :func:<code>eval_for</code>, then call :meth:<code>evaluate</code> per pair. The
+inferred shadow <code>StructuredModel</code> is cached, so this is the efficient path
+for evaluating a dataset.</p>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>stickler/auto/facade.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span>
+<span class="normal">197</span>
+<span class="normal">198</span>
+<span class="normal">199</span>
+<span class="normal">200</span>
+<span class="normal">201</span>
+<span class="normal">202</span>
+<span class="normal">203</span>
+<span class="normal">204</span>
+<span class="normal">205</span>
+<span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span>
+<span class="normal">225</span>
+<span class="normal">226</span>
+<span class="normal">227</span>
+<span class="normal">228</span>
+<span class="normal">229</span>
+<span class="normal">230</span>
+<span class="normal">231</span>
+<span class="normal">232</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">EvalSpec</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A compiled, reusable evaluator for one pydantic class.</span>
+
+<span class="sd">    Build once with :func:`eval_for`, then call :meth:`evaluate` per pair. The</span>
+<span class="sd">    inferred shadow ``StructuredModel`` is cached, so this is the efficient path</span>
+<span class="sd">    for evaluating a dataset.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">source_cls</span><span class="p">:</span> <span class="n">Type</span><span class="p">[</span><span class="n">BaseModel</span><span class="p">],</span>
+        <span class="n">eval_model</span><span class="p">:</span> <span class="n">Type</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">weight_hints</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+        <span class="n">match_threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">DEFAULT_MATCH_THRESHOLD</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">source_cls</span> <span class="o">=</span> <span class="n">source_cls</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">eval_model</span> <span class="o">=</span> <span class="n">eval_model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_weight_hints</span> <span class="o">=</span> <span class="n">weight_hints</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_match_threshold</span> <span class="o">=</span> <span class="n">match_threshold</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">evaluate</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">ground_truth</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">BaseModel</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
+        <span class="n">prediction</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">BaseModel</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">EvalResult</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Score a single ground-truth / prediction pair.</span>
+
+<span class="sd">        Accepts instances of the source class or plain dicts (e.g. rows loaded</span>
+<span class="sd">        from a JSON dataset); dicts are validated into the source class first,</span>
+<span class="sd">        so type coercion and error messages come from the user&#39;s own model.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">gt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">eval_model</span><span class="o">.</span><span class="n">from_json</span><span class="p">(</span><span class="n">_dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_coerce</span><span class="p">(</span><span class="n">ground_truth</span><span class="p">)))</span>
+        <span class="n">pred</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">eval_model</span><span class="o">.</span><span class="n">from_json</span><span class="p">(</span><span class="n">_dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_coerce</span><span class="p">(</span><span class="n">prediction</span><span class="p">)))</span>
+        <span class="n">raw</span> <span class="o">=</span> <span class="n">gt</span><span class="o">.</span><span class="n">compare_with</span><span class="p">(</span>
+            <span class="n">pred</span><span class="p">,</span> <span class="n">include_confusion_matrix</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">add_derived_metrics</span><span class="o">=</span><span class="kc">True</span>
+        <span class="p">)</span>
+        <span class="c1"># `gt`/`pred` are retained so `EvalResult.non_matches` can be computed on</span>
+        <span class="c1"># demand. Passing `document_non_matches=True` here instead would put the</span>
+        <span class="c1"># cost on every caller: measured on a 40-item document it is ~25ms -&gt;</span>
+        <span class="c1"># ~50ms, flat regardless of how many fields actually fail, and almost</span>
+        <span class="c1"># nobody printing a report is in that hot path.</span>
+        <span class="k">return</span> <span class="n">EvalResult</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="bp">self</span><span class="p">,</span> <span class="n">ground_truth</span><span class="o">=</span><span class="n">gt</span><span class="p">,</span> <span class="n">prediction</span><span class="o">=</span><span class="n">pred</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_coerce</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">BaseModel</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="n">BaseModel</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">BaseModel</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">value</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">source_cls</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;expected a </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">source_cls</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> instance or a dict, &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">explain</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return ``{field: {comparator, threshold, weight, source, why}}``.</span>
+
+<span class="sd">        Makes every choice auditable. ``why`` is the ordered provenance trail;</span>
+<span class="sd">        ``source`` is a coarse label (``type`` / ``name-token`` / ``degrade``,</span>
+<span class="sd">        or ``explicit`` for a passthrough ``StructuredModel``).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">out</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">spec</span> <span class="ow">in</span> <span class="n">specs_for</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">source_cls</span><span class="p">,</span>
+            <span class="n">weight_hints</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_weight_hints</span><span class="p">,</span>
+            <span class="n">match_threshold</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_match_threshold</span><span class="p">,</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">out</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;comparator&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">comparator_name</span><span class="p">,</span>
+                <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">threshold</span><span class="p">,</span>
+                <span class="s2">&quot;weight&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">weight</span><span class="p">,</span>
+                <span class="s2">&quot;clip_under_threshold&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">clip_under_threshold</span><span class="p">,</span>
+                <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">source</span><span class="p">,</span>
+                <span class="s2">&quot;why&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">provenance</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="k">return</span> <span class="n">out</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_explain_structured</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Explain a passthrough StructuredModel from its explicit config.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">explain</span><span class="p">()</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="stickler.auto.facade.EvalSpec.evaluate" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">evaluate</span><span class="p">(</span><span class="n">ground_truth</span><span class="p">,</span> <span class="n">prediction</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Score a single ground-truth / prediction pair.</p>
+<p>Accepts instances of the source class or plain dicts (e.g. rows loaded
+from a JSON dataset); dicts are validated into the source class first,
+so type coercion and error messages come from the user's own model.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>stickler/auto/facade.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">evaluate</span><span class="p">(</span>
+    <span class="bp">self</span><span class="p">,</span>
+    <span class="n">ground_truth</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">BaseModel</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
+    <span class="n">prediction</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">BaseModel</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">EvalResult</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Score a single ground-truth / prediction pair.</span>
+
+<span class="sd">    Accepts instances of the source class or plain dicts (e.g. rows loaded</span>
+<span class="sd">    from a JSON dataset); dicts are validated into the source class first,</span>
+<span class="sd">    so type coercion and error messages come from the user&#39;s own model.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">gt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">eval_model</span><span class="o">.</span><span class="n">from_json</span><span class="p">(</span><span class="n">_dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_coerce</span><span class="p">(</span><span class="n">ground_truth</span><span class="p">)))</span>
+    <span class="n">pred</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">eval_model</span><span class="o">.</span><span class="n">from_json</span><span class="p">(</span><span class="n">_dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_coerce</span><span class="p">(</span><span class="n">prediction</span><span class="p">)))</span>
+    <span class="n">raw</span> <span class="o">=</span> <span class="n">gt</span><span class="o">.</span><span class="n">compare_with</span><span class="p">(</span>
+        <span class="n">pred</span><span class="p">,</span> <span class="n">include_confusion_matrix</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">add_derived_metrics</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+    <span class="c1"># `gt`/`pred` are retained so `EvalResult.non_matches` can be computed on</span>
+    <span class="c1"># demand. Passing `document_non_matches=True` here instead would put the</span>
+    <span class="c1"># cost on every caller: measured on a 40-item document it is ~25ms -&gt;</span>
+    <span class="c1"># ~50ms, flat regardless of how many fields actually fail, and almost</span>
+    <span class="c1"># nobody printing a report is in that hot path.</span>
+    <span class="k">return</span> <span class="n">EvalResult</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="bp">self</span><span class="p">,</span> <span class="n">ground_truth</span><span class="o">=</span><span class="n">gt</span><span class="p">,</span> <span class="n">prediction</span><span class="o">=</span><span class="n">pred</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="stickler.auto.facade.EvalSpec.explain" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">explain</span><span class="p">()</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return <code>{field: {comparator, threshold, weight, source, why}}</code>.</p>
+<p>Makes every choice auditable. <code>why</code> is the ordered provenance trail;
+<code>source</code> is a coarse label (<code>type</code> / <code>name-token</code> / <code>degrade</code>,
+or <code>explicit</code> for a passthrough <code>StructuredModel</code>).</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>stickler/auto/facade.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span>
+<span class="normal">225</span>
+<span class="normal">226</span>
+<span class="normal">227</span>
+<span class="normal">228</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">explain</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return ``{field: {comparator, threshold, weight, source, why}}``.</span>
+
+<span class="sd">    Makes every choice auditable. ``why`` is the ordered provenance trail;</span>
+<span class="sd">    ``source`` is a coarse label (``type`` / ``name-token`` / ``degrade``,</span>
+<span class="sd">    or ``explicit`` for a passthrough ``StructuredModel``).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">out</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">spec</span> <span class="ow">in</span> <span class="n">specs_for</span><span class="p">(</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">source_cls</span><span class="p">,</span>
+        <span class="n">weight_hints</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_weight_hints</span><span class="p">,</span>
+        <span class="n">match_threshold</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_match_threshold</span><span class="p">,</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">out</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;comparator&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">comparator_name</span><span class="p">,</span>
+            <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">threshold</span><span class="p">,</span>
+            <span class="s2">&quot;weight&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">weight</span><span class="p">,</span>
+            <span class="s2">&quot;clip_under_threshold&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">clip_under_threshold</span><span class="p">,</span>
+            <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">source</span><span class="p">,</span>
+            <span class="s2">&quot;why&quot;</span><span class="p">:</span> <span class="n">spec</span><span class="o">.</span><span class="n">provenance</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="k">return</span> <span class="n">out</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="stickler.auto.facade.EvalResult" class="doc doc-heading">
+            <code>stickler.auto.facade.EvalResult</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents first">
+
+
+
+        <p>Flat, friendly view over a stickler comparison result.</p>
+<p>Wraps the nested dict returned by <code>StructuredModel.compare_with</code> and
+exposes the metrics users actually reach for. The full raw dict is always
+available via :attr:<code>raw</code>.</p>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>stickler/auto/facade.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 34</span>
+<span class="normal"> 35</span>
+<span class="normal"> 36</span>
+<span class="normal"> 37</span>
+<span class="normal"> 38</span>
+<span class="normal"> 39</span>
+<span class="normal"> 40</span>
+<span class="normal"> 41</span>
+<span class="normal"> 42</span>
+<span class="normal"> 43</span>
+<span class="normal"> 44</span>
+<span class="normal"> 45</span>
+<span class="normal"> 46</span>
+<span class="normal"> 47</span>
+<span class="normal"> 48</span>
+<span class="normal"> 49</span>
+<span class="normal"> 50</span>
+<span class="normal"> 51</span>
+<span class="normal"> 52</span>
+<span class="normal"> 53</span>
+<span class="normal"> 54</span>
+<span class="normal"> 55</span>
+<span class="normal"> 56</span>
+<span class="normal"> 57</span>
+<span class="normal"> 58</span>
+<span class="normal"> 59</span>
+<span class="normal"> 60</span>
+<span class="normal"> 61</span>
+<span class="normal"> 62</span>
+<span class="normal"> 63</span>
+<span class="normal"> 64</span>
+<span class="normal"> 65</span>
+<span class="normal"> 66</span>
+<span class="normal"> 67</span>
+<span class="normal"> 68</span>
+<span class="normal"> 69</span>
+<span class="normal"> 70</span>
+<span class="normal"> 71</span>
+<span class="normal"> 72</span>
+<span class="normal"> 73</span>
+<span class="normal"> 74</span>
+<span class="normal"> 75</span>
+<span class="normal"> 76</span>
+<span class="normal"> 77</span>
+<span class="normal"> 78</span>
+<span class="normal"> 79</span>
+<span class="normal"> 80</span>
+<span class="normal"> 81</span>
+<span class="normal"> 82</span>
+<span class="normal"> 83</span>
+<span class="normal"> 84</span>
+<span class="normal"> 85</span>
+<span class="normal"> 86</span>
+<span class="normal"> 87</span>
+<span class="normal"> 88</span>
+<span class="normal"> 89</span>
+<span class="normal"> 90</span>
+<span class="normal"> 91</span>
+<span class="normal"> 92</span>
+<span class="normal"> 93</span>
+<span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">EvalResult</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Flat, friendly view over a stickler comparison result.</span>
+
+<span class="sd">    Wraps the nested dict returned by ``StructuredModel.compare_with`` and</span>
+<span class="sd">    exposes the metrics users actually reach for. The full raw dict is always</span>
+<span class="sd">    available via :attr:`raw`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">raw</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+        <span class="n">spec</span><span class="p">:</span> <span class="s2">&quot;EvalSpec&quot;</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">ground_truth</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">prediction</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">raw</span> <span class="o">=</span> <span class="n">raw</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_spec</span> <span class="o">=</span> <span class="n">spec</span>
+        <span class="c1"># Kept only to compute `non_matches` lazily; see that property.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ground_truth</span> <span class="o">=</span> <span class="n">ground_truth</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_prediction</span> <span class="o">=</span> <span class="n">prediction</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_non_matches</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">cm</span> <span class="o">=</span> <span class="n">raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;confusion_matrix&quot;</span><span class="p">,</span> <span class="p">{})</span> <span class="ow">or</span> <span class="p">{}</span>
+        <span class="n">derived</span> <span class="o">=</span> <span class="p">(</span><span class="n">cm</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;overall&quot;</span><span class="p">,</span> <span class="p">{})</span> <span class="ow">or</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;derived&quot;</span><span class="p">,</span> <span class="p">{})</span> <span class="ow">or</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">overall_score</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;overall_score&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">field_scores</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="n">raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;field_scores&quot;</span><span class="p">,</span> <span class="p">{})</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">precision</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">derived</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;cm_precision&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">recall</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">derived</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;cm_recall&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">f1</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">derived</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;cm_f1&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">accuracy</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">derived</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;cm_accuracy&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">confusion_matrix</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="n">cm</span>
+        <span class="c1"># The `match_threshold` knob&#39;s model-level verdict: did this pair match?</span>
+        <span class="c1">#</span>
+        <span class="c1"># Defined directly rather than read from the engine&#39;s former</span>
+        <span class="c1"># `all_fields_matched` key, which was removed in #287. That key was a</span>
+        <span class="c1"># quantifier over TOP-LEVEL fields only and did not recurse, so a leaf</span>
+        <span class="c1"># failure inside a nested field was invisible whenever the nested field&#39;s</span>
+        <span class="c1"># own mean cleared its own threshold. Two external reports (#23, #275)</span>
+        <span class="c1"># read it as a quantifier over every leaf, which is what the docs said and</span>
+        <span class="c1"># what the name implies.</span>
+        <span class="c1">#</span>
+        <span class="c1"># `overall_score` is the weighted mean over the whole tree, so comparing</span>
+        <span class="c1"># it against `match_threshold` gives one definition that cannot disagree</span>
+        <span class="c1"># with the score sitting beside it. The threshold is whatever the spec</span>
+        <span class="c1"># resolved: the caller&#39;s argument, else a StructuredModel&#39;s own declared</span>
+        <span class="c1"># `match_threshold`, else DEFAULT_MATCH_THRESHOLD. See `eval_for`.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">matched</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">overall_score</span> <span class="o">&gt;=</span> <span class="n">spec</span><span class="o">.</span><span class="n">_match_threshold</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">non_matches</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The per-field failure records, computed on first access.</span>
+
+<span class="sd">        Not requested during ``evaluate()``. ``document_non_matches=True`` costs</span>
+<span class="sd">        roughly 2x on a 40-item document, flat whether one field fails or all of</span>
+<span class="sd">        them, and the callers who want these records are printing a report rather</span>
+<span class="sd">        than scoring a corpus. Computed here instead, once, and cached.</span>
+
+<span class="sd">        Returns an empty list when the pair cannot be recompared (an</span>
+<span class="sd">        ``EvalResult`` built directly from a raw dict, as some tests do), falling</span>
+<span class="sd">        back to whatever the raw dict already carries.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_non_matches</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_non_matches</span>
+
+        <span class="n">carried</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;non_matches&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">carried</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_non_matches</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">carried</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ground_truth</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prediction</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_non_matches</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">detailed</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ground_truth</span><span class="o">.</span><span class="n">compare_with</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_prediction</span><span class="p">,</span>
+                <span class="n">include_confusion_matrix</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">document_non_matches</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_non_matches</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">detailed</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;non_matches&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[])</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_non_matches</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">explain</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Per-field config + provenance, joined with THIS pair&#39;s scores.</span>
+
+<span class="sd">        Extends :meth:`EvalSpec.explain` with what actually happened for this</span>
+<span class="sd">        comparison: ``score`` (post-threshold), ``raw_similarity`` (before</span>
+<span class="sd">        clipping, when the engine reports it), and a human-readable</span>
+<span class="sd">        ``verdict`` such as ``&quot;raw 0.56 &lt; threshold 0.85 -&gt; clipped to 0.0&quot;``</span>
+<span class="sd">        so a 0.0 is distinguishable between a near-miss and a total mismatch.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_spec</span><span class="o">.</span><span class="n">explain</span><span class="p">()</span>
+        <span class="n">cm_fields</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;confusion_matrix&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;fields&quot;</span><span class="p">,</span> <span class="p">{})</span> <span class="ow">or</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">out</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="s2">&quot;.&quot;</span> <span class="ow">in</span> <span class="n">name</span><span class="p">:</span>  <span class="c1"># per-pair detail is top-level only</span>
+                <span class="k">continue</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">field_scores</span><span class="p">:</span>
+                <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;score&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">field_scores</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+            <span class="n">detail</span> <span class="o">=</span> <span class="n">cm_fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">detail</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;raw_similarity_score&quot;</span> <span class="ow">in</span> <span class="n">detail</span><span class="p">:</span>
+                <span class="n">raw_sim</span> <span class="o">=</span> <span class="n">detail</span><span class="p">[</span><span class="s2">&quot;raw_similarity_score&quot;</span><span class="p">]</span>
+                <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;raw_similarity&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">raw_sim</span>
+                <span class="n">score</span> <span class="o">=</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;score&quot;</span><span class="p">)</span>
+                <span class="n">threshold</span> <span class="o">=</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;threshold&quot;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="p">(</span>
+                    <span class="n">score</span> <span class="o">==</span> <span class="mf">0.0</span>
+                    <span class="ow">and</span> <span class="n">raw_sim</span>
+                    <span class="ow">and</span> <span class="n">threshold</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                    <span class="ow">and</span> <span class="n">raw_sim</span> <span class="o">&lt;</span> <span class="n">threshold</span>
+                <span class="p">):</span>
+                    <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;verdict&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;raw </span><span class="si">{</span><span class="n">raw_sim</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> &lt; threshold </span><span class="si">{</span><span class="n">threshold</span><span class="si">}</span><span class="s2"> -&gt; clipped to 0.0&quot;</span>
+                    <span class="p">)</span>
+        <span class="k">return</span> <span class="n">out</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>  <span class="c1"># pragma: no cover - display only</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;EvalResult(overall_score=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">overall_score</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">, &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;precision=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">precision</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">, recall=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">recall</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">, &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;f1=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">f1</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">, matched=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">matched</span><span class="si">}</span><span class="s2">)&quot;</span>
+        <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="stickler.auto.facade.EvalResult.non_matches" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">non_matches</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>The per-field failure records, computed on first access.</p>
+<p>Not requested during <code>evaluate()</code>. <code>document_non_matches=True</code> costs
+roughly 2x on a 40-item document, flat whether one field fails or all of
+them, and the callers who want these records are printing a report rather
+than scoring a corpus. Computed here instead, once, and cached.</p>
+<p>Returns an empty list when the pair cannot be recompared (an
+<code>EvalResult</code> built directly from a raw dict, as some tests do), falling
+back to whatever the raw dict already carries.</p>
+
+    </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="stickler.auto.facade.EvalResult.explain" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">explain</span><span class="p">()</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Per-field config + provenance, joined with THIS pair's scores.</p>
+<p>Extends :meth:<code>EvalSpec.explain</code> with what actually happened for this
+comparison: <code>score</code> (post-threshold), <code>raw_similarity</code> (before
+clipping, when the engine reports it), and a human-readable
+<code>verdict</code> such as <code>"raw 0.56 &lt; threshold 0.85 -&gt; clipped to 0.0"</code>
+so a 0.0 is distinguishable between a near-miss and a total mismatch.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>stickler/auto/facade.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">explain</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Per-field config + provenance, joined with THIS pair&#39;s scores.</span>
+
+<span class="sd">    Extends :meth:`EvalSpec.explain` with what actually happened for this</span>
+<span class="sd">    comparison: ``score`` (post-threshold), ``raw_similarity`` (before</span>
+<span class="sd">    clipping, when the engine reports it), and a human-readable</span>
+<span class="sd">    ``verdict`` such as ``&quot;raw 0.56 &lt; threshold 0.85 -&gt; clipped to 0.0&quot;``</span>
+<span class="sd">    so a 0.0 is distinguishable between a near-miss and a total mismatch.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_spec</span><span class="o">.</span><span class="n">explain</span><span class="p">()</span>
+    <span class="n">cm_fields</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;confusion_matrix&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;fields&quot;</span><span class="p">,</span> <span class="p">{})</span> <span class="ow">or</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">out</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="s2">&quot;.&quot;</span> <span class="ow">in</span> <span class="n">name</span><span class="p">:</span>  <span class="c1"># per-pair detail is top-level only</span>
+            <span class="k">continue</span>
+        <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">field_scores</span><span class="p">:</span>
+            <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;score&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">field_scores</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+        <span class="n">detail</span> <span class="o">=</span> <span class="n">cm_fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">detail</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;raw_similarity_score&quot;</span> <span class="ow">in</span> <span class="n">detail</span><span class="p">:</span>
+            <span class="n">raw_sim</span> <span class="o">=</span> <span class="n">detail</span><span class="p">[</span><span class="s2">&quot;raw_similarity_score&quot;</span><span class="p">]</span>
+            <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;raw_similarity&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">raw_sim</span>
+            <span class="n">score</span> <span class="o">=</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;score&quot;</span><span class="p">)</span>
+            <span class="n">threshold</span> <span class="o">=</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;threshold&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="p">(</span>
+                <span class="n">score</span> <span class="o">==</span> <span class="mf">0.0</span>
+                <span class="ow">and</span> <span class="n">raw_sim</span>
+                <span class="ow">and</span> <span class="n">threshold</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                <span class="ow">and</span> <span class="n">raw_sim</span> <span class="o">&lt;</span> <span class="n">threshold</span>
+            <span class="p">):</span>
+                <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;verdict&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;raw </span><span class="si">{</span><span class="n">raw_sim</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> &lt; threshold </span><span class="si">{</span><span class="n">threshold</span><span class="si">}</span><span class="s2"> -&gt; clipped to 0.0&quot;</span>
+                <span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div><h2 id="evalresult-attributes">EvalResult attributes</h2>
+<p>Set in <code>__init__</code> from the raw comparison dict, so they do not appear in the generated signature
+above:</p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>overall_score</code></td>
+<td><code>float</code></td>
+<td>Weighted average of all field scores</td>
+</tr>
+<tr>
+<td><code>field_scores</code></td>
+<td><code>dict[str, float]</code></td>
+<td>Per-field score, after threshold clipping</td>
+</tr>
+<tr>
+<td><code>precision</code></td>
+<td><code>float</code></td>
+<td><code>cm_precision</code> from the overall confusion matrix</td>
+</tr>
+<tr>
+<td><code>recall</code></td>
+<td><code>float</code></td>
+<td><code>cm_recall</code></td>
+</tr>
+<tr>
+<td><code>f1</code></td>
+<td><code>float</code></td>
+<td><code>cm_f1</code></td>
+</tr>
+<tr>
+<td><code>accuracy</code></td>
+<td><code>float</code></td>
+<td><code>cm_accuracy</code></td>
+</tr>
+<tr>
+<td><code>matched</code></td>
+<td><code>bool</code></td>
+<td><code>overall_score &gt;= match_threshold</code>. A convenience roll-up, not a per-field guarantee: individual fields can be below their thresholds while <code>matched</code> is <code>True</code>. Read <code>field_scores</code> or the confusion matrix for that.</td>
+</tr>
+<tr>
+<td><code>confusion_matrix</code></td>
+<td><code>dict</code></td>
+<td>The full confusion-matrix subtree</td>
+</tr>
+<tr>
+<td><code>raw</code></td>
+<td><code>dict</code></td>
+<td>The unmodified <code>compare_with()</code> result</td>
+</tr>
+</tbody>
+</table>
+<h2 id="auditing-the-inferred-config">Auditing the inferred config</h2>
+<p><code>explain()</code> reports what was chosen and why, so an inferred evaluation is never a black box:</p>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="n">stickler</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">gt</span><span class="p">,</span> <span class="n">pred</span><span class="p">)</span>
+<span class="n">result</span><span class="o">.</span><span class="n">explain</span><span class="p">()[</span><span class="s2">&quot;invoice_id&quot;</span><span class="p">]</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="s1">&#39;comparator&#39;</span><span class="p">:</span> <span class="s1">&#39;ExactComparator&#39;</span><span class="p">,</span>
+ <span class="s1">&#39;threshold&#39;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
+ <span class="s1">&#39;weight&#39;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
+ <span class="s1">&#39;clip_under_threshold&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+ <span class="s1">&#39;source&#39;</span><span class="p">:</span> <span class="s1">&#39;name-token&#39;</span><span class="p">,</span>
+ <span class="s1">&#39;why&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;type:str -&gt; LevenshteinComparator@0.7&#39;</span><span class="p">,</span>
+         <span class="s1">&#39;name-token:invoice_id -&gt; ExactComparator@1.0&#39;</span><span class="p">],</span>
+ <span class="s1">&#39;score&#39;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+ <span class="s1">&#39;raw_similarity&#39;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">}</span>
+</code></pre></div>
+<p><code>why</code> is the ordered trail: the type signal fired first, then the name token overrode it. Calling
+<code>explain()</code> on the <code>EvalSpec</code> instead omits <code>score</code> and <code>raw_similarity</code>, since no pair has been
+scored yet — use it to review the configuration before running a dataset.</p>
+<h2 id="inference">Inference</h2>
+<p>The rules behind every decision above, plus the precedence between the type signal and the
+name-token refinement, are documented in
+<a href="https://github.com/awslabs/stickler/blob/main/src/stickler/auto/README.md"><code>src/stickler/auto/README.md</code></a>.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h3 id="stickler.auto.inference" class="doc doc-heading">
+            <code>stickler.auto.inference</code>
+
+
+</h3>
+
+    <div class="doc doc-contents first">
+
+        <p>Zero-config comparator inference for vanilla pydantic fields.</p>
+<p>This module is the "brain" behind :func:<code>stickler.evaluate</code>. Given a single
+pydantic <code>FieldInfo</code> (the live one from <code>cls.model_fields</code>, never a
+JSON-schema round-trip) it decides which comparator/threshold/weight the field
+should be evaluated with, so an <em>unconfigured</em> model still gets a sensible,
+type-aware evaluation instead of the blind string-edit-distance fallback the
+raw comparison engine applies to unannotated fields.</p>
+<p>Design rules (see <code>auto/README.md</code>):</p>
+<ul>
+<li><strong>Type first.</strong> The python annotation is the highest-value, always-present
+  signal. <code>bool</code>/<code>Enum</code>/<code>Literal</code> -&gt; Exact, <code>int</code> -&gt; Numeric(exact),
+  <code>float</code> -&gt; Numeric(tolerant), <code>date</code>/<code>datetime</code> -&gt; Date, <code>str</code> -&gt;
+  Levenshtein.</li>
+<li><strong>Name tokens refine.</strong> Field-name tokens (<code>id</code>, <code>amount</code>, <code>email</code> ...)
+  sharpen the comparator/threshold on top of the type default.</li>
+<li><strong>Weights are honest.</strong> Business-criticality is not encoded in a vanilla
+  model, so weights default to <code>1.0</code>. Name-token weight bumps are opt-in via
+  <code>weight_hints=True</code> and always recorded in provenance.</li>
+<li><strong>Never surprise.</strong> Semantic/BERT/LLM comparators are never auto-selected;
+  a comparator that is unavailable in this environment degrades to
+  Levenshtein/Exact and the degrade is recorded.</li>
+</ul>
+<p>The public entry point is :func:<code>infer_field_config</code>, which returns an
+:class:<code>InferredSpec</code>. The builder turns that spec into a <code>(type, Field)</code>
+tuple for <code>ModelFactory.create_model_from_fields</code>.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="stickler.auto.inference.infer_field_config" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">stickler</span><span class="o">.</span><span class="n">auto</span><span class="o">.</span><span class="n">inference</span><span class="o">.</span><span class="n">infer_field_config</span><span class="p">(</span><span class="n">field_name</span><span class="p">,</span> <span class="n">field_info</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">weight_hints</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">registry</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">match_threshold</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents first">
+
+        <p>Infer a comparison spec for one pydantic field.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>field_name</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The field's name (drives name-token heuristics).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>field_info</code>
+            </td>
+            <td>
+                  <code><span title="pydantic.fields.FieldInfo">FieldInfo</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The live <code>FieldInfo</code> from <code>cls.model_fields</code>.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>weight_hints</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>When True, apply name-token weight bumps. When False
+(default) all weights stay 1.0 so precision/recall are not skewed by
+guessed business-criticality.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>registry</code>
+            </td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="stickler.structured_object_evaluator.models.comparator_registry.ComparatorRegistry">ComparatorRegistry</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Comparator registry for the availability gate. Defaults to the
+global registry.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>match_threshold</code>
+            </td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="float">float</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Object-level match threshold, used as the FIELD
+threshold for dict-typed fields so they are not exempt from a value
+the caller set. Defaults to <code>_DICT_FIELD_THRESHOLD</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>An</code></td>            <td>
+                  <code><a class="autorefs autorefs-internal" title="stickler.auto.inference.InferredSpec
+
+
+  
+      dataclass
+  " href="#stickler.auto.inference.InferredSpec">InferredSpec</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>class:<code>InferredSpec</code>. Nested <code>BaseModel</code> / <code>List[BaseModel]</code></p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td></td>            <td>
+                  <code><a class="autorefs autorefs-internal" title="stickler.auto.inference.InferredSpec
+
+
+  
+      dataclass
+  " href="#stickler.auto.inference.InferredSpec">InferredSpec</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>fields are NOT resolved here (the builder detects and recurses on them);</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td></td>            <td>
+                  <code><a class="autorefs autorefs-internal" title="stickler.auto.inference.InferredSpec
+
+
+  
+      dataclass
+  " href="#stickler.auto.inference.InferredSpec">InferredSpec</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>this function only handles primitive and primitive-list fields.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>stickler/auto/inference.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">458</span>
+<span class="normal">459</span>
+<span class="normal">460</span>
+<span class="normal">461</span>
+<span class="normal">462</span>
+<span class="normal">463</span>
+<span class="normal">464</span>
+<span class="normal">465</span>
+<span class="normal">466</span>
+<span class="normal">467</span>
+<span class="normal">468</span>
+<span class="normal">469</span>
+<span class="normal">470</span>
+<span class="normal">471</span>
+<span class="normal">472</span>
+<span class="normal">473</span>
+<span class="normal">474</span>
+<span class="normal">475</span>
+<span class="normal">476</span>
+<span class="normal">477</span>
+<span class="normal">478</span>
+<span class="normal">479</span>
+<span class="normal">480</span>
+<span class="normal">481</span>
+<span class="normal">482</span>
+<span class="normal">483</span>
+<span class="normal">484</span>
+<span class="normal">485</span>
+<span class="normal">486</span>
+<span class="normal">487</span>
+<span class="normal">488</span>
+<span class="normal">489</span>
+<span class="normal">490</span>
+<span class="normal">491</span>
+<span class="normal">492</span>
+<span class="normal">493</span>
+<span class="normal">494</span>
+<span class="normal">495</span>
+<span class="normal">496</span>
+<span class="normal">497</span>
+<span class="normal">498</span>
+<span class="normal">499</span>
+<span class="normal">500</span>
+<span class="normal">501</span>
+<span class="normal">502</span>
+<span class="normal">503</span>
+<span class="normal">504</span>
+<span class="normal">505</span>
+<span class="normal">506</span>
+<span class="normal">507</span>
+<span class="normal">508</span>
+<span class="normal">509</span>
+<span class="normal">510</span>
+<span class="normal">511</span>
+<span class="normal">512</span>
+<span class="normal">513</span>
+<span class="normal">514</span>
+<span class="normal">515</span>
+<span class="normal">516</span>
+<span class="normal">517</span>
+<span class="normal">518</span>
+<span class="normal">519</span>
+<span class="normal">520</span>
+<span class="normal">521</span>
+<span class="normal">522</span>
+<span class="normal">523</span>
+<span class="normal">524</span>
+<span class="normal">525</span>
+<span class="normal">526</span>
+<span class="normal">527</span>
+<span class="normal">528</span>
+<span class="normal">529</span>
+<span class="normal">530</span>
+<span class="normal">531</span>
+<span class="normal">532</span>
+<span class="normal">533</span>
+<span class="normal">534</span>
+<span class="normal">535</span>
+<span class="normal">536</span>
+<span class="normal">537</span>
+<span class="normal">538</span>
+<span class="normal">539</span>
+<span class="normal">540</span>
+<span class="normal">541</span>
+<span class="normal">542</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">infer_field_config</span><span class="p">(</span>
+    <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">field_info</span><span class="p">:</span> <span class="n">FieldInfo</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">weight_hints</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">registry</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ComparatorRegistry</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">match_threshold</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">InferredSpec</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Infer a comparison spec for one pydantic field.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        field_name: The field&#39;s name (drives name-token heuristics).</span>
+<span class="sd">        field_info: The live ``FieldInfo`` from ``cls.model_fields``.</span>
+<span class="sd">        weight_hints: When True, apply name-token weight bumps. When False</span>
+<span class="sd">            (default) all weights stay 1.0 so precision/recall are not skewed by</span>
+<span class="sd">            guessed business-criticality.</span>
+<span class="sd">        registry: Comparator registry for the availability gate. Defaults to the</span>
+<span class="sd">            global registry.</span>
+<span class="sd">        match_threshold: Object-level match threshold, used as the FIELD</span>
+<span class="sd">            threshold for dict-typed fields so they are not exempt from a value</span>
+<span class="sd">            the caller set. Defaults to ``_DICT_FIELD_THRESHOLD``.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        An :class:`InferredSpec`. Nested ``BaseModel`` / ``List[BaseModel]``</span>
+<span class="sd">        fields are NOT resolved here (the builder detects and recurses on them);</span>
+<span class="sd">        this function only handles primitive and primitive-list fields.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">registry</span> <span class="o">=</span> <span class="n">registry</span> <span class="ow">or</span> <span class="n">get_global_registry</span><span class="p">()</span>
+    <span class="n">annotation</span><span class="p">,</span> <span class="n">was_optional</span> <span class="o">=</span> <span class="n">unwrap_optional</span><span class="p">(</span><span class="n">field_info</span><span class="o">.</span><span class="n">annotation</span><span class="p">)</span>
+    <span class="n">provenance</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">was_optional</span><span class="p">:</span>
+        <span class="n">provenance</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;optional: unwrapped to inner type&quot;</span><span class="p">)</span>
+
+    <span class="c1"># 1) Type signal (safe, always on).</span>
+    <span class="n">comparator</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">threshold</span><span class="p">,</span> <span class="n">clip</span> <span class="o">=</span> <span class="n">_type_default</span><span class="p">(</span>
+        <span class="n">annotation</span><span class="p">,</span> <span class="n">provenance</span><span class="p">,</span> <span class="n">match_threshold</span>
+    <span class="p">)</span>
+
+    <span class="c1"># 2) Name-token refinement layered on the type default, gated on type</span>
+    <span class="c1">#    compatibility: a rule whose comparator cannot parse this type keeps</span>
+    <span class="c1">#    the type default (recorded in provenance) instead of silently</span>
+    <span class="c1">#    scoring identical values 0.0.</span>
+    <span class="n">weight</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="n">family</span> <span class="o">=</span> <span class="n">_type_family</span><span class="p">(</span><span class="n">annotation</span><span class="p">)</span>
+    <span class="n">rule</span> <span class="o">=</span> <span class="n">_match_name_token</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">rule</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">family</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">family</span> <span class="ow">in</span> <span class="n">rule</span><span class="o">.</span><span class="n">applies_to</span><span class="p">:</span>
+            <span class="n">comparator</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">threshold</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">rule</span><span class="o">.</span><span class="n">comparator</span><span class="p">,</span>
+                <span class="nb">dict</span><span class="p">(</span><span class="n">rule</span><span class="o">.</span><span class="n">config</span><span class="p">),</span>
+                <span class="n">rule</span><span class="o">.</span><span class="n">threshold</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">provenance</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_NAME_TOKEN_APPLIED</span><span class="si">}{</span><span class="n">field_name</span><span class="si">}</span><span class="s2"> -&gt; &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">rule</span><span class="o">.</span><span class="n">comparator</span><span class="si">}</span><span class="s2">@</span><span class="si">{</span><span class="n">rule</span><span class="o">.</span><span class="n">threshold</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">weight_hints</span> <span class="ow">and</span> <span class="n">rule</span><span class="o">.</span><span class="n">weight_hint</span> <span class="o">!=</span> <span class="mf">1.0</span><span class="p">:</span>
+                <span class="n">weight</span> <span class="o">=</span> <span class="n">rule</span><span class="o">.</span><span class="n">weight_hint</span>
+                <span class="n">provenance</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_NAME_TOKEN_APPLIED</span><span class="si">}{</span><span class="n">field_name</span><span class="si">}</span><span class="s2"> -&gt; weight </span><span class="si">{</span><span class="n">rule</span><span class="o">.</span><span class="n">weight_hint</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="p">)</span>
+            <span class="c1"># Free-text fields keep partial credit rather than clipping to zero.</span>
+            <span class="k">if</span> <span class="p">(</span>
+                <span class="n">rule</span><span class="o">.</span><span class="n">comparator</span> <span class="o">==</span> <span class="s2">&quot;FuzzyComparator&quot;</span>
+                <span class="ow">and</span> <span class="n">rule</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;method&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;token_set_ratio&quot;</span>
+            <span class="p">):</span>
+                <span class="n">clip</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">provenance</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_NAME_TOKEN_REFUSED</span><span class="si">}{</span><span class="n">field_name</span><span class="si">}</span><span class="s2"> matched </span><span class="si">{</span><span class="n">rule</span><span class="o">.</span><span class="n">comparator</span><span class="si">}</span><span class="s2"> but &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;type </span><span class="si">{</span><span class="n">_annotation_label</span><span class="p">(</span><span class="n">annotation</span><span class="p">)</span><span class="si">}</span><span class="s2"> is incompatible; &quot;</span>
+                <span class="s2">&quot;keeping type default&quot;</span>
+            <span class="p">)</span>
+
+    <span class="c1"># 3) Availability gate (degrade unavailable comparators).</span>
+    <span class="n">comparator</span><span class="p">,</span> <span class="n">config</span> <span class="o">=</span> <span class="n">_gate</span><span class="p">(</span><span class="n">comparator</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">registry</span><span class="p">,</span> <span class="n">provenance</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">InferredSpec</span><span class="p">(</span>
+        <span class="n">comparator_name</span><span class="o">=</span><span class="n">comparator</span><span class="p">,</span>
+        <span class="n">comparator_config</span><span class="o">=</span><span class="n">config</span><span class="p">,</span>
+        <span class="n">threshold</span><span class="o">=</span><span class="n">threshold</span><span class="p">,</span>
+        <span class="n">weight</span><span class="o">=</span><span class="n">weight</span><span class="p">,</span>
+        <span class="n">clip_under_threshold</span><span class="o">=</span><span class="n">clip</span><span class="p">,</span>
+        <span class="n">provenance</span><span class="o">=</span><span class="n">provenance</span><span class="p">,</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="stickler.auto.inference.InferredSpec" class="doc doc-heading">
+            <code>stickler.auto.inference.InferredSpec</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents first">
+
+
+
+        <p>Resolved comparison configuration for a single field.</p>
+<p>Everything the builder needs to emit a <code>ComparableField</code> plus the
+provenance surfaced through <code>EvalResult.explain()</code>.</p>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>stickler/auto/inference.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 82</span>
+<span class="normal"> 83</span>
+<span class="normal"> 84</span>
+<span class="normal"> 85</span>
+<span class="normal"> 86</span>
+<span class="normal"> 87</span>
+<span class="normal"> 88</span>
+<span class="normal"> 89</span>
+<span class="normal"> 90</span>
+<span class="normal"> 91</span>
+<span class="normal"> 92</span>
+<span class="normal"> 93</span>
+<span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">InferredSpec</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolved comparison configuration for a single field.</span>
+
+<span class="sd">    Everything the builder needs to emit a ``ComparableField`` plus the</span>
+<span class="sd">    provenance surfaced through ``EvalResult.explain()``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">comparator_name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">comparator_config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.5</span>
+    <span class="n">weight</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="n">clip_under_threshold</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="c1"># Human-readable trail of how this spec was chosen, e.g.</span>
+    <span class="c1"># [&quot;type:float -&gt; NumericComparator@0.95&quot;, &quot;name-token:amount -&gt; weight 2.5&quot;].</span>
+    <span class="n">provenance</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">source</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Coarse origin label for the final comparator decision.</span>
+
+<span class="sd">        A name-token rule that MATCHED but was refused as incompatible with the</span>
+<span class="sd">        field&#39;s type did not drive the decision -- the type default did -- and is</span>
+<span class="sd">        recorded under `_NAME_TOKEN_REFUSED` rather than `_NAME_TOKEN_APPLIED` for</span>
+<span class="sd">        exactly that reason. Counting it made a `str` field named `issued_date`</span>
+<span class="sd">        report `name-token` while carrying the plain `LevenshteinComparator@0.7`</span>
+<span class="sd">        that its type alone produced, telling a reader the name had been honoured</span>
+<span class="sd">        in the one case where it was explicitly not.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="nb">reversed</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">provenance</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">entry</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;degrade&quot;</span><span class="p">):</span>
+                <span class="k">return</span> <span class="s2">&quot;degrade&quot;</span>
+        <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">provenance</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">entry</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;explicit&quot;</span><span class="p">):</span>
+                <span class="k">return</span> <span class="s2">&quot;explicit&quot;</span>
+            <span class="k">if</span> <span class="n">entry</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">_NAME_TOKEN_APPLIED</span><span class="p">):</span>
+                <span class="k">return</span> <span class="s2">&quot;name-token&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;type&quot;</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="stickler.auto.inference.InferredSpec.source" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">source</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Coarse origin label for the final comparator decision.</p>
+<p>A name-token rule that MATCHED but was refused as incompatible with the
+field's type did not drive the decision -- the type default did -- and is
+recorded under <code>_NAME_TOKEN_REFUSED</code> rather than <code>_NAME_TOKEN_APPLIED</code> for
+exactly that reason. Counting it made a <code>str</code> field named <code>issued_date</code>
+report <code>name-token</code> while carrying the plain <code>LevenshteinComparator@0.7</code>
+that its type alone produced, telling a reader the name had been honoured
+in the one case where it was explicitly not.</p>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.code.copy", "content.code.select", "navigation.instant", "navigation.instant.prefetch", "navigation.instant.progress", "navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="https://unpkg.com/mermaid@11/dist/mermaid.min.js"></script>
+      
+    
+  </body>
+</html>

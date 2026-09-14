@@ -1,0 +1,3589 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://awslabs.github.io/stickler/Advanced/dynamic-models/">
+      
+      
+        <link rel="prev" href="../threshold-gated-evaluation/">
+      
+      
+        <link rel="next" href="../confidence-metrics/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Dynamic Model Creation - Stickler</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#dynamic-model-creation" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Stickler" class="md-header__button md-logo" aria-label="Stickler" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Stickler
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Dynamic Model Creation
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/awslabs/stickler" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    awslabs/stickler
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../.." class="md-tabs__link">
+          
+  
+  
+  Home
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../Getting-Started/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../Guides/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+  Advanced
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../API-Reference/" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Stickler" class="md-nav__button md-logo" aria-label="Stickler" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Stickler
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/awslabs/stickler" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    awslabs/stickler
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Home
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stickler Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/ultra-quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ultra Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/choosing-a-configuration-path/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Choosing a Configuration Path
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/thresholds-and-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Thresholds and Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/known-issues/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Known Issues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_7" id="__nav_2_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/Contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing to Stickler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/Contributing/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Engine Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/Contributing/development-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development Environment Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/Contributing/testing-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/Contributing/code-style/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Style Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/Contributing/pull-request-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pull Request Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Getting-Started/Contributing/maintainers-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintainer's Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparators
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Comparators
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Comparators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Comparators/date-comparator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Date Comparator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Comparators/postal-codes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Postal Codes and Addresses
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Comparators/llm-as-a-judge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM-as-a-Judge Comparators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Evaluation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Customizing Your Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Evaluation/bulk-evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bulk Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Evaluation/confidence-evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Confidence Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Evaluation/understanding-results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Understanding Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use Cases
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Use Cases
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Use-Cases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use Cases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Use-Cases/evaluate-strands-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluating a Strands Agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Use-Cases/idp-accelerator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IDP Accelerator Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Best Practices
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Best Practices
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Best-Practices/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Best Practices
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Guides/Best-Practices/agentic-development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentic Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Advanced
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced Topics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rich-value-pattern/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rich Value Pattern
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../classification-logic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Classification Logic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hungarian-matching/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hungarian Matching
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../threshold-gated-evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How Below-Threshold Pairs Are Classified
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dynamic Model Creation
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dynamic Model Creation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+  
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#three-creation-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three Creation Methods
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#method-1-json-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method 1: JSON Schema
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Method 1: JSON Schema">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nested-objects-and-arrays" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nested Objects and Arrays
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#json-schema-extension-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JSON Schema Extension Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#optional-fields-and-null" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional fields and null
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#method-2-custom-stickler-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method 2: Custom Stickler Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Method 2: Custom Stickler Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-example_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nested-model-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nested Model Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inferring-unspecified-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inferring unspecified fields
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Inferring unspecified fields">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#turning-it-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Turning it on
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loading-a-config-and-checking-what-you-got" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loading a config and checking what you got
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-inference-chooses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What inference chooses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#partly-configured-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Partly-configured fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#it-is-off-by-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        It is off by default
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#method-3-from-a-pydantic-class" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method 3: From a Pydantic Class
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#loading-from-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loading from Files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../confidence-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Confidence Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bbox-map-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bounding Box mAP Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../map-reduce-evaluation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Map/Reduce Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../aggregate-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Aggregate Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../model-export/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Export
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../API-Reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SDK Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../API-Reference/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../API-Reference/auto/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auto (Zero-Config Evaluation)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../API-Reference/comparators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../API-Reference/evaluator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evaluator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../API-Reference/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../API-Reference/utils/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Utils
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+  
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#three-creation-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three Creation Methods
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#method-1-json-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method 1: JSON Schema
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Method 1: JSON Schema">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nested-objects-and-arrays" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nested Objects and Arrays
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#json-schema-extension-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JSON Schema Extension Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#optional-fields-and-null" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional fields and null
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#method-2-custom-stickler-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method 2: Custom Stickler Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Method 2: Custom Stickler Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-example_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nested-model-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nested Model Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inferring-unspecified-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inferring unspecified fields
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Inferring unspecified fields">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#turning-it-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Turning it on
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loading-a-config-and-checking-what-you-got" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loading a config and checking what you got
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-inference-chooses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What inference chooses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#partly-configured-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Partly-configured fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#it-is-off-by-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        It is off by default
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#method-3-from-a-pydantic-class" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method 3: From a Pydantic Class
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#loading-from-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loading from Files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="dynamic-model-creation">Dynamic Model Creation</h1>
+<p>Stickler can create <code>StructuredModel</code> classes at runtime from JSON configuration, enabling model definition without writing Python class code. This is useful for configuration-driven evaluation, A/B testing of comparison strategies, and integration with external systems that produce JSON Schema.</p>
+<h2 id="three-creation-methods">Three Creation Methods</h2>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Input Format</th>
+<th>Infers comparators?</th>
+<th>Best For</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>from_pydantic()</code></td>
+<td>A Pydantic <code>BaseModel</code> class</td>
+<td>Yes — from the Python type <em>and</em> the field name</td>
+<td>You already have a model and want sensible defaults</td>
+</tr>
+<tr>
+<td><code>from_json_schema()</code></td>
+<td>Standard JSON Schema with <code>x-aws-stickler-*</code> extensions</td>
+<td>From structure, never names — a plain <code>string</code> becomes Levenshtein at <code>0.5</code></td>
+<td>Interoperability, external tooling, config files</td>
+</tr>
+<tr>
+<td><code>model_from_json()</code></td>
+<td>Custom Stickler JSON configuration</td>
+<td>Only on request — a primitive field without a <code>comparator</code> is an error unless you set <code>infer_unspecified_fields</code> or <code>"comparator": "auto"</code></td>
+<td>Concise hand-edited configs</td>
+</tr>
+</tbody>
+</table>
+<p>All three produce fully functional <code>StructuredModel</code> classes with comparison capabilities, nested hierarchies, custom comparators, and Hungarian matching for lists. They differ only in how much you have to say.</p>
+<p>The two inferring methods do not agree with each other, and the gap is wide enough to change a score: see <a href="../../Getting-Started/choosing-a-configuration-path/">Choosing a Configuration Path</a> before picking one.</p>
+<h2 id="method-1-json-schema">Method 1: JSON Schema</h2>
+<p>Recommended when your configuration lives outside Python — a file under version control, a value fetched at runtime, or a schema produced by another system. If your starting point is a Pydantic class already in the codebase, use <code>from_pydantic()</code> (Method 3) and skip writing a schema at all.</p>
+<h3 id="basic-example">Basic Example</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">stickler</span><span class="w"> </span><span class="kn">import</span> <span class="n">StructuredModel</span>
+
+<span class="n">product_schema</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;x-aws-stickler-model-name&quot;</span><span class="p">:</span> <span class="s2">&quot;Product&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;LevenshteinComparator&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-threshold&quot;</span><span class="p">:</span> <span class="mf">0.8</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-weight&quot;</span><span class="p">:</span> <span class="mf">2.0</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;number&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;NumericComparator&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-threshold&quot;</span><span class="p">:</span> <span class="mf">0.95</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;in_stock&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;boolean&quot;</span>
+        <span class="p">}</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">]</span>
+<span class="p">}</span>
+
+<span class="n">Product</span> <span class="o">=</span> <span class="n">StructuredModel</span><span class="o">.</span><span class="n">from_json_schema</span><span class="p">(</span><span class="n">product_schema</span><span class="p">)</span>
+
+<span class="n">gt</span> <span class="o">=</span> <span class="n">Product</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Laptop&quot;</span><span class="p">,</span> <span class="n">price</span><span class="o">=</span><span class="mf">999.99</span><span class="p">,</span> <span class="n">in_stock</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">pred</span> <span class="o">=</span> <span class="n">Product</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Laptop Pro&quot;</span><span class="p">,</span> <span class="n">price</span><span class="o">=</span><span class="mf">999.99</span><span class="p">,</span> <span class="n">in_stock</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">gt</span><span class="o">.</span><span class="n">compare_with</span><span class="p">(</span><span class="n">pred</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="nested-objects-and-arrays">Nested Objects and Arrays</h3>
+<p>Nested JSON Schema objects become nested <code>StructuredModel</code> classes automatically. Arrays of objects use Hungarian matching:</p>
+<div class="highlight"><pre><span></span><code><span class="n">order_schema</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;x-aws-stickler-model-name&quot;</span><span class="p">:</span> <span class="s2">&quot;Order&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;order_id&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;ExactComparator&quot;</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;customer&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span> <span class="s2">&quot;x-aws-stickler-threshold&quot;</span><span class="p">:</span> <span class="mf">0.8</span><span class="p">},</span>
+                <span class="s2">&quot;email&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span> <span class="s2">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;ExactComparator&quot;</span><span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;line_items&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;array&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;items&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;product&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">,</span> <span class="s2">&quot;x-aws-stickler-threshold&quot;</span><span class="p">:</span> <span class="mf">0.8</span><span class="p">},</span>
+                    <span class="s2">&quot;quantity&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">},</span>
+                    <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;number&quot;</span><span class="p">,</span> <span class="s2">&quot;x-aws-stickler-threshold&quot;</span><span class="p">:</span> <span class="mf">0.95</span><span class="p">}</span>
+                <span class="p">},</span>
+                <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;product&quot;</span><span class="p">,</span> <span class="s2">&quot;quantity&quot;</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">]</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;order_id&quot;</span><span class="p">]</span>
+<span class="p">}</span>
+
+<span class="n">Order</span> <span class="o">=</span> <span class="n">StructuredModel</span><span class="o">.</span><span class="n">from_json_schema</span><span class="p">(</span><span class="n">order_schema</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="json-schema-extension-reference">JSON Schema Extension Reference</h3>
+<p>The <code>x-aws-stickler-*</code> extensions control comparison behavior on each property:</p>
+<table>
+<thead>
+<tr>
+<th>Extension</th>
+<th>Purpose</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>x-aws-stickler-comparator</code></td>
+<td>Comparison algorithm</td>
+<td><code>"LevenshteinComparator"</code></td>
+</tr>
+<tr>
+<td><code>x-aws-stickler-threshold</code></td>
+<td>Match threshold (0.0--1.0). Read on a scalar, an object, and an array of scalars; <strong>ignored on an array of models</strong> -- an array whose <code>items</code> declare <code>properties</code> -- where the element class's <code>x-aws-stickler-match-threshold</code> is the gate. Read, not ignored, on an array of free-form <code>{"type": "object"}</code> items, which become <code>List[dict]</code></td>
+<td><code>0.8</code></td>
+</tr>
+<tr>
+<td><code>x-aws-stickler-weight</code></td>
+<td>Field importance weight</td>
+<td><code>2.0</code></td>
+</tr>
+<tr>
+<td><code>x-aws-stickler-clip-under-threshold</code></td>
+<td>Zero out scores below threshold</td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td><code>x-aws-stickler-model-name</code></td>
+<td>Class name (object-level)</td>
+<td><code>"Invoice"</code></td>
+</tr>
+<tr>
+<td><code>x-aws-stickler-match-threshold</code></td>
+<td>Hungarian match threshold (object-level)</td>
+<td><code>0.75</code></td>
+</tr>
+<tr>
+<td><code>x-aws-stickler-infer-unspecified</code></td>
+<td>Infer comparators for properties that name none (object-level). See <a href="#inferring-unspecified-fields">Inferring unspecified fields</a></td>
+<td><code>true</code></td>
+</tr>
+</tbody>
+</table>
+<p>With no extension specified, the property is parsed to a strict Python annotation and the comparator
+is chosen from that annotation, which is then widened back to the JSON value type so an invalid
+extraction scores <code>0.0</code> instead of raising. So <code>format</code>, <code>enum</code> and <code>const</code> participate in the
+choice, while field names never do:</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Default Comparator</th>
+<th>Default Threshold</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>string</code></td>
+<td>LevenshteinComparator</td>
+<td>0.5</td>
+</tr>
+<tr>
+<td><code>number</code> / <code>integer</code></td>
+<td>NumericComparator</td>
+<td>0.5</td>
+</tr>
+<tr>
+<td><code>boolean</code></td>
+<td>ExactComparator</td>
+<td>0.5</td>
+</tr>
+<tr>
+<td><code>string</code> + <code>format: date</code></td>
+<td>DateComparator</td>
+<td>1.0</td>
+</tr>
+<tr>
+<td><code>string</code> + <code>format: date-time</code></td>
+<td>DateComparator</td>
+<td>1.0</td>
+</tr>
+<tr>
+<td><code>string</code> + <code>format: time</code></td>
+<td>ExactComparator</td>
+<td>1.0</td>
+</tr>
+<tr>
+<td><code>string</code> + <code>format: uri</code></td>
+<td>ExactComparator</td>
+<td>1.0</td>
+</tr>
+<tr>
+<td><code>string</code> + <code>format: uuid</code></td>
+<td>ExactComparator</td>
+<td>1.0</td>
+</tr>
+<tr>
+<td><code>string</code> + <code>enum: [...]</code></td>
+<td>ExactComparator</td>
+<td>1.0</td>
+</tr>
+<tr>
+<td><code>const</code></td>
+<td>ExactComparator</td>
+<td>1.0</td>
+</tr>
+<tr>
+<td><code>array</code> (objects)</td>
+<td>Hungarian matching</td>
+<td>0.5, pairing elements at 0.7</td>
+</tr>
+<tr>
+<td><code>array</code> (primitives)</td>
+<td>the element's row, applied per element</td>
+<td>the element's</td>
+</tr>
+<tr>
+<td><code>object</code></td>
+<td>Recursive comparison</td>
+<td>0.7</td>
+</tr>
+<tr>
+<td><code>object</code> with no <code>properties</code></td>
+<td>ExactComparator</td>
+<td>1.0</td>
+</tr>
+</tbody>
+</table>
+<p>Five <code>format</code> values are special-cased, and they are exactly the ones the schema
+parser maps to a distinct Python type: <code>date</code>, <code>date-time</code>, <code>time</code>, <code>uri</code> and
+<code>uuid</code>. The three with no comparator of their own (<code>time</code>, <code>uri</code>, <code>uuid</code>) get
+<code>ExactComparator</code> at 1.0, the fallback for a type with no row of its own -- <strong>not</strong>
+the <code>string</code> row. Every other <code>format</code>, <code>email</code> and <code>ipv4</code> among them, is parsed as
+plain <code>str</code> and does fall to the <code>string</code> row.</p>
+<p>These defaults are <strong>not</strong> the same as the ones <code>stickler.evaluate()</code> infers, which
+are tuned per type: a <code>number</code> gets <code>0.95</code> there rather than <code>0.5</code>. See
+<a href="#inferring-unspecified-fields">Inferring unspecified fields</a> to opt a
+schema-driven model into the tuned set.</p>
+<p>Because the annotation is widened after the comparator is chosen, <code>model_fields</code> shows
+<code>Optional[str]</code> for every row above, including the <code>format</code> and <code>enum</code> ones —
+<code>to_json_schema()["properties"]</code> is where you read back what was actually chosen.</p>
+<p>For the complete reference, see the <a href="../../Guides/Evaluation/">Evaluation</a> page.</p>
+<h3 id="optional-fields-and-null">Optional fields and <code>null</code></h3>
+<p>A property that is <strong>not</strong> listed in <code>required</code> (or that declares an explicit
+<code>"default": null</code>) is built as an optional field: its Python annotation is
+widened to <code>Optional[T]</code> and its default is <code>None</code>. This keeps the model usable
+through every construction path — in particular <code>from_json(..., process_rich_values=True)</code>,
+which round-trips nested objects and would otherwise re-validate the <code>None</code>
+default against a non-nullable annotation and raise.</p>
+<p>Two consequences are worth noting:</p>
+<ul>
+<li>An explicit <code>null</code> is <strong>accepted</strong> for an optional typed field (e.g. a JSON
+  payload <code>{"note": null}</code> for an optional <code>string</code>), even though strict JSON
+  Schema treats <code>null</code> as invalid for <code>"type": "string"</code>. This is deliberate:
+  model predictions often emit explicit nulls, and these should score as a value
+  rather than crash evaluation.</li>
+<li><code>model_json_schema()</code> reflects this by emitting <code>{"anyOf": [{"type": "string"}, {"type": "null"}]}</code>
+  for such fields.</li>
+<li><code>to_json_schema()</code> likewise makes the nullability explicit, emitting
+  <code>{"type": ["string", "null"]}</code>. So an optional property declared only as
+  <code>{"type": "string"}</code> gains an explicit <code>"null"</code> on export that the input schema
+  never stated. This is intended: "absent from <code>required</code>" already means the value
+  may be <code>None</code>, and the exported schema now says so out loud instead of leaving it
+  implicit. The round trip is idempotent — re-importing the exported schema and
+  exporting again yields the same document, and accepts the same values.</li>
+</ul>
+<hr />
+<h2 id="method-2-custom-stickler-configuration">Method 2: Custom Stickler Configuration</h2>
+<p>For cases where JSON Schema is unnecessary, <code>model_from_json()</code> accepts a more concise format.</p>
+<h3 id="basic-example_1">Basic Example</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">stickler</span><span class="w"> </span><span class="kn">import</span> <span class="n">StructuredModel</span>
+
+<span class="n">person_config</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;model_name&quot;</span><span class="p">:</span> <span class="s2">&quot;Person&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;fields&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;LevenshteinComparator&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">0.8</span><span class="p">,</span>
+            <span class="s2">&quot;weight&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
+            <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="kc">True</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;age&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;int&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;NumericComparator&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">0.9</span><span class="p">,</span>
+            <span class="s2">&quot;weight&quot;</span><span class="p">:</span> <span class="mf">0.5</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;email&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;ExactComparator&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
+            <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="kc">None</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">Person</span> <span class="o">=</span> <span class="n">StructuredModel</span><span class="o">.</span><span class="n">model_from_json</span><span class="p">(</span><span class="n">person_config</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="configuration-schema">Configuration Schema</h3>
+<p><strong>Top level:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;model_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;match_threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.7</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;infer_unspecified_fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>comparator</code> is <strong>required</strong> on every primitive field unless
+<code>infer_unspecified_fields</code> is true or the field sets <code>"comparator": "auto"</code>. See
+<a href="#inferring-unspecified-fields">Inferring unspecified fields</a>.</p>
+<p><strong>Primitive fields:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;str|int|float|bool|list|dict&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;comparator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ComparatorName&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;comparator_config&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
+<span class="w">    </span><span class="nt">&quot;threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.8</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;weight&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;required&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;clip_under_threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><strong>Nested model fields</strong> use <code>"type": "structured_model"</code> with a nested <code>"fields"</code> object. <strong>List of models</strong> use <code>"type": "list_structured_model"</code>. <strong>Optional models</strong> use <code>"type": "optional_structured_model"</code>.</p>
+<h3 id="nested-model-example">Nested Model Example</h3>
+<div class="highlight"><pre><span></span><code><span class="n">company_config</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;model_name&quot;</span><span class="p">:</span> <span class="s2">&quot;Company&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;fields&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;LevenshteinComparator&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">0.8</span><span class="p">,</span>
+            <span class="s2">&quot;weight&quot;</span><span class="p">:</span> <span class="mf">2.0</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;employees&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;list_structured_model&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;weight&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
+            <span class="s2">&quot;match_threshold&quot;</span><span class="p">:</span> <span class="mf">0.7</span><span class="p">,</span>
+            <span class="s2">&quot;fields&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;LevenshteinComparator&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">0.8</span>
+                <span class="p">},</span>
+                <span class="s2">&quot;department&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;comparator&quot;</span><span class="p">:</span> <span class="s2">&quot;ExactComparator&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="mf">1.0</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">Company</span> <span class="o">=</span> <span class="n">StructuredModel</span><span class="o">.</span><span class="n">model_from_json</span><span class="p">(</span><span class="n">company_config</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="inferring-unspecified-fields">Inferring unspecified fields</h2>
+<p>A large extraction schema usually has a handful of fields whose comparison rules
+matter to you -- the invoice ID must match exactly, the total needs numeric
+tolerance -- and a long tail where you just want something sensible. Set
+<code>infer_unspecified_fields</code> and Stickler chooses for the rest, using the same
+inference <code>stickler.evaluate()</code> uses.</p>
+<h3 id="turning-it-on">Turning it on</h3>
+<p>Configure the fields you care about, and leave the others bare:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;model_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Invoice&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;infer_unspecified_fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;invoice_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;str&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;comparator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ExactComparator&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">},</span>
+<span class="w">        </span><span class="nt">&quot;total&quot;</span><span class="p">:</span><span class="w">      </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;float&quot;</span><span class="p">},</span>
+<span class="w">        </span><span class="nt">&quot;paid&quot;</span><span class="p">:</span><span class="w">       </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;bool&quot;</span><span class="p">},</span>
+<span class="w">        </span><span class="nt">&quot;vendor&quot;</span><span class="p">:</span><span class="w">     </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;str&quot;</span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>To infer only certain fields, set <code>"comparator": "auto"</code> on those instead:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;invoice_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;str&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;comparator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ExactComparator&quot;</span><span class="p">},</span>
+<span class="w">        </span><span class="nt">&quot;total&quot;</span><span class="p">:</span><span class="w">      </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;float&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;comparator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;auto&quot;</span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>The JSON Schema path uses <code>x-aws-stickler-infer-unspecified</code> at the object level,
+and <code>x-aws-stickler-comparator: "auto"</code> on a property:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;x-aws-stickler-model-name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Invoice&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;x-aws-stickler-infer-unspecified&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;invoice_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;x-aws-stickler-comparator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ExactComparator&quot;</span><span class="p">},</span>
+<span class="w">        </span><span class="nt">&quot;total&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;number&quot;</span><span class="p">},</span>
+<span class="w">        </span><span class="nt">&quot;issued&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;format&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;date&quot;</span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>A field-level setting always wins over the model-level flag, both ways: <code>"auto"</code>
+infers one field in an otherwise explicit config, and naming a comparator pins one
+field in an otherwise inferred config.</p>
+<p>A nested model can scope inference to its own subtree, in either direction, without
+affecting its parent or siblings: <code>infer_unspecified_fields</code> on a
+<code>structured_model</code> field, or <code>x-aws-stickler-infer-unspecified</code> on a nested object
+in a JSON Schema.</p>
+<p><code>"auto"</code> is for a scalar or a list of scalars. A nested object is compared
+recursively and an array of objects by Hungarian matching, so neither has a
+comparator for inference to choose, and
+<code>x-aws-stickler-comparator: "auto"</code> on one is an error naming
+<code>x-aws-stickler-infer-unspecified</code> as the key that does work there.</p>
+<h3 id="loading-a-config-and-checking-what-you-got">Loading a config and checking what you got</h3>
+<p>Load the config, then ask the model what it decided. <code>explain()</code> returns one row per
+field with the comparator, threshold and where each came from:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">stickler</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">stickler</span><span class="w"> </span><span class="kn">import</span> <span class="n">StructuredModel</span>
+
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;invoice_eval.json&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">handle</span><span class="p">:</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">handle</span><span class="p">)</span>
+
+<span class="n">Invoice</span> <span class="o">=</span> <span class="n">StructuredModel</span><span class="o">.</span><span class="n">model_from_json</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">stickler</span><span class="o">.</span><span class="n">eval_for</span><span class="p">(</span><span class="n">Invoice</span><span class="p">)</span><span class="o">.</span><span class="n">explain</span><span class="p">()</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">:</span><span class="s2">12</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;comparator&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">22</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;threshold&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">&lt;6</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;source&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>invoice_id   ExactComparator        1.0    explicit
+total        NumericComparator      0.95   name-token
+paid         ExactComparator        1.0    type
+vendor       LevenshteinComparator  0.85   name-token
+</code></pre></div>
+<p><code>source</code> is <code>explicit</code> for a field you configured. Anything else is a field Stickler
+chose, and names what drove the choice: <code>type</code> from the declared type alone,
+<code>name-token</code> when the field's name refined it. A name that matched a rule the
+declared type cannot support reports <code>type</code>, because the type default is what
+shipped -- <code>row['why']</code> records the refusal. These are the same values
+<code>stickler.evaluate()</code> reports, so the two paths read alike.</p>
+<p><code>row['why']</code> gives the full reasoning:</p>
+<div class="highlight"><pre><span></span><code><span class="n">stickler</span><span class="o">.</span><span class="n">eval_for</span><span class="p">(</span><span class="n">Invoice</span><span class="p">)</span><span class="o">.</span><span class="n">explain</span><span class="p">()[</span><span class="s2">&quot;total&quot;</span><span class="p">][</span><span class="s2">&quot;why&quot;</span><span class="p">]</span>
+<span class="c1"># [&#39;type:float -&gt; NumericComparator(rel_tol=0.001)@0.95&#39;,</span>
+<span class="c1">#  &#39;name-token:total -&gt; NumericComparator@0.95&#39;]</span>
+</code></pre></div>
+<p>Check this before a first evaluation run. It is the fastest way to catch a field you
+meant to configure and misspelled, since a misspelled key means the field gets
+inferred rather than what you intended.</p>
+<p>Use <code>Invoice.to_stickler_config()</code> if you want the resolved configuration back as
+JSON, for example to commit the fully-expanded version once you are happy with it.</p>
+<div class="admonition warning">
+<p class="admonition-title">The export is lossy for a <code>dict</code> field, so the round trip does not hold</p>
+<p><code>to_stickler_config()</code> writes a mapping field as <code>"type": "str"</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;str&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;comparator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ANLSStarComparator&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.7</span><span class="p">,</span><span class="w"> </span><span class="err">...</span><span class="p">}</span>
+</code></pre></div>
+<p>Re-importing that config gives a model whose field is a <code>str</code>, which then
+rejects dict input with <code>Input should be a valid string</code>. The comparator and
+threshold survive; the type does not.</p>
+<p>This is not specific to inference -- an explicitly configured <code>dict</code> field
+exports the same way -- but a bare <code>{"type": "dict"}</code> only became legal to write
+with this feature, so following the advice above can now reach it. Until the
+export is fixed, either keep <code>"type": "dict"</code> by hand in the committed config,
+or treat the export as a readable record rather than a re-importable one.</p>
+</div>
+<h3 id="what-inference-chooses">What inference chooses</h3>
+<p>Both the comparator and the threshold, matching <code>stickler.evaluate()</code>:</p>
+<table>
+<thead>
+<tr>
+<th>field</th>
+<th>without the flag</th>
+<th>with it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>total: float</code></td>
+<td>NumericComparator @ 0.5</td>
+<td>NumericComparator @ 0.95</td>
+</tr>
+<tr>
+<td><code>paid: bool</code></td>
+<td>ExactComparator @ 0.5</td>
+<td>ExactComparator @ 1.0</td>
+</tr>
+<tr>
+<td><code>issued</code> (<code>format: date</code>)</td>
+<td>DateComparator @ 1.0</td>
+<td>DateComparator @ 0.95</td>
+</tr>
+<tr>
+<td><code>vendor: str</code></td>
+<td>LevenshteinComparator @ 0.5</td>
+<td>LevenshteinComparator @ 0.85</td>
+</tr>
+<tr>
+<td><code>amounts: List[float]</code></td>
+<td>NumericComparator @ 0.5</td>
+<td>NumericComparator @ 0.95</td>
+</tr>
+<tr>
+<td><code>meta: dict</code></td>
+<td>ExactComparator @ 1.0</td>
+<td>ANLSStarComparator @ the model's <code>match_threshold</code></td>
+</tr>
+</tbody>
+</table>
+<p>The "without the flag" column applies to <code>from_json_schema()</code>. With
+<code>model_from_json()</code>, a primitive field that names no comparator is an error unless
+you opt in.</p>
+<p>A list is inferred from its <strong>element</strong> type, because that is what the comparator is
+applied to. Declare the element: <code>{"type": "List[float]"}</code> in a Stickler config, or
+<code>{"type": "array", "items": {"type": "number"}}</code> in a JSON Schema.</p>
+<div class="admonition warning">
+<p class="admonition-title"><code>{"type": "list"}</code> names no element type</p>
+<p>A bare <code>list</code> gives inference nothing to work with, so it falls to the answer
+for any type with no scalar form: <code>ExactComparator</code> at threshold 1.0. Elements
+are still compared one by one, so a list with two of three elements right still
+scores 0.67 -- what you lose is the element comparator. <code>[1.0]</code> against
+<code>[1.0000001]</code> scores <strong>0.0</strong>, where <code>{"type": "List[float]"}</code> scores 1.0; a
+string element off by one character scores 0.0 where <code>{"type": "List[str]"}</code>
+scores 0.83.</p>
+<p>Write the element type out. <code>List[str]</code>, <code>List[int]</code>, <code>List[float]</code> and
+<code>List[bool]</code> all resolve.</p>
+</div>
+<h3 id="partly-configured-fields">Partly-configured fields</h3>
+<p>Name some parameters and leave others out, and only the missing ones are inferred:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">&quot;total&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;float&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.99</span><span class="p">}}</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>comparator   NumericComparator   inferred
+threshold    0.99                yours
+</code></pre></div>
+<p>So you can keep a threshold you tuned while still getting a comparator that suits
+the type. A <code>comparator_config</code> works the same way: it is merged over the inferred
+one, so setting <code>absolute_tolerance</code> keeps the <code>relative_tolerance</code> inference chose.
+Both paths do this, from the same input --
+<code>x-aws-stickler-comparator-config</code> beside <code>x-aws-stickler-comparator: "auto"</code>
+merges exactly as <code>comparator_config</code> beside <code>"comparator": "auto"</code> does.</p>
+<p>Naming a <strong>comparator</strong> is different, and pins the threshold too:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">&quot;total&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;float&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;comparator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ExactComparator&quot;</span><span class="p">}}</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>comparator   ExactComparator     yours
+threshold    0.5                 the ordinary default, not inference&#39;s 0.95
+</code></pre></div>
+<p>A threshold only means something next to the metric that produced the score: 0.85
+is one thing on edit distance and another on numeric tolerance. Inference's
+threshold belongs to the comparator inference would have picked, so it is not
+carried over onto one you chose instead. Set the threshold yourself when you name a
+comparator.</p>
+<h3 id="it-is-off-by-default">It is off by default</h3>
+<p>Enabling it changes scores for any field you left unspecified: a <code>float</code> compared as
+text starts being compared as a number, which is usually what you want but is still
+a change to your reported metrics. Turn it on deliberately, check <code>explain()</code>, and
+re-baseline.</p>
+<div class="admonition note">
+<p class="admonition-title">Date fields and <code>model_from_json()</code></p>
+<p><code>model_from_json()</code> accepts <code>str</code>, <code>int</code>, <code>float</code>, <code>bool</code>, <code>list</code> and <code>dict</code>;
+there is no <code>date</code> type. A date field declared as <code>str</code> there does <strong>not</strong> get
+<code>DateComparator</code> -- inference will not apply a comparator its declared type
+cannot support, and says so in <code>why</code>:</p>
+<div class="highlight"><pre><span></span><code>[&#39;type:str -&gt; LevenshteinComparator@0.7&#39;,
+ &#39;name-token-unused:issued_date matched DateComparator but type str is
+  incompatible; keeping type default&#39;]
+</code></pre></div>
+<p><code>source</code> for such a field is <code>type</code>, not <code>name-token</code>: the name matched a rule,
+but the type default is what shipped.</p>
+<p>Name the comparator explicitly (<code>"comparator": "DateComparator"</code>), or use the
+JSON Schema path with <code>{"type": "string", "format": "date"}</code>, which carries the
+date semantics in the type.</p>
+</div>
+<h2 id="method-3-from-a-pydantic-class">Method 3: From a Pydantic Class</h2>
+<p>When the model already exists in Python, <code>from_pydantic()</code> builds the evaluator from it — no schema, no config, no comparators named anywhere:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">stickler</span><span class="w"> </span><span class="kn">import</span> <span class="n">StructuredModel</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Product</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">sku</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">price</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">notes</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+<span class="n">Model</span> <span class="o">=</span> <span class="n">StructuredModel</span><span class="o">.</span><span class="n">from_pydantic</span><span class="p">(</span><span class="n">Product</span><span class="p">)</span>   <span class="c1"># class is named ProductEval</span>
+</code></pre></div>
+<p>Each field is given a comparator and threshold from its type and its name:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Inferred</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sku</code></td>
+<td><code>ExactComparator</code> @ 1.0</td>
+<td>identifier token — a SKU differing in case may be a different SKU</td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td><code>LevenshteinComparator</code> @ 0.85</td>
+<td>name token — tolerates typos, not substitutions</td>
+</tr>
+<tr>
+<td><code>price</code></td>
+<td><code>NumericComparator</code> @ 0.95</td>
+<td><code>float</code> with a relative tolerance</td>
+</tr>
+<tr>
+<td><code>notes</code></td>
+<td><code>FuzzyComparator</code> @ 0.6</td>
+<td>free-text token — word order should not matter</td>
+</tr>
+</tbody>
+</table>
+<p>Instances compare like any other <code>StructuredModel</code>, and <code>stickler.evaluate(gt, pred)</code> reaches the same inference without building the class yourself. Use <code>to_json_schema()</code> on the result to export those decisions as a schema — the bridge between this method and Method 1:</p>
+<div class="highlight"><pre><span></span><code><span class="n">Model</span><span class="o">.</span><span class="n">to_json_schema</span><span class="p">()</span>   <span class="c1"># comparators, thresholds, [&quot;string&quot;, &quot;null&quot;] for Optional</span>
+</code></pre></div>
+<h2 id="loading-from-files">Loading from Files</h2>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">stickler</span><span class="w"> </span><span class="kn">import</span> <span class="n">StructuredModel</span>
+
+<span class="c1"># JSON Schema</span>
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s1">&#39;schema.json&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="n">schema</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+<span class="n">Model</span> <span class="o">=</span> <span class="n">StructuredModel</span><span class="o">.</span><span class="n">from_json_schema</span><span class="p">(</span><span class="n">schema</span><span class="p">)</span>
+
+<span class="c1"># Stickler config</span>
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s1">&#39;config.json&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+<span class="n">Model</span> <span class="o">=</span> <span class="n">StructuredModel</span><span class="o">.</span><span class="n">model_from_json</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<p>Every <code>model_from_json()</code> failure raises <code>ValueError</code>, and all but one are prefixed <code>Invalid field configuration:</code>. The message names the offending field and lists the valid values.</p>
+<table>
+<thead>
+<tr>
+<th>Message</th>
+<th>Cause</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Configuration must contain 'fields' key</code></td>
+<td>Top-level <code>fields</code> missing</td>
+<td>Wrap the field definitions in <code>{"fields": {...}}</code></td>
+</tr>
+<tr>
+<td><code>Field 'x' missing required 'type' parameter</code></td>
+<td>Field definition has no <code>type</code></td>
+<td>Add a <code>"type"</code> key</td>
+</tr>
+<tr>
+<td><code>Unknown type: 'x'. Available types: [...]</code></td>
+<td>Unsupported type string</td>
+<td>Use a listed type; the message enumerates them</td>
+</tr>
+<tr>
+<td><code>Field 'x' with primitive type 'str' requires a 'comparator'</code></td>
+<td>Primitive field without a comparator</td>
+<td>Add a <code>"comparator"</code> key, or set <code>"infer_unspecified_fields": true</code> (see <a href="#inferring-unspecified-fields">Inferring unspecified fields</a>)</td>
+</tr>
+<tr>
+<td><code>Field 'x' threshold must be between 0.0 and 1.0, got 5.0</code></td>
+<td>Threshold outside the range</td>
+<td>Use a value in 0.0--1.0</td>
+</tr>
+<tr>
+<td><code>Unknown comparator: 'x'. Available: [...]</code></td>
+<td>Comparator name not registered</td>
+<td>Use a class name from the list; <code>BERTComparator</code> and <code>LLMComparator</code> appear only when the <code>[bert]</code> and <code>[llm]</code> extras are installed</td>
+</tr>
+<tr>
+<td><code>Field 'x' with type 'structured_model' requires a 'fields' configuration</code></td>
+<td>Nested model without its own <code>fields</code></td>
+<td>Add the nested <code>fields</code> block</td>
+</tr>
+</tbody>
+</table>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="../model-export/">Model Export</a> -- exporting models back to JSON Schema or Stickler config</li>
+<li><a href="../hungarian-matching/">Hungarian Matching</a> -- how list fields are compared</li>
+</ul>
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.code.copy", "content.code.select", "navigation.instant", "navigation.instant.prefetch", "navigation.instant.progress", "navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="https://unpkg.com/mermaid@11/dist/mermaid.min.js"></script>
+      
+    
+  </body>
+</html>
