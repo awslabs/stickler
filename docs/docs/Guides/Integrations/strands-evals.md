@@ -85,13 +85,29 @@ different fixes, and `Equals` reports all three as the same 0.0.
 
 ## A sharp edge worth knowing
 
-`test_pass` is the weighted **document** score against `match_threshold`, not a
-per-field verdict, and a field absent on both sides scores `1.0`. On a sparse
-extraction schema those two facts combine: a document can pass with a wrong field,
-and in the extreme a prediction that returned nothing can still pass, while `f1`
-correctly reads `0.0`. Gate a suite on `f1`, `recall`, or named fields from
-`per_case()` rather than on `test_pass` alone, and raise `weight` on the fields you
-expect to be populated. See [Sparse Objects](../../Getting-Started/thresholds-and-metrics.md#sparse-objects).
+`test_pass` is a **document** verdict, not a per-field one. Fields are weighted
+uniformly by default, so on a five-field invoice one entirely wrong field costs only
+0.2 and the document still clears the 0.7 default.
+
+Separately, a field absent on both sides scores `1.0`, because a value the model
+correctly left blank is a value it got right. On a sparse extraction schema those
+uninformative fields outvote the informative ones, and taken to its conclusion a
+prediction that found *nothing* can clear the threshold on score alone. The evaluator
+therefore requires both the weighted score **and** `recall` to clear
+`match_threshold`; recall counts only fields that had a value to find, so it reads
+`0.0` for a blank extraction. Measured, on a 10-field schema with 2 populated:
+
+| prediction | score | recall | `test_pass` |
+|---|---|---|---|
+| found nothing | 0.800 | 0.000 | `False` |
+| both correct | 1.000 | 1.000 | `True` |
+| vendor wrong | 0.900 | 1.000 | `True` |
+
+For a stricter check than the default: raise `match_threshold`, gate on named fields
+from `per_case()`, read `fd` from `metrics()`, or raise `weight` on the fields you
+expect to be populated, which is usually cleanest because it makes the score itself
+reflect what you care about. See
+[Sparse Objects](../../Getting-Started/thresholds-and-metrics.md#sparse-objects).
 
 ## Reading nested rows
 
