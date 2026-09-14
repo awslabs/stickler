@@ -38,6 +38,8 @@ overall_score = sum(field_score * field_weight) / sum(field_weights)
 
 Fields with `clip_under_threshold=True` (the default) contribute 0.0 if they score below their threshold, rather than their partial similarity.
 
+A field absent on both sides scores `1.0` and carries its full weight: a value the model correctly left blank is a value it got right. On a schema where most fields are usually empty this makes `overall_score` behave more like accuracy than like a hit rate. See [Sparse Objects](../../Getting-Started/thresholds-and-metrics.md#sparse-objects) for which metric answers which question.
+
 ### `field_scores` (dict)
 
 Maps each field name to its similarity score (0.0 to 1.0). For nested objects, the value is the weighted average of the sub-fields. For lists, it reflects the Hungarian-matched aggregate.

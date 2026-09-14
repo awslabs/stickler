@@ -271,6 +271,51 @@ does not emit one per document.
 
 ---
 
+## Sparse Objects
+
+Worth knowing if your objects are mostly empty most of the time.
+
+A field absent on **both** sides scores `1.0` and carries its full weight. That is
+the right call on its own terms: a value the model correctly left blank is a value
+it got right. But it means the fields carrying no information still vote, so on a
+sparse object they can outvote the ones that do.
+
+The practical effect is on `matched`, which is just `overall_score >=
+match_threshold`. Ten optional fields, one populated on the page, prediction
+returns nothing:
+
+```python
+result = stickler.evaluate(gt, pred)
+# overall_score 0.9   matched True   <-- nine fields correctly left blank
+# f1            0.0                  <-- nothing was actually found
+```
+
+So on sparse objects do not lean on `matched` alone. `recall` tells you whether
+the values that exist were found, `precision` whether anything was invented, and
+`f1` both. None of the three count correct absence, which is what you want here.
+
+**Set weights higher on the fields you actually expect to be populated.** This is
+the real fix and it is already in your hands. Same case as above, three fields
+expected populated and seven rare, prediction still returns nothing:
+
+| Weight on the expected-populated fields | `overall_score` | `matched` |
+|---|---|---|
+| 1.0 (default) | 0.700 | `True` |
+| 2.0 | 0.538 | `False` |
+| 3.0 | 0.438 | `False` |
+| 5.0 | 0.318 | `False` |
+
+Weighting by what you expect to see makes `overall_score` mean what you wanted it
+to mean, and `matched` follows.
+
+One related asymmetry: the object similarity used for list matching **excludes**
+absent-on-both instead of crediting it, because a field blank on every candidate
+gives the Hungarian cost matrix nothing to discriminate with. The same pair can
+therefore score `0.0` through `compare()` and `0.9` through `evaluate()`. See
+[Hungarian Matching](../Advanced/hungarian-matching.md).
+
+---
+
 ## Worked Example
 
 Let's trace through a complete evaluation to see how thresholds and metrics interact.
