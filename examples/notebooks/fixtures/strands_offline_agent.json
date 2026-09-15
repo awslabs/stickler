@@ -1,0 +1,59 @@
+{
+  "provenance": {
+    "model_id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "recorded": null,
+    "note": "Hand-authored to the Bedrock converse-stream wire shape so this notebook runs with no AWS account. Regenerate from a live agent with fixtures/record_agent_exchange.py."
+  },
+  "turns": [
+    {
+      "toolUse": {
+        "name": "Invoice",
+        "toolUseId": "tooluse_offline_demo_0001",
+        "inputChunks": [
+          "{\"invoice_id\": \"INV-2024-0042\", \"vend",
+          "or_name\": \"Acme Corp\", \"invoice_date\"",
+          ": \"2024-03-15\", \"total_amount\": 1247.",
+          "5, \"line_items\": [{\"sku\": \"UC-050\", \"",
+          "description\": \"USB-C Cable 1 m\", \"qua",
+          "ntity\": 5, \"unit_price\": 12.99}, {\"sk",
+          "u\": \"WM-100\", \"description\": \"Wireles",
+          "s Mouse\", \"quantity\": 2, \"unit_price\"",
+          ": 29.99}, {\"sku\": \"KB-200\", \"descript",
+          "ion\": \"Mechanical Keyboard\", \"quantit",
+          "y\": 1, \"unit_price\": 8.99}]}"
+        ],
+        "input": {
+          "invoice_id": "INV-2024-0042",
+          "vendor_name": "Acme Corp",
+          "invoice_date": "2024-03-15",
+          "total_amount": 1247.5,
+          "line_items": [
+            {
+              "sku": "UC-050",
+              "description": "USB-C Cable 1 m",
+              "quantity": 5,
+              "unit_price": 12.99
+            },
+            {
+              "sku": "WM-100",
+              "description": "Wireless Mouse",
+              "quantity": 2,
+              "unit_price": 29.99
+            },
+            {
+              "sku": "KB-200",
+              "description": "Mechanical Keyboard",
+              "quantity": 1,
+              "unit_price": 8.99
+            }
+          ]
+        },
+        "usage": {
+          "inputTokens": 412,
+          "outputTokens": 198,
+          "totalTokens": 610
+        }
+      }
+    }
+  ]
+}

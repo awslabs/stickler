@@ -92,6 +92,21 @@ This directory contains comprehensive examples demonstrating the core functional
   - Aggregate from JSONL (reduce) with full confidence metrics
   - Verify direct bulk vs JSONL replay produce identical results
 
+- **`notebooks/Strands_Evals_Offline_Agent.ipynb`** - What a Strands agent actually returns
+  - Tool spec, raw tool-use JSON, parsed object, score — one step per cell
+  - A recorded Bedrock exchange replayed through a stub model provider: real code path, no credentials
+  - Scores with `stickler.evaluate()` directly, so no Strands Evals install is needed
+
+- **`notebooks/Strands_Evals_Evaluator.ipynb`** - The `StructuredOutput` evaluator for Strands Evals
+  - Six invoices broken six different ways, offline and deterministic
+  - `per_case()` field scores and `metrics()` five-category confusion matrix
+  - Why `test_pass` gates on recall as well as score
+
+- **`notebooks/Strands_Evals_FCC_Live_Agent.ipynb`** - The same evaluator against a live agent
+  - Five real FCC invoices extracted by Claude Haiku through Bedrock
+  - Declared comparators and thresholds instead of inferred ones
+  - Needs `AWS_PROFILE` with Bedrock access; outputs are empty until you run it
+
 ## 🎯 What Each Example Demonstrates
 
 | Example | Individual Objects | List Comparison | Nested Structures | Error Analysis | Large Scale | Pretty Print |

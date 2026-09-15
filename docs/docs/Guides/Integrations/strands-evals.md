@@ -135,11 +135,12 @@ These live on the `demo/strands-evals-integration` branch until the evaluator re
   is the reference. Offline and deterministic, no credentials, covers every feature
   above on six invoices broken six different ways.
 - [`Strands_Evals_Offline_Agent.ipynb`](https://github.com/awslabs/stickler/blob/demo/strands-evals-integration/examples/notebooks/Strands_Evals_Offline_Agent.ipynb)
-  is the granular walkthrough: what the agent is actually asked, what it returns, and
-  how that becomes a score. A recorded Bedrock exchange is replayed through a stub
-  model provider, so the real `Agent` structured-output path runs with no credentials
-  and no network call. Scores with `stickler.evaluate()` directly, so it needs no
-  Strands Evals install.
+  is the granular walkthrough: the tool spec Strands derives from the model, the raw
+  tool-use JSON that comes back, the parsed object, and where each point was lost. A
+  recorded Bedrock exchange is replayed through a stub model provider, so the real
+  `Agent` structured-output path runs with no credentials and no network call. Scores
+  with `stickler.evaluate()` directly, so it needs no Strands Evals install and is the
+  place to start if you have not seen an agent response before.
 - [`Strands_Evals_FCC_Live_Agent.ipynb`](https://github.com/awslabs/stickler/blob/demo/strands-evals-integration/examples/notebooks/Strands_Evals_FCC_Live_Agent.ipynb)
   runs the same evaluator against a live agent: five real FCC invoices extracted by
   Claude Haiku through Bedrock, with the Bedrock call inside the `@eval_task()`
