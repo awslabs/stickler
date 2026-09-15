@@ -115,12 +115,17 @@ reflect what you care about. See
 
 ## Reading nested rows
 
-A nested path's counts only cover documents whose **parent pair** scored at or above
-`match_threshold`. Below that, threshold gating treats the pair as atomic and emits no
-field breakdown, so those documents appear as `fd` on the list field and are absent
-from the child rows. So `line_items.sku` showing `tp=5` across 6 documents means five
-documents had a line item close enough to look inside, not that the SKU was right five
-times out of six.
+Nested rows are counted **per matched element pair, not per document**. A document with
+three line items contributes three to each `line_items.*` leaf, so on a schema with
+several elements per document the child rows total well above the document count.
+
+They are also gated: a pair only contributes child rows if it scored at or above the
+**element model's** `match_threshold` — the one declared on the element class, not the
+one on the enclosing document class. Below it, gating treats the pair as atomic and
+emits no field breakdown, so the document appears as `fd` on the list field and is
+absent from the child rows. So `line_items.sku` showing `tp=5` on a six-document set of
+single-item invoices means five pairs were close enough to look inside, not that the SKU
+was right five times out of six.
 
 Nested leaves carry counts and precision/recall/F1 but no mean score, because stickler
 emits no per-leaf score for list children
@@ -129,22 +134,26 @@ data-dependent, so use `.get()` rather than indexing.
 
 ## Notebooks
 
-These live on the `demo/strands-evals-integration` branch until the evaluator releases.
+These live on the `demo/strands-evals-examples` branch until the evaluator releases.
 
-- [`Strands_Evals_Evaluator.ipynb`](https://github.com/awslabs/stickler/blob/demo/strands-evals-integration/examples/notebooks/Strands_Evals_Evaluator.ipynb)
+- [`Strands_Evals_Evaluator.ipynb`](https://github.com/awslabs/stickler/blob/demo/strands-evals-examples/examples/notebooks/Strands_Evals_Evaluator.ipynb)
   is the reference. Offline and deterministic, no credentials, covers every feature
   above on six invoices broken six different ways.
-- [`Strands_Evals_Offline_Agent.ipynb`](https://github.com/awslabs/stickler/blob/demo/strands-evals-integration/examples/notebooks/Strands_Evals_Offline_Agent.ipynb)
+- [`Strands_Evals_Offline_Agent.ipynb`](https://github.com/awslabs/stickler/blob/demo/strands-evals-examples/examples/notebooks/Strands_Evals_Offline_Agent.ipynb)
   is the granular walkthrough: the tool spec Strands derives from the model, the raw
   tool-use JSON that comes back, the parsed object, and where each point was lost. A
-  recorded Bedrock exchange is replayed through a stub model provider, so the real
-  `Agent` structured-output path runs with no credentials and no network call. Scores
-  with `stickler.evaluate()` directly, so it needs no Strands Evals install and is the
+  stored exchange replays through a stub model provider, so the real `Agent`
+  structured-output path runs with no credentials and no network call. That stored
+  response is hand-authored to the Bedrock wire format rather than captured, and carries
+  three deliberate extraction errors, so its scores demonstrate the mechanism and measure
+  no model; one command re-records it against your own agent. Scores with
+  `stickler.evaluate()` directly, so it needs no Strands Evals install, and it is the
   place to start if you have not seen an agent response before.
-- [`Strands_Evals_FCC_Live_Agent.ipynb`](https://github.com/awslabs/stickler/blob/demo/strands-evals-integration/examples/notebooks/Strands_Evals_FCC_Live_Agent.ipynb)
+- [`Strands_Evals_FCC_Live_Agent.ipynb`](https://github.com/awslabs/stickler/blob/demo/strands-evals-examples/examples/notebooks/Strands_Evals_FCC_Live_Agent.ipynb)
   runs the same evaluator against a live agent: five real FCC invoices extracted by
   Claude Haiku through Bedrock, with the Bedrock call inside the `@eval_task()`
-  function. Set `AWS_PROFILE` before launching Jupyter; it needs Bedrock access.
+  function. It downloads its documents from the HuggingFace datasets server at run time.
+  Set `AWS_PROFILE` before launching Jupyter; it needs Bedrock access.
 
 ## Status
 
