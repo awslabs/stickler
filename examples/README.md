@@ -92,6 +92,24 @@ This directory contains comprehensive examples demonstrating the core functional
   - Aggregate from JSONL (reduce) with full confidence metrics
   - Verify direct bulk vs JSONL replay produce identical results
 
+- **`notebooks/Strands_Evals_Offline_Agent.ipynb`** - What a Strands agent actually returns
+  - Tool spec, raw tool-use JSON, parsed object, score — one step per cell
+  - A stored exchange replayed through a stub model provider: real code path, no credentials
+  - The stored response is hand-authored to the Bedrock wire format, not captured; one command re-records it
+  - Scores with `stickler.evaluate()` directly, so no Strands Evals install is needed
+
+- **`notebooks/Strands_Evals_Evaluator.ipynb`** - The `StructuredOutput` evaluator for Strands Evals
+  - Six invoices broken six different ways, offline and deterministic
+  - `per_case()` field scores and `metrics()` five-category confusion matrix
+  - Why `test_pass` gates on recall as well as score
+  - Needs the evaluator, which is not on PyPI yet: install `strands-agents-evals` from the branch in cell 1
+
+- **`notebooks/Strands_Evals_FCC_Live_Agent.ipynb`** - The same evaluator against a live agent
+  - Five real FCC invoices, downloaded from the HuggingFace datasets server at run time
+  - Extracted by Claude Haiku through Bedrock, so it needs `AWS_PROFILE` with Bedrock access
+  - Runs on inferred configuration first, then repeats it with declared comparators and thresholds
+  - Outputs are empty until you run it yourself
+
 ## 🎯 What Each Example Demonstrates
 
 | Example | Individual Objects | List Comparison | Nested Structures | Error Analysis | Large Scale | Pretty Print |
