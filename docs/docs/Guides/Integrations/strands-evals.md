@@ -17,6 +17,9 @@ The evaluator lives in Strands Evals, not in stickler. stickler is the optional
 pip install "strands-agents-evals[stickler]"
 ```
 
+That extra is not published yet. Until the evaluator releases, install it from the
+branch — see [Status](#status) below.
+
 ```python
 from strands import Agent
 from strands_evals import Case, Experiment, eval_task
@@ -36,8 +39,8 @@ report = Experiment[str, Invoice](cases=cases, evaluators=[evaluator]).run_evalu
 
 report.overall_score          # weighted mean across the dataset
 report.scores                 # one weighted score per case
-evaluator.per_case()          # per-document field scores
-evaluator.metrics()           # per-field confusion matrix across the dataset
+evaluator.per_case()                        # per-document field scores
+evaluator.metrics()["Invoice"].field_metrics # per-field confusion matrix, keyed by schema
 report.display()              # rich table; run_display() is the interactive variant
 ```
 
@@ -69,14 +72,15 @@ scalar fields, per-field detail is read from the evaluator instead:
 - **`per_case()`** returns per-document field scores.
 - **`metrics()`** returns stickler's five-category confusion matrix per field path,
   including nested paths, computed once from the retained comparisons with no second
-  pass over the data.
+  pass over the data. It is keyed by schema name, so reach the field table through
+  `metrics()["Invoice"].field_metrics` — a dataset of mixed output types partitions
+  into one entry per model.
 
 ```
 field                       tp  fn  fa  fd   prec   rec    f1
 total_amount                 4   0   0   2   0.67  1.00  0.80
 invoice_date                 4   1   0   1   0.80  0.80  0.80
 line_items                   5   0   1   1   0.71  1.00  0.83
-line_items.sku               5   0   1   0   0.83  1.00  0.91
 ```
 
 The five categories separate failure modes a single score cannot. **FN** is a field
@@ -125,10 +129,18 @@ data-dependent, so use `.get()` rather than indexing.
 
 ## Notebooks
 
-- [`Strands_Evals_Evaluator.ipynb`](https://github.com/awslabs/stickler/blob/dev/examples/notebooks/Strands_Evals_Evaluator.ipynb)
+These live on the `demo/strands-evals-integration` branch until the evaluator releases.
+
+- [`Strands_Evals_Evaluator.ipynb`](https://github.com/awslabs/stickler/blob/demo/strands-evals-integration/examples/notebooks/Strands_Evals_Evaluator.ipynb)
   is the reference. Offline and deterministic, no credentials, covers every feature
   above on six invoices broken six different ways.
-- [`Strands_Evals_FCC_Live_Agent.ipynb`](https://github.com/awslabs/stickler/blob/dev/examples/notebooks/Strands_Evals_FCC_Live_Agent.ipynb)
+- [`Strands_Evals_Offline_Agent.ipynb`](https://github.com/awslabs/stickler/blob/demo/strands-evals-integration/examples/notebooks/Strands_Evals_Offline_Agent.ipynb)
+  is the granular walkthrough: what the agent is actually asked, what it returns, and
+  how that becomes a score. A recorded Bedrock exchange is replayed through a stub
+  model provider, so the real `Agent` structured-output path runs with no credentials
+  and no network call. Scores with `stickler.evaluate()` directly, so it needs no
+  Strands Evals install.
+- [`Strands_Evals_FCC_Live_Agent.ipynb`](https://github.com/awslabs/stickler/blob/demo/strands-evals-integration/examples/notebooks/Strands_Evals_FCC_Live_Agent.ipynb)
   runs the same evaluator against a live agent: five real FCC invoices extracted by
   Claude Haiku through Bedrock, with the Bedrock call inside the `@eval_task()`
   function. Set `AWS_PROFILE` before launching Jupyter; it needs Bedrock access.
