@@ -1,8 +1,9 @@
 {
   "provenance": {
     "model_id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "hand_authored": true,
     "recorded": null,
-    "note": "Hand-authored to the Bedrock converse-stream wire shape so this notebook runs with no AWS account. Regenerate from a live agent with fixtures/record_agent_exchange.py."
+    "note": "NOT a recording. Hand-authored to the Bedrock converse-stream wire shape, with three deliberate extraction errors, so the notebook runs with no AWS account. model_id names the model whose wire format this imitates and whose output it would replace, not a model that produced these values. Regenerate from a live agent with record_agent_exchange.py."
   },
   "turns": [
     {
