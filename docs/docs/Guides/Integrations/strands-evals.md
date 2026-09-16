@@ -134,12 +134,15 @@ data-dependent, so use `.get()` rather than indexing.
 
 ## Notebooks
 
-These live on the `demo/strands-evals-examples` branch until the evaluator releases.
+All three live in
+[`examples/notebooks/`](https://github.com/awslabs/stickler/tree/dev/examples/notebooks). Two
+of them import the evaluator, so they need it installed from the branch — see
+[Status](#status) below.
 
-- [`Strands_Evals_Evaluator.ipynb`](https://github.com/awslabs/stickler/blob/demo/strands-evals-examples/examples/notebooks/Strands_Evals_Evaluator.ipynb)
+- [`Strands_Evals_Evaluator.ipynb`](https://github.com/awslabs/stickler/blob/dev/examples/notebooks/Strands_Evals_Evaluator.ipynb)
   is the reference. Offline and deterministic, no credentials, covers every feature
   above on six invoices broken six different ways.
-- [`Strands_Evals_Offline_Agent.ipynb`](https://github.com/awslabs/stickler/blob/demo/strands-evals-examples/examples/notebooks/Strands_Evals_Offline_Agent.ipynb)
+- [`Strands_Evals_Offline_Agent.ipynb`](https://github.com/awslabs/stickler/blob/dev/examples/notebooks/Strands_Evals_Offline_Agent.ipynb)
   is the granular walkthrough: the tool spec Strands derives from the model, the raw
   tool-use JSON that comes back, the parsed object, and where each point was lost. A
   stored exchange replays through a stub model provider, so the real `Agent`
@@ -149,7 +152,7 @@ These live on the `demo/strands-evals-examples` branch until the evaluator relea
   no model; one command re-records it against your own agent. Scores with
   `stickler.evaluate()` directly, so it needs no Strands Evals install, and it is the
   place to start if you have not seen an agent response before.
-- [`Strands_Evals_FCC_Live_Agent.ipynb`](https://github.com/awslabs/stickler/blob/demo/strands-evals-examples/examples/notebooks/Strands_Evals_FCC_Live_Agent.ipynb)
+- [`Strands_Evals_FCC_Live_Agent.ipynb`](https://github.com/awslabs/stickler/blob/dev/examples/notebooks/Strands_Evals_FCC_Live_Agent.ipynb)
   runs the same evaluator against a live agent: five real FCC invoices extracted by
   Claude Haiku through Bedrock, with the Bedrock call inside the `@eval_task()`
   function. It downloads its documents from the HuggingFace datasets server at run time.
