@@ -9,12 +9,19 @@ from typing import Any, Dict, Type
 
 from pydantic import create_model
 
+from stickler.utils.deprecation import warn_once
+
 from .field_converter import (
     convert_fields_config,
     get_global_converter,
     validate_fields_config,
 )
 from .threshold_helper import model_identity, warn_if_threshold_is_zero
+
+#: Every key a top-level model config may carry, as read by ``create_model``.
+ACCEPTED_MODEL_CONFIG_KEYS = frozenset(
+    {"fields", "model_name", "match_threshold", "infer_unspecified_fields"}
+)
 
 
 class ModelFactory:
@@ -372,6 +379,23 @@ class ModelFactory:
         # Validate required 'fields' key exists
         if "fields" not in config:
             raise ValueError("Configuration must contain 'fields' key")
+
+        # Same silent drop as at field level: 'match_threshhold' leaves the model
+        # at 0.7 and 'model_nam' leaves the class named DynamicModel, neither
+        # with any signal. Report and keep building.
+        unknown = set(config) - ACCEPTED_MODEL_CONFIG_KEYS
+        if unknown:
+            warn_once(
+                "model-config-unknown-keys",
+                ','.join(sorted(unknown)),
+                f"Model config does not accept "
+                f"{', '.join(repr(k) for k in sorted(unknown))}; ignored. "
+                f"It accepts "
+                f"{', '.join(sorted(ACCEPTED_MODEL_CONFIG_KEYS))}. "
+                f"A misspelled key leaves the model at its default, so the "
+                f"value you wrote is not the value being used.",
+                category=UserWarning,
+            )
 
         # Validate fields is a non-empty dictionary
         fields_config = config["fields"]

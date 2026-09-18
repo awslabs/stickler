@@ -9,6 +9,18 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Fixed
+
+- **An unrecognized key in a model config is now reported instead of dropped.**
+  `model_from_json` read a closed set of keys and ignored everything else, so
+  `"threshhold": 0.99` built at the fallback 0.5 with no exception and no warning,
+  and every score under it was wrong with nothing to point at. Unknown keys now
+  raise a `UserWarning` naming the key and listing the accepted ones, at both field
+  and model level. The key was never applied, so the model still builds. A nested
+  field's `model_name` stays accepted: it is not read, but `to_stickler_config()`
+  exports it, so rejecting it would break the library's own round-trip
+  ([#350](https://github.com/awslabs/stickler/issues/350))
+
 ## [1.0.0] - 2026-09-11
 
 ### Added

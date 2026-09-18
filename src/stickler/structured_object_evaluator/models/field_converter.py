@@ -8,6 +8,8 @@ from typing import Any, Dict, Optional, Tuple, Type, get_args, get_origin
 
 from pydantic import Field
 
+from stickler.utils.deprecation import warn_once
+
 from .comparable_field import ComparableField
 from .comparator_registry import create_comparator, normalize_comparator_config
 from .type_resolver import resolve_type_string
@@ -24,6 +26,33 @@ LIST_ELEMENT_PROVENANCE = "list: spec applies to each element"
 #: reader of the config sees the decision on the line that would otherwise name a
 #: comparator, and so it cannot be set alongside a real comparator name.
 AUTO_COMPARATOR = "auto"
+
+#: Every key a field config may carry. The union of what the primitive and
+#: structured_model branches of ``convert_field_config`` read, plus
+#: ``model_name``: a nested field never reads it -- ``_build_nested_model``
+#: synthesises the class name -- but ``to_stickler_config()`` exports it, so
+#: rejecting it here would make the library's own export fail to round-trip.
+#: Kept as one set rather than per-branch sets so that a key which is valid on
+#: the other branch is never reported as a typo.
+ACCEPTED_FIELD_CONFIG_KEYS = frozenset(
+    {
+        "type",
+        "comparator",
+        "comparator_config",
+        "threshold",
+        "weight",
+        "clip_under_threshold",
+        "default",
+        "required",
+        "description",
+        "alias",
+        "examples",
+        "infer_unspecified_fields",
+        "fields",
+        "match_threshold",
+        "model_name",
+    }
+)
 
 
 def _infer_spec(
@@ -494,6 +523,25 @@ class FieldConverter:
         Raises:
             ValueError: If configuration is invalid
         """
+        # An unrecognized key is silently ignored by every reader below, so a
+        # misspelled 'threshhold' builds at the fallback 0.5 and every score is
+        # wrong with no signal. Report it the way an unknown comparator_config
+        # key is already reported, and keep building: the key was never applied,
+        # so refusing the whole model would be a new failure rather than a fix.
+        unknown = set(field_config) - ACCEPTED_FIELD_CONFIG_KEYS
+        if unknown:
+            warn_once(
+                "field-config-unknown-keys",
+                f"{field_name}:{','.join(sorted(unknown))}",
+                f"Field '{field_name}' does not accept "
+                f"{', '.join(repr(k) for k in sorted(unknown))} in its config; "
+                f"ignored. It accepts "
+                f"{', '.join(sorted(ACCEPTED_FIELD_CONFIG_KEYS))}. "
+                f"A misspelled key leaves the field at its default, so the "
+                f"value you wrote is not the value being scored.",
+                category=UserWarning,
+            )
+
         # Check required parameters
         if "type" not in field_config:
             raise ValueError(f"Field '{field_name}' missing required 'type' parameter")
