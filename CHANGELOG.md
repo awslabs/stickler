@@ -9,6 +9,15 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Fixed
+
+- **`ComparableField` accepts `default_factory`.** It always forwarded its own
+  `default` to pydantic's `Field`, so the two collided and every collection field
+  raised `TypeError: cannot specify both default and default_factory` -- the case
+  pydantic's own documentation tells users to reach for. Supplying both a `default`
+  and a `default_factory` still raises, as it does in plain pydantic
+  ([#306](https://github.com/awslabs/stickler/issues/306))
+
 ## [1.0.0] - 2026-09-11
 
 ### Added
