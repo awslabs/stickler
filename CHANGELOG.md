@@ -9,6 +9,13 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Fixed
+
+- Docs: misspelled `x-aws-stickler-*` keys are documented as currently ignored
+  (not raised with a closest-match hint); model-export samples are no longer
+  described as an exhaustive dump of every extension key; `ComparableField(default=...)`
+  is documented as required (`is_required()` is True).
+
 ## [1.0.0] - 2026-09-11
 
 ### Added

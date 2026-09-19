@@ -95,12 +95,14 @@ schema = Product.to_json_schema()
 }
 ```
 
-The export is complete, not minimal: every field carries its weight, clip flag, and comparator
-configuration even where those were left at their defaults, and the root carries its match
-threshold. This is what makes the round trip exact — the re-imported model cannot drift if a default
-changes in a later release. `price` has no `x-aws-stickler-comparator-config` only because
-`NumericComparator()` was constructed with no arguments to record. Fields declared `Optional` export
-as `{"type": ["string", "null"]}`; see [Optional fields and `null`](dynamic-models.md#optional-fields-and-null).
+The export is intended to round-trip comparison settings: fields carry weight, clip flag, and
+comparator configuration where those were set (including defaults that affect scoring), and the root
+carries its match threshold. Samples above omit some model-level keys that real output may include
+(for example `x-aws-stickler-model-name` and `x-aws-stickler-aggregate`) — treat them as illustrative,
+not an exhaustive dump of every extension key. `price` has no `x-aws-stickler-comparator-config` only
+because `NumericComparator()` was constructed with no arguments to record. Fields declared `Optional`
+export as `{"type": ["string", "null"]}`; see
+[Optional fields and `null`](dynamic-models.md#optional-fields-and-null).
 
 ## to_stickler_config()
 

@@ -242,8 +242,8 @@ result = gt.compare_with(pred)
 The two sets are not interchangeable, and position matters. A field-level key on
 the root, or an object-level key on a scalar field, is not read, so it is
 rejected rather than dropped. An unrecognized or misspelled `x-aws-stickler-*`
-key raises and names the closest valid key for that position; unrelated `x-*`
-extensions from other tooling are left alone.
+key is currently ignored (silently dropped) rather than rejected; unrelated
+`x-*` extensions from other tooling are left alone.
 
 Comparator names accepted by `x-aws-stickler-comparator` are the registered class names:
 `LevenshteinComparator`, `ExactComparator`, `NormalizedComparator`, `PhoneComparator`,
@@ -306,8 +306,9 @@ ComparableField(
     threshold=0.7,                       # similarity threshold, 0.0-1.0 (default: 0.5)
     weight=1.0,                          # field weight for overall score (default: 1.0)
     clip_under_threshold=True,           # zero out scores below threshold (default: True)
-    default=None,                        # field default; setting one does not make the field
-                                         # required — is_required() is False either way, so a
+    default=None,                        # field default; use default=... (Ellipsis) for a
+                                         # required field (is_required() is True). default=None
+                                         # or omitting default leaves the field optional so a
                                          # missing prediction scores rather than failing validation
 )
 ```
