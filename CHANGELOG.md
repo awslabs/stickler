@@ -9,6 +9,16 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Fixed
+
+- List reporting ([#332](https://github.com/awslabs/stickler/issues/332)):
+  `non_matches` and `field_comparisons` now use the configured comparator,
+  class gate, and field threshold for primitive and plain-model lists. Rejected
+  pairs produce an indexed false-discovery record instead of disappearing;
+  reordered pair indices and reported similarities also follow that comparator.
+  Scores and confusion-matrix counts are unchanged. Structured-model lists
+  retain recursive matching and their element-model threshold.
+
 ## [1.0.0] - 2026-09-11
 
 ### Added
@@ -829,36 +839,9 @@ Each release links to full notes on the
   gate takes a `warn` flag, probing is silent, and the warnings are replayed on
   the pairs the matcher selected.
 
-  **Known gap: a refused list element is counted but not reported.** There is a
-  sixth reader of the pair question and it is the one that cannot consult the
-  gate. The confusion-matrix counts come through the wrapped comparator; the
-  item-level report comes through `ComparisonHelperBase.get_optimal_assignments`,
-  which runs its own `HungarianHelper.get_complete_matching_info(gt_list,
-  pred_list)` with no comparator argument at all. It therefore scores a refused
-  pair as a match and emits nothing, so the counts and the report disagree:
-
-  ```
-  f: Optional[List[Any]] = ComparableField(comparator=ANLSStarComparator())
-  [Plain(sku='a')]  vs  [Cat(sku='a')]
-
-                        dev            here
-  field_scores          {'f': 1.0}     {'f': 0.0}
-  f counts              tp=1 fd=0      tp=0 fd=1
-  non_matches           []             []          <- an fd with no record
-  ```
-
-  An ordinary below-threshold element IS documented, so the omission is specific
-  to a refusal, and a user has no way to find out why the field lost a point.
-  Widening the `isinstance(gt_list[0], StructuredModel)` guard that skips
-  item-level collection for plain-model lists is not sufficient -- verified -- and
-  the actual fix is to thread the field's comparator into
-  `get_optimal_assignments`, a shared template-method base with two subclasses and
-  two collectors whose `non_matches` output would change for every list of plain
-  models. That is a reporting change with its own blast radius, so it is declared
-  and tracked in [#332](https://github.com/awslabs/stickler/issues/332) rather
-  than smuggled in here. Tests pin the disagreement so it cannot widen unnoticed,
-  including one asserting an ordinary below-threshold element IS still reported,
-  so the gap cannot read as larger than it is.
+  This release left a reporting gap: a refused list element contributed a false
+  discovery but no item-level record. The reporting fix for
+  [#332](https://github.com/awslabs/stickler/issues/332) is listed under Unreleased.
 
   Refusing is deliberate rather than conservative. The scalar default is edit
   distance over the rendered form, and because the field names are identical on

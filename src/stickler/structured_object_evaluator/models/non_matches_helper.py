@@ -2,6 +2,8 @@
 
 from typing import Any, Dict, List, Optional
 
+from stickler.comparators.base import BaseComparator
+
 from .comparison_helper_base import ComparisonHelperBase
 from .non_match_field import NonMatchType
 
@@ -101,7 +103,9 @@ class NonMatchesHelper(ComparisonHelperBase):
         return entry
 
     def collect_list_non_matches(
-        self, field_name: str, gt_list: List[Any], pred_list: List[Any]
+        self, field_name: str, gt_list: List[Any], pred_list: List[Any],
+        comparator: Optional[BaseComparator] = None,
+        match_threshold: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
         """Collect individual object-level non-matches from a list field.
 
@@ -109,12 +113,16 @@ class NonMatchesHelper(ComparisonHelperBase):
             field_name: Name of the list field
             gt_list: Ground truth list
             pred_list: Prediction list
+            comparator: Field comparator for non-structured list elements.
+            match_threshold: Field threshold for non-structured list elements.
 
         Returns:
             List of non-match dictionaries with individual object information
         """
         # Use base class method but filter for non-matches only
-        all_entries = self.collect_list_entries(field_name, gt_list, pred_list)
+        all_entries = self.collect_list_entries(
+            field_name, gt_list, pred_list, comparator, match_threshold
+        )
         
         # Filter for non-matches only (entries where match is False or non_match_type exists)
         non_matches = []
@@ -174,16 +182,18 @@ class NonMatchesHelper(ComparisonHelperBase):
             non_match_type = "FD"
             object_index = gt_index
 
-        return [
-            self.create_non_match_entry(
-                field_name,
-                gt_object,
-                pred_object,
-                non_match_type,
-                object_index,
-                similarity_score,
-            )
-        ]
+        entry = self.create_non_match_entry(
+            field_name,
+            gt_object,
+            pred_object,
+            non_match_type,
+            object_index,
+            similarity_score,
+        )
+        if non_match_type == "FD":
+            # The caller knows the field threshold used to classify this pair.
+            entry["reason"] = reason
+        return [entry]
     
     def _extract_field_level_non_matches(
         self, 

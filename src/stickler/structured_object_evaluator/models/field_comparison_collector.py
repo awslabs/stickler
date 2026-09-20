@@ -93,8 +93,11 @@ class FieldComparisonCollector:
                 and isinstance(pred_val, list)
             ):
                 # Use FieldComparisonHelper for primitive list collection
+                info = self.model._get_comparison_info(field_name)
                 list_comparisons = self.helper.collect_list_entries(
-                    field_name, gt_val, pred_val
+                    field_name, gt_val, pred_val,
+                    comparator=info.comparator,
+                    match_threshold=info.threshold,
                 )
                 all_field_comparisons.extend(list_comparisons)
 
