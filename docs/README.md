@@ -49,6 +49,19 @@ uv run mkdocs build
 
 This generates the static site in `site/` and validates all internal links and references.
 
+To run the pull-request check from the repository root:
+
+```bash
+uv run --frozen python docs/check_links.py
+uv run --frozen pytest tests/test_docs_build.py
+```
+
+The checker builds the site and fails on MkDocs page/navigation warnings,
+including missing pages, images, and heading anchors. Existing API-plugin
+warnings remain visible but do not fail this check. Fatal build/configuration
+errors still fail. External URLs are not fetched. The read-only `docs-check.yml`
+workflow runs this check on every pull request; it never deploys the site.
+
 ## Deployment
 
 The site is deployed to GitHub Pages automatically via GitHub Actions (`.github/workflows/docs.yml`) on pushes to `main` that modify files in `src/` or `docs/`. This ensures API reference docs stay current when Python source code changes. To deploy manually:
