@@ -246,14 +246,29 @@ def test_a_non_mapping_field_config_is_not_reported_as_unknown_keys():
     """`set()` of a str iterates its characters.
 
     `{"name": "str"}` reported the field as not accepting 'r', 's', 't' before
-    refusing it. The refusal is right and unchanged; the warning was noise
-    naming keys nobody wrote, so the assertion is on the warning, not the raise.
+    refusing it, so the assertion is on the warning as well as the raise.
     """
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        with pytest.raises(ValueError, match="missing required 'type' parameter"):
+        with pytest.raises(ValueError, match="must be a mapping"):
             StructuredModel.model_from_json({"fields": {"name": "str"}})
     assert unknown_key_warnings([str(w.message) for w in caught]) == []
+
+
+@pytest.mark.parametrize(
+    "field_config",
+    [5, None, ["type", "auto"], {"type", "auto"}, ("type", "auto"), "type"],
+)
+def test_a_non_mapping_field_config_raises_the_documented_error(field_config):
+    """`"type" not in field_config` is a containment test, not a mapping check.
+
+    `5` and `None` reached "argument of type 'int' is not iterable", and a list
+    or set carrying the string "type" got past the check and died later on
+    subscripting. `model_from_json` documents `Raises: ValueError`, so every one
+    of those was an undocumented escape.
+    """
+    with pytest.raises(ValueError, match="must be a mapping"):
+        StructuredModel.model_from_json({"fields": {"name": field_config}})
 
 
 def test_match_threshold_on_a_primitive_is_refused():

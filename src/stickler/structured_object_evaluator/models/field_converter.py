@@ -272,7 +272,7 @@ class FieldConverter:
         if "infer_unspecified_fields" in field_config:
             raise ValueError(
                 f"'infer_unspecified_fields' is not read on primitive field "
-                f"'{field_name}'; it scopes a nested model's own subtree and has "
+                f"'{field_path}'; it scopes a nested model's own subtree and has "
                 f"no effect here. Set it on the model, or on a "
                 f"'structured_model' field to scope that subtree. To infer this "
                 f'one field, set "comparator": "auto" on it.'
@@ -601,38 +601,48 @@ class FieldConverter:
         """
         path = field_path or field_name
 
+        # Refused up front, the way ``ModelFactory.validate_config`` refuses a
+        # non-dict config. Two reasons. ``set()`` of a str iterates its
+        # characters, so ``{"name": "str"}`` reported the field as not accepting
+        # 'r', 's', 't'. And the ``"type" not in field_config`` check below is a
+        # containment test, which reaches an undocumented ``TypeError`` rather
+        # than the ``ValueError`` this function documents: ``5`` and ``None``
+        # give "argument of type 'int' is not iterable", and a list or set
+        # containing the string "type" gets past the check and dies later on
+        # subscripting.
+        if not isinstance(field_config, Mapping):
+            raise ValueError(
+                f"Field '{path}' configuration must be a mapping, got "
+                f"{type(field_config).__name__}"
+            )
+
         # An unrecognized key is silently ignored by every reader below, so a
         # misspelled 'threshhold' builds at the fallback 0.5 and every score is
         # wrong with no signal. Report it the way an unknown comparator_config
         # key is already reported, and keep building: the key was never applied,
         # so refusing the whole model would be a new failure rather than a fix.
-        #
-        # Guarded on Mapping because ``set()`` of a str iterates its characters:
-        # ``{"name": "str"}`` reported the field as not accepting 'r', 's', 't'.
-        # The non-mapping itself is still refused, by the 'type' check below.
-        if isinstance(field_config, Mapping):
-            unknown = set(field_config) - ACCEPTED_FIELD_CONFIG_KEYS
-            if unknown:
-                warn_once(
-                    "field-config-unknown-keys",
-                    # Keyed on (root model, dotted path, keys). Keyed on the leaf
-                    # name alone, the first model in a process consumed the slot
-                    # for every later one, so a second config carrying the same
-                    # typo scored at the default in silence -- the very defect
-                    # this warning exists to end, reproduced through its own fix.
-                    # ``key=str`` because a non-string key must raise the
-                    # documented ValueError below, not a TypeError from here.
-                    f"{model_id}|{path}|"
-                    f"{','.join(str(k) for k in sorted(unknown, key=str))}",
-                    f"Field '{path}' does not accept "
-                    f"{', '.join(repr(k) for k in sorted(unknown, key=str))} in "
-                    f"its config; ignored. It accepts "
-                    f"{', '.join(sorted(ACCEPTED_FIELD_CONFIG_KEYS))}. "
-                    f"A misspelled key leaves the field at its default, so the "
-                    f"value you wrote is not the value being scored.",
-                    category=UserWarning,
-                    stacklevel=_UNKNOWN_KEY_STACKLEVEL,
-                )
+        unknown = set(field_config) - ACCEPTED_FIELD_CONFIG_KEYS
+        if unknown:
+            warn_once(
+                "field-config-unknown-keys",
+                # Keyed on (root model, dotted path, keys). Keyed on the leaf
+                # name alone, the first model in a process consumed the slot
+                # for every later one, so a second config carrying the same
+                # typo scored at the default in silence -- the very defect
+                # this warning exists to end, reproduced through its own fix.
+                # ``key=str`` because a non-string key must not turn this into
+                # a TypeError, against a documented ``Raises: ValueError``.
+                f"{model_id}|{path}|"
+                f"{','.join(str(k) for k in sorted(unknown, key=str))}",
+                f"Field '{path}' does not accept "
+                f"{', '.join(repr(k) for k in sorted(unknown, key=str))} in "
+                f"its config; ignored. It accepts "
+                f"{', '.join(sorted(ACCEPTED_FIELD_CONFIG_KEYS))}. "
+                f"A misspelled key leaves the field at its default, so the "
+                f"value you wrote is not the value being scored.",
+                category=UserWarning,
+                stacklevel=_UNKNOWN_KEY_STACKLEVEL,
+            )
 
         # Check required parameters
         if "type" not in field_config:
