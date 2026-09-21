@@ -582,6 +582,7 @@ Every `model_from_json()` failure raises `ValueError`, and all but one are prefi
 | `Unknown comparator: 'x'. Available: [...]` | Comparator name not registered | Use a class name from the list; `BERTComparator` and `LLMComparator` appear only when the `[bert]` and `[llm]` extras are installed |
 | `Field 'x' with type 'structured_model' requires a 'fields' configuration` | Nested model without its own `fields` | Add the nested `fields` block |
 | `'match_threshold' is not read on primitive field 'x'` | Object-level threshold written on a leaf | Use `threshold` on the field, or move `match_threshold` to the model or a `structured_model` field |
+| `Field 'x' configuration must be a mapping, got int` | A field's value is not a config object | Wrap it: `{"x": {"type": "str", ...}}` |
 
 One diagnostic is a `UserWarning` rather than a `ValueError`, because the key it names was never applied and the model still builds:
 

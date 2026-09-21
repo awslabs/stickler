@@ -11,15 +11,22 @@ Each release links to full notes on the
 
 ### Changed
 
-- `match_threshold` on a **primitive** field now raises `ValueError`. It is the
-  object-level threshold; nothing read it on a leaf, so `"match_threshold": 0.99`
-  beside a `float` left that field at `threshold` 0.5 and scored it against a
-  value the author never chose. The JSON Schema path already refuses the same
-  misplacement, so the two front doors now agree. It stays accepted on the model
-  and on a `structured_model` field, where it is read and where
-  `to_stickler_config()` exports it. A config that builds today and relies on
-  this will start raising -- it was only "working" in the sense of silently
-  scoring at the wrong threshold
+- **Breaking:** `match_threshold` on a **primitive** field now raises
+  `ValueError`. It is the object-level threshold; nothing read it on a leaf, so
+  `"match_threshold": 0.99` beside a `float` left that field at `threshold` 0.5
+  and scored it against a value the author never chose. The JSON Schema path
+  already refuses the same misplacement, so the two front doors now agree. It
+  stays accepted on the model and on a `structured_model` field, where it is
+  read and where `to_stickler_config()` exports it. A config that builds today
+  and relies on this will start raising, though only one that was scoring
+  against a threshold its author did not choose
+  ([#350](https://github.com/awslabs/stickler/issues/350))
+
+- A field config that is not a mapping now raises `ValueError` naming the type
+  it got, rather than reaching a containment test that gave an undocumented
+  `TypeError`: `5` and `None` produced "argument of type 'int' is not iterable",
+  and a list or set containing the string `"type"` got past the check and died
+  later on subscripting
   ([#350](https://github.com/awslabs/stickler/issues/350))
 
 ### Fixed
