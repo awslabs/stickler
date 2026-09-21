@@ -242,6 +242,25 @@ class FieldConverter:
                 model_id=model_id,
             )
 
+        # `match_threshold` is the object-level threshold, read by the branch
+        # above and by nothing on a primitive. It stays in the accepted-key set
+        # because a `structured_model` field carries it legitimately and
+        # `to_stickler_config()` exports it there, so removing it would break the
+        # round-trip -- but on a leaf it was accepted and dropped, which is the
+        # `threshold`/`match_threshold` confusion the union set cannot catch. The
+        # JSON Schema path already refuses the same misplacement
+        # ("x-aws-stickler-match-threshold is not read on field 'amount'. It
+        # belongs on the object"), so refusing here is what makes the two front
+        # doors agree, as it did for `infer_unspecified_fields` below.
+        if "match_threshold" in field_config:
+            raise ValueError(
+                f"'match_threshold' is not read on primitive field "
+                f"'{field_path}'; it is the object-level threshold and has no "
+                f"effect here. Use 'threshold' for this field, or set "
+                f"'match_threshold' on the model or on a 'structured_model' "
+                f"field."
+            )
+
         # `infer_unspecified_fields` scopes a SUBTREE, so it is meaningful only on
         # a nested model, which the branch above handles. On a primitive field
         # there is no subtree and nothing reads it, so it was accepted and dropped

@@ -254,3 +254,42 @@ def test_a_non_mapping_field_config_is_not_reported_as_unknown_keys():
         with pytest.raises(ValueError, match="missing required 'type' parameter"):
             StructuredModel.model_from_json({"fields": {"name": "str"}})
     assert unknown_key_warnings([str(w.message) for w in caught]) == []
+
+
+def test_match_threshold_on_a_primitive_is_refused():
+    """It is the object-level threshold; on a leaf it was accepted and dropped.
+
+    The JSON Schema path already refuses the same misplacement, so refusing
+    here is what makes the two front doors agree.
+    """
+    config = {
+        "fields": {
+            "amount": {
+                "type": "float",
+                "comparator": "NumericComparator",
+                "match_threshold": 0.99,
+            }
+        }
+    }
+    with pytest.raises(ValueError, match="'match_threshold' is not read"):
+        build(config)
+
+
+def test_match_threshold_on_a_nested_model_field_is_still_accepted():
+    """It is read there, and `to_stickler_config()` exports it there.
+
+    Removing it from the accepted set would refuse the library's own export,
+    which is why the refusal above is per-branch rather than per-key.
+    """
+    config = {
+        "fields": {
+            "addr": {
+                "type": "structured_model",
+                "match_threshold": 0.93,
+                "fields": {"city": BASE_FIELD},
+            }
+        }
+    }
+    model, messages = build(config)
+    assert unknown_key_warnings(messages) == []
+    assert model.to_stickler_config()["fields"]["addr"]["match_threshold"] == 0.93
