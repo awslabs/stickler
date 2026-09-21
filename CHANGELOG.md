@@ -18,6 +18,16 @@ Each release links to full notes on the
   and a `default_factory` still raises, as it does in plain pydantic
   ([#306](https://github.com/awslabs/stickler/issues/306))
 
+  Both exporters were taught about factories at the same time, since nothing could
+  reach them while the field itself refused to build. `to_stickler_config()` wrote
+  `PydanticUndefined` through verbatim, so `json.dumps()` on the result raised and
+  the in-process round trip rebuilt the field as required; `to_json_schema()` dropped
+  the default instead, so `from_json_schema()` gave back `None` where the author
+  wrote `default_factory=list` and the failure surfaced at the first `.append()`.
+  Both now emit the value the factory produces, for `list`, `dict` and `set`. A set
+  is emitted as a list, because JSON has no set type. Any other factory is left
+  unexported rather than called during an export.
+
 ## [1.0.0] - 2026-09-11
 
 ### Added
