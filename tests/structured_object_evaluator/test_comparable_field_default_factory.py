@@ -12,6 +12,7 @@ from typing import Dict, List
 
 import pytest
 
+from stickler.comparators.exact import ExactComparator
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
@@ -87,3 +88,15 @@ def test_explicit_default_still_honoured():
 def test_factory_field_is_optional_in_json_schema():
     """A factory is a real default, so the field is not required."""
     assert "tags" not in FactoryModel.model_json_schema().get("required", [])
+
+
+def test_default_factory_none_stays_optional():
+    """default_factory=None is pydantic's own signature default, not a real factory."""
+
+    class NoteModel(StructuredModel):
+        note: str = ComparableField(default_factory=None, comparator=ExactComparator())
+
+    field_info = NoteModel.model_fields["note"]
+    assert not field_info.is_required()
+    assert field_info.default is None
+    assert NoteModel().note is None

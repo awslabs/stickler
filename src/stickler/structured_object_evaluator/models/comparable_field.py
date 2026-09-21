@@ -240,7 +240,16 @@ def ComparableField(
     # rather than being silently dropped here. An omitted default stays None,
     # which the schema generator reads as a construction-tolerance sentinel
     # rather than as a real default.
-    if "default_factory" in clean_field_kwargs:
+    #
+    # Testing the VALUE, not just presence: None is pydantic's own signature
+    # default for default_factory (a bare FieldInfo with no factory reports
+    # default_factory=None, not absence), so a caller that forwards kwargs
+    # through -- e.g. copying an existing field's default_factory -- can pass
+    # it explicitly without meaning anything by it. `"default_factory" in
+    # clean_field_kwargs` would read that as "a real factory was supplied"
+    # and drop our default, silently turning an optional field required
+    # (awslabs/stickler#360).
+    if clean_field_kwargs.get("default_factory") is not None:
         default_kwarg = {} if default is _DEFAULT_UNSET else {"default": default}
     else:
         default_kwarg = {"default": None if default is _DEFAULT_UNSET else default}
