@@ -8,6 +8,7 @@ field raised ``TypeError: cannot specify both default and default_factory``.
 See: https://github.com/awslabs/stickler/issues/306
 """
 
+import json
 from typing import Dict, List
 
 import pytest
@@ -100,3 +101,43 @@ def test_default_factory_none_stays_optional():
     assert not field_info.is_required()
     assert field_info.default is None
     assert NoteModel().note is None
+
+
+def test_stickler_config_default_factory_round_trips_through_json():
+    """to_stickler_config() must be JSON-serializable and rebuild tags as optional."""
+    config = FactoryModel.to_stickler_config()
+
+    serialized = json.dumps(config)
+
+    rebuilt = StructuredModel.model_from_json(json.loads(serialized))
+    assert not rebuilt.model_fields["tags"].is_required()
+    assert rebuilt(name="a").tags == []
+
+
+def test_json_schema_round_trip_keeps_factory_default():
+    """from_json_schema() must rebuild a factory-backed field with [], not None."""
+    schema = FactoryModel.to_json_schema()
+
+    rebuilt = StructuredModel.from_json_schema(schema)
+
+    assert rebuilt(name="a").tags == []
+
+
+def test_a_set_factory_exports_as_a_list():
+    """JSON has no set type, so exporting the set itself is the same bug again.
+
+    A list-annotated field may legally use `default_factory=set`, and a set in
+    the exported config makes `json.dumps` raise exactly as PydanticUndefined
+    did.
+    """
+
+    class SetModel(StructuredModel):
+        name: str = ComparableField(comparator=ExactComparator())
+        tags: List[str] = ComparableField(
+            default_factory=set, comparator=ExactComparator()
+        )
+
+    config = SetModel.to_stickler_config()
+    assert config["fields"]["tags"]["default"] == []
+    json.dumps(config)
+    json.dumps(SetModel.to_json_schema())

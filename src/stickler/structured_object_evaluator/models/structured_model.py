@@ -18,6 +18,7 @@ from typing import (
 )
 
 from pydantic import BaseModel, Field
+from pydantic.fields import PydanticUndefined
 from pydantic.json_schema import GenerateJsonSchema
 
 from stickler.comparators.anls import ANLSStarComparator
@@ -1889,6 +1890,7 @@ class StructuredModel(BaseModel):
         from .json_schema_field_converter import (
             PYTHON_TYPE_TO_JSON_TYPE,
             JsonSchemaFieldConverter,
+            resolve_exportable_default,
         )
 
         # schema/field_path unused for export operations - only needed for import
@@ -1987,6 +1989,21 @@ class StructuredModel(BaseModel):
                             else json_element_type
                         },
                     }
+                    # A default_factory field (e.g. default_factory=list) is not
+                    # required, but field_info.default is PydanticUndefined --
+                    # the factory supplies the instance default, not a static
+                    # value. JSON Schema has its own "default" keyword, so the
+                    # factory's produced value goes there instead, and the field
+                    # imports back as optional rather than required (#360). A
+                    # field with an ordinary literal default already had nowhere
+                    # to go here before this fix and is left that way -- only the
+                    # factory case, which used to disappear silently, is new.
+                    if field_info.default is PydanticUndefined:
+                        has_default, default_value = resolve_exportable_default(
+                            field_info
+                        )
+                        if has_default:
+                            property_schema["default"] = default_value
                     # Extract and add stickler extensions from field metadata
                     metadata = converter._extract_field_metadata(field_info)
                     extensions = converter._build_comparison_extensions(

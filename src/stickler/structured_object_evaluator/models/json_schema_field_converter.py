@@ -6,7 +6,7 @@ Pydantic Field instances with ComparableField functionality.
 
 from typing import Any, Dict, List, Tuple, Type
 
-from pydantic.fields import FieldInfo
+from pydantic.fields import FieldInfo, PydanticUndefined
 
 from .optional_annotation import unwrap_optional
 
@@ -24,6 +24,53 @@ PYTHON_TYPE_TO_STICKLER_TYPE = {
     float: "float",
     bool: "bool",
 }
+
+# The three builtins ComparableField's own docstring recommends for a mutable
+# default (see its `default` Args entry). Calling one to recover the value it
+# produces is safe: each takes no arguments, is pure, and has no side effects,
+# so invoking it here to export "default": [] cannot do anything a caller
+# would not already expect model construction itself to do. Any other factory
+# is left unexported rather than invoked blindly -- a caller-supplied callable
+# might hit a database, a clock, or a counter, and calling it during export
+# (not construction) would be a surprising side effect nobody asked for.
+_SAFE_EXPORT_FACTORIES = (list, dict, set)
+
+
+def resolve_exportable_default(field_info: FieldInfo) -> Tuple[bool, Any]:
+    """Return ``(True, value)`` to export, or ``(False, None)`` to omit the key.
+
+    A field built from a real ``default_factory`` (see ``ComparableField``'s
+    ``_DEFAULT_UNSET`` handling) reports ``field_info.default is
+    PydanticUndefined`` even though ``field_info.is_required()`` is False --
+    the factory, not a static value, supplies each instance's default.
+    Exporting ``PydanticUndefined`` itself breaks both exporters: it is not
+    JSON serializable (``to_stickler_config()``), and a schema that omits the
+    key round-trips the field back as required (``to_json_schema()``), turning
+    an optional collection field into one every reader must supply
+    (awslabs/stickler#360).
+
+    For ``list``/``dict``/``set`` -- the factories ComparableField's own
+    docstring recommends -- calling the factory to recover its produced value
+    is safe and lets the exported ``"default": []`` round-trip correctly,
+    which is what a reader of the exported config or schema expects. Any
+    other factory returns ``(False, None)``: guessing at an arbitrary
+    callable's value would be worse than omitting the key.
+
+    A ``set`` is exported as a list, because JSON has no set type and both
+    destinations are JSON. Exporting the set itself reproduces exactly the
+    failure this function exists to remove, one value type over:
+    ``List[str] = ComparableField(default_factory=set)`` builds, and
+    ``json.dumps(model.to_stickler_config())`` then raises ``TypeError:
+    Object of type set is not JSON serializable``. The conversion is
+    unambiguous here because the factory is the builtin, called with no
+    arguments, so the value is always the empty set.
+    """
+    if field_info.default is not PydanticUndefined:
+        return True, field_info.default
+    if field_info.default_factory in _SAFE_EXPORT_FACTORIES:
+        value = field_info.default_factory()
+        return True, list(value) if isinstance(value, set) else value
+    return False, None
 
 
 class JsonSchemaFieldConverter:
@@ -143,7 +190,15 @@ class JsonSchemaFieldConverter:
         # Add Pydantic field params
         field_config["required"] = field_info.is_required()
         if not field_info.is_required():
-            field_config["default"] = field_info.default
+            # See resolve_exportable_default: a default_factory field reports
+            # PydanticUndefined here even though it is optional. Writing that
+            # through verbatim broke json.dumps() on the exported config
+            # (awslabs/stickler#360); the helper substitutes the factory's
+            # own produced value for the safe cases and omits the key
+            # otherwise, rather than emitting something unserializable.
+            has_default, default_value = resolve_exportable_default(field_info)
+            if has_default:
+                field_config["default"] = default_value
         if field_info.description:
             field_config["description"] = field_info.description
         if field_info.alias:
