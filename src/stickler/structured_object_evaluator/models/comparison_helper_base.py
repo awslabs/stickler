@@ -114,6 +114,7 @@ class ComparisonHelperBase(ABC):
         matched_pairs_with_scores: List[tuple],
         match_threshold: float,
         verdicts: Optional[List[bool]] = None,
+        pair_results: Optional[Dict[tuple, Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         """Process matched pairs and create entries.
         
@@ -124,6 +125,7 @@ class ComparisonHelperBase(ABC):
             matched_pairs_with_scores: List of (gt_idx, pred_idx, score) tuples
             match_threshold: Threshold for determining matches
             verdicts: Optional decisions from scoring, including its tolerance
+            pair_results: Optional already-scored child results for structured lists
             
         Returns:
             List of entries for matched pairs
@@ -148,6 +150,9 @@ class ComparisonHelperBase(ABC):
                 reason = self.generate_comparison_reason(is_match, similarity_score, match_threshold)
                 
                 # Extract entries from structured model objects
+                pair_result = (
+                    pair_results.get((gt_idx, pred_idx)) if pair_results else None
+                )
                 extracted_entries = self._extract_entries_from_objects(
                     field_name,
                     gt_item,
@@ -157,6 +162,7 @@ class ComparisonHelperBase(ABC):
                     is_match,
                     similarity_score,
                     reason,
+                    **({"pair_result": pair_result} if pair_result is not None else {}),
                 )
                 entries.extend(extracted_entries)
                 
@@ -330,7 +336,7 @@ class ComparisonHelperBase(ABC):
             comparator: Field comparator for non-structured list elements.
             match_threshold: Field threshold for non-structured list elements.
             matching: Pairings and decisions already produced by scoring. When
-                supplied, no comparator call or second assignment is made.
+                supplied, its list assignments and verdicts are reused.
 
         Returns:
             List of entries with individual information
@@ -366,6 +372,7 @@ class ComparisonHelperBase(ABC):
         entries.extend(self.process_matched_pairs(
             field_name, gt_list, pred_list, matched_pairs_with_scores,
             match_threshold, verdicts,
+            matching.get("pair_results") if matching is not None else None,
         ))
 
         # Process unmatched ground truth items (FN)

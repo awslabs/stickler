@@ -163,9 +163,17 @@ class FieldComparator:
         #
         #       Impact: Moderate - primarily affects deeply nested structures (3+ levels)
         #       Estimated overhead: 2-3x for structures with 3 levels of nesting
-        nested_details = gt_val.compare_recursive(
-            pred_val, _include_list_matching=True
-        )["fields"]
+        from .comparison_engine import ComparisonEngine
+        from .structured_model import StructuredModel
+
+        if type(gt_val).compare_recursive is StructuredModel.compare_recursive:
+            nested_result = ComparisonEngine(gt_val).compare_recursive(
+                pred_val, _include_list_matching=True
+            )
+        else:
+            # Existing overrides need not accept internal metadata options.
+            nested_result = gt_val.compare_recursive(pred_val)
+        nested_details = nested_result["fields"]
 
         # Return structure with object-level metrics and nested field details kept separate
         return {

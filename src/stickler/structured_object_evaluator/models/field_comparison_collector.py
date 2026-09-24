@@ -95,11 +95,18 @@ class FieldComparisonCollector:
                 # Use FieldComparisonHelper for primitive list collection
                 matching = field_result.get("_list_matching")
                 if matching is None:
-                    info = self.model._get_comparison_info(field_name)
-                    matching_kwargs = {
-                        "comparator": info.comparator,
-                        "match_threshold": info.threshold,
-                    }
+                    from .structured_model import StructuredModel
+
+                    if gt_val and isinstance(gt_val[0], StructuredModel):
+                        # A custom recursive result may lack cached pairings.
+                        # Structured lists use their element model's settings.
+                        matching_kwargs = {}
+                    else:
+                        info = self.model._get_comparison_info(field_name)
+                        matching_kwargs = {
+                            "comparator": info.comparator,
+                            "match_threshold": info.threshold,
+                        }
                 else:
                     matching_kwargs = {"matching": matching}
                 list_comparisons = self.helper.collect_list_entries(

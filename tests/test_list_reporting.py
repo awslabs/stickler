@@ -1,5 +1,6 @@
 """Regression coverage for reporting the list comparisons scored by #332."""
 
+import json
 from typing import Any, Optional
 
 import pytest
@@ -214,7 +215,9 @@ def test_structured_list_keeps_element_threshold_not_parent_comparator():
     class Parent(StructuredModel):
         # Runtime StructuredModel elements use recursive matching even when
         # the annotation also permits primitives with a field comparator.
-        items: list[Any] = ComparableField(comparator=ConstantComparator(), threshold=0.9)
+        items: list[Any] = ComparableField(
+            comparator=ConstantComparator(), threshold=0.9
+        )
 
     result = report([Item(code="a")], [Item(code="a")], model=Parent)
     assert result["field_scores"]["items"] == 1.0
@@ -241,7 +244,8 @@ def test_report_matching_does_not_emit_warnings_for_discarded_pairs():
     ]
 
 
-def test_reports_reuse_the_scoring_cost_matrix():
+@pytest.mark.parametrize("bulk", [False, True])
+def test_reports_reuse_the_scoring_cost_matrix(bulk, tmp_path):
     class CountingComparator(BaseComparator):
         calls = 0
 
@@ -253,7 +257,20 @@ def test_reports_reuse_the_scoring_cost_matrix():
         items: list[str] = ComparableField(comparator=CountingComparator())
 
     values = ["a", "b", "c", "d"]
-    result = report(values, values, model=Tags)
+    if bulk:
+        from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
+            BulkStructuredModelEvaluator,
+        )
+
+        output = tmp_path / "results.jsonl"
+        evaluator = BulkStructuredModelEvaluator(
+            target_schema=Tags, individual_results_jsonl=str(output)
+        )
+        evaluator.update(Tags(items=values), Tags(items=values))
+        evaluator.compute()
+        result = json.loads(output.read_text(encoding="utf-8"))["comparison_result"]
+    else:
+        result = report(values, values, model=Tags)
 
     assert result["confusion_matrix"]["fields"]["items"]["overall"]["tp"] == 4
     assert result["non_matches"] == []
@@ -299,11 +316,285 @@ def test_reports_use_the_score_from_a_stateful_comparator_once():
     assert ChangingComparator.calls == 1
 
 
-def test_direct_non_match_reason_uses_the_supplied_threshold():
-    entry = NonMatchesHelper().create_non_match_entry(
+@pytest.mark.parametrize(
+    "non_matches,comparisons",
+    [(False, False), (True, False), (False, True), (True, True)],
+)
+def test_structured_list_reports_do_not_recompare_accepted_children(
+    non_matches, comparisons
+):
+    class ChangingComparator(BaseComparator):
+        calls = 0
+
+        def _compare(self, left, right):
+            type(self).calls += 1
+            return 1.0 if type(self).calls <= 3 else 0.0
+
+    class Item(StructuredModel):
+        code: str = ComparableField(comparator=ChangingComparator())
+
+    class Parent(StructuredModel):
+        items: list[Item]
+
+    result = Parent(items=[Item(code="a")]).compare_with(
+        Parent(items=[Item(code="a")]),
+        include_confusion_matrix=True,
+        document_non_matches=non_matches,
+        document_field_comparisons=comparisons,
+    )
+
+    counts = result["confusion_matrix"]["fields"]["items"]["overall"]
+    assert (counts["tp"], counts["fd"]) == (1, 0)
+    assert ChangingComparator.calls == 3
+    if non_matches:
+        assert result["non_matches"] == []
+    else:
+        assert "non_matches" not in result
+    if comparisons:
+        assert result["field_comparisons"] == [
+            {
+                "expected_key": "items[0].code",
+                "expected_value": "a",
+                "actual_key": "items[0].code",
+                "actual_value": "a",
+                "match": True,
+                "score": 1.0,
+                "weighted_score": 1.0,
+                "reason": "exact match",
+            }
+        ]
+    else:
+        assert "field_comparisons" not in result
+
+
+def test_structured_list_reports_keep_scored_reordered_pair_indices():
+    class CountingComparator(BaseComparator):
+        calls = 0
+
+        def _compare(self, left, right):
+            type(self).calls += 1
+            return 1.0 if left == right else 0.0
+
+    class Item(StructuredModel):
+        code: str = ComparableField(comparator=CountingComparator())
+
+    class Parent(StructuredModel):
+        items: list[Item]
+
+    ground_truth = Parent(items=[Item(code="a"), Item(code="b")])
+    prediction = Parent(items=[Item(code="b"), Item(code="a")])
+    ground_truth.compare_with(prediction)
+    scoring_calls = CountingComparator.calls
+    CountingComparator.calls = 0
+
+    result = ground_truth.compare_with(
+        prediction,
+        document_non_matches=True,
+        document_field_comparisons=True,
+    )
+
+    assert CountingComparator.calls == scoring_calls
+    assert result["non_matches"] == []
+    assert {
+        (row["expected_key"], row["actual_key"], row["match"])
+        for row in result["field_comparisons"]
+    } == {
+        ("items[0].code", "items[1].code", True),
+        ("items[1].code", "items[0].code", True),
+    }
+
+
+def test_structured_list_rejected_pair_remains_atomic():
+    class Item(StructuredModel):
+        match_threshold = 0.9
+        code: str = ComparableField(comparator=ConstantComparator())
+
+    class Parent(StructuredModel):
+        items: list[Item]
+
+    result = Parent(items=[Item(code="a")]).compare_with(
+        Parent(items=[Item(code="b")]),
+        include_confusion_matrix=True,
+        document_non_matches=True,
+        document_field_comparisons=True,
+    )
+
+    counts = result["confusion_matrix"]["fields"]["items"]["overall"]
+    assert (counts["tp"], counts["fd"]) == (0, 1)
+    assert [entry["field_path"] for entry in result["non_matches"]] == ["items[0]"]
+    assert [row["expected_key"] for row in result["field_comparisons"]] == ["items[0]"]
+
+
+def test_deep_structured_list_reports_reuse_child_results_without_leaking_cache():
+    class CountingComparator(BaseComparator):
+        calls = 0
+
+        def _compare(self, left, right):
+            type(self).calls += 1
+            return 1.0 if left == right else 0.0
+
+    class Leaf(StructuredModel):
+        code: str = ComparableField(comparator=CountingComparator())
+
+    class Group(StructuredModel):
+        leaves: list[Leaf]
+
+    class Parent(StructuredModel):
+        groups: list[Group]
+
+    ground_truth = Parent(groups=[Group(leaves=[Leaf(code="a")])])
+    prediction = Parent(groups=[Group(leaves=[Leaf(code="a")])])
+    ground_truth.compare_with(prediction)
+    scoring_calls = CountingComparator.calls
+    CountingComparator.calls = 0
+
+    result = ground_truth.compare_with(
+        prediction,
+        include_confusion_matrix=True,
+        document_non_matches=True,
+        document_field_comparisons=True,
+    )
+
+    assert CountingComparator.calls == scoring_calls
+    assert result["non_matches"] == []
+
+    def assert_no_private_metadata(value):
+        if isinstance(value, dict):
+            assert (
+                not {"_list_matching", "_recursive_result", "pair_results"}
+                & value.keys()
+            )
+            for child in value.values():
+                assert_no_private_metadata(child)
+        elif isinstance(value, list):
+            for child in value:
+                assert_no_private_metadata(child)
+
+    assert_no_private_metadata(result)
+    assert_no_private_metadata(ground_truth.compare_recursive(prediction))
+
+
+@pytest.mark.parametrize("method", ["create_non_match_entry", "create_entry"])
+def test_direct_non_match_reason_uses_the_supplied_threshold(method):
+    entry = getattr(NonMatchesHelper(), method)(
         "items", "a", "b", "FD", 0, 0.6, match_threshold=0.8
     )
     assert entry["reason"] == "below threshold (0.600 < 0.8)"
+
+
+def test_accepted_structured_child_reports_share_field_threshold_tolerance():
+    class NearThresholdComparator(BaseComparator):
+        def _compare(self, left, right):
+            return 0.7 - 1e-12
+
+    class Item(StructuredModel):
+        match_threshold = 0.5
+        code: list[str] = ComparableField(
+            comparator=NearThresholdComparator(), threshold=0.7
+        )
+
+    class Parent(StructuredModel):
+        items: list[Item]
+
+    result = report([Item(code=["a"])], [Item(code=["b"])], model=Parent)
+
+    child = result["confusion_matrix"]["fields"]["items"]["fields"]["code"]
+    assert child["overall"]["tp"] == 1
+    assert result["non_matches"] == []
+    (row,) = result["field_comparisons"]
+    assert row["match"] is True
+    assert "within threshold tolerance" in row["reason"]
+
+
+def test_structured_child_custom_compare_with_override_is_preserved():
+    calls = []
+
+    class Item(StructuredModel):
+        code: str = ComparableField(comparator=ExactComparator())
+
+        def compare_with(self, other, **kwargs):
+            calls.append(kwargs)
+            result = super().compare_with(other, **kwargs)
+            result["field_scores"]["code"] = 0.9
+            return result
+
+    class Parent(StructuredModel):
+        items: list[Item]
+
+    result = report([Item(code="a")], [Item(code="a")], model=Parent)
+
+    assert len(calls) == 3  # Existing override fallback: scoring and two reports.
+    assert result["field_comparisons"][0]["score"] == 0.9
+    assert result["non_matches"] == []
+
+
+def test_accepted_structured_child_scalar_threshold_is_still_exact():
+    class NearThresholdComparator(BaseComparator):
+        def _compare(self, left, right):
+            return 0.7 - 1e-12
+
+    class Item(StructuredModel):
+        match_threshold = 0.5
+        code: str = ComparableField(
+            comparator=NearThresholdComparator(),
+            threshold=0.7,
+            clip_under_threshold=False,
+        )
+
+    class Parent(StructuredModel):
+        items: list[Item]
+
+    result = report([Item(code="a")], [Item(code="b")], model=Parent)
+    child = result["confusion_matrix"]["fields"]["items"]["fields"]["code"]
+    assert child["overall"]["fd"] == 1
+    assert result["non_matches"][0]["field_path"] == "items[0].code"
+    assert result["field_comparisons"][0]["match"] is False
+
+
+def test_nested_compare_recursive_override_keeps_its_original_signature():
+    calls = []
+
+    class Child(StructuredModel):
+        code: str = ComparableField(comparator=ExactComparator())
+
+        def compare_recursive(self, other):
+            calls.append(other)
+            return super().compare_recursive(other)
+
+    class Parent(StructuredModel):
+        child: Child
+
+    prediction = Parent(child=Child(code="a"))
+    result = Parent(child=Child(code="a")).compare_with(
+        prediction, document_non_matches=True, document_field_comparisons=True
+    )
+    assert calls == [prediction.child]
+    assert result["non_matches"] == []
+    assert result["field_comparisons"][0]["match"] is True
+
+
+def test_nested_recursive_override_keeps_structured_list_report_fallback():
+    class Leaf(StructuredModel):
+        code: str = ComparableField(comparator=ExactComparator())
+
+    class Child(StructuredModel):
+        items: list[Leaf]
+
+        def compare_recursive(self, other):
+            return super().compare_recursive(other)
+
+    class Parent(StructuredModel):
+        child: Child
+
+    result = Parent(child=Child(items=[Leaf(code="a")])).compare_with(
+        Parent(child=Child(items=[Leaf(code="a")])),
+        document_non_matches=True,
+        document_field_comparisons=True,
+    )
+    assert result["non_matches"] == []
+    (row,) = result["field_comparisons"]
+    assert row["expected_key"] == "child.items[0].code"
+    assert row["match"] is True
 
 
 def test_private_pairing_details_do_not_appear_in_public_results():
@@ -313,14 +604,24 @@ def test_private_pairing_details_do_not_appear_in_public_results():
     reported_result = report(["a"], ["a"])
 
     assert set(recursive_result["fields"]["items"]) == {
-        "overall", "fields", "raw_similarity_score", "similarity_score",
-        "threshold_applied_score", "weight",
+        "overall",
+        "fields",
+        "raw_similarity_score",
+        "similarity_score",
+        "threshold_applied_score",
+        "weight",
     }
     assert set(reported_result["confusion_matrix"]["fields"]["items"]) >= {
-        "overall", "fields", "raw_similarity_score", "similarity_score",
-        "threshold_applied_score", "weight",
+        "overall",
+        "fields",
+        "raw_similarity_score",
+        "similarity_score",
+        "threshold_applied_score",
+        "weight",
     }
-    assert "_list_matching" not in reported_result["confusion_matrix"]["fields"]["items"]
+    assert (
+        "_list_matching" not in reported_result["confusion_matrix"]["fields"]["items"]
+    )
 
 
 @pytest.mark.parametrize("override", ["comparator", "match_threshold"])

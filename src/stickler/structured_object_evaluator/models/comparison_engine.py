@@ -204,6 +204,7 @@ class ComparisonEngine:
         confidence_metrics: Optional[List["ConfidenceMetric"]] = None,
         add_bbox_metrics: bool = False,
         bbox_iou_thresholds: Optional[Union[float, Iterable[float]]] = None,
+        _retain_recursive_result: bool = False,
     ) -> Dict[str, Any]:
         """Compare with another instance using single traversal.
         
@@ -455,7 +456,12 @@ class ComparisonEngine:
 
         # The collectors have consumed the scoring-only pairings. Keep the
         # public recursive/confusion-matrix result shape unchanged.
-        self._drop_list_matching(recursive_result)
+        if _retain_recursive_result:
+            # Internal structured-list scoring passes this same traversal to
+            # the report collectors instead of comparing a child again.
+            result["_recursive_result"] = recursive_result
+        else:
+            self._drop_list_matching(recursive_result)
         if "confusion_matrix" in result:
             self._drop_list_matching(result["confusion_matrix"])
 

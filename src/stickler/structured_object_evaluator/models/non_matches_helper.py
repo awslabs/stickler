@@ -155,7 +155,8 @@ class NonMatchesHelper(ComparisonHelperBase):
         pred_index: Optional[int],
         is_match: bool,
         similarity_score: float,
-        reason: str
+        reason: str,
+        pair_result: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """Extract non-match entries from structured model objects.
         
@@ -179,7 +180,7 @@ class NonMatchesHelper(ComparisonHelperBase):
                 pred_object, StructuredModel
             ):
                 return self._extract_field_level_non_matches(
-                    field_name, gt_object, pred_object, gt_index
+                    field_name, gt_object, pred_object, gt_index, pair_result
                 )
             return []
 
@@ -212,6 +213,7 @@ class NonMatchesHelper(ComparisonHelperBase):
         gt_object: Any, 
         pred_object: Any, 
         object_index: int,
+        pair_result: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """Extract field-level non-matches from a threshold-passing object pair.
         
@@ -224,15 +226,25 @@ class NonMatchesHelper(ComparisonHelperBase):
         Returns:
             List of field-level non-match entries
         """
-        comparison_result = gt_object.compare_with(
-            pred_object,
-            document_non_matches=True,
-            include_confusion_matrix=False,
-        )
+        if pair_result is None:
+            comparison_result = gt_object.compare_with(
+                pred_object,
+                document_non_matches=True,
+                include_confusion_matrix=False,
+            )
+            nested_non_matches = comparison_result.get("non_matches", [])
+        else:
+            from .non_match_collector import NonMatchCollector
+
+            nested_non_matches = NonMatchCollector(
+                gt_object
+            ).collect_enhanced_non_matches(
+                pair_result["recursive_result"], pred_object
+            )
 
         field_non_matches = []
 
-        for non_match in comparison_result.get("non_matches", []):
+        for non_match in nested_non_matches:
             indexed_field_path = (
                 f"{field_name}[{object_index}].{non_match['field_path']}"
             )

@@ -2,7 +2,7 @@
 
 One module, one public class. `HungarianMatcher` pairs the items of two lists so
 that the total similarity is as high as it can be, which is what lets a list
-field be scored without caring about order. Both of its internal callers are on
+field be scored without caring about order. Its internal callers are on
 the traditional evaluation path.
 
 **ANLS Star does not go through this class.** `trees/list_tree.py` calls
