@@ -9,6 +9,44 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `match_threshold` on a **primitive** field now raises
+  `ValueError`. It is the object-level threshold; nothing read it on a leaf, so
+  `"match_threshold": 0.99` beside a `float` left that field at `threshold` 0.5
+  and scored it against a value the author never chose. The JSON Schema path
+  already refuses the same misplacement, so the two front doors now agree. It
+  stays accepted on the model and on a `structured_model` field, where it is
+  read and where `to_stickler_config()` exports it. A config that builds today
+  and relies on this will start raising, though only one that was scoring
+  against a threshold its author did not choose
+  ([#350](https://github.com/awslabs/stickler/issues/350))
+
+- A field config that is not a mapping now raises `ValueError` naming the type
+  it got, rather than reaching a containment test that gave an undocumented
+  `TypeError`: `5` and `None` produced "argument of type 'int' is not iterable",
+  and a list or set containing the string `"type"` got past the check and died
+  later on subscripting
+  ([#350](https://github.com/awslabs/stickler/issues/350))
+
+### Fixed
+
+- **An unrecognized key in a model config is now reported instead of dropped.**
+  `model_from_json` read a closed set of keys and ignored everything else, so
+  `"threshhold": 0.99` built at the fallback 0.5 with no exception and no warning,
+  and every score under it was wrong with nothing to point at. Unknown keys now
+  emit a `UserWarning` naming the key and listing the accepted ones, at both field
+  and model level. The key was never applied, so the model still builds. A nested
+  field's `model_name` stays accepted: it is not read, but `to_stickler_config()`
+  exports it, so rejecting it would break the library's own round-trip
+  ([#350](https://github.com/awslabs/stickler/issues/350))
+
+  The warning names the full path (`billing.city`, not `city`) and is deduped on
+  the model it came from as well as on that path, so two fields sharing a name
+  each report, and a second `model_from_json` in the same process still warns.
+  Keyed on the leaf name alone, the first model built in a process silenced every
+  later one carrying the same typo.
+
 ## [1.0.0] - 2026-09-11
 
 ### Added
