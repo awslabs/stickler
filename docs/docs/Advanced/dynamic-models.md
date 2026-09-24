@@ -250,6 +250,8 @@ Person = StructuredModel.model_from_json(person_config)
 
 **Nested model fields** use `"type": "structured_model"` with a nested `"fields"` object. **List of models** use `"type": "list_structured_model"`. **Optional models** use `"type": "optional_structured_model"`.
 
+A key that is not listed above is not read. Rather than being dropped in silence, it emits a `UserWarning` naming the key, the full field path (`billing.city`), and the keys that position does accept; the model still builds, without the key. `match_threshold` is the exception: it is the object-level threshold, so on a primitive field it raises rather than warns — use `threshold` there.
+
 ### Nested Model Example
 
 ```python
@@ -579,6 +581,17 @@ Every `model_from_json()` failure raises `ValueError`, and all but one are prefi
 | `Field 'x' threshold must be between 0.0 and 1.0, got 5.0` | Threshold outside the range | Use a value in 0.0--1.0 |
 | `Unknown comparator: 'x'. Available: [...]` | Comparator name not registered | Use a class name from the list; `BERTComparator` and `LLMComparator` appear only when the `[bert]` and `[llm]` extras are installed |
 | `Field 'x' with type 'structured_model' requires a 'fields' configuration` | Nested model without its own `fields` | Add the nested `fields` block |
+| `'match_threshold' is not read on primitive field 'x'` | Object-level threshold written on a leaf | Use `threshold` on the field, or move `match_threshold` to the model or a `structured_model` field |
+| `Field 'x' configuration must be a mapping, got int` | A field's value is not a config object | Wrap it: `{"x": {"type": "str", ...}}` |
+
+One diagnostic is a `UserWarning` rather than a `ValueError`, because the key it names was never applied and the model still builds:
+
+| Message | Cause | Fix |
+|-------|-------|-----|
+| `Field 'billing.city' does not accept 'threshhold' in its config; ignored.` | Unrecognized key on a field | Use one of the accepted keys the message lists |
+| `Model config does not accept 'match_threshhold'; ignored.` | Unrecognized key at the top level | Use one of `fields`, `model_name`, `match_threshold`, `infer_unspecified_fields` |
+
+It fires once per model, path and key, so repeated loads of the same config do not flood a batch run. Turn it into an error with `python -W error::UserWarning` to fail a build on a misspelled key.
 
 ## See Also
 

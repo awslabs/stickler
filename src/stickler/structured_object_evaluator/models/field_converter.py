@@ -4,9 +4,12 @@ This module provides utilities for converting JSON field configurations to
 Pydantic Field instances with ComparableField functionality.
 """
 
+from collections.abc import Mapping
 from typing import Any, Dict, Optional, Tuple, Type, get_args, get_origin
 
 from pydantic import Field
+
+from stickler.utils.deprecation import warn_once
 
 from .comparable_field import ComparableField
 from .comparator_registry import create_comparator, normalize_comparator_config
@@ -24,6 +27,42 @@ LIST_ELEMENT_PROVENANCE = "list: spec applies to each element"
 #: reader of the config sees the decision on the line that would otherwise name a
 #: comparator, and so it cannot be set alongside a real comparator name.
 AUTO_COMPARATOR = "auto"
+
+#: Every key a field config may carry. The union of what the primitive and
+#: structured_model branches of ``convert_field_config`` read, plus
+#: ``model_name``: a nested field never reads it -- ``_build_nested_model``
+#: synthesises the class name -- but ``to_stickler_config()`` exports it, so
+#: rejecting it here would make the library's own export fail to round-trip.
+#: Kept as one set rather than per-branch sets so that a key which is valid on
+#: the other branch is never reported as a typo.
+ACCEPTED_FIELD_CONFIG_KEYS = frozenset(
+    {
+        "type",
+        "comparator",
+        "comparator_config",
+        "threshold",
+        "weight",
+        "clip_under_threshold",
+        "default",
+        "required",
+        "description",
+        "alias",
+        "examples",
+        "infer_unspecified_fields",
+        "fields",
+        "match_threshold",
+        "model_name",
+    }
+)
+
+#: Frames between ``warnings.warn`` and the user's ``model_from_json`` call, for
+#: the unknown-key warning. ``warn_once``'s default of 3 assumes one wrapping
+#: call; this one is reached through six, so at 3 the warning was attributed to
+#: this module instead of to the line the reader can fix. Counted outward from
+#: ``warnings.warn``: warn_once, validate_field_config, the converter's
+#: validate_fields_config, its module-level wrapper, create_model_from_json,
+#: model_from_json, caller.
+_UNKNOWN_KEY_STACKLEVEL = 7
 
 
 def _infer_spec(
@@ -159,6 +198,8 @@ class FieldConverter:
         *,
         infer_unspecified: bool = False,
         match_threshold: Optional[float] = None,
+        path_prefix: str = "",
+        model_id: str = "",
     ) -> Tuple[Type, Any]:
         """Convert a JSON field configuration to a Pydantic field definition.
 
@@ -171,6 +212,8 @@ class FieldConverter:
                 any field that named no comparator.
             match_threshold: The model's ``match_threshold``, forwarded to
                 inference because a mapping field takes it as its field threshold.
+            path_prefix: Dotted path of the enclosing field, ``""`` at the root.
+            model_id: ``model_identity`` of the root model.
 
         Returns:
             Tuple of (field_type, pydantic_field)
@@ -178,6 +221,8 @@ class FieldConverter:
         Raises:
             ValueError: If configuration is invalid
         """
+        field_path = f"{path_prefix}{field_name}"
+
         # Extract field type
         type_string = field_config.get("type")
         if not type_string:
@@ -190,7 +235,30 @@ class FieldConverter:
             "optional_structured_model",
         ]:
             return self._convert_nested_model_field(
-                field_name, field_config, infer_unspecified=infer_unspecified
+                field_name,
+                field_config,
+                infer_unspecified=infer_unspecified,
+                path_prefix=path_prefix,
+                model_id=model_id,
+            )
+
+        # `match_threshold` is the object-level threshold, read by the branch
+        # above and by nothing on a primitive. It stays in the accepted-key set
+        # because a `structured_model` field carries it legitimately and
+        # `to_stickler_config()` exports it there, so removing it would break the
+        # round-trip -- but on a leaf it was accepted and dropped, which is the
+        # `threshold`/`match_threshold` confusion the union set cannot catch. The
+        # JSON Schema path already refuses the same misplacement
+        # ("x-aws-stickler-match-threshold is not read on field 'amount'. It
+        # belongs on the object"), so refusing here is what makes the two front
+        # doors agree, as it did for `infer_unspecified_fields` below.
+        if "match_threshold" in field_config:
+            raise ValueError(
+                f"'match_threshold' is not read on primitive field "
+                f"'{field_path}'; it is the object-level threshold and has no "
+                f"effect here. Use 'threshold' for this field, or set "
+                f"'match_threshold' on the model or on a 'structured_model' "
+                f"field."
             )
 
         # `infer_unspecified_fields` scopes a SUBTREE, so it is meaningful only on
@@ -204,7 +272,7 @@ class FieldConverter:
         if "infer_unspecified_fields" in field_config:
             raise ValueError(
                 f"'infer_unspecified_fields' is not read on primitive field "
-                f"'{field_name}'; it scopes a nested model's own subtree and has "
+                f"'{field_path}'; it scopes a nested model's own subtree and has "
                 f"no effect here. Set it on the model, or on a "
                 f"'structured_model' field to scope that subtree. To infer this "
                 f'one field, set "comparator": "auto" on it.'
@@ -339,6 +407,8 @@ class FieldConverter:
         field_config: Dict[str, Any],
         *,
         infer_unspecified: bool = False,
+        path_prefix: str = "",
+        model_id: str = "",
     ) -> Tuple[Type, Any]:
         """Convert a nested structured model field configuration.
 
@@ -347,6 +417,10 @@ class FieldConverter:
             field_config: JSON configuration for the nested field
             infer_unspecified: The enclosing model's flag, used unless this field
                 sets ``infer_unspecified_fields`` itself.
+            path_prefix: Dotted path of the enclosing field, extended by this
+                field's own name before the nested model is built.
+            model_id: ``model_identity`` of the root model, passed through
+                unchanged so the whole tree shares one warn-once namespace.
 
         Returns:
             Tuple of (field_type, pydantic_field)
@@ -379,8 +453,20 @@ class FieldConverter:
             ),
         }
 
-        # Create the nested model class
-        NestedModelClass = StructuredModel.model_from_json(nested_config)
+        # Create the nested model class. Built through ModelFactory rather than
+        # through `StructuredModel.model_from_json`, which is the same call with
+        # `base_class=StructuredModel`, so that the field path and the root
+        # model's identity reach the nested model's own validation. Without
+        # them the nested warning names `city` rather than `billing.city`, and
+        # two fields called `city` in one config share a warn-once slot.
+        from .model_factory import ModelFactory
+
+        NestedModelClass = ModelFactory.create_model_from_json(
+            nested_config,
+            base_class=StructuredModel,
+            path_prefix=f"{path_prefix}{field_name}.",
+            model_id=model_id,
+        )
 
         # Determine the field type based on the type string
         if type_string == "structured_model":
@@ -451,6 +537,8 @@ class FieldConverter:
         *,
         infer_unspecified: bool = False,
         match_threshold: Optional[float] = None,
+        path_prefix: str = "",
+        model_id: str = "",
     ) -> Dict[str, Tuple[Type, Field]]:
         """Convert multiple field configurations.
 
@@ -459,6 +547,10 @@ class FieldConverter:
             infer_unspecified: Model-level inference flag.
             match_threshold: The model's ``match_threshold``, forwarded to
                 inference for mapping fields.
+            path_prefix: Dotted path of the enclosing field, forwarded so a
+                nested model's own warnings name the full path.
+            model_id: ``model_identity`` of the root model, carried unchanged
+                through nesting.
 
         Returns:
             Dictionary mapping field names to (type, field) tuples
@@ -475,6 +567,8 @@ class FieldConverter:
                     field_config,
                     infer_unspecified=infer_unspecified,
                     match_threshold=match_threshold,
+                    path_prefix=path_prefix,
+                    model_id=model_id,
                 )
                 field_definitions[field_name] = (field_type, pydantic_field)
             except ValueError as e:
@@ -483,17 +577,73 @@ class FieldConverter:
         return field_definitions
 
     def validate_field_config(
-        self, field_name: str, field_config: Dict[str, Any]
+        self,
+        field_name: str,
+        field_config: Dict[str, Any],
+        *,
+        field_path: Optional[str] = None,
+        model_id: str = "",
     ) -> None:
         """Validate a field configuration without converting it.
 
         Args:
             field_name: Name of the field
             field_config: JSON configuration for the field
+            field_path: Dotted path to this field from the root model, so an
+                unknown key on a nested field reports ``billing.city`` rather
+                than ``city``. Defaults to ``field_name``.
+            model_id: ``model_identity`` of the ROOT model, carried unchanged
+                through nesting. Part of the warn-once key, so that two models
+                sharing a field name and a typo each warn.
 
         Raises:
             ValueError: If configuration is invalid
         """
+        path = field_path or field_name
+
+        # Refused up front, the way ``ModelFactory.validate_config`` refuses a
+        # non-dict config. Two reasons. ``set()`` of a str iterates its
+        # characters, so ``{"name": "str"}`` reported the field as not accepting
+        # 'r', 's', 't'. And the ``"type" not in field_config`` check below is a
+        # containment test, which reaches an undocumented ``TypeError`` rather
+        # than the ``ValueError`` this function documents: ``5`` and ``None``
+        # give "argument of type 'int' is not iterable", and a list or set
+        # containing the string "type" gets past the check and dies later on
+        # subscripting.
+        if not isinstance(field_config, Mapping):
+            raise ValueError(
+                f"Field '{path}' configuration must be a mapping, got "
+                f"{type(field_config).__name__}"
+            )
+
+        # An unrecognized key is silently ignored by every reader below, so a
+        # misspelled 'threshhold' builds at the fallback 0.5 and every score is
+        # wrong with no signal. Report it the way an unknown comparator_config
+        # key is already reported, and keep building: the key was never applied,
+        # so refusing the whole model would be a new failure rather than a fix.
+        unknown = set(field_config) - ACCEPTED_FIELD_CONFIG_KEYS
+        if unknown:
+            warn_once(
+                "field-config-unknown-keys",
+                # Keyed on (root model, dotted path, keys). Keyed on the leaf
+                # name alone, the first model in a process consumed the slot
+                # for every later one, so a second config carrying the same
+                # typo scored at the default in silence -- the very defect
+                # this warning exists to end, reproduced through its own fix.
+                # ``key=str`` because a non-string key must not turn this into
+                # a TypeError, against a documented ``Raises: ValueError``.
+                f"{model_id}|{path}|"
+                f"{','.join(str(k) for k in sorted(unknown, key=str))}",
+                f"Field '{path}' does not accept "
+                f"{', '.join(repr(k) for k in sorted(unknown, key=str))} in "
+                f"its config; ignored. It accepts "
+                f"{', '.join(sorted(ACCEPTED_FIELD_CONFIG_KEYS))}. "
+                f"A misspelled key leaves the field at its default, so the "
+                f"value you wrote is not the value being scored.",
+                category=UserWarning,
+                stacklevel=_UNKNOWN_KEY_STACKLEVEL,
+            )
+
         # Check required parameters
         if "type" not in field_config:
             raise ValueError(f"Field '{field_name}' missing required 'type' parameter")
@@ -556,17 +706,32 @@ class FieldConverter:
                         f"Field '{field_name}' parameter '{param}' must be boolean, got {type(value)}"
                     )
 
-    def validate_fields_config(self, fields_config: Dict[str, Dict[str, Any]]) -> None:
+    def validate_fields_config(
+        self,
+        fields_config: Dict[str, Dict[str, Any]],
+        *,
+        path_prefix: str = "",
+        model_id: str = "",
+    ) -> None:
         """Validate multiple field configurations.
 
         Args:
             fields_config: Dictionary of field configurations
+            path_prefix: Dotted path of the enclosing field, ``""`` at the root
+                and ``"billing."`` one level down.
+            model_id: ``model_identity`` of the root model, carried unchanged
+                through nesting.
 
         Raises:
             ValueError: If any field configuration is invalid
         """
         for field_name, field_config in fields_config.items():
-            self.validate_field_config(field_name, field_config)
+            self.validate_field_config(
+                field_name,
+                field_config,
+                field_path=f"{path_prefix}{field_name}",
+                model_id=model_id,
+            )
 
     def validate_nested_field_schema(
         self,
@@ -691,6 +856,8 @@ def convert_fields_config(
     *,
     infer_unspecified: bool = False,
     match_threshold: Optional[float] = None,
+    path_prefix: str = "",
+    model_id: str = "",
 ) -> Dict[str, Tuple[Type, Field]]:
     """Convert multiple field configurations using the global converter.
 
@@ -698,6 +865,10 @@ def convert_fields_config(
         fields_config: Dictionary of field configurations
         infer_unspecified: Model-level inference flag.
         match_threshold: The model's ``match_threshold``, forwarded to inference.
+        path_prefix: Dotted path of the enclosing field, forwarded so a nested
+            model's own unknown-key warnings name the full path.
+        model_id: ``model_identity`` of the root model, carried unchanged
+            through nesting.
 
     Returns:
         Dictionary mapping field names to (type, field) tuples
@@ -706,6 +877,8 @@ def convert_fields_config(
         fields_config,
         infer_unspecified=infer_unspecified,
         match_threshold=match_threshold,
+        path_prefix=path_prefix,
+        model_id=model_id,
     )
 
 
@@ -722,13 +895,22 @@ def validate_field_config(field_name: str, field_config: Dict[str, Any]) -> None
     _global_converter.validate_field_config(field_name, field_config)
 
 
-def validate_fields_config(fields_config: Dict[str, Dict[str, Any]]) -> None:
+def validate_fields_config(
+    fields_config: Dict[str, Dict[str, Any]],
+    *,
+    path_prefix: str = "",
+    model_id: str = "",
+) -> None:
     """Validate multiple field configurations using the global converter.
 
     Args:
         fields_config: Dictionary of field configurations
+        path_prefix: Dotted path of the enclosing field, ``""`` at the root.
+        model_id: ``model_identity`` of the root model.
 
     Raises:
         ValueError: If any field configuration is invalid
     """
-    _global_converter.validate_fields_config(fields_config)
+    _global_converter.validate_fields_config(
+        fields_config, path_prefix=path_prefix, model_id=model_id
+    )
