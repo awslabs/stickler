@@ -39,6 +39,7 @@ pytest tests/ -n auto
 ```
 tests/
 ├── test_top_level_exports.py      # Top-level package re-exports
+├── test_docs_build.py             # Real MkDocs link-check acceptance builds
 ├── structured_object_evaluator/   # Core evaluation tests
 │   ├── test_structured_model.py           # StructuredModel tests
 │   ├── test_comparators.py                # Comparator integration

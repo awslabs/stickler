@@ -3,6 +3,16 @@ site_url: https://awslabs.github.io/stickler/
 repo_url: https://github.com/awslabs/stickler
 repo_name: awslabs/stickler
 
+# Use the same diagnostics in local serve/build and the PR checker.
+validation:
+  nav:
+    not_found: warn
+  links:
+    not_found: warn
+    anchors: warn
+    unrecognized_links: warn
+    absolute_links: warn
+
 theme:
   name: material
   palette:
