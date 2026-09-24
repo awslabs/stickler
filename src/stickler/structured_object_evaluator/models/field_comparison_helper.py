@@ -3,6 +3,7 @@
 from typing import Any, Dict, List, Optional
 
 from .comparison_helper_base import ComparisonHelperBase
+from .threshold_helper import ThresholdHelper
 
 
 class FieldComparisonHelper(ComparisonHelperBase):
@@ -91,7 +92,8 @@ class FieldComparisonHelper(ComparisonHelperBase):
         pred_index: Optional[int],
         is_match: bool,
         similarity_score: float,
-        reason: str
+        reason: str,
+        pair_result: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """Extract field-level comparisons from structured model objects.
         
@@ -117,11 +119,15 @@ class FieldComparisonHelper(ComparisonHelperBase):
             and isinstance(gt_object, StructuredModel)
             and isinstance(pred_object, StructuredModel)
         ):
-            # Perform field-by-field comparison to get detailed field comparisons
-            comparison_result = gt_object.compare_with(
-                pred_object, 
-                document_non_matches=False,
-                include_confusion_matrix=False
+            # Reuse the child scores already computed during list scoring.
+            comparison_result = (
+                pair_result
+                if pair_result is not None
+                else gt_object.compare_with(
+                    pred_object,
+                    document_non_matches=False,
+                    include_confusion_matrix=False,
+                )
             )
             
             field_comparisons = []
@@ -134,6 +140,16 @@ class FieldComparisonHelper(ComparisonHelperBase):
                 # Get field configuration for threshold
                 info = gt_object._get_comparison_info(nested_field_name)
                 field_is_match = field_score >= info.threshold
+                if (
+                    isinstance(gt_nested_val, list)
+                    and gt_nested_val
+                    and not isinstance(gt_nested_val[0], StructuredModel)
+                ):
+                    # Primitive-list scoring accepts values within tolerance;
+                    # scalar and structured-object thresholds remain exact.
+                    field_is_match = ThresholdHelper.is_above_threshold(
+                        field_score, info.threshold
+                    )
                 
                 # Create field paths with indices
                 expected_key = f"{field_name}[{gt_index}].{nested_field_name}" if gt_index is not None else f"{field_name}[].{nested_field_name}"

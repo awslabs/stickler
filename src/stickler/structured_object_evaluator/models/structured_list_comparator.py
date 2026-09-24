@@ -70,8 +70,9 @@ class StructuredListComparator:
         ) = self._calculate_object_level_metrics(gt_list, pred_list, match_threshold)
 
         # Calculate raw similarity score using extracted method
+        pair_results = {}
         raw_similarity = self._calculate_struct_list_similarity(
-            matched_pairs, gt_list, pred_list, info
+            matched_pairs, gt_list, pred_list, info, pair_results
         )
 
         # CRITICAL FIX: For structured lists, we NEVER clip under threshold - partial matches are important
@@ -95,6 +96,14 @@ class StructuredListComparator:
             "similarity_score": raw_similarity,
             "threshold_applied_score": threshold_applied_score,
             "weight": weight,
+            "_list_matching": {
+                "pairs": matched_pairs,
+                "threshold": match_threshold,
+                "verdicts": [
+                    score >= match_threshold for _, _, score in matched_pairs
+                ],
+                "pair_results": pair_results,
+            },
         }
 
         return final_result
@@ -160,6 +169,7 @@ class StructuredListComparator:
         gt_list: List["StructuredModel"],
         pred_list: List["StructuredModel"],
         info: "ComparableField",
+        pair_results: Dict[tuple, Dict[str, Any]],
     ) -> float:
         """Calculate raw similarity score for structured list.
 
@@ -167,10 +177,14 @@ class StructuredListComparator:
             gt_list: Ground truth list
             pred_list: Predicted list
             info: Field comparison info
+            pair_results: Receives child traversals for report-time reuse
 
         Returns:
             Raw similarity score between 0.0 and 1.0
         """
+        from .comparison_engine import ComparisonEngine
+        from .structured_model import StructuredModel
+
         # Updated code to not use helper that was calling Hungarian match again, and instead use already generated matched pairs
         threshold_corrected_pairs = []
         for gt_idx, pred_idx, raw_score in matched_pairs:
@@ -187,7 +201,18 @@ class StructuredListComparator:
                     )
                 else:
                     # Use individual comparison with threshold application (same as .compare_with())
-                    individual_result = gt_item.compare_with(pred_item)
+                    if type(gt_item).compare_with is StructuredModel.compare_with:
+                        individual_result = ComparisonEngine(gt_item).compare_with(
+                            pred_item, _retain_recursive_result=True
+                        )
+                        pair_results[(gt_idx, pred_idx)] = {
+                            "field_scores": individual_result["field_scores"],
+                            "recursive_result": individual_result.pop("_recursive_result"),
+                        }
+                    else:
+                        # Preserve custom compare_with overrides, which may not
+                        # expose an internal traversal for report reuse.
+                        individual_result = gt_item.compare_with(pred_item)
                     threshold_applied_score = individual_result["overall_score"]
 
                 threshold_corrected_pairs.append(

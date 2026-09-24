@@ -94,7 +94,8 @@ class NonMatchCollector:
             ):
                 # Use NonMatchesHelper for object-level collection
                 object_non_matches = self.helper.collect_list_non_matches(
-                    field_name, gt_val, pred_val
+                    field_name, gt_val, pred_val,
+                    matching=field_result.get("_list_matching"),
                 )
                 all_non_matches.extend(object_non_matches)
 
@@ -103,8 +104,17 @@ class NonMatchCollector:
                 and isinstance(pred_val, list)
             ):
                 # Use NonMatchesHelper for object-level collection
+                matching = field_result.get("_list_matching")
+                if matching is None:
+                    info = self.model._get_comparison_info(field_name)
+                    matching_kwargs = {
+                        "comparator": info.comparator,
+                        "match_threshold": info.threshold,
+                    }
+                else:
+                    matching_kwargs = {"matching": matching}
                 object_non_matches = self.helper.collect_list_non_matches(
-                    field_name, gt_val, pred_val
+                    field_name, gt_val, pred_val, **matching_kwargs
                 )
                 all_non_matches.extend(object_non_matches)
 

@@ -1341,6 +1341,7 @@ class StructuredModel(BaseModel):
         threshold: float,
         clip_under_threshold: bool = True,
         field_name: str = "",
+        pair_sink: List[tuple] | None = None,
     ) -> Dict[str, Any]:
         """Compare two lists as unordered collections using Hungarian matching.
 
@@ -1367,6 +1368,7 @@ class StructuredModel(BaseModel):
             clip_under_threshold,
             model_cls=self.__class__,
             field_name=field_name,
+            pair_sink=pair_sink,
         )
 
     def compare_field_raw(self, field_name: str, other_value: Any) -> float:

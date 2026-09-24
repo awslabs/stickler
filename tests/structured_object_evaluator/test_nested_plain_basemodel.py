@@ -1894,26 +1894,8 @@ class TestTheGateDoesNotWarnAboutDiscardedPairs:
         assert self._mismatch_warnings(caught)
 
 
-class TestARefusedElementIsCountedButNotReported:
-    """The declared gap, pinned so it cannot widen unnoticed.
-
-    There is a sixth reader of the pair question and it cannot consult the gate.
-    The confusion-matrix counts come through the wrapped element comparator; the
-    item-level report comes through `ComparisonHelperBase.get_optimal_assignments`,
-    which runs its own `HungarianHelper.get_complete_matching_info(gt_list,
-    pred_list)` with no comparator argument at all. It scores the refused pair as a
-    match and emits nothing.
-
-    So the counts say one false discovery and the report says there is nothing to
-    report. An ordinary below-threshold element IS documented, which is what makes
-    the omission specific to a refusal.
-
-    This asserts the CURRENT behaviour. Fixing it means threading the field's
-    comparator into `get_optimal_assignments`, which changes `non_matches` for
-    every list of plain models, so it is its own change. When that lands this test
-    fails, which is the reminder to update the CHANGELOG's "Known gap" paragraph in
-    the same commit.
-    """
+class TestARefusedElementIsCountedAndReported:
+    """Regression for #332: rejected list pairs need an explanation and a count."""
 
     class Plain(BaseModel):
         sku: Optional[str] = None
@@ -1942,31 +1924,18 @@ class TestARefusedElementIsCountedButNotReported:
         assert result["field_scores"]["f"] == pytest.approx(0.0)
         assert (node["tp"], node["fd"]) == (0, 1)
 
-    def test_the_refusal_is_not_reported(self):
-        """The gap itself."""
+    def test_the_refusal_is_reported(self):
+        """The item-level explanation must agree with the false-discovery count."""
         result = self._result([self.Plain(sku="a")], [self.Other(sku="a")])
-        assert not (result.get("non_matches") or [])
+        entry, = result["non_matches"]
+        assert entry["field_path"] == "f[0]"
+        assert entry["non_match_type"] == "false_discovery"
+        assert entry["similarity_score"] == 0.0
 
     def test_an_ordinary_below_threshold_element_still_is_reported(self):
-        """The contrast that makes the gap specific rather than general.
-
-        Without this, the test above would also pass if non-match reporting were
-        broken outright, and the gap would look larger than it is.
-        """
+        """Ordinary below-threshold explanations remain available."""
         result = self._result(["aaa"], ["zzz"])
         assert result["non_matches"]
         assert any(
             "below threshold" in str(nm.get("reason", "")) for nm in result["non_matches"]
-        )
-
-    def test_the_changelog_still_declares_it(self):
-        """A gap the CHANGELOG stops mentioning is a gap that reads as fixed."""
-        from pathlib import Path
-
-        changelog = Path(__file__).resolve().parents[2] / "CHANGELOG.md"
-        text = " ".join(changelog.read_text().split())
-        assert "a refused list element is counted but not reported" in text.lower(), (
-            "CHANGELOG no longer declares that a refused element produces no "
-            "non-match record, which the tests above measure as still true. "
-            "Remove both together or neither."
         )
