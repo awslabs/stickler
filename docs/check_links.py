@@ -1,4 +1,4 @@
-"""Build docs, failing on MkDocs page/navigation warnings, not plugin warnings."""
+"""Build docs, failing on MkDocs diagnostics except known API warnings."""
 
 import argparse
 import logging
@@ -15,35 +15,38 @@ class _LinkWarnings(logging.Handler):
         self.count = 0
 
     def emit(self, record):
+        # These sources emit the site's existing API annotation/cross-reference
+        # warnings. Errors remain fatal, including errors from these plugins.
+        if record.levelno == logging.WARNING and any(
+            record.name == name or record.name.startswith(name + ".")
+            for name in (
+                "mkdocs.plugins.griffe",
+                "mkdocs.plugins.mkdocs_autorefs",
+            )
+        ):
+            return
         self.count += 1
 
 
 def check_links(config_file: str, site_dir: str | None = None) -> int:
     """Build a site and return nonzero for broken links; build errors propagate."""
-    config = load_config(config_file=config_file, site_dir=site_dir)
-    # Anchors default to INFO, which even a strict build does not reject.
-    config.validation.links.anchors = logging.WARNING
-    config.validation.links.not_found = logging.WARNING
-    config.validation.nav.not_found = logging.WARNING
     counter = _LinkWarnings()
-    loggers = [
-        logging.getLogger(f"mkdocs.structure.{name}") for name in ("pages", "nav")
-    ]
-    for logger in loggers:
-        logger.addHandler(counter)
+    logger = logging.getLogger("mkdocs")
+    logger.addHandler(counter)
     try:
+        # Configuration and plugin loading can emit warnings before build().
+        config = load_config(config_file=config_file, site_dir=site_dir)
         config.plugins.on_startup(command="build", dirty=False)
         try:
             build(config)
         finally:
             config.plugins.on_shutdown()
     finally:
-        for logger in loggers:
-            logger.removeHandler(counter)
+        logger.removeHandler(counter)
         counter.close()
     if counter.count:
-        logging.getLogger("mkdocs").error(
-            "Documentation link check failed: %d page/navigation warning(s).",
+        logger.error(
+            "Documentation check failed: %d warning(s) or error(s).",
             counter.count,
         )
         return 1

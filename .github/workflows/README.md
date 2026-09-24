@@ -9,7 +9,7 @@ CI/CD workflows for the Stickler project.
 | `security.yaml` | push, PR | Bandit + ASH security scans; uploads `security-reports` artifact |
 | `security-pr-comment.yaml` | `workflow_run` after Security Scan | Posts/updates the ASH summary as a PR comment |
 | `docs.yml` | push to `main` (src/docs paths) | Deploys MkDocs site to GitHub Pages |
-| `docs-check.yml` | PR | Builds docs and rejects broken internal links/anchors without deployment |
+| `docs-check.yml` | PR (docs/source/dependency/workflow paths) | Builds docs with the docs group and rejects link/navigation diagnostics; cancels superseded builds; no deployment |
 | `workflow.yml` | release published | Builds and publishes to PyPI and TestPyPI (trusted publishing via OIDC) |
 
 ## Conventions

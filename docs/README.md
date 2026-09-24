@@ -47,7 +47,9 @@ Verify the site builds without errors:
 uv run mkdocs build
 ```
 
-This generates the static site in `site/` and validates all internal links and references.
+This generates the static site in `site/` and reports link diagnostics. An ordinary
+build does not fail on warnings; use the checker below to enforce them. Link
+validation levels are shared in `mkdocs.yml`, so `mkdocs serve` shows them too.
 
 To run the pull-request check from the repository root:
 
@@ -56,11 +58,13 @@ uv run --frozen python docs/check_links.py
 uv run --frozen pytest tests/test_docs_build.py
 ```
 
-The checker builds the site and fails on MkDocs page/navigation warnings,
-including missing pages, images, and heading anchors. Existing API-plugin
-warnings remain visible but do not fail this check. Fatal build/configuration
-errors still fail. External URLs are not fetched. The read-only `docs-check.yml`
-workflow runs this check on every pull request; it never deploys the site.
+The checker fails on MkDocs warnings and errors, including awesome-nav failures,
+missing pages/images/anchors, and unrecognized or absolute links. Existing griffe
+and autorefs warnings remain visible without failing the check; their errors
+still fail. External URLs are not fetched. The read-only `docs-check.yml` workflow
+runs for documentation, source, dependency, or checker-workflow changes and never
+deploys the site. It installs only the docs group; the regular test workflow runs
+the checker's tests.
 
 ## Deployment
 
