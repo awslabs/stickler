@@ -205,6 +205,7 @@ on the position, because different positions fall back to different defaults:
 | free-form `{"type": "object"}` (a `Dict`) | `1.0` | the mapping default |
 | array of scalars | `0.5` | `ComparableField`'s own default |
 | array of models | `0.5`, and never read from the schema | the element class's `match_threshold` gates instead |
+| string with `format`, `enum` or `const` | `1.0` | the comparator inferred from that keyword |
 
 Declaring the key explicitly overrides the default in every position that reads
 it. `x-aws-stickler-clip-under-threshold` defaults to `true` in all of them.
