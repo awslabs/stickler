@@ -19,6 +19,7 @@ class NonMatchesHelper(ComparisonHelperBase):
         non_match_type: str,
         object_index: int = None,
         similarity_score: float = None,
+        match_threshold: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Create a non-match entry for detailed analysis.
 
@@ -29,12 +30,14 @@ class NonMatchesHelper(ComparisonHelperBase):
             non_match_type: Type of non-match ("FD", "FN", "FA")
             object_index: Optional index of the object in the list for indexed field paths
             similarity_score: Similarity score for FD entries
+            match_threshold: Threshold used to explain an FD when supplied
 
         Returns:
             Dictionary with non-match information
         """
         return self.create_non_match_entry(
-            field_name, gt_object, pred_object, non_match_type, object_index, similarity_score
+            field_name, gt_object, pred_object, non_match_type, object_index,
+            similarity_score, match_threshold=match_threshold,
         )
 
     def create_non_match_entry(
@@ -45,6 +48,8 @@ class NonMatchesHelper(ComparisonHelperBase):
         non_match_type: str,
         object_index: int = None,
         similarity_score: float = None,
+        match_threshold: Optional[float] = None,
+        reason: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create a non-match entry for detailed analysis.
 
@@ -55,6 +60,8 @@ class NonMatchesHelper(ComparisonHelperBase):
             non_match_type: Type of non-match ("FD", "FN", "FA")
             object_index: Optional index of the object in the list for indexed field paths
             similarity_score: Similarity score for FD entries
+            match_threshold: Threshold used to explain an FD when supplied
+            reason: Already-classified FD explanation from the scoring pass
 
         Returns:
             Dictionary with non-match information
@@ -82,11 +89,16 @@ class NonMatchesHelper(ComparisonHelperBase):
         if non_match_type == "FD":
             # False Discovery: matched but below threshold
             if similarity_score is not None:
-                # Get the match threshold from the object
-                threshold = self.get_match_threshold([gt_object] if gt_object else [pred_object])
-                entry["reason"] = (
-                    f"below threshold ({similarity_score:.3f} < {threshold})"
-                )
+                if reason is None:
+                    threshold = (
+                        match_threshold
+                        if match_threshold is not None
+                        else self.get_match_threshold(
+                            [gt_object] if gt_object else [pred_object]
+                        )
+                    )
+                    reason = f"below threshold ({similarity_score:.3f} < {threshold})"
+                entry["reason"] = reason
                 entry["similarity"] = similarity_score
                 entry["similarity_score"] = similarity_score
             else:
@@ -106,6 +118,7 @@ class NonMatchesHelper(ComparisonHelperBase):
         self, field_name: str, gt_list: List[Any], pred_list: List[Any],
         comparator: Optional[BaseComparator] = None,
         match_threshold: Optional[float] = None,
+        matching: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """Collect individual object-level non-matches from a list field.
 
@@ -121,7 +134,7 @@ class NonMatchesHelper(ComparisonHelperBase):
         """
         # Use base class method but filter for non-matches only
         all_entries = self.collect_list_entries(
-            field_name, gt_list, pred_list, comparator, match_threshold
+            field_name, gt_list, pred_list, comparator, match_threshold, matching
         )
         
         # Filter for non-matches only (entries where match is False or non_match_type exists)
@@ -189,10 +202,8 @@ class NonMatchesHelper(ComparisonHelperBase):
             non_match_type,
             object_index,
             similarity_score,
+            reason=reason if non_match_type == "FD" else None,
         )
-        if non_match_type == "FD":
-            # The caller knows the field threshold used to classify this pair.
-            entry["reason"] = reason
         return [entry]
     
     def _extract_field_level_non_matches(

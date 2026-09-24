@@ -93,11 +93,17 @@ class FieldComparisonCollector:
                 and isinstance(pred_val, list)
             ):
                 # Use FieldComparisonHelper for primitive list collection
-                info = self.model._get_comparison_info(field_name)
+                matching = field_result.get("_list_matching")
+                if matching is None:
+                    info = self.model._get_comparison_info(field_name)
+                    matching_kwargs = {
+                        "comparator": info.comparator,
+                        "match_threshold": info.threshold,
+                    }
+                else:
+                    matching_kwargs = {"matching": matching}
                 list_comparisons = self.helper.collect_list_entries(
-                    field_name, gt_val, pred_val,
-                    comparator=info.comparator,
-                    match_threshold=info.threshold,
+                    field_name, gt_val, pred_val, **matching_kwargs
                 )
                 all_field_comparisons.extend(list_comparisons)
 

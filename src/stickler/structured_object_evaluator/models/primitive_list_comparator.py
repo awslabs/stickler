@@ -26,6 +26,8 @@ from typing import TYPE_CHECKING, Any, List
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
 
+from .threshold_helper import ThresholdHelper
+
 
 class PrimitiveListComparator:
     """Handles comparison of List[primitive] fields using Hungarian matching."""
@@ -103,6 +105,7 @@ class PrimitiveListComparator:
         # the zeroing happens inside `unordered_list_metrics`, upstream of the
         # `threshold_applied_score = raw_similarity` line below, so that line
         # preserved a score that had already been thrown away.
+        matched_pairs = []
         match_result = self.parent_model._compare_unordered_lists(
             gt_list,
             pred_list,
@@ -110,6 +113,7 @@ class PrimitiveListComparator:
             threshold,
             info.clip_under_threshold,
             field_name=field_name,
+            pair_sink=matched_pairs,
         )
 
         # Extract the counts from the match result
@@ -132,4 +136,12 @@ class PrimitiveListComparator:
             "similarity_score": raw_similarity,
             "threshold_applied_score": threshold_applied_score,
             "weight": weight,
+            "_list_matching": {
+                "pairs": matched_pairs,
+                "threshold": threshold,
+                "verdicts": [
+                    ThresholdHelper.is_above_threshold(score, threshold)
+                    for _, _, score in matched_pairs
+                ],
+            },
         }

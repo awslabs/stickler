@@ -95,6 +95,13 @@ class StructuredListComparator:
             "similarity_score": raw_similarity,
             "threshold_applied_score": threshold_applied_score,
             "weight": weight,
+            "_list_matching": {
+                "pairs": matched_pairs,
+                "threshold": match_threshold,
+                "verdicts": [
+                    score >= match_threshold for _, _, score in matched_pairs
+                ],
+            },
         }
 
         return final_result

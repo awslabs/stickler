@@ -163,7 +163,9 @@ class FieldComparator:
         #
         #       Impact: Moderate - primarily affects deeply nested structures (3+ levels)
         #       Estimated overhead: 2-3x for structures with 3 levels of nesting
-        nested_details = gt_val.compare_recursive(pred_val)["fields"]
+        nested_details = gt_val.compare_recursive(
+            pred_val, _include_list_matching=True
+        )["fields"]
 
         # Return structure with object-level metrics and nested field details kept separate
         return {

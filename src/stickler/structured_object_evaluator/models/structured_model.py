@@ -1341,6 +1341,7 @@ class StructuredModel(BaseModel):
         threshold: float,
         clip_under_threshold: bool = True,
         field_name: str = "",
+        pair_sink: List[tuple] | None = None,
     ) -> Dict[str, Any]:
         """Compare two lists as unordered collections using Hungarian matching.
 
@@ -1367,6 +1368,7 @@ class StructuredModel(BaseModel):
             clip_under_threshold,
             model_cls=self.__class__,
             field_name=field_name,
+            pair_sink=pair_sink,
         )
 
     def compare_field_raw(self, field_name: str, other_value: Any) -> float:
@@ -1412,7 +1414,9 @@ class StructuredModel(BaseModel):
         # For non-StructuredModel fields, use existing logic
         return ComparisonHelper.compare_field_raw(self, field_name, other_value)
 
-    def compare_recursive(self, other: "StructuredModel") -> dict:
+    def compare_recursive(
+        self, other: "StructuredModel", *, _include_list_matching: bool = False
+    ) -> dict:
         """The ONE clean recursive function that handles everything.
 
         Enhanced to capture BOTH confusion matrix metrics AND similarity scores
@@ -1432,7 +1436,9 @@ class StructuredModel(BaseModel):
         from .comparison_engine import ComparisonEngine
 
         engine = ComparisonEngine(self)
-        return engine.compare_recursive(other)
+        return engine.compare_recursive(
+            other, _include_list_matching=_include_list_matching
+        )
 
     def _dispatch_field_comparison(
         self, field_name: str, gt_val: Any, pred_val: Any

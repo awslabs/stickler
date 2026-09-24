@@ -81,7 +81,17 @@ class ComparisonEngine:
             self._confusion_matrix_builder = ConfusionMatrixBuilder(self.model)
         return self._confusion_matrix_builder
 
-    def compare_recursive(self, other: "StructuredModel") -> Dict[str, Any]:
+    @staticmethod
+    def _drop_list_matching(result: Dict[str, Any]) -> None:
+        """Remove scoring-only pairing details from a public result tree."""
+        for field_result in result.get("fields", {}).values():
+            if isinstance(field_result, dict):
+                field_result.pop("_list_matching", None)
+                ComparisonEngine._drop_list_matching(field_result)
+
+    def compare_recursive(
+        self, other: "StructuredModel", *, _include_list_matching: bool = False
+    ) -> Dict[str, Any]:
         """The core recursive comparison function.
         
         This method performs a single-traversal comparison of two StructuredModel
@@ -177,6 +187,8 @@ class ComparisonEngine:
         if total_weight > 0:
             result["overall"]["similarity_score"] = total_score / total_weight
 
+        if not _include_list_matching:
+            self._drop_list_matching(result)
         return result
 
     def compare_with(
@@ -249,7 +261,7 @@ class ComparisonEngine:
             >>> print(result["confusion_matrix"]["overall"]["tp"])
         """
         # SINGLE TRAVERSAL: Get everything in one pass
-        recursive_result = self.compare_recursive(other)
+        recursive_result = self.compare_recursive(other, _include_list_matching=True)
 
         # Extract scoring information from recursive result
         field_scores = {}
@@ -440,6 +452,12 @@ class ComparisonEngine:
             pred_bboxes = MAPCalculator.bboxes_from_extras(other.get_all_extras())
             if pred_bboxes:
                 result["prediction_bboxes"] = pred_bboxes
+
+        # The collectors have consumed the scoring-only pairings. Keep the
+        # public recursive/confusion-matrix result shape unchanged.
+        self._drop_list_matching(recursive_result)
+        if "confusion_matrix" in result:
+            self._drop_list_matching(result["confusion_matrix"])
 
         # If evaluator_format is requested, transform the result
         if evaluator_format:
