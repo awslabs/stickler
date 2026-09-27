@@ -242,8 +242,8 @@ result = gt.compare_with(pred)
 The two sets are not interchangeable, and position matters. A field-level key on
 the root, or an object-level key on a scalar field, is not read, so it is
 rejected rather than dropped. An unrecognized or misspelled `x-aws-stickler-*`
-key is currently ignored (silently dropped) rather than rejected; unrelated
-`x-*` extensions from other tooling are left alone.
+key raises and names the closest valid key for that position; unrelated `x-*`
+extensions from other tooling are left alone.
 
 Comparator names accepted by `x-aws-stickler-comparator` are the registered class names:
 `LevenshteinComparator`, `ExactComparator`, `NormalizedComparator`, `PhoneComparator`,
