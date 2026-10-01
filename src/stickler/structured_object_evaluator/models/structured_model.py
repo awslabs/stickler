@@ -1961,6 +1961,15 @@ class StructuredModel(BaseModel):
                         "type": "array",
                         "items": items_schema,
                     }
+                    # Same factory handling as the primitive list below, which
+                    # this branch skipped: `default_factory=list` exported no
+                    # default and imported back as None.
+                    if field_info.default is PydanticUndefined:
+                        has_default, default_value = resolve_exportable_default(
+                            field_info
+                        )
+                        if has_default:
+                            property_schema["default"] = default_value
                     metadata = converter._extract_field_metadata(field_info)
                     metadata.pop("comparator", None)
                     # Drop the threshold for the same reason as the comparator:
@@ -2087,7 +2096,10 @@ class StructuredModel(BaseModel):
             >>> ReconstructedProduct = StructuredModel.model_from_json(config)
             >>> # ReconstructedProduct has identical comparison behavior
         """
-        from .json_schema_field_converter import JsonSchemaFieldConverter
+        from .json_schema_field_converter import (
+            JsonSchemaFieldConverter,
+            resolve_exportable_default,
+        )
 
         # schema/field_path unused for export operations - only needed for import
         converter = JsonSchemaFieldConverter(schema={}, field_path="")
@@ -2161,6 +2173,14 @@ class StructuredModel(BaseModel):
                         field_config["match_threshold"] = nested_config[
                             "match_threshold"
                         ]
+                    # As in to_json_schema(): a factory default was dropped here,
+                    # so the field rebuilt with None instead of [].
+                    if field_info.default is PydanticUndefined:
+                        has_default, default_value = resolve_exportable_default(
+                            field_info
+                        )
+                        if has_default:
+                            field_config["default"] = default_value
                     metadata = converter._extract_field_metadata(field_info)
                     metadata.pop("comparator", None)
                     extensions = converter._build_comparison_extensions(

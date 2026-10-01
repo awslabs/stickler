@@ -141,3 +141,41 @@ def test_a_set_factory_exports_as_a_list():
     assert config["fields"]["tags"]["default"] == []
     json.dumps(config)
     json.dumps(SetModel.to_json_schema())
+
+
+class Sub(StructuredModel):
+    sku: str = ComparableField(comparator=ExactComparator())
+
+
+class ParentModel(StructuredModel):
+    name: str = ComparableField(comparator=ExactComparator())
+    subs: List[Sub] = ComparableField(default_factory=list)
+
+
+def test_list_of_models_factory_round_trips_through_stickler_config():
+    """The list-of-models branch must export the factory's [] like the primitive one."""
+    config = ParentModel.to_stickler_config()
+    assert config["fields"]["subs"]["default"] == []
+
+    rebuilt = StructuredModel.model_from_json(json.loads(json.dumps(config)))
+    assert rebuilt(name="a").subs == []
+
+
+def test_list_of_models_factory_round_trips_through_json_schema():
+    """from_json_schema() must rebuild a factory-backed List[Model] with [], not None."""
+    schema = ParentModel.to_json_schema()
+    assert schema["properties"]["subs"]["default"] == []
+
+    rebuilt = StructuredModel.from_json_schema(schema)
+    assert rebuilt(name="a").subs == []
+
+
+def test_list_of_models_without_factory_exports_no_default():
+    """Only the factory case is new; a plain List[Model] field exports as before."""
+
+    class PlainParent(StructuredModel):
+        name: str = ComparableField(comparator=ExactComparator())
+        subs: List[Sub] = ComparableField()
+
+    assert "default" not in PlainParent.to_stickler_config()["fields"]["subs"]
+    assert "default" not in PlainParent.to_json_schema()["properties"]["subs"]
