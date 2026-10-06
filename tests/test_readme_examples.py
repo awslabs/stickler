@@ -103,9 +103,25 @@ UNDECLARED_PROPERTIES = {
         "items": {"type": "object", "properties": {"a": {"type": "string"}}},
     },
     "dated": {"type": "string", "format": "date"},
+    "timestamped": {"type": "string", "format": "date-time"},
+    "linked": {"type": "string", "format": "uri"},
+    "identified": {"type": "string", "format": "uuid"},
+    "timed": {"type": "string", "format": "time"},
     "enumed": {"type": "string", "enum": ["A", "B"]},
     "constant": {"type": "string", "const": "A"},
+    # Declares a comparator but no threshold: the default still follows the format.
+    "dated_levenshtein": {
+        "type": "string",
+        "format": "date",
+        "x-aws-stickler-comparator": "LevenshteinComparator",
+    },
+    # A format that selects no comparator stays a plain scalar.
+    "emailed": {"type": "string", "format": "email"},
 }
+FORMAT_ENUM_CONST = (
+    "string with `format` `date`/`date-time`/`uri`/`uuid`/`time`, "
+    "or with `enum` or `const`"
+)
 UNDECLARED = StructuredModel.from_json_schema(
     {"type": "object", "properties": UNDECLARED_PROPERTIES}
 )
@@ -129,12 +145,24 @@ def test_extension_reference_defaults_match_an_undeclared_schema():
 @pytest.mark.parametrize(
     "position, fields",
     [
-        ("scalar (`string`, `number`, ...)", ["scalar"]),
+        ("scalar (`string`, `number`, ...)", ["scalar", "emailed"]),
         ("object with `properties` (a nested model)", ["nested"]),
         ('free-form `{"type": "object"}` (a `Dict`)', ["mapping"]),
         ("array of scalars", ["scalars"]),
         ("array of models", ["models"]),
-        ("string with `format`, `enum` or `const`", ["dated", "enumed", "constant"]),
+        (
+            FORMAT_ENUM_CONST,
+            [
+                "dated",
+                "timestamped",
+                "linked",
+                "identified",
+                "timed",
+                "enumed",
+                "constant",
+                "dated_levenshtein",
+            ],
+        ),
     ],
 )
 def test_extension_reference_threshold_by_position(position, fields):
