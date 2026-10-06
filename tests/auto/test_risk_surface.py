@@ -16,13 +16,22 @@ heuristic outputs, so intentional rule tweaks do not churn the suite:
 import datetime
 import inspect
 from enum import Enum, IntEnum
-from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import pytest
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PlainSerializer,
+    ValidationError,
+    field_serializer,
+    model_serializer,
+)
 from pydantic.alias_generators import to_camel
 
 import stickler
+from stickler.auto.facade import _dump
 from stickler.structured_object_evaluator.models.comparable_field import (
     ComparableField,
 )
@@ -442,6 +451,87 @@ class TestDumpKeepsEveryField:
             Outer(inner=Inner(name="abc")), Outer(inner=Inner(name="xyz"))
         )
         assert r.overall_score == pytest.approx(1.0)
+
+    def test_serializer_nested_in_the_annotation_is_kept(self):
+        class Inner(BaseModel):
+            a: str
+
+        Redacted = Annotated[Inner, PlainSerializer(lambda v: {"a": "X"})]
+
+        class M(BaseModel):
+            items: List[Redacted]
+
+        r = stickler.evaluate(M(items=[Inner(a="q")]), M(items=[Inner(a="r")]))
+        assert r.overall_score == pytest.approx(1.0)
+
+    def test_model_serializer_parent_keeps_a_nested_structured_model_valid(self):
+        class S(StructuredModel):
+            model_config = ConfigDict(alias_generator=to_camel, serialize_by_alias=True)
+            sku_code: str = ComparableField()
+
+        class Q(BaseModel):
+            s: S
+
+            @model_serializer(mode="wrap")
+            def _ser(self, handler):
+                return handler(self)
+
+        r = stickler.evaluate(Q(s=S(skuCode="a")), Q(s=S(skuCode="zz")))
+        assert r.overall_score < 1.0
+
+    def test_excluded_field_keeps_its_annotated_serializer(self):
+        Year = Annotated[datetime.date, PlainSerializer(lambda v: str(v.year))]
+
+        class M(BaseModel):
+            name: str
+            year: Optional[Year] = Field(default=None, exclude=True)
+
+        r = stickler.evaluate(
+            M(name="a", year=datetime.date(2020, 1, 2)),
+            M(name="a", year=datetime.date(2020, 6, 30)),
+        )
+        assert r.field_scores["year"] == pytest.approx(1.0)
+
+    def test_ser_json_config_still_applies_to_siblings_of_a_model(self):
+        class Inner(BaseModel):
+            a: str = "x"
+
+        class M(BaseModel):
+            model_config = ConfigDict(ser_json_timedelta="float")
+            meta: Dict[str, Any] = {}
+
+        dumped = _dump(M(meta={"m": Inner(), "t": datetime.timedelta(seconds=5)}))
+        assert dumped["meta"]["t"] == 5.0
+
+    def test_unserializable_item_in_an_excluded_list_does_not_abort(self):
+        class Blob:
+            pass
+
+        class Inner(BaseModel):
+            a: str = "x"
+
+        class M(BaseModel):
+            model_config = ConfigDict(arbitrary_types_allowed=True)
+            name: str
+            stuff: List[Any] = Field(default=[], exclude=True)
+
+        r = stickler.evaluate(
+            M(name="a", stuff=[Inner(), Blob()]), M(name="a", stuff=[Inner(), Blob()])
+        )
+        assert r.field_scores["name"] == pytest.approx(1.0)
+
+    def test_model_construct_without_a_required_field_reports_it(self):
+        class Inner(BaseModel):
+            a: str = "x"
+
+        class M(BaseModel):
+            name: str
+            inner: Inner
+
+        with pytest.raises(ValidationError, match="name"):
+            stickler.evaluate(
+                M.model_construct(inner=Inner()), M.model_construct(inner=Inner())
+            )
 
     @pytest.mark.skipif(
         "exclude_if" not in inspect.signature(Field).parameters,

@@ -36,8 +36,9 @@ Each release links to full notes on the
   that the inferred model never read, and a `Field(exclude=True)` (or
   `exclude_if`) field was left out of the dump. Either way the field was blank
   on both sides, so a wrong value scored `1.0`, and a required field raised
-  `ValidationError`. Plain models now dump by field name (a `StructuredModel`
-  keeps its own key spelling), and excluded fields are compared at any depth
+  `ValidationError`. Plain models now reach it keyed by field name (a
+  `StructuredModel` keeps its own key spelling), and excluded fields are
+  compared at any depth. Serializers and `ser_json_*` config still apply
   ([#378](https://github.com/awslabs/stickler/issues/378),
   [#379](https://github.com/awslabs/stickler/issues/379))
 

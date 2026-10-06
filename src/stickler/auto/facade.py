@@ -18,11 +18,18 @@ For a batch loop, compile once with :func:`eval_for` and reuse the returned
 
 from __future__ import annotations
 
-import json
-from typing import Any, Dict, List, Optional, Type, Union
+import functools
+from typing import Annotated, Any, Dict, List, Optional, Tuple, Type, Union
 
-from pydantic import BaseModel, PlainSerializer, RootModel, WrapSerializer
-from pydantic_core import PydanticSerializationError, to_jsonable_python
+from pydantic import (
+    BaseModel,
+    PlainSerializer,
+    PydanticUserError,
+    RootModel,
+    TypeAdapter,
+    WrapSerializer,
+)
+from pydantic_core import PydanticSerializationError
 
 from ..structured_object_evaluator.models.structured_model import StructuredModel
 from .builder import specs_for, structured_model_for
@@ -331,83 +338,117 @@ def _dump(instance: BaseModel) -> Dict[str, Any]:
     return _wire(instance)
 
 
-def _wire(value: Any, own_keys: bool = False) -> Any:
-    """Dump ``value`` in JSON form, keeping every declared field.
+def _wire(instance: BaseModel) -> Any:
+    """Pydantic's own JSON dump, corrected where the shadow model cannot read it.
 
-    A field the dump leaves out (``exclude=True``, ``exclude_if``) is blank on
-    both sides, and blank against blank scores as a match, so it is rebuilt
-    from the attribute (#379). So is a field holding a model, since a nested
-    model can drop fields too; that field is left out of the parent's dump
-    rather than serialized twice.
+    The dump is kept as pydantic produced it, so serializers and ``ser_json_*``
+    config apply as usual. :func:`_restore` then walks it beside the instance
+    and fixes the two ways a field goes missing. A missing field is blank on
+    both sides, and blank against blank scores as a match.
+    """
+    return _restore(instance, instance.model_dump(mode="json"), own_keys=False)
 
-    Keys: a plain model feeds a shadow model, which reads field names, so it
-    dumps with ``by_alias=False`` (#378). A ``StructuredModel`` validates
-    through its own classes, so it and everything under it (``own_keys``)
-    keep their own config's key spelling.
 
-    A field with its own serializer, a model with a ``model_serializer`` and a
-    ``RootModel`` keep pydantic's output: the author chose that wire form.
+def _restore(value: Any, dumped: Any, own_keys: bool) -> Any:
+    """Re-key and refill ``dumped`` (the dump of ``value``) for the shadow model.
+
+    - A plain model dumped with ``serialize_by_alias=True`` has alias keys, and
+      the shadow model reads field names, so they are renamed (#378). A
+      ``StructuredModel`` validates through its own classes, so it and
+      everything under it (``own_keys``) keep their keys.
+    - A field marked ``exclude=True`` or ``exclude_if`` is dumped from its
+      annotation and added back (#379). One pydantic cannot serialize stays out.
+
+    The walk stops wherever the dump no longer has the instance's shape: a
+    ``RootModel``, a ``model_serializer``, a field serializer, or a container
+    whose length changed. That output is the author's choice and is kept.
     """
     if isinstance(value, BaseModel):
-        own_keys = own_keys or isinstance(value, StructuredModel)
-        dump_kwargs = {} if own_keys else {"by_alias": False}
         cls = type(value)
-        if (
-            isinstance(value, RootModel)
-            or cls.__pydantic_decorators__.model_serializers
-        ):
-            return value.model_dump(mode="json", **dump_kwargs)
-        rebuild = {
-            name
-            for name, field in cls.model_fields.items()
-            if _holds_model(getattr(value, name))
-            and not _has_field_serializer(cls, name, field)
-        }
-        out = value.model_dump(mode="json", exclude=rebuild or None, **dump_kwargs)
-        by_alias = own_keys and bool(cls.model_config.get("serialize_by_alias"))
-        for name, field in cls.model_fields.items():
-            key = (
-                (field.serialization_alias or field.alias or name) if by_alias else name
-            )
-            if name in rebuild:
-                out[key] = _wire(getattr(value, name), own_keys)
-            elif key not in out:
-                try:
-                    out[key] = _wire(getattr(value, name), own_keys)
-                except PydanticSerializationError:
-                    # A type pydantic cannot serialize could not be compared
-                    # anyway; excluding it is how such fields are usually kept
-                    # out of a dump, so leave it out rather than abort.
-                    pass
+        if not isinstance(dumped, dict) or _is_opaque(cls):
+            return dumped
+        own_keys = own_keys or isinstance(value, StructuredModel)
+        out = dict(dumped)
+        for name, dumped_key, excluded, serialized in _field_plan(cls):
+            raw = getattr(value, name, _MISSING)
+            if raw is _MISSING:
+                continue  # model_construct without it; validation reports it
+            key = dumped_key if own_keys else name
+            if dumped_key in out:
+                item = out.pop(dumped_key)
+                out[key] = item if serialized else _restore(raw, item, own_keys)
+            elif excluded:
+                item = _dump_excluded(cls, name, raw, own_keys)
+                if item is not _MISSING:
+                    out[key] = item
         return out
-    if not _holds_model(value):
-        return to_jsonable_python(value)
-    if isinstance(value, dict):
-        return {_json_key(k): _wire(v, own_keys) for k, v in value.items()}
-    return [_wire(item, own_keys) for item in value]
+    if isinstance(value, (list, tuple)) and isinstance(dumped, list):
+        if len(value) == len(dumped):
+            return [_restore(v, d, own_keys) for v, d in zip(value, dumped)]
+    elif isinstance(value, dict) and isinstance(dumped, dict):
+        if len(value) == len(dumped):
+            return {
+                k: _restore(v, d, own_keys)
+                for (k, d), v in zip(dumped.items(), value.values())
+            }
+    return dumped
 
 
-def _holds_model(value: Any) -> bool:
-    if isinstance(value, BaseModel):
-        return True
-    if isinstance(value, dict):
-        return any(_holds_model(v) for v in value.values())
-    if isinstance(value, (list, tuple)):
-        return any(_holds_model(item) for item in value)
-    return False
+_MISSING: Any = object()
 
 
-def _has_field_serializer(cls: Type[BaseModel], name: str, field: Any) -> bool:
-    decorators = cls.__pydantic_decorators__.field_serializers.values()
-    return any(
-        name in d.info.fields or "*" in d.info.fields for d in decorators
-    ) or any(isinstance(m, (PlainSerializer, WrapSerializer)) for m in field.metadata)
+def _is_opaque(cls: Type[BaseModel]) -> bool:
+    return issubclass(cls, RootModel) or bool(
+        cls.__pydantic_decorators__.model_serializers
+    )
 
 
-def _json_key(key: Any) -> str:
-    """Spell a mapping key the way ``model_dump(mode="json")`` does."""
-    key = to_jsonable_python(key)
-    return key if isinstance(key, str) else json.dumps(key)
+@functools.lru_cache(maxsize=None)
+def _field_plan(cls: Type[BaseModel]) -> Tuple[Tuple[str, str, bool, bool], ...]:
+    """Per field: name, key in the default dump, excluded, own serializer."""
+    by_alias = bool(cls.model_config.get("serialize_by_alias"))
+    serializers = cls.__pydantic_decorators__.field_serializers.values()
+    plan = []
+    for name, field in cls.model_fields.items():
+        dumped_key = (
+            (field.serialization_alias or field.alias or name) if by_alias else name
+        )
+        excluded = bool(field.exclude) or getattr(field, "exclude_if", None) is not None
+        serialized = any(
+            name in d.info.fields or "*" in d.info.fields for d in serializers
+        ) or any(
+            isinstance(m, (PlainSerializer, WrapSerializer)) for m in field.metadata
+        )
+        plan.append((name, dumped_key, excluded, serialized))
+    return tuple(plan)
+
+
+def _dump_excluded(cls: Type[BaseModel], name: str, raw: Any, own_keys: bool) -> Any:
+    adapter = _field_adapter(cls, name)
+    if adapter is None:
+        return _MISSING
+    try:
+        dumped = adapter.dump_python(raw, mode="json")
+    except PydanticSerializationError:
+        return _MISSING
+    return _restore(raw, dumped, own_keys)
+
+
+@functools.lru_cache(maxsize=None)
+def _field_adapter(cls: Type[BaseModel], name: str) -> Optional[TypeAdapter]:
+    """A serializer for one field's annotation, ignoring its ``exclude``.
+
+    Annotated serializers come along in ``metadata``; a ``@field_serializer``
+    does not, since it belongs to the class.
+    """
+    field = cls.model_fields[name]
+    annotation = field.annotation
+    if field.metadata:
+        annotation = Annotated[(annotation, *field.metadata)]
+    try:
+        return TypeAdapter(annotation)
+    except PydanticUserError:
+        return None  # e.g. an arbitrary type: it could not be compared anyway
 
 
 def _shared_class(gt: BaseModel, pred: BaseModel) -> Type[BaseModel]:

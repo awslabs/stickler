@@ -140,20 +140,24 @@ affect scores. Both `model_dump()` (native `date`/`Decimal`/`set` objects) and
 so `Model.from_json(instance.model_dump())` is safe either way.
 
 A field the shadow model cannot read is blank on both sides, and blank against
-blank scores as a match, so `evaluate()` makes sure every field arrives:
+blank scores as a match. `evaluate()` keeps pydantic's own dump, so serializers
+and `ser_json_*` config apply as usual, then walks it beside the instance and
+fixes two things:
 
-- A plain model dumps by field name (`by_alias=False`), because the shadow
-  model reads field names
+- A plain model's alias keys (`serialize_by_alias=True`) are renamed to field
+  names, which the shadow model reads
   ([#378](https://github.com/awslabs/stickler/issues/378)). A `StructuredModel`
-  and everything under it keep their own key spelling, since they validate
-  through their own config.
-- A field the dump leaves out (`exclude=True`, `exclude_if`) is rebuilt from the
-  attribute and compared, at any depth, including inside dicts and lists
-  ([#379](https://github.com/awslabs/stickler/issues/379)). The rebuilt value
-  takes `pydantic_core`'s default JSON form, so `ser_json_*` config does not
-  apply to it. An excluded value pydantic cannot serialize stays out.
-- A field with its own serializer, a model with a `model_serializer`, and a
-  `RootModel` keep pydantic's output as is.
+  and everything under it keep their keys, since they validate through their
+  own config.
+- A field marked `exclude=True` or `exclude_if` is dumped from its annotation and
+  added back, at any depth
+  ([#379](https://github.com/awslabs/stickler/issues/379)). Annotated
+  serializers apply to it; a `@field_serializer` does not. One pydantic cannot
+  serialize stays out.
+
+The walk stops where the dump no longer has the instance's shape (a
+`RootModel`, a `model_serializer`, a field serializer), and that output is kept
+as is.
 
 `dict` is the exception, and deliberately so. It keeps its shape rather than
 being flattened to a string, because ANLS\* scores it structurally and cannot do
