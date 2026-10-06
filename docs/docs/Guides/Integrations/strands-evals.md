@@ -4,11 +4,11 @@ title: Strands Evals
 
 # Strands Evals
 
-[Strands Evals](https://github.com/strands-agents/evals) ships a `StructuredOutput`
-evaluator that scores an agent's structured output field by field, with stickler as
-its scoring engine. You write ordinary Strands Evals, and stickler supplies the
-comparison: type-aware comparators, order-independent list matching, and a per-field
-confusion matrix.
+[Strands Evals](https://github.com/strands-agents/evals) ships a
+`StructuredOutputSimilarity` evaluator that scores an agent's structured output field by
+field, with stickler as its scoring engine. You write ordinary Strands Evals, and
+stickler supplies the comparison: type-aware comparators, order-independent list
+matching, and a per-field confusion matrix.
 
 The evaluator lives in Strands Evals, not in stickler. stickler is the optional
 `stickler` extra it depends on.
@@ -23,7 +23,7 @@ branch — see [Status](#status) below.
 ```python
 from strands import Agent
 from strands_evals import Case, Experiment, eval_task
-from strands_evals.evaluators import StructuredOutput
+from strands_evals.evaluators import StructuredOutputReport, StructuredOutputSimilarity
 
 @eval_task()
 def extract(case):
@@ -34,14 +34,17 @@ def extract(case):
     return {"output": result.structured_output}
 
 cases = [Case[str, Invoice](name="doc-1", input=ocr_text, expected_output=label)]
-evaluator = StructuredOutput(Invoice)
-report = Experiment[str, Invoice](cases=cases, evaluators=[evaluator]).run_evaluations(extract)
+report = Experiment[str, Invoice](
+    cases=cases,
+    evaluators=[StructuredOutputSimilarity(Invoice)],
+    report_cls=StructuredOutputReport,     # puts the rollups on the report
+).run_evaluations(extract)
 
-report.overall_score          # weighted mean across the dataset
-report.scores                 # one weighted score per case
-evaluator.per_case()                        # per-document field scores
-evaluator.metrics()["Invoice"].field_metrics # per-field confusion matrix, keyed by schema
-report.display()              # rich table; run_display() is the interactive variant
+report.overall_score            # weighted mean across the dataset
+report.scores                   # one weighted score per case
+report.per_case()               # per-document field scores, in case order
+report.metrics().field_metrics  # per-field confusion matrix
+report.display()                # rich table; run_display() is the interactive variant
 ```
 
 ## Why it exists
@@ -61,20 +64,28 @@ item and one was wrong throughout:
 | stickler | 4 | 0.754 |
 
 `Equals` gave 0.0 to five of six, including the one that differed only in
-capitalisation.
+capitalisation. Both rows come from the cell that runs the two evaluators side by side in
+[`Strands_Evals_Evaluator.ipynb`](https://github.com/awslabs/stickler/blob/dev/examples/notebooks/Strands_Evals_Evaluator.ipynb)
+(*Equals versus stickler*), on the six cases defined just above it.
 
 ## Two levels of detail
 
 `evaluate()` returns one `EvaluationOutput` per case carrying stickler's weighted
 `overall_score`, and `reason` names the weakest fields. Because that type has four
-scalar fields, per-field detail is read from the evaluator instead:
+scalar fields, per-field detail travels on each row's `metadata` and is read from the
+report, which is what `report_cls=StructuredOutputReport` is for:
 
-- **`per_case()`** returns per-document field scores.
-- **`metrics()`** returns stickler's five-category confusion matrix per field path,
-  including nested paths, computed once from the retained comparisons with no second
-  pass over the data. It is keyed by schema name, so reach the field table through
-  `metrics()["Invoice"].field_metrics` — a dataset of mixed output types partitions
-  into one entry per model.
+- **`report.per_case()`** returns per-document field scores, in case order.
+- **`report.metrics()`** returns stickler's five-category confusion matrix per field
+  path, including nested paths, computed once from the retained comparisons with no
+  second pass over the data. Reach the field table through
+  `report.metrics().field_metrics`.
+
+A rollup covers one schema, so give each output type its own `Experiment`: a case whose
+value belongs to another schema scores 0 and fails rather than being skipped. Because the
+detail is on the report and not on the evaluator, it survives a round trip through JSON —
+`StructuredOutputReport.from_file(path).metrics()` rolls up a saved report. Reading it
+back through `EvaluationReport` gives the base class, which has no rollups.
 
 ```
 field                       tp  fn  fa  fd   prec   rec    f1
@@ -108,9 +119,9 @@ therefore requires both the weighted score **and** `recall` to clear
 | vendor wrong | 0.900 | 1.000 | `True` |
 
 For a stricter check than the default: raise `match_threshold`, gate on named fields
-from `per_case()`, read `fd` from `metrics()`, or raise `weight` on the fields you
-expect to be populated, which is usually cleanest because it makes the score itself
-reflect what you care about. See
+from `report.per_case()`, read `fd` from `report.metrics()`, or raise `weight` on the
+fields you expect to be populated, which is usually cleanest because it makes the score
+itself reflect what you care about. See
 [Sparse Objects](../../Getting-Started/thresholds-and-metrics.md#sparse-objects).
 
 ## Reading nested rows
@@ -160,14 +171,25 @@ of them import the evaluator, so they need it installed from the branch — see
 
 ## Status
 
-The `StructuredOutput` evaluator is in review at
-[sromoam/evals#1](https://github.com/sromoam/evals/pull/1) and is not yet on PyPI. Until
-it releases, install it from the branch:
+The `StructuredOutputSimilarity` evaluator is in review at
+[strands-agents/evals#400](https://github.com/strands-agents/evals/pull/400) and is not yet
+on PyPI. Until it releases, install it from the branch, pinned to a commit so a review push
+cannot change what you installed:
 
 ```bash
-pip install "strands-agents-evals @ git+https://github.com/sromoam/evals@feat/structured-output-evaluator"
+pip install "strands-agents-evals[stickler] @ git+https://github.com/sromoam/evals@73c2ae30b332550ef1dce9323aa9da1b93394f6c"
 ```
 
-The evaluator's own design notes (why field detail is read from the evaluator, why
-aggregation is append-only, why the rollup partitions by schema) live with the
-evaluator in that PR.
+The `stickler` extra brings `stickler-eval` and pydantic 2.12, which the evaluator needs to
+read a cached value back.
+
+The evaluator's own design notes (why the field detail travels on the report rather than the
+evaluator, why a rollup covers one schema) live with the evaluator in that PR.
+
+Two rough edges to know while it is unreleased. `Experiment.to_dict` keeps only cases and
+evaluators, so a reloaded experiment and the `strands-evals run` CLI both write the base
+`EvaluationReport`; read their JSON back through `StructuredOutputReport` to roll it up. And
+`EvaluationReport.to_file` is a plain `json.dump` over the cases, so a model with a
+`datetime.date` field raises `Object of type date is not JSON serializable` — annotate the
+field as `str`, or keep the report in memory. Both are harness limitations rather than the
+evaluator's.

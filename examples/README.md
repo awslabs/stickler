@@ -98,9 +98,9 @@ This directory contains comprehensive examples demonstrating the core functional
   - The stored response is hand-authored to the Bedrock wire format, not captured; one command re-records it
   - Scores with `stickler.evaluate()` directly, so no Strands Evals install is needed
 
-- **`notebooks/Strands_Evals_Evaluator.ipynb`** - The `StructuredOutput` evaluator for Strands Evals
+- **`notebooks/Strands_Evals_Evaluator.ipynb`** - The `StructuredOutputSimilarity` evaluator for Strands Evals
   - Six invoices broken six different ways, offline and deterministic
-  - `per_case()` field scores and `metrics()` five-category confusion matrix
+  - `report.per_case()` field scores and `report.metrics()` five-category confusion matrix, via `report_cls`
   - Why `test_pass` gates on recall as well as score
   - Needs the evaluator, which is not on PyPI yet: install `strands-agents-evals` from the branch in cell 1
 
