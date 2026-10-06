@@ -18,7 +18,8 @@ from enum import Enum, IntEnum
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
 
 import stickler
 from stickler.structured_object_evaluator.models.comparable_field import (
@@ -310,6 +311,116 @@ class TestWireContract:
             anything: Any = None
 
         assert stickler.evaluate(M(), M()).overall_score == pytest.approx(1.0)
+
+
+_CAMEL = ConfigDict(
+    alias_generator=to_camel, populate_by_name=True, serialize_by_alias=True
+)
+
+
+class TestDumpKeepsEveryField:
+    """The dump reaches the shadow model keyed by field name, with every field.
+
+    A field the shadow model cannot read is blank on both sides, and blank
+    against blank is a match, so a dropped field scores a wrong value 1.0.
+    """
+
+    def test_serialize_by_alias_required_field_evaluates(self):
+        class M(BaseModel):
+            model_config = _CAMEL
+            invoice_id: str
+
+        assert (
+            stickler.evaluate(M(invoice_id="A"), M(invoice_id="A")).overall_score == 1.0
+        )
+
+    def test_serialize_by_alias_wrong_value_is_not_a_match(self):
+        class M(BaseModel):
+            model_config = _CAMEL
+            invoice_id: Optional[str] = None
+            vendor_name: Optional[str] = None
+
+        r = stickler.evaluate(M(invoice_id="A"), M(invoice_id="ZZZ"))
+        assert r.field_scores["invoice_id"] == pytest.approx(0.0)
+
+    def test_serialize_by_alias_on_a_nested_model_only(self):
+        class Line(BaseModel):
+            model_config = _CAMEL
+            sku_code: Optional[str] = None
+
+        class Doc(BaseModel):
+            lines: List[Line] = []
+
+        r = stickler.evaluate(
+            Doc(lines=[Line(sku_code="A")]), Doc(lines=[Line(sku_code="ZZZ")])
+        )
+        assert r.overall_score < 1.0
+
+    def test_excluded_field_is_compared(self):
+        class M(BaseModel):
+            invoice_id: str
+            total: Optional[float] = Field(default=None, exclude=True)
+
+        r = stickler.evaluate(
+            M(invoice_id="A", total=100.0), M(invoice_id="A", total=1.0)
+        )
+        assert r.field_scores["total"] == pytest.approx(0.0)
+
+    def test_required_excluded_field_evaluates(self):
+        class M(BaseModel):
+            invoice_id: str
+            total: float = Field(exclude=True)
+
+        assert stickler.evaluate(
+            M(invoice_id="A", total=1.0), M(invoice_id="A", total=1.0)
+        ).overall_score == pytest.approx(1.0)
+
+    def test_excluded_field_on_a_nested_model_is_compared(self):
+        class Inner(BaseModel):
+            name: Optional[str] = None
+            total: Optional[float] = Field(default=None, exclude=True)
+
+        class Outer(BaseModel):
+            inner: Optional[Inner] = None
+            items: List[Inner] = []
+
+        gt = Outer(inner=Inner(name="a", total=1.0), items=[Inner(name="b", total=2.0)])
+        pred = Outer(
+            inner=Inner(name="a", total=99.0), items=[Inner(name="b", total=98.0)]
+        )
+        r = stickler.evaluate(gt, pred)
+        assert r.field_scores["inner"] < 1.0
+        assert r.field_scores["items"] < 1.0
+
+    def test_exclude_if_field_is_compared(self):
+        class M(BaseModel):
+            note: Optional[str] = Field(
+                default=None, exclude_if=lambda v: v is not None
+            )
+
+        r = stickler.evaluate(M(note="abc"), M(note="completely different"))
+        assert r.field_scores["note"] < 1.0
+
+    def test_aliased_structured_model_still_round_trips(self):
+        """A StructuredModel validates through its own config, so its own dump
+        is kept, including inside a plain parent."""
+
+        class Inner(StructuredModel):
+            model_config = ConfigDict(alias_generator=to_camel, serialize_by_alias=True)
+            sku_code: str = ComparableField()
+
+        class Outer(BaseModel):
+            inner: Inner
+
+        assert stickler.evaluate(
+            Inner(skuCode="A"), Inner(skuCode="A")
+        ).overall_score == pytest.approx(1.0)
+        assert (
+            stickler.evaluate(
+                Outer(inner=Inner(skuCode="A")), Outer(inner=Inner(skuCode="ZZZ"))
+            ).overall_score
+            < 1.0
+        )
 
 
 class TestNullability:

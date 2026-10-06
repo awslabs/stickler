@@ -31,6 +31,16 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **`stickler.evaluate()` and `eval_for()` no longer score unread fields as
+  matches.** A plain model with `serialize_by_alias=True` dumped alias keys
+  that the inferred model never read, and a `Field(exclude=True)` (or
+  `exclude_if`) field was left out of the dump. Either way the field was blank
+  on both sides, so a wrong value scored `1.0`, and a required field raised
+  `ValidationError`. Instances now dump by field name, and excluded fields are
+  compared. A `StructuredModel` keeps its own dump
+  ([#378](https://github.com/awslabs/stickler/issues/378),
+  [#379](https://github.com/awslabs/stickler/issues/379))
+
 - **An unrecognized key in a model config is now reported instead of dropped.**
   `model_from_json` read a closed set of keys and ignored everything else, so
   `"threshhold": 0.99` built at the fallback 0.5 with no exception and no warning,

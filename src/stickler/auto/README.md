@@ -139,6 +139,15 @@ affect scores. Both `model_dump()` (native `date`/`Decimal`/`set` objects) and
 `model_dump(mode="json")` (already-serialized) validate and score identically,
 so `Model.from_json(instance.model_dump())` is safe either way.
 
+`evaluate()` dumps by field name (`by_alias=False`), because the shadow model
+reads field names, and it compares fields the dump would leave out
+(`exclude=True`, `exclude_if`). A field the shadow model cannot read is blank on
+both sides, and blank against blank scores as a match
+([#378](https://github.com/awslabs/stickler/issues/378),
+[#379](https://github.com/awslabs/stickler/issues/379)). A `StructuredModel`
+keeps its own dump, since it validates through its own config. Field serializers
+still apply to scalar fields, but not to a field holding a model.
+
 `dict` is the exception, and deliberately so. It keeps its shape rather than
 being flattened to a string, because ANLS\* scores it structurally and cannot do
 that with a JSON blob. Keys and values are still normalized (so a

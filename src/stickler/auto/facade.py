@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Type, Union
 
 from pydantic import BaseModel
+from pydantic_core import to_jsonable_python
 
 from ..structured_object_evaluator.models.structured_model import StructuredModel
 from .builder import specs_for, structured_model_for
@@ -326,7 +327,39 @@ def _dump(instance: BaseModel) -> Dict[str, Any]:
         raise TypeError(
             f"expected a pydantic BaseModel instance, got {type(instance)!r}"
         )
-    return instance.model_dump(mode="json")
+    return _wire(instance)
+
+
+def _wire(value: Any) -> Any:
+    """Dump ``value`` keyed by field name, keeping every declared field.
+
+    A ``StructuredModel`` validates back through its own class, so its own dump
+    round-trips. A plain model feeds a shadow model, which reads field names,
+    so ``by_alias=False`` overrides ``serialize_by_alias=True`` (#378). A field
+    the dump leaves out (``exclude=True``, ``exclude_if``) is still compared,
+    so it is rebuilt from the attribute rather than read as blank (#379). So
+    is any field holding a model, since a nested model can drop fields too.
+    """
+    if isinstance(value, StructuredModel):
+        return value.model_dump(mode="json")
+    if isinstance(value, BaseModel):
+        out = value.model_dump(mode="json", by_alias=False)
+        for name in type(value).model_fields:
+            raw = getattr(value, name)
+            if name not in out or _holds_model(raw):
+                out[name] = _wire(raw)
+        return out
+    if isinstance(value, (list, tuple)) and _holds_model(value):
+        return [_wire(item) for item in value]
+    return to_jsonable_python(value, by_alias=False)
+
+
+def _holds_model(value: Any) -> bool:
+    if isinstance(value, BaseModel):
+        return True
+    return isinstance(value, (list, tuple)) and any(
+        isinstance(item, BaseModel) for item in value
+    )
 
 
 def _shared_class(gt: BaseModel, pred: BaseModel) -> Type[BaseModel]:
