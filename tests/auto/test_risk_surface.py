@@ -14,11 +14,12 @@ heuristic outputs, so intentional rule tweaks do not churn the suite:
 """
 
 import datetime
+import inspect
 from enum import Enum, IntEnum
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import pytest
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from pydantic.alias_generators import to_camel
 
 import stickler
@@ -392,6 +393,60 @@ class TestDumpKeepsEveryField:
         assert r.field_scores["inner"] < 1.0
         assert r.field_scores["items"] < 1.0
 
+    def test_excluded_field_in_a_dict_or_nested_list_is_compared(self):
+        class Inner(BaseModel):
+            total: Optional[float] = Field(default=None, exclude=True)
+
+        class Outer(BaseModel):
+            by_key: Dict[str, Inner] = {}
+            rows: List[List[Inner]] = []
+
+        gt = Outer(by_key={"a": Inner(total=1.0)}, rows=[[Inner(total=1.0)]])
+        pred = Outer(by_key={"a": Inner(total=99.0)}, rows=[[Inner(total=99.0)]])
+        r = stickler.evaluate(gt, pred)
+        assert r.field_scores["by_key"] < 1.0
+        assert r.field_scores["rows"] < 1.0
+
+    def test_excluded_field_on_a_structured_model_is_compared(self):
+        class S(StructuredModel):
+            name: str = ComparableField()
+            total: Optional[float] = Field(default=None, exclude=True)
+
+        r = stickler.evaluate(S(name="a", total=1.0), S(name="a", total=99.0))
+        assert r.overall_score < 1.0
+
+    def test_unserializable_excluded_field_does_not_abort(self):
+        class Blob:
+            pass
+
+        class M(BaseModel):
+            model_config = ConfigDict(arbitrary_types_allowed=True)
+            name: str
+            raw: Optional[Blob] = Field(default=None, exclude=True)
+
+        r = stickler.evaluate(M(name="a", raw=Blob()), M(name="a", raw=Blob()))
+        assert r.field_scores["name"] == pytest.approx(1.0)
+
+    def test_field_serializer_on_a_model_field_is_kept(self):
+        class Inner(BaseModel):
+            name: str
+
+        class Outer(BaseModel):
+            inner: Inner
+
+            @field_serializer("inner")
+            def _redact(self, inner):
+                return {"name": "redacted"}
+
+        r = stickler.evaluate(
+            Outer(inner=Inner(name="abc")), Outer(inner=Inner(name="xyz"))
+        )
+        assert r.overall_score == pytest.approx(1.0)
+
+    @pytest.mark.skipif(
+        "exclude_if" not in inspect.signature(Field).parameters,
+        reason="Field(exclude_if=) needs a newer pydantic",
+    )
     def test_exclude_if_field_is_compared(self):
         class M(BaseModel):
             note: Optional[str] = Field(

@@ -18,10 +18,11 @@ For a batch loop, compile once with :func:`eval_for` and reuse the returned
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List, Optional, Type, Union
 
-from pydantic import BaseModel
-from pydantic_core import to_jsonable_python
+from pydantic import BaseModel, PlainSerializer, RootModel, WrapSerializer
+from pydantic_core import PydanticSerializationError, to_jsonable_python
 
 from ..structured_object_evaluator.models.structured_model import StructuredModel
 from .builder import specs_for, structured_model_for
@@ -330,36 +331,83 @@ def _dump(instance: BaseModel) -> Dict[str, Any]:
     return _wire(instance)
 
 
-def _wire(value: Any) -> Any:
-    """Dump ``value`` keyed by field name, keeping every declared field.
+def _wire(value: Any, own_keys: bool = False) -> Any:
+    """Dump ``value`` in JSON form, keeping every declared field.
 
-    A ``StructuredModel`` validates back through its own class, so its own dump
-    round-trips. A plain model feeds a shadow model, which reads field names,
-    so ``by_alias=False`` overrides ``serialize_by_alias=True`` (#378). A field
-    the dump leaves out (``exclude=True``, ``exclude_if``) is still compared,
-    so it is rebuilt from the attribute rather than read as blank (#379). So
-    is any field holding a model, since a nested model can drop fields too.
+    A field the dump leaves out (``exclude=True``, ``exclude_if``) is blank on
+    both sides, and blank against blank scores as a match, so it is rebuilt
+    from the attribute (#379). So is a field holding a model, since a nested
+    model can drop fields too; that field is left out of the parent's dump
+    rather than serialized twice.
+
+    Keys: a plain model feeds a shadow model, which reads field names, so it
+    dumps with ``by_alias=False`` (#378). A ``StructuredModel`` validates
+    through its own classes, so it and everything under it (``own_keys``)
+    keep their own config's key spelling.
+
+    A field with its own serializer, a model with a ``model_serializer`` and a
+    ``RootModel`` keep pydantic's output: the author chose that wire form.
     """
-    if isinstance(value, StructuredModel):
-        return value.model_dump(mode="json")
     if isinstance(value, BaseModel):
-        out = value.model_dump(mode="json", by_alias=False)
-        for name in type(value).model_fields:
-            raw = getattr(value, name)
-            if name not in out or _holds_model(raw):
-                out[name] = _wire(raw)
+        own_keys = own_keys or isinstance(value, StructuredModel)
+        dump_kwargs = {} if own_keys else {"by_alias": False}
+        cls = type(value)
+        if (
+            isinstance(value, RootModel)
+            or cls.__pydantic_decorators__.model_serializers
+        ):
+            return value.model_dump(mode="json", **dump_kwargs)
+        rebuild = {
+            name
+            for name, field in cls.model_fields.items()
+            if _holds_model(getattr(value, name))
+            and not _has_field_serializer(cls, name, field)
+        }
+        out = value.model_dump(mode="json", exclude=rebuild or None, **dump_kwargs)
+        by_alias = own_keys and bool(cls.model_config.get("serialize_by_alias"))
+        for name, field in cls.model_fields.items():
+            key = (
+                (field.serialization_alias or field.alias or name) if by_alias else name
+            )
+            if name in rebuild:
+                out[key] = _wire(getattr(value, name), own_keys)
+            elif key not in out:
+                try:
+                    out[key] = _wire(getattr(value, name), own_keys)
+                except PydanticSerializationError:
+                    # A type pydantic cannot serialize could not be compared
+                    # anyway; excluding it is how such fields are usually kept
+                    # out of a dump, so leave it out rather than abort.
+                    pass
         return out
-    if isinstance(value, (list, tuple)) and _holds_model(value):
-        return [_wire(item) for item in value]
-    return to_jsonable_python(value, by_alias=False)
+    if not _holds_model(value):
+        return to_jsonable_python(value)
+    if isinstance(value, dict):
+        return {_json_key(k): _wire(v, own_keys) for k, v in value.items()}
+    return [_wire(item, own_keys) for item in value]
 
 
 def _holds_model(value: Any) -> bool:
     if isinstance(value, BaseModel):
         return True
-    return isinstance(value, (list, tuple)) and any(
-        isinstance(item, BaseModel) for item in value
-    )
+    if isinstance(value, dict):
+        return any(_holds_model(v) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_holds_model(item) for item in value)
+    return False
+
+
+def _has_field_serializer(cls: Type[BaseModel], name: str, field: Any) -> bool:
+    decorators = cls.__pydantic_decorators__.field_serializers.values()
+    return any(
+        name in d.info.fields or "*" in d.info.fields for d in decorators
+    ) or any(isinstance(m, (PlainSerializer, WrapSerializer)) for m in field.metadata)
+
+
+def _json_key(key: Any) -> str:
+    """Spell a mapping key the way ``model_dump(mode="json")`` does."""
+    key = to_jsonable_python(key)
+    return key if isinstance(key, str) else json.dumps(key)
 
 
 def _shared_class(gt: BaseModel, pred: BaseModel) -> Type[BaseModel]:
