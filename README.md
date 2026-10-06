@@ -477,7 +477,7 @@ Controls whether similarity scores below threshold are clipped to 0.0. Clipping 
 
 | Setting | Use Case | Effect |
 |---------|----------|--------|
-| `true` | Critical fields where partial matches are meaningless | Score is either threshold or 0.0 |
+| `true` | Critical fields where partial matches are meaningless | A score below threshold becomes 0.0 |
 | `false` | Fields where partial similarity has value | Preserves granular similarity information |
 
 **Example:**
@@ -664,22 +664,13 @@ result = ground_truth.compare_with(prediction)
 
 print(f"Overall Score: {result['overall_score']:.3f}")
 print(f"Invoice ID: {result['field_scores']['invoice_id']:.3f}")  # 1.000 - exact
-print(f"Customer: {result['field_scores']['customer_name']:.3f}")  # ~0.85 - close
-print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # ~1.0 - matched
+print(f"Customer: {result['field_scores']['customer_name']:.3f}")  # 0.562 - below its 0.8 threshold, unclipped because clip is false
+print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # 1.000 - reordered, still matched
 ```
 
 ### Quick Reference
 
-| Extension | Type | Default | Purpose |
-|-----------|------|---------|---------|
-| `x-aws-stickler-comparator` | string | Type-dependent | Comparison algorithm |
-| `x-aws-stickler-threshold` | number (0.0-1.0) | 0.5 or 1.0 | Match classification cutoff |
-| `x-aws-stickler-weight` | number (> 0.0) | 1.0 | Field importance multiplier |
-| `x-aws-stickler-clip-under-threshold` | boolean | false | Zero out low scores |
-| `x-aws-stickler-model-name` | string | "DynamicModel" | Generated class name |
-| `x-aws-stickler-match-threshold` | number (0.0-1.0) | 0.7 | Model-level threshold |
-| `x-aws-stickler-infer-unspecified` | boolean | false | Infer comparators for properties that name none (root level) |
-| `x-aws-stickler-comparator-config` | object | `{}` | Keyword arguments for the named comparator |
+Every extension, its default, and the default threshold for each field position are listed in [Evaluation: Extension Reference](docs/docs/Guides/Evaluation/README.md#extension-reference).
 
 ### Additional Resources
 

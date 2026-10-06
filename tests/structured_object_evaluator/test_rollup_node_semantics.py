@@ -152,7 +152,7 @@ _READS_FA_OFF_OVERALL = re.compile(
 def _authored_prose(repo_root: Path):
     """Every line this repo authors about the rollup nodes: (path, lineno, text).
 
-    `src/**/*.py` and `docs/**/*.md` are the surfaces a reader sees, and
+    `src/**/*.py`, `docs/**/*.md` and `README.md` are the surfaces a reader sees, and
     `tests/**/*.py` because a worked example in a test is the next person's copy
     source. `CHANGELOG.md` is included too, but only its NEWEST notes: older shipped
     release notes record what was said at the time and are not rewritten, while the
@@ -169,6 +169,7 @@ def _authored_prose(repo_root: Path):
         sorted(repo_root.glob("src/**/*.py"))
         + sorted(repo_root.glob("docs/**/*.md"))
         + sorted(repo_root.glob("tests/**/*.py"))
+        + [repo_root / "README.md"]
     ):
         if path == Path(__file__).resolve() or ".venv" in path.parts:
             continue
