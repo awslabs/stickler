@@ -4,10 +4,11 @@ This module provides utilities for converting JSON Schema properties to
 Pydantic Field instances with ComparableField functionality.
 """
 
-from typing import Any, Dict, List, Tuple, Type
+from typing import Any, Dict, List, Tuple, Type, get_args, get_origin
 
 from pydantic.fields import FieldInfo, PydanticUndefined
 
+from .configuration_helper import ConfigurationHelper
 from .optional_annotation import unwrap_optional
 
 # Bidirectional type mappings for export
@@ -36,6 +37,23 @@ PYTHON_TYPE_TO_STICKLER_TYPE = {
 _SAFE_EXPORT_FACTORIES = (list, dict, set)
 
 
+def _json_value(value: Any) -> Any:
+    """Return ``value`` in a form JSON can hold: a set becomes a list.
+
+    Both exporters write JSON, which has no set type, so a set default --
+    from ``default_factory=set`` or written as ``default={"a"}`` -- made
+    ``json.dumps()`` on the export raise ``TypeError: Object of type set is
+    not JSON serializable``. Sorted where the elements allow it, so an
+    exported file does not reorder between runs under hash randomisation.
+    """
+    if isinstance(value, (set, frozenset)):
+        try:
+            return sorted(value)
+        except TypeError:
+            return list(value)
+    return value
+
+
 def resolve_exportable_default(field_info: FieldInfo) -> Tuple[bool, Any]:
     """Return ``(True, value)`` to export, or ``(False, None)`` to omit the key.
 
@@ -43,34 +61,85 @@ def resolve_exportable_default(field_info: FieldInfo) -> Tuple[bool, Any]:
     ``_DEFAULT_UNSET`` handling) reports ``field_info.default is
     PydanticUndefined`` even though ``field_info.is_required()`` is False --
     the factory, not a static value, supplies each instance's default.
-    Exporting ``PydanticUndefined`` itself breaks both exporters: it is not
-    JSON serializable (``to_stickler_config()``), and a schema that omits the
-    key round-trips the field back as required (``to_json_schema()``), turning
-    an optional collection field into one every reader must supply
-    (awslabs/stickler#360).
+    Exporting ``PydanticUndefined`` itself is not JSON serializable, and
+    omitting the key rebuilt the field as required (``to_stickler_config()``)
+    or with ``None`` (``to_json_schema()``) (awslabs/stickler#360).
 
     For ``list``/``dict``/``set`` -- the factories ComparableField's own
     docstring recommends -- calling the factory to recover its produced value
     is safe and lets the exported ``"default": []`` round-trip correctly,
     which is what a reader of the exported config or schema expects. Any
     other factory returns ``(False, None)``: guessing at an arbitrary
-    callable's value would be worse than omitting the key.
+    callable's value would be worse than omitting the key. Matched by
+    identity, because ``in`` compares with ``==`` and would consult a
+    caller's factory object's own ``__eq__`` during an export.
 
-    A ``set`` is exported as a list, because JSON has no set type and both
-    destinations are JSON. Exporting the set itself reproduces exactly the
-    failure this function exists to remove, one value type over:
-    ``List[str] = ComparableField(default_factory=set)`` builds, and
-    ``json.dumps(model.to_stickler_config())`` then raises ``TypeError:
-    Object of type set is not JSON serializable``. The conversion is
-    unambiguous here because the factory is the builtin, called with no
-    arguments, so the value is always the empty set.
+    Either kind of value goes through :func:`_json_value`.
     """
     if field_info.default is not PydanticUndefined:
-        return True, field_info.default
-    if field_info.default_factory in _SAFE_EXPORT_FACTORIES:
-        value = field_info.default_factory()
-        return True, list(value) if isinstance(value, set) else value
+        return True, _json_value(field_info.default)
+    factory = field_info.default_factory
+    if any(factory is safe for safe in _SAFE_EXPORT_FACTORIES):
+        return True, _json_value(factory())
     return False, None
+
+
+def _exports_as_container(annotation: Any) -> bool:
+    """Whether both exporters write this annotation as a list or a mapping.
+
+    Those are the only exported types a factory's ``[]`` or ``{}`` fits.
+    Anything else exports as a scalar (``Set[str]`` included, as ``"str"``),
+    and a collection default written into a scalar field rebuilt a model
+    that rejected every value except its own default.
+    """
+    inner, _ = unwrap_optional(annotation)
+    return get_origin(inner) is list or ConfigurationHelper.is_mapping_annotation(inner)
+
+
+def add_exportable_default(
+    target: Dict[str, Any], field_info: FieldInfo, *, include_literal: bool = False
+) -> None:
+    """Set ``target["default"]`` to the field's exportable default, if it has one.
+
+    Every export branch calls this, so the rules live in one place: nothing
+    for a required field; a factory's value only where the exported type can
+    hold it (:func:`_exports_as_container`) and the factory is one
+    :func:`resolve_exportable_default` will call. A literal ``default=...`` is
+    written only with ``include_literal``: ``to_stickler_config()`` has always
+    exported it and ``to_json_schema()`` never has.
+    """
+    if field_info.is_required():
+        return
+    if field_info.default is PydanticUndefined:
+        if not _exports_as_container(field_info.annotation):
+            return
+    elif not include_literal:
+        return
+    has_default, value = resolve_exportable_default(field_info)
+    if has_default:
+        target["default"] = value
+
+
+def _mapping_value_type(annotation: Any) -> Any:
+    """The value type a mapping annotation names, or ``Any`` if it names none."""
+    args = get_args(annotation)
+    return args[1] if len(args) == 2 else Any
+
+
+def _stickler_mapping_type(annotation: Any) -> str:
+    """``Dict[str, int]`` for a mapping of named primitives, else ``dict``.
+
+    ``model_from_json`` resolves both spellings. A key or value type it cannot
+    be handed by name (a model, a nested container) falls back to ``dict``,
+    which keeps the field a mapping and drops only the per-value check.
+    """
+    names = [
+        "Any" if arg is Any else PYTHON_TYPE_TO_STICKLER_TYPE.get(arg)
+        for arg in get_args(annotation)
+    ]
+    if len(names) == 2 and all(names):
+        return f"Dict[{names[0]}, {names[1]}]"
+    return "dict"
 
 
 class JsonSchemaFieldConverter:
@@ -142,8 +211,21 @@ class JsonSchemaFieldConverter:
                 f"to_json_schema() instead of field_to_property()."
             )
 
-        json_type = PYTHON_TYPE_TO_JSON_TYPE.get(field_type, "string")
+        # A mapping exports as an object, not the "string" fallback below: as
+        # "string" it re-imported as `Optional[str]` and could not hold one.
+        # Object keys are strings in JSON, so only the value type is carried,
+        # and only when it is a primitive JSON has a name for.
+        is_mapping = ConfigurationHelper.is_mapping_annotation(field_type)
+        if is_mapping:
+            json_type = "object"
+        else:
+            json_type = PYTHON_TYPE_TO_JSON_TYPE.get(field_type, "string")
         property_schema = {"type": [json_type, "null"] if is_nullable else json_type}
+        if is_mapping:
+            value_type = PYTHON_TYPE_TO_JSON_TYPE.get(_mapping_value_type(field_type))
+            if value_type:
+                property_schema["additionalProperties"] = {"type": value_type}
+        add_exportable_default(property_schema, field_info)
 
         # Extract metadata and build extensions using consolidated helper
         metadata = self._extract_field_metadata(field_info)
@@ -177,7 +259,12 @@ class JsonSchemaFieldConverter:
         Returns:
             Stickler field config dict with type, comparator, threshold, etc.
         """
-        stickler_type = PYTHON_TYPE_TO_STICKLER_TYPE.get(field_type, "str")
+        # A mapping fell back to "str" here, so it rebuilt as a string field
+        # that could hold no mapping, including the `{}` its factory exports.
+        if ConfigurationHelper.is_mapping_annotation(field_type):
+            stickler_type = _stickler_mapping_type(field_type)
+        else:
+            stickler_type = PYTHON_TYPE_TO_STICKLER_TYPE.get(field_type, "str")
         field_config = {"type": stickler_type}
 
         # Extract metadata and build extensions using consolidated helper
@@ -189,16 +276,7 @@ class JsonSchemaFieldConverter:
 
         # Add Pydantic field params
         field_config["required"] = field_info.is_required()
-        if not field_info.is_required():
-            # See resolve_exportable_default: a default_factory field reports
-            # PydanticUndefined here even though it is optional. Writing that
-            # through verbatim broke json.dumps() on the exported config
-            # (awslabs/stickler#360); the helper substitutes the factory's
-            # own produced value for the safe cases and omits the key
-            # otherwise, rather than emitting something unserializable.
-            has_default, default_value = resolve_exportable_default(field_info)
-            if has_default:
-                field_config["default"] = default_value
+        add_exportable_default(field_config, field_info, include_literal=True)
         if field_info.description:
             field_config["description"] = field_info.description
         if field_info.alias:

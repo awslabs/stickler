@@ -62,11 +62,9 @@ class TestPep563:
         the substitution and made the rebuilt model raise on a dict the original
         scored fine. Now the comparator survives the trip.
 
-        The ANNOTATION does not: a dict field exports as `type: "string"` and
-        re-imports as `Optional[str]`, so the rebuilt model cannot hold a mapping.
-        That is pre-existing (identical on dev, which also exports `"string"`) and
-        is tracked separately; asserting it here so the gap is recorded rather
-        than mistaken for this work.
+        So does the mapping. The field used to export as `type: "string"` and
+        re-import as `Optional[str]`, which could not hold one; it now exports as
+        an object and re-imports as a mapping (#360).
         """
         class M(StructuredModel):
             v: Dict[str, Any] = ComparableField()
@@ -78,8 +76,7 @@ class TestPep563:
         info = rebuilt._get_comparison_info("v")
         assert type(info.comparator).__name__ == "ANLSStarComparator"
         assert info.clip_under_threshold is False
-        # the known gap
-        assert rebuilt.model_fields["v"].annotation is not Dict[str, Any]
+        assert rebuilt(v={"a": 1}).v == {"a": 1}
 
     def test_an_explicit_clip_choice_survives(self):
         class Stated(StructuredModel):

@@ -60,9 +60,24 @@ Each release links to full notes on the
   the in-process round trip rebuilt the field as required; `to_json_schema()` dropped
   the default instead, so `from_json_schema()` gave back `None` where the author
   wrote `default_factory=list` and the failure surfaced at the first `.append()`.
-  Both now emit the value the factory produces, for `list`, `dict` and `set`. A set
-  is emitted as a list, because JSON has no set type. Any other factory is left
-  unexported rather than called during an export.
+  Both now emit the value the factory produces, for `list`, `dict` and `set`, on a
+  field exported as a list or a mapping. A field exported as a scalar (`Set[str]` is
+  written as `"str"`) gets no default rather than one its rebuilt type rejects. Any
+  other factory is left unexported rather than called during an export. A set
+  default, from a factory or written literally, is emitted as a list, because JSON
+  has no set type. `to_stickler_config()` also writes `required` on a
+  `List[StructuredModel]` field now; without it a required list rebuilt as optional.
+
+- **A mapping field exports as a mapping.** `to_json_schema()` wrote a `Dict[...]`
+  field as `"type": "string"` and `to_stickler_config()` as `"type": "str"`, so the
+  rebuilt model rejected every mapping, including the `{}` its own
+  `default_factory=dict` exported. They now write `"type": "object"`, with
+  `additionalProperties` for a primitive value type, and `"Dict[str, str]"`, or
+  `"dict"` when a key or value type has no config name. Through JSON Schema the
+  field rebuilds as `dict`, without the value type. `List[Dict[...]]` items are not
+  covered and still export as `"string"` (see
+  [#333](https://github.com/awslabs/stickler/issues/333))
+  ([#306](https://github.com/awslabs/stickler/issues/306))
 
 ## [1.0.0] - 2026-09-11
 
