@@ -82,8 +82,10 @@ report, which is what `report_cls=StructuredOutputReport` is for:
   `report.metrics().field_metrics`.
 
 A rollup covers one schema, so give each output type its own `Experiment`: a case whose
-value belongs to another schema scores 0 and fails rather than being skipped. Because the
-detail is on the report and not on the evaluator, it survives a round trip through JSON —
+value belongs to another schema scores 0 and fails rather than dropping out of the dataset
+mean as not-applicable. It carries no field detail, so it is absent from both rollups
+above — `report.scores` is where you see it. Because the detail is on the report and not on
+the evaluator, it survives a round trip through JSON —
 `StructuredOutputReport.from_file(path).metrics()` rolls up a saved report. Reading it
 back through `EvaluationReport` gives the base class, which has no rollups.
 
@@ -189,7 +191,17 @@ evaluator, why a rollup covers one schema) live with the evaluator in that PR.
 Two rough edges to know while it is unreleased. `Experiment.to_dict` keeps only cases and
 evaluators, so a reloaded experiment and the `strands-evals run` CLI both write the base
 `EvaluationReport`; read their JSON back through `StructuredOutputReport` to roll it up. And
-`EvaluationReport.to_file` is a plain `json.dump` over the cases, so a model with a
-`datetime.date` field raises `Object of type date is not JSON serializable` — annotate the
-field as `str`, or keep the report in memory. Both are harness limitations rather than the
-evaluator's.
+`to_file` serialises with `json.dump` rather than pydantic, on both the report and the
+experiment, so a model with a `datetime.date` field raises `Object of type date is not JSON
+serializable`. Write it through pydantic instead, which keeps the annotation and reloads
+normally:
+
+```python
+path.write_text(report.model_dump_json())
+StructuredOutputReport.from_file(path).metrics()
+```
+
+Re-annotating the date as `str` also sidesteps it, but do not: the inferred comparator falls
+from `DateComparator` at threshold 0.95 to `LevenshteinComparator` at 0.7, so a date wrong by
+a month scores 0.9 and the document passes where the date-typed model scores it 0.0 and
+fails. Both edges are harness limitations rather than the evaluator's.
