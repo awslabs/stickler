@@ -306,14 +306,17 @@ ComparableField(
     threshold=0.7,                       # similarity threshold, 0.0-1.0 (default: 0.5)
     weight=1.0,                          # field weight for overall score (default: 1.0)
     clip_under_threshold=True,           # zero out scores below threshold (default: True)
-    default=None,                        # field default; setting one does not make the field
-                                         # required — is_required() is False either way, so a
-                                         # missing prediction scores rather than failing validation
+    default=None,                        # field default (None if omitted without default_factory);
+                                         # setting one does not make the field required —
+                                         # is_required() is False either way, so a missing
+                                         # prediction scores rather than failing validation
 )
 ```
 
-`ComparableField` passes any other keyword through to Pydantic's `Field`, so a name it does not
-recognize is accepted without error and has no effect on comparison.
+`default_factory` is honored, for a mutable default such as `default_factory=list`. Combining
+it with `default` raises, as in Pydantic. `ComparableField` passes any other keyword through to
+Pydantic's `Field`, so a name it does not recognize is accepted without error and has no effect
+on comparison.
 
 Available comparators:
 

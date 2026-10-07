@@ -19,6 +19,25 @@ from stickler.comparators.levenshtein import LevenshteinComparator
 _LEGACY_DEFAULT_THRESHOLD = 0.5
 
 
+class _Unset:
+    """Type of ``_DEFAULT_UNSET``, so the signature shows ``unset``."""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "unset"
+
+
+# Distinguishes "caller omitted default" from "caller passed default=None".
+# Only the pairing with default_factory needs the distinction: pydantic rejects
+# the two together, so an omitted default must not be forwarded, while one the
+# caller actually wrote must be, or supplying both would silently drop it
+# instead of raising. Comparing against None cannot tell the two apart. An
+# instance of a class rather than a bare object(), whose repr made
+# inspect.signature() and help() show `default: Any = <object object at 0x...>`.
+_DEFAULT_UNSET: Any = _Unset()
+
+
 def _named_comparator_threshold(comparator: BaseComparator) -> Optional[float]:
     """Return the comparator's threshold if the caller named one, else ``None``.
 
@@ -58,7 +77,7 @@ def ComparableField(
     comparator: Optional[BaseComparator] = None,
     threshold: Optional[float] = None,
     weight: float = 1.0,
-    default: Any = None,
+    default: Any = _DEFAULT_UNSET,
     *,
     clip_under_threshold: Optional[bool] = None,
     # Pydantic Field parameters (all optional, just like Field)
@@ -90,7 +109,10 @@ def ComparableField(
                       # 0.5. A comparator's *default* threshold is not adopted;
                       # see _named_comparator_threshold for why.
         weight: Weight of this field in overall score calculation (default: 1.0)
-        default: Default value for the field (default: None)
+        default: Default value for the field (default: unset, which means
+                 None, or what ``default_factory`` returns if one is given).
+                 Pass ``default_factory`` instead for a mutable default such
+                 as a list or dict; supplying both raises, as in plain pydantic.
         clip_under_threshold: Whether to zero out scores below threshold
                   (effective default: True). ``None`` means "not specified",
                   which lets a dict-annotated field default it to False so
@@ -225,9 +247,29 @@ def ComparableField(
         k: v for k, v in field_kwargs.items() if k != "json_schema_extra"
     }
 
+    # Pydantic rejects default and default_factory together. Forward our own
+    # default only when the caller did not supply a factory; an explicitly
+    # written default still goes through, so supplying both raises there
+    # rather than being silently dropped here. An omitted default stays None,
+    # which the schema generator reads as a construction-tolerance sentinel
+    # rather than as a real default.
+    #
+    # Testing the VALUE, not just presence: None is pydantic's own signature
+    # default for default_factory (a bare FieldInfo with no factory reports
+    # default_factory=None, not absence), so a caller that forwards kwargs
+    # through -- e.g. copying an existing field's default_factory -- can pass
+    # it explicitly without meaning anything by it. `"default_factory" in
+    # clean_field_kwargs` would read that as "a real factory was supplied"
+    # and drop our default, silently turning an optional field required
+    # (awslabs/stickler#360).
+    if clean_field_kwargs.get("default_factory") is not None:
+        default_kwarg = {} if default is _DEFAULT_UNSET else {"default": default}
+    else:
+        default_kwarg = {"default": None if default is _DEFAULT_UNSET else default}
+
     # Create the Field
     field = Field(
-        default=default,
+        **default_kwarg,
         alias=alias,
         description=description,
         examples=examples,
