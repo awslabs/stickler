@@ -18,12 +18,24 @@ from stickler.comparators.levenshtein import LevenshteinComparator
 # not a meaningful default, it is the historical one.
 _LEGACY_DEFAULT_THRESHOLD = 0.5
 
+
+class _Unset:
+    """Type of ``_DEFAULT_UNSET``, so the signature shows ``unset``."""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "unset"
+
+
 # Distinguishes "caller omitted default" from "caller passed default=None".
 # Only the pairing with default_factory needs the distinction: pydantic rejects
 # the two together, so an omitted default must not be forwarded, while one the
 # caller actually wrote must be, or supplying both would silently drop it
-# instead of raising. Comparing against None cannot tell the two apart.
-_DEFAULT_UNSET: Any = object()
+# instead of raising. Comparing against None cannot tell the two apart. An
+# instance of a class rather than a bare object(), whose repr made
+# inspect.signature() and help() show `default: Any = <object object at 0x...>`.
+_DEFAULT_UNSET: Any = _Unset()
 
 
 def _named_comparator_threshold(comparator: BaseComparator) -> Optional[float]:
@@ -97,9 +109,10 @@ def ComparableField(
                       # 0.5. A comparator's *default* threshold is not adopted;
                       # see _named_comparator_threshold for why.
         weight: Weight of this field in overall score calculation (default: 1.0)
-        default: Default value for the field (default: None). Omit it and pass
-                 ``default_factory`` instead for a mutable default such as a
-                 list or dict; supplying both raises, as in plain pydantic.
+        default: Default value for the field (default: unset, which means
+                 None, or what ``default_factory`` returns if one is given).
+                 Pass ``default_factory`` instead for a mutable default such
+                 as a list or dict; supplying both raises, as in plain pydantic.
         clip_under_threshold: Whether to zero out scores below threshold
                   (effective default: True). ``None`` means "not specified",
                   which lets a dict-annotated field default it to False so
