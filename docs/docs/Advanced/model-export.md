@@ -97,11 +97,12 @@ schema = Product.to_json_schema()
 
 The export is complete, not minimal: every field carries its weight, clip flag, and comparator
 configuration even where those were left at their defaults, and the root carries its match
-threshold. Re-importing an export preserves comparison settings. Note that a required field is
-currently re-imported as nullable ([#189](https://github.com/awslabs/stickler/issues/189)).
-`price` has no `x-aws-stickler-comparator-config` only because
+threshold. `price` has no `x-aws-stickler-comparator-config` only because
 `NumericComparator()` was constructed with no arguments to record. Fields declared `Optional` export
 as `{"type": ["string", "null"]}`; see [Optional fields and `null`](dynamic-models.md#optional-fields-and-null).
+Re-importing an export preserves comparison settings. A field that is not required (a bare `T`
+without `default=...`) is currently re-imported as nullable `Optional[T]`
+([#189](https://github.com/awslabs/stickler/issues/189)).
 
 ## to_stickler_config()
 
