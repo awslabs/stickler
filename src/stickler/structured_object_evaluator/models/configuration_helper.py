@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, get_args, get_origin
 
 from pydantic import BaseModel
 
+from stickler.algorithms.hungarian import filling_cost_matrix
 from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.utils.deprecation import warn_once
@@ -537,8 +538,15 @@ class ConfigurationHelper:
         declared treatment of a multi-arm union.
 
         ``warn=False`` gives the same verdict silently; see
-        :meth:`can_score_object`.
+        :meth:`can_score_object`. The gate is also silent while a Hungarian cost
+        matrix is being filled, whatever ``warn`` says. ``compare()`` is the cost
+        function for a list of ``StructuredModel`` rows, and it reaches this gate
+        for a nested field of every cell, including the cells the matcher
+        discards. Warning there reported mismatches for pairs nothing was decided
+        from and spent ``warn_once`` before the real one arrived (#336). The
+        selected pairs are judged again afterwards, outside the matrix.
         """
+        warn = warn and not filling_cost_matrix()
         if not ConfigurationHelper.values_are_same_model_class(
             model_cls, field_name, gt_val, pred_val, warn=warn
         ):
