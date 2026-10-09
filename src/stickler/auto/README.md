@@ -139,6 +139,28 @@ affect scores. Both `model_dump()` (native `date`/`Decimal`/`set` objects) and
 `model_dump(mode="json")` (already-serialized) validate and score identically,
 so `Model.from_json(instance.model_dump())` is safe either way.
 
+A field the shadow model cannot read is blank on both sides, and blank against
+blank scores as a match. `evaluate()` keeps pydantic's own dump, so serializers
+and `ser_json_*` config apply as usual, then walks it beside the instance and
+fixes two things:
+
+- A plain model's alias keys (`serialize_by_alias=True`) are renamed to field
+  names, which the shadow model reads
+  ([#378](https://github.com/awslabs/stickler/issues/378)). A `StructuredModel`
+  and everything under it keep their keys, since they validate through their
+  own config.
+- A field marked `exclude=True` or `exclude_if` is dumped from its annotation and
+  added back, at any depth, including inside lists, sets and dicts
+  ([#379](https://github.com/awslabs/stickler/issues/379)). Annotated
+  serializers and the parent's `ser_json_*` settings apply to it; a
+  `@field_serializer` does not. One that fails to dump stays out, as before.
+  `StructuredModel.extra_fields` is the engine's own and is never added.
+
+The walk does not enter a `RootModel`, a `model_serializer`, anything a
+serializer produced, or a container whose length changed, since that output no
+longer lines up with the instance; it is kept as is. A field whose annotation
+cannot hold a model (`List[float]`) is not walked at all.
+
 `dict` is the exception, and deliberately so. It keeps its shape rather than
 being flattened to a string, because ANLS\* scores it structurally and cannot do
 that with a JSON blob. Keys and values are still normalized (so a
