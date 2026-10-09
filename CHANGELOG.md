@@ -47,6 +47,16 @@ Each release links to full notes on the
   Keyed on the leaf name alone, the first model built in a process silenced every
   later one carrying the same typo.
 
+- **The class gate on a nested field no longer warns about pairs the matcher
+  discarded.** `compare()` is the cost function for a list of `StructuredModel`
+  rows, and it reached the gate for every cell of the cost matrix. An all-correct
+  `List[Holder]` scored `1.0` with `tp=2` and still warned that a `Cat` had been
+  compared against a `Dog`, and because `warn_once` spends one message per field,
+  the real `Cat`-vs-`Dog` pair that followed warned nothing. The gate is now silent
+  while a cost matrix is being filled, and the selected pairs, which are scored
+  again through `compare_with`, carry the warning. Scores and counts are unchanged
+  ([#336](https://github.com/awslabs/stickler/issues/336))
+
 ## [1.0.0] - 2026-09-11
 
 ### Added
