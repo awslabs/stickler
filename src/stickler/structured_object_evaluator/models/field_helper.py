@@ -2,6 +2,8 @@
 
 from typing import Any, List, Type
 
+from .null_helper import NullHelper
+
 
 class FieldHelper:
     """Helper class for field iteration and classification patterns."""
@@ -32,7 +34,7 @@ class FieldHelper:
         Returns:
             True if the value is null/empty, False otherwise
         """
-        if value is None:
+        if value is None or NullHelper.is_nan(value):
             return True
         elif hasattr(value, "__len__") and not isinstance(
             value, (str, bytes, bytearray)

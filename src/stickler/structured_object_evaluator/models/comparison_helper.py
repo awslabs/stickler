@@ -165,7 +165,11 @@ def _maybe_absent(val: Any) -> bool:
     ``test_maybe_absent_is_a_superset_of_both_null_rules`` pins that property so
     adding a case to either predicate without widening this one fails loudly.
     """
-    return val is None or (isinstance(val, (str, list, dict)) and len(val) == 0)
+    return (
+        val is None
+        or NullHelper.is_nan(val)
+        or (isinstance(val, (str, list, dict)) and len(val) == 0)
+    )
 
 
 class ComparisonHelper:
