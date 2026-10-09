@@ -16,7 +16,18 @@ heuristic outputs, so intentional rule tweaks do not churn the suite:
 import datetime
 import inspect
 from enum import Enum, IntEnum
-from typing import Annotated, Any, Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import (
+    Annotated,
+    Any,
+    Dict,
+    FrozenSet,
+    List,
+    Literal,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import pytest
 from pydantic import (
@@ -532,6 +543,130 @@ class TestDumpKeepsEveryField:
             stickler.evaluate(
                 M.model_construct(inner=Inner()), M.model_construct(inner=Inner())
             )
+
+    def test_an_alias_that_is_another_fields_name_does_not_collide(self):
+        class M(BaseModel):
+            model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+            b: str = Field(alias="c")
+            a: str = Field(alias="b")
+
+        m = M.model_validate({"c": "B", "b": "A"})
+        assert (m.b, m.a) == ("B", "A")
+        assert m.model_dump(mode="json") == {"c": "B", "b": "A"}
+        assert _dump(m) == {"b": "B", "a": "A"}
+
+    def test_an_excluded_value_that_fails_to_dump_stays_out(self):
+        class M(BaseModel):
+            model_config = ConfigDict(ser_json_bytes="base64")
+            name: str
+            data: bytes = Field(default=b"", exclude=True)
+
+        assert "data" in _dump(M(name="a", data=b"ok"))
+        r = stickler.evaluate(M(name="a", data=b"\xff\xfe"), M(name="a"))
+        assert r.field_scores["name"] == pytest.approx(1.0)
+
+    def test_an_excluded_unserializable_model_stays_out(self):
+        class Handle:
+            pass
+
+        class Inner(BaseModel):
+            model_config = ConfigDict(arbitrary_types_allowed=True)
+            h: Handle
+
+        class Doc(BaseModel):
+            name: str
+            meta: Optional[Inner] = Field(default=None, exclude=True)
+
+        d = Doc(name="a", meta=Inner(h=Handle()))
+        assert stickler.evaluate(d, d).overall_score == pytest.approx(1.0)
+
+    def test_an_excluded_field_keeps_the_parents_ser_json_config(self):
+        class M(BaseModel):
+            model_config = ConfigDict(ser_json_timedelta="float")
+            t: datetime.timedelta = Field(exclude=True)
+
+        assert _dump(M(t=datetime.timedelta(seconds=5)))["t"] == 5.0
+
+    def test_a_serializer_inside_optional_is_not_walked(self):
+        """A serializer that reorders a list breaks the positional pairing."""
+
+        class Inner(BaseModel):
+            name: str
+            total: Optional[float] = Field(default=None, exclude=True)
+
+        by_name = PlainSerializer(
+            lambda v: [{"name": i.name} for i in sorted(v, key=lambda i: i.name)]
+        )
+
+        class M(BaseModel):
+            items: Optional[Annotated[List[Inner], by_name]] = None
+
+        dumped = _dump(M(items=[Inner(name="z", total=1), Inner(name="a", total=2)]))
+        assert dumped["items"] == [{"name": "a"}, {"name": "z"}]
+
+    def test_an_excluded_fields_own_serializer_output_is_not_refilled(self):
+        class Inner(BaseModel):
+            name: str
+            total: Optional[float] = Field(default=None, exclude=True)
+
+        redact = PlainSerializer(lambda v: {"name": "redacted"})
+
+        class M(BaseModel):
+            x: Optional[Annotated[Inner, redact]] = Field(default=None, exclude=True)
+
+        assert _dump(M(x=Inner(name="a", total=5.0)))["x"] == {"name": "redacted"}
+
+    def test_excluded_field_inside_a_frozenset_is_compared(self):
+        class F(BaseModel):
+            model_config = ConfigDict(frozen=True)
+            name: str
+            total: Optional[float] = Field(default=None, exclude=True)
+
+        class M(BaseModel):
+            s: FrozenSet[F]
+
+        r = stickler.evaluate(
+            M(s=frozenset({F(name="a", total=1.0)})),
+            M(s=frozenset({F(name="a", total=99.0)})),
+        )
+        assert r.overall_score < 1.0
+
+    def test_structured_model_extra_fields_are_not_dumped(self):
+        class S(StructuredModel):
+            name: str = ComparableField()
+
+        class Outer(BaseModel):
+            s: S
+
+        a = S.from_json({"name": "x", "zzz": 1})
+        assert "extra_fields" not in _dump(a)
+        assert "extra_fields" not in _dump(Outer(s=a))["s"]
+        assert S.from_json(_dump(a)).extra_fields == {"zzz": 1}
+
+    def test_a_field_that_cannot_hold_a_model_is_not_walked(self):
+        from stickler.auto.facade import _field_plan
+
+        class M(BaseModel):
+            values: List[float]
+            meta: Dict[str, Any] = {}
+
+        plan = {entry.name: entry.descend for entry in _field_plan(M)}
+        assert plan == {"values": False, "meta": True}
+
+    def test_the_dump_caches_do_not_keep_classes_alive(self):
+        import gc
+        import weakref
+
+        from pydantic import create_model
+
+        Dyn = create_model(
+            "Dyn", name=(str, ...), total=(float, Field(1.0, exclude=True))
+        )
+        _dump(Dyn(name="a"))  # fills both the plan and the adapter cache
+        ref = weakref.ref(Dyn)
+        del Dyn
+        gc.collect()
+        assert ref() is None
 
     @pytest.mark.skipif(
         "exclude_if" not in inspect.signature(Field).parameters,

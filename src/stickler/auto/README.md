@@ -150,14 +150,16 @@ fixes two things:
   and everything under it keep their keys, since they validate through their
   own config.
 - A field marked `exclude=True` or `exclude_if` is dumped from its annotation and
-  added back, at any depth
+  added back, at any depth, including inside lists, sets and dicts
   ([#379](https://github.com/awslabs/stickler/issues/379)). Annotated
-  serializers apply to it; a `@field_serializer` does not. One pydantic cannot
-  serialize stays out.
+  serializers and the parent's `ser_json_*` settings apply to it; a
+  `@field_serializer` does not. One that fails to dump stays out, as before.
+  `StructuredModel.extra_fields` is the engine's own and is never added.
 
-The walk stops where the dump no longer has the instance's shape (a
-`RootModel`, a `model_serializer`, a field serializer), and that output is kept
-as is.
+The walk does not enter a `RootModel`, a `model_serializer`, anything a
+serializer produced, or a container whose length changed, since that output no
+longer lines up with the instance; it is kept as is. A field whose annotation
+cannot hold a model (`List[float]`) is not walked at all.
 
 `dict` is the exception, and deliberately so. It keeps its shape rather than
 being flattened to a string, because ANLS\* scores it structurally and cannot do
