@@ -58,12 +58,17 @@ uv run --frozen python docs/check_links.py
 uv run --frozen pytest tests/test_docs_build.py
 ```
 
-The checker fails on MkDocs warnings and errors, including awesome-nav failures,
-missing pages/images/anchors, and unrecognized or absolute links. Existing griffe
-and autorefs warnings remain visible without failing the check; their errors
-still fail. External URLs are not fetched. The read-only `docs-check.yml` workflow
+The checker fails on logged MkDocs warnings and errors, including awesome-nav
+failures, orphan pages, missing pages/images/anchors, broken API references, and
+unrecognized or absolute links. It tolerates only the nine existing griffe/autorefs
+warnings identified by logger, message and source location in `check_links.py`.
+They remain visible; changed messages/locations and all errors fail. Python
+warnings such as `DeprecationWarning` are not routed into the gate. External URLs
+are not fetched. Run `make check` from this directory for the same gate.
+The read-only `docs-check.yml` workflow
 runs for documentation, source, dependency, or checker-workflow changes and never
-deploys the site. It installs only the docs group; the regular test workflow runs
+deploys the site. Its `uv run --only-group docs` installs the docs group without
+installing the project; the regular test workflow runs
 the checker's tests.
 
 ## Deployment
@@ -85,4 +90,4 @@ Automatic deployment is configured in `.github/workflows/docs.yml`. The workflow
 
 ---
 
-> **Note**: A `Makefile` is provided for convenience with targets: `install`, `docs`, `build`, `deploy`, and `clean`.
+> **Note**: A `Makefile` is provided for convenience with targets: `install`, `docs`, `build`, `check`, `deploy`, and `clean`.

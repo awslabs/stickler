@@ -3,12 +3,16 @@
 import logging
 import re
 import runpy
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
-import yaml
+
+yaml = pytest.importorskip("yaml")
+pytest.importorskip("mkdocs")
+pytest.importorskip("mkdocs_awesome_nav")
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD_COMMAND = [sys.executable, str(ROOT / "docs" / "check_links.py")]
@@ -100,16 +104,54 @@ def test_missing_navigation_target_fails(docs_project):
 
 
 @pytest.mark.parametrize(
-    "logger_name",
-    ["mkdocs.plugins.griffe", "mkdocs.plugins.mkdocs_autorefs._internal.plugin"],
+    ("logger_name", "message"),
+    [
+        (
+            "mkdocs.plugins.griffe",
+            "src/stickler/structured_object_evaluator/bulk_structured_model_evaluator.py:965: No type or annotation for parameter 'df'",
+        ),
+        (
+            "mkdocs.plugins.griffe",
+            "src/stickler/structured_object_evaluator/models/structured_model.py:1842: No type or annotation for parameter '**kwargs'",
+        ),
+        (
+            "mkdocs.plugins.griffe",
+            "src/stickler/structured_object_evaluator/models/structured_model.py:1845: No type or annotation for returned value 1",
+        ),
+        (
+            "mkdocs.plugins.griffe",
+            "src/stickler/structured_object_evaluator/models/comparable_field.py:102: No type or annotation for parameter '**field_kwargs'",
+        ),
+        (
+            "mkdocs.plugins.griffe",
+            "src/stickler/structured_object_evaluator/models/comparable_field.py:105: No type or annotation for returned value 1",
+        ),
+        (
+            "mkdocs.plugins.griffe",
+            "src/stickler/structured_object_evaluator/models/field.py:51: No type or annotation for parameter '**kwargs'",
+        ),
+        *[
+            (
+                "mkdocs.plugins.mkdocs_autorefs._internal.plugin",
+                f"API-Reference/models.md: from /checkout/src/stickler/structured_object_evaluator/models/structured_model.py:262: (stickler.structured_object_evaluator.models.structured_model.StructuredModel) Could not find cross-reference target ''{target}''",
+            )
+            for target in ("tp", "fd", "derived")
+        ],
+    ],
 )
-def test_unrelated_warning_remains_visible_without_failing(docs_project, logger_name):
+@pytest.mark.parametrize("separator", ["/", "\\"])
+def test_known_warning_remains_visible_without_failing(
+    docs_project, logger_name, message, separator
+):
+    prefix = "griffe" if logger_name == "mkdocs.plugins.griffe" else "mkdocs_autorefs"
+    message = f"{prefix}: {message}"
+    message = message.replace("/", separator)
     result = docs_project(
         hook="import logging\n"
         "def on_pre_build(**kwargs):\n"
-        f"    logging.getLogger({logger_name!r}).warning('existing API warning')\n"
+        f"    logging.getLogger({logger_name!r}).warning({message!r})\n"
     )
-    assert "existing API warning" in result.stdout + result.stderr
+    assert message in result.stdout + result.stderr
     assert result.returncode == 0, result.stdout + result.stderr
 
 
@@ -129,6 +171,8 @@ def test_awesome_nav_failures_are_fatal(docs_project, tmp_path, nav):
     ("logger_name", "level"),
     [
         ("mkdocs.plugins.future", "warning"),
+        ("mkdocs.plugins.griffe", "warning"),
+        ("mkdocs.plugins.mkdocs_autorefs._internal.plugin", "warning"),
         ("mkdocs.plugins.future", "error"),
         ("mkdocs.plugins.griffe_unrelated", "warning"),
         ("mkdocs.plugins.griffe", "error"),
@@ -215,3 +259,136 @@ def test_pr_workflow_only_builds_with_read_permissions():
         if "uses" in step:
             assert re.fullmatch(r"[\w/-]+@[0-9a-f]{40}", step["uses"])
     assert steps[0]["with"]["persist-credentials"] == "false"
+
+
+def test_omitted_page_fails(docs_project):
+    result = docs_project(extra_config={"nav": [{"Home": "index.md"}]})
+    output = result.stdout + result.stderr
+    assert "other page.md" in output and 'not included in the "nav"' in output
+    assert result.returncode != 0, output
+
+
+@pytest.mark.parametrize("content", [None, "nav: ["])
+def test_configuration_error_is_concise(tmp_path, content):
+    config = tmp_path / "bad.yml"
+    if content is not None:
+        config.write_text(content, encoding="utf-8")
+    result = subprocess.run(
+        [*BUILD_COMMAND, "-f", str(config)], capture_output=True, text=True, timeout=60
+    )
+    assert result.returncode != 0
+    assert "bad.yml" in result.stderr
+    assert "Traceback" not in result.stderr, result.stderr
+
+
+@pytest.mark.parametrize(
+    "logger_name,level,message",
+    [
+        (
+            "mkdocs.plugins.griffe",
+            "warning",
+            "griffe: src/stickler/new.py:51: No type or annotation for parameter '**kwargs'",
+        ),
+        (
+            "mkdocs.plugins.griffe",
+            "error",
+            "griffe: src/stickler/structured_object_evaluator/models/field.py:51: No type or annotation for parameter '**kwargs'",
+        ),
+        (
+            "mkdocs.plugins.mkdocs_autorefs._internal.plugin",
+            "warning",
+            "mkdocs_autorefs: API-Reference/models.md: from /checkout/src/stickler/structured_object_evaluator/models/structured_model.py:263: (stickler.structured_object_evaluator.models.structured_model.StructuredModel) Could not find cross-reference target ''tp''",
+        ),
+    ],
+)
+def test_warning_exemptions_do_not_spread(docs_project, logger_name, level, message):
+    result = docs_project(
+        hook="import logging\n"
+        "def on_pre_build(**kwargs):\n"
+        f"    logging.getLogger({logger_name!r}).{level}({message!r})\n"
+    )
+    assert message in result.stderr
+    assert result.returncode != 0, result.stderr
+
+
+def test_python_deprecation_warning_is_not_a_mkdocs_diagnostic(docs_project):
+    result = docs_project(
+        hook="import warnings\n"
+        "def on_pre_build(**kwargs):\n"
+        "    warnings.simplefilter('always', DeprecationWarning)\n"
+        "    warnings.warn('fixture deprecation', DeprecationWarning)\n"
+    )
+    assert "fixture deprecation" in result.stderr
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "fault,from_docs",
+    [
+        (None, False),
+        ("guide-reference", False),
+        ("docstring-reference", False),
+        ("known-target-elsewhere", False),
+        ("orphan", False),
+        (None, True),
+        ("guide-reference", True),
+    ],
+)
+def test_real_site_review_cases(tmp_path, fault, from_docs):
+    pytest.importorskip("material")
+    pytest.importorskip("mkdocstrings")
+    pytest.importorskip("pymdownx")
+    shutil.copytree(
+        ROOT / "docs",
+        tmp_path / "docs",
+        ignore=shutil.ignore_patterns("site", "__pycache__"),
+    )
+    shutil.copytree(
+        ROOT / "src", tmp_path / "src", ignore=shutil.ignore_patterns("__pycache__")
+    )
+    pages = tmp_path / "docs" / "docs"
+    expected = "stickler.DoesNotExist"
+    if fault in ("guide-reference", "known-target-elsewhere"):
+        page = pages / "Guides" / "Document_Packet_Splitting.md"
+        expected = "tp" if fault == "known-target-elsewhere" else expected
+        with page.open("a", encoding="utf-8") as stream:
+            stream.write(f"\nSee [Nope][{expected}].\n")
+    elif fault == "docstring-reference":
+        source = (
+            tmp_path
+            / "src/stickler/structured_object_evaluator/models/structured_model.py"
+        )
+        source.write_text(
+            source.read_text(encoding="utf-8").replace(
+                "Base class for models with structured comparison capabilities.",
+                "Base class for models with structured comparison capabilities. See [Nope][stickler.DoesNotExist].",
+            ),
+            encoding="utf-8",
+        )
+    elif fault == "orphan":
+        expected = "review-orphan.md"
+        (pages / "Guides" / expected).write_text("# Orphan\n", encoding="utf-8")
+    result = subprocess.run(
+        [
+            *BUILD_COMMAND,
+            "-f",
+            str(tmp_path / "docs/mkdocs.yml"),
+            "-d",
+            str(tmp_path / "site"),
+        ],
+        cwd=tmp_path / "docs" if from_docs else tmp_path,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=90,
+    )
+    output = result.stdout + result.stderr
+    if fault:
+        assert expected in output, output
+        assert result.returncode != 0, output
+    else:
+        assert result.returncode == 0, output
+        assert output.count("WARNING - griffe:") == 6, output
+        assert output.count("WARNING - mkdocs_autorefs:") == 3, output
+        assert 'not included in the "nav"' not in output, output

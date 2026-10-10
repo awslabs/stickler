@@ -14,6 +14,10 @@ CI/CD workflows for the Stickler project.
 
 ## Conventions
 
+`Check Documentation` must remain a non-required check: its path filter means
+unrelated PRs do not report a status. Making it required would leave those PRs
+waiting indefinitely.
+
 - **SHA pinning**: all `uses:` references are pinned to full 40-character
   commit SHAs with a trailing `# vX.Y.Z` comment (supply-chain hardening;
   mutable tags can be repointed). Dependabot (`.github/dependabot.yml`)
