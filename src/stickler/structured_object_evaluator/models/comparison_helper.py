@@ -150,6 +150,32 @@ def _holds_a_plain_model(items: List[Any]) -> bool:
     return any(_is_plain_model(item) for item in items)
 
 
+def _match_non_structured_lists(
+    gt_list: List[Any],
+    pred_list: List[Any],
+    comparator: BaseComparator,
+    *,
+    model_cls=None,
+    field_name: str = "",
+    warn_selected: bool = False,
+) -> List[tuple]:
+    """Use the same raw-value matcher and class gate for scoring and direct reports."""
+    from stickler.algorithms.hungarian import HungarianMatcher
+
+    element_comparator = comparator
+    if _holds_a_plain_model(gt_list) or _holds_a_plain_model(pred_list):
+        element_comparator = _ClassGatedComparator(
+            comparator, model_cls=model_cls, field_name=field_name
+        )
+    matcher = HungarianMatcher(
+        element_comparator, match_threshold=0.0, normalize_values=False
+    )
+    pairs = matcher.calculate_metrics(gt_list, pred_list)["matched_pairs"]
+    if warn_selected and isinstance(element_comparator, _ClassGatedComparator):
+        element_comparator.warn_for_selected(gt_list, pred_list, pairs)
+    return pairs
+
+
 def _maybe_absent(val: Any) -> bool:
     """Whether ``val`` could be absent under *either* of ``NullHelper``'s rules.
 
@@ -180,6 +206,7 @@ class ComparisonHelper:
         clip_under_threshold: bool = True,
         model_cls=None,
         field_name: str = "",
+        matching_sink: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         """Compare two lists as unordered collections using Hungarian matching.
 
@@ -196,6 +223,8 @@ class ComparisonHelper:
                 default to a falsy value so a caller with no field in hand still
                 gets the gate -- it refuses the same pairs either way, and only
                 the warning is less specific.
+            matching_sink: Optional side map populated with selected pairs and
+                the classification decisions made by this scoring pass.
 
         Returns:
             Dictionary with confusion matrix metrics including:
@@ -264,8 +293,6 @@ class ComparisonHelper:
             )
         else:
             # Use the provided comparator for other types
-            from stickler.algorithms.hungarian import HungarianMatcher
-
             # CRITICAL FIX: Use match_threshold=0.0 to capture ALL matches, not just those above threshold
             # This allows us to keep track of partial matches for scoring.
             #
@@ -289,29 +316,12 @@ class ComparisonHelper:
             # Gate the element comparator on class identity. See
             # _ClassGatedComparator; skipped entirely for ordinary primitive
             # lists so the cost matrix stays unwrapped.
-            element_comparator = comparator
-            if _holds_a_plain_model(gt_list) or _holds_a_plain_model(pred_list):
-                element_comparator = _ClassGatedComparator(
-                    comparator, model_cls=model_cls, field_name=field_name
-                )
-
-            hungarian = HungarianMatcher(
-                element_comparator, match_threshold=0.0, normalize_values=False
-            )
             classification_threshold = threshold
 
-            # Get detailed metrics from HungarianMatcher
-            metrics = hungarian.calculate_metrics(gt_list, pred_list)
-            matched_pairs = metrics["matched_pairs"]
-
-            # Only now is it known which pairs were chosen. The gate ran silently
-            # over the whole cost matrix; warning from inside it described
-            # discarded cells and spent `warn_once`'s single message per field on
-            # them. See `_ClassGatedComparator.warn_for_selected`.
-            if isinstance(element_comparator, _ClassGatedComparator):
-                element_comparator.warn_for_selected(
-                    gt_list, pred_list, matched_pairs
-                )
+            matched_pairs = _match_non_structured_lists(
+                gt_list, pred_list, comparator,
+                model_cls=model_cls, field_name=field_name, warn_selected=True,
+            )
 
         return ComparisonHelper.unordered_list_metrics(
             matched_pairs=matched_pairs,
@@ -319,6 +329,7 @@ class ComparisonHelper:
             gt_list=gt_list,
             pred_list=pred_list,
             classification_threshold=classification_threshold,
+            matching_sink=matching_sink,
         )
 
     @staticmethod
@@ -328,6 +339,7 @@ class ComparisonHelper:
         pred_list: List[Any],
         classification_threshold: float,
         clip_under_threshold: bool = True,
+        matching_sink: Dict[str, Any] | None = None,
     ):
         """
         Compare two lists as unordered collections using Hungarian matching.
@@ -346,9 +358,17 @@ class ComparisonHelper:
         tp = 0  # True positives (score >= threshold)
         fd = 0  # False discoveries (score < threshold, including 0)
 
-        for i, j, score in matched_pairs:
-            # Use ThresholdHelper for consistent threshold checking
-            if ThresholdHelper.is_above_threshold(score, classification_threshold):
+        verdicts = [
+            ThresholdHelper.is_above_threshold(score, classification_threshold)
+            for _, _, score in matched_pairs
+        ]
+        if matching_sink is not None:
+            matching_sink.update(
+                pairs=matched_pairs, threshold=classification_threshold, verdicts=verdicts
+            )
+
+        for is_match in verdicts:
+            if is_match:
                 tp += 1
             else:
                 # All matches below threshold are False Discoveries, including 0.0 scores
@@ -396,9 +416,8 @@ class ComparisonHelper:
             # is deliberately NOT affected: the counts above already ran, so a
             # sub-threshold pair stays one `fd` either way. Only the score moves.
             threshold_applied_similarities = []
-            for _, _, score in matched_pairs:
-                # Use ThresholdHelper for consistent threshold checking
-                if ThresholdHelper.is_above_threshold(score, classification_threshold):
+            for (_, _, score), is_match in zip(matched_pairs, verdicts):
+                if is_match:
                     threshold_applied_similarities.append(score)
                 elif clip_under_threshold:
                     # Below threshold gets 0.0 (same as individual comparison clipping)

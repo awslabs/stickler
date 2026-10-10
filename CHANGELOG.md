@@ -31,6 +31,13 @@ Each release links to full notes on the
 
 ### Fixed
 
+- List reporting ([#332](https://github.com/awslabs/stickler/issues/332)):
+  `non_matches` and `field_comparisons` reuse the pairings, scores, and
+  threshold decisions made during list scoring. Rejected pairs produce indexed
+  false-discovery records. Primitive-list reports avoid extra comparator calls
+  and preserve scoring's threshold tolerance. Standard structured-child reports
+  reuse scored child results; custom comparison overrides retain their fallback.
+
 - **An unrecognized key in a model config is now reported instead of dropped.**
   `model_from_json` read a closed set of keys and ignored everything else, so
   `"threshhold": 0.99` built at the fallback 0.5 with no exception and no warning,

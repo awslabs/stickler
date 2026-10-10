@@ -4,10 +4,11 @@ This module provides the NonMatchCollector class that handles the collection
 and documentation of non-matching fields during structured object comparison.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from .non_match_field import NonMatchType
 from .non_matches_helper import NonMatchesHelper
+from .reporting_context import ReportingContext
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -35,7 +36,8 @@ class NonMatchCollector:
     def collect_enhanced_non_matches(
         self, 
         recursive_result: dict, 
-        other: "StructuredModel"
+        other: "StructuredModel",
+        report_context: Optional[ReportingContext] = None,
     ) -> List[Dict[str, Any]]:
         """Collect enhanced non-matches with object-level granularity.
         
@@ -85,26 +87,13 @@ class NonMatchCollector:
                 )
                 all_non_matches.extend(null_non_matches)
 
-            # Check if this is a list field that should use object-level collection
-            elif (
-                isinstance(gt_val, list)
-                and isinstance(pred_val, list)
-                and gt_val
-                and isinstance(gt_val[0], StructuredModel)
-            ):
-                # Use NonMatchesHelper for object-level collection
-                object_non_matches = self.helper.collect_list_non_matches(
-                    field_name, gt_val, pred_val
+            elif isinstance(gt_val, list) and isinstance(pred_val, list):
+                matching_kwargs = self.helper.resolve_list_matching(
+                    self.model, field_name, gt_val,
+                    report_context.lists.get(field_name) if report_context else None,
                 )
-                all_non_matches.extend(object_non_matches)
-
-            elif (
-                isinstance(gt_val, list)
-                and isinstance(pred_val, list)
-            ):
-                # Use NonMatchesHelper for object-level collection
                 object_non_matches = self.helper.collect_list_non_matches(
-                    field_name, gt_val, pred_val
+                    field_name, gt_val, pred_val, **matching_kwargs
                 )
                 all_non_matches.extend(object_non_matches)
 
@@ -127,7 +116,8 @@ class NonMatchCollector:
                     # Recursively collect non-matches from nested objects
                     nested_collector = NonMatchCollector(gt_val)
                     nested_non_matches = nested_collector.collect_enhanced_non_matches(
-                        field_result, pred_val
+                        field_result, pred_val,
+                        report_context.children.get(field_name) if report_context else None,
                     )
                     # Prefix nested field paths with the parent field name
                     for nested_nm in nested_non_matches:

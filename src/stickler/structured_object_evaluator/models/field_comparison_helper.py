@@ -3,6 +3,7 @@
 from typing import Any, Dict, List, Optional
 
 from .comparison_helper_base import ComparisonHelperBase
+from .reporting_context import ReportingContext
 
 
 class FieldComparisonHelper(ComparisonHelperBase):
@@ -91,7 +92,8 @@ class FieldComparisonHelper(ComparisonHelperBase):
         pred_index: Optional[int],
         is_match: bool,
         similarity_score: float,
-        reason: str
+        reason: str,
+        pair_result: Optional[ReportingContext] = None,
     ) -> List[Dict[str, Any]]:
         """Extract field-level comparisons from structured model objects.
         
@@ -117,23 +119,39 @@ class FieldComparisonHelper(ComparisonHelperBase):
             and isinstance(gt_object, StructuredModel)
             and isinstance(pred_object, StructuredModel)
         ):
-            # Perform field-by-field comparison to get detailed field comparisons
-            comparison_result = gt_object.compare_with(
-                pred_object, 
-                document_non_matches=False,
-                include_confusion_matrix=False
-            )
+            # Reuse the child scores already computed during list scoring.
+            if pair_result is not None:
+                field_scores = pair_result.field_scores
+                field_results = pair_result.recursive_result.get("fields", {})
+            elif type(gt_object).compare_with is StructuredModel.compare_with:
+                from .comparison_engine import ComparisonEngine
+
+                # Direct helper calls also need the scorer's field verdicts.
+                context = ReportingContext()
+                ComparisonEngine(gt_object).compare_with(pred_object, _report_context=context)
+                field_scores = context.field_scores
+                field_results = context.recursive_result.get("fields", {})
+            else:
+                comparison_result = gt_object.compare_with(
+                    pred_object, document_non_matches=False, include_confusion_matrix=False,
+                )
+                field_scores = comparison_result.get("field_scores", {})
+                field_results = {}
             
             field_comparisons = []
             
             # Extract field scores and create comparison entries
-            for nested_field_name, field_score in comparison_result.get("field_scores", {}).items():
+            for nested_field_name, field_score in field_scores.items():
                 gt_nested_val = getattr(gt_object, nested_field_name, None)
                 pred_nested_val = getattr(pred_object, nested_field_name, None)
                 
                 # Get field configuration for threshold
                 info = gt_object._get_comparison_info(nested_field_name)
                 field_is_match = field_score >= info.threshold
+                field_result = field_results.get(nested_field_name)
+                if field_result is not None:
+                    metrics = field_result.get("overall", field_result)
+                    field_is_match = not any(metrics.get(key, 0) for key in ("fd", "fa", "fn"))
                 
                 # Create field paths with indices
                 expected_key = f"{field_name}[{gt_index}].{nested_field_name}" if gt_index is not None else f"{field_name}[].{nested_field_name}"
@@ -141,6 +159,8 @@ class FieldComparisonHelper(ComparisonHelperBase):
                 
                 # Create reason for this specific field
                 field_reason = self.generate_comparison_reason(field_is_match, field_score, info.threshold)
+                if field_result is not None and "fields" in field_result and not field_is_match:
+                    field_reason = "non-matching or unmatched items"
                 
                 # Handle missing fields
                 if pred_nested_val is None and gt_nested_val is not None:

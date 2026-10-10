@@ -31,7 +31,14 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
 **Comparison pipeline**
 - `comparison_engine.py` — `ComparisonEngine`, the orchestrator behind
   `compare_with()`. Runs a single recursive traversal, then layers on confusion
-  matrix, non-matches, field comparisons, and optional metrics.
+  matrix, non-matches, field comparisons, and optional metrics. Structured-list
+  reporting reuses accepted child traversals from the standard `compare_with`
+  implementation. `reporting_context.py` keeps pairings and scorer verdicts in
+  operation-local side maps, separate from public results; child traversals are
+  retained only when a report needs them. Both collectors share the model's
+  fallback matching settings for direct calls and custom overrides, which keep
+  their existing call signatures. Nested field rows use the scored metrics to
+  classify matches instead of applying an element threshold to a list average.
 - `comparison_dispatcher.py`, `field_comparator.py`,
   `primitive_list_comparator.py`, `structured_list_comparator.py`,
   `hungarian_helper.py` — dispatch and per-type comparison, including Hungarian

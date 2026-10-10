@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from .configuration_helper import ConfigurationHelper
 from .null_helper import NullHelper
+from .reporting_context import ReportingContext
 from .result_helper import ResultHelper
 from .structured_model import StructuredModel
 
@@ -26,13 +27,18 @@ class ComparisonDispatcher:
     It uses match-statement based dispatch for clear, traceable logic flow.
     """
 
-    def __init__(self, model: "StructuredModel"):
+    def __init__(
+        self,
+        model: "StructuredModel",
+        report_context: Optional[ReportingContext] = None,
+    ):
         """Initialize dispatcher with the ground truth model.
 
         Args:
             model: The ground truth StructuredModel instance
         """
         self.model = model
+        self.report_context = report_context
 
         # Initialize comparators lazily to avoid circular imports
         self._field_comparator = None
@@ -45,7 +51,7 @@ class ComparisonDispatcher:
         if self._field_comparator is None:
             from .field_comparator import FieldComparator
 
-            self._field_comparator = FieldComparator(self.model)
+            self._field_comparator = FieldComparator(self.model, self.report_context)
         return self._field_comparator
 
     @property
@@ -54,7 +60,9 @@ class ComparisonDispatcher:
         if self._primitive_list_comparator is None:
             from .primitive_list_comparator import PrimitiveListComparator
 
-            self._primitive_list_comparator = PrimitiveListComparator(self.model)
+            self._primitive_list_comparator = PrimitiveListComparator(
+                self.model, self.report_context
+            )
         return self._primitive_list_comparator
 
     @property
@@ -63,7 +71,9 @@ class ComparisonDispatcher:
         if self._structured_list_comparator is None:
             from .structured_list_comparator import StructuredListComparator
 
-            self._structured_list_comparator = StructuredListComparator(self.model)
+            self._structured_list_comparator = StructuredListComparator(
+                self.model, self.report_context
+            )
         return self._structured_list_comparator
 
     def dispatch_field_comparison(
