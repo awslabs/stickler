@@ -5,9 +5,10 @@ and documentation of ALL field comparisons (both matches and non-matches) during
 structured object comparison.
 """
 import math
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from .field_comparison_helper import FieldComparisonHelper
+from .reporting_context import ReportingContext
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -33,7 +34,8 @@ class FieldComparisonCollector:
     def collect_field_comparisons(
         self, 
         recursive_result: dict, 
-        other: "StructuredModel"
+        other: "StructuredModel",
+        report_context: Optional[ReportingContext] = None,
     ) -> List[Dict[str, Any]]:
         """Collect all field comparisons with detailed metadata.
         
@@ -93,22 +95,10 @@ class FieldComparisonCollector:
                 and isinstance(pred_val, list)
             ):
                 # Use FieldComparisonHelper for primitive list collection
-                matching = field_result.get("_list_matching")
-                if matching is None:
-                    from .structured_model import StructuredModel
-
-                    if gt_val and isinstance(gt_val[0], StructuredModel):
-                        # A custom recursive result may lack cached pairings.
-                        # Structured lists use their element model's settings.
-                        matching_kwargs = {}
-                    else:
-                        info = self.model._get_comparison_info(field_name)
-                        matching_kwargs = {
-                            "comparator": info.comparator,
-                            "match_threshold": info.threshold,
-                        }
-                else:
-                    matching_kwargs = {"matching": matching}
+                matching_kwargs = self.helper.resolve_list_matching(
+                    self.model, field_name, gt_val,
+                    report_context.lists.get(field_name) if report_context else None,
+                )
                 list_comparisons = self.helper.collect_list_entries(
                     field_name, gt_val, pred_val, **matching_kwargs
                 )
@@ -125,7 +115,8 @@ class FieldComparisonCollector:
                     # Recursively collect field comparisons from nested objects
                     nested_collector = FieldComparisonCollector(gt_val)
                     nested_comparisons = nested_collector.collect_field_comparisons(
-                        field_result, pred_val
+                        field_result, pred_val,
+                        report_context.children.get(field_name) if report_context else None,
                     )
                     # Prefix nested field paths with the parent field name
                     for nested_comp in nested_comparisons:

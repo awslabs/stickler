@@ -6,6 +6,7 @@ from stickler.comparators.base import BaseComparator
 
 from .comparison_helper_base import ComparisonHelperBase
 from .non_match_field import NonMatchType
+from .reporting_context import ReportingContext
 
 
 class NonMatchesHelper(ComparisonHelperBase):
@@ -49,7 +50,6 @@ class NonMatchesHelper(ComparisonHelperBase):
         object_index: int = None,
         similarity_score: float = None,
         match_threshold: Optional[float] = None,
-        reason: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create a non-match entry for detailed analysis.
 
@@ -61,11 +61,27 @@ class NonMatchesHelper(ComparisonHelperBase):
             object_index: Optional index of the object in the list for indexed field paths
             similarity_score: Similarity score for FD entries
             match_threshold: Threshold used to explain an FD when supplied
-            reason: Already-classified FD explanation from the scoring pass
 
         Returns:
             Dictionary with non-match information
         """
+        reason = None
+        if non_match_type == "FD" and similarity_score is not None:
+            threshold = (
+                match_threshold if match_threshold is not None
+                else self.get_match_threshold([gt_object] if gt_object else [pred_object])
+            )
+            reason = self.generate_comparison_reason(False, similarity_score, threshold)
+        return self._create_non_match_entry(
+            field_name, gt_object, pred_object, non_match_type, object_index,
+            similarity_score, reason,
+        )
+
+    def _create_non_match_entry(
+        self, field_name, gt_object, pred_object, non_match_type,
+        object_index=None, similarity_score=None, reason=None,
+    ):
+        """Format an entry using an already-classified reason, without a threshold."""
         # Generate indexed field path if object_index provided
         indexed_field_path = (
             f"{field_name}[{object_index}]" if object_index is not None else field_name
@@ -89,16 +105,7 @@ class NonMatchesHelper(ComparisonHelperBase):
         if non_match_type == "FD":
             # False Discovery: matched but below threshold
             if similarity_score is not None:
-                if reason is None:
-                    threshold = (
-                        match_threshold
-                        if match_threshold is not None
-                        else self.get_match_threshold(
-                            [gt_object] if gt_object else [pred_object]
-                        )
-                    )
-                    reason = f"below threshold ({similarity_score:.3f} < {threshold})"
-                entry["reason"] = reason
+                entry["reason"] = reason or "below threshold"
                 entry["similarity"] = similarity_score
                 entry["similarity_score"] = similarity_score
             else:
@@ -156,7 +163,7 @@ class NonMatchesHelper(ComparisonHelperBase):
         is_match: bool,
         similarity_score: float,
         reason: str,
-        pair_result: Optional[Dict[str, Any]] = None,
+        pair_result: Optional[ReportingContext] = None,
     ) -> List[Dict[str, Any]]:
         """Extract non-match entries from structured model objects.
         
@@ -196,7 +203,7 @@ class NonMatchesHelper(ComparisonHelperBase):
             non_match_type = "FD"
             object_index = gt_index
 
-        entry = self.create_non_match_entry(
+        entry = self._create_non_match_entry(
             field_name,
             gt_object,
             pred_object,
@@ -213,7 +220,7 @@ class NonMatchesHelper(ComparisonHelperBase):
         gt_object: Any, 
         pred_object: Any, 
         object_index: int,
-        pair_result: Optional[Dict[str, Any]] = None,
+        pair_result: Optional[ReportingContext] = None,
     ) -> List[Dict[str, Any]]:
         """Extract field-level non-matches from a threshold-passing object pair.
         
@@ -239,7 +246,7 @@ class NonMatchesHelper(ComparisonHelperBase):
             nested_non_matches = NonMatchCollector(
                 gt_object
             ).collect_enhanced_non_matches(
-                pair_result["recursive_result"], pred_object
+                pair_result.recursive_result, pred_object, pair_result
             )
 
         field_non_matches = []

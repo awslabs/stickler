@@ -21,24 +21,30 @@ Trade-offs:
 - Architecturally less pure than type-based structure (primitives flat, structured hierarchical)
 """
 
-from typing import TYPE_CHECKING, Any, List
+from typing import TYPE_CHECKING, Any, List, Optional
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
 
-from .threshold_helper import ThresholdHelper
+from .comparison_helper import ComparisonHelper
+from .reporting_context import ReportingContext
 
 
 class PrimitiveListComparator:
     """Handles comparison of List[primitive] fields using Hungarian matching."""
 
-    def __init__(self, parent_model: "StructuredModel"):
+    def __init__(
+        self,
+        parent_model: "StructuredModel",
+        report_context: Optional[ReportingContext] = None,
+    ):
         """Initialize the comparator with reference to parent model.
 
         Args:
             parent_model: The StructuredModel instance that owns the list field
         """
         self.parent_model = parent_model
+        self.report_context = report_context
 
     def compare_primitive_list_with_scores(
         self, gt_list: List[Any], pred_list: List[Any], field_name: str
@@ -105,16 +111,36 @@ class PrimitiveListComparator:
         # the zeroing happens inside `unordered_list_metrics`, upstream of the
         # `threshold_applied_score = raw_similarity` line below, so that line
         # preserved a score that had already been thrown away.
-        matched_pairs = []
-        match_result = self.parent_model._compare_unordered_lists(
-            gt_list,
-            pred_list,
-            comparator,
-            threshold,
-            info.clip_under_threshold,
-            field_name=field_name,
-            pair_sink=matched_pairs,
-        )
+        from .structured_model import StructuredModel
+
+        if (
+            self.report_context is not None
+            and type(self.parent_model)._compare_unordered_lists
+            is StructuredModel._compare_unordered_lists
+        ):
+            matching = {}
+            match_result = ComparisonHelper.compare_unordered_lists(
+                gt_list,
+                pred_list,
+                comparator,
+                threshold,
+                info.clip_under_threshold,
+                model_cls=type(self.parent_model),
+                field_name=field_name,
+                matching_sink=matching,
+            )
+            self.report_context.lists[field_name] = matching
+        else:
+            # Existing overrides receive only their original arguments. Without
+            # built-in scoring data, collectors use the shared fallback matcher.
+            match_result = self.parent_model._compare_unordered_lists(
+                gt_list,
+                pred_list,
+                comparator,
+                threshold,
+                info.clip_under_threshold,
+                field_name=field_name,
+            )
 
         # Extract the counts from the match result
         tp = match_result.get("tp", 0)
@@ -136,12 +162,4 @@ class PrimitiveListComparator:
             "similarity_score": raw_similarity,
             "threshold_applied_score": threshold_applied_score,
             "weight": weight,
-            "_list_matching": {
-                "pairs": matched_pairs,
-                "threshold": threshold,
-                "verdicts": [
-                    ThresholdHelper.is_above_threshold(score, threshold)
-                    for _, _, score in matched_pairs
-                ],
-            },
         }

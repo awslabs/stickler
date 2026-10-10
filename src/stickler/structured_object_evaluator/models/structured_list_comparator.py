@@ -13,6 +13,7 @@ from .comparable_field import ComparableField
 from .comparison_helper import ComparisonHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
+from .reporting_context import ReportingContext
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -21,13 +22,16 @@ if TYPE_CHECKING:
 class StructuredListComparator:
     """Handles comparison of List[StructuredModel] fields using Hungarian matching."""
 
-    def __init__(self, parent_model: "StructuredModel"):
+    def __init__(
+        self, parent_model: "StructuredModel", report_context: ReportingContext | None = None
+    ):
         """Initialize the comparator with reference to parent model.
 
         Args:
             parent_model: The StructuredModel instance that owns the list field
         """
         self.parent_model = parent_model
+        self.report_context = report_context
 
     def compare_struct_list_with_scores(
         self,
@@ -67,12 +71,21 @@ class StructuredListComparator:
             matched_pairs,
             _matched_gt_indices,
             _matched_pred_indices,
+            verdicts,
         ) = self._calculate_object_level_metrics(gt_list, pred_list, match_threshold)
 
         # Calculate raw similarity score using extracted method
-        pair_results = {}
+        matching = None
+        if self.report_context is not None:
+            matching = {
+                "pairs": matched_pairs,
+                "threshold": match_threshold,
+                "verdicts": verdicts,
+                "pair_results": {},
+            }
+            self.report_context.lists[field_name] = matching
         raw_similarity = self._calculate_struct_list_similarity(
-            matched_pairs, gt_list, pred_list, info, pair_results
+            matched_pairs, gt_list, pred_list, info, matching
         )
 
         # CRITICAL FIX: For structured lists, we NEVER clip under threshold - partial matches are important
@@ -85,7 +98,7 @@ class StructuredListComparator:
             gt_list,
             pred_list,
             matched_pairs,
-            match_threshold,
+            verdicts,
         )
 
         # Build final result structure
@@ -96,14 +109,6 @@ class StructuredListComparator:
             "similarity_score": raw_similarity,
             "threshold_applied_score": threshold_applied_score,
             "weight": weight,
-            "_list_matching": {
-                "pairs": matched_pairs,
-                "threshold": match_threshold,
-                "verdicts": [
-                    score >= match_threshold for _, _, score in matched_pairs
-                ],
-                "pair_results": pair_results,
-            },
         }
 
         return final_result
@@ -122,7 +127,7 @@ class StructuredListComparator:
             match_threshold: Threshold for considering objects as matches
 
         Returns:
-            Tuple of (object_metrics_dict, matched_pairs, matched_gt_indices, matched_pred_indices)
+            Object metrics, pairs, matched GT/prediction indices, and pair verdicts.
         """
         # Use Hungarian matching for OBJECT-LEVEL counts
         hungarian_helper = HungarianHelper()
@@ -132,8 +137,9 @@ class StructuredListComparator:
         # Count OBJECTS, not individual fields
         tp_objects = 0  # Objects with similarity >= match_threshold
         fd_objects = 0  # Objects with similarity < match_threshold
-        for gt_idx, pred_idx, similarity in matched_pairs:
-            if similarity >= match_threshold:
+        verdicts = [score >= match_threshold for _, _, score in matched_pairs]
+        for is_match in verdicts:
+            if is_match:
                 tp_objects += 1
             else:
                 fd_objects += 1
@@ -161,6 +167,7 @@ class StructuredListComparator:
             matched_pairs,
             matched_gt_indices,
             matched_pred_indices,
+            verdicts,
         )
 
     def _calculate_struct_list_similarity(
@@ -169,7 +176,7 @@ class StructuredListComparator:
         gt_list: List["StructuredModel"],
         pred_list: List["StructuredModel"],
         info: "ComparableField",
-        pair_results: Dict[tuple, Dict[str, Any]],
+        matching: Dict[str, Any] | None = None,
     ) -> float:
         """Calculate raw similarity score for structured list.
 
@@ -177,7 +184,7 @@ class StructuredListComparator:
             gt_list: Ground truth list
             pred_list: Predicted list
             info: Field comparison info
-            pair_results: Receives child traversals for report-time reuse
+            matching: Side map receiving accepted child traversals when reporting
 
         Returns:
             Raw similarity score between 0.0 and 1.0
@@ -187,7 +194,7 @@ class StructuredListComparator:
 
         # Updated code to not use helper that was calling Hungarian match again, and instead use already generated matched pairs
         threshold_corrected_pairs = []
-        for gt_idx, pred_idx, raw_score in matched_pairs:
+        for pair_index, (gt_idx, pred_idx, raw_score) in enumerate(matched_pairs):
             if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                 gt_item = gt_list[gt_idx]
                 pred_item = pred_list[pred_idx]
@@ -201,14 +208,16 @@ class StructuredListComparator:
                     )
                 else:
                     # Use individual comparison with threshold application (same as .compare_with())
-                    if type(gt_item).compare_with is StructuredModel.compare_with:
+                    if (
+                        matching is not None
+                        and matching["verdicts"][pair_index]
+                        and type(gt_item).compare_with is StructuredModel.compare_with
+                    ):
+                        child_context = ReportingContext()
                         individual_result = ComparisonEngine(gt_item).compare_with(
-                            pred_item, _retain_recursive_result=True
+                            pred_item, _report_context=child_context
                         )
-                        pair_results[(gt_idx, pred_idx)] = {
-                            "field_scores": individual_result["field_scores"],
-                            "recursive_result": individual_result.pop("_recursive_result"),
-                        }
+                        matching["pair_results"][(gt_idx, pred_idx)] = child_context
                     else:
                         # Preserve custom compare_with overrides, which may not
                         # expose an internal traversal for report reuse.
@@ -237,7 +246,7 @@ class StructuredListComparator:
         gt_list: List["StructuredModel"],
         pred_list: List["StructuredModel"],
         matched_pairs: List,
-        match_threshold: float,
+        verdicts: List[bool],
     ) -> Dict[str, Dict[str, Any]]:
         """Calculate field-level details for nested structure with threshold-gated recursion.
 
@@ -250,7 +259,7 @@ class StructuredListComparator:
             gt_list: Ground truth list
             pred_list: Predicted list
             matched_pairs: List of (gt_idx, pred_idx, similarity) tuples
-            match_threshold: Match threshold for threshold-gating (NOW PROPERLY USED!)
+            verdicts: Object-level acceptance decisions from scoring
 
         Returns:
             Dictionary mapping field names to their metrics
@@ -269,8 +278,8 @@ class StructuredListComparator:
             # Filter to good matches only - poor matches get no recursive analysis
             good_matched_pairs = [
                 (gt_idx, pred_idx, similarity)
-                for gt_idx, pred_idx, similarity in matched_pairs
-                if similarity >= match_threshold
+                for (gt_idx, pred_idx, similarity), is_match in zip(matched_pairs, verdicts)
+                if is_match
             ]
 
             if good_matched_pairs:

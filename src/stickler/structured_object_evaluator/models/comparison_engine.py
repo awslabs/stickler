@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 from stickler.structured_object_evaluator.models.bbox import MAPCalculator
 from stickler.utils.deprecation import warn_once
 
+from .reporting_context import ReportingContext
+
 if TYPE_CHECKING:
     from .confidence import ConfidenceMetric
     from .structured_model import StructuredModel
@@ -81,16 +83,8 @@ class ComparisonEngine:
             self._confusion_matrix_builder = ConfusionMatrixBuilder(self.model)
         return self._confusion_matrix_builder
 
-    @staticmethod
-    def _drop_list_matching(result: Dict[str, Any]) -> None:
-        """Remove scoring-only pairing details from a public result tree."""
-        for field_result in result.get("fields", {}).values():
-            if isinstance(field_result, dict):
-                field_result.pop("_list_matching", None)
-                ComparisonEngine._drop_list_matching(field_result)
-
     def compare_recursive(
-        self, other: "StructuredModel", *, _include_list_matching: bool = False
+        self, other: "StructuredModel", *, _report_context: Optional[ReportingContext] = None
     ) -> Dict[str, Any]:
         """The core recursive comparison function.
         
@@ -152,6 +146,14 @@ class ComparisonEngine:
             "non_matches": [],
         }
 
+        # A fresh dispatcher owns this operation's side context. Reusing the
+        # engine cannot retain pairings from a prior call or a failed traversal.
+        if _report_context is None:
+            dispatcher = self.dispatcher
+        else:
+            from .comparison_dispatcher import ComparisonDispatcher
+            dispatcher = ComparisonDispatcher(self.model, _report_context)
+
         # Score percolation variables
         total_score = 0.0
         total_weight = 0.0
@@ -164,7 +166,7 @@ class ComparisonEngine:
             pred_val = getattr(other, field_name, None)
 
             # Enhanced dispatch returns both metrics AND scores
-            field_result = self.dispatcher.dispatch_field_comparison(field_name, gt_val, pred_val)
+            field_result = dispatcher.dispatch_field_comparison(field_name, gt_val, pred_val)
 
             result["fields"][field_name] = field_result
 
@@ -187,8 +189,6 @@ class ComparisonEngine:
         if total_weight > 0:
             result["overall"]["similarity_score"] = total_score / total_weight
 
-        if not _include_list_matching:
-            self._drop_list_matching(result)
         return result
 
     def compare_with(
@@ -204,7 +204,7 @@ class ComparisonEngine:
         confidence_metrics: Optional[List["ConfidenceMetric"]] = None,
         add_bbox_metrics: bool = False,
         bbox_iou_thresholds: Optional[Union[float, Iterable[float]]] = None,
-        _retain_recursive_result: bool = False,
+        _report_context: Optional[ReportingContext] = None,
     ) -> Dict[str, Any]:
         """Compare with another instance using single traversal.
         
@@ -262,7 +262,15 @@ class ComparisonEngine:
             >>> print(result["confusion_matrix"]["overall"]["tp"])
         """
         # SINGLE TRAVERSAL: Get everything in one pass
-        recursive_result = self.compare_recursive(other, _include_list_matching=True)
+        report_context = _report_context
+        if report_context is None and (
+            document_non_matches
+            or document_field_comparisons
+            or add_confidence_metrics
+            or add_bbox_metrics
+        ):
+            report_context = ReportingContext()
+        recursive_result = self.compare_recursive(other, _report_context=report_context)
 
         # Extract scoring information from recursive result
         field_scores = {}
@@ -299,13 +307,17 @@ class ComparisonEngine:
         # Add optional non-match documentation
         if document_non_matches:
             # Use NonMatchCollector for enhanced object-level non-matches
-            non_matches = self.non_match_collector.collect_enhanced_non_matches(recursive_result, other)
+            non_matches = self.non_match_collector.collect_enhanced_non_matches(
+                recursive_result, other, report_context
+            )
             result["non_matches"] = non_matches
         
         # Add optional field comparison documentation
         if document_field_comparisons:
             # Use FieldComparisonCollector for comprehensive field-level comparisons
-            field_comparisons = self.field_comparison_collector.collect_field_comparisons(recursive_result, other)
+            field_comparisons = self.field_comparison_collector.collect_field_comparisons(
+                recursive_result, other, report_context
+            )
             result["field_comparisons"] = field_comparisons
 
         # If add_confidence_metrics is requested, add confidence metrics.
@@ -325,7 +337,7 @@ class ComparisonEngine:
             if "field_comparisons" not in result:
                 field_comparisons = (
                     self.field_comparison_collector.collect_field_comparisons(
-                        recursive_result, other
+                        recursive_result, other, report_context
                     )
                 )
                 result["field_comparisons"] = field_comparisons
@@ -379,7 +391,7 @@ class ComparisonEngine:
             if "field_comparisons" not in result:
                 field_comparisons = (
                     self.field_comparison_collector.collect_field_comparisons(
-                        recursive_result, other
+                        recursive_result, other, report_context
                     )
                 )
                 result["field_comparisons"] = field_comparisons
@@ -454,16 +466,11 @@ class ComparisonEngine:
             if pred_bboxes:
                 result["prediction_bboxes"] = pred_bboxes
 
-        # The collectors have consumed the scoring-only pairings. Keep the
-        # public recursive/confusion-matrix result shape unchanged.
-        if _retain_recursive_result:
-            # Internal structured-list scoring passes this same traversal to
-            # the report collectors instead of comparing a child again.
-            result["_recursive_result"] = recursive_result
-        else:
-            self._drop_list_matching(recursive_result)
-        if "confusion_matrix" in result:
-            self._drop_list_matching(result["confusion_matrix"])
+        if _report_context is not None:
+            # An accepted structured-list pair needs this traversal for its
+            # parent's reports. It never becomes part of the returned result.
+            _report_context.recursive_result = recursive_result
+            _report_context.field_scores = field_scores
 
         # If evaluator_format is requested, transform the result
         if evaluator_format:
