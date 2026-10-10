@@ -47,7 +47,29 @@ Verify the site builds without errors:
 uv run mkdocs build
 ```
 
-This generates the static site in `site/` and validates all internal links and references.
+This generates the static site in `site/` and reports link diagnostics. An ordinary
+build does not fail on warnings; use the checker below to enforce them. Link
+validation levels are shared in `mkdocs.yml`, so `mkdocs serve` shows them too.
+
+To run the pull-request check from the repository root:
+
+```bash
+uv run --frozen python docs/check_links.py
+uv run --frozen pytest tests/test_docs_build.py
+```
+
+The checker fails on logged MkDocs warnings and errors, including awesome-nav
+failures, orphan pages, missing pages/images/anchors, broken API references, and
+unrecognized or absolute links. It tolerates only the nine existing griffe/autorefs
+warnings identified by logger, message and source location in `check_links.py`.
+They remain visible; changed messages/locations and all errors fail. Python
+warnings such as `DeprecationWarning` are not routed into the gate. External URLs
+are not fetched. Run `make check` from this directory for the same gate.
+The read-only `docs-check.yml` workflow
+runs for documentation, source, dependency, or checker-workflow changes and never
+deploys the site. Its `uv run --only-group docs` installs the docs group without
+installing the project; the regular test workflow runs
+the checker's tests.
 
 ## Deployment
 
@@ -68,4 +90,4 @@ Automatic deployment is configured in `.github/workflows/docs.yml`. The workflow
 
 ---
 
-> **Note**: A `Makefile` is provided for convenience with targets: `install`, `docs`, `build`, `deploy`, and `clean`.
+> **Note**: A `Makefile` is provided for convenience with targets: `install`, `docs`, `build`, `check`, `deploy`, and `clean`.
