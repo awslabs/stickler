@@ -38,7 +38,9 @@ class NonMatchesHelper(ComparisonHelperBase):
         """
         return self.create_non_match_entry(
             field_name, gt_object, pred_object, non_match_type, object_index,
-            similarity_score, match_threshold=match_threshold,
+            similarity_score, **self._supported_options(
+                self.create_non_match_entry, match_threshold=match_threshold,
+            ),
         )
 
     def create_non_match_entry(
@@ -141,7 +143,10 @@ class NonMatchesHelper(ComparisonHelperBase):
         """
         # Use base class method but filter for non-matches only
         all_entries = self.collect_list_entries(
-            field_name, gt_list, pred_list, comparator, match_threshold, matching
+            field_name, gt_list, pred_list, **self._supported_options(
+                self.collect_list_entries, comparator=comparator,
+                match_threshold=match_threshold, matching=matching,
+            )
         )
         
         # Filter for non-matches only (entries where match is False or non_match_type exists)
@@ -187,7 +192,10 @@ class NonMatchesHelper(ComparisonHelperBase):
                 pred_object, StructuredModel
             ):
                 return self._extract_field_level_non_matches(
-                    field_name, gt_object, pred_object, gt_index, pair_result
+                    field_name, gt_object, pred_object, gt_index,
+                    **self._supported_options(
+                        self._extract_field_level_non_matches, pair_result=pair_result,
+                    ),
                 )
             return []
 
@@ -203,6 +211,16 @@ class NonMatchesHelper(ComparisonHelperBase):
             non_match_type = "FD"
             object_index = gt_index
 
+        # Preserve custom public formatters; the built-in formatter alone can
+        # consume the scorer's reason without reclassifying the pair.
+        if (
+            getattr(self.create_non_match_entry, "__func__", None)
+            is not NonMatchesHelper.create_non_match_entry
+        ):
+            return [self.create_non_match_entry(
+                field_name, gt_object, pred_object, non_match_type,
+                object_index, similarity_score,
+            )]
         entry = self._create_non_match_entry(
             field_name,
             gt_object,

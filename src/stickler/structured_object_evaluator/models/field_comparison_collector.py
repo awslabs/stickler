@@ -100,7 +100,9 @@ class FieldComparisonCollector:
                     report_context.lists.get(field_name) if report_context else None,
                 )
                 list_comparisons = self.helper.collect_list_entries(
-                    field_name, gt_val, pred_val, **matching_kwargs
+                    field_name, gt_val, pred_val, **self.helper._supported_options(
+                        self.helper.collect_list_entries, **matching_kwargs,
+                    )
                 )
                 all_field_comparisons.extend(list_comparisons)
 

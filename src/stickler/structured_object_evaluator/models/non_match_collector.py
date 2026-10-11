@@ -93,7 +93,9 @@ class NonMatchCollector:
                     report_context.lists.get(field_name) if report_context else None,
                 )
                 object_non_matches = self.helper.collect_list_non_matches(
-                    field_name, gt_val, pred_val, **matching_kwargs
+                    field_name, gt_val, pred_val, **self.helper._supported_options(
+                        self.helper.collect_list_non_matches, **matching_kwargs,
+                    )
                 )
                 all_non_matches.extend(object_non_matches)
 

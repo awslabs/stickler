@@ -37,7 +37,11 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   operation-local side maps, separate from public results; child traversals are
   retained only when a report needs them. Both collectors share the model's
   fallback matching settings for direct calls and custom overrides, which keep
-  their existing call signatures. Nested field rows use the scored metrics to
+  their existing call signatures. Helper hooks receive new optional metadata
+  only when they declare the parameter by name; a forwarding `**kwargs` wrapper
+  keeps its original arguments. Legacy hooks and custom non-match formatters
+  retain their own matching/formatting behavior rather than the built-in cache
+  guarantees. Nested field rows use the scored metrics to
   classify matches instead of applying an element threshold to a list average.
 - `comparison_dispatcher.py`, `field_comparator.py`,
   `primitive_list_comparator.py`, `structured_list_comparator.py`,

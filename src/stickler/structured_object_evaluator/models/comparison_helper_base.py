@@ -19,6 +19,24 @@ class ComparisonHelperBase(ABC):
     def __init__(self):
         self.hungarian_helper = HungarianHelper()
 
+    @staticmethod
+    def _supported_options(method, **options):
+        """Pass new options only to hooks that explicitly declare them.
+
+        A **kwargs wrapper may forward to an old-signature implementation.
+        Preserve that call contract rather than treating the wrapper as opt-in.
+        """
+        parameters = inspect.signature(method).parameters
+        return {
+            name: value
+            for name, value in options.items()
+            if name in parameters
+            and parameters[name].kind in (
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            )
+        }
+
     @abstractmethod
     def create_entry(self, *args, **kwargs) -> Dict[str, Any]:
         """Create an entry for the specific helper type. Must be implemented by subclasses."""
@@ -157,11 +175,9 @@ class ComparisonHelperBase(ABC):
                 )
                 # Helpers implementing the pre-cache abstract signature remain
                 # valid extensions; only opt-in implementations receive context.
-                pair_kwargs = {}
-                if pair_result is not None and "pair_result" in inspect.signature(
-                    self._extract_entries_from_objects
-                ).parameters:
-                    pair_kwargs["pair_result"] = pair_result
+                pair_kwargs = self._supported_options(
+                    self._extract_entries_from_objects, pair_result=pair_result,
+                ) if pair_result is not None else {}
                 extracted_entries = self._extract_entries_from_objects(
                     field_name,
                     gt_item,
@@ -390,7 +406,9 @@ class ComparisonHelperBase(ABC):
                     )
                 match_threshold = None
             assignments, matched_pairs_with_scores = self.get_optimal_assignments(
-                gt_list, pred_list, comparator
+                gt_list, pred_list, **self._supported_options(
+                    self.get_optimal_assignments, comparator=comparator,
+                )
             )
             if match_threshold is None:
                 match_threshold = self.get_match_threshold(gt_list or pred_list)
@@ -407,8 +425,12 @@ class ComparisonHelperBase(ABC):
 
         entries.extend(self.process_matched_pairs(
             field_name, gt_list, pred_list, matched_pairs_with_scores,
-            match_threshold, verdicts,
-            matching.get("pair_results") if matching is not None else None,
+            match_threshold, **self._supported_options(
+                self.process_matched_pairs, verdicts=verdicts,
+                pair_results=(
+                    matching.get("pair_results") if matching is not None else None
+                ),
+            ),
         ))
 
         # Process unmatched ground truth items (FN)
