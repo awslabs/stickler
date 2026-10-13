@@ -8,6 +8,7 @@ import math
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from .field_comparison_helper import FieldComparisonHelper
+from .null_helper import NullHelper
 from .reporting_context import ReportingContext
 
 if TYPE_CHECKING:
@@ -151,13 +152,15 @@ class FieldComparisonCollector:
                     else:
                         reason = f"below threshold ({raw_score:.3f} < {info.threshold})"
                     
-                    # Handle missing fields
-                    if pred_val is None and gt_val is not None:
+                    # Use scoring's float-NaN-as-missing rule without changing the displayed values.
+                    gt_missing = gt_val is None or NullHelper.is_nan(gt_val)
+                    pred_missing = pred_val is None or NullHelper.is_nan(pred_val)
+                    if pred_missing and not gt_missing:
                         reason = "false negative (unmatched ground truth)"
                         is_match = False
                         raw_score = 0.0
                         weighted_score = 0.0
-                    elif gt_val is None and pred_val is not None:
+                    elif gt_missing and not pred_missing:
                         reason = "false alarm (unmatched prediction)"
                         is_match = False
                         raw_score = 0.0

@@ -37,6 +37,15 @@ Each release links to full notes on the
   false-discovery records. Primitive-list reports avoid extra comparator calls
   and preserve scoring's threshold tolerance. Standard structured-child reports
   reuse scored child results; custom comparison overrides retain their fallback.
+  Field-comparison rows treat float `NaN` as missing, consistently with scoring,
+  both for top-level fields and fields in accepted structured-list pairs.
+
+- **A float `NaN` is now absent, the same as `None`.** Two identical `NaN`s
+  scored `0.0` and counted as a false discovery, because `NaN` equals nothing
+  under IEEE 754. `NaN` vs `NaN` or `None` is now a true negative scoring `1.0`,
+  `NaN` vs a number is a false alarm or false negative, and comparators apply
+  the same rule. This changes confusion counts for any field holding `NaN`
+  ([#367](https://github.com/awslabs/stickler/issues/367))
 
 - **An unrecognized key in a model config is now reported instead of dropped.**
   `model_from_json` read a closed set of keys and ignored everything else, so

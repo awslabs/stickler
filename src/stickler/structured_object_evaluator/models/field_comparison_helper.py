@@ -3,6 +3,7 @@
 from typing import Any, Dict, List, Optional
 
 from .comparison_helper_base import ComparisonHelperBase
+from .null_helper import NullHelper
 from .reporting_context import ReportingContext
 
 
@@ -162,12 +163,14 @@ class FieldComparisonHelper(ComparisonHelperBase):
                 if field_result is not None and "fields" in field_result and not field_is_match:
                     field_reason = "non-matching or unmatched items"
                 
-                # Handle missing fields
-                if pred_nested_val is None and gt_nested_val is not None:
+                # Keep the scored NaN-as-missing decision when formatting child fields.
+                gt_missing = gt_nested_val is None or NullHelper.is_nan(gt_nested_val)
+                pred_missing = pred_nested_val is None or NullHelper.is_nan(pred_nested_val)
+                if pred_missing and not gt_missing:
                     field_reason = "false negative (unmatched ground truth)"
                     field_is_match = False
                     field_score = 0.0
-                elif gt_nested_val is None and pred_nested_val is not None:
+                elif gt_missing and not pred_missing:
                     field_reason = "false alarm (unmatched prediction)"
                     field_is_match = False
                     field_score = 0.0
