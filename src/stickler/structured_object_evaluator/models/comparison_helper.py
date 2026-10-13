@@ -165,7 +165,26 @@ def _maybe_absent(val: Any) -> bool:
     ``test_maybe_absent_is_a_superset_of_both_null_rules`` pins that property so
     adding a case to either predicate without widening this one fails loudly.
     """
-    return val is None or (isinstance(val, (str, list, dict)) and len(val) == 0)
+    return val is None or (
+        isinstance(val, (str, list, dict, tuple, set, frozenset)) and len(val) == 0
+    )
+
+
+def canonical_collection(value: Any) -> Any:
+    """``value`` with a set's elements in a fixed order, for its comparator.
+
+    A ``Tuple`` or ``Set`` field is scored as one value by the field's
+    comparator, as ``stickler.evaluate()`` scores it (#383). A set has no order,
+    and a comparator that reads ``str(value)`` would score two equal sets apart
+    if they iterate differently, so a set becomes a sorted tuple. Anything else
+    is returned unchanged.
+    """
+    if not isinstance(value, (set, frozenset)):
+        return value
+    try:
+        return tuple(sorted(value))
+    except TypeError:  # mixed element types
+        return tuple(sorted(value, key=repr))
 
 
 class ComparisonHelper:
@@ -541,4 +560,6 @@ class ComparisonHelper:
             return 0.0
 
         # Use the comparator to calculate raw similarity (no threshold)
-        return comparator.compare(self_value, other_value)
+        return comparator.compare(
+            canonical_collection(self_value), canonical_collection(other_value)
+        )

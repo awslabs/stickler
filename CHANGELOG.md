@@ -31,6 +31,19 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **`StructuredModel` fields typed `date`, `datetime`, `time`, `timedelta`,
+  `Decimal`, `UUID` or `Enum` now reach their comparator.** The dispatcher
+  treated only `str`, `int` and `float` as scalars, so these fell through to the
+  mismatched-types case: an identical value scored `0.0` and counted as a false
+  discovery, and the declared comparator (including `DateComparator`) was never
+  called. `stickler.evaluate()` was unaffected, because its shadow models turn
+  these values into strings first. Values of unrelated types (a `date` against a
+  `str`, two different `Enum` classes) are still a mismatch. `Tuple` and `Set`
+  fields had the same bug and are now scored as one value by the field's
+  comparator, as `stickler.evaluate()` scores them, with a set's elements put
+  in a fixed order first. An empty tuple or set now counts as absent, like an
+  empty list ([#383](https://github.com/awslabs/stickler/issues/383))
+
 - **An unrecognized key in a model config is now reported instead of dropped.**
   `model_from_json` read a closed set of keys and ignored everything else, so
   `"threshhold": 0.99` built at the fallback 0.5 with no exception and no warning,

@@ -83,7 +83,7 @@ When multiple thresholds could apply, here's which one wins:
 
 | Situation | Which threshold applies |
 |-----------|------------------------|
-| **Primitive field comparison** (str, int, float) | Field threshold (`ComparableField(threshold=...)`), else a threshold named on the comparator |
+| **Primitive field comparison** (str, int, float, and date, datetime, time, timedelta, Decimal, UUID, Enum) | Field threshold (`ComparableField(threshold=...)`), else a threshold named on the comparator |
 | **Nested object comparison** | Recurses into fields; each field uses its own field threshold |
 | **List element pairing** (`List[StructuredModel]`) | Runtime match threshold if provided, else Model match threshold |
 | **Score clipping** | Field threshold (when `clip_under_threshold=True`) |
