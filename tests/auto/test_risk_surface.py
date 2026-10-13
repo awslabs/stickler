@@ -820,13 +820,16 @@ class TestDatetimeSensitivity:
 class TestNumericEdgeCases:
     """Numeric fields must not crash on non-finite values or mis-score Decimal."""
 
-    def test_nan_does_not_crash(self):
+    def test_nan_reads_as_absent(self):
         class M(BaseModel):
             x: float
 
-        # Must not raise decimal.InvalidOperation. NaN never equals NaN.
-        r = stickler.evaluate(M(x=float("nan")), M(x=float("nan")))
-        assert r.field_scores["x"] == pytest.approx(0.0)
+        # Must not raise decimal.InvalidOperation. NaN is absent, like None,
+        # so two NaNs match and NaN against a number does not (#367).
+        nan = float("nan")
+        assert stickler.evaluate(M(x=nan), M(x=nan)).field_scores["x"] == 1.0
+        assert stickler.evaluate(M(x=nan), M(x=1.5)).field_scores["x"] == 0.0
+        assert stickler.evaluate(M(x=1.5), M(x=nan)).field_scores["x"] == 0.0
 
     def test_infinity_matches_exactly(self):
         class M(BaseModel):

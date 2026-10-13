@@ -32,6 +32,7 @@ False Alarm (FA) and False Discovery (FD) together make up the broader False Pos
 | `null` | `"value"` | FA | Spurious prediction |
 | `null` | `null` | TN | Correctly absent |
 | `""` | `null` | TN | Empty string treated as null |
+| `NaN` | `NaN` | TN | Float NaN treated as null |
 
 ### Lists
 
@@ -171,7 +172,7 @@ These are computed at every node of the result tree, from that node's own counts
 
 ## Edge Cases
 
-**Null vs. empty equivalence** -- Empty strings (`""`), empty lists (`[]`), and empty objects (`{}`) are treated as null. Comparing any of these with `null` yields TN.
+**Null vs. empty equivalence** -- Empty strings (`""`), empty lists (`[]`), empty objects (`{}`), and float `NaN` are treated as null. Comparing any of these with `null` yields TN.
 
 **TN in object matching** -- A TN is absence of evidence, not evidence of a match. Fields absent on both sides are excluded from the weighted object similarity used by Hungarian matching. If every field is absent, the similarity is defined as `1.0`.
 

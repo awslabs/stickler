@@ -843,6 +843,7 @@ def test_maybe_absent_is_a_superset_of_both_null_rules():
         {"k": "v"},
         0,
         0.0,
+        float("nan"),
         False,
         set(),
         (),
