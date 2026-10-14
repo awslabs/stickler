@@ -31,6 +31,13 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **A float `NaN` is now absent, the same as `None`.** Two identical `NaN`s
+  scored `0.0` and counted as a false discovery, because `NaN` equals nothing
+  under IEEE 754. `NaN` vs `NaN` or `None` is now a true negative scoring `1.0`,
+  `NaN` vs a number is a false alarm or false negative, and comparators apply
+  the same rule. This changes confusion counts for any field holding `NaN`
+  ([#367](https://github.com/awslabs/stickler/issues/367))
+
 - **`StructuredModel` fields typed `date`, `datetime`, `time`, `timedelta`,
   `Decimal`, `UUID` or `Enum` now reach their comparator.** The dispatcher
   treated only `str`, `int` and `float` as scalars, so these fell through to the
