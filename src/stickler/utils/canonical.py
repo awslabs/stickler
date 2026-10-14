@@ -77,3 +77,33 @@ def canonicalize_json_sorted(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         value = sorted(value, key=lambda v: json.dumps(v, sort_keys=True, default=str))
     return canonicalize_json(value)
+
+
+def order_sets(value: Any) -> Any:
+    """``value`` with every set, at any depth, replaced by a tuple in fixed order.
+
+    For a ``Tuple`` or ``Set`` field scored as one value (#383). A comparator
+    that reads ``str(value)`` would otherwise score two equal sets apart when
+    they iterate differently, and a set nested inside a tuple or another set
+    has the same problem. Elements are ordered by their sorted-key JSON form,
+    which is defined for mixed and nested elements alike; native ``sorted``
+    is not (it raises on mixed types and uses subset order for sets).
+
+    Tuples and lists keep their order and their type, so a comparator that
+    reads structure (``BBoxIoUComparator`` on a 4-tuple) still gets a tuple.
+    Anything else is returned unchanged.
+    """
+    if isinstance(value, (set, frozenset)):
+        items = [order_sets(item) for item in value]
+        return tuple(sorted(items, key=_json_sort_key))
+    if isinstance(value, tuple):
+        return tuple(order_sets(item) for item in value)
+    if isinstance(value, list):
+        return [order_sets(item) for item in value]
+    return value
+
+
+def _json_sort_key(value: Any) -> str:
+    return json.dumps(
+        to_jsonable_python(value, fallback=str), sort_keys=True, default=str
+    )

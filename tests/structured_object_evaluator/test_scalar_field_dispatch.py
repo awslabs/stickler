@@ -271,8 +271,139 @@ class TestTuplesAndSets:
         assert result["overall_score"] == pytest.approx(1.0)
         assert result["confusion_matrix"]["overall"]["tp"] == 2
 
-    def test_a_tuple_and_a_list_are_still_a_mismatch(self):
+    @pytest.mark.parametrize(
+        "gt, pred",
+        [((1, 2), {1, 2}), ((1, 2), frozenset({1, 2})), ((1, 2), [1, 2])],
+        ids=["tuple-vs-set", "tuple-vs-frozenset", "tuple-vs-list"],
+    )
+    def test_a_tuple_against_another_collection_is_a_mismatch(self, gt, pred):
         class M(StructuredModel):
             f: Any = ComparableField(comparator=ExactComparator())
 
-        assert M(f=(1, 2)).compare_with(M(f={1, 2}))["overall_score"] == 0.0
+        assert M(f=gt).compare_with(M(f=pred))["overall_score"] == 0.0
+        assert M(f=gt).compare(M(f=pred)) == 0.0
+
+    def test_sets_nested_in_a_tuple_are_ordered(self):
+        class M(StructuredModel):
+            f: Tuple[FrozenSet[str], ...] = ComparableField(
+                comparator=ExactComparator()
+            )
+
+        forward = frozenset(f"x{i}" for i in range(30))
+        backward = frozenset(f"x{i}" for i in reversed(range(30)))
+        result = M(f=(forward,)).compare_with(M(f=(backward,)))
+        assert result["overall_score"] == pytest.approx(1.0)
+
+    def test_a_set_of_sets_is_ordered(self):
+        class M(StructuredModel):
+            f: Set[FrozenSet[str]] = ComparableField(comparator=ExactComparator())
+
+        a = {frozenset({"a"}), frozenset({"b"}), frozenset({"c"})}
+        b = {frozenset({"c"}), frozenset({"a"}), frozenset({"b"})}
+        assert M(f=a).compare_with(M(f=b))["overall_score"] == pytest.approx(1.0)
+
+    def test_a_tuple_keeps_its_order_and_type_for_the_comparator(self, monkeypatch):
+        seen = []
+        original = ExactComparator.compare
+
+        def spy(self, a, b):
+            seen.append((a, b))
+            return original(self, a, b)
+
+        monkeypatch.setattr(ExactComparator, "compare", spy)
+
+        class M(StructuredModel):
+            f: Tuple[float, ...] = ComparableField(comparator=ExactComparator())
+
+        M(f=(3.0, 1.0)).compare_with(M(f=(3.0, 1.0)))
+        assert seen == [((3.0, 1.0), (3.0, 1.0))]
+
+
+class TestNumbersAndEnums:
+    def test_a_decimal_against_a_float_reaches_numeric_comparator(self):
+        class M(StructuredModel):
+            total: Union[decimal.Decimal, float] = ComparableField(
+                comparator=NumericComparator()
+            )
+
+        gt = M.model_construct(total=decimal.Decimal("12.5"))
+        pred = M.model_construct(total=12.5)
+        assert gt.compare_with(pred)["overall_score"] == pytest.approx(1.0)
+
+    def test_two_int_enum_classes_are_a_mismatch(self):
+        class X(enum.IntEnum):
+            A = 1
+
+        class Y(enum.IntEnum):
+            B = 1
+
+        class M(StructuredModel):
+            f: Any = ComparableField(comparator=ExactComparator())
+
+        assert M(f=X.A).compare_with(M(f=Y.B))["overall_score"] == 0.0
+        assert M(f=X.A).compare_with(M(f=X.A))["overall_score"] == 1.0
+
+    def test_an_enum_member_against_a_bare_value_is_a_mismatch(self):
+        class X(enum.IntEnum):
+            A = 1
+
+        class M(StructuredModel):
+            f: Any = ComparableField(comparator=ExactComparator())
+
+        assert M(f=X.A).compare_with(M(f=1))["overall_score"] == 0.0
+
+
+class TestCompareAgreesWithCompareWith:
+    """`compare()` feeds the Hungarian cost matrix, so it must agree (#233)."""
+
+    class Blob:
+        pass
+
+    class X(enum.IntEnum):
+        A = 1
+
+    class Y(enum.IntEnum):
+        B = 1
+
+    PAIRS = [
+        ((1, 2), (1, 2), ExactComparator()),
+        ((1, 2), {1, 2}, ExactComparator()),
+        ((1, 2), [1, 2], ExactComparator()),
+        ({"a", "b"}, {"b", "a"}, LevenshteinComparator()),
+        (datetime.date(2026, 9, 14), "2026-09-14", DateComparator()),
+        (datetime.date(2026, 9, 14), datetime.date(2026, 9, 14), DateComparator()),
+        (decimal.Decimal("12.5"), 12.5, NumericComparator()),
+        (X.A, Y.B, ExactComparator()),
+        (X.A, 1, ExactComparator()),
+        (Color.RED, Color.RED, ExactComparator()),
+        (uuid.UUID(int=1), decimal.Decimal(1), LevenshteinComparator()),
+    ]
+
+    @pytest.mark.parametrize("gt, pred, comparator", PAIRS)
+    def test_the_two_readers_agree(self, gt, pred, comparator):
+        class M(StructuredModel):
+            f: Any = ComparableField(comparator=comparator)
+
+        a, b = M(f=gt), M(f=pred)
+        assert a.compare(b) == pytest.approx(a.compare_with(b)["overall_score"])
+
+    def test_two_arbitrary_objects_agree_too(self):
+        class M(StructuredModel):
+            model_config = {"arbitrary_types_allowed": True}
+            f: TestCompareAgreesWithCompareWith.Blob = ComparableField(
+                comparator=LevenshteinComparator()
+            )
+
+        a, b = M(f=self.Blob()), M(f=self.Blob())
+        assert a.compare(b) == a.compare_with(b)["overall_score"] == 0.0
+
+
+def test_order_sets_is_deterministic_for_nested_and_mixed_sets():
+    from stickler.utils.canonical import order_sets
+
+    one = {frozenset({"c"}), frozenset({"a"}), frozenset({"b", "a"})}
+    other = {frozenset({"a", "b"}), frozenset({"c"}), frozenset({"a"})}
+    assert order_sets(one) == order_sets(other)
+    assert all(isinstance(item, tuple) for item in order_sets(one))
+    assert order_sets({1, "a", 2.5}) == order_sets({"a", 2.5, 1})
+    assert order_sets(((3, 1), [2, 1])) == ((3, 1), [2, 1])

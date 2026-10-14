@@ -4,49 +4,15 @@ This module provides the ComparisonDispatcher class that routes field comparison
 to appropriate handlers based on field type and null states.
 """
 
-import datetime
-import decimal
-import enum
-import uuid
 from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
 
-from .comparison_helper import canonical_collection
+from .comparison_helper import comparable_scalar_pair
 from .configuration_helper import ConfigurationHelper
 from .null_helper import NullHelper
 from .result_helper import ResultHelper
 from .structured_model import StructuredModel
-
-# Scalar types beyond str/int/float that a model field commonly declares.
-# `datetime.date` covers `datetime.datetime`, its subclass. Deliberately a list
-# rather than "anything that is not a container": an arbitrary object reaches
-# a string comparator as its repr, and two distinct `<Foo object at 0x...>`
-# reprs are near-identical strings, so they would score as a match.
-_SCALAR_TYPES = (
-    datetime.date,
-    datetime.time,
-    datetime.timedelta,
-    decimal.Decimal,
-    uuid.UUID,
-    enum.Enum,
-)
-
-
-def _is_comparable_scalar_pair(gt_val: Any, pred_val: Any) -> bool:
-    """Whether two values are scalars of the same kind, for the comparator to score.
-
-    Without this, a field typed ``date``, ``Decimal``, ``UUID`` or ``Enum``
-    fell through to the mismatched-types case and scored 0.0 against an
-    identical value, without its comparator ever being called (#383). The pair
-    must be related by type (``date`` and ``datetime`` are), so a
-    ``Union[date, str]`` field holding one of each is still a mismatch.
-    """
-    return (
-        isinstance(gt_val, _SCALAR_TYPES)
-        and isinstance(pred_val, _SCALAR_TYPES)
-        and (isinstance(gt_val, type(pred_val)) or isinstance(pred_val, type(gt_val)))
-    )
 
 
 class ComparisonDispatcher:
@@ -225,31 +191,16 @@ class ComparisonDispatcher:
         #       3. Make the list vs singleton distinction the primary branch
         #       See pseudocode in refactoring discussions for proposed structure.
 
-        # CASE 1: Primitive types (str, int, float), and the other scalar types
-        # pydantic models commonly declare (see _is_comparable_scalar_pair).
-        # Delegate to FieldComparator, which calls the field's comparator.
-        if (
-            isinstance(gt_val, (str, int, float))
-            and isinstance(pred_val, (str, int, float))
-        ) or _is_comparable_scalar_pair(gt_val, pred_val):
+        # CASE 1: Scalars, tuples and sets, for the field's comparator.
+        # `comparable_scalar_pair` is the rule, shared with compare_field_raw so
+        # compare() and compare_with() agree: str/int/float as before, plus
+        # numbers incl. Decimal, related date/time/UUID/Enum values, and a pair
+        # of tuples or of sets scored as one value. Before #383 everything but
+        # str/int/float fell through to CASE 6 and scored 0.0 against an
+        # identical value, without the comparator being called.
+        if (pair := comparable_scalar_pair(gt_val, pred_val)) is not None:
             return self.field_comparator.compare_primitive_with_scores(
-                gt_val, pred_val, field_name
-            )
-
-        # CASE 1b: Two tuples, or two sets. Scored as one value by the field's
-        # comparator, as stickler.evaluate() scores them, rather than element by
-        # element: only `list` takes the list path, and every reader of a list
-        # field (reports, the Hungarian cost matrix) assumes a `list`. A set is
-        # put in a fixed order first. Before this they fell through to CASE 6
-        # and scored 0.0 against an identical value (#383).
-        elif (isinstance(gt_val, tuple) and isinstance(pred_val, tuple)) or (
-            isinstance(gt_val, (set, frozenset))
-            and isinstance(pred_val, (set, frozenset))
-        ):
-            return self.field_comparator.compare_primitive_with_scores(
-                canonical_collection(gt_val),
-                canonical_collection(pred_val),
-                field_name,
+                *pair, field_name
             )
 
         # CASE 2: Both are lists (non-empty, null/empty cases already handled in STEP 3)

@@ -131,10 +131,11 @@ The dispatcher routes each field comparison through a 5-step decision tree:
 # See: comparison_dispatcher.py, dispatch_field_comparison
 # Step 5 type routing:
 #   (str|int|float, str|int|float) → FieldComparator
-#   (scalar, scalar) of related type: date/datetime, time, timedelta,
-#     Decimal, UUID, Enum → FieldComparator (#383)
-#   (tuple, tuple) and (set, set) → FieldComparator, as one value; a set
-#     is sorted first (#383)
+#   (number, number) incl. Decimal; related date/time/timedelta/UUID;
+#     members of related Enum classes; (tuple, tuple) and (set, set) as one
+#     value, sets ordered → FieldComparator (#383)
+#   The scalar rule is comparison_helper.comparable_scalar_pair, shared with
+#   compare_field_raw so compare() and compare_with() agree.
 #   (list, list) where list[0] is StructuredModel → StructuredListComparator
 #   (list, list) otherwise → PrimitiveListComparator
 #   (StructuredModel, StructuredModel) → FieldComparator

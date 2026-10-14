@@ -4,9 +4,16 @@ This module provides utilities for comparing fields, lists, and nested structure
 within StructuredModel instances.
 """
 
-from typing import Any, Dict, List
+import datetime
+import decimal
+import enum
+import uuid
+from typing import Any, Dict, List, Optional, Tuple
+
+from pydantic import BaseModel
 
 from stickler.comparators.base import BaseComparator
+from stickler.utils.canonical import order_sets
 
 from .hungarian_helper import HungarianHelper
 from .null_helper import NullHelper
@@ -172,21 +179,70 @@ def _maybe_absent(val: Any) -> bool:
     )
 
 
-def canonical_collection(value: Any) -> Any:
-    """``value`` with a set's elements in a fixed order, for its comparator.
+# Scalar types beyond str/int/float that a model field commonly declares.
+# `datetime.date` covers `datetime.datetime`, its subclass. Deliberately a list
+# rather than "anything that is not a container": an arbitrary object reaches a
+# string comparator as its repr, and two distinct `<Foo object at 0x...>` reprs
+# are near-identical strings, so they would score as a match.
+_SCALAR_TYPES = (
+    datetime.date,
+    datetime.time,
+    datetime.timedelta,
+    decimal.Decimal,
+    uuid.UUID,
+)
+_NUMBERS = (int, float, decimal.Decimal)
 
-    A ``Tuple`` or ``Set`` field is scored as one value by the field's
-    comparator, as ``stickler.evaluate()`` scores it (#383). A set has no order,
-    and a comparator that reads ``str(value)`` would score two equal sets apart
-    if they iterate differently, so a set becomes a sorted tuple. Anything else
-    is returned unchanged.
+
+def comparable_scalar_pair(gt_val: Any, pred_val: Any) -> Optional[Tuple[Any, Any]]:
+    """The two values to hand a field's comparator, or ``None`` if they mismatch.
+
+    The one rule for which non-container pairs a comparator scores, read by
+    both ``ComparisonDispatcher`` (``compare_with``) and
+    :meth:`ComparisonHelper.compare_field_raw` (``compare`` and the Hungarian
+    cost matrix). Spelling it in each let the two disagree, the contradiction
+    #233 rules out. A pair is comparable when:
+
+    - both are ``str``/``int``/``float``, as before;
+    - both are numbers, ``Decimal`` included, so ``Decimal("12.5")`` against
+      ``12.5`` reaches ``NumericComparator``;
+    - both are ``date``/``time``/``timedelta``/``UUID`` of related type
+      (``date`` and ``datetime`` are);
+    - both are members of related ``Enum`` classes. Checked first, because an
+      ``IntEnum``/``StrEnum`` member is also an ``int``/``str``, and two
+      different such classes, or a member against a bare value, are a
+      mismatch;
+    - both are tuples, or both are sets, scored as one value with sets put in
+      a fixed order (see :func:`~stickler.utils.canonical.order_sets`).
+
+    Before #383 everything past the first bullet fell through to the
+    mismatched-types case and scored 0.0 against an identical value.
     """
-    if not isinstance(value, (set, frozenset)):
-        return value
-    try:
-        return tuple(sorted(value))
-    except TypeError:  # mixed element types
-        return tuple(sorted(value, key=repr))
+    if isinstance(gt_val, enum.Enum) or isinstance(pred_val, enum.Enum):
+        if isinstance(gt_val, enum.Enum) and isinstance(pred_val, enum.Enum):
+            return (gt_val, pred_val) if _related(gt_val, pred_val) else None
+        return None
+    if isinstance(gt_val, (str, int, float)) and isinstance(
+        pred_val, (str, int, float)
+    ):
+        return gt_val, pred_val
+    if isinstance(gt_val, _NUMBERS) and isinstance(pred_val, _NUMBERS):
+        return gt_val, pred_val
+    if (
+        isinstance(gt_val, _SCALAR_TYPES)
+        and isinstance(pred_val, _SCALAR_TYPES)
+        and _related(gt_val, pred_val)
+    ):
+        return gt_val, pred_val
+    if (isinstance(gt_val, tuple) and isinstance(pred_val, tuple)) or (
+        isinstance(gt_val, (set, frozenset)) and isinstance(pred_val, (set, frozenset))
+    ):
+        return order_sets(gt_val), order_sets(pred_val)
+    return None
+
+
+def _related(a: Any, b: Any) -> bool:
+    return isinstance(a, type(b)) or isinstance(b, type(a))
 
 
 class ComparisonHelper:
@@ -561,7 +617,14 @@ class ComparisonHelper:
         ):
             return 0.0
 
+        if isinstance(self_value, BaseModel) and isinstance(other_value, BaseModel):
+            return comparator.compare(self_value, other_value)
+
+        # Every other pair goes through the dispatcher's own rule, so a pair
+        # `compare_with` calls a mismatch scores 0.0 here too (#233, #383).
+        pair = comparable_scalar_pair(self_value, other_value)
+        if pair is None:
+            return 0.0
+
         # Use the comparator to calculate raw similarity (no threshold)
-        return comparator.compare(
-            canonical_collection(self_value), canonical_collection(other_value)
-        )
+        return comparator.compare(*pair)
