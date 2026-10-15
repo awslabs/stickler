@@ -60,9 +60,10 @@ uv run --frozen pytest tests/test_docs_build.py
 
 The checker fails on logged MkDocs warnings and errors, including awesome-nav
 failures, orphan pages, missing pages/images/anchors, broken API references, and
-unrecognized or absolute links. It tolerates only the nine existing griffe/autorefs
-warnings identified by logger, message and source location in `check_links.py`.
-They remain visible; changed messages/locations and all errors fail. Python
+unrecognized or absolute links. It tolerates each of the six existing griffe
+annotation warnings once per build, identified by logger, file and message in
+`check_links.py`. Line numbers may change; duplicate or changed warnings and all
+errors fail. All warnings remain visible, and no autorefs warning is exempt. Python
 warnings such as `DeprecationWarning` are not routed into the gate. External URLs
 are not fetched. Run `make check` from this directory for the same gate.
 The read-only `docs-check.yml` workflow

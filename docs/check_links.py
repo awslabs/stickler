@@ -1,4 +1,4 @@
-"""Build docs, failing on logged MkDocs diagnostics except nine known warnings.
+"""Build docs, tolerating each of six known annotation warnings once per build.
 
 Python warnings (such as DeprecationWarning) are not routed into this gate.
 """
@@ -12,48 +12,38 @@ from mkdocs.commands.build import build
 from mkdocs.config import load_config
 from mkdocs.exceptions import MkDocsException
 
-# Issue #355's existing annotation warnings. Keep messages and source locations
-# explicit: a changed diagnostic needs review, not a blanket plugin exemption.
+# Issue #355's existing annotation warnings. Files and messages stay explicit;
+# line numbers can move without changing the diagnostic.
 _GRIFFE_WARNINGS = {
     "griffe: src/stickler/structured_object_evaluator/" + warning
     for warning in (
-        "bulk_structured_model_evaluator.py:965: No type or annotation for parameter 'df'",
-        "models/structured_model.py:1842: No type or annotation for parameter '**kwargs'",
-        "models/structured_model.py:1845: No type or annotation for returned value 1",
-        "models/comparable_field.py:102: No type or annotation for parameter '**field_kwargs'",
-        "models/comparable_field.py:105: No type or annotation for returned value 1",
-        "models/field.py:51: No type or annotation for parameter '**kwargs'",
+        "bulk_structured_model_evaluator.py: No type or annotation for parameter 'df'",
+        "models/structured_model.py: No type or annotation for parameter '**kwargs'",
+        "models/structured_model.py: No type or annotation for returned value 1",
+        "models/comparable_field.py: No type or annotation for parameter '**field_kwargs'",
+        "models/comparable_field.py: No type or annotation for returned value 1",
+        "models/field.py: No type or annotation for parameter '**kwargs'",
     )
 }
-_AUTOREFS_WARNING = re.compile(
-    r"mkdocs_autorefs: API-Reference/models\.md: from (?:.*?/)?"
-    r"src/stickler/structured_object_evaluator/models/structured_model\.py:262: "
-    r"\(stickler\.structured_object_evaluator\.models\.structured_model\.StructuredModel\) "
-    r"Could not find cross-reference target ''(?:tp|fd|derived)''"
-)
 
 
 class _LinkWarnings(logging.Handler):
     def __init__(self):
         super().__init__(level=logging.WARNING)
         self.count = 0
+        self.remaining_warnings = _GRIFFE_WARNINGS.copy()
 
     def emit(self, record):
         message = record.getMessage().replace("\\", "/")
-        if record.levelno == logging.WARNING:
-            if record.name == "mkdocs.plugins.griffe":
-                # griffe uses absolute paths when invoked from docs/ (make check).
-                message = re.sub(
-                    r"^griffe: (?:.*?/)?src/stickler/",
-                    "griffe: src/stickler/",
-                    message,
-                )
-                if message in _GRIFFE_WARNINGS:
-                    return
-            if (
-                record.name == "mkdocs.plugins.mkdocs_autorefs._internal.plugin"
-                and _AUTOREFS_WARNING.fullmatch(message)
-            ):
+        if record.levelno == logging.WARNING and record.name == "mkdocs.plugins.griffe":
+            # griffe uses absolute paths when invoked from docs/ (make check).
+            message = re.sub(
+                r"^griffe: (?:.*?/)?(src/stickler/[^:]+):\d+: ",
+                r"griffe: \1: ",
+                message,
+            )
+            if message in self.remaining_warnings:
+                self.remaining_warnings.remove(message)
                 return
         self.count += 1
 

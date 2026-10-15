@@ -104,55 +104,87 @@ def test_missing_navigation_target_fails(docs_project):
 
 
 @pytest.mark.parametrize(
-    ("logger_name", "message"),
+    ("source", "diagnostic"),
     [
         (
-            "mkdocs.plugins.griffe",
-            "src/stickler/structured_object_evaluator/bulk_structured_model_evaluator.py:965: No type or annotation for parameter 'df'",
+            "bulk_structured_model_evaluator.py",
+            "No type or annotation for parameter 'df'",
         ),
         (
-            "mkdocs.plugins.griffe",
-            "src/stickler/structured_object_evaluator/models/structured_model.py:1842: No type or annotation for parameter '**kwargs'",
+            "models/structured_model.py",
+            "No type or annotation for parameter '**kwargs'",
         ),
         (
-            "mkdocs.plugins.griffe",
-            "src/stickler/structured_object_evaluator/models/structured_model.py:1845: No type or annotation for returned value 1",
+            "models/structured_model.py",
+            "No type or annotation for returned value 1",
         ),
         (
-            "mkdocs.plugins.griffe",
-            "src/stickler/structured_object_evaluator/models/comparable_field.py:102: No type or annotation for parameter '**field_kwargs'",
+            "models/comparable_field.py",
+            "No type or annotation for parameter '**field_kwargs'",
         ),
         (
-            "mkdocs.plugins.griffe",
-            "src/stickler/structured_object_evaluator/models/comparable_field.py:105: No type or annotation for returned value 1",
+            "models/comparable_field.py",
+            "No type or annotation for returned value 1",
         ),
         (
-            "mkdocs.plugins.griffe",
-            "src/stickler/structured_object_evaluator/models/field.py:51: No type or annotation for parameter '**kwargs'",
+            "models/field.py",
+            "No type or annotation for parameter '**kwargs'",
         ),
-        *[
-            (
-                "mkdocs.plugins.mkdocs_autorefs._internal.plugin",
-                f"API-Reference/models.md: from /checkout/src/stickler/structured_object_evaluator/models/structured_model.py:262: (stickler.structured_object_evaluator.models.structured_model.StructuredModel) Could not find cross-reference target ''{target}''",
-            )
-            for target in ("tp", "fd", "derived")
-        ],
     ],
 )
 @pytest.mark.parametrize("separator", ["/", "\\"])
+@pytest.mark.parametrize("line", [1, 2500])
 def test_known_warning_remains_visible_without_failing(
-    docs_project, logger_name, message, separator
+    docs_project, source, diagnostic, separator, line
 ):
-    prefix = "griffe" if logger_name == "mkdocs.plugins.griffe" else "mkdocs_autorefs"
-    message = f"{prefix}: {message}"
+    message = (
+        "griffe: C:/checkout/src/stickler/structured_object_evaluator/"
+        f"{source}:{line}: {diagnostic}"
+    )
     message = message.replace("/", separator)
     result = docs_project(
         hook="import logging\n"
         "def on_pre_build(**kwargs):\n"
-        f"    logging.getLogger({logger_name!r}).warning({message!r})\n"
+        f"    logging.getLogger('mkdocs.plugins.griffe').warning({message!r})\n"
     )
     assert message in result.stdout + result.stderr
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("second_line", [51, 2500])
+def test_duplicate_known_warning_fails(docs_project, second_line):
+    first = (
+        "griffe: src/stickler/structured_object_evaluator/models/field.py:51: "
+        "No type or annotation for parameter '**kwargs'"
+    )
+    second = first.replace(":51:", f":{second_line}:")
+    result = docs_project(
+        hook="import logging\n"
+        "def on_pre_build(**kwargs):\n"
+        "    logger = logging.getLogger('mkdocs.plugins.griffe')\n"
+        f"    logger.warning({first!r})\n"
+        f"    logger.warning({second!r})\n"
+    )
+    assert result.stderr.count("No type or annotation for parameter '**kwargs'") == 2
+    assert result.returncode != 0, result.stderr
+    assert "Documentation check failed: 1 warning(s) or error(s)." in result.stderr
+
+
+def test_known_warning_allowance_resets_per_build(docs_config, tmp_path, caplog):
+    message = (
+        "griffe: src/stickler/structured_object_evaluator/models/field.py:51: "
+        "No type or annotation for parameter '**kwargs'"
+    )
+    config = docs_config(
+        hook="import logging\n"
+        "def on_pre_build(**kwargs):\n"
+        f"    logging.getLogger('mkdocs.plugins.griffe').warning({message!r})\n"
+    )
+    checker = runpy.run_path(str(ROOT / "docs" / "check_links.py"))["check_links"]
+    with caplog.at_level(logging.WARNING):
+        assert checker(str(config), str(tmp_path / "site")) == 0
+        assert checker(str(config), str(tmp_path / "site")) == 0
+    assert caplog.messages.count(message) == 2
 
 
 @pytest.mark.parametrize("nav", ["nav:\n  - Does-Not-Exist.md\n", "nav: [\n"])
@@ -295,10 +327,31 @@ def test_configuration_error_is_concise(tmp_path, content):
             "griffe: src/stickler/structured_object_evaluator/models/field.py:51: No type or annotation for parameter '**kwargs'",
         ),
         (
+            "mkdocs.plugins.future",
+            "warning",
+            "griffe: src/stickler/structured_object_evaluator/models/field.py:51: No type or annotation for parameter '**kwargs'",
+        ),
+        (
+            "mkdocs.plugins.griffe",
+            "warning",
+            "griffe: src/stickler/structured_object_evaluator/models/field.py:51: No type or annotation for parameter '**new_kwargs'",
+        ),
+        (
             "mkdocs.plugins.mkdocs_autorefs._internal.plugin",
             "warning",
             "mkdocs_autorefs: API-Reference/models.md: from /checkout/src/stickler/structured_object_evaluator/models/structured_model.py:263: (stickler.structured_object_evaluator.models.structured_model.StructuredModel) Could not find cross-reference target ''tp''",
         ),
+        *[
+            (
+                "mkdocs.plugins.mkdocs_autorefs._internal.plugin",
+                "warning",
+                "mkdocs_autorefs: API-Reference/models.md: from /checkout/"
+                "src/stickler/structured_object_evaluator/models/structured_model.py:262: "
+                "(stickler.structured_object_evaluator.models.structured_model.StructuredModel) "
+                f"Could not find cross-reference target ''{target}''",
+            )
+            for target in ("tp", "fd", "derived")
+        ],
     ],
 )
 def test_warning_exemptions_do_not_spread(docs_project, logger_name, level, message):
@@ -332,6 +385,9 @@ def test_python_deprecation_warning_is_not_a_mkdocs_diagnostic(docs_project):
         ("orphan", False),
         (None, True),
         ("guide-reference", True),
+        ("line-shift", False),
+        ("line-shift", True),
+        ("duplicate-warning", False),
     ],
 )
 def test_real_site_review_cases(tmp_path, fault, from_docs):
@@ -368,6 +424,21 @@ def test_real_site_review_cases(tmp_path, fault, from_docs):
     elif fault == "orphan":
         expected = "review-orphan.md"
         (pages / "Guides" / expected).write_text("# Orphan\n", encoding="utf-8")
+    elif fault == "line-shift":
+        source = (
+            tmp_path
+            / "src/stickler/structured_object_evaluator/models/structured_model.py"
+        )
+        source.write_text(
+            "# comment\n" + source.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+    elif fault == "duplicate-warning":
+        source = tmp_path / "src/stickler/structured_object_evaluator/models/field.py"
+        parameter = "            **kwargs: Additional field parameters\n"
+        content = source.read_text(encoding="utf-8")
+        assert content.count(parameter) == 1
+        source.write_text(content.replace(parameter, parameter * 2), encoding="utf-8")
+        expected = "No type or annotation for parameter '**kwargs'"
     result = subprocess.run(
         [
             *BUILD_COMMAND,
@@ -384,11 +455,14 @@ def test_real_site_review_cases(tmp_path, fault, from_docs):
         timeout=90,
     )
     output = result.stdout + result.stderr
-    if fault:
+    if fault not in (None, "line-shift"):
         assert expected in output, output
         assert result.returncode != 0, output
+        if fault == "duplicate-warning":
+            assert output.count("WARNING - griffe:") == 7, output
+            assert "Documentation check failed: 1 warning(s) or error(s)." in output
     else:
+        assert "WARNING - mkdocs_autorefs:" not in output, output
         assert result.returncode == 0, output
         assert output.count("WARNING - griffe:") == 6, output
-        assert output.count("WARNING - mkdocs_autorefs:") == 3, output
         assert 'not included in the "nav"' not in output, output
