@@ -4,7 +4,13 @@ This module provides utilities for comparing fields, lists, and nested structure
 within StructuredModel instances.
 """
 
+import datetime
+import decimal
+import enum
+import uuid
 from typing import Any, Dict, List
+
+from pydantic import BaseModel
 
 from stickler.comparators.base import BaseComparator
 
@@ -196,6 +202,84 @@ def _maybe_absent(val: Any) -> bool:
         or NullHelper.is_nan(val)
         or (isinstance(val, (str, list, dict)) and len(val) == 0)
     )
+
+
+# Scalar types beyond str/int/float that a model field commonly declares.
+# `datetime.date` covers `datetime.datetime`, its subclass.
+_SCALAR_TYPES = (
+    datetime.date,
+    datetime.time,
+    datetime.timedelta,
+    decimal.Decimal,
+    uuid.UUID,
+)
+_NUMBERS = (int, float, decimal.Decimal)
+# Values with their own branch in both readers; never decided here.
+_STRUCTURED = (list, dict, BaseModel)
+# Not decided here yet: tuples and sets keep their pre-#383 behaviour in each
+# reader until collection comparison has its own contract (#391).
+_COLLECTIONS = (tuple, set, frozenset)
+
+
+def scalar_pair_reaches_comparator(
+    gt_val: Any, pred_val: Any, *, comparator_explicit: bool
+) -> bool:
+    """Whether a field's comparator scores this pair, rather than it mismatching.
+
+    The one rule for a pair of non-structured values, read by both
+    ``ComparisonDispatcher`` (``compare_with``) and
+    :meth:`ComparisonHelper.compare_field_raw` (``compare`` and the Hungarian
+    cost matrix). Spelling it in each let the two disagree, the contradiction
+    #233 rules out.
+
+    A comparator the field **declared** is always called: the caller chose it
+    for this field's values, and it decides what it can score, as it already
+    does for a dict or a plain model. That covers ``bytes``, a custom class,
+    or a ``date`` against its ISO string under ``DateComparator``.
+
+    A comparator that was **inferred** sees only values it can be trusted
+    with, since it was never chosen for them. An arbitrary object would reach
+    ``LevenshteinComparator`` as its repr, and two distinct
+    ``<Foo object at 0x...>`` reprs are near-identical strings. So the pair
+    must be:
+
+    - ``str``/``int``/``float``, as before;
+    - two numbers, ``Decimal`` included;
+    - ``date``/``time``/``timedelta``/``UUID`` values of related type (``date``
+      and ``datetime`` are);
+    - members of related ``Enum`` classes. Checked first, because an
+      ``IntEnum``/``StrEnum`` member is also an ``int``/``str``, and two
+      different such classes, or a member against a bare value, are a
+      mismatch.
+
+    Before #383 the dispatcher accepted only the first bullet, and a declared
+    comparator for anything else was never called.
+    """
+    if isinstance(gt_val, _STRUCTURED) or isinstance(pred_val, _STRUCTURED):
+        return False
+    if comparator_explicit:
+        return True
+    if isinstance(gt_val, enum.Enum) or isinstance(pred_val, enum.Enum):
+        return (
+            isinstance(gt_val, enum.Enum)
+            and isinstance(pred_val, enum.Enum)
+            and _related(gt_val, pred_val)
+        )
+    if isinstance(gt_val, (str, int, float)) and isinstance(
+        pred_val, (str, int, float)
+    ):
+        return True
+    if isinstance(gt_val, _NUMBERS) and isinstance(pred_val, _NUMBERS):
+        return True
+    return (
+        isinstance(gt_val, _SCALAR_TYPES)
+        and isinstance(pred_val, _SCALAR_TYPES)
+        and _related(gt_val, pred_val)
+    )
+
+
+def _related(a: Any, b: Any) -> bool:
+    return isinstance(a, type(b)) or isinstance(b, type(a))
 
 
 class ComparisonHelper:
@@ -560,6 +644,22 @@ class ComparisonHelper:
             comparator,
             self_value,
             other_value,
+        ):
+            return 0.0
+
+        if isinstance(self_value, BaseModel) and isinstance(other_value, BaseModel):
+            return comparator.compare(self_value, other_value)
+
+        # Tuples and sets keep their pre-#383 behaviour here (#391).
+        if isinstance(self_value, _COLLECTIONS) or isinstance(
+            other_value, _COLLECTIONS
+        ):
+            return comparator.compare(self_value, other_value)
+
+        # Every other pair goes through the dispatcher's own rule, so a pair
+        # `compare_with` calls a mismatch scores 0.0 here too (#233, #383).
+        if not scalar_pair_reaches_comparator(
+            self_value, other_value, comparator_explicit=info.comparator_explicit
         ):
             return 0.0
 

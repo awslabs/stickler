@@ -1093,7 +1093,10 @@ class StructuredModel(BaseModel):
         Args:
             model_cls: A ``pydantic.BaseModel`` subclass (e.g. a Strands
                 agent ``response_model``). A StructuredModel subclass is
-                returned unchanged (explicit configuration always wins).
+                returned unchanged (explicit configuration always wins). A
+                ``RootModel`` raises ``TypeError``, as this class and at any
+                nested model or ``List[BaseModel]`` element the builder
+                mirrors: its value has no field name to score it under.
             weight_hints: Apply name-token weight heuristics (default off, so
                 weights stay uniform).
             match_threshold: Overall match threshold for the generated model.

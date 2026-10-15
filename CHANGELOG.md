@@ -11,6 +11,37 @@ Each release links to full notes on the
 
 ### Changed
 
+- **Breaking:** a `StructuredModel` field typed `date`, `datetime`, `time`,
+  `timedelta`, `Decimal`, `UUID` or `Enum` now reaches its comparator, and a
+  declared comparator is always called. The dispatcher treated only `str`,
+  `int` and `float` as scalars, so these fell through to the mismatched-types
+  case: an identical value scored `0.0` and counted as a false discovery, and
+  the declared comparator (including `DateComparator`) was never called. The
+  zero-config path (`stickler.evaluate()` on a plain pydantic model) was
+  unaffected, because its shadow models convert these values first.
+
+  `compare_with()` and `compare()` now share one rule, so the two no longer
+  disagree on such a pair. Results move for existing callers:
+  - **A declared comparator is called for any non-structured pair**, including
+    `bytes`, a custom class, a tuple or set, or a `date` against its ISO string
+    under `DateComparator`. In `compare_with()` these scored `0.0` without the
+    comparator being called.
+  - **An inferred comparator sees only `str`/`int`/`float`, numbers (`Decimal`
+    included), and related `date`/`time`/`timedelta`/`UUID`/`Enum` values.**
+    Anything else is a mismatch in both readers. `compare()`, which feeds list
+    matching, used to call the comparator for such a pair, so a `date` against
+    its ISO string, `bytes`, or an arbitrary object now score `0.0` there.
+  - **Enum members match only members of a related `Enum` class.** With an
+    inferred comparator, two different `IntEnum` or `StrEnum` classes, or a
+    member against a bare value, are now a mismatch where they used to compare
+    as `int`/`str`.
+  - **A `Decimal` is compared with an `int` or `float` as a number.**
+
+  `Tuple` and `Set` fields with an inferred comparator are unchanged
+  ([#391](https://github.com/awslabs/stickler/issues/391)), and #392 tracks
+  merging the two readers into one implementation
+  ([#383](https://github.com/awslabs/stickler/issues/383))
+
 - **Breaking:** `match_threshold` on a **primitive** field now raises
   `ValueError`. It is the object-level threshold; nothing read it on a leaf, so
   `"match_threshold": 0.99` beside a `float` left that field at `threshold` 0.5
@@ -39,6 +70,29 @@ Each release links to full notes on the
   reuse scored child results; custom comparison overrides retain their fallback.
   Field-comparison rows treat float `NaN` as missing, consistently with scoring,
   both for top-level fields and fields in accepted structured-list pairs.
+
+- **A `RootModel` is now refused when the evaluator is built, instead of failing
+  once per document or scoring a wrong value `1.0`.** `eval_for()` accepted one
+  and returned a spec. What happened next depended on the root type:
+  `RootModel[list[...]]` raised `AttributeError: 'list' object has no attribute
+  'keys'`, `RootModel[int]` raised `'int' object has no attribute 'copy'`,
+  `RootModel[dict[...]]` raised a `ValidationError` for a missing `root`, and
+  **`RootModel[Model]` scored `1.0` for two values that differed in every
+  field.** The two `AttributeError`s named neither the shape nor a field; the
+  mapping case named `root`, the shadow's own field rather than the model field
+  that held the value. None of the three said the shape was unsupported, and all
+  three arrived once per document rather than once at configuration time; the
+  fourth reported a perfect match for a wrong prediction. `eval_for()`,
+  `evaluate()` and `StructuredModel.from_pydantic()` now raise `TypeError`
+  naming the class and pointing at declaring the root value as a named field on
+  a `BaseModel`. The refusal covers every model the zero-config builder mirrors,
+  so a `RootModel` in a field (`Holder.pt`) or as a list element
+  (`Holder.items[]`) is refused too, with the path in the message; both scored
+  `1.0` for values differing in every field before this. A root value is still
+  not compared, and an explicitly configured `StructuredModel` is unchanged: it
+  is used as configured and never mirrored, so its fields keep the comparators
+  the caller declared
+  ([#366](https://github.com/awslabs/stickler/issues/366))
 
 - **A float `NaN` is now absent, the same as `None`.** Two identical `NaN`s
   scored `0.0` and counted as a false discovery, because `NaN` equals nothing
