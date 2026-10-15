@@ -180,7 +180,7 @@ These are computed at every node of the result tree, from that node's own counts
 
 **List order** -- Order does not matter. The Hungarian algorithm finds the optimal pairing regardless of element position.
 
-**Nested lists** -- For `List[StructuredModel]`, the Hungarian algorithm pairs objects at the list level, then each matched pair is evaluated recursively.
+**Nested lists** -- For `List[StructuredModel]`, the Hungarian algorithm pairs objects at the list level, then each matched pair is evaluated recursively. A field inside a list element is classified by the same rules as at top level.
 
 **Missing vs. null fields** -- A missing field and a field explicitly set to `null` are handled the same way: if the other side has a non-null value, the result is FN or FA accordingly.
 
