@@ -1,6 +1,23 @@
 name: Code Quality
 
-on: [push, pull_request]
+# `push` is limited to the long-lived branches. On a branch with an open pull
+# request both events fired, so every push validated the same commit twice.
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+# One run per pull request, newest head wins: a superseded run is cancelled,
+# since the older head is no longer what anyone is reviewing.
+#
+# A push gets a group of its own, keyed on its run id. Sharing one group per
+# branch would not have been safe even with the cancel off: a group holds one
+# running and one pending run, so a third push cancels the pending one
+# regardless, and `cancel-in-progress` only ever protects the run already
+# executing.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

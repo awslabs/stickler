@@ -197,6 +197,142 @@ def test_nested_list_verdict_comes_from_element_metrics_not_aggregate_threshold(
     assert "non-matching" in row["reason"]
 
 
+@pytest.mark.parametrize("direct_collector", [False, True])
+@pytest.mark.parametrize(
+    "prediction,score,non_match_type,reason",
+    [
+        (
+            ["red", "green"],
+            2 / 3,
+            "false_negative",
+            "score 0.667 >= 0.5, but nested comparison has non-matching or unmatched values",
+        ),
+        (
+            ["red", "green", "blue", "yellow"],
+            0.75,
+            "false_alarm",
+            "score 0.750 >= 0.5, but nested comparison has non-matching or unmatched values",
+        ),
+        (
+            ["red", "green", "yellow"],
+            2 / 3,
+            "false_discovery",
+            "score 0.667 >= 0.5, but nested comparison has non-matching or unmatched values",
+        ),
+        (
+            ["red", "green", "blue", "yellow", "orange", "purple"],
+            0.5,
+            "false_alarm",
+            "score 0.500 >= 0.5, but nested comparison has non-matching or unmatched values",
+        ),
+        (["red"], 1 / 3, "false_negative", "below threshold (0.333 < 0.5)"),
+        ([], 0.0, "false_negative", "below threshold (0.000 < 0.5)"),
+        (["red", "green", "blue"], 1.0, None, "exact match"),
+    ],
+)
+def test_nested_list_reason_keeps_score_and_threshold(
+    direct_collector, prediction, score, non_match_type, reason
+):
+    class Child(StructuredModel):
+        # Even the below-threshold controls must enter accepted-child reporting.
+        match_threshold = 0.0
+        tags: list[str] = ComparableField(comparator=ExactComparator(), threshold=0.5)
+
+    class Parent(StructuredModel):
+        items: list[Child]
+
+    gt = Parent(items=[Child(tags=["red", "green", "blue"])])
+    pred = Parent(items=[Child(tags=prediction)])
+    result = gt.compare_with(
+        pred,
+        include_confusion_matrix=True,
+        document_non_matches=True,
+        document_field_comparisons=True,
+    )
+    assert result["confusion_matrix"]["fields"]["items"]["overall"]["tp"] == 1
+    rows = (
+        FieldComparisonCollector(gt).collect_field_comparisons(
+            gt.compare_recursive(pred), pred
+        )
+        if direct_collector
+        else result["field_comparisons"]
+    )
+    (row,) = rows
+    assert row["expected_key"] == row["actual_key"] == "items[0].tags"
+    assert row["score"] == pytest.approx(score)
+    assert row["match"] is (non_match_type is None)
+    if non_match_type:
+        assert {entry["non_match_type"] for entry in result["non_matches"]} == {
+            non_match_type
+        }
+        if prediction == ["red", "green"]:
+            assert result["non_matches"][0]["field_path"] == "items[0].tags[2]"
+    else:
+        assert result["non_matches"] == []
+    assert row["reason"] == reason
+
+
+@pytest.mark.parametrize("direct_collector", [False, True])
+@pytest.mark.parametrize(
+    "prediction,score,match,reason",
+    [
+        (("x", "y", "z"), 0.0, False, "below threshold (0.000 < 0.5)"),
+        (("a", "b", "z"), 2 / 3, True, "above threshold (0.667 >= 0.5)"),
+        (("a", "b", "c"), 1.0, True, "exact match"),
+    ],
+)
+def test_nested_object_reason_preserves_its_scored_verdict(
+    direct_collector, prediction, score, match, reason
+):
+    class Address(StructuredModel):
+        city: str = ComparableField(comparator=ExactComparator())
+        country: str = ComparableField(comparator=ExactComparator())
+        postcode: str = ComparableField(comparator=ExactComparator())
+
+    class Child(StructuredModel):
+        match_threshold = 0.0
+        addr: Address = ComparableField(threshold=0.5)
+
+    class Parent(StructuredModel):
+        items: list[Child]
+
+    gt = Parent(items=[Child(addr=Address(city="a", country="b", postcode="c"))])
+    pred = Parent(
+        items=[
+            Child(
+                addr=Address(
+                    city=prediction[0], country=prediction[1], postcode=prediction[2]
+                )
+            )
+        ]
+    )
+    result = gt.compare_with(
+        pred,
+        include_confusion_matrix=True,
+        document_non_matches=True,
+        document_field_comparisons=True,
+    )
+    assert result["confusion_matrix"]["fields"]["items"]["overall"]["tp"] == 1
+    rows = (
+        FieldComparisonCollector(gt).collect_field_comparisons(
+            gt.compare_recursive(pred), pred
+        )
+        if direct_collector
+        else result["field_comparisons"]
+    )
+    (row,) = rows
+    assert row["expected_key"] == row["actual_key"] == "items[0].addr"
+    assert row["score"] == pytest.approx(score)
+    assert row["match"] is match
+    if prediction == ("a", "b", "z"):
+        # A partial object can match at object level while its leaf is reported.
+        assert result["non_matches"][0]["field_path"] == "items[0].addr.postcode"
+        assert result["non_matches"][0]["non_match_type"] == "false_discovery"
+    elif match:
+        assert result["non_matches"] == []
+    assert row["reason"] == reason
+
+
 def test_extraction_contract_documents_cached_pair_data():
     signature = inspect.signature(ComparisonHelperBase._extract_entries_from_objects)
     assert signature.parameters["pair_result"].default is None

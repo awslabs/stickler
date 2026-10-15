@@ -71,9 +71,9 @@ true positives. `ComparisonHelper.compare_unordered_lists` builds a matcher
 this way on purpose and reads only `matched_pairs`. Nothing should read `tp`
 from a matcher built with `0.0`.
 
-**The threshold test here is exact.** `ThresholdHelper`, `ComparisonHelper` and
-`ConfusionMatrixCalculator` accept a score up to `1e-10` under the threshold, so
-a score inside that window is a TP there and an FD here.
+**The threshold test here is exact.** `ThresholdHelper` and `ComparisonHelper`
+accept a score up to `1e-10` under the threshold, so a score inside that window
+is a TP there and an FD here.
 
 ## How the evaluator uses it
 

@@ -160,8 +160,16 @@ class FieldComparisonHelper(ComparisonHelperBase):
                 
                 # Create reason for this specific field
                 field_reason = self.generate_comparison_reason(field_is_match, field_score, info.threshold)
-                if field_result is not None and "fields" in field_result and not field_is_match:
-                    field_reason = "non-matching or unmatched items"
+                if (
+                    field_result is not None
+                    and "fields" in field_result
+                    and not field_is_match
+                    and field_score >= info.threshold
+                ):
+                    field_reason = (
+                        f"score {field_score:.3f} >= {info.threshold}, but nested "
+                        "comparison has non-matching or unmatched values"
+                    )
                 
                 # Keep the scored NaN-as-missing decision when formatting child fields.
                 gt_missing = gt_nested_val is None or NullHelper.is_nan(gt_nested_val)
