@@ -4,11 +4,11 @@ title: Strands Evals
 
 # Strands Evals
 
-[Strands Evals](https://github.com/strands-agents/evals) ships a `StructuredOutput`
-evaluator that scores an agent's structured output field by field, with stickler as
-its scoring engine. You write ordinary Strands Evals, and stickler supplies the
-comparison: type-aware comparators, order-independent list matching, and a per-field
-confusion matrix.
+[Strands Evals](https://github.com/strands-agents/evals) ships a
+`StructuredOutputSimilarity` evaluator that scores an agent's structured output field by
+field, with stickler as its scoring engine. You write ordinary Strands Evals, and
+stickler supplies the comparison: type-aware comparators, order-independent list
+matching, and a per-field confusion matrix.
 
 The evaluator lives in Strands Evals, not in stickler. stickler is the optional
 `stickler` extra it depends on.
@@ -19,8 +19,8 @@ pip install "strands-agents-evals[stickler]"
 
 ```python
 from strands import Agent
-from strands_evals import Case, Experiment, eval_task
-from strands_evals.evaluators import StructuredOutput
+from strands_evals import Case, Experiment, StructuredOutputReport, eval_task
+from strands_evals.evaluators import StructuredOutputSimilarity
 
 @eval_task()
 def extract(case):
@@ -31,14 +31,19 @@ def extract(case):
     return {"output": result.structured_output}
 
 cases = [Case[str, Invoice](name="doc-1", input=ocr_text, expected_output=label)]
-evaluator = StructuredOutput(Invoice)
-report = Experiment[str, Invoice](cases=cases, evaluators=[evaluator]).run_evaluations(extract)
+evaluator = StructuredOutputSimilarity(Invoice)   # the model the agent emits
+report = Experiment(
+    cases=cases,
+    evaluators=[evaluator],
+    report_cls=StructuredOutputReport,            # adds per_case() and metrics()
+).run_evaluations(extract)
 
 report.overall_score          # weighted mean across the dataset
 report.scores                 # one weighted score per case
-evaluator.per_case()          # per-document field scores
-evaluator.metrics()           # per-field confusion matrix across the dataset
+report.per_case()             # per-document field scores
+report.metrics()              # per-field confusion matrix across the dataset
 report.display()              # rich table; run_display() is the interactive variant
+evaluator.explain()           # the comparator chosen for each field, and why
 ```
 
 ## Why it exists
@@ -63,25 +68,30 @@ capitalisation.
 ## Two levels of detail
 
 `evaluate()` returns one `EvaluationOutput` per case carrying stickler's weighted
-`overall_score`, and `reason` names the weakest fields. Because that type has four
-scalar fields, per-field detail is read from the evaluator instead:
+`overall_score`, with `reason` naming the weakest fields and `metadata` carrying the
+field detail. `StructuredOutputReport`, bound with `report_cls`, rolls that detail up:
 
-- **`per_case()`** returns per-document field scores.
-- **`metrics()`** returns stickler's five-category confusion matrix per field path,
-  including nested paths, computed once from the retained comparisons with no second
-  pass over the data.
+- **`per_case()`** returns per-document field scores, `test_pass`, precision, recall
+  and F1.
+- **`metrics()`** returns stickler's `ProcessEvaluation`: the five-category confusion
+  matrix per field path in `field_metrics`, including nested paths, built from the
+  comparison stored on each row with no second pass over the data.
 
 ```
 field                       tp  fn  fa  fd   prec   rec    f1
 total_amount                 4   0   0   2   0.67  1.00  0.80
 invoice_date                 4   1   0   1   0.80  0.80  0.80
 line_items                   5   0   1   1   0.71  1.00  0.83
-line_items.sku               5   0   1   0   0.83  1.00  0.91
+line_items.sku               5   0   0   0   1.00  1.00  1.00
 ```
 
 The five categories separate failure modes a single score cannot. **FN** is a field
 the extractor missed, **FA** one it invented, **FD** one it got wrong. Those need
 different fixes, and `Equals` reports all three as the same 0.0.
+
+One report rolls up one schema. `model_cls` is required and every evaluator runs on
+every case, so if your agent emits more than one output type, run one `Experiment` per
+model; `metrics()` raises `ValueError` on rows that compare more than one model.
 
 ## A sharp edge worth knowing
 
@@ -135,7 +145,7 @@ data-dependent, so use `.get()` rather than indexing.
 
 ## Status
 
-The `StructuredOutput` evaluator is in review at
+The `StructuredOutputSimilarity` evaluator is in review at
 [sromoam/evals#1](https://github.com/sromoam/evals/pull/1) and is not yet on PyPI. Until
 it releases, install it from the branch:
 
@@ -143,6 +153,6 @@ it releases, install it from the branch:
 pip install "strands-agents-evals @ git+https://github.com/sromoam/evals@feat/structured-output-evaluator"
 ```
 
-The evaluator's own design notes (why field detail is read from the evaluator, why
-aggregation is append-only, why the rollup partitions by schema) live with the
-evaluator in that PR.
+The evaluator's own notes (saved reports, what `test_pass` gates on, one schema per
+evaluator) are in the "Field-Level Structured Output Scoring" section of that branch's
+[README](https://github.com/sromoam/evals/blob/feat/structured-output-evaluator/README.md).
