@@ -29,7 +29,36 @@ Each release links to full notes on the
   later on subscripting
   ([#350](https://github.com/awslabs/stickler/issues/350))
 
+- **Breaking:** on the zero-config path (`stickler.evaluate()`, `eval_for()`,
+  `StructuredModel.from_pydantic()`), a field marked `Field(exclude=True)` or
+  `exclude_if` is no longer evaluated. It was left out of the dump but kept in
+  the inferred model, so it was blank on both sides: a wrong value scored `1.0`
+  and was listed in `field_scores` and `explain()` as compared, and a required
+  one raised `ValidationError`. It is now absent from `field_scores`,
+  `explain()`, `non_matches` and reports, at any depth, so a value kept out of
+  serialization is never scored or published. `exclude_if` counts whether or
+  not it fires. A `StructuredModel` is unchanged: its `ComparableField`s declare
+  what is compared, so an excluded field there is still scored, and
+  `evaluate()` now agrees with `compare_with()` on it instead of scoring `1.0`.
+  See [Excluded fields](https://awslabs.github.io/stickler/API-Reference/auto/#excluded-fields)
+  ([#379](https://github.com/awslabs/stickler/issues/379))
+
 ### Fixed
+
+- **`stickler.evaluate()` and `eval_for()` now read a plain model dumped by
+  alias.** With `serialize_by_alias=True` the dump carried alias keys that the
+  inferred model never read, so the field was blank on both sides: a wrong
+  value scored `1.0`, and a required field raised `ValidationError`. Plain
+  models now reach it keyed by field name; a `StructuredModel` keeps its own key
+  spelling. Serializers and `ser_json_*` config still apply
+  ([#378](https://github.com/awslabs/stickler/issues/378))
+
+- **`StructuredModel.from_json()` keeps a nested `StructuredModel` whole.** It
+  rebuilt each nested model and passed on its `model_dump()`, which drops every
+  `exclude=True` field, so a nested excluded field read blank on both sides and
+  `compare_with()` scored a wrong value `1.0`. The nested model's
+  `extra_fields` were lost the same way, and are now kept
+  ([#379](https://github.com/awslabs/stickler/issues/379))
 
 - **A float `NaN` is now absent, the same as `None`.** Two identical `NaN`s
   scored `0.0` and counted as a false discovery, because `NaN` equals nothing

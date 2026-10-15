@@ -1090,11 +1090,10 @@ class ConfigurationHelper:
             nested_data: Dictionary data for the nested object
 
         Returns:
-            Dictionary with processed nested data
+            The nested instance, which the parent's validation accepts as is
         """
-        # Recursively call from_json to handle missing fields in nested object
-        nested_instance = structured_class.from_json(
-            nested_data, process_rich_values=False
-        )
-        # Return the model_dump to get properly processed data
-        return nested_instance.model_dump()
+        # Recursively call from_json to handle missing fields in nested object.
+        # The instance itself is returned, not its model_dump(): a dump drops
+        # every exclude=True field, so a nested excluded field read blank on
+        # both sides and scored a wrong value 1.0 (#379).
+        return structured_class.from_json(nested_data, process_rich_values=False)

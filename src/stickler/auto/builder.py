@@ -149,6 +149,20 @@ def specs_for(
     return result
 
 
+def is_excluded(field_info: FieldInfo) -> bool:
+    """Whether pydantic leaves the field out of serialization.
+
+    Such a field is outside the model's output, so the shadow model of a plain
+    model leaves it out and it is never scored or reported (#379). An
+    ``exclude_if`` counts whether or not it fires, since the shadow model is
+    built once per class. A ``StructuredModel`` is used as configured and keeps
+    its excluded fields.
+    """
+    return (
+        bool(field_info.exclude) or getattr(field_info, "exclude_if", None) is not None
+    )
+
+
 def _inferred_provenance(cls: Type[BaseModel], name: str) -> tuple:
     """The inference trail for a field, or empty if the author configured it.
 
@@ -178,6 +192,8 @@ def _collect_specs(
         for name, field_info in cls.model_fields.items():
             if name in _RESERVED_FIELD_NAMES:
                 continue
+            if not is_structured and is_excluded(field_info):
+                continue  # not in the shadow model, so not explained either
             path = f"{prefix}{name}"
             annotation, _ = unwrap_optional(field_info.annotation)
             kind = _field_kind(annotation)
@@ -317,8 +333,12 @@ def _build(
     try:
         registry = get_global_registry()
         field_definitions: Dict[str, Tuple[Any, Any]] = {}
+        skipped = False
 
         for name, field_info in cls.model_fields.items():
+            if is_excluded(field_info):
+                skipped = True
+                continue
             if name in _RESERVED_FIELD_NAMES:
                 raise TypeError(
                     f"evaluate() cannot mirror field {cls.__name__}.{name}: "
@@ -338,7 +358,12 @@ def _build(
         if not field_definitions:
             raise TypeError(
                 f"evaluate() needs at least one field to score; "
-                f"{cls.__name__} defines none."
+                f"{cls.__name__} defines none"
+                + (
+                    " outside exclude=True / exclude_if, which are not scored."
+                    if skipped
+                    else "."
+                )
             )
 
         model_name = _valid_identifier(f"{cls.__name__}Eval")
