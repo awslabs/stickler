@@ -346,7 +346,7 @@ def print_confusion_matrix(
     if output_file:
         try:
             f = open(output_file, "w", encoding="utf-8")
-        except OSError as e:
+        except Exception as e:
             print(f"Error opening output file: {e}")
             return
 
@@ -355,10 +355,6 @@ def print_confusion_matrix(
 
             # Print overall summary
             _print_overall_summary(results, use_color)
-
-            # Print bulk evaluation info if available
-            if "bulk_info" in results:
-                _print_bulk_info_summary(results, use_color)
 
             # Print field-level metrics if requested
             if show_details:
