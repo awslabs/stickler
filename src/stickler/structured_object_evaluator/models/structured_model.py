@@ -1898,9 +1898,9 @@ class StructuredModel(BaseModel):
                     )
                     property_schema.update(extensions)
                 else:
-                    # Primitive list - build array schema manually. A mapping
-                    # element is a free-form `{"type": "object"}`, which the
-                    # importer reads back as `dict`. Falling through to "string"
+                    # List of scalars or mappings - build array schema manually.
+                    # A mapping element is a free-form `{"type": "object"}`, which
+                    # the importer reads back as `dict`. Falling through to "string"
                     # re-imported `List[Dict[...]]` as `List[str]`, which then
                     # rejected the data the original accepted (#333).
                     if ConfigurationHelper.is_mapping_annotation(element_type):

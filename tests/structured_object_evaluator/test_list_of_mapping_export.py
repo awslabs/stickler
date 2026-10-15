@@ -21,7 +21,7 @@ class Rows(StructuredModel):
     clipped: List[Dict[str, str]] = ComparableField(
         threshold=0.9, clip_under_threshold=True
     )
-    any_values: List[Dict[str, Any]] = ComparableField()
+    any_values: List[Dict[str, Any]] = ComparableField(weight=2.0)
     bare_dict: List[dict] = ComparableField()
     mapping: List[Mapping[str, str]] = ComparableField()
     optional_list: Optional[List[Dict[str, str]]] = ComparableField()
@@ -58,6 +58,7 @@ def test_reimported_field_resolves_like_the_original(name):
     rebuilt = ConfigurationHelper.get_comparison_info(Reimported, name)
     assert type(rebuilt.comparator) is type(original.comparator)
     assert rebuilt.threshold == original.threshold
+    assert rebuilt.weight == original.weight
     assert rebuilt.clip_under_threshold is original.clip_under_threshold
 
 
@@ -90,3 +91,26 @@ def test_stickler_config_roundtrip_loads_original_data_and_scores_the_same():
     rebuilt = Reimported(**gt).compare_with(Reimported(**pred))
 
     assert rebuilt["field_scores"] == pytest.approx(original["field_scores"])
+
+
+def test_reimported_field_does_not_coerce_values():
+    """Pins the documented limitation: the value type is not exported."""
+
+    class Typed(StructuredModel):
+        rows: List[Dict[str, int]] = ComparableField()
+
+    Reimported = StructuredModel.from_json_schema(Typed.to_json_schema())
+    assert Typed(rows=[{"n": "5"}]).rows == [{"n": 5}]
+    assert Reimported(rows=[{"n": "5"}]).rows == [{"n": "5"}]
+
+
+def test_stickler_config_refuses_a_list_of_mapping_element():
+    """Pins the documented limitation: `List[Mapping]` is not a config type."""
+
+    class WithMapping(StructuredModel):
+        rows: List[Mapping[str, str]] = ComparableField()
+
+    config = WithMapping.to_stickler_config()
+    assert config["fields"]["rows"]["type"] == "List[Mapping]"
+    with pytest.raises(ValueError, match="Unknown type: 'Mapping'"):
+        StructuredModel.model_from_json(config)

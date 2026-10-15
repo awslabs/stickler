@@ -63,17 +63,18 @@ Each release links to full notes on the
 ### Fixed
 
 - **A `List[Dict[...]]` field exported by `to_json_schema()` can now load its
-  own data.** The element exported as `items: {"type": "string"}`, so
+  own data.** The element was exported as `items: {"type": "string"}`, so
   `from_json_schema()` rebuilt the field as `List[str]` and raised
   `ValidationError: Input should be a valid string` on the data the original
   model accepted. A list whose element is any mapping (`Dict`, `dict`,
   `Mapping`, optionally `Optional`) now exports `items: {"type": "object"}`
   (`["object", "null"]` for an optional element) and re-imports as
-  `List[dict]` with the same comparator, threshold and clip setting, so it
-  scores as the original did. A consumer reading the exported schema sees the
-  `items` type change from `"string"` to `"object"`. `to_stickler_config()`
-  already exported this shape as `List[Dict]`
-  ([#333](https://github.com/awslabs/stickler/issues/333))
+  `List[dict]` with the comparator, threshold, weight and clip setting its
+  `ComparableField` declared, so it scores as the original did unless the data
+  relied on coercion to the value type, which is not exported. A consumer
+  reading the exported schema sees the `items` type change from `"string"` to
+  `"object"`. `to_stickler_config()` already round-tripped a `Dict` or `dict`
+  element ([#333](https://github.com/awslabs/stickler/issues/333))
 
 - **A `RootModel` is now refused when the evaluator is built, instead of failing
   once per document or scoring a wrong value `1.0`.** `eval_for()` accepted one

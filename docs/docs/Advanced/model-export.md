@@ -196,9 +196,13 @@ schema = Order.to_json_schema()
 config = Order.to_stickler_config()
 ```
 
-A list of mappings (`List[Dict[str, str]]`, `List[Mapping[...]]`) exports its items as a free-form
-`{"type": "object"}` and is re-imported as `List[dict]`. The value type is not exported, so the
-re-imported field accepts any mapping; comparator, threshold and clip setting are kept.
+`to_json_schema()` exports a list of mappings (`List[Dict[str, str]]`, `List[Mapping[...]]`) with
+free-form `{"type": "object"}` items, re-imported as `List[dict]`. The value type is not exported, so
+the re-imported field accepts any mapping and does not coerce its values; the comparator, threshold,
+weight and clip setting its `ComparableField` declares are kept. `to_stickler_config()` writes a
+`Dict` element as `List[Dict]`, which round-trips, but a `Mapping` element as `List[Mapping]`, which
+`model_from_json()` refuses. A mapping field that is not in a list still exports as a string on both
+paths ([#349](https://github.com/awslabs/stickler/issues/349)).
 
 ## Round-Trip Examples
 
