@@ -6,6 +6,7 @@ key information extraction tasks.
 """
 
 import traceback
+from contextvars import ContextVar
 from typing import Any, Callable, List, Optional, Tuple, Union
 
 import numpy as np
@@ -19,6 +20,21 @@ HUNGARIAN_SIZE_WARNING_THRESHOLD = 10000  # Matrix size (product of dimensions)
 
 # Global Munkres instance for optimization
 _MUNKRES = Munkres()
+
+_FILLING_COST_MATRIX: ContextVar[bool] = ContextVar(
+    "stickler_filling_cost_matrix", default=False
+)
+
+
+def filling_cost_matrix() -> bool:
+    """Whether the current call is scoring a cell of a cost matrix.
+
+    :meth:`HungarianMatcher.match` scores every pair and keeps one per row, so a
+    diagnostic emitted while it fills the matrix may describe a pair that is
+    then discarded. Code that warns about a scored pair checks this and leaves
+    the warning to the pairs the matcher selected.
+    """
+    return _FILLING_COST_MATRIX.get()
 
 
 class HungarianMatcher:
@@ -218,10 +234,15 @@ class HungarianMatcher:
             # Create similarity matrix
             similarity_matrix = np.zeros((len(list1), len(list2)))
 
-            # Fill the matrix with similarity scores
-            for i, item1 in enumerate(list1):
-                for j, item2 in enumerate(list2):
-                    similarity_matrix[i, j] = self._score(item1, item2)
+            # Fill the matrix with similarity scores. Most of these cells are
+            # discarded by the assignment, see `filling_cost_matrix`.
+            token = _FILLING_COST_MATRIX.set(True)
+            try:
+                for i, item1 in enumerate(list1):
+                    for j, item2 in enumerate(list2):
+                        similarity_matrix[i, j] = self._score(item1, item2)
+            finally:
+                _FILLING_COST_MATRIX.reset(token)
 
             # Check matrix size
             matrix_size = len(list1) * len(list2)
