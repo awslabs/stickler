@@ -931,18 +931,15 @@ def print_non_matches(
         use_color: Whether to use color in the output
         max_items: Maximum number of non-matches to display per group
         output_file: Optional file path to write the output to
+
+    A result without non-match records (``compare_with()`` called without
+    ``document_non_matches=True``) prints a note saying so, not a success message.
     """
     # Normalize results format and extract non-matches
     non_matches = _extract_non_matches(results)
     if not non_matches:
         if show_summary:
-            print(
-                _colorize(
-                    "✅ No non-matches found - all fields matched successfully!",
-                    Colors.GREEN,
-                    use_color,
-                )
-            )
+            _print_no_non_matches(non_matches, use_color)
         return
 
     # Direct output to file if specified
@@ -973,7 +970,9 @@ def print_non_matches(
         )
 
 
-def _extract_non_matches(results: Union[Dict[str, Any], Any]) -> List[Dict[str, Any]]:
+def _extract_non_matches(
+    results: Union[Dict[str, Any], Any],
+) -> Optional[List[Dict[str, Any]]]:
     """
     Extract non-matches from various result formats.
 
@@ -981,32 +980,57 @@ def _extract_non_matches(results: Union[Dict[str, Any], Any]) -> List[Dict[str, 
         results: Results from compare_with or bulk evaluator
 
     Returns:
-        List of non-match dictionaries
+        List of non-match dictionaries, or None if the results carry no
+        non-match records (as opposed to an empty list of them)
     """
     # Ask the object for its non-matches BEFORE unwrapping ``raw``. `EvalResult`
     # computes them lazily, so they are not in `raw`, and unwrapping first turned
     # `results` into a plain dict whose `non_matches` key does not exist -- which
     # is why the printer reported "all fields matched" over a failing document.
-    # This also still covers ProcessEvaluation from the bulk evaluator.
-    if hasattr(results, "non_matches") and results.non_matches:
+    # This also still covers ProcessEvaluation from the bulk evaluator, whose
+    # `non_matches` is None when it was built with `document_non_matches=False`.
+    if hasattr(results, "non_matches"):
         return results.non_matches
 
-    # Otherwise fall through to the dictionary formats, unwrapping `EvalResult`.
+    # Otherwise fall through to the dictionary formats, unwrapping `raw`.
     raw_results = getattr(results, "raw", None)
     if isinstance(raw_results, dict):
         results = raw_results
 
     # Handle regular single document results
-    elif isinstance(results, dict):
-        if "non_matches" in results and results["non_matches"]:
+    if isinstance(results, dict):
+        if "non_matches" in results:
             return results["non_matches"]
-        elif (
-            "confusion_matrix" in results
-            and "non_matches" in results["confusion_matrix"]
-        ):
-            return results["confusion_matrix"]["non_matches"]
+        # The engine writes an empty `confusion_matrix["non_matches"]` placeholder
+        # whether or not records were requested, so only a populated one counts.
+        cm = results.get("confusion_matrix")
+        if isinstance(cm, dict) and cm.get("non_matches"):
+            return cm["non_matches"]
 
-    return []
+    # No records at all. `compare_with()` only adds the key when called with
+    # `document_non_matches=True`, so this says nothing about whether fields
+    # matched, and must not be reported as if it did.
+    return None
+
+
+def _print_no_non_matches(
+    non_matches: Optional[List[Dict[str, Any]]], use_color: bool = True
+) -> None:
+    """
+    Say why there are no non-matches to list, claiming no more than the input shows.
+    """
+    if non_matches is None:
+        print(
+            _colorize(
+                "No non-match records in these results. Pass "
+                "document_non_matches=True to compare_with() or the bulk "
+                "evaluator to collect them.",
+                Colors.YELLOW,
+                use_color,
+            )
+        )
+    else:
+        print(_colorize("✅ No non-matches found.", Colors.GREEN, use_color))
 
 
 def _print_non_matches_content(
@@ -1327,13 +1351,7 @@ def _print_evaluation_results_content(
             print_non_matches(results, use_color=use_color)
         elif show_confusion_matrix and _normalize_results_format(results) is not None:
             # Only show this message when the supplied results were recognized.
-            print(
-                _colorize(
-                    "✅ No non-matches found - all fields matched successfully!",
-                    Colors.GREEN,
-                    use_color,
-                )
-            )
+            _print_no_non_matches(non_matches, use_color)
             print()
 
 

@@ -108,6 +108,19 @@ Each release links to full notes on the
   Keyed on the leaf name alone, the first model built in a process silenced every
   later one carrying the same typo.
 
+- **The pretty printers no longer report success over results that carry no
+  non-match records.** `print_non_matches` and `print_evaluation_results` printed
+  `✅ No non-matches found - all fields matched successfully!` for `EvalResult.raw`
+  or any `compare_with()` dict computed without `document_non_matches=True`,
+  including one with a wrong field, because that dict has no `non_matches` key
+  and the printers read the always-empty `confusion_matrix["non_matches"]`
+  placeholder instead. They now say the records are missing and how to collect
+  them. The same applies to a bulk `ProcessEvaluation` built with
+  `document_non_matches=False`. An empty record list still prints a success
+  message, now `✅ No non-matches found.` without the `all_fields_matched`
+  wording removed in #287
+  ([#298](https://github.com/awslabs/stickler/issues/298))
+
 ## [1.0.0] - 2026-09-11
 
 ### Added
