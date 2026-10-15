@@ -156,9 +156,9 @@ class StructuredModel(BaseModel):
 
 ### Legacy private methods are kept as delegating shims
 
-Older callers (and many tests) reach for private methods on `StructuredModel` such as `_dispatch_field_comparison`, `compare_recursive`, `_collect_enhanced_non_matches`, `_add_derived_metrics_to_result`, `_format_for_evaluator`, etc. These were **not removed** — they now exist as one-line wrappers that build the appropriate component and forward the call. They are retained for backward compatibility; new code should call the component directly.
+Older callers (and many tests) reach for private methods on `StructuredModel` such as `_dispatch_field_comparison`, `compare_recursive`, `_collect_enhanced_non_matches`, `_add_derived_metrics_to_result`, `_format_for_evaluator`, etc. The ones that still have callers are kept as short wrappers that forward the call to the component that does the work. They are retained for backward compatibility; new code should call the component directly. Four private methods that nothing called have been removed, as listed below.
 
-Three wrappers that nothing called were removed in [#390](https://github.com/awslabs/stickler/pull/390): `_calculate_list_confusion_matrix`, `_calculate_nested_field_metrics` and `_calculate_single_nested_field_metrics`. Their work is done by `StructuredListComparator` for a list of models, including the fields inside matched items, and by `FieldComparator.compare_structured_field` for a single nested model. [#395](https://github.com/awslabs/stickler/issues/395) removed `_calculate_object_level_metrics`, an uncalled copy of `StructuredListComparator._calculate_object_level_metrics`.
+Three wrappers that nothing called were removed in [#390](https://github.com/awslabs/stickler/pull/390): `_calculate_list_confusion_matrix`, `_calculate_nested_field_metrics` and `_calculate_single_nested_field_metrics`. Their work is done by `StructuredListComparator` for a list of models, including the fields inside matched items, and by `FieldComparator.compare_structured_field` for a single nested model. [#398](https://github.com/awslabs/stickler/pull/398) removed `_calculate_object_level_metrics`, an uncalled copy of `StructuredListComparator._calculate_object_level_metrics`.
 
 ## Component Responsibilities
 

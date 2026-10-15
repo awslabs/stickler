@@ -185,16 +185,16 @@ class ConfusionMatrixBuilder:
         >>> # Access field-level metrics
         >>> print(confusion_matrix["fields"]["name"]["overall"]["tp"])
         """
-        # Start with the recursive result (already has basic confusion matrix metrics)
+        # Step 1: Start with the recursive result (already has basic confusion matrix metrics)
         confusion_matrix = recursive_result
 
-        # Step 1: Add universal aggregate metrics to all nodes
+        # Step 2: Add universal aggregate metrics to all nodes
         # This rolls up child metrics to parent nodes
         confusion_matrix = self.aggregate_calculator.calculate_aggregate_metrics(
             confusion_matrix
         )
 
-        # Step 2: Add derived metrics if requested
+        # Step 3: Add derived metrics if requested
         # This calculates precision, recall, F1, accuracy from basic metrics
         if add_derived_metrics:
             confusion_matrix = self.derived_calculator.add_derived_metrics_to_result(

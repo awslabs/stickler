@@ -76,7 +76,7 @@ class TestModelValuedSubField:
     ``ConfigurationHelper.is_structured_field_type`` recognises neither
     annotation, so the pair takes the primitive route. The field's default
     comparator is ``LevenshteinComparator``, which scores the text of
-    ``_Inner(text="p")`` against ``_Inner(text="q")`` at about 0.95. Compared as
+    ``_Inner(text="p")`` against ``_Inner(text="q")`` at about 0.96. Compared as
     models they score 0.0, which is the right verdict.
     """
 
