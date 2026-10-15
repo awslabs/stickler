@@ -510,8 +510,8 @@ class StructuredListComparator:
 
                 # Classify through the dispatcher, as the branches above do, so
                 # a sub-field counts the way it does outside a list. Calling the
-                # comparator directly skipped its guards, so a dict in an `Any`
-                # sub-field raised instead of scoring an FD (#400).
+                # comparator directly skipped its guards, so a dict it cannot
+                # score raised instead of scoring an FD (#400).
                 field_classification = gt_item._dispatch_field_comparison(
                     sub_field_name, gt_sub_value, pred_sub_value
                 )["overall"]
