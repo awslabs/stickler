@@ -123,6 +123,13 @@ Every decision is recorded in `InferredSpec.provenance` and surfaced by
   `weight_hints=True`.
 - **Semantic / BERT / LLM are never auto-selected.** They need embeddings/creds
   and would surprise as a silent default.
+- **Excluded fields are not evaluated.** A plain-model field with
+  `exclude=True` or `exclude_if` is left out of the shadow model, so it never
+  reaches `field_scores`, `explain()`, `non_matches` or a report. `exclude_if`
+  counts whether or not it fires. A `StructuredModel` is used as configured, so
+  its excluded fields are still scored. The rule and its reasons are in
+  [Excluded fields](../../../docs/docs/API-Reference/auto.md#excluded-fields)
+  ([#379](https://github.com/awslabs/stickler/issues/379)).
 - **Unavailable comparators degrade.** If `rapidfuzz` (Fuzzy) or
   `python-dateutil` (Date) is missing, the field falls back to Levenshtein/Exact
   and the degrade is recorded in provenance.
@@ -149,12 +156,14 @@ fixes two things:
   ([#378](https://github.com/awslabs/stickler/issues/378)). A `StructuredModel`
   and everything under it keep their keys, since they validate through their
   own config.
-- A field marked `exclude=True` or `exclude_if` is dumped from its annotation and
-  added back, at any depth, including inside lists, sets and dicts
-  ([#379](https://github.com/awslabs/stickler/issues/379)). Annotated
-  serializers and the parent's `ser_json_*` settings apply to it; a
-  `@field_serializer` does not. One that fails to dump stays out, as before.
-  `StructuredModel.extra_fields` is the engine's own and is never added.
+- Inside a `StructuredModel`, a field marked `exclude=True` or `exclude_if` is
+  dumped from its annotation and added back, so `evaluate()` scores it as
+  `compare_with()` does ([#379](https://github.com/awslabs/stickler/issues/379)).
+  Annotated serializers and the parent's `ser_json_*` settings apply to it; a
+  `@field_serializer` does not. One that fails to dump stays out.
+  `StructuredModel.extra_fields` is the engine's own and is never added. On a
+  plain model nothing is added back: the shadow model has no such field (see
+  Honesty rules).
 
 The walk does not enter a `RootModel`, a `model_serializer`, anything a
 serializer produced, or a container whose length changed, since that output no

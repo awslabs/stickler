@@ -162,6 +162,7 @@ result.explain()["vendor_name"]["verdict"]
 | name and type disagree (`amount: str`) | the type wins | a comparator that cannot parse the type would mis-score |
 | a nested model | recurse into it | field-by-field |
 | a `List[Model]` | Hungarian matching | order-independent |
+| `Field(exclude=True)` or `exclude_if` | not scored | outside the model's output ([details](../API-Reference/auto.md#excluded-fields)) |
 
 Full rules and rationale live in [`src/stickler/auto/README.md`](https://github.com/awslabs/stickler/blob/main/src/stickler/auto/README.md).
 

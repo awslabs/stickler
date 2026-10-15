@@ -377,64 +377,6 @@ class TestDumpKeepsEveryField:
         )
         assert r.overall_score < 1.0
 
-    def test_excluded_field_is_compared(self):
-        class M(BaseModel):
-            invoice_id: str
-            total: Optional[float] = Field(default=None, exclude=True)
-
-        r = stickler.evaluate(
-            M(invoice_id="A", total=100.0), M(invoice_id="A", total=1.0)
-        )
-        assert r.field_scores["total"] == pytest.approx(0.0)
-
-    def test_required_excluded_field_evaluates(self):
-        class M(BaseModel):
-            invoice_id: str
-            total: float = Field(exclude=True)
-
-        assert stickler.evaluate(
-            M(invoice_id="A", total=1.0), M(invoice_id="A", total=1.0)
-        ).overall_score == pytest.approx(1.0)
-
-    def test_excluded_field_on_a_nested_model_is_compared(self):
-        class Inner(BaseModel):
-            name: Optional[str] = None
-            total: Optional[float] = Field(default=None, exclude=True)
-
-        class Outer(BaseModel):
-            inner: Optional[Inner] = None
-            items: List[Inner] = []
-
-        gt = Outer(inner=Inner(name="a", total=1.0), items=[Inner(name="b", total=2.0)])
-        pred = Outer(
-            inner=Inner(name="a", total=99.0), items=[Inner(name="b", total=98.0)]
-        )
-        r = stickler.evaluate(gt, pred)
-        assert r.field_scores["inner"] < 1.0
-        assert r.field_scores["items"] < 1.0
-
-    def test_excluded_field_in_a_dict_or_nested_list_is_compared(self):
-        class Inner(BaseModel):
-            total: Optional[float] = Field(default=None, exclude=True)
-
-        class Outer(BaseModel):
-            by_key: Dict[str, Inner] = {}
-            rows: List[List[Inner]] = []
-
-        gt = Outer(by_key={"a": Inner(total=1.0)}, rows=[[Inner(total=1.0)]])
-        pred = Outer(by_key={"a": Inner(total=99.0)}, rows=[[Inner(total=99.0)]])
-        r = stickler.evaluate(gt, pred)
-        assert r.field_scores["by_key"] < 1.0
-        assert r.field_scores["rows"] < 1.0
-
-    def test_excluded_field_on_a_structured_model_is_compared(self):
-        class S(StructuredModel):
-            name: str = ComparableField()
-            total: Optional[float] = Field(default=None, exclude=True)
-
-        r = stickler.evaluate(S(name="a", total=1.0), S(name="a", total=99.0))
-        assert r.overall_score < 1.0
-
     def test_unserializable_excluded_field_does_not_abort(self):
         class Blob:
             pass
@@ -490,19 +432,6 @@ class TestDumpKeepsEveryField:
         r = stickler.evaluate(Q(s=S(skuCode="a")), Q(s=S(skuCode="zz")))
         assert r.overall_score < 1.0
 
-    def test_excluded_field_keeps_its_annotated_serializer(self):
-        Year = Annotated[datetime.date, PlainSerializer(lambda v: str(v.year))]
-
-        class M(BaseModel):
-            name: str
-            year: Optional[Year] = Field(default=None, exclude=True)
-
-        r = stickler.evaluate(
-            M(name="a", year=datetime.date(2020, 1, 2)),
-            M(name="a", year=datetime.date(2020, 6, 30)),
-        )
-        assert r.field_scores["year"] == pytest.approx(1.0)
-
     def test_ser_json_config_still_applies_to_siblings_of_a_model(self):
         class Inner(BaseModel):
             a: str = "x"
@@ -555,38 +484,6 @@ class TestDumpKeepsEveryField:
         assert m.model_dump(mode="json") == {"c": "B", "b": "A"}
         assert _dump(m) == {"b": "B", "a": "A"}
 
-    def test_an_excluded_value_that_fails_to_dump_stays_out(self):
-        class M(BaseModel):
-            model_config = ConfigDict(ser_json_bytes="base64")
-            name: str
-            data: bytes = Field(default=b"", exclude=True)
-
-        assert "data" in _dump(M(name="a", data=b"ok"))
-        r = stickler.evaluate(M(name="a", data=b"\xff\xfe"), M(name="a"))
-        assert r.field_scores["name"] == pytest.approx(1.0)
-
-    def test_an_excluded_unserializable_model_stays_out(self):
-        class Handle:
-            pass
-
-        class Inner(BaseModel):
-            model_config = ConfigDict(arbitrary_types_allowed=True)
-            h: Handle
-
-        class Doc(BaseModel):
-            name: str
-            meta: Optional[Inner] = Field(default=None, exclude=True)
-
-        d = Doc(name="a", meta=Inner(h=Handle()))
-        assert stickler.evaluate(d, d).overall_score == pytest.approx(1.0)
-
-    def test_an_excluded_field_keeps_the_parents_ser_json_config(self):
-        class M(BaseModel):
-            model_config = ConfigDict(ser_json_timedelta="float")
-            t: datetime.timedelta = Field(exclude=True)
-
-        assert _dump(M(t=datetime.timedelta(seconds=5)))["t"] == 5.0
-
     def test_a_serializer_inside_optional_is_not_walked(self):
         """A serializer that reorders a list breaks the positional pairing."""
 
@@ -603,33 +500,6 @@ class TestDumpKeepsEveryField:
 
         dumped = _dump(M(items=[Inner(name="z", total=1), Inner(name="a", total=2)]))
         assert dumped["items"] == [{"name": "a"}, {"name": "z"}]
-
-    def test_an_excluded_fields_own_serializer_output_is_not_refilled(self):
-        class Inner(BaseModel):
-            name: str
-            total: Optional[float] = Field(default=None, exclude=True)
-
-        redact = PlainSerializer(lambda v: {"name": "redacted"})
-
-        class M(BaseModel):
-            x: Optional[Annotated[Inner, redact]] = Field(default=None, exclude=True)
-
-        assert _dump(M(x=Inner(name="a", total=5.0)))["x"] == {"name": "redacted"}
-
-    def test_excluded_field_inside_a_frozenset_is_compared(self):
-        class F(BaseModel):
-            model_config = ConfigDict(frozen=True)
-            name: str
-            total: Optional[float] = Field(default=None, exclude=True)
-
-        class M(BaseModel):
-            s: FrozenSet[F]
-
-        r = stickler.evaluate(
-            M(s=frozenset({F(name="a", total=1.0)})),
-            M(s=frozenset({F(name="a", total=99.0)})),
-        )
-        assert r.overall_score < 1.0
 
     def test_structured_model_extra_fields_are_not_dumped(self):
         class S(StructuredModel):
@@ -660,26 +530,16 @@ class TestDumpKeepsEveryField:
         from pydantic import create_model
 
         Dyn = create_model(
-            "Dyn", name=(str, ...), total=(float, Field(1.0, exclude=True))
+            "Dyn",
+            __base__=StructuredModel,
+            name=(str, ...),
+            total=(float, Field(1.0, exclude=True)),
         )
         _dump(Dyn(name="a"))  # fills both the plan and the adapter cache
         ref = weakref.ref(Dyn)
         del Dyn
         gc.collect()
         assert ref() is None
-
-    @pytest.mark.skipif(
-        "exclude_if" not in inspect.signature(Field).parameters,
-        reason="Field(exclude_if=) needs a newer pydantic",
-    )
-    def test_exclude_if_field_is_compared(self):
-        class M(BaseModel):
-            note: Optional[str] = Field(
-                default=None, exclude_if=lambda v: v is not None
-            )
-
-        r = stickler.evaluate(M(note="abc"), M(note="completely different"))
-        assert r.field_scores["note"] < 1.0
 
     def test_aliased_structured_model_still_round_trips(self):
         """A StructuredModel validates through its own config, so its own dump
@@ -701,6 +561,227 @@ class TestDumpKeepsEveryField:
             ).overall_score
             < 1.0
         )
+
+
+_HAS_EXCLUDE_IF = "exclude_if" in inspect.signature(Field).parameters
+
+
+class TestExcludedFieldsAreNotEvaluated:
+    """On a plain model, a field pydantic leaves out of serialization is outside
+    the model's output, so it is not scored or reported at any depth (#379)."""
+
+    def test_excluded_field_is_not_scored_or_reported(self):
+        class M(BaseModel):
+            invoice_id: str
+            api_key: Optional[str] = Field(default=None, exclude=True)
+
+        r = stickler.evaluate(
+            M(invoice_id="A", api_key="SECRET-GT"),
+            M(invoice_id="B", api_key="SECRET-PRED"),
+        )
+        assert set(r.field_scores) == {"invoice_id"}
+        assert "api_key" not in r.explain()
+        assert "api_key" not in stickler.eval_for(M).explain()
+        assert r.non_matches
+        assert "SECRET" not in repr(r.non_matches)
+
+    def test_excluded_field_carries_no_weight(self):
+        class M(BaseModel):
+            invoice_id: str
+            total: Optional[float] = Field(default=None, exclude=True)
+
+        r = stickler.evaluate(
+            M(invoice_id="A", total=100.0), M(invoice_id="A", total=1.0)
+        )
+        assert r.overall_score == pytest.approx(1.0)
+
+    def test_required_excluded_field_is_not_required(self):
+        class M(BaseModel):
+            invoice_id: str
+            total: float = Field(exclude=True)
+
+        r = stickler.evaluate(
+            M(invoice_id="A", total=1.0), M(invoice_id="A", total=99.0)
+        )
+        assert set(r.field_scores) == {"invoice_id"}
+
+    def test_excluded_field_is_left_out_of_from_pydantic(self):
+        class M(BaseModel):
+            invoice_id: str
+            total: float = Field(exclude=True)
+
+        assert "total" not in StructuredModel.from_pydantic(M).model_fields
+
+    def test_excluded_field_on_a_nested_model_is_not_scored(self):
+        class Inner(BaseModel):
+            name: Optional[str] = None
+            total: Optional[float] = Field(default=None, exclude=True)
+
+        class Outer(BaseModel):
+            inner: Optional[Inner] = None
+            items: List[Inner] = []
+
+        gt = Outer(inner=Inner(name="a", total=1.0), items=[Inner(name="b", total=2.0)])
+        pred = Outer(
+            inner=Inner(name="a", total=99.0), items=[Inner(name="b", total=98.0)]
+        )
+        r = stickler.evaluate(gt, pred)
+        assert r.overall_score == pytest.approx(1.0)
+        assert {"inner.total", "items.total"}.isdisjoint(r.explain())
+
+    def test_excluded_field_in_a_dict_set_or_nested_list_is_not_scored(self):
+        class Inner(BaseModel):
+            model_config = ConfigDict(frozen=True)
+            name: str = "x"
+            total: Optional[float] = Field(default=None, exclude=True)
+
+        class Outer(BaseModel):
+            by_key: Dict[str, Inner] = {}
+            rows: List[List[Inner]] = []
+            s: FrozenSet[Inner] = frozenset()
+
+        gt = Outer(
+            by_key={"a": Inner(total=1.0)},
+            rows=[[Inner(total=1.0)]],
+            s=frozenset({Inner(total=1.0)}),
+        )
+        pred = Outer(
+            by_key={"a": Inner(total=99.0)},
+            rows=[[Inner(total=99.0)]],
+            s=frozenset({Inner(total=99.0)}),
+        )
+        assert stickler.evaluate(gt, pred).overall_score == pytest.approx(1.0)
+
+    @pytest.mark.skipif(not _HAS_EXCLUDE_IF, reason="needs Field(exclude_if=)")
+    @pytest.mark.parametrize("note", ["abc", None])
+    def test_exclude_if_counts_whether_or_not_it_fires(self, note):
+        class M(BaseModel):
+            name: str
+            note: Optional[str] = Field(
+                default=None, exclude_if=lambda v: v is not None
+            )
+
+        r = stickler.evaluate(M(name="a", note=note), M(name="a", note="different"))
+        assert set(r.field_scores) == {"name"}
+
+    def test_a_model_with_only_excluded_fields_raises_clearly(self):
+        class M(BaseModel):
+            secret: str = Field(exclude=True)
+
+        with pytest.raises(TypeError, match="exclude=True"):
+            stickler.eval_for(M)
+
+
+class TestExcludedFieldsOnAStructuredModel:
+    """A StructuredModel is used as configured, and ``exclude`` only affects its
+    serialization, so ``evaluate()`` scores an excluded field as
+    ``compare_with()`` does."""
+
+    def test_excluded_field_is_scored_as_compare_with_scores_it(self):
+        class S(StructuredModel):
+            name: str = ComparableField()
+            total: Optional[float] = Field(default=None, exclude=True)
+
+        gt, pred = S(name="a", total=1.0), S(name="a", total=99.0)
+        r = stickler.evaluate(gt, pred)
+        assert r.field_scores["total"] == pytest.approx(0.0)
+        assert r.field_scores == gt.compare_with(pred)["field_scores"]
+
+    def test_nested_in_a_plain_model_it_is_still_scored(self):
+        class S(StructuredModel):
+            name: str = ComparableField()
+            secret: Optional[str] = ComparableField(default=None, exclude=True)
+
+        class Outer(BaseModel):
+            s: Optional[S] = None
+
+        r = stickler.evaluate(
+            Outer(s=S(name="x", secret="A")), Outer(s=S(name="x", secret="ZZZ"))
+        )
+        assert r.overall_score < 1.0
+
+    def test_from_json_keeps_a_nested_excluded_field(self):
+        class S(StructuredModel):
+            name: str = ComparableField()
+            secret: Optional[str] = ComparableField(default=None, exclude=True)
+
+        class W(StructuredModel):
+            s: Optional[S] = ComparableField(default=None)
+
+        gt = W.from_json({"s": {"name": "x", "secret": "A"}})
+        pred = W.from_json({"s": {"name": "x", "secret": "ZZZ"}})
+        assert gt.s.secret == "A"
+        assert gt.compare_with(pred)["overall_score"] < 1.0
+
+    def test_excluded_field_keeps_its_annotated_serializer(self):
+        Upper = Annotated[str, PlainSerializer(lambda v: v.upper())]
+
+        class S(StructuredModel):
+            name: str = ComparableField()
+            code: Optional[Upper] = Field(default=None, exclude=True)
+
+        r = stickler.evaluate(S(name="a", code="abc"), S(name="a", code="ABC"))
+        assert r.field_scores["code"] == pytest.approx(1.0)
+
+    def test_an_excluded_value_that_fails_to_dump_stays_out(self):
+        class S(StructuredModel):
+            model_config = ConfigDict(ser_json_bytes="base64")
+            name: str = ComparableField()
+            data: bytes = Field(default=b"", exclude=True)
+
+        assert "data" in _dump(S(name="a", data=b"ok"))
+        r = stickler.evaluate(S(name="a", data=b"\xff\xfe"), S(name="a"))
+        assert r.field_scores["name"] == pytest.approx(1.0)
+
+    def test_an_excluded_unserializable_model_stays_out(self):
+        class Handle:
+            pass
+
+        class Inner(BaseModel):
+            model_config = ConfigDict(arbitrary_types_allowed=True)
+            h: Handle
+
+        class Doc(StructuredModel):
+            name: str = ComparableField()
+            meta: Optional[Inner] = Field(default=None, exclude=True)
+
+        d = Doc(name="a", meta=Inner(h=Handle()))
+        assert stickler.evaluate(d, d).field_scores["name"] == pytest.approx(1.0)
+
+    def test_a_raising_serializer_on_an_excluded_field_leaves_it_out(self):
+        """Pydantic wraps whatever a serializer raises in
+        PydanticSerializationError, so a bug cannot be told apart from an
+        unserializable value. Before #379 the serializer never ran at all."""
+
+        def broken(v):
+            return v.no_such_attribute
+
+        class S(StructuredModel):
+            name: str = ComparableField()
+            code: Optional[Annotated[str, PlainSerializer(broken)]] = Field(
+                default=None, exclude=True
+            )
+
+        assert "code" not in _dump(S(name="a", code="x"))
+
+    def test_an_excluded_field_keeps_the_parents_ser_json_config(self):
+        class S(StructuredModel):
+            model_config = ConfigDict(ser_json_timedelta="float")
+            t: datetime.timedelta = Field(exclude=True)
+
+        assert _dump(S(t=datetime.timedelta(seconds=5)))["t"] == 5.0
+
+    def test_an_excluded_fields_own_serializer_output_is_not_refilled(self):
+        class Inner(BaseModel):
+            name: str
+            total: Optional[float] = Field(default=None, exclude=True)
+
+        redact = PlainSerializer(lambda v: {"name": "redacted"})
+
+        class S(StructuredModel):
+            x: Optional[Annotated[Inner, redact]] = Field(default=None, exclude=True)
+
+        assert _dump(S(x=Inner(name="a", total=5.0)))["x"] == {"name": "redacted"}
 
 
 class TestNullability:

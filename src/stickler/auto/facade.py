@@ -46,9 +46,10 @@ from pydantic import (
     TypeAdapter,
     WrapSerializer,
 )
+from pydantic_core import PydanticSerializationError
 
 from ..structured_object_evaluator.models.structured_model import StructuredModel
-from .builder import specs_for, structured_model_for
+from .builder import is_excluded, specs_for, structured_model_for
 
 #: Object-level match threshold applied when neither the caller nor the model
 #: declares one. ``None`` is the "caller said nothing" sentinel on the public
@@ -314,7 +315,9 @@ def evaluate(
 
     ``ground_truth`` and ``prediction`` must be pydantic instances of the same
     class (or a compatible superset, so extra/missing fields are tolerated). The
-    comparison config is inferred from their class.
+    comparison config is inferred from their class. A field pydantic leaves out
+    of serialization (``exclude=True`` or ``exclude_if``) is not evaluated; a
+    ``StructuredModel`` is used as configured and keeps it.
 
     Args:
         ground_truth: The reference instance.
@@ -364,8 +367,11 @@ def _restore(value: Any, dumped: Any, own_keys: bool) -> Any:
       the shadow model reads field names, so they are renamed (#378). A
       ``StructuredModel`` validates through its own classes, so it and
       everything under it (``own_keys``) keep their keys.
-    - A field marked ``exclude=True`` or ``exclude_if`` is dumped from its
-      annotation and added back (#379). One that fails to dump stays out.
+    - Inside a ``StructuredModel`` (``own_keys``), a field marked
+      ``exclude=True`` or ``exclude_if`` is dumped from its annotation and added
+      back, so ``evaluate()`` scores it as ``compare_with()`` does (#379). One
+      that fails to dump stays out. A plain model's shadow has no such field, so
+      nothing is added back there.
 
     The walk does not enter a ``RootModel``, a ``model_serializer``, anything a
     serializer produced, or a container whose length changed: that output is
@@ -391,7 +397,7 @@ def _restore(value: Any, dumped: Any, own_keys: bool) -> Any:
                 if entry.descend and not entry.serialized:
                     item = _restore(raw, item, own_keys)
                 out[key] = item
-            elif entry.excluded:
+            elif entry.excluded and own_keys:
                 item = _dump_excluded(cls, entry, raw, own_keys)
                 if item is not _MISSING:
                     out[key] = item
@@ -465,8 +471,7 @@ def _build_field_plan(cls: Type[BaseModel]) -> Tuple[_FieldPlan, ...]:
             _FieldPlan(
                 name=name,
                 dumped_key=dumped_key,
-                excluded=bool(field.exclude)
-                or getattr(field, "exclude_if", None) is not None,
+                excluded=is_excluded(field),
                 serialized=serialized,
                 descend=_may_hold_model(field.annotation),
             )
@@ -513,10 +518,12 @@ def _dump_excluded(
         return _MISSING
     try:
         dumped = adapter.dump_python(raw, mode="json")
-    except Exception:
+    except (PydanticSerializationError, ValueError):
         # Before #379 this field never reached the dump at all, so a value that
-        # cannot be dumped (an arbitrary type, undecodable bytes, a raising
-        # serializer) is left out as it always was, rather than aborting.
+        # cannot be dumped is left out as it always was, rather than aborting.
+        # Pydantic raises the first for an arbitrary type and wraps anything a
+        # serializer raises in it, so a serializer bug cannot be told apart and
+        # is left out too; undecodable bytes raise UnicodeDecodeError.
         return _MISSING
     if entry.descend and not entry.serialized:
         return _restore(raw, dumped, own_keys)
