@@ -75,20 +75,15 @@ class NullHelper:
         empty/null combinations a true negative and turns the fourth
         (``{}`` against populated) into a false alarm rather than a crash.
 
-        An empty tuple or set is absent for the same reason an empty list is:
-        it holds no items. ``Tuple`` and ``Set`` fields are scored as one value
-        rather than through the list path, so this rule, not the list one, is
-        the one they reach (#383).
-
         Args:
             val: Value to check
 
         Returns:
-            True if the value is None, a float NaN, or an empty string, dict,
-            tuple or set
+            True if the value is None, a float NaN, an empty string or an
+            empty dict
         """
         return (
             val is None
             or NullHelper.is_nan(val)
-            or (isinstance(val, (str, dict, tuple, set, frozenset)) and len(val) == 0)
+            or (isinstance(val, (str, dict)) and len(val) == 0)
         )

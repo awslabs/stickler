@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
 
-from .comparison_helper import comparable_scalar_pair
+from .comparison_helper import scalar_pair_reaches_comparator
 from .configuration_helper import ConfigurationHelper
 from .null_helper import NullHelper
 from .result_helper import ResultHelper
@@ -191,16 +191,18 @@ class ComparisonDispatcher:
         #       3. Make the list vs singleton distinction the primary branch
         #       See pseudocode in refactoring discussions for proposed structure.
 
-        # CASE 1: Scalars, tuples and sets, for the field's comparator.
-        # `comparable_scalar_pair` is the rule, shared with compare_field_raw so
-        # compare() and compare_with() agree: str/int/float as before, plus
-        # numbers incl. Decimal, related date/time/UUID/Enum values, and a pair
-        # of tuples or of sets scored as one value. Before #383 everything but
-        # str/int/float fell through to CASE 6 and scored 0.0 against an
-        # identical value, without the comparator being called.
-        if (pair := comparable_scalar_pair(gt_val, pred_val)) is not None:
+        # CASE 1: A pair of non-structured values, for the field's comparator.
+        # `scalar_pair_reaches_comparator` is the rule, shared with
+        # compare_field_raw so compare() and compare_with() agree: a declared
+        # comparator is always called, and an inferred one sees str/int/float,
+        # numbers incl. Decimal, and related date/time/UUID/Enum values. Before
+        # #383 only str/int/float got here; everything else fell through to
+        # CASE 6 and scored 0.0 without the comparator being called.
+        if scalar_pair_reaches_comparator(
+            gt_val, pred_val, comparator_explicit=info.comparator_explicit
+        ):
             return self.field_comparator.compare_primitive_with_scores(
-                *pair, field_name
+                gt_val, pred_val, field_name
             )
 
         # CASE 2: Both are lists (non-empty, null/empty cases already handled in STEP 3)

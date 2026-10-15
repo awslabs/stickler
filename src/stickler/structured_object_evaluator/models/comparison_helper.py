@@ -8,12 +8,11 @@ import datetime
 import decimal
 import enum
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 from pydantic import BaseModel
 
 from stickler.comparators.base import BaseComparator
-from stickler.utils.canonical import order_sets
 
 from .hungarian_helper import HungarianHelper
 from .null_helper import NullHelper
@@ -175,15 +174,12 @@ def _maybe_absent(val: Any) -> bool:
     return (
         val is None
         or NullHelper.is_nan(val)
-        or (isinstance(val, (str, list, dict, tuple, set, frozenset)) and len(val) == 0)
+        or (isinstance(val, (str, list, dict)) and len(val) == 0)
     )
 
 
 # Scalar types beyond str/int/float that a model field commonly declares.
-# `datetime.date` covers `datetime.datetime`, its subclass. Deliberately a list
-# rather than "anything that is not a container": an arbitrary object reaches a
-# string comparator as its repr, and two distinct `<Foo object at 0x...>` reprs
-# are near-identical strings, so they would score as a match.
+# `datetime.date` covers `datetime.datetime`, its subclass.
 _SCALAR_TYPES = (
     datetime.date,
     datetime.time,
@@ -192,53 +188,68 @@ _SCALAR_TYPES = (
     uuid.UUID,
 )
 _NUMBERS = (int, float, decimal.Decimal)
+# Values with their own branch in both readers; never decided here.
+_STRUCTURED = (list, dict, BaseModel)
+# Not decided here yet: tuples and sets keep their pre-#383 behaviour in each
+# reader until collection comparison has its own contract (#391).
+_COLLECTIONS = (tuple, set, frozenset)
 
 
-def comparable_scalar_pair(gt_val: Any, pred_val: Any) -> Optional[Tuple[Any, Any]]:
-    """The two values to hand a field's comparator, or ``None`` if they mismatch.
+def scalar_pair_reaches_comparator(
+    gt_val: Any, pred_val: Any, *, comparator_explicit: bool
+) -> bool:
+    """Whether a field's comparator scores this pair, rather than it mismatching.
 
-    The one rule for which non-container pairs a comparator scores, read by
-    both ``ComparisonDispatcher`` (``compare_with``) and
+    The one rule for a pair of non-structured values, read by both
+    ``ComparisonDispatcher`` (``compare_with``) and
     :meth:`ComparisonHelper.compare_field_raw` (``compare`` and the Hungarian
     cost matrix). Spelling it in each let the two disagree, the contradiction
-    #233 rules out. A pair is comparable when:
+    #233 rules out.
 
-    - both are ``str``/``int``/``float``, as before;
-    - both are numbers, ``Decimal`` included, so ``Decimal("12.5")`` against
-      ``12.5`` reaches ``NumericComparator``;
-    - both are ``date``/``time``/``timedelta``/``UUID`` of related type
-      (``date`` and ``datetime`` are);
-    - both are members of related ``Enum`` classes. Checked first, because an
+    A comparator the field **declared** is always called: the caller chose it
+    for this field's values, and it decides what it can score, as it already
+    does for a dict or a plain model. That covers ``bytes``, a custom class,
+    or a ``date`` against its ISO string under ``DateComparator``.
+
+    A comparator that was **inferred** sees only values it can be trusted
+    with, since it was never chosen for them. An arbitrary object would reach
+    ``LevenshteinComparator`` as its repr, and two distinct
+    ``<Foo object at 0x...>`` reprs are near-identical strings. So the pair
+    must be:
+
+    - ``str``/``int``/``float``, as before;
+    - two numbers, ``Decimal`` included;
+    - ``date``/``time``/``timedelta``/``UUID`` values of related type (``date``
+      and ``datetime`` are);
+    - members of related ``Enum`` classes. Checked first, because an
       ``IntEnum``/``StrEnum`` member is also an ``int``/``str``, and two
       different such classes, or a member against a bare value, are a
-      mismatch;
-    - both are tuples, or both are sets, scored as one value with sets put in
-      a fixed order (see :func:`~stickler.utils.canonical.order_sets`).
+      mismatch.
 
-    Before #383 everything past the first bullet fell through to the
-    mismatched-types case and scored 0.0 against an identical value.
+    Before #383 the dispatcher accepted only the first bullet, and a declared
+    comparator for anything else was never called.
     """
+    if isinstance(gt_val, _STRUCTURED) or isinstance(pred_val, _STRUCTURED):
+        return False
+    if comparator_explicit:
+        return True
     if isinstance(gt_val, enum.Enum) or isinstance(pred_val, enum.Enum):
-        if isinstance(gt_val, enum.Enum) and isinstance(pred_val, enum.Enum):
-            return (gt_val, pred_val) if _related(gt_val, pred_val) else None
-        return None
+        return (
+            isinstance(gt_val, enum.Enum)
+            and isinstance(pred_val, enum.Enum)
+            and _related(gt_val, pred_val)
+        )
     if isinstance(gt_val, (str, int, float)) and isinstance(
         pred_val, (str, int, float)
     ):
-        return gt_val, pred_val
+        return True
     if isinstance(gt_val, _NUMBERS) and isinstance(pred_val, _NUMBERS):
-        return gt_val, pred_val
-    if (
+        return True
+    return (
         isinstance(gt_val, _SCALAR_TYPES)
         and isinstance(pred_val, _SCALAR_TYPES)
         and _related(gt_val, pred_val)
-    ):
-        return gt_val, pred_val
-    if (isinstance(gt_val, tuple) and isinstance(pred_val, tuple)) or (
-        isinstance(gt_val, (set, frozenset)) and isinstance(pred_val, (set, frozenset))
-    ):
-        return order_sets(gt_val), order_sets(pred_val)
-    return None
+    )
 
 
 def _related(a: Any, b: Any) -> bool:
@@ -620,11 +631,18 @@ class ComparisonHelper:
         if isinstance(self_value, BaseModel) and isinstance(other_value, BaseModel):
             return comparator.compare(self_value, other_value)
 
+        # Tuples and sets keep their pre-#383 behaviour here (#391).
+        if isinstance(self_value, _COLLECTIONS) or isinstance(
+            other_value, _COLLECTIONS
+        ):
+            return comparator.compare(self_value, other_value)
+
         # Every other pair goes through the dispatcher's own rule, so a pair
         # `compare_with` calls a mismatch scores 0.0 here too (#233, #383).
-        pair = comparable_scalar_pair(self_value, other_value)
-        if pair is None:
+        if not scalar_pair_reaches_comparator(
+            self_value, other_value, comparator_explicit=info.comparator_explicit
+        ):
             return 0.0
 
         # Use the comparator to calculate raw similarity (no threshold)
-        return comparator.compare(*pair)
+        return comparator.compare(self_value, other_value)
