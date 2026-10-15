@@ -182,6 +182,16 @@ def _reject_unknown_extensions(
         suggestible = _KNOWN_MODEL_EXTENSIONS
         other_scope, other_keys = "field", _DOCUMENTED_FIELD_EXTENSIONS
         where = f"object '{field_path}'"
+    elif scope == "definition":
+        # A definition is a type that several positions can `$ref`, and not all
+        # of them read field keys (`items` does not). Honouring them here would
+        # make one key work at one reference and vanish at the next, so they go
+        # on the property that uses the definition, usually beside its `$ref`.
+        accepted = _KNOWN_MODEL_EXTENSIONS
+        suggestible = _KNOWN_MODEL_EXTENSIONS
+        other_scope = "property that uses this definition"
+        other_keys = _DOCUMENTED_FIELD_EXTENSIONS
+        where = f"definition '{field_path}'"
     elif scope == "field_or_model":
         # An object-typed property honours both sets, so there is no misplacement
         # to report and nothing to route elsewhere.
@@ -847,8 +857,23 @@ class JsonSchemaImporter:
                     for key, value in prepared.items()
                     if key not in metadata and key != "type"
                 }
+                # The object arm generates the class, and `_build_nested_model`
+                # reads the class's own keys off that arm. Leaving them only as
+                # siblings of `anyOf` built `DynamicModel` at 0.7 for a node that
+                # declared a name and threshold, while its field keys, read off
+                # the property, were honoured. See #349.
+                model_keys = {
+                    key: deepcopy(value)
+                    for key, value in metadata.items()
+                    if key in _KNOWN_MODEL_EXTENSIONS
+                }
                 metadata["anyOf"] = [
-                    {**deepcopy(non_metadata), "type": value} for value in raw_type
+                    {
+                        **deepcopy(non_metadata),
+                        **(model_keys if value == "object" else {}),
+                        "type": value,
+                    }
+                    for value in raw_type
                 ]
                 prepared = metadata
 
@@ -909,6 +934,17 @@ class JsonSchemaImporter:
             for key, value in node.items():
                 child_path = path
                 child_scope: Optional[str] = None
+                if key in ("$defs", "definitions") and isinstance(value, dict):
+                    for name, body in value.items():
+                        # Checked like any other node. Walking a definition with
+                        # no scope let a typo there import silently while the
+                        # same typo inline raised. See #340.
+                        walk(
+                            body,
+                            f"{path}.{key}.{name}" if path else f"{key}.{name}",
+                            "definition",
+                        )
+                    continue
                 if key == "properties" and isinstance(value, dict):
                     for name, child in value.items():
                         # A property is scored as a field of this object, and if
@@ -927,7 +963,7 @@ class JsonSchemaImporter:
                     # configure is the array itself, one level up. Only the element
                     # class's own settings are read.
                     child_scope = "model"
-                elif key in _COMBINERS or key in ("$defs", "definitions"):
+                elif key in _COMBINERS:
                     child_scope = "model"
                 walk(value, child_path, child_scope)
 

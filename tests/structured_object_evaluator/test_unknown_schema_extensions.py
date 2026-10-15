@@ -433,3 +433,258 @@ class TestTheDocumentedValuesWork:
         assert type(title.comparator).__name__ == "FuzzyComparator"
         assert title.threshold == 0.8
         assert model._get_comparison_info("priority").weight == 2.0
+
+
+_OBJECT_SPELLINGS = pytest.mark.parametrize(
+    "declared", ("object", ["object", "null"]), ids=("object", "object-or-null")
+)
+
+
+class TestANullableObjectReadsItsModelKeys:
+    """`["object", "null"]` configures its class exactly as `"object"` does.
+
+    The list form is rewritten to `anyOf` before parsing, and the model keys
+    stayed beside the `anyOf` instead of on the object arm that becomes the
+    class. The node built `DynamicModel` at 0.7 while its field keys, read off
+    the property, were honoured, so the loss was partial and invisible.
+
+    See https://github.com/awslabs/stickler/issues/349 (part A).
+    """
+
+    @staticmethod
+    def _child(declared, **extensions):
+        return StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "title": "T",
+                "properties": {
+                    "child": {
+                        "type": declared,
+                        "properties": {
+                            "a": {"type": "string"},
+                            "n": {"type": "number"},
+                        },
+                        "required": ["a", "n"],
+                        **extensions,
+                    }
+                },
+                "required": ["child"],
+            }
+        )
+
+    @_OBJECT_SPELLINGS
+    def test_name_and_match_threshold_are_honoured(self, declared):
+        model = self._child(
+            declared,
+            **{
+                "x-aws-stickler-model-name": "ChildRenamed",
+                "x-aws-stickler-match-threshold": 0.93,
+                "x-aws-stickler-weight": 3.0,
+            },
+        )
+        child = _unwrap(model.model_fields["child"].annotation)
+        assert child.__name__ == "ChildRenamed"
+        assert child.match_threshold == 0.93
+        assert model._get_comparison_info("child").weight == 3.0
+
+    @_OBJECT_SPELLINGS
+    def test_infer_unspecified_is_honoured(self, declared):
+        model = self._child(declared, **{"x-aws-stickler-infer-unspecified": True})
+        info = _unwrap(model.model_fields["child"].annotation)._get_comparison_info("n")
+        assert type(info.comparator).__name__ == "NumericComparator"
+        assert info.threshold == 0.95
+
+    @pytest.mark.parametrize(
+        "key, value, read",
+        (
+            ("x-aws-stickler-model-name", "Renamed", lambda c: c.__name__),
+            ("x-aws-stickler-match-threshold", 0.93, lambda c: c.match_threshold),
+            (
+                "x-aws-stickler-infer-unspecified",
+                True,
+                lambda c: c._get_comparison_info("n").threshold,
+            ),
+        ),
+    )
+    def test_every_model_key_the_check_accepts_changes_the_model(
+        self, key, value, read
+    ):
+        """No key may pass `_reject_unknown_extensions` here and then do nothing."""
+        from stickler.structured_object_evaluator.models.json_schema_importer import (
+            _KNOWN_MODEL_EXTENSIONS,
+        )
+
+        assert key in _KNOWN_MODEL_EXTENSIONS
+        plain = read(
+            _unwrap(self._child(["object", "null"]).model_fields["child"].annotation)
+        )
+        declared = read(
+            _unwrap(
+                self._child(["object", "null"], **{key: value})
+                .model_fields["child"]
+                .annotation
+            )
+        )
+        assert declared != plain
+
+    def test_the_parametrisation_covers_every_model_key(self):
+        from stickler.structured_object_evaluator.models.json_schema_importer import (
+            _KNOWN_MODEL_EXTENSIONS,
+        )
+
+        assert _KNOWN_MODEL_EXTENSIONS == {
+            "x-aws-stickler-model-name",
+            "x-aws-stickler-match-threshold",
+            "x-aws-stickler-infer-unspecified",
+        }
+
+    @_OBJECT_SPELLINGS
+    def test_a_near_miss_element_is_a_false_discovery(self, declared):
+        """The element scores 0.9, between the declared 0.93 and the default 0.7."""
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "title": "T",
+                "properties": {
+                    "rows": {
+                        "type": "array",
+                        "items": {
+                            "type": declared,
+                            "x-aws-stickler-model-name": "Row",
+                            "x-aws-stickler-match-threshold": 0.93,
+                            "properties": {
+                                "a": {"type": "string"},
+                                "b": {"type": "string"},
+                            },
+                            "required": ["a", "b"],
+                        },
+                    }
+                },
+                "required": ["rows"],
+            }
+        )
+        gt = model(rows=[{"a": "alpha", "b": "bravo"}])
+        pred = model(rows=[{"a": "alpha", "b": "brava"}])
+        overall = gt.compare_with(pred, include_confusion_matrix=True)[
+            "confusion_matrix"
+        ]["fields"]["rows"]["overall"]
+        assert (overall["tp"], overall["fd"], overall["fp"]) == (0, 1, 1)
+
+
+class TestDefinitionsAreChecked:
+    """A `$defs` body is checked like an inline node, and reads only model keys.
+
+    The walk used to enter a definition with no scope, so a typo there imported
+    silently while the same typo inline raised. A definition is a type that
+    several positions can `$ref`, and `items` does not read field keys, so a
+    field key inside one would work at one reference and vanish at the next.
+    It goes beside the `$ref` instead, where it is read.
+
+    See https://github.com/awslabs/stickler/issues/340
+    """
+
+    INNER = {
+        "type": "object",
+        "title": "Inner",
+        "properties": {"b": {"type": "string"}, "c": {"type": "string"}},
+    }
+
+    @staticmethod
+    def _via(namespace, body, **ref_extensions):
+        return StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "title": "Parent",
+                "properties": {
+                    "inner": {"$ref": f"#/{namespace}/Inner", **ref_extensions}
+                },
+                namespace: {"Inner": body},
+            }
+        )
+
+    @pytest.mark.parametrize("namespace", ("$defs", "definitions"))
+    @pytest.mark.parametrize(
+        "key", ("x-aws-stickler-thresold", "x-aws-stickler-match-treshold")
+    )
+    def test_a_typo_raises_as_it_does_inline(self, namespace, key):
+        with pytest.raises(ValueError, match="Unrecognized Stickler extension") as exc:
+            self._via(namespace, dict(self.INNER, **{key: 0.88}))
+        assert key in str(exc.value)
+        assert f"{namespace}.Inner" in str(exc.value)
+
+    @pytest.mark.parametrize(
+        "key, value",
+        (
+            ("x-aws-stickler-threshold", 0.88),
+            ("x-aws-stickler-weight", 3.0),
+            ("x-aws-stickler-comparator", "ExactComparator"),
+        ),
+    )
+    def test_a_field_key_raises_and_names_where_it_belongs(self, key, value):
+        with pytest.raises(ValueError) as exc:
+            self._via("$defs", dict(self.INNER, **{key: value}))
+        message = str(exc.value)
+        assert key in message
+        assert "belongs on the property that uses this definition" in message
+
+    def test_a_field_key_on_a_scalar_definition_raises(self):
+        with pytest.raises(ValueError, match="x-aws-stickler-threshold"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {"total": {"$ref": "#/$defs/Money"}},
+                    "$defs": {
+                        "Money": {"type": "number", "x-aws-stickler-threshold": 0.95}
+                    },
+                }
+            )
+
+    def test_a_field_key_beside_the_ref_is_honoured(self):
+        """The documented spelling, so the error's advice works."""
+        model = self._via(
+            "$defs",
+            self.INNER,
+            **{"x-aws-stickler-threshold": 0.88, "x-aws-stickler-weight": 3.0},
+        )
+        info = model._get_comparison_info("inner")
+        assert info.threshold == 0.88
+        assert info.weight == 3.0
+
+    def test_model_keys_in_a_definition_are_honoured(self):
+        model = self._via(
+            "$defs",
+            dict(
+                self.INNER,
+                **{
+                    "x-aws-stickler-model-name": "Renamed",
+                    "x-aws-stickler-match-threshold": 0.91,
+                },
+            ),
+        )
+        inner = _unwrap(model.model_fields["inner"].annotation)
+        assert inner.__name__ == "Renamed"
+        assert inner.match_threshold == 0.91
+
+    def test_a_nullable_definition_reads_its_model_keys(self):
+        """Both fixes meet here: a `$defs` body typed `["object", "null"]`."""
+        model = self._via(
+            "$defs",
+            dict(
+                self.INNER,
+                type=["object", "null"],
+                **{"x-aws-stickler-match-threshold": 0.91},
+            ),
+        )
+        assert _unwrap(model.model_fields["inner"].annotation).match_threshold == 0.91
+
+    def test_a_typo_on_a_property_inside_a_definition_names_its_path(self):
+        with pytest.raises(ValueError, match=r"\$defs\.Inner\.b"):
+            self._via(
+                "$defs",
+                dict(
+                    self.INNER,
+                    properties={
+                        "b": {"type": "string", "x-aws-stickler-thresold": 0.8}
+                    },
+                ),
+            )

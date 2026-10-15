@@ -110,6 +110,30 @@ The `x-aws-stickler-*` extensions control comparison behavior on each property:
 | `x-aws-stickler-match-threshold` | Hungarian match threshold (object-level) | `0.75` |
 | `x-aws-stickler-infer-unspecified` | Infer comparators for properties that name none (object-level). See [Inferring unspecified fields](#inferring-unspecified-fields) | `true` |
 
+An object typed `["object", "null"]` reads the same keys as one typed `"object"`.
+
+A `$defs` (or `definitions`) entry is a type, not a property. Its object-level keys
+configure the class it generates and are shared by every `$ref` to it. Field-level
+keys describe one use of that type, so they go beside the `$ref` on the referencing
+property; inside a definition they raise, as a misspelled key does:
+
+```python
+{
+    "type": "object",
+    "properties": {
+        "billing": {"$ref": "#/$defs/Address", "x-aws-stickler-weight": 2.0},
+        "shipping": {"$ref": "#/$defs/Address"}
+    },
+    "$defs": {
+        "Address": {
+            "type": "object",
+            "x-aws-stickler-match-threshold": 0.8,
+            "properties": {"street": {"type": "string"}}
+        }
+    }
+}
+```
+
 With no extension specified, the property is parsed to a strict Python annotation and the comparator
 is chosen from that annotation, which is then widened back to the JSON value type so an invalid
 extraction scores `0.0` instead of raising. So `format`, `enum` and `const` participate in the
