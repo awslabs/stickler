@@ -4,9 +4,9 @@ CI/CD workflows for the Stickler project.
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| `run_pytest.yaml` | push, PR | Test suite with coverage (installs `--extra llm --extra bert`) |
-| `lint.yaml` | push, PR | Ruff lint (non-blocking via `continue-on-error`) |
-| `security.yaml` | push, PR | Bandit + ASH security scans; uploads `security-reports` artifact |
+| `run_pytest.yaml` | PR, push to `dev`/`main` | Test suite with coverage (installs `--extra llm --extra bert`) |
+| `lint.yaml` | PR, push to `dev`/`main` | Ruff lint (non-blocking via `continue-on-error`) |
+| `security.yaml` | PR, push to `dev`/`main` | Bandit + ASH security scans; uploads `security-reports` artifact |
 | `security-pr-comment.yaml` | `workflow_run` after Security Scan | Posts/updates the ASH summary as a PR comment |
 | `docs.yml` | push to `main` (src/docs paths) | Deploys MkDocs site to GitHub Pages |
 | `docs-check.yml` | PR (docs/source/dependency/workflow paths) | Builds docs with the docs group and rejects link/navigation diagnostics; cancels superseded builds; no deployment |
@@ -26,3 +26,12 @@ waiting indefinitely.
   `--frozen` so CI resolves exactly what `uv.lock` specifies.
 - **Least privilege**: workflows default to `permissions: contents: read`
   and grant extra scopes per job only where needed.
+- **One run per pull request**: the three PR-validating workflows limit `push`
+  to `dev` and `main`, because a branch with an open PR fired both events and
+  validated the same commit twice. `run_pytest.yaml` and `lint.yaml` also carry
+  a `concurrency` group so a superseded PR head is cancelled; a push gets a
+  group of its own keyed on `github.run_id`, since a group holds one running
+  and one pending run and a third push would cancel the pending one whatever
+  `cancel-in-progress` says. `security.yaml` is deliberately left uncancelled:
+  `security-pr-comment.yaml` wakes on its completion including a cancellation,
+  and fails rather than skips when the `security-reports` artifact is absent.
