@@ -108,6 +108,15 @@ Each release links to full notes on the
   Keyed on the leaf name alone, the first model built in a process silenced every
   later one carrying the same typo.
 
+- **Documentation:** the 1.0.0 entry "The element gate judges a PAIR, not a
+  list" overstates its last row. Under the bare `Optional[List[Any]]` heading,
+  `[Plain, NoteSM]` vs `[Plain, Note2SM]` scores `0.5`, not `1.0`, and scored
+  `0.0` (not `0.5`) under the list-wide gate. The published values (`1.0`,
+  `0.5`, `1.0`) hold only with a comparator declared on `f`. The bare `0.5` is
+  the refused `Plain` pair (`[Plain]` vs `[Plain]` scores `0.0` bare), not the
+  cross-class rule. Scoring is unchanged
+  ([#338](https://github.com/awslabs/stickler/issues/338))
+
 ## [1.0.0] - 2026-09-11
 
 ### Added
