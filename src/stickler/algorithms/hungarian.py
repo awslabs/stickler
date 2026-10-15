@@ -288,11 +288,10 @@ class HungarianMatcher:
             other convention, so the same counts read lower here than they do
             as ``cm_recall`` there.
 
-            The threshold test here is a bare ``>=``. ``ThresholdHelper``,
-            ``ComparisonHelper`` and ``ConfusionMatrixCalculator`` use a
-            tolerant test that accepts a score up to ``1e-10`` under the
-            threshold, so a score inside that window is a TP there and an FD
-            here.
+            The threshold test here is a bare ``>=``. ``ThresholdHelper`` and
+            ``ComparisonHelper`` use a tolerant test that accepts a score up
+            to ``1e-10`` under the threshold, so a score inside that window is
+            a TP there and an FD here.
 
             ``match_threshold=0.0`` is used elsewhere as a capture all
             sentinel. Every score satisfies ``>= 0.0``, so ``tp`` then counts
