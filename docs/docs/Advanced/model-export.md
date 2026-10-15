@@ -196,6 +196,10 @@ schema = Order.to_json_schema()
 config = Order.to_stickler_config()
 ```
 
+A list of mappings (`List[Dict[str, str]]`, `List[Mapping[...]]`) exports its items as a free-form
+`{"type": "object"}` and is re-imported as `List[dict]`. The value type is not exported, so the
+re-imported field accepts any mapping; comparator, threshold and clip setting are kept.
+
 ## Round-Trip Examples
 
 ### JSON Schema

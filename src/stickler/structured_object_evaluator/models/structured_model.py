@@ -1898,10 +1898,17 @@ class StructuredModel(BaseModel):
                     )
                     property_schema.update(extensions)
                 else:
-                    # Primitive list - build array schema manually
-                    json_element_type = PYTHON_TYPE_TO_JSON_TYPE.get(
-                        element_type, "string"
-                    )
+                    # Primitive list - build array schema manually. A mapping
+                    # element is a free-form `{"type": "object"}`, which the
+                    # importer reads back as `dict`. Falling through to "string"
+                    # re-imported `List[Dict[...]]` as `List[str]`, which then
+                    # rejected the data the original accepted (#333).
+                    if ConfigurationHelper.is_mapping_annotation(element_type):
+                        json_element_type = "object"
+                    else:
+                        json_element_type = PYTHON_TYPE_TO_JSON_TYPE.get(
+                            element_type, "string"
+                        )
                     property_schema = {
                         "type": "array",
                         "items": {
