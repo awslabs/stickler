@@ -18,7 +18,6 @@ class AggregateMetricsCalculator:
     This class is part of the StructuredModel refactoring that extracts metrics
     calculation logic into dedicated helper classes. It works in conjunction with:
     
-    - ConfusionMatrixCalculator: Calculates basic confusion matrix metrics
     - DerivedMetricsCalculator: Calculates derived metrics (F1, precision, recall)
     - ConfusionMatrixBuilder: Orchestrates all metrics calculation
     
