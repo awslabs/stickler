@@ -14,17 +14,27 @@ depended on the root type, and one of the four outcomes was silent:
 ======================================  ==========================================
 
 The three errors arrived once per document rather than once at configuration
-time, and named neither ``RootModel`` nor the field they could not key. The
-fourth reported a perfect match for a wrong prediction.
+time. The two ``AttributeError``s named neither the shape nor a field; the
+mapping case named ``root``, the shadow's own field rather than the model field
+that held the value. None of them said the shape was unsupported. The fourth
+reported a perfect match for a wrong prediction.
 
-These tests pin the refusal and its message across all four root shapes, and pin
-the two shapes that must keep working, so the check cannot widen into them.
+The refusal lives in ``_build``, the function that assembles a shadow class for
+every model the zero-config builder mirrors, so it covers the class passed in
+and every model reached from it: a ``RootModel`` field, and a ``RootModel`` list
+element. ``RootModel[Point]`` nested in either position scored 1.0 before that.
+
+These tests pin the refusal and its message across the five root shapes and both
+nesting positions, and pin the shapes that must keep working, so the check
+cannot widen into them.
 
 See https://github.com/awslabs/stickler/issues/366
 """
 
+from typing import List, Optional
+
 import pytest
-from pydantic import BaseModel, RootModel, ValidationError
+from pydantic import BaseModel, RootModel
 
 import stickler
 from stickler import ComparableField, eval_for
@@ -54,8 +64,8 @@ ROOTS = [
 ROOT_IDS = ["list", "named-subclass", "int", "dict", "model"]
 
 
-@pytest.mark.parametrize("root_cls, gt_value, pred_value", ROOTS, ids=ROOT_IDS)
-def test_eval_for_refuses_every_root_shape(root_cls, gt_value, pred_value):
+@pytest.mark.parametrize("root_cls", [row[0] for row in ROOTS], ids=ROOT_IDS)
+def test_eval_for_refuses_every_root_shape(root_cls):
     with pytest.raises(TypeError, match="RootModel") as exc:
         eval_for(root_cls)
     assert root_cls.__name__ in str(exc.value)
@@ -99,23 +109,84 @@ def test_a_structured_model_still_takes_the_configured_path():
     assert spec.eval_model is Configured
 
 
-def test_a_model_holding_a_root_model_field_still_compiles():
-    """The guard reads the top-level class only.
+def test_a_root_model_field_is_refused_and_the_message_names_it():
+    """A nested RootModel is refused when the evaluator is built.
 
-    Refusing the outer model would reject one whose other fields are scoreable.
-    A nested root value fails on its own terms when it is compared, with a
-    pydantic ``ValidationError`` that names the field, which is a different shape
-    from the one this guard covers.
+    ``RootModel[Point]`` here is the silent case: the shadow carried one ``root``
+    field that no dumped value ever filled, so both sides read None and two
+    points differing in every field scored 1.0. The message names the field,
+    since the class alone does not say which of several fields to fix.
+    """
+
+    class Holder(BaseModel):
+        name: str
+        pt: RootModel[Point]
+
+    with pytest.raises(TypeError, match="RootModel") as exc:
+        eval_for(Holder)
+    assert "Holder.pt" in str(exc.value)
+
+
+def test_a_root_model_list_element_is_refused_and_marked_as_an_element():
+    """A list element reaches the builder through its own branch.
+
+    It scored 1.0 the same way a single nested field did. ``[]`` in the path
+    distinguishes the element from the field that holds the list.
+    """
+
+    class ListHolder(BaseModel):
+        items: List[RootModel[Point]]
+
+    with pytest.raises(TypeError, match="RootModel") as exc:
+        eval_for(ListHolder)
+    assert "ListHolder.items[]" in str(exc.value)
+
+
+def test_a_list_rooted_field_is_refused_at_build_time_too():
+    """This shape used to fail per document, with a pydantic ``ValidationError``.
+
+    Refusing it when the evaluator is built reports it once, at configuration
+    time, instead of once per document in a corpus run.
     """
 
     class Holder(BaseModel):
         name: str
         points: RootModel[list[Point]]
 
-    spec = eval_for(Holder)
-    assert spec is not None
+    with pytest.raises(TypeError, match="RootModel") as exc:
+        eval_for(Holder)
+    assert "Holder.points" in str(exc.value)
 
-    instance = Holder(name="a", points=RootModel[list[Point]]([Point(x=1.0, y=2.0)]))
-    with pytest.raises(ValidationError) as exc:
-        spec.evaluate(instance, instance)
-    assert "points" in str(exc.value)
+
+def test_from_pydantic_refuses_a_root_model():
+    """``from_pydantic`` delegates to the same builder, so it refuses too."""
+    with pytest.raises(TypeError, match="RootModel"):
+        StructuredModel.from_pydantic(RootModel[int])
+
+
+def test_a_structured_model_holding_a_root_model_field_is_untouched():
+    """The guard must not widen past the models the builder mirrors.
+
+    An explicitly configured ``StructuredModel`` is returned as configured and
+    is never mirrored, so its fields are scored by the comparators the caller
+    declared. That boundary is deliberate: re-inspecting an explicit
+    configuration would discard the caller's decision.
+    """
+
+    class Configured(StructuredModel):
+        name: str = ComparableField(default="")
+        pt: Optional[RootModel[Point]] = ComparableField(default=None)
+
+    spec = eval_for(Configured)
+    assert spec.eval_model is Configured
+
+    result = spec.evaluate(
+        Configured(name="a", pt=RootModel[Point](Point(x=1.0, y=2.0))),
+        Configured(name="a", pt=RootModel[Point](Point(x=9.0, y=9.0))),
+    )
+    assert result.field_scores["name"] == pytest.approx(1.0)
+    # The boundary is what `pt` does, not what `name` does: the field is still
+    # compared by the declared comparator, and two differing roots do not score
+    # a perfect match. Asserting only `name` would pass even if `pt` returned
+    # the false 1.0 this work removes everywhere else.
+    assert result.field_scores["pt"] < 1.0

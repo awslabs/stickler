@@ -38,12 +38,20 @@ Each release links to full notes on the
   'keys'`, `RootModel[int]` raised `'int' object has no attribute 'copy'`,
   `RootModel[dict[...]]` raised a `ValidationError` for a missing `root`, and
   **`RootModel[Model]` scored `1.0` for two values that differed in every
-  field.** The three errors named neither `RootModel` nor the field they could
-  not key, and arrived once per document rather than once at configuration time;
-  the fourth reported a perfect match for a wrong prediction. `eval_for()` and
-  `evaluate()` now raise `TypeError` naming the class and the shape, and
-  pointing at declaring the root value as a named field on a `BaseModel`. A root
-  value is still not compared, and a `RootModel` held in a field is unaffected
+  field.** The two `AttributeError`s named neither the shape nor a field; the
+  mapping case named `root`, the shadow's own field rather than the model field
+  that held the value. None of the three said the shape was unsupported, and all
+  three arrived once per document rather than once at configuration time; the
+  fourth reported a perfect match for a wrong prediction. `eval_for()`,
+  `evaluate()` and `StructuredModel.from_pydantic()` now raise `TypeError`
+  naming the class and pointing at declaring the root value as a named field on
+  a `BaseModel`. The refusal covers every model the zero-config builder mirrors,
+  so a `RootModel` in a field (`Holder.pt`) or as a list element
+  (`Holder.items[]`) is refused too, with the path in the message; both scored
+  `1.0` for values differing in every field before this. A root value is still
+  not compared, and an explicitly configured `StructuredModel` is unchanged: it
+  is used as configured and never mirrored, so its fields keep the comparators
+  the caller declared
   ([#366](https://github.com/awslabs/stickler/issues/366))
 
 - **A float `NaN` is now absent, the same as `None`.** Two identical `NaN`s
