@@ -31,6 +31,21 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **A `RootModel` is now refused when the evaluator is built, instead of failing
+  once per document or scoring a wrong value `1.0`.** `eval_for()` accepted one
+  and returned a spec. What happened next depended on the root type:
+  `RootModel[list[...]]` raised `AttributeError: 'list' object has no attribute
+  'keys'`, `RootModel[int]` raised `'int' object has no attribute 'copy'`,
+  `RootModel[dict[...]]` raised a `ValidationError` for a missing `root`, and
+  **`RootModel[Model]` scored `1.0` for two values that differed in every
+  field.** The three errors named neither `RootModel` nor the field they could
+  not key, and arrived once per document rather than once at configuration time;
+  the fourth reported a perfect match for a wrong prediction. `eval_for()` and
+  `evaluate()` now raise `TypeError` naming the class and the shape, and
+  pointing at declaring the root value as a named field on a `BaseModel`. A root
+  value is still not compared, and a `RootModel` held in a field is unaffected
+  ([#366](https://github.com/awslabs/stickler/issues/366))
+
 - **A float `NaN` is now absent, the same as `None`.** Two identical `NaN`s
   scored `0.0` and counted as a false discovery, because `NaN` equals nothing
   under IEEE 754. `NaN` vs `NaN` or `None` is now a true negative scoring `1.0`,

@@ -243,7 +243,9 @@ def eval_for(
     Args:
         cls: The pydantic ``BaseModel`` subclass to evaluate instances of. A
             ``StructuredModel`` subclass is used AS CONFIGURED: its explicit
-            comparators/thresholds are respected and nothing is inferred.
+            comparators/thresholds are respected and nothing is inferred. A
+            ``RootModel`` raises ``TypeError``: its value has no field name to
+            score it under.
         weight_hints: Apply name-token weight heuristics (default off, so
             weights stay uniform and precision/recall are not skewed by guessed
             business-criticality). Ignored for ``StructuredModel`` classes.
