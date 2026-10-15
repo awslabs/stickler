@@ -923,6 +923,10 @@ def print_non_matches(
     """
     Pretty print non-match information in a readable, visually appealing format.
 
+    A result without non-match records (``compare_with()`` called without
+    ``document_non_matches=True``) prints a note saying so, not a success message.
+    Input that is not a result at all prints an error.
+
     Args:
         results: Results from StructuredModel.compare_with() or ProcessEvaluation from bulk evaluator
         group_by: How to group non-matches ('type', 'field', 'document')
@@ -931,14 +935,13 @@ def print_non_matches(
         use_color: Whether to use color in the output
         max_items: Maximum number of non-matches to display per group
         output_file: Optional file path to write the output to
-
-    A result without non-match records (``compare_with()`` called without
-    ``document_non_matches=True``) prints a note saying so, not a success message.
     """
     # Normalize results format and extract non-matches
     non_matches = _extract_non_matches(results)
     if not non_matches:
-        if show_summary:
+        if non_matches is None and not _is_results_object(results):
+            print("Error: Results do not contain recognizable non-match records")
+        elif show_summary:
             _print_no_non_matches(non_matches, use_color)
         return
 
@@ -1013,6 +1016,17 @@ def _extract_non_matches(
     return None
 
 
+def _is_results_object(results: Any) -> bool:
+    """
+    Whether ``results`` is a shape `_extract_non_matches` reads, records or not.
+    """
+    return (
+        isinstance(results, dict)
+        or hasattr(results, "non_matches")
+        or isinstance(getattr(results, "raw", None), dict)
+    )
+
+
 def _print_no_non_matches(
     non_matches: Optional[List[Dict[str, Any]]], use_color: bool = True
 ) -> None:
@@ -1022,9 +1036,9 @@ def _print_no_non_matches(
     if non_matches is None:
         print(
             _colorize(
-                "No non-match records in these results. Pass "
-                "document_non_matches=True to compare_with() or the bulk "
-                "evaluator to collect them.",
+                "No non-match records in these results. Pass the EvalResult "
+                "itself rather than its .raw, or call compare_with() or the "
+                "bulk evaluator with document_non_matches=True.",
                 Colors.YELLOW,
                 use_color,
             )

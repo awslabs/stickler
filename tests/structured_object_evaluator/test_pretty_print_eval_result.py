@@ -168,6 +168,9 @@ def test_a_raw_dict_without_records_is_not_reported_as_a_success(
     output = capsys.readouterr().out
     assert "No non-matches found" not in output
     assert _NO_RECORDS in output
+    # `evaluate()` takes no `document_non_matches`, so the actionable advice for
+    # `.raw` is to pass the `EvalResult`, which computes its records on demand.
+    assert "EvalResult" in output
 
 
 def test_print_evaluation_results_on_a_raw_dict_says_records_are_missing(capsys):
@@ -215,3 +218,38 @@ def test_a_bulk_result_without_records_says_so(capsys):
     output = capsys.readouterr().out
     assert "No non-matches found" not in output
     assert _NO_RECORDS in output
+
+
+def test_a_bulk_result_with_records_and_no_failures_is_a_success(capsys):
+    """The bulk counterpart of the empty-list case: a real list, empty, is clean."""
+    model = StructuredModel.from_pydantic(_Person)
+    evaluator = BulkStructuredModelEvaluator(target_schema=model)
+    same = model.from_json({"name": "Ada", "city": "London"})
+    evaluator.update(same, same)
+    result = evaluator.compute()
+    assert result.non_matches == []
+
+    print_non_matches(result, use_color=False)
+
+    output = capsys.readouterr().out
+    assert "No non-matches found" in output
+    assert _NO_RECORDS not in output
+
+
+@pytest.mark.parametrize(
+    "not_a_result",
+    [object(), None, [{"field_path": "name"}]],
+    ids=["object", "None", "list_of_records"],
+)
+def test_print_non_matches_rejects_input_that_is_not_a_result(not_a_result, capsys):
+    """Unreadable input is an error, not a success and not a hint to collect records.
+
+    A list of records is the likely mistake here, and telling its owner to pass
+    `document_non_matches=True` would send them after something they already did.
+    """
+    print_non_matches(not_a_result, use_color=False)
+
+    output = capsys.readouterr().out
+    assert "Error" in output
+    assert "No non-matches found" not in output
+    assert _NO_RECORDS not in output
