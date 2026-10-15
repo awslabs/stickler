@@ -1,6 +1,17 @@
 name: Security Scan
 
-on: [push, pull_request]
+# `push` is limited to the long-lived branches. On a branch with an open pull
+# request both events fired, so every push validated the same commit twice.
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+# No `concurrency` here, deliberately. `security-pr-comment.yaml` wakes on this
+# workflow's completion, a cancellation included, and downloads the
+# `security-reports` artifact. A cancelled scan uploads none, and that consumer
+# fails rather than skipping when the artifact is missing. Limiting `push`
+# already removes the duplicate run, which is what this was for.
 
 permissions:
   contents: read
