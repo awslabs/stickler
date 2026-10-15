@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
 
+from .comparison_helper import scalar_pair_reaches_comparator
 from .configuration_helper import ConfigurationHelper
 from .null_helper import NullHelper
 from .result_helper import ResultHelper
@@ -190,10 +191,15 @@ class ComparisonDispatcher:
         #       3. Make the list vs singleton distinction the primary branch
         #       See pseudocode in refactoring discussions for proposed structure.
 
-        # CASE 1: Primitive types (str, int, float)
-        # Delegate to FieldComparator for primitive field comparison
-        if isinstance(gt_val, (str, int, float)) and isinstance(
-            pred_val, (str, int, float)
+        # CASE 1: A pair of non-structured values, for the field's comparator.
+        # `scalar_pair_reaches_comparator` is the rule, shared with
+        # compare_field_raw so compare() and compare_with() agree: a declared
+        # comparator is always called, and an inferred one sees str/int/float,
+        # numbers incl. Decimal, and related date/time/UUID/Enum values. Before
+        # #383 only str/int/float got here; everything else fell through to
+        # CASE 6 and scored 0.0 without the comparator being called.
+        if scalar_pair_reaches_comparator(
+            gt_val, pred_val, comparator_explicit=info.comparator_explicit
         ):
             return self.field_comparator.compare_primitive_with_scores(
                 gt_val, pred_val, field_name

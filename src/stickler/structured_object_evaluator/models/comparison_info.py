@@ -93,6 +93,7 @@ class ComparableFieldConfig:
         threshold: float = 0.5,
         weight: float = 1.0,
         clip_under_threshold: bool = True,
+        comparator_explicit: bool = False,
     ):
         """Initialize comparison configuration.
 
@@ -101,8 +102,12 @@ class ComparableFieldConfig:
             threshold: Minimum similarity score to consider a match (default: 0.5)
             weight: Weight of this field in the overall score (default: 1.0)
             clip_under_threshold: Whether to zero out scores below threshold (default: True)
+            comparator_explicit: Whether the field declared ``comparator``, rather
+                than it being inferred. A declared comparator is called for any
+                pair of non-structured values (#383).
         """
         self.comparator = comparator or LevenshteinComparator()
+        self.comparator_explicit = comparator_explicit
         self.threshold = threshold
         self.weight = weight
         self.clip_under_threshold = clip_under_threshold
