@@ -110,6 +110,13 @@ The `x-aws-stickler-*` extensions control comparison behavior on each property:
 | `x-aws-stickler-match-threshold` | Hungarian match threshold (object-level) | `0.75` |
 | `x-aws-stickler-infer-unspecified` | Infer comparators for properties that name none (object-level). See [Inferring unspecified fields](#inferring-unspecified-fields) | `true` |
 
+A field key on a `$defs` (or `definitions`) entry applies to every property that
+references it with `$ref`, including through `{"anyOf": [{"$ref": ...}, {"type":
+"null"}]}`. A key written beside the `$ref` overrides the definition's for that
+property, and a comparator named there does not take the definition's
+`x-aws-stickler-comparator-config`. An array's `items` is not a property, so a definition used there
+configures only the element class, through its object-level keys.
+
 With no extension specified, the property is parsed to a strict Python annotation and the comparator
 is chosen from that annotation, which is then widened back to the JSON value type so an invalid
 extraction scores `0.0` instead of raising. So `format`, `enum` and `const` participate in the

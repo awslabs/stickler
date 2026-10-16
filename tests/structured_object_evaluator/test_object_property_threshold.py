@@ -536,17 +536,14 @@ class TestTheComparatorOnTheSameNodeIsStillDropped:
             )
 
 
-class TestTheKeyIsStillDroppedInsideDefs:
-    """The declared gap: `$ref` into `$defs` does not see the extension.
+class TestTheKeyIsReadInsideDefs:
+    """`$ref` into `$defs` sees the extension, the same as the inline spelling.
 
     `$ref` is how a generated schema expresses a reusable nested object, so this
-    is the spelling many real schemas use. The extension walk does not descend
-    into `$defs`, which is pre-existing on `dev` for every key -- but this change
-    is what makes the loss score-relevant for the threshold.
-
-    Asserts CURRENT behaviour. When the walk is extended, these fail, and that
-    failure is the reminder to delete the "Known gap" paragraph from the
-    CHANGELOG in the same commit.
+    is the spelling many real schemas use. These pinned the gap 1.0.0 shipped
+    with (the threshold fell back to `0.7` and a typo imported cleanly) and now
+    pin the fix. The other spellings of a reference, precedence and scalar
+    definitions are in `test_json_schema_defs_extensions.py`. See #340.
     """
 
     WIDE = {
@@ -572,13 +569,13 @@ class TestTheKeyIsStillDroppedInsideDefs:
         )
         assert model._get_comparison_info("inner").threshold == pytest.approx(0.88)
 
-    def test_via_defs_silently_falls_back(self):
+    def test_via_defs_it_is_read(self):
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             model = self._via_defs(
                 dict(self.WIDE, **{"x-aws-stickler-threshold": 0.88})
             )
-        assert model._get_comparison_info("inner").threshold == pytest.approx(0.7)
+        assert model._get_comparison_info("inner").threshold == pytest.approx(0.88)
         assert not [str(w.message) for w in caught if "threshold" in str(w.message)]
 
     def test_a_typo_inline_is_rejected(self):
@@ -588,10 +585,14 @@ class TestTheKeyIsStillDroppedInsideDefs:
                 _schema(**{"x-aws-stickler-thresold": 0.88})
             )
 
-    def test_the_same_typo_inside_defs_is_not(self):
-        """The half that makes the gap a validation hole, not just a default."""
-        model = self._via_defs(dict(self.WIDE, **{"x-aws-stickler-thresold": 0.88}))
-        assert model._get_comparison_info("inner").threshold == pytest.approx(0.7)
+    def test_the_same_typo_inside_defs_is_rejected_too(self):
+        """The half that made the gap a validation hole, not just a default."""
+        with pytest.raises(
+            ValueError, match="Did you mean 'x-aws-stickler-threshold'"
+        ) as exc:
+            self._via_defs(dict(self.WIDE, **{"x-aws-stickler-thresold": 0.88}))
+        assert "x-aws-stickler-thresold" in str(exc.value)
+        assert "$defs.Inner" in str(exc.value)
 
 
 class TestAnUndeclaredSchemaIsUnaffectedEndToEnd:

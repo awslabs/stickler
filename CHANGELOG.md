@@ -108,6 +108,26 @@ Each release links to full notes on the
   Keyed on the leaf name alone, the first model built in a process silenced every
   later one carrying the same typo.
 
+- **Breaking:** Stickler extensions on a `$defs` or `definitions` entry are now
+  read and checked. This closes the known gap 1.0.0 stated for #317. An object
+  property reached through `{"$ref": "#/$defs/Inner"}` was scored against `0.7`
+  while the same object written inline used its declared
+  `x-aws-stickler-threshold: 0.88`, a scalar definition's comparator and
+  threshold never reached the field, and a misspelled key inside `$defs`
+  imported cleanly where inline it raises. A definition's field keys now apply
+  to every property that references it, as if written on that property,
+  including through the `anyOf`-with-`null` wrapper pydantic writes for
+  `Optional[Model]`. A key written beside the `$ref` wins for that property, and
+  along a chain of references the nearer definition wins; a definition's
+  comparator config is not carried onto a property that names its own
+  comparator. Scores move only for schemas that declared one of these keys
+  inside `$defs`. Schemas that imported before now raise for a typo in any
+  definition (including one nothing references), for an object-level key such as
+  `x-aws-stickler-match-threshold` on a definition that is not an object, and for
+  an invalid value inside a referenced definition (a threshold of `5`, an unknown
+  comparator, `"auto"` on an object definition)
+  ([#340](https://github.com/awslabs/stickler/issues/340))
+
 ## [1.0.0] - 2026-09-11
 
 ### Added

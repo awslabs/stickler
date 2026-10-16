@@ -258,6 +258,46 @@ _ANNOTATION_KEYWORDS = frozenset(
 )
 
 
+def _referenced_pointer(node: Dict[str, Any]) -> Optional[str]:
+    """The `$ref` a node stands for: its own, or the one arm of a wrapper.
+
+    `{"anyOf": [{"$ref": ...}, {"type": "null"}]}` is what pydantic writes for
+    `Optional[Model]`, and `{"allOf": [{"$ref": ...}]}` is how draft-07, which
+    ignores keywords beside a `$ref`, gives one siblings. Both reference the
+    definition too.
+    """
+    ref = node.get("$ref")
+    if isinstance(ref, str):
+        return ref
+    for keyword in _COMBINERS:
+        arms = node.get(keyword)
+        if not isinstance(arms, list):
+            continue
+        rest = [
+            arm
+            for arm in arms
+            if not (isinstance(arm, dict) and arm.get("type") == "null")
+        ]
+        if len(rest) == 1 and isinstance(rest[0], dict):
+            ref = rest[0].get("$ref")
+            if isinstance(ref, str):
+                return ref
+    return None
+
+
+def _resolve_local_pointer(root: Dict[str, Any], pointer: str) -> Any:
+    """The node a local `#/...` reference points at, or None."""
+    if not pointer.startswith("#/"):
+        return None
+    node: Any = root
+    for part in pointer[2:].split("/"):
+        part = part.replace("~1", "/").replace("~0", "~")
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    return node
+
+
 class JsonSchemaImporter:
     """Turn a JSON Schema into field definitions for ``StructuredModel``.
 
@@ -815,6 +855,11 @@ class JsonSchemaImporter:
                 return node
 
             prepared = {key: prepare(value) for key, value in node.items()}
+            if isinstance(prepared.get("properties"), dict):
+                prepared["properties"] = {
+                    name: cls._carry_definition_extensions(child, schema)
+                    for name, child in prepared["properties"].items()
+                }
             if "examples" in prepared:
                 prepared[_PRESERVED_EXAMPLES_KEY] = deepcopy(prepared["examples"])
 
@@ -855,6 +900,45 @@ class JsonSchemaImporter:
             return prepared
 
         return prepare(schema)
+
+    @staticmethod
+    def _carry_definition_extensions(prop: Any, root: Dict[str, Any]) -> Any:
+        """Copy a referenced definition's field keys onto the property using it.
+
+        The schema library keeps a definition's keys only in the config of the
+        class it generates (none at all for a scalar or array definition), and
+        nothing reads field keys there, so a threshold written in `$defs` was
+        dropped while the inline spelling was honoured (#340). A `$ref` stands
+        for the schema it points at, so the definition's keys apply as if written
+        on the property. A key the property states itself wins, and along a
+        chain of references the nearer definition wins.
+
+        One exception to taking keys one at a time: a comparator config belongs
+        to the comparator it was written for, so it is not carried onto a
+        property that already names its own comparator. Carried there, a
+        `NumericComparator` config made `ExactComparator` warn about keys it does
+        not accept, on a property whose author wrote neither. A property that
+        states only a config keeps the definition's comparator.
+        """
+        if not isinstance(prop, dict):
+            return prop
+        carried = dict(prop)
+        seen = set()
+        pointer = _referenced_pointer(prop)
+        while pointer is not None and pointer not in seen:
+            seen.add(pointer)
+            target = _resolve_local_pointer(root, pointer)
+            if not isinstance(target, dict):
+                break
+            names_comparator = "x-aws-stickler-comparator" in carried
+            for key in sorted(_DOCUMENTED_FIELD_EXTENSIONS):
+                if key not in target or key in carried:
+                    continue
+                if key == "x-aws-stickler-comparator-config" and names_comparator:
+                    continue
+                carried[key] = deepcopy(target[key])
+            pointer = _referenced_pointer(target)
+        return carried
 
     @classmethod
     def _validate_supported_shapes(cls, schema: Dict[str, Any]) -> None:
@@ -918,6 +1002,20 @@ class JsonSchemaImporter:
                             child,
                             f"{path}.{name}" if path else name,
                             "field_or_model" if _is_object_schema(child) else "field",
+                        )
+                    continue
+                if key in ("$defs", "definitions") and isinstance(value, dict):
+                    for name, definition in value.items():
+                        # Checked the way a property is, because that is how its
+                        # field keys are read: `_prepare_schema` carries them onto
+                        # each property that references it. Walking it with no
+                        # scope let a typo here import cleanly (#340).
+                        walk(
+                            definition,
+                            f"{path}.{key}.{name}" if path else f"{key}.{name}",
+                            "field_or_model"
+                            if _is_object_schema(definition)
+                            else "field",
                         )
                     continue
                 if key == "items":
