@@ -78,13 +78,10 @@ class StructuredListComparator:
             _matched_pred_indices,
         ) = self._calculate_object_level_metrics(gt_list, pred_list, match_threshold)
 
-        # Calculate raw similarity score using extracted method
-        raw_similarity = self._calculate_struct_list_similarity(
+        # The field's score and its unclipped twin (#330).
+        list_score, raw_similarity = self._calculate_struct_list_similarity(
             matched_pairs, gt_list, pred_list, info
         )
-
-        # CRITICAL FIX: For structured lists, we NEVER clip under threshold - partial matches are important
-        threshold_applied_score = raw_similarity  # Always use raw score for lists
 
         # Get field-level details for nested structure (but DON'T aggregate to list level)
         # THRESHOLD-GATED RECURSION: Only generate field details for good matches
@@ -100,9 +97,10 @@ class StructuredListComparator:
         final_result = {
             "overall": object_level_metrics,  # Count OBJECTS, not fields
             "fields": field_details,  # Field-level details kept separate
+            # Report-only; the score is `threshold_applied_score`.
             "raw_similarity_score": raw_similarity,
-            "similarity_score": raw_similarity,
-            "threshold_applied_score": threshold_applied_score,
+            "similarity_score": list_score,
+            "threshold_applied_score": list_score,
             "weight": weight,
         }
 
@@ -169,8 +167,8 @@ class StructuredListComparator:
         gt_list: List["StructuredModel"],
         pred_list: List["StructuredModel"],
         info: "ComparableField",
-    ) -> float:
-        """Calculate raw similarity score for structured list.
+    ) -> tuple:
+        """Calculate the score of a structured list, and its unclipped twin.
 
         Args:
             gt_list: Ground truth list
@@ -178,7 +176,9 @@ class StructuredListComparator:
             info: Field comparison info
 
         Returns:
-            Raw similarity score between 0.0 and 1.0
+            ``(score, raw_score)``, each between 0.0 and 1.0. ``score`` is the
+            field's score. ``raw_score`` is the same coverage-scaled mean with
+            no pair clipped, and is reported as ``raw_similarity_score`` only.
         """
         # Updated code to not use helper that was calling Hungarian match again, and instead use already generated matched pairs
         threshold_corrected_pairs = []
@@ -205,7 +205,8 @@ class StructuredListComparator:
             threshold_corrected_pairs, gt_list, pred_list, classification_threshold
         )
 
-        return match_result.get("overall_score", 0.0)
+        score = match_result.get("overall_score", 0.0)
+        return score, match_result.get("raw_overall_score", score)
 
     def _calculate_nested_field_metrics(
         self,

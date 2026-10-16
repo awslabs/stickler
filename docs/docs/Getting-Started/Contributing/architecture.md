@@ -232,9 +232,9 @@ Every field comparison produces three score variants:
 
 | Score | Description |
 |-------|-------------|
-| `raw_similarity_score` | Direct comparator output (0.0–1.0) |
-| `similarity_score` | Same as raw — maintained for API compatibility |
-| `threshold_applied_score` | Raw score with `clip_under_threshold` applied (0.0 if below threshold and clipping is enabled) |
+| `raw_similarity_score` | Unclipped score (0.0–1.0). On a list node it is the coverage-scaled mean of the matched pairs' unclipped scores, `sum(pair scores) / max(len(gt), len(pred))`, which is what `compare()` returns for the field. Reported only; no score or count reads it |
+| `similarity_score` | Maintained for API compatibility. Equal to `raw_similarity_score` on a scalar or nested model, and to `threshold_applied_score` on a list node |
+| `threshold_applied_score` | Raw score with `clip_under_threshold` applied (0.0 if below threshold and clipping is enabled). The score: `field_scores` and `overall_score` read it |
 
 ### Weight-Based Formula
 
@@ -273,23 +273,25 @@ else:
 
 !!! warning "`PrimitiveListComparator` and `StructuredListComparator` do not clip, and that is not the whole story"
 
-    Both carry a line reading `threshold_applied_score = raw_similarity` with a
-    comment saying lists never clip. That is true of those two functions and
-    misleading as a description of list behaviour: `raw_similarity` arrives from
-    `unordered_list_metrics`, which has already applied the rule above. This page
-    previously documented only that layer and stated that lists are exempt from
-    `clip_under_threshold` entirely, which was wrong in both directions -- lists
-    did clip, and a field asking to keep partial credit was ignored.
+    Neither comparator clips: both copy the score `unordered_list_metrics` returns,
+    which has already applied the rule above. This page previously documented only
+    that layer and stated that lists are exempt from `clip_under_threshold`
+    entirely, which was wrong in both directions -- lists did clip, and a field
+    asking to keep partial credit was ignored.
+
+    `unordered_list_metrics` also returns `raw_overall_score`, the same mean with
+    no element clipped, and the comparators report it as `raw_similarity_score`.
+    Before #330 that key carried the clipped mean, so its value could differ from
+    `compare()` for the same field.
 
     Classification is separate and is never affected by this setting. A pair below
     the threshold is one `fd` whether or not its score is kept.
 
-    Two gaps remain, tracked in
+    One gap remains, tracked in
     [#330](https://github.com/awslabs/stickler/issues/330):
     `List[StructuredModel]` does not honour the flag, because each pair is scored
     through the item's own `compare_with` and clipping has already happened per
-    item; and `raw_similarity_score` on a list node is the CLIPPED mean, which
-    contradicts both its name and `compare_field_raw()`.
+    item.
 
 ### `_aggregate_to_overall()`
 

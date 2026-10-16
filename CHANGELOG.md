@@ -149,6 +149,18 @@ Each release links to full notes on the
   empty unless records were requested
   ([#298](https://github.com/awslabs/stickler/issues/298))
 
+- **`raw_similarity_score` on a list node is now the unclipped score.** It
+  carried the clipped, coverage-scaled mean, the same number as
+  `threshold_applied_score`, so it contradicted its name and `compare()`, and
+  the unclipped number could not be read from `compare_with()` output. It is now
+  the same mean with no element clipped, `sum(pair scores) / max(len(gt),
+  len(pred))`: `["apple", "banana"]` vs `["apple", "banxxx"]` at threshold 0.9
+  reported `0.5` and now reports `0.75`, which is what `compare()` returns. It
+  differs only where an element was clipped, so `List[StructuredModel]` is in
+  practice unchanged. Report-only: `similarity_score`, `threshold_applied_score`,
+  `field_scores`, `overall_score` and every confusion count are unchanged
+  ([#330](https://github.com/awslabs/stickler/issues/330))
+
 ## [1.0.0] - 2026-09-11
 
 ### Added
