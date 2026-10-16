@@ -161,6 +161,19 @@ Each release links to full notes on the
   `field_scores`, `overall_score` and every confusion count are unchanged
   ([#330](https://github.com/awslabs/stickler/issues/330))
 
+- **`evaluator_format=True` precision and recall no longer swap when a value is
+  missed.** Without `include_confusion_matrix=True`, `overall` was a conversion
+  of the score that charged every lost point to precision once the score reached
+  0.5, and each list field's `overall` always was. One TP and one FN, such as
+  `[A, B]` vs `[A]`, reported precision `0.5` and recall `1.0`; they now report
+  `1.0` and `0.5`, as `TP / (TP + FP)` and `TP / (TP + FN)` define them and as
+  the same call already reported with the confusion matrix included. Both now
+  read the node's confusion counts, honour `recall_with_fd`, and equal that
+  node's `derived` block. A node with no TP, FP or FN (both sides empty) has no
+  precision or recall to read and keeps its previous value. `anls_score`, and
+  the metrics of a field that is not a list, are unchanged.
+  Only evaluator-format output moves: scores and counts are unchanged
+
 ## [1.0.0] - 2026-09-11
 
 ### Added
