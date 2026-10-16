@@ -112,10 +112,11 @@ The `x-aws-stickler-*` extensions control comparison behavior on each property:
 
 An object typed `["object", "null"]` reads the same keys as one typed `"object"`.
 
-A `$defs` (or `definitions`) entry is a type, not a property. Its object-level keys
-configure the class it generates and are shared by every `$ref` to it. Field-level
-keys describe one use of that type, so they go beside the `$ref` on the referencing
-property; inside a definition they raise, as a misspelled key does:
+A `$defs` (or `definitions`) entry is a type, not a property. An object definition's
+object-level keys configure the class it generates for every property or `items` that
+`$ref`s it. Field-level keys describe one use of that type, so they go beside the `$ref`
+on the referencing property; inside a definition they raise, as a misspelled key does.
+A definition that is not an object generates no class, so it accepts neither set:
 
 ```python
 {

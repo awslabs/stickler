@@ -639,6 +639,41 @@ class TestDefinitionsAreChecked:
                 }
             )
 
+    @pytest.mark.parametrize(
+        "body",
+        (
+            {"type": "number"},
+            {"type": "array", "items": INNER},
+            {"anyOf": [INNER, {"type": "null"}]},
+            {"$ref": "#/$defs/Other"},
+        ),
+        ids=("scalar", "array", "anyOf", "alias"),
+    )
+    def test_a_model_key_on_a_non_object_definition_raises(self, body):
+        """Only an object definition generates a class to configure.
+
+        Accepted here, the key passed the check and the class it was meant for
+        was built at the default `0.7`.
+        """
+        with pytest.raises(ValueError) as exc:
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {"total": {"$ref": "#/$defs/Value"}},
+                    "$defs": {
+                        "Value": dict(body, **{"x-aws-stickler-match-threshold": 0.9}),
+                        "Other": self.INNER,
+                    },
+                }
+            )
+        message = str(exc.value)
+        assert "not read on definition '$defs.Value'" in message
+        assert "belongs on the object" in message
+
+    def test_the_error_names_the_ref(self):
+        with pytest.raises(ValueError, match=r"beside its '\$ref'"):
+            self._via("$defs", dict(self.INNER, **{"x-aws-stickler-weight": 3.0}))
+
     def test_a_field_key_beside_the_ref_is_honoured(self):
         """The documented spelling, so the error's advice works."""
         model = self._via(

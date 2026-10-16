@@ -59,22 +59,27 @@ Each release links to full notes on the
   rewritten to `anyOf` before parsing, and the keys stayed beside the `anyOf`
   instead of on the object arm that becomes the class, so the node built
   `DynamicModel` at `0.7` while its field keys were honoured. A regression in
-  1.0.0; `0.7.0` read them. Results move for any such schema that declared one:
-  an `items` element scoring `0.9` against a declared `0.93` was a true positive
-  (`tp 1, fd 0, fp 0`) and is now a false discovery (`tp 0, fd 1, fp 1`), and
-  inference inside the node now uses its tuned thresholds (`number` at `0.95`
-  rather than `0.5`). Part A of
+  1.0.0 for the name and match threshold, which `0.7.0` read. Results move for
+  any such schema that declared one: an `items` element scoring `0.9` against a
+  declared `0.93` was a true positive (`tp 1, fd 0, fp 0`) and is now a false
+  discovery (`tp 0, fd 1, fp 1`), and inference inside the node now uses its
+  tuned thresholds (`number` at `0.95` rather than `0.5`). An invalid value
+  there (a match threshold of `1.5`, a name that is not an identifier) was
+  ignored and now raises, as it does on `"object"`. Part A of
   [#349](https://github.com/awslabs/stickler/issues/349)
 
 - **Breaking:** an `x-aws-stickler-*` key inside a `$defs` or `definitions`
   entry is now checked, as it is inline. The walk entered a definition without
   checking it, so `x-aws-stickler-thresold` there imported silently where inline
-  it raises. A definition reads only the object-level keys, which configure the
-  class it generates and are shared by every `$ref` to it. A field-level key
-  (`comparator`, `comparator-config`, `threshold`, `weight`,
-  `clip-under-threshold`) inside one now raises and names where it belongs: on
-  the property that uses the definition, beside its `$ref`, where it is already
-  read. It used to resolve the default in silence (`x-aws-stickler-threshold:
+  it raises. An object definition reads only the object-level keys, which
+  configure the class it generates for every property or `items` that `$ref`s
+  it. A field-level key (`comparator`, `comparator-config`, `threshold`,
+  `weight`, `clip-under-threshold`) inside one now raises and names where it
+  belongs: on the property that uses the definition, beside its `$ref`, where it
+  is already read. A definition that is not an object (a scalar, an array, a
+  combiner, an alias `$ref`) generates no class and reads neither set, so an
+  object-level key there raises too, where it would otherwise be accepted and
+  dropped. It used to resolve the default in silence (`x-aws-stickler-threshold:
   0.88` in `$defs` gave `0.7`). Honouring it instead would make one key work on
   a property `$ref` and vanish on an `items` `$ref`, which does not read field
   keys. A schema with a typo or a field-level key inside a definition imported

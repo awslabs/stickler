@@ -244,8 +244,9 @@ the root, or an object-level key on a scalar field, is not read, so it is
 rejected rather than dropped. An unrecognized or misspelled `x-aws-stickler-*`
 key raises and names the closest valid key for that position; unrelated `x-*`
 extensions from other tooling are left alone. A `["object", "null"]` node reads
-the same keys as an `"object"` one. A `$defs` entry reads only object-level keys;
-field-level keys go beside the `$ref` that uses it.
+the same keys as an `"object"` one. An object `$defs` entry reads only
+object-level keys, any other `$defs` entry reads none; field-level keys go beside
+the `$ref` that uses it.
 
 Comparator names accepted by `x-aws-stickler-comparator` are the registered class names:
 `LevenshteinComparator`, `ExactComparator`, `NormalizedComparator`, `PhoneComparator`,

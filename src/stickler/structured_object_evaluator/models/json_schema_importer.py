@@ -177,33 +177,48 @@ def _reject_unknown_extensions(
     if not isinstance(extra, dict):
         return
 
+    # Each entry names a set of real keys that are not read here and where they
+    # belong instead, so a misplaced key is answered with its position.
+    misplaced: Tuple[Tuple[str, FrozenSet[str]], ...]
+    beside_ref = "property that uses this definition, beside its '$ref'"
     if scope == "model":
         accepted = _KNOWN_MODEL_EXTENSIONS
         suggestible = _KNOWN_MODEL_EXTENSIONS
-        other_scope, other_keys = "field", _DOCUMENTED_FIELD_EXTENSIONS
+        misplaced = (("field", _DOCUMENTED_FIELD_EXTENSIONS),)
         where = f"object '{field_path}'"
     elif scope == "definition":
         # A definition is a type that several positions can `$ref`, and not all
         # of them read field keys (`items` does not). Honouring them here would
         # make one key work at one reference and vanish at the next, so they go
-        # on the property that uses the definition, usually beside its `$ref`.
+        # on the property that uses the definition, beside its `$ref`.
         accepted = _KNOWN_MODEL_EXTENSIONS
         suggestible = _KNOWN_MODEL_EXTENSIONS
-        other_scope = "property that uses this definition"
-        other_keys = _DOCUMENTED_FIELD_EXTENSIONS
+        misplaced = ((beside_ref, _DOCUMENTED_FIELD_EXTENSIONS),)
+        where = f"definition '{field_path}'"
+    elif scope == "value_definition":
+        # A definition that is not an object (a scalar, an array, a combiner, an
+        # alias `$ref`) generates no class, so it reads neither set. Accepting
+        # the model keys here passed the check and then dropped them.
+        accepted = frozenset()
+        suggestible = frozenset()
+        misplaced = (
+            (beside_ref, _DOCUMENTED_FIELD_EXTENSIONS),
+            ("object", _KNOWN_MODEL_EXTENSIONS),
+        )
         where = f"definition '{field_path}'"
     elif scope == "field_or_model":
         # An object-typed property honours both sets, so there is no misplacement
         # to report and nothing to route elsewhere.
         accepted = _KNOWN_FIELD_EXTENSIONS | _KNOWN_MODEL_EXTENSIONS
         suggestible = _DOCUMENTED_FIELD_EXTENSIONS | _KNOWN_MODEL_EXTENSIONS
-        other_scope, other_keys = "", frozenset()
+        misplaced = ()
         where = f"field '{field_path}'"
     else:
         accepted = _KNOWN_FIELD_EXTENSIONS
         suggestible = _DOCUMENTED_FIELD_EXTENSIONS
-        other_scope, other_keys = "object", _KNOWN_MODEL_EXTENSIONS
+        misplaced = (("object", _KNOWN_MODEL_EXTENSIONS),)
         where = f"field '{field_path}'"
+    valid_here = ", ".join(sorted(suggestible)) or "none"
 
     for key in extra:
         if not isinstance(key, str):
@@ -215,12 +230,13 @@ def _reject_unknown_extensions(
 
         # A real key in the wrong position. Naming the position is the whole
         # answer here, so say that instead of offering a spelling correction.
-        if key in other_keys:
-            raise ValueError(
-                f"Stickler extension '{key}' is not read on {where}. It belongs "
-                f"on the {other_scope}. Left in place it would be dropped "
-                f"silently. Valid keys here: {', '.join(sorted(suggestible))}."
-            )
+        for other_scope, other_keys in misplaced:
+            if key in other_keys:
+                raise ValueError(
+                    f"Stickler extension '{key}' is not read on {where}. It "
+                    f"belongs on the {other_scope}. Left in place it would be "
+                    f"dropped silently. Valid keys here: {valid_here}."
+                )
 
         suggestion = _closest_known_key(key, suggestible)
         hint = f" Did you mean '{suggestion}'?" if suggestion else ""
@@ -228,7 +244,7 @@ def _reject_unknown_extensions(
             f"Unrecognized Stickler extension '{key}' on {where}."
             f"{hint} It would otherwise be dropped silently, leaving the "
             "configuration to fall back while its correctly-spelled siblings "
-            f"were honoured. Valid keys here: {', '.join(sorted(suggestible))}."
+            f"were honoured. Valid keys here: {valid_here}."
         )
 
 
@@ -942,7 +958,9 @@ class JsonSchemaImporter:
                         walk(
                             body,
                             f"{path}.{key}.{name}" if path else f"{key}.{name}",
-                            "definition",
+                            "definition"
+                            if _is_object_schema(body)
+                            else "value_definition",
                         )
                     continue
                 if key == "properties" and isinstance(value, dict):
@@ -963,7 +981,9 @@ class JsonSchemaImporter:
                     # configure is the array itself, one level up. Only the element
                     # class's own settings are read.
                     child_scope = "model"
-                elif key in _COMBINERS:
+                elif key in _COMBINERS or key in ("$defs", "definitions"):
+                    # A `$defs` that is not a mapping is not a set of definitions;
+                    # it is still walked, as before, rather than skipped.
                     child_scope = "model"
                 walk(value, child_path, child_scope)
 
