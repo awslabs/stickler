@@ -76,6 +76,21 @@ class DataExtractor:
             return results.non_matches or []
         else:
             return results.get('non_matches', [])
+
+    @staticmethod
+    def has_non_match_records(
+        results: Union[Dict[str, Any], ProcessEvaluation],
+    ) -> bool:
+        """
+        Whether the results carry non-match records at all, even an empty list.
+
+        ``extract_non_matches`` returns ``[]`` both when nothing failed and when
+        records were never collected (``document_non_matches=False``); this tells
+        the two apart (#413).
+        """
+        if isinstance(results, ProcessEvaluation):
+            return getattr(results, "non_matches", None) is not None
+        return isinstance(results, dict) and "non_matches" in results
     
     @staticmethod
     def get_document_count(results: Union[Dict[str, Any], ProcessEvaluation]) -> int:

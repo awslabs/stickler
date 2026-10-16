@@ -97,7 +97,13 @@ class SectionGenerator:
         non_matches = DataExtractor.extract_non_matches(self.results)
         
         if not non_matches:
-            html_string += "<p>No non-matches found.</p></div>"
+            if DataExtractor.has_non_match_records(self.results):
+                html_string += "<p>No non-matches found.</p></div>"
+            else:
+                html_string += (
+                    "<p>Non-match records were not collected. Run the evaluation "
+                    "with <code>document_non_matches=True</code> to list them.</p></div>"
+                )
             return html_string
         
         # Summary

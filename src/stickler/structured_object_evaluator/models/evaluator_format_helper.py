@@ -36,12 +36,13 @@ class EvaluatorFormatHelper:
                 missed value from a spurious one.
 
         Returns:
-            Dictionary in evaluator format with overall, fields, confusion_matrix
+            Dictionary in evaluator format with overall, fields,
+            confusion_matrix, and ``non_matches`` when ``result`` carries
+            records (``document_non_matches=True``)
         """
         field_scores = result["field_scores"]
         overall_score = result["overall_score"]
         confusion_matrix = result.get("confusion_matrix", {})
-        non_matches = result.get("non_matches", [])
         counts_by_field = (recursive_result or {}).get("fields", {})
 
         # If we have confusion matrix data, use its derived metrics for overall
@@ -131,12 +132,17 @@ class EvaluatorFormatHelper:
             )
         )
 
-        return {
+        formatted = {
             "overall": overall_metrics,
             "fields": field_metrics,
             "confusion_matrix": flattened_confusion_matrix,
-            "non_matches": non_matches,
         }
+        # Only when records were collected, as in the default compare_with()
+        # dict. An always-present empty list read as "no non-matches" on a
+        # document with a wrong field (#413).
+        if "non_matches" in result:
+            formatted["non_matches"] = result["non_matches"]
+        return formatted
 
     @staticmethod
     def _has_decisions(counts: Any) -> bool:

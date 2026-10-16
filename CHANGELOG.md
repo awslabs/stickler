@@ -174,6 +174,20 @@ Each release links to full notes on the
   the metrics of a field that is not a list, are unchanged.
   Only evaluator-format output moves: scores and counts are unchanged
 
+- **`evaluator_format=True` no longer reports an empty `non_matches` list when
+  records were not requested.** It always wrote `"non_matches": []`, so
+  `print_non_matches` printed `✅ No non-matches found.` over a document with a
+  wrong field, the case the #298 entry above leaves open. The key is now present
+  only with `document_non_matches=True`, as in the default `compare_with()`
+  dict, and the printers say the records are missing. The HTML report's
+  non-match section likewise says records were not collected, instead of
+  `No non-matches found.`, for a dict without the key or a `ProcessEvaluation`
+  built with `document_non_matches=False`. Code that indexes
+  `result["non_matches"]` on evaluator-format output without requesting records
+  should pass `document_non_matches=True` or use `.get("non_matches", [])`.
+  Scores and counts are unchanged
+  ([#413](https://github.com/awslabs/stickler/issues/413))
+
 ## [1.0.0] - 2026-09-11
 
 ### Added

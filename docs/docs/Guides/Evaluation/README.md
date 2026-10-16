@@ -307,8 +307,7 @@ For an exact `invoice_id`, a near-miss `customer_name` (`"Acme Corporaton"`, 0.9
       "items": []
     }
   },
-  "confusion_matrix": {},
-  "non_matches": []
+  "confusion_matrix": {}
 }
 ```
 
@@ -317,7 +316,8 @@ Key differences from the default output:
 - The top-level key is `overall` (a dict of metrics), not `overall_score` (a float).
 - `overall`, and the `overall` of each list field, take precision, recall, F1 and accuracy from the confusion counts, as defined in [Derived Metrics](understanding-results.md#derived-metrics): precision is `TP / (TP + FP)` and recall `TP / (TP + FN)`. They equal `cm["overall"]["derived"]` and the list node's own `derived`, whether or not `include_confusion_matrix=True` was passed. A node with only true negatives (both sides empty) has no precision or recall to read and keeps the score conversion below. `anls_score` is the score.
 - Any other field's metrics are a conversion of its score, not counts: `customer_name` above is a true positive at 0.94 and reads precision 0.94.
-- The `confusion_matrix` and `non_matches` keys are present but empty in this format.
+- `confusion_matrix` is `{}` unless `include_confusion_matrix=True`.
+- `non_matches` is present only with `document_non_matches=True`, as in the default output. Without it the key is absent, so a missing key means "not collected", never "no non-matches".
 
 This format is what `BulkStructuredModelEvaluator` expects when aggregating results across many documents.
 

@@ -188,6 +188,9 @@ class TestSectionGenerator:
     def test_generate_non_matches_no_data(self, mock_extract_non_matches):
         """Test non-matches generation with no data."""
         mock_extract_non_matches.return_value = []
+        # Records were collected and there are none. Without them the section
+        # says they were not collected instead (#413).
+        self.mock_results.non_matches = []
         
         config = ReportConfig()
         
