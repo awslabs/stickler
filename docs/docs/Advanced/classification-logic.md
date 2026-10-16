@@ -53,7 +53,7 @@ This table is the single statement of what Stickler does with a list field. Othe
 
 - **Reports for primitive, dict and plain-model lists** are built from a second pairing that compares elements by equality against a `0.7` bar, not the field's comparator and bar. Rows can disagree with the counts: with `threshold=0.6`, `["abcde"]` vs `["abcxy"]` (similarity `0.6`) counts a TP but is reported as an FD with `similarity_score` `0.0`. Fixed by [#364](https://github.com/awslabs/stickler/pull/364).
 - **A list row inside a list item** (`outers[0].tags`) carries `match` as the string `"True"`/`"False"`, set by comparing the list's score to the field threshold, so `outers[0].inner` can read `true` with an FD element inside. Fixed by [#364](https://github.com/awslabs/stickler/pull/364).
-- **A `None` list against a non-empty one** gets one `field_comparisons` row for the whole field (`tags`), not one per element; `non_matches` and `[]` give one per element.
+- **A `None` list against a non-empty one** gets one `field_comparisons` row for the whole field (`tags`), not one per element; `non_matches` and `[]` give one per element ([#418](https://github.com/awslabs/stickler/issues/418)).
 - **Rows inside list items** report a clipped `score` and give a nested list or object one row instead of expanding it ([#418](https://github.com/awslabs/stickler/issues/418)).
 - **Sub-fields inside list items**: some value kinds (tuple, set, bytes, whitespace-only string, a list in an `Any` field) count differently than at top level ([#406](https://github.com/awslabs/stickler/pull/406)).
 - **Threshold boundary**: the object-level gate uses a bare `>=`, so a pair at `0.7999999999999999` against `0.8` is an FD ([#417](https://github.com/awslabs/stickler/issues/417)).
