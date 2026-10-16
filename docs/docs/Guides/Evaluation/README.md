@@ -288,31 +288,36 @@ When you need output structured for bulk evaluation pipelines, pass `evaluator_f
 result = ground_truth.compare_with(prediction, evaluator_format=True)
 ```
 
-The output changes to:
+For an exact `invoice_id`, a near-miss `customer_name` (`"Acme Corporaton"`, 0.94) and a `line_items` list missing one of its two values, the output changes to:
 
 ```json
 {
   "overall": {
-    "precision": 0.83,
-    "recall": 1.0,
-    "f1": 0.91,
-    "accuracy": 0.83,
-    "anls_score": 0.83
+    "precision": 1.0,
+    "recall": 0.75,
+    "f1": 0.86,
+    "accuracy": 0.75,
+    "anls_score": 0.81
   },
   "fields": {
     "invoice_id": { "precision": 1.0, "recall": 1.0, "f1": 1.0, "accuracy": 1.0, "anls_score": 1.0 },
-    "customer_name": { "precision": 1.0, "recall": 1.0, "f1": 1.0, "accuracy": 1.0, "anls_score": 0.85 }
+    "customer_name": { "precision": 0.94, "recall": 1.0, "f1": 0.97, "accuracy": 0.94, "anls_score": 0.94 },
+    "line_items": {
+      "overall": { "precision": 1.0, "recall": 0.5, "f1": 0.67, "accuracy": 0.5, "anls_score": 0.5 },
+      "items": []
+    }
   },
-  "confusion_matrix": {},
-  "non_matches": []
+  "confusion_matrix": {}
 }
 ```
 
 Key differences from the default output:
 
 - The top-level key is `overall` (a dict of metrics), not `overall_score` (a float).
-- Each field in `fields` contains precision, recall, F1, accuracy, and ANLS score.
-- The `confusion_matrix` and `non_matches` keys are present but empty in this format.
+- `overall`, and the `overall` of each list field, take precision, recall, F1 and accuracy from the confusion counts, as defined in [Derived Metrics](understanding-results.md#derived-metrics): precision is `TP / (TP + FP)` and recall `TP / (TP + FN)`. They equal `cm["overall"]["derived"]` and the list node's own `derived`, whether or not `include_confusion_matrix=True` was passed. A node with only true negatives (both sides empty) has no precision or recall to read and keeps the score conversion below. `anls_score` is the score.
+- Any other field's metrics are a conversion of its score, not counts: `customer_name` above is a true positive at 0.94 and reads precision 0.94.
+- `confusion_matrix` is `{}` unless `include_confusion_matrix=True`.
+- `non_matches` is present only with `document_non_matches=True`, as in the default output. Without it the key is absent, so a missing key means "not collected", never "no non-matches".
 
 This format is what `BulkStructuredModelEvaluator` expects when aggregating results across many documents.
 
