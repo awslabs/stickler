@@ -186,16 +186,30 @@ class TestSectionGenerator:
     
     @patch('stickler.reporting.html.utils.data_extractors.DataExtractor.extract_non_matches')
     def test_generate_non_matches_no_data(self, mock_extract_non_matches):
-        """Test non-matches generation with no data."""
+        """Records were collected and there were none: that is a success."""
         mock_extract_non_matches.return_value = []
-        
+
         config = ReportConfig()
-        
+
         result = self.section_generator.generate_non_matches(config)
-        
+
         assert '<div class="section"><h2>Non-Matches Analysis</h2>' in result
         assert '<p>No non-matches found.</p></div>' in result
-    
+
+    @patch('stickler.reporting.html.utils.data_extractors.DataExtractor.extract_non_matches')
+    def test_generate_non_matches_without_records_is_not_a_success(
+        self, mock_extract_non_matches
+    ):
+        """No records collected says nothing about whether the fields matched (#411)."""
+        mock_extract_non_matches.return_value = None
+
+        config = ReportConfig()
+
+        result = self.section_generator.generate_non_matches(config)
+
+        assert 'No non-matches found' not in result
+        assert 'document_non_matches=True' in result
+
     @patch('stickler.reporting.html.utils.data_extractors.DataExtractor.extract_non_matches')
     def test_generate_non_matches_limit_displayed(self, mock_extract_non_matches):
         """Test non-matches generation with display limit."""
