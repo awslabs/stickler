@@ -63,9 +63,10 @@ class HungarianMatcher:
                              ``StructuredModelComparator``, still takes the
                              default: it matches whole objects rather than
                              values, so a field's declared comparator is not
-                             what gets overridden. It does still map ``None`` to
-                             ``""`` before scoring candidate pairs, which can
-                             change which pairs the algorithm assigns.
+                             what gets overridden. It leaves ``None`` elements
+                             out before matching (#386), so the comparator
+                             never sees ``""`` standing in for a missing
+                             element.
             match_threshold: Minimum similarity score to consider a match as TP
         """
         self.comparator = comparator or (lambda x, y: float(x == y))
