@@ -1916,6 +1916,17 @@ class StructuredModel(BaseModel):
                         metadata, output_format="json_schema"
                     )
                     property_schema.update(extensions)
+                    # The element type above is "string" for a list of lists or
+                    # of plain models, which re-imported as List[str] and
+                    # rejected the original data (#349). Write the structure
+                    # instead, after refusing what neither export can write.
+                    cls._refuse_scalar_export(element_type)
+                    if get_origin(
+                        ConfigurationHelper.strip_annotation_wrappers(element_type)
+                    ) is list or ConfigurationHelper.is_plain_model_annotation(
+                        element_type
+                    ):
+                        property_schema["items"] = cls._json_type_schema(args[0])
             else:
                 # Primitive type - use converter for consistent formatting.
                 # field_type is already unwrapped above, so pass whether the
@@ -1973,6 +1984,77 @@ class StructuredModel(BaseModel):
             )
         except TypeError:
             return False
+
+    @staticmethod
+    def _refuse_scalar_export(field_type: Type) -> None:
+        """Raise for an annotation the exporters cannot write.
+
+        A StructuredModel is written through its own ``to_json_schema()`` /
+        ``to_stickler_config()``, and one reaching a scalar exporter would lose
+        its whole schema. ``to_stickler_config()`` has no type for a union with
+        a model arm, or for a StructuredModel inside a nested list, so
+        ``to_json_schema()`` refuses both as well and the two exports follow one
+        rule. Both were written as ``"string"`` / ``"str"`` or ``List[List]``,
+        which re-imported as a different field (#349). ``Optional`` and
+        ``Annotated`` are stripped at every level.
+        """
+        strip = ConfigurationHelper.strip_annotation_wrappers
+        inner = strip(field_type)
+        if isinstance(inner, type) and issubclass(inner, StructuredModel):
+            raise ValueError(
+                f"Cannot export {inner!r} as a scalar: it is a StructuredModel, "
+                f"which the exporters write through its own to_json_schema() and "
+                f"to_stickler_config()."
+            )
+        nested = False
+        while get_origin(inner) is list and get_args(inner):
+            inner, nested = strip(get_args(inner)[0]), True
+        if union_args(inner):
+            arms = [strip(arm) for arm in union_args(inner)]
+            if any(
+                isinstance(arm, type) and issubclass(arm, BaseModel) for arm in arms
+            ):
+                raise ValueError(
+                    f"Cannot export {field_type!r}: to_stickler_config() has no "
+                    f"type for a union with a model arm, so to_json_schema() "
+                    f"refuses it too, to keep one rule for both exports."
+                )
+        elif nested and isinstance(inner, type) and issubclass(inner, StructuredModel):
+            raise ValueError(
+                f"Cannot export {field_type!r}: to_stickler_config() has no type "
+                f"for a StructuredModel inside a nested list, so to_json_schema() "
+                f"refuses it too, to keep one rule for both exports."
+            )
+
+    @staticmethod
+    def _json_type_schema(element_type: Type) -> Dict[str, Any]:
+        """The JSON Schema ``items`` for a list element that is not a model.
+
+        A list is an array of its own element, and a mapping or plain
+        ``BaseModel`` is a free-form ``{"type": "object"}``, which
+        ``from_json_schema()`` reads back as ``dict``: both are scored as one
+        object (``ConfigurationHelper.is_object_grade_annotation``), and the
+        types of their values are not exported. Call it after
+        :meth:`_refuse_scalar_export`, which rejects what this cannot write.
+        """
+        from .json_schema_field_converter import PYTHON_TYPE_TO_JSON_TYPE
+
+        inner, nullable = unwrap_optional(unwrap_annotated(element_type))
+        inner = unwrap_annotated(inner)
+        if get_origin(inner) is list and get_args(inner):
+            schema = {
+                "type": "array",
+                "items": StructuredModel._json_type_schema(get_args(inner)[0]),
+            }
+        elif ConfigurationHelper.is_mapping_annotation(
+            inner
+        ) or ConfigurationHelper.is_plain_model_annotation(inner):
+            schema = {"type": "object"}
+        else:
+            schema = {"type": PYTHON_TYPE_TO_JSON_TYPE.get(inner, "string")}
+        if nullable:
+            schema["type"] = [schema["type"], "null"]
+        return schema
 
     @classmethod
     def to_stickler_config(cls) -> Dict[str, Any]:
@@ -2078,7 +2160,14 @@ class StructuredModel(BaseModel):
                     field_config = converter.field_to_stickler_config(
                         element_type, field_info
                     )
-                    field_config["type"] = f"List[{element_type.__name__}]"
+                    # A plain model's class name is not a type model_from_json()
+                    # knows; it is written as `dict`, as the singular field is.
+                    element_name = (
+                        "dict"
+                        if ConfigurationHelper.is_plain_model_annotation(element_type)
+                        else element_type.__name__
+                    )
+                    field_config["type"] = f"List[{element_name}]"
             else:
                 # Primitive type - use converter for consistent formatting
                 field_config = converter.field_to_stickler_config(
