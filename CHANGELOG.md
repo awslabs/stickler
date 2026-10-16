@@ -49,8 +49,9 @@ Each release links to full notes on the
   defaults that key on that were skipped:
   - **A threshold named on the comparator reaches the field.**
     `"comparator_config": {"threshold": 0.9}` (or
-    `x-aws-stickler-comparator-config`) with no field `threshold` gated at 0.5,
-    so a pair scoring 0.78 was a TP there and an FD in Python. It is 0.9 on all
+    `x-aws-stickler-comparator-config`) with no field `threshold` gated at the
+    importer's own default instead (0.5 for a string), so a pair scoring 0.78
+    was a TP there and an FD in Python. It is 0.9 on all
     three paths now. A field threshold still wins, and a comparator threshold
     outranks an inferred one
     ([#334](https://github.com/awslabs/stickler/issues/334)).

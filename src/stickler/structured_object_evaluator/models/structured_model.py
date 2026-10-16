@@ -717,13 +717,25 @@ class StructuredModel(BaseModel):
                     # "sets threshold=0.0" points at a `ComparableField` argument
                     # absent from the call site -- the same misattribution this
                     # PR fixes for the `List[StructuredModel]` error one screen up.
-                    field_wrote_it = getattr(
-                        field_default.json_schema_extra, "_threshold_explicit", True
+                    #
+                    # "Not stated on the field" does not imply "from the
+                    # comparator": an importer clears the marker on its own
+                    # defaults too, and an inferred mapping threshold copies a
+                    # `match_threshold` of 0.0. So the comparator is credited only
+                    # when it actually named a threshold.
+                    extra = field_default.json_schema_extra
+                    from_comparator = not getattr(
+                        extra, "_threshold_explicit", True
+                    ) and (
+                        _named_comparator_threshold(
+                            getattr(extra, "_comparator_instance", None)
+                        )
+                        is not None
                     )
                     _warn_if_threshold_is_zero(
                         temp_schema["x-comparison"].get("threshold"),
                         f"{_model_identity(cls.__name__, cls.__annotations__)}.{field_name}",
-                        "threshold" if field_wrote_it else "comparator threshold",
+                        "comparator threshold" if from_comparator else "threshold",
                     )
 
         # `match_threshold` is a plain class attribute rather than a field, so

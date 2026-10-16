@@ -446,7 +446,7 @@ class TestASecondSchemaIsNotSilenced:
 
 
 class TestAnArrayOfFreeFormObjectsReadsIt:
-    """"Array of MODELS" ignores it; "array of objects" is not the same thing.
+    """ "Array of MODELS" ignores it; "array of objects" is not the same thing.
 
     The distinction is `items` declaring `properties`. Without them the array
     becomes `List[dict]`, which READS the declared threshold and warns about
@@ -506,6 +506,44 @@ class TestTheComparatorOnTheSameNodeIsRefused:
     def test_a_declared_comparator_is_refused_on_an_object_property(self, key, value):
         with pytest.raises(ValueError, match=f"{key} is not read on field 'inner'"):
             StructuredModel.from_json_schema(_schema(**{key: value}))
+
+    @pytest.mark.parametrize(
+        "prop",
+        [
+            pytest.param(dict(CHILD, type=["object", "null"]), id="type-list-null"),
+            pytest.param({"anyOf": [CHILD, {"type": "null"}]}, id="anyOf-null"),
+            pytest.param({"$ref": "#/$defs/Child"}, id="ref"),
+            pytest.param({"allOf": [{"$ref": "#/$defs/Child"}]}, id="allOf-ref"),
+        ],
+    )
+    def test_every_spelling_of_an_object_property_refuses_it(self, prop):
+        schema = {
+            "type": "object",
+            "title": "Parent",
+            "$defs": {"Child": CHILD},
+            "properties": {
+                "inner": dict(prop, **{"x-aws-stickler-comparator": "ExactComparator"})
+            },
+        }
+        with pytest.raises(ValueError, match="is not read on field 'inner'"):
+            StructuredModel.from_json_schema(schema)
+
+    def test_a_free_form_object_still_honours_it(self):
+        """No `properties`, so it is one value scored by its comparator."""
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "title": "Parent",
+                "properties": {
+                    "inner": {
+                        "type": "object",
+                        "x-aws-stickler-comparator": "ANLSStarComparator",
+                    }
+                },
+            }
+        )
+        resolved = model._get_comparison_info("inner").comparator
+        assert type(resolved).__name__ == "ANLSStarComparator"
 
     def test_a_scalar_property_honours_the_same_key(self):
         """The contrast, so this reads as an asymmetry rather than a global."""

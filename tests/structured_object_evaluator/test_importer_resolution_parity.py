@@ -20,7 +20,8 @@ deferred, so the mapping tests compare clip and score rather than threshold.
 ``test_object_property_threshold.TestTheComparatorOnTheSameNodeIsRefused``.
 """
 
-from typing import Any, Dict, Optional
+import warnings
+from typing import Any, Dict, List, Optional
 
 import pytest
 
@@ -32,6 +33,7 @@ from stickler.structured_object_evaluator.models.comparable_field import (
 from stickler.structured_object_evaluator.models.structured_model import (
     StructuredModel,
 )
+from stickler.utils import deprecation
 
 # Levenshtein scores this pair 0.7778: a TP at the legacy 0.5, an FD at 0.9.
 GT_CODE, PRED_CODE = "ACME-1000", "ACNE-1009"
@@ -265,3 +267,87 @@ class TestAMappingKeepsItsPartialCreditOnEveryPath:
         sch = _schema({"type": "string"})
         assert _info(cfg).clip_under_threshold is True
         assert _info(sch).clip_under_threshold is True
+
+
+class TestAListOfMappingsKeepsItsPartialCreditOnEveryPath:
+    """The list form of the mapping case, which the CHANGELOG entry also names."""
+
+    def test_the_three_paths_agree(self):
+        paths = {
+            "python": _python(
+                List[Dict[str, Any]],
+                ComparableField(comparator=ANLSStarComparator()),
+            ),
+            "config": _config(
+                {"type": "List[Dict[str, Any]]", "comparator": "ANLSStarComparator"}
+            ),
+            "schema": _schema(
+                {
+                    "type": "array",
+                    "items": {"type": "object", "additionalProperties": True},
+                    "x-aws-stickler-comparator": "ANLSStarComparator",
+                }
+            ),
+        }
+        assert {_info(m).clip_under_threshold for m in paths.values()} == {False}
+        scores = {
+            name: _verdict(m, [GT_META], [PRED_META])[0] for name, m in paths.items()
+        }
+        assert scores["config"] == scores["schema"] == scores["python"]
+        assert scores["python"] == pytest.approx(1 / 3)
+
+
+class TestTheSchemaFreeFormObjectDefault:
+    """Exact at 1.0 is unchanged (#348 item 1); only its clip reads false."""
+
+    def test_clip_is_off_and_the_comparator_is_unchanged(self):
+        info = _info(_schema({"type": "object", "additionalProperties": True}))
+        assert type(info.comparator).__name__ == "ExactComparator"
+        assert info.threshold == 1.0
+        assert info.clip_under_threshold is False
+
+
+class TestAZeroThresholdWarningNamesItsSource:
+    """Clearing the marker on an importer default must not credit the comparator.
+
+    "Not stated on the field" used to imply "adopted from the comparator", so
+    an inferred mapping threshold copied from `match_threshold: 0.0` was
+    reported as "sets comparator threshold=0.0", naming a key nobody wrote.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _fresh_warn_once(self):
+        deprecation._warned.clear()
+        yield
+        deprecation._warned.clear()
+
+    def _messages(self, build):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            build()
+        return [str(w.message) for w in caught if "=0.0" in str(w.message)]
+
+    def test_an_inferred_zero_is_not_attributed_to_the_comparator(self):
+        messages = self._messages(
+            lambda: StructuredModel.model_from_json(
+                {
+                    "model_name": "ZeroInferred",
+                    "match_threshold": 0.0,
+                    "infer_unspecified_fields": True,
+                    "fields": {"meta": {"type": "Dict[str, Any]"}},
+                }
+            )
+        )
+        assert any("ZeroInferred.meta sets threshold=0.0" in m for m in messages)
+        assert not any("comparator threshold" in m for m in messages)
+
+    def test_a_comparator_zero_still_is(self):
+        messages = self._messages(
+            lambda: _schema(
+                {
+                    "type": "string",
+                    "x-aws-stickler-comparator-config": {"threshold": 0.0},
+                }
+            )
+        )
+        assert any(".f sets comparator threshold=0.0" in m for m in messages)
