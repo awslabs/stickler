@@ -133,6 +133,17 @@ Each release links to full notes on the
   Keyed on the leaf name alone, the first model built in a process silenced every
   later one carrying the same typo.
 
+- **The HTML report no longer claims a document is clean when it holds no
+  non-match records.** The Non-Matches Analysis section rendered `No non-matches
+  found.` for a `compare_with()` dict computed without `document_non_matches=True`,
+  including one with a field scoring `0.0`, and for a bulk `ProcessEvaluation`
+  built with `document_non_matches=False`. `DataExtractor.extract_non_matches`
+  returned `[]` for both "no records collected" and "collected and empty", so the
+  renderer could not tell them apart. It now returns `None` for the first, and the
+  section says the records are missing and how to collect them. An empty record
+  list still renders the success message
+  ([#411](https://github.com/awslabs/stickler/issues/411))
+
 ## [1.0.0] - 2026-09-11
 
 ### Added
