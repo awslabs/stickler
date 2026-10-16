@@ -11,7 +11,11 @@ from pydantic import Field
 
 from stickler.utils.deprecation import warn_once
 
-from .comparable_field import ComparableField
+from .comparable_field import (
+    ComparableField,
+    _mark_unstated,
+    _named_comparator_threshold,
+)
 from .comparator_registry import create_comparator, normalize_comparator_config
 from .type_resolver import resolve_type_string
 
@@ -326,15 +330,26 @@ class FieldConverter:
         except (KeyError, TypeError) as e:
             raise ValueError(f"Invalid comparator for field '{field_name}': {e}")
 
-        # Extract other field parameters
-        threshold = field_config.get(
-            "threshold", inferred.threshold if inferred else 0.5
+        # `None` for what the config does not state, so `ComparableField` resolves
+        # it exactly as it does on the Python path. Defaulting to 0.5 and True here
+        # marked both as stated, which discarded a threshold named in
+        # `comparator_config` (#334) and suppressed the object-grade clip default,
+        # zeroing a dict field's partial credit (#348). Precedence is field, then
+        # comparator, then inference, so a comparator threshold outranks an
+        # inferred one: the author wrote it.
+        threshold = field_config.get("threshold")
+        threshold_inferred = (
+            threshold is None
+            and inferred is not None
+            and _named_comparator_threshold(comparator) is None
         )
+        if threshold_inferred:
+            threshold = inferred.threshold
         weight = field_config.get("weight", inferred.weight if inferred else 1.0)
-        clip_under_threshold = field_config.get(
-            "clip_under_threshold",
-            inferred.clip_under_threshold if inferred else True,
-        )
+        clip_under_threshold = field_config.get("clip_under_threshold")
+        clip_inferred = clip_under_threshold is None and inferred is not None
+        if clip_inferred:
+            clip_under_threshold = inferred.clip_under_threshold
 
         # Name the parameters the author took back, so the trail cannot contradict
         # the row it sits under. Inference fills only what the config left unnamed,
@@ -387,6 +402,9 @@ class FieldConverter:
             alias=alias,
             description=description,
             examples=examples,
+        )
+        _mark_unstated(
+            comparable_field, threshold=threshold_inferred, clip=clip_inferred
         )
 
         # Record what was inferred, so `explain()` reports the reason and a
@@ -494,7 +512,8 @@ class FieldConverter:
         # CRITICAL FIX: Create ComparableField for nested models to enable proper comparison
         # Extract threshold and weight from field configuration
         weight = field_config.get("weight", 1.0)  # Default weight
-        clip_under_threshold = field_config.get("clip_under_threshold", True)
+        # `None` when unstated, for the reason given in `convert_field_config`.
+        clip_under_threshold = field_config.get("clip_under_threshold")
 
         # For list_structured_model, don't set threshold (Hungarian matching uses model's match_threshold)
         # For single structured_model, use threshold from config
@@ -528,6 +547,8 @@ class FieldConverter:
             description=description,
             examples=examples,
         )
+        # The 0.7 above is this path's default, not the author's.
+        _mark_unstated(comparable_field, threshold="threshold" not in field_config)
 
         return field_type, comparable_field
 

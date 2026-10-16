@@ -3,10 +3,9 @@
 The importer read `weight` and `clip-under-threshold` from an object-typed
 property's extensions and used a hardcoded literal for `threshold`, so the same
 node honoured two of the field-level keys it was given and discarded this one,
-with no error and no warning. `x-aws-stickler-comparator` on that node is ALSO
-discarded and is deliberately NOT fixed here, because it is score-inert for a
-nested model; `TestTheComparatorOnTheSameNodeIsStillDropped` pins it so this
-paragraph cannot drift into claiming more than it does.
+with no error and no warning. `x-aws-stickler-comparator` on that node was ALSO
+discarded; it is score-inert for a nested model, so it is now refused rather than
+carried (#348). `TestTheComparatorOnTheSameNodeIsRefused` pins that.
 
 The key is NOT inert in that position, which is why carrying it is the fix rather
 than rejecting it the way #312 rejects a genuinely misplaced key. A nested-model
@@ -81,9 +80,8 @@ class TestTheDeclaredThresholdIsRead:
         """The asymmetry that identified this as a defect, pinned.
 
         One node, and the threshold was the only one of these three dropped.
-        `x-aws-stickler-comparator` on the same node is ALSO dropped and is not
-        fixed here; see `TestTheComparatorOnTheSameNodeIsStillDropped`, which
-        keeps this docstring from reading as "and now everything is honoured".
+        `x-aws-stickler-comparator` on the same node is refused, not honoured;
+        see `TestTheComparatorOnTheSameNodeIsRefused`.
         """
         model = StructuredModel.from_json_schema(
             _schema(
@@ -448,7 +446,7 @@ class TestASecondSchemaIsNotSilenced:
 
 
 class TestAnArrayOfFreeFormObjectsReadsIt:
-    """"Array of MODELS" ignores it; "array of objects" is not the same thing.
+    """ "Array of MODELS" ignores it; "array of objects" is not the same thing.
 
     The distinction is `items` declaring `properties`. Without them the array
     becomes `List[dict]`, which READS the declared threshold and warns about
@@ -488,28 +486,64 @@ class TestAnArrayOfFreeFormObjectsReadsIt:
         assert [m for m in messages if "has no effect on array property" in m]
 
 
-class TestTheComparatorOnTheSameNodeIsStillDropped:
-    """The sibling key this PR does NOT fix, pinned so the claim stays honest.
+class TestTheComparatorOnTheSameNodeIsRefused:
+    """`x-aws-stickler-comparator` on an object property raises (#348 item 7).
 
-    The entry for this change argues from "one node honoured two field-level keys
-    and discarded the third". A reviewer checking that sentence finds a FOURTH
-    key on the same node which is also discarded, so the sentence has to be
-    precise and something has to hold it precise.
-
-    `x-aws-stickler-comparator` is parsed and validated -- a bogus name still
-    raises -- then dropped without being stored or exported, because the
-    object-typed branch passes a fixed `comparator_name` rather than the node's
-    extensions. Score-inert for a nested model, which is compared by recursion
-    rather than by the field's comparator, which is why it is recorded here
-    rather than carried. Identical on `dev`.
+    It used to be parsed, validated, then dropped: the object-typed branch passes
+    a fixed `comparator_name`, so `explain()` reported that placeholder as the
+    author's explicit choice. Score-inert for a nested model, which is compared
+    by recursion, so it is refused rather than carried, as the config path
+    refuses `comparator` on a `structured_model` field.
     """
 
-    def test_a_declared_comparator_is_dropped_on_an_object_property(self):
+    @pytest.mark.parametrize(
+        "key, value",
+        [
+            ("x-aws-stickler-comparator", "ExactComparator"),
+            ("x-aws-stickler-comparator-config", {"threshold": 0.9}),
+        ],
+    )
+    def test_a_declared_comparator_is_refused_on_an_object_property(self, key, value):
+        with pytest.raises(ValueError, match=f"{key} is not read on field 'inner'"):
+            StructuredModel.from_json_schema(_schema(**{key: value}))
+
+    @pytest.mark.parametrize(
+        "prop",
+        [
+            pytest.param(dict(CHILD, type=["object", "null"]), id="type-list-null"),
+            pytest.param({"anyOf": [CHILD, {"type": "null"}]}, id="anyOf-null"),
+            pytest.param({"$ref": "#/$defs/Child"}, id="ref"),
+            pytest.param({"allOf": [{"$ref": "#/$defs/Child"}]}, id="allOf-ref"),
+        ],
+    )
+    def test_every_spelling_of_an_object_property_refuses_it(self, prop):
+        schema = {
+            "type": "object",
+            "title": "Parent",
+            "$defs": {"Child": CHILD},
+            "properties": {
+                "inner": dict(prop, **{"x-aws-stickler-comparator": "ExactComparator"})
+            },
+        }
+        with pytest.raises(ValueError, match="is not read on field 'inner'"):
+            StructuredModel.from_json_schema(schema)
+
+    def test_a_free_form_object_still_honours_it(self):
+        """No `properties`, so it is one value scored by its comparator."""
         model = StructuredModel.from_json_schema(
-            _schema(**{"x-aws-stickler-comparator": "ExactComparator"})
+            {
+                "type": "object",
+                "title": "Parent",
+                "properties": {
+                    "inner": {
+                        "type": "object",
+                        "x-aws-stickler-comparator": "ANLSStarComparator",
+                    }
+                },
+            }
         )
         resolved = model._get_comparison_info("inner").comparator
-        assert type(resolved).__name__ == "LevenshteinComparator"
+        assert type(resolved).__name__ == "ANLSStarComparator"
 
     def test_a_scalar_property_honours_the_same_key(self):
         """The contrast, so this reads as an asymmetry rather than a global."""
@@ -529,7 +563,7 @@ class TestTheComparatorOnTheSameNodeIsStillDropped:
         assert type(resolved).__name__ == "ExactComparator"
 
     def test_a_bogus_name_still_raises_there(self):
-        """Parsed and validated, then dropped -- not ignored wholesale."""
+        """Still refused by name, before the position check."""
         with pytest.raises(Exception):
             StructuredModel.from_json_schema(
                 _schema(**{"x-aws-stickler-comparator": "NoSuchComparator"})

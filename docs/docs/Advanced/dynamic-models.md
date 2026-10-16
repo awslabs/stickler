@@ -102,10 +102,10 @@ The `x-aws-stickler-*` extensions control comparison behavior on each property:
 
 | Extension | Purpose | Example |
 |-----------|---------|---------|
-| `x-aws-stickler-comparator` | Comparison algorithm | `"LevenshteinComparator"` |
+| `x-aws-stickler-comparator` | Comparison algorithm. Raises on an object with `properties`, which is scored field by field; set it on the properties inside | `"LevenshteinComparator"` |
 | `x-aws-stickler-threshold` | Match threshold (0.0--1.0). Read on a scalar, an object, and an array of scalars; **ignored on an array of models** -- an array whose `items` declare `properties` -- where the element class's `x-aws-stickler-match-threshold` is the gate. Read, not ignored, on an array of free-form `{"type": "object"}` items, which become `List[dict]` | `0.8` |
 | `x-aws-stickler-weight` | Field importance weight | `2.0` |
-| `x-aws-stickler-clip-under-threshold` | Zero out scores below threshold | `true` |
+| `x-aws-stickler-clip-under-threshold` | Zero out scores below threshold. Defaults to `false` on a free-form object, which keeps its partial credit | `true` |
 | `x-aws-stickler-model-name` | Class name (object-level) | `"Invoice"` |
 | `x-aws-stickler-match-threshold` | Hungarian match threshold (object-level) | `0.75` |
 | `x-aws-stickler-infer-unspecified` | Infer comparators for properties that name none (object-level). See [Inferring unspecified fields](#inferring-unspecified-fields) | `true` |
@@ -247,6 +247,10 @@ Person = StructuredModel.model_from_json(person_config)
     "clip_under_threshold": true
 }
 ```
+
+A key the field leaves out resolves as it does on the Python path: a `threshold` in
+`comparator_config` is adopted when `threshold` is absent, and a `dict` field
+defaults to `clip_under_threshold: false`, so its partial credit survives.
 
 **Nested model fields** use `"type": "structured_model"` with a nested `"fields"` object. **List of models** use `"type": "list_structured_model"`. **Optional models** use `"type": "optional_structured_model"`.
 

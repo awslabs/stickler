@@ -29,7 +29,11 @@ from json_schema_to_pydantic import create_model as create_pydantic_model
 from pydantic import AnyUrl, BaseModel, TypeAdapter
 from pydantic.fields import FieldInfo
 
-from .comparable_field import ComparableField
+from .comparable_field import (
+    ComparableField,
+    _mark_unstated,
+    _named_comparator_threshold,
+)
 from .comparator_registry import create_comparator, normalize_comparator_config
 from .field_converter import AUTO_COMPARATOR
 from .model_factory import ModelFactory
@@ -412,6 +416,24 @@ class JsonSchemaImporter:
                     "recursive field-by-field comparison",
                     "this object",
                 )
+            # Refused rather than dropped. An object with `properties` is scored
+            # field by field, so no comparator is ever read here, and accepting
+            # one let `explain()` report the placeholder below as the author's
+            # explicit choice (#348). The config path refuses `comparator` on a
+            # `structured_model` field the same way.
+            extra = field_info.json_schema_extra
+            for key in (
+                "x-aws-stickler-comparator",
+                "x-aws-stickler-comparator-config",
+            ):
+                if isinstance(extra, dict) and key in extra:
+                    raise ValueError(
+                        f"{key} is not read on field '{field_path}': it is an "
+                        "object with properties, scored by recursive "
+                        "field-by-field comparison, so it has no comparator. "
+                        "Remove it, and set it on the properties inside the "
+                        "object instead."
+                    )
             comparison_field = self._make_comparison_field(
                 field_info,
                 comparator_name="LevenshteinComparator",
@@ -431,8 +453,10 @@ class JsonSchemaImporter:
                 # configurable. See #317.
                 threshold=extensions.get("threshold", 0.7),
                 weight=extensions.get("weight", 1.0),
-                clip_under_threshold=extensions.get("clip_under_threshold", True),
+                clip_under_threshold=extensions.get("clip_under_threshold"),
             )
+            # The 0.7 is this path's default, not the author's (#334).
+            _mark_unstated(comparison_field, threshold="threshold" not in extensions)
             return final_type, comparison_field
 
         if origin in (list, List, set):
@@ -738,18 +762,33 @@ class JsonSchemaImporter:
             # the same silent drop one branch over.
             comparator = create_comparator(comparator_name, author_config)
 
+        # Precedence is field, then comparator, then this path's default, as on
+        # the Python path. The default (inferred, or the type's row) used to be
+        # passed whenever the field stated nothing, which discarded a threshold
+        # named in `x-aws-stickler-comparator-config` (#334). `None` lets
+        # `ComparableField` adopt it. An unstated clip is likewise left `None`, so
+        # an object-grade field gets its unclipped default (#348).
+        declared_threshold = extensions.get("threshold")
+        threshold_defaulted = (
+            declared_threshold is None
+            and _named_comparator_threshold(comparator) is None
+        )
+        clip = extensions.get("clip_under_threshold")
+        clip_inferred = clip is None and inferred is not None
         field = self._make_comparison_field(
             field_info,
             comparator=comparator,
-            threshold=extensions.get(
-                "threshold", inferred.threshold if inferred else threshold
+            threshold=(
+                (inferred.threshold if inferred else threshold)
+                if threshold_defaulted
+                else declared_threshold
             ),
             weight=extensions.get("weight", inferred.weight if inferred else 1.0),
-            clip_under_threshold=extensions.get(
-                "clip_under_threshold",
-                inferred.clip_under_threshold if inferred else True,
+            clip_under_threshold=(
+                inferred.clip_under_threshold if clip_inferred else clip
             ),
         )
+        _mark_unstated(field, threshold=threshold_defaulted, clip=clip_inferred)
         if inferred is not None and inferred.provenance:
             extra_callable = field.json_schema_extra
             if callable(extra_callable):
@@ -764,7 +803,7 @@ class JsonSchemaImporter:
         comparator_name: Optional[str] = None,
         threshold: Optional[float],
         weight: float,
-        clip_under_threshold: bool,
+        clip_under_threshold: Optional[bool],
     ) -> FieldInfo:
         if comparator is None:
             comparator = create_comparator(comparator_name, {})
