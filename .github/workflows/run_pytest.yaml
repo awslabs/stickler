@@ -75,9 +75,14 @@ jobs:
         # requires stickler-eval and would replace this checkout with a PyPI
         # release, so the tests would measure the wrong tree. Not added to
         # uv.lock or pyproject.toml (see AGENTS.md). The [tool.uv] cooldown in
-        # pyproject.toml applies to it and to its dependencies, so a new pin
-        # resolves only once the release is 7 days old.
-        run: uv pip install --python .venv "strands-agents-evals==1.6.0"
+        # pyproject.toml still applies to its dependencies. strands-agents-evals
+        # itself is exempt up to a fixed cutoff just after the pinned release
+        # (1.6.0 was uploaded 2026-10-14T22:45Z), so the job tests the release
+        # the integration shipped in. Move the cutoff with the pin.
+        run: >-
+          uv pip install --python .venv
+          --exclude-newer-package "strands-agents-evals=2026-10-15T00:00:00Z"
+          "strands-agents-evals==1.6.0"
       - name: Test the Strands Evals integration
         # --no-sync: a syncing `uv run` would put the environment back to
         # uv.lock, undoing the install above.
