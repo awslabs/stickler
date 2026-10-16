@@ -36,12 +36,28 @@ False Alarm (FA) and False Discovery (FD) together make up the broader False Pos
 
 ### Lists
 
-Lists use the [Hungarian algorithm](hungarian-matching.md) for optimal element pairing.
+#### The list contract {: #list-contract }
 
-1. **Empty lists**: `[] vs []` is TN; `[] vs [items]` produces one FA per item; `[items] vs []` produces one FN per item.
-2. **Matched elements**: similarity >= threshold is TP; below threshold is FD.
-3. **Unmatched elements**: leftover GT elements are FN; leftover EST elements are FA.
-4. **`None` elements**: absent, so they are not matched or counted. A list of only `None` is an empty list. See [`None` elements in a list](#none-elements-in-a-list).
+This table is the single statement of what Stickler does with a list field. Other pages link here rather than restate it.
+
+| Aspect | Rule |
+|---|---|
+| Pairing | Every list is unordered: `["a", "b"]` vs `["b", "a"]` scores `1.0`. Elements are paired one-to-one by the [Hungarian algorithm](hungarian-matching.md), maximising total similarity. `None` and `NaN` elements are removed first ([`None` elements in a list](#none-elements-in-a-list)); reports keep original indices. Pair similarity is the field's comparator, or `GT[i].compare(Pred[j])` for `List[StructuredModel]` (fields absent on both sides excluded). |
+| Bar | Primitive, dict and plain-model lists: the field's `threshold`, else a threshold named on the comparator, else `0.5`. `List[StructuredModel]`: the element class's `match_threshold`. A field `threshold` on a `List[StructuredModel]` raises `ValueError` in Python; JSON Schema warns and ignores it. A pair whose similarity is at or above the bar is a TP. |
+| Counts (the list node's `overall`) | Paired element: TP if it meets the bar, else FD. Unpaired GT element: FN. Unpaired prediction: FA. An empty, `None` or all-`None` list is null: both null is one TN (score `1.0`); one side null gives one FN or FA per present element (score `0.0`). |
+| Recursion | Only TP pairs of `StructuredModel` items are descended into, and their sub-fields are classified by the same rules as at top level ([#406](https://github.com/awslabs/stickler/pull/406)). FD, FN and FA items are atomic. `aggregate` holds the leaves of TP items only, so FD, FN and FA items are left out of it when any sibling was accepted. With no accepted item it falls back to the list node's own counts ([why](aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list)). |
+| Score | `sum(pair scores) / max(n_gt, n_pred)`. The pair score is the element similarity, zeroed below the bar when `clip_under_threshold` is on (default on for primitive lists, off for dict and plain-model lists). For `List[StructuredModel]` the pair score is `GT[i].compare_with(Pred[j])["overall_score"]`, which can differ from the pairing similarity, and `clip_under_threshold` currently has no effect ([#415](https://github.com/awslabs/stickler/issues/415)). The list's score is never clipped as a whole against the field threshold. [Worked example](hungarian-matching.md#step-4-list-score). |
+| Reports | `non_matches` and `field_comparisons`: one row per primitive element or per leaf of a TP item, and one object row per FD, FN or FA item. `match` is true when the row's own classification is TP or TN: a value or object row met its bar; a list row had every element paired as a TP, with no FD, FA or FN at the element level. Failures deeper down get their own rows. |
+
+**Where `dev` does not yet follow it.** Each gap is a code change, not a docs change, and links its tracking issue where one exists:
+
+- **Reports for primitive, dict and plain-model lists** are built from a second pairing that compares elements by equality against a `0.7` bar, not the field's comparator and bar. Rows can disagree with the counts: with `threshold=0.6`, `["abcde"]` vs `["abcxy"]` (similarity `0.6`) counts a TP but is reported as an FD with `similarity_score` `0.0`. Fixed by [#364](https://github.com/awslabs/stickler/pull/364).
+- **A list row inside a list item** (`outers[0].tags`) carries `match` as the string `"True"`/`"False"`, set by comparing the list's score to the field threshold, so `outers[0].inner` can read `true` with an FD element inside. Fixed by [#364](https://github.com/awslabs/stickler/pull/364).
+- **A `None` list against a non-empty one** gets one `field_comparisons` row for the whole field (`tags`), not one per element; `non_matches` and `[]` give one per element.
+- **Rows inside list items** report a clipped `score` and give a nested list or object one row instead of expanding it ([#418](https://github.com/awslabs/stickler/issues/418)).
+- **Sub-fields inside list items**: some value kinds (tuple, set, bytes, whitespace-only string, a list in an `Any` field) count differently than at top level ([#406](https://github.com/awslabs/stickler/pull/406)).
+- **Threshold boundary**: the object-level gate uses a bare `>=`, so a pair at `0.7999999999999999` against `0.8` is an FD ([#417](https://github.com/awslabs/stickler/issues/417)).
+- **`raw_similarity_score` on a list node** is the list's score, which already has per-element clipping applied ([#330](https://github.com/awslabs/stickler/issues/330)).
 
 #### `None` elements in a list {: #none-elements-in-a-list }
 
@@ -186,7 +202,7 @@ neither term. The mixed-matching example above scores recall `1.000` even though
 `0.667`. `HungarianMatcher.calculate_metrics` always uses that second formula.
 See [FD and recall](hungarian-matching.md#fd-and-recall).
 
-These are computed at every node of the result tree, from that node's own counts, and which counts those are depends on which node you read. `overall` classifies that node's direct children: for a list field, whether each pairing was genuine or spurious; at the root, its own fields, which means the two units can mix in a single count. `aggregate` gives leaf detail, and for a list of objects that means only the items that were comparable, since a list item below the element class's `match_threshold` is one FD and is not descended into. A single nested `StructuredModel` field is not gated this way: its leaves are always reported. See [Which node answers which question](aggregate-metrics.md#which-node-answers-which-question).
+These are computed at every node of the result tree, from that node's own counts, and which counts those are depends on which node you read. `overall` classifies that node's direct children: for a list field, whether each pairing was genuine or spurious; at the root, its own fields, which means the two units can mix in a single count. `aggregate` gives leaf detail, and for a list of objects that means only the items that were comparable, since a list item below the element class's `match_threshold` is one FD and is not descended into; unmatched FN and FA items are left out too when a sibling was accepted ([Recursion](#list-contract)). A single nested `StructuredModel` field is not gated this way: its leaves are always reported. See [Which node answers which question](aggregate-metrics.md#which-node-answers-which-question).
 
 ## Edge Cases
 
@@ -194,11 +210,11 @@ These are computed at every node of the result tree, from that node's own counts
 
 **TN in object matching** -- A TN is absence of evidence, not evidence of a match. Fields absent on both sides are excluded from the weighted object similarity used by Hungarian matching. If every field is absent, the similarity is defined as `1.0`.
 
-**Threshold boundary** -- A similarity score exactly equal to the threshold counts as a match (TP).
+**Threshold boundary** -- A similarity score exactly equal to the threshold counts as a match (TP). Scores are floats, so one that prints as the threshold can sit just below it: the Laptop pair in [How Below-Threshold Pairs Are Classified](threshold-gated-evaluation.md#worked-scenarios) is `0.7999999999999999` against `0.8` and counts FD. The element gate in a primitive list allows a `1e-10` tolerance; the object and field gates do not ([#417](https://github.com/awslabs/stickler/issues/417)).
 
 **List order** -- Order does not matter. The Hungarian algorithm finds the optimal pairing regardless of element position.
 
-**Nested lists** -- For `List[StructuredModel]`, the Hungarian algorithm pairs objects at the list level, then each matched pair is evaluated recursively.
+**Nested lists** -- For `List[StructuredModel]`, the Hungarian algorithm pairs objects at the list level, then each TP pair is evaluated recursively ([Recursion](#list-contract)).
 
 **Missing vs. null fields** -- A missing field and a field explicitly set to `null` are handled the same way: if the other side has a non-null value, the result is FN or FA accordingly.
 

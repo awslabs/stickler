@@ -79,7 +79,7 @@ call yields both `field_scores`/`overall_score` **and** precision/recall/f1/accu
    | `str` | Levenshtein | 0.7 | yes |
    | nested `BaseModel` | recurse → child shadow model | `match_threshold` | **no** (partial credit, consistent with the same object inside a list) |
    | nested `StructuredModel` | used as configured, never re-inferred | (its own) | (its own) |
-   | `List[BaseModel]` | Hungarian object matching | (element `match_threshold`) | n/a |
+   | `List[BaseModel]` | Hungarian object matching | (element `match_threshold`) | no effect (`explain()` reports `True`; [#415](https://github.com/awslabs/stickler/issues/415)) |
    | `List[primitive]` | element comparator | element | yes |
    | `dict` / `Dict[...]` / `Mapping[...]` | **ANLS\*** over the mapping itself (structural, partial credit) | `match_threshold` | **no** (partial credit, same policy as a nested object) |
    | `tuple` / `set` / `Any` / multi-arm unions | Exact over a canonical JSON string (sorted keys; sets also sort elements) | 1.0 | n/a (Exact is all-or-nothing) |
@@ -174,8 +174,8 @@ first. Both name a blocker the caller has to fix.
 ## Known limitations
 
 - **`List[BaseModel]` semantics** use Hungarian matching (order-independent),
-  which differs from `anls_score`'s ordering-based path. This is intentional and
-  documented so scores are explainable.
+  not ANLS\*. Neither depends on order: a reordered list scores `1.0` both here
+  and under `anls_score`.
 - **Inference heuristics may be tuned across releases**, which can change
   scores for unconfigured models. Benchmark against a pinned stickler version,
   or graduate to an explicit `StructuredModel` (whose configuration this layer

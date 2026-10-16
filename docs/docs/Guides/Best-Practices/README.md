@@ -189,7 +189,7 @@ result = ground_truth.compare_with(
 | Threshold too high | Many fields classified as non-matches | Lower the threshold to match acceptable variation |
 | Threshold too low | Poor matches classified as matches | Raise the threshold to enforce stricter matching |
 | Missing weights on critical fields | Overall score does not reflect business impact | Add weights proportional to field importance |
-| Not using Hungarian matching | List items compared positionally instead of optimally | Use `List[StructuredModel]` type annotation for list fields |
+| Expecting list order to matter | `[a, b]` vs `[b, a]` scores 1.0 | Every list is unordered and Hungarian-paired ([list contract](../../Advanced/classification-logic.md#list-contract)); put the position in the data, such as a `line_number` field |
 
 ---
 
