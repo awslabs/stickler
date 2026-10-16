@@ -14,7 +14,7 @@ The evaluator lives in Strands Evals, not in stickler. stickler is the optional
 `stickler` extra it depends on.
 
 ```bash
-pip install "strands-agents-evals[stickler]"
+pip install "strands-agents-evals[stickler]>=1.6.0"
 ```
 
 ```python
@@ -145,14 +145,14 @@ data-dependent, so use `.get()` rather than indexing.
 
 ## Status
 
-The `StructuredOutputSimilarity` evaluator is in review at
-[sromoam/evals#1](https://github.com/sromoam/evals/pull/1) and is not yet on PyPI. Until
-it releases, install it from the branch:
+The `StructuredOutputSimilarity` evaluator ships in `strands-agents-evals` 1.6.0. Its
+`stickler` extra installs stickler 1.x:
 
 ```bash
-pip install "strands-agents-evals @ git+https://github.com/sromoam/evals@feat/structured-output-evaluator"
+pip install "strands-agents-evals[stickler]>=1.6.0"
 ```
 
 The evaluator's own notes (saved reports, what `test_pass` gates on, one schema per
-evaluator) are in the "Field-Level Structured Output Scoring" section of that branch's
-[README](https://github.com/sromoam/evals/blob/feat/structured-output-evaluator/README.md).
+evaluator) are in the
+[Field-Level Structured Output Scoring](https://github.com/strands-agents/evals#field-level-structured-output-scoring)
+section of the Strands Evals README.
