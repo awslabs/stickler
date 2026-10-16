@@ -1707,14 +1707,17 @@ class TestTheElementGateJudgesAPairNotAList:
         [{'a':1},{'b':2},{'c':3}, Plain('p')]     1.0    0.0          0.75
         ['x','y','z', Plain('p')]                 1.0    0.75         0.75
         [NoteSM]        vs [Note2SM]              1.0    1.0          1.0
-        [Plain, NoteSM] vs [Plain, Note2SM]       1.0    0.5          1.0
+        [Plain, NoteSM] vs [Plain, Note2SM]       1.0    0.0          0.5
+          same, comparator declared on `f`        1.0    0.5          1.0
 
     The string row is the shape the refusal is FOR: one element out of four cannot
     be scored, and the field loses a quarter. The dict row zeroed three elements
     that score 1.0 on their own, in the same list, on `dev`, and here the moment
-    the plain model is removed. The last row enforced the cross-class rule that
-    #327 is deliberately holding open, so the answer depended on whether an
-    unrelated plain model shared the list.
+    the plain model is removed. The declared row enforced the cross-class rule
+    that #327 is deliberately holding open, so the answer depended on whether an
+    unrelated plain model shared the list. The bare row's 0.5 is the refused
+    `Plain` pair (`[Plain]` vs `[Plain]` scores 0.0 bare), not that rule, which is
+    why `test_two_structured_model_classes_keep_the_declared_gap` uses `Declared`.
     """
 
     class Plain(BaseModel):
