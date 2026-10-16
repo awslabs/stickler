@@ -7,6 +7,7 @@ This directory contains comprehensive examples demonstrating the core functional
 **Too lazy to configure anything? Start here:**
 - [`notebooks/Ultra_Quick_Start.ipynb`](notebooks/Ultra_Quick_Start.ipynb) - Score a vanilla Pydantic model with **zero configuration** via `stickler.evaluate(gt, pred)`
 - [`scripts/strands_agent_eval_demo.py`](scripts/strands_agent_eval_demo.py) - Evaluate a Strands agent's structured output in one line
+- [`notebooks/Strands_Evals_Evaluator.ipynb`](notebooks/Strands_Evals_Evaluator.ipynb) - Score a Strands Evals experiment field by field with `StructuredOutputSimilarity`
 
 **Want to see the full comparator API:**
 - [`scripts/quick_start.py`](scripts/quick_start.py) - Essential functionality demonstration
@@ -87,6 +88,16 @@ This directory contains comprehensive examples demonstrating the core functional
   - Per-field breakdowns and side-by-side model comparison
   - State merge for distributed evaluation
 
+- **`notebooks/Strands_Evals_Evaluator.ipynb`** - stickler inside Strands Evals, offline
+  - `StructuredOutputSimilarity` versus `Equals` on the same experiment
+  - Per-case field scores and a per-field confusion matrix from `StructuredOutputReport`
+  - What `test_pass` gates on, and one schema per experiment
+
+- **`notebooks/Strands_Evals_FCC_Live_Agent.ipynb`** - The same evaluator on a live agent
+  - Five real FCC invoices extracted by Claude Haiku through Bedrock
+  - Inferred configuration versus a tuned `StructuredModel`
+  - Requires AWS credentials with Bedrock access
+
 - **`notebooks/Map_Reduce_Evaluation.ipynb`** - Production map/reduce pattern
   - Compare individual docs (map), save to JSONL
   - Aggregate from JSONL (reduce) with full confidence metrics
@@ -104,6 +115,8 @@ This directory contains comprehensive examples demonstrating the core functional
 | `print_results_demo.py` | ✅ | ➖ | ➖ | ➖ | ➖ | ✅ |
 | `Quick_start.ipynb` | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ |
 | `Complex_nested_structure.ipynb` | ✅ | ✅ | ✅ | ✅ | ➖ | ✅ |
+| `Strands_Evals_Evaluator.ipynb` | ✅ | ✅ | ✅ | ✅ | ➖ | ✅ |
+| `Strands_Evals_FCC_Live_Agent.ipynb` | ✅ | ✅ | ✅ | ✅ | ➖ | ✅ |
 
 ## 🏃‍♂️ Running the Examples
 
