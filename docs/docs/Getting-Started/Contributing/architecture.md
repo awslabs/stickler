@@ -232,7 +232,7 @@ Every field comparison produces three score variants:
 
 | Score | Description |
 |-------|-------------|
-| `raw_similarity_score` | Direct comparator output (0.0–1.0) |
+| `raw_similarity_score` | Direct comparator output (0.0–1.0). On a list node it is currently the list's score, which already has per-element clipping applied ([#330](https://github.com/awslabs/stickler/issues/330); see [Score](../../Advanced/classification-logic.md#list-contract)) |
 | `similarity_score` | Same as raw — maintained for API compatibility |
 | `threshold_applied_score` | Raw score with `clip_under_threshold` applied (0.0 if below threshold and clipping is enabled) |
 
@@ -248,7 +248,7 @@ Weights are configured per-field via `ComparableField` metadata. Default weight 
 
 ### `clip_under_threshold`
 
-When enabled on a field (the default), a score below the threshold contributes 0.0 instead of its partial similarity. This holds for **every** field kind; the layer that applies it differs.
+When enabled on a field (the default), a score below the threshold contributes 0.0 instead of its partial similarity. This holds for every field kind except `List[StructuredModel]`, where it currently has no effect ([#415](https://github.com/awslabs/stickler/issues/415)); the layer that applies it differs.
 
 For a primitive or a single nested `StructuredModel`, `FieldComparator` clips when producing `threshold_applied_score`, and the engine's percolation loop uses the already-clipped score:
 
