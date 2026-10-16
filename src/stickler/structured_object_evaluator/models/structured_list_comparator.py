@@ -13,6 +13,7 @@ from .comparable_field import ComparableField
 from .comparison_helper import ComparisonHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
+from .null_helper import NullHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -49,10 +50,18 @@ class StructuredListComparator:
         info = self.parent_model.__class__._get_comparison_info(field_name)
         weight = info.weight
 
+        # A None element is absent: it is not matched, counted or scored (#386).
+        # Every count and score below is over what remains; this path reports
+        # no indices, so none are remapped.
+        gt_list = NullHelper.present(gt_list)
+        pred_list = NullHelper.present(pred_list)
+
         # PHASE 3 FIX: Use correct threshold source for Hungarian matching decisions
         # Should use the list element model's match_threshold, not the parent field's threshold
-        if gt_list and hasattr(gt_list[0].__class__, "match_threshold"):
-            match_threshold = gt_list[0].__class__.match_threshold
+        # Read from the element class, not from a leading None (#322).
+        element = NullHelper.first_present(gt_list, pred_list)
+        if element is not None and hasattr(element.__class__, "match_threshold"):
+            match_threshold = element.__class__.match_threshold
         else:
             # Fallback to default if no match_threshold defined
             match_threshold = getattr(
@@ -178,17 +187,9 @@ class StructuredListComparator:
                 gt_item = gt_list[gt_idx]
                 pred_item = pred_list[pred_idx]
 
-                if gt_item is None or pred_item is None:
-                    # Nullable object elements (List[Optional[Model]]) can pair a
-                    # None against a model; compare_with would crash on None, so
-                    # score it directly: both-None is a match, one-None is not.
-                    threshold_applied_score = (
-                        1.0 if gt_item is None and pred_item is None else 0.0
-                    )
-                else:
-                    # Use individual comparison with threshold application (same as .compare_with())
-                    individual_result = gt_item.compare_with(pred_item)
-                    threshold_applied_score = individual_result["overall_score"]
+                # Use individual comparison with threshold application (same as .compare_with())
+                individual_result = gt_item.compare_with(pred_item)
+                threshold_applied_score = individual_result["overall_score"]
 
                 threshold_corrected_pairs.append(
                     (gt_idx, pred_idx, threshold_applied_score)
@@ -232,12 +233,10 @@ class StructuredListComparator:
         """
         field_details = {}
 
-        # A nullable object list may start with None, so locate the first real
-        # model element to source the field schema from.
-        first_model = next(
-            (item for item in gt_list if isinstance(item, StructuredModel)), None
-        )
-        if first_model is not None:
+        # Absent elements were dropped upstream, so the first element sources
+        # the field schema.
+        first_model = gt_list[0] if gt_list else None
+        if isinstance(first_model, StructuredModel):
             model_class = first_model.__class__
 
             # PHASE 3 FIX: Only process pairs that meet the match_threshold
@@ -298,11 +297,6 @@ class StructuredListComparator:
             if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                 gt_item = gt_list[gt_idx]
                 pred_item = pred_list[pred_idx]
-                # Nullable object elements may be None; they carry no sub-fields,
-                # so the pair is already scored at the list level and contributes
-                # nothing to the per-field breakdown.
-                if gt_item is None or pred_item is None:
-                    continue
                 gt_sub_value = getattr(gt_item, sub_field_name)
                 pred_sub_value = getattr(pred_item, sub_field_name)
 
@@ -466,8 +460,9 @@ class StructuredListComparator:
         # Check if this field is a simple list type (e.g., List[str]) by inspecting
         # the first available GT item's model definition.
         is_simple_list = False
-        if gt_list:
-            is_simple_list = gt_list[0]._is_list_field(sub_field_name)
+        element = NullHelper.first_present(gt_list, pred_list)
+        if isinstance(element, StructuredModel):
+            is_simple_list = element._is_list_field(sub_field_name)
 
         if is_simple_list:
             # Simple list fields (List[str], List[int], etc.) need element-level
@@ -479,9 +474,6 @@ class StructuredListComparator:
                 if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                     gt_item = gt_list[gt_idx]
                     pred_item = pred_list[pred_idx]
-                    # Nullable object elements carry no sub-fields; skip the pair.
-                    if gt_item is None or pred_item is None:
-                        continue
                     gt_sub_value = getattr(gt_item, sub_field_name)
                     pred_sub_value = getattr(pred_item, sub_field_name)
 
@@ -502,9 +494,6 @@ class StructuredListComparator:
             if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                 gt_item = gt_list[gt_idx]
                 pred_item = pred_list[pred_idx]
-                # Nullable object elements carry no sub-fields; skip the pair.
-                if gt_item is None or pred_item is None:
-                    continue
                 gt_sub_value = getattr(gt_item, sub_field_name)
                 pred_sub_value = getattr(pred_item, sub_field_name)
 
