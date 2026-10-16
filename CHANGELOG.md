@@ -60,6 +60,22 @@ Each release links to full notes on the
   later on subscripting
   ([#350](https://github.com/awslabs/stickler/issues/350))
 
+- **Breaking:** a primitive sub-field of a `List[StructuredModel]` element is
+  now classified as it is at top level. Its confusion-matrix counts called the
+  field's comparator directly, skipping the dispatcher's guards, so a dict its
+  comparator cannot score (in an `Any` or `Union` sub-field, or a `Dict` one
+  with an explicit `LevenshteinComparator`) raised `TypeError` out of
+  `compare_with()` instead of warning and scoring an FD. Counts move for working
+  inputs too, though scores do not, and now agree with `non_matches`:
+  - a pair the comparator is not given at top level is an FD, not a TP the
+    item's score did not credit (a TN if empty). With an inferred comparator
+    that is a tuple, a set, `bytes`, an arbitrary object, or a `date` against
+    its ISO string; under `LevenshteinComparator`, a plain pydantic model;
+    under `FuzzyComparator` or `NormalizedComparator`, that or a dict;
+  - a list in an `Any` sub-field counts one per element, not one in total;
+  - a whitespace-only string is a value, not null
+  ([#400](https://github.com/awslabs/stickler/issues/400))
+
 - **Breaking:** a `None` element in a list is now absent. It is left out
   before matching, so it is never paired, counted or scored, and a list of only
   `None` is an empty list. A float `NaN` element counts as `None`; an empty

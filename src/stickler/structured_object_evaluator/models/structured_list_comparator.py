@@ -497,9 +497,13 @@ class StructuredListComparator:
                 gt_sub_value = getattr(gt_item, sub_field_name)
                 pred_sub_value = getattr(pred_item, sub_field_name)
 
-                field_classification = gt_item._classify_field_for_confusion_matrix(
-                    sub_field_name, pred_sub_value
-                )
+                # Classify through the dispatcher, as the branches above do, so
+                # a sub-field counts the way it does outside a list. Calling the
+                # comparator directly skipped its guards, so a dict it cannot
+                # score raised instead of scoring an FD (#400).
+                field_classification = gt_item._dispatch_field_comparison(
+                    sub_field_name, gt_sub_value, pred_sub_value
+                )["overall"]
 
                 for metric in ["tp", "fa", "fd", "fp", "tn", "fn"]:
                     sub_field_metrics[metric] += field_classification.get(metric, 0)
