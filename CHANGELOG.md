@@ -11,6 +11,24 @@ Each release links to full notes on the
 
 ### Changed
 
+- **Breaking:** `to_json_schema()` and `to_stickler_config()` no longer write a
+  plain pydantic `BaseModel`, a list of lists or a union of models as a string.
+  Both fell back to `"string"` / `"str"` for a type they had no entry for, so
+  the re-imported model could not load the data the original accepted. A plain
+  model field, or a list of them, now exports as a free-form object
+  (`{"type": "object"}`, `"dict"` in a Stickler config), since it is scored as
+  one object the way a mapping is, and re-imports as `dict` with the
+  comparator, threshold, weight and clip setting it declared; its own field
+  types are not exported. A list of lists, including `List[List[Dict]]`,
+  exports as nested arrays. A consumer reading the exported schema sees these
+  types change. `to_stickler_config()` has no type for a union with a model
+  arm, such as the `Union[Card, Bank]` that `from_json_schema()` builds from a
+  multi-arm `anyOf`, or for a `StructuredModel` inside a nested list
+  (`List[List[Card]]`), so both methods now raise `ValueError` for these, to
+  keep one rule, where they returned a schema that could not load the original
+  data or (for the nested list, in the Stickler config) scored it differently.
+  Parts B and C of [#349](https://github.com/awslabs/stickler/issues/349)
+
 - **Breaking:** a `StructuredModel` field typed `date`, `datetime`, `time`,
   `timedelta`, `Decimal`, `UUID` or `Enum` now reaches its comparator, and a
   declared comparator is always called. The dispatcher treated only `str`,
