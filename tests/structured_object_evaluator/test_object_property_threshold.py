@@ -536,17 +536,14 @@ class TestTheComparatorOnTheSameNodeIsStillDropped:
             )
 
 
-class TestTheKeyIsStillDroppedInsideDefs:
-    """The declared gap: `$ref` into `$defs` does not see the extension.
+class TestTheKeyIsNotDroppedInsideDefs:
+    """The gap 1.0.0 declared: `$ref` into `$defs` did not see the extension.
 
     `$ref` is how a generated schema expresses a reusable nested object, so this
-    is the spelling many real schemas use. The extension walk does not descend
-    into `$defs`, which is pre-existing on `dev` for every key -- but this change
-    is what makes the loss score-relevant for the threshold.
-
-    Asserts CURRENT behaviour. When the walk is extended, these fail, and that
-    failure is the reminder to delete the "Known gap" paragraph from the
-    CHANGELOG in the same commit.
+    is the spelling many real schemas use. The key used to resolve `0.7` there in
+    silence, and a typo imported cleanly. A definition reads only model keys, so
+    the threshold now raises and names where it belongs, and the typo raises as it
+    does inline. See #340.
     """
 
     WIDE = {
@@ -572,14 +569,26 @@ class TestTheKeyIsStillDroppedInsideDefs:
         )
         assert model._get_comparison_info("inner").threshold == pytest.approx(0.88)
 
-    def test_via_defs_silently_falls_back(self):
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            model = self._via_defs(
-                dict(self.WIDE, **{"x-aws-stickler-threshold": 0.88})
-            )
-        assert model._get_comparison_info("inner").threshold == pytest.approx(0.7)
-        assert not [str(w.message) for w in caught if "threshold" in str(w.message)]
+    def test_via_defs_raises_instead_of_falling_back(self):
+        with pytest.raises(ValueError, match="belongs on the property that uses"):
+            self._via_defs(dict(self.WIDE, **{"x-aws-stickler-threshold": 0.88}))
+
+    def test_beside_the_ref_honours_it(self):
+        """Where the error sends the author, the same value as inline."""
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "title": "Parent",
+                "properties": {
+                    "inner": {
+                        "$ref": "#/$defs/Inner",
+                        "x-aws-stickler-threshold": 0.88,
+                    }
+                },
+                "$defs": {"Inner": self.WIDE},
+            }
+        )
+        assert model._get_comparison_info("inner").threshold == pytest.approx(0.88)
 
     def test_a_typo_inline_is_rejected(self):
         """#312's guard works in the position this change touches."""
@@ -588,10 +597,9 @@ class TestTheKeyIsStillDroppedInsideDefs:
                 _schema(**{"x-aws-stickler-thresold": 0.88})
             )
 
-    def test_the_same_typo_inside_defs_is_not(self):
-        """The half that makes the gap a validation hole, not just a default."""
-        model = self._via_defs(dict(self.WIDE, **{"x-aws-stickler-thresold": 0.88}))
-        assert model._get_comparison_info("inner").threshold == pytest.approx(0.7)
+    def test_the_same_typo_inside_defs_is_rejected_too(self):
+        with pytest.raises(ValueError, match="Unrecognized Stickler extension"):
+            self._via_defs(dict(self.WIDE, **{"x-aws-stickler-thresold": 0.88}))
 
 
 class TestAnUndeclaredSchemaIsUnaffectedEndToEnd:
