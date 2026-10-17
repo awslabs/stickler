@@ -5,6 +5,8 @@ from typing import Any, Dict, List
 from stickler.algorithms.hungarian import HungarianMatcher
 from stickler.comparators.structured import StructuredModelComparator
 
+from .null_helper import NullHelper
+
 
 class HungarianHelper:
     """Helper class for Hungarian matching operations with StructuredModel objects."""
@@ -33,30 +35,40 @@ class HungarianHelper:
             - matched_gt_indices: Set of matched ground truth indices
             - matched_pred_indices: Set of matched prediction indices
         """
-        if not gt_list or not pred_list:
+        # A None element is absent (#386): only present elements are matched,
+        # and indices are mapped back to the caller's lists so reports keep
+        # each element's original position. An absent element is neither
+        # matched nor unmatched.
+        gt_present = NullHelper.present_indices(gt_list)
+        pred_present = NullHelper.present_indices(pred_list)
+
+        if not gt_present or not pred_present:
             return {
                 "matched_pairs": [],
                 "assignments": [],
-                "unmatched_gt_indices": list(range(len(gt_list or []))),
-                "unmatched_pred_indices": list(range(len(pred_list or []))),
+                "unmatched_gt_indices": gt_present,
+                "unmatched_pred_indices": pred_present,
                 "matched_gt_indices": set(),
                 "matched_pred_indices": set(),
             }
 
         # Single Hungarian algorithm call - this is the only expensive operation
-        metrics = self.hungarian.calculate_metrics(gt_list, pred_list)
-        matched_pairs = metrics["matched_pairs"]
+        metrics = self.hungarian.calculate_metrics(
+            [gt_list[i] for i in gt_present], [pred_list[j] for j in pred_present]
+        )
+        matched_pairs = [
+            (gt_present[i], pred_present[j], score)
+            for i, j, score in metrics["matched_pairs"]
+        ]
 
         # Derive all other information from this single result
         assignments = [(i, j) for i, j, _ in matched_pairs]
         matched_gt_indices = {i for i, _, _ in matched_pairs}
         matched_pred_indices = {j for _, j, _ in matched_pairs}
 
-        unmatched_gt_indices = [
-            i for i in range(len(gt_list)) if i not in matched_gt_indices
-        ]
+        unmatched_gt_indices = [i for i in gt_present if i not in matched_gt_indices]
         unmatched_pred_indices = [
-            j for j in range(len(pred_list)) if j not in matched_pred_indices
+            j for j in pred_present if j not in matched_pred_indices
         ]
 
         return {

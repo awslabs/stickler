@@ -5,11 +5,59 @@ used throughout the comparison process.
 """
 
 import math
-from typing import Any
+from typing import Any, Iterable, List, Optional, Sequence
 
 
 class NullHelper:
     """Helper class for null value checking and validation."""
+
+    @staticmethod
+    def is_absent_element(item: Any) -> bool:
+        """Whether a list element is an absence rather than a value.
+
+        A ``None`` element, or a float NaN (see :meth:`is_nan`), is left out of
+        a list before matching: it is never paired, counted or scored, and a
+        list holding only absent elements is an empty list. Counting it as an
+        element credited two ``None``s as a true positive and scored a missed
+        row as a false discovery (#386). An empty string is still a value.
+        Elements keep their original indices in reports. See "``None`` elements
+        in a list" in ``docs/docs/Advanced/classification-logic.md``.
+        """
+        return item is None or NullHelper.is_nan(item)
+
+    @staticmethod
+    def present(items: Optional[Iterable[Any]]) -> List[Any]:
+        """The elements of ``items`` that are not absent, in order."""
+        return [item for item in items or () if not NullHelper.is_absent_element(item)]
+
+    @staticmethod
+    def present_indices(items: Optional[Sequence[Any]]) -> List[int]:
+        """The original indices of the elements of ``items`` that are not absent."""
+        return [
+            i
+            for i, item in enumerate(items or ())
+            if not NullHelper.is_absent_element(item)
+        ]
+
+    @staticmethod
+    def first_present(*sequences: Optional[Iterable[Any]]) -> Any:
+        """The first element that is not absent, across ``sequences`` in order.
+
+        What a list holds is decided from one representative element, and an
+        absent element cannot be it: a ``List[Optional[Model]]`` that starts
+        with ``None`` otherwise reads as a list of primitives, skipping the
+        class gate and field-by-field scoring (#386), and takes its Hungarian
+        ``match_threshold`` from the parent instead of the element class
+        (#322). Pass the ground truth first, then the prediction, so a list that
+        is all ``None`` on one side is still read from the other.
+
+        Returns ``None`` if no sequence has a present element.
+        """
+        for sequence in sequences:
+            for item in sequence or ():
+                if not NullHelper.is_absent_element(item):
+                    return item
+        return None
 
     @staticmethod
     def is_truly_null(val: Any) -> bool:
@@ -43,15 +91,21 @@ class NullHelper:
 
     @staticmethod
     def is_effectively_null_for_lists(val: Any) -> bool:
-        """Check if a list value is effectively null (None or empty list).
+        """Check if a list value is effectively null.
+
+        A list whose elements are all absent (see :meth:`is_absent_element`)
+        is an empty list, so ``[None]`` is null the same as ``[]``.
 
         Args:
             val: Value to check
 
         Returns:
-            True if the value is None or an empty list, False otherwise
+            True if the value is None or a list with no present element
         """
-        return val is None or (isinstance(val, list) and len(val) == 0)
+        return val is None or (
+            isinstance(val, list)
+            and all(NullHelper.is_absent_element(item) for item in val)
+        )
 
     @staticmethod
     def is_effectively_null_for_primitives(val: Any) -> bool:

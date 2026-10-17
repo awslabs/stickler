@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
 
+from .comparison_helper import scalar_pair_reaches_comparator
 from .configuration_helper import ConfigurationHelper
 from .null_helper import NullHelper
 from .result_helper import ResultHelper
@@ -190,10 +191,15 @@ class ComparisonDispatcher:
         #       3. Make the list vs singleton distinction the primary branch
         #       See pseudocode in refactoring discussions for proposed structure.
 
-        # CASE 1: Primitive types (str, int, float)
-        # Delegate to FieldComparator for primitive field comparison
-        if isinstance(gt_val, (str, int, float)) and isinstance(
-            pred_val, (str, int, float)
+        # CASE 1: A pair of non-structured values, for the field's comparator.
+        # `scalar_pair_reaches_comparator` is the rule, shared with
+        # compare_field_raw so compare() and compare_with() agree: a declared
+        # comparator is always called, and an inferred one sees str/int/float,
+        # numbers incl. Decimal, and related date/time/UUID/Enum values. Before
+        # #383 only str/int/float got here; everything else fell through to
+        # CASE 6 and scored 0.0 without the comparator being called.
+        if scalar_pair_reaches_comparator(
+            gt_val, pred_val, comparator_explicit=info.comparator_explicit
         ):
             return self.field_comparator.compare_primitive_with_scores(
                 gt_val, pred_val, field_name
@@ -202,8 +208,9 @@ class ComparisonDispatcher:
         # CASE 2: Both are lists (non-empty, null/empty cases already handled in STEP 3)
         # Determine if this is a structured list or primitive list by inspecting elements
         elif isinstance(gt_val, list) and isinstance(pred_val, list):
-            # Check if this is a List[StructuredModel] by inspecting first element
-            if gt_val and isinstance(gt_val[0], StructuredModel):
+            # Check if this is a List[StructuredModel] by inspecting the first
+            # element that is not None (#386).
+            if isinstance(NullHelper.first_present(gt_val, pred_val), StructuredModel):
                 # Delegate to StructuredListComparator for List[StructuredModel]
                 return self.structured_list_comparator.compare_struct_list_with_scores(
                     gt_val, pred_val, field_name
@@ -354,7 +361,7 @@ class ComparisonDispatcher:
             Comparison result dictionary if early exit needed (null cases),
             None if both lists are populated and should continue to type-based dispatch
         """
-        # Check if lists are effectively null (None or empty)
+        # Check if lists are effectively null (None, empty, or only None elements)
         # This is different from primitive null checking because empty lists
         # are semantically meaningful for list fields
         gt_effectively_null = NullHelper.is_effectively_null_for_lists(gt_val)
@@ -371,7 +378,10 @@ class ComparisonDispatcher:
                 # CASE 2: GT=None/empty, Pred=populated list → False Alarm
                 # The prediction has data that shouldn't be there
                 # Use ResultHelper for list-specific handling with counts
-                pred_list = pred_val if isinstance(pred_val, list) else []
+                # Only present elements count: a None element is absent (#386).
+                pred_list = (
+                    NullHelper.present(pred_val) if isinstance(pred_val, list) else []
+                )
                 gt_len = 0
                 pred_len = len(pred_list) if pred_list else 1
                 return ResultHelper.create_empty_list_result(gt_len, pred_len, weight)
@@ -379,7 +389,7 @@ class ComparisonDispatcher:
                 # CASE 3: GT=populated list, Pred=None/empty → False Negative
                 # The prediction is missing data that should be there
                 # Use ResultHelper for list-specific handling with counts
-                gt_list = gt_val if isinstance(gt_val, list) else []
+                gt_list = NullHelper.present(gt_val) if isinstance(gt_val, list) else []
                 gt_len = len(gt_list) if gt_list else 1
                 pred_len = 0
                 return ResultHelper.create_empty_list_result(gt_len, pred_len, weight)

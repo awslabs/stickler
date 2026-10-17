@@ -7,6 +7,7 @@ confusion matrix metrics (TP, FP, TN, FN, FD, FA) for field comparisons.
 from typing import TYPE_CHECKING, Any, Dict
 
 from .field_helper import FieldHelper
+from .null_helper import NullHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -80,6 +81,12 @@ class ConfusionMatrixCalculator:
                 comparison = gt_value.compare_with(pred_value)
                 similarity = comparison["overall_score"]
             else:
+                # A None element is absent (#386): an `Any` sub-field holding a
+                # list reaches the comparator here, so drop absent elements as
+                # the list comparators do.
+                if isinstance(gt_value, list) and isinstance(pred_value, list):
+                    gt_value = NullHelper.present(gt_value)
+                    pred_value = NullHelper.present(pred_value)
                 # Use the field's configured comparator for primitive comparison
                 similarity = comparator.compare(gt_value, pred_value)
             values_match = similarity >= threshold

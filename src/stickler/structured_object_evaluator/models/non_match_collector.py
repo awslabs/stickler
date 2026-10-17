@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, List
 
 from .non_match_field import NonMatchType
 from .non_matches_helper import NonMatchesHelper
+from .null_helper import NullHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -89,8 +90,9 @@ class NonMatchCollector:
             elif (
                 isinstance(gt_val, list)
                 and isinstance(pred_val, list)
-                and gt_val
-                and isinstance(gt_val[0], StructuredModel)
+                and isinstance(
+                    NullHelper.first_present(gt_val, pred_val), StructuredModel
+                )
             ):
                 # Use NonMatchesHelper for object-level collection
                 object_non_matches = self.helper.collect_list_non_matches(
