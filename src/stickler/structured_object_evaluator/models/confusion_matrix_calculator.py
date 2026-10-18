@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Dict
 from .field_helper import FieldHelper
 from .metrics_helper import MetricsHelper
 from .null_helper import NullHelper
+from .threshold_helper import ThresholdHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -95,7 +96,7 @@ class ConfusionMatrixCalculator:
                     pred_value = NullHelper.present(pred_value)
                 # Use the field's configured comparator for primitive comparison
                 similarity = comparator.compare(gt_value, pred_value)
-            values_match = similarity >= threshold
+            values_match = ThresholdHelper.is_above_threshold(similarity, threshold)
         else:
             values_match = False
 

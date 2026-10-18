@@ -3,6 +3,7 @@
 from typing import Any, Dict, List, Optional
 
 from .comparison_helper_base import ComparisonHelperBase
+from .threshold_helper import ThresholdHelper
 
 
 class FieldComparisonHelper(ComparisonHelperBase):
@@ -133,7 +134,9 @@ class FieldComparisonHelper(ComparisonHelperBase):
                 
                 # Get field configuration for threshold
                 info = gt_object._get_comparison_info(nested_field_name)
-                field_is_match = field_score >= info.threshold
+                field_is_match = ThresholdHelper.is_above_threshold(
+                    field_score, info.threshold
+                )
                 
                 # Create field paths with indices
                 expected_key = f"{field_name}[{gt_index}].{nested_field_name}" if gt_index is not None else f"{field_name}[].{nested_field_name}"

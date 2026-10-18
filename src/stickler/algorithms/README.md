@@ -63,17 +63,18 @@ the method was returning that same pair inside `matched_pairs`. The fix reaches
 only this class, so it says nothing about how `anls_score` treats a low score
 pair; that runs through `trees/list_tree.py`.
 
-## Two traps worth knowing before reading `tp`
+## Before reading `tp`
 
-**`match_threshold=0.0` is a capture all sentinel, not a threshold.** The test
-is a bare `>=`, so every score satisfies zero and `tp` counts pairs rather than
-true positives. `ComparisonHelper.compare_unordered_lists` builds a matcher
-this way on purpose and reads only `matched_pairs`. Nothing should read `tp`
-from a matcher built with `0.0`.
+**`match_threshold=0.0` is a capture all sentinel, not a threshold.** Every
+score satisfies zero, so `tp` counts pairs rather than true positives.
+`ComparisonHelper.compare_unordered_lists` builds a matcher this way on
+purpose and reads only `matched_pairs`. Nothing should read `tp` from a
+matcher built with `0.0`.
 
-**The threshold test here is exact.** `ThresholdHelper` and `ComparisonHelper`
-accept a score up to `1e-10` under the threshold, so a score inside that window
-is a TP there and an FD here.
+**The threshold test is `ThresholdHelper.is_above_threshold`**, the one every
+evaluator gate uses. It accepts a score up to `1e-10` under the threshold, so a
+float rounding error does not turn a TP into an FD
+([#417](https://github.com/awslabs/stickler/issues/417)).
 
 ## How the evaluator uses it
 

@@ -14,6 +14,7 @@ from .comparison_helper import ComparisonHelper
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
 from .null_helper import NullHelper
+from .threshold_helper import ThresholdHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -133,7 +134,7 @@ class StructuredListComparator:
         tp_objects = 0  # Objects with similarity >= match_threshold
         fd_objects = 0  # Objects with similarity < match_threshold
         for gt_idx, pred_idx, similarity in matched_pairs:
-            if similarity >= match_threshold:
+            if ThresholdHelper.is_above_threshold(similarity, match_threshold):
                 tp_objects += 1
             else:
                 fd_objects += 1
@@ -244,7 +245,7 @@ class StructuredListComparator:
             good_matched_pairs = [
                 (gt_idx, pred_idx, similarity)
                 for gt_idx, pred_idx, similarity in matched_pairs
-                if similarity >= match_threshold
+                if ThresholdHelper.is_above_threshold(similarity, match_threshold)
             ]
 
             if good_matched_pairs:
