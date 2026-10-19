@@ -38,6 +38,7 @@ from pydantic import (
     ValidationError,
     field_serializer,
     model_serializer,
+    model_validator,
 )
 from pydantic.alias_generators import to_camel
 
@@ -513,6 +514,37 @@ class TestDumpKeepsEveryField:
         assert "extra_fields" not in _dump(Outer(s=a))["s"]
         assert S.from_json(_dump(a)).extra_fields == {"zzz": 1}
 
+    def test_a_dump_that_needs_no_change_is_returned_as_is(self):
+        from stickler.auto.facade import _restore
+
+        class Inner(BaseModel):
+            name: str
+
+        class M(BaseModel):
+            inner: Inner
+            rows: List[Inner]
+            payload: Dict[str, Any]
+
+        m = M(
+            inner=Inner(name="a"), rows=[Inner(name="b")], payload={"k": [1, {"x": 2}]}
+        )
+        dumped = m.model_dump(mode="json")
+        assert _restore(m, dumped, own_keys=False) is dumped
+
+        class Aliased(BaseModel):
+            model_config = ConfigDict(serialize_by_alias=True)
+            name: str = Field(serialization_alias="Name")
+
+        class N(BaseModel):
+            inner: Aliased
+            payload: Dict[str, Any]
+
+        n = N(inner=Aliased(name="a"), payload={"k": [1, 2]})
+        dumped = n.model_dump(mode="json")
+        restored = _restore(n, dumped, own_keys=False)
+        assert restored["inner"] == {"name": "a"}
+        assert restored["payload"] is dumped["payload"]
+
     def test_a_field_that_cannot_hold_a_model_is_not_walked(self):
         from stickler.auto.facade import _field_plan
 
@@ -567,8 +599,8 @@ _HAS_EXCLUDE_IF = "exclude_if" in inspect.signature(Field).parameters
 
 
 class TestExcludedFieldsAreNotEvaluated:
-    """On a plain model, a field pydantic leaves out of serialization is outside
-    the model's output, so it is not scored or reported at any depth (#379)."""
+    """On a plain model, an ``exclude=True`` field is outside the model's
+    output, so it is not scored or reported at any depth (#379)."""
 
     def test_excluded_field_is_not_scored_or_reported(self):
         class M(BaseModel):
@@ -652,24 +684,84 @@ class TestExcludedFieldsAreNotEvaluated:
         )
         assert stickler.evaluate(gt, pred).overall_score == pytest.approx(1.0)
 
-    @pytest.mark.skipif(not _HAS_EXCLUDE_IF, reason="needs Field(exclude_if=)")
-    @pytest.mark.parametrize("note", ["abc", None])
-    def test_exclude_if_counts_whether_or_not_it_fires(self, note):
-        class M(BaseModel):
-            name: str
-            note: Optional[str] = Field(
-                default=None, exclude_if=lambda v: v is not None
-            )
-
-        r = stickler.evaluate(M(name="a", note=note), M(name="a", note="different"))
-        assert set(r.field_scores) == {"name"}
-
     def test_a_model_with_only_excluded_fields_raises_clearly(self):
         class M(BaseModel):
             secret: str = Field(exclude=True)
 
         with pytest.raises(TypeError, match="exclude=True"):
             stickler.eval_for(M)
+
+    def test_a_nested_model_with_only_excluded_fields_is_left_out(self):
+        class Trace(BaseModel):
+            steps: str = Field("", exclude=True)
+
+        class Out(BaseModel):
+            answer: str
+            trace: Trace = Trace()
+            traces: List[Trace] = []
+
+        r = stickler.evaluate(
+            Out(answer="a", trace=Trace(steps="x"), traces=[Trace(steps="x")]),
+            Out(answer="a", trace=Trace(steps="y"), traces=[Trace(steps="y")]),
+        )
+        assert r.field_scores == {"answer": 1.0}
+        assert set(r.explain()) == {"answer"}
+        assert r.confusion_matrix["overall"]["fa"] == 0
+
+
+@pytest.mark.skipif(not _HAS_EXCLUDE_IF, reason="needs Field(exclude_if=)")
+class TestExcludeIfIsDecidedPerValue:
+    """``exclude_if`` decides per value, so the field is scored as pydantic
+    dumps it: a value it keeps is compared, and a value it omits is absent,
+    like None, and never read or published (#379)."""
+
+    @pytest.mark.parametrize(
+        "gt, pred, note",
+        [("alpha", "beta", 0.2222), ("alpha", None, 0.0), (None, None, 1.0)],
+    )
+    def test_a_kept_value_is_scored(self, gt, pred, note):
+        class M(BaseModel):
+            name: str
+            note: Optional[str] = Field(default=None, exclude_if=lambda v: v is None)
+
+        r = stickler.evaluate(M(name="a", note=gt), M(name="a", note=pred))
+        assert r.field_scores["note"] == pytest.approx(note, abs=1e-4)
+        assert "note" in r.explain()
+
+    def test_an_omitted_value_is_absent_and_not_published(self):
+        class M(BaseModel):
+            name: str
+            note: Optional[str] = Field(
+                default=None, exclude_if=lambda v: v is not None
+            )
+
+        r = stickler.evaluate(
+            M(name="a", note="SECRET-GT"), M(name="b", note="SECRET-PRED")
+        )
+        assert r.field_scores["note"] == pytest.approx(1.0)
+        assert r.non_matches
+        assert "SECRET" not in repr(r.non_matches)
+
+    def test_a_required_field_it_omits_is_not_required(self):
+        class M(BaseModel):
+            name: str
+            note: str = Field(exclude_if=lambda v: v == "")
+
+        r = stickler.evaluate(M(name="a", note="kept"), M(name="a", note=""))
+        assert r.field_scores["note"] == pytest.approx(0.0)
+
+    def test_a_kept_value_is_not_a_false_alarm(self):
+        class M(BaseModel):
+            a: str
+            meta: Dict[str, str] = Field(
+                default_factory=dict, exclude_if=lambda v: not v
+            )
+
+        m = M(a="x", meta={"k": "v"})
+        r = stickler.evaluate(m, m)
+        assert r.overall_score == pytest.approx(1.0)
+        assert r.confusion_matrix["overall"]["fa"] == 0
+        assert r.confusion_matrix["overall"]["derived"]["cm_precision"] == 1.0
 
 
 class TestExcludedFieldsOnAStructuredModel:
@@ -712,6 +804,72 @@ class TestExcludedFieldsOnAStructuredModel:
         pred = W.from_json({"s": {"name": "x", "secret": "ZZZ"}})
         assert gt.s.secret == "A"
         assert gt.compare_with(pred)["overall_score"] < 1.0
+
+    def test_from_json_keeps_nested_extra_fields_and_deeper_excluded_fields(self):
+        class Leaf(StructuredModel):
+            name: str = ComparableField()
+            secret: Optional[str] = ComparableField(default=None, exclude=True)
+
+        class Mid(StructuredModel):
+            leaf: Optional[Leaf] = ComparableField(default=None)
+            leaves: Optional[List[Leaf]] = ComparableField(default=None)
+
+        class Top(StructuredModel):
+            mid: Optional[Mid] = ComparableField(default=None)
+
+        t = Top.from_json(
+            {
+                "mid": {
+                    "leaf": {"name": "x", "secret": "A", "zzz": 1},
+                    "leaves": [{"name": "y", "secret": "B"}],
+                }
+            }
+        )
+        assert t.mid.leaf.secret == "A"
+        assert t.mid.leaf.extra_fields == {"zzz": 1}
+        assert t.mid.leaves[0].secret == "B"
+
+    def test_from_json_still_hands_a_before_validator_a_dict(self):
+        class Addr(StructuredModel):
+            city: str = ComparableField(default="")
+
+        class Doc(StructuredModel):
+            addr: Optional[Addr] = ComparableField(default=None)
+
+            @model_validator(mode="before")
+            @classmethod
+            def upper_city(cls, data):
+                data["addr"]["city"] = data["addr"]["city"].upper()
+                return data
+
+        assert Doc.from_json({"addr": {"city": "x"}}).addr.city == "X"
+
+    def test_a_serialization_alias_is_read_back(self):
+        """Validation never reads a serialization_alias, so the key is the
+        field name again (#378)."""
+
+        class S(StructuredModel):
+            model_config = ConfigDict(serialize_by_alias=True)
+            code: str = ComparableField(default="", serialization_alias="Code")
+            other: str = ComparableField(default="")
+
+        class Inner(BaseModel):
+            model_config = ConfigDict(serialize_by_alias=True)
+            code: str = Field("", serialization_alias="Code")
+
+        class W(StructuredModel):
+            inner: Optional[Inner] = ComparableField(default=None)
+            other: str = ComparableField(default="")
+
+        gt, pred = S(code="A", other="q"), S(code="BBBB", other="q")
+        r = stickler.evaluate(gt, pred)
+        assert r.field_scores == gt.compare_with(pred)["field_scores"]
+        assert r.field_scores["code"] == pytest.approx(0.0)
+        assert r.confusion_matrix["overall"]["fa"] == 0
+        r = stickler.evaluate(
+            W(inner=Inner(code="A"), other="q"), W(inner=Inner(code="BBBB"), other="q")
+        )
+        assert r.field_scores["inner"] < 1.0
 
     def test_excluded_field_keeps_its_annotated_serializer(self):
         Upper = Annotated[str, PlainSerializer(lambda v: v.upper())]

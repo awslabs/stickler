@@ -19,6 +19,7 @@ For a batch loop, compile once with :func:`eval_for` and reuse the returned
 from __future__ import annotations
 
 import collections
+import itertools
 import weakref
 from typing import (
     Annotated,
@@ -38,6 +39,7 @@ from typing import (
 )
 
 from pydantic import (
+    AliasChoices,
     BaseModel,
     ConfigDict,
     PlainSerializer,
@@ -49,7 +51,13 @@ from pydantic import (
 from pydantic_core import PydanticSerializationError
 
 from ..structured_object_evaluator.models.structured_model import StructuredModel
-from .builder import is_excluded, specs_for, structured_model_for
+from .builder import (
+    has_exclude_if,
+    is_excluded,
+    left_out,
+    specs_for,
+    structured_model_for,
+)
 
 #: Object-level match threshold applied when neither the caller nor the model
 #: declares one. ``None`` is the "caller said nothing" sentinel on the public
@@ -317,9 +325,9 @@ def evaluate(
 
     ``ground_truth`` and ``prediction`` must be pydantic instances of the same
     class (or a compatible superset, so extra/missing fields are tolerated). The
-    comparison config is inferred from their class. A field pydantic leaves out
-    of serialization (``exclude=True`` or ``exclude_if``) is not evaluated; a
-    ``StructuredModel`` is used as configured and keeps it.
+    comparison config is inferred from their class. An ``exclude=True`` field
+    is not evaluated, and a value ``exclude_if`` omits is absent; a
+    ``StructuredModel`` is used as configured and keeps both.
 
     Args:
         ground_truth: The reference instance.
@@ -352,8 +360,8 @@ def _dump(instance: BaseModel) -> Dict[str, Any]:
     strings and enums into their values, matching the wire types the inferred
     comparators expect. Pydantic's own dump is kept, so serializers and
     ``ser_json_*`` config apply as usual; :func:`_restore` then corrects the
-    two ways a field fails to arrive. A field that does not arrive is blank on
-    both sides, and blank against blank scores as a match.
+    ways a field fails to arrive. A field that does not arrive is blank on both
+    sides, and blank against blank scores as a match.
     """
     if not isinstance(instance, BaseModel):
         raise TypeError(
@@ -365,54 +373,81 @@ def _dump(instance: BaseModel) -> Dict[str, Any]:
 def _restore(value: Any, dumped: Any, own_keys: bool) -> Any:
     """Re-key and refill ``dumped`` (the dump of ``value``) for the shadow model.
 
-    - A plain model dumped with ``serialize_by_alias=True`` has alias keys, and
-      the shadow model reads field names, so they are renamed (#378). A
+    - A plain model's shadow reads field names, so alias keys
+      (``serialize_by_alias=True``) are renamed to them (#378). A
       ``StructuredModel`` validates through its own classes, so it and
-      everything under it (``own_keys``) keep their keys.
+      everything under it (``own_keys``) get the key validation reads instead:
+      an alias stays, a ``serialization_alias`` becomes the field name.
+    - On a plain model, a dumped field the shadow leaves out (one holding a
+      model with nothing to score, see ``builder.left_out``) is dropped, so it
+      is not read as an undeclared field.
     - Inside a ``StructuredModel`` (``own_keys``), a field marked
-      ``exclude=True`` or ``exclude_if`` is dumped from its annotation and added
-      back, so ``evaluate()`` scores it as ``compare_with()`` does (#379). One
-      that fails to dump stays out. A plain model's shadow has no such field, so
-      nothing is added back there.
+      ``exclude=True`` or ``exclude_if`` that is missing from the dump is
+      dumped from its annotation and added back, so ``evaluate()`` scores it as
+      ``compare_with()`` does (#379). One that fails to dump stays out.
 
     The walk does not enter a ``RootModel``, a ``model_serializer``, anything a
     serializer produced, or a container whose length changed: that output is
     the author's choice, and its shape no longer lines up with the instance.
+    Anything left as dumped is returned as the same object, not a copy, and a
+    class whose dump never needs a change is not walked at all.
     """
     if isinstance(value, BaseModel):
         cls = type(value)
         if not isinstance(dumped, dict) or _is_opaque(cls):
             return dumped
         own_keys = own_keys or isinstance(value, StructuredModel)
+        if _passes_through(cls, own_keys):
+            return dumped
         plan = _field_plan(cls)
         # A fresh dict: renaming in place would let one field's alias that is
         # another field's name overwrite it.
         field_keys = {entry.dumped_key for entry in plan}
         out = {k: v for k, v in dumped.items() if k not in field_keys}
+        changed = False
         for entry in plan:
             raw = getattr(value, entry.name, _MISSING)
-            if raw is _MISSING:
-                continue  # model_construct without it; validation reports it
-            key = entry.dumped_key if own_keys else entry.name
-            if entry.dumped_key in dumped:
-                item = dumped[entry.dumped_key]
+            present = entry.dumped_key in dumped
+            if raw is _MISSING or (entry.drop and not own_keys):
+                # model_construct without it (validation reports it), or a
+                # field the plain shadow does not have.
+                changed = changed or present
+                continue
+            key = entry.valid_key if own_keys else entry.name
+            if present:
+                item = original = dumped[entry.dumped_key]
                 if entry.descend and not entry.serialized:
                     item = _restore(raw, item, own_keys)
                 out[key] = item
+                changed = changed or key != entry.dumped_key or item is not original
             elif entry.excluded and own_keys:
                 item = _dump_excluded(cls, entry, raw, own_keys)
                 if item is not _MISSING:
                     out[key] = item
-        return out
+                    changed = True
+        return out if changed else dumped
     if isinstance(value, _SEQUENCES) and isinstance(dumped, list):
         if len(value) == len(dumped):
-            return [_restore(v, d, own_keys) for v, d in zip(value, dumped)]
+            out = None
+            for i, (v, d) in enumerate(zip(value, dumped)):
+                r = d if isinstance(v, _LEAVES) else _restore(v, d, own_keys)
+                if out is None and r is not d:
+                    out = dumped[:i]
+                if out is not None:
+                    out.append(r)
+            if out is not None:
+                return out
     elif isinstance(value, dict) and isinstance(dumped, dict):
         if len(value) == len(dumped):
-            return {
-                k: _restore(v, d, own_keys)
-                for (k, d), v in zip(dumped.items(), value.values())
-            }
+            out = None
+            for i, ((k, d), v) in enumerate(zip(dumped.items(), value.values())):
+                r = d if isinstance(v, _LEAVES) else _restore(v, d, own_keys)
+                if out is None and r is not d:
+                    out = dict(itertools.islice(dumped.items(), i))
+                if out is not None:
+                    out[k] = r
+            if out is not None:
+                return out
     return dumped
 
 
@@ -422,18 +457,31 @@ _MISSING: Any = object()
 # up with the instance element by element.
 _SEQUENCES = (list, tuple, set, frozenset, collections.deque)
 
+# Values the walk has nothing to do inside, skipped without a call.
+_LEAVES = (str, int, float, type(None))
+
 
 class _FieldPlan(NamedTuple):
     name: str
     dumped_key: str  # the key pydantic's default dump writes
+    valid_key: str  # the key the class's own validation reads
     excluded: bool  # exclude=True or exclude_if
+    drop: bool  # dumped, but not in a plain model's shadow (builder.left_out)
     serialized: bool  # a serializer anywhere on the field
-    descend: bool  # the annotation can hold a model, so the walk enters it
+    models: Optional[frozenset]  # models the annotation can hold; None: unknown
+
+    @property
+    def descend(self) -> bool:
+        """Whether the annotation can hold a model, so the walk enters it."""
+        return self.models != frozenset()
 
 
 # Keyed weakly, so classes built at runtime (create_model, model_from_json) can
 # still be collected after they are evaluated.
 _PLANS: "weakref.WeakKeyDictionary[type, Tuple[_FieldPlan, ...]]" = (
+    weakref.WeakKeyDictionary()
+)
+_PASSES: "weakref.WeakKeyDictionary[type, Dict[bool, bool]]" = (
     weakref.WeakKeyDictionary()
 )
 _ADAPTERS: "weakref.WeakKeyDictionary[type, Dict[str, Optional[TypeAdapter]]]" = (
@@ -452,6 +500,42 @@ def _field_plan(cls: Type[BaseModel]) -> Tuple[_FieldPlan, ...]:
     if plan is None:
         plan = _PLANS[cls] = _build_field_plan(cls)
     return plan
+
+
+def _passes_through(
+    cls: Type[BaseModel], own_keys: bool, _visiting: frozenset = frozenset()
+) -> bool:
+    """Whether :func:`_restore` leaves every dump of ``cls`` as it is.
+
+    Decided once per class from its plan and the models its fields can hold,
+    so a typed model with no alias, exclusion or left-out field is returned as
+    pydantic dumped it, without a walk.
+    """
+    own_keys = own_keys or issubclass(cls, StructuredModel)
+    cached = _PASSES.get(cls, {}).get(own_keys)
+    if cached is not None:
+        return cached
+    if (cls, own_keys) in _visiting:
+        return False  # a cycle: walk it rather than assume
+    seen = _visiting | {(cls, own_keys)}
+    result = _is_opaque(cls) or all(
+        _entry_passes(entry, own_keys, seen) for entry in _field_plan(cls)
+    )
+    _PASSES.setdefault(cls, {})[own_keys] = result
+    return result
+
+
+def _entry_passes(entry: _FieldPlan, own_keys: bool, seen: frozenset) -> bool:
+    if own_keys:
+        if entry.excluded or entry.valid_key != entry.dumped_key:
+            return False
+    elif entry.name != entry.dumped_key or entry.drop:
+        return False
+    if entry.serialized or not entry.descend:
+        return True
+    return entry.models is not None and all(
+        _passes_through(m, own_keys, seen) for m in entry.models
+    )
 
 
 def _build_field_plan(cls: Type[BaseModel]) -> Tuple[_FieldPlan, ...]:
@@ -473,12 +557,38 @@ def _build_field_plan(cls: Type[BaseModel]) -> Tuple[_FieldPlan, ...]:
             _FieldPlan(
                 name=name,
                 dumped_key=dumped_key,
-                excluded=is_excluded(field),
+                valid_key=_validation_key(cls, name, field, dumped_key),
+                excluded=is_excluded(field) or has_exclude_if(field),
+                # exclude=True is never dumped, so only the rest need dropping.
+                drop=left_out(field) and not is_excluded(field),
                 serialized=serialized,
-                descend=_may_hold_model(field.annotation),
+                models=_models_in(field.annotation),
             )
         )
     return tuple(plan)
+
+
+def _validation_key(
+    cls: Type[BaseModel], name: str, field: Any, dumped_key: str
+) -> str:
+    """The key ``cls`` validates ``name`` from (#378).
+
+    Validation reads ``validation_alias`` (which ``alias`` sets) or the field
+    name, never a ``serialization_alias``. An ``AliasPath`` has no single key,
+    so the dumped key is kept.
+    """
+    alias = field.validation_alias
+    if isinstance(alias, AliasChoices):
+        alias = alias.choices[0]
+    if isinstance(alias, str) and cls.model_config.get("validate_by_alias", True):
+        return alias
+    if (
+        alias is None
+        or cls.model_config.get("validate_by_name")
+        or cls.model_config.get("populate_by_name")
+    ):
+        return name
+    return dumped_key
 
 
 def _is_serializer(meta: Any) -> bool:
@@ -495,21 +605,29 @@ def _has_serializer(annotation: Any) -> bool:
     return any(_has_serializer(arg) for arg in args)
 
 
-def _may_hold_model(annotation: Any) -> bool:
-    """Whether a value of ``annotation`` can contain a pydantic model."""
+def _models_in(annotation: Any) -> Optional[frozenset]:
+    """The model classes a value of ``annotation`` can contain; None if unknown."""
     if annotation is Any or annotation is object:
-        return True
+        return None
     if isinstance(annotation, type):
-        return issubclass(annotation, BaseModel)
+        return frozenset({annotation} if issubclass(annotation, BaseModel) else ())
     if isinstance(annotation, (TypeVar, ForwardRef, str)):
-        return True  # unresolved: assume it can
+        return None  # unresolved: assume it can hold anything
     origin = get_origin(annotation)
     if origin is Literal:
-        return False
+        return frozenset()
     args = get_args(annotation)
     if origin is Annotated:
-        return _may_hold_model(args[0])
-    return any(_may_hold_model(arg) for arg in args if arg is not Ellipsis)
+        return _models_in(args[0])
+    found: set = set()
+    for arg in args:
+        if arg is Ellipsis:
+            continue
+        models = _models_in(arg)
+        if models is None:
+            return None
+        found |= models
+    return frozenset(found)
 
 
 def _dump_excluded(

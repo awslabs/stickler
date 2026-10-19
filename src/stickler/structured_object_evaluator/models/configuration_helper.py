@@ -28,6 +28,9 @@ if TYPE_CHECKING:
     )
 from stickler.comparators.structured import StructuredModelComparator
 
+# A field a dump left out, as opposed to one dumped as None.
+_ABSENT: Any = object()
+
 # Comparators that must not be handed a mapping, matched by exact class name.
 # Differently named external comparators are left alone, but this also misses
 # differently named subclasses of these comparators, even with inherited behavior.
@@ -1095,10 +1098,49 @@ class ConfigurationHelper:
             nested_data: Dictionary data for the nested object
 
         Returns:
-            The nested instance, which the parent's validation accepts as is
+            Dictionary with processed nested data
         """
-        # Recursively call from_json to handle missing fields in nested object.
-        # The instance itself is returned, not its model_dump(): a dump drops
-        # every exclude=True field, so a nested excluded field read blank on
-        # both sides and scored a wrong value 1.0 (#379).
-        return structured_class.from_json(nested_data, process_rich_values=False)
+        # Recursively call from_json to handle missing fields in nested object
+        nested_instance = structured_class.from_json(
+            nested_data, process_rich_values=False
+        )
+        return ConfigurationHelper._dump_whole(nested_instance)
+
+    @staticmethod
+    def _dump_whole(instance: BaseModel) -> Dict[str, Any]:
+        """``instance.model_dump()``, plus the fields a dump leaves out.
+
+        A dump drops every ``exclude=True`` or ``exclude_if`` field, including
+        ``extra_fields``, so a nested excluded field read blank on both sides
+        and ``compare_with()`` scored a wrong value 1.0 (#379). Those are put
+        back as their values, at any depth, so a parent's ``mode="before"``
+        validator still receives a dict.
+        """
+        from .structured_model import StructuredModel
+
+        def whole(value: Any, dumped: Any) -> Any:
+            if isinstance(value, StructuredModel):
+                return ConfigurationHelper._dump_whole(value)
+            if isinstance(value, (list, tuple)) and any(
+                isinstance(v, StructuredModel) for v in value
+            ):
+                if not (isinstance(dumped, list) and len(dumped) == len(value)):
+                    dumped = [_ABSENT] * len(value)
+                return [whole(v, d) for v, d in zip(value, dumped)]
+            return value if dumped is _ABSENT else dumped
+
+        data = instance.model_dump()
+        if not isinstance(data, dict):
+            return data  # a model_serializer's own output, kept as is
+        by_alias = instance.model_config.get("serialize_by_alias")
+        for name, field in type(instance).model_fields.items():
+            if not hasattr(instance, name):
+                continue  # model_construct without it
+            key = (
+                (field.serialization_alias or field.alias or name) if by_alias else name
+            )
+            if key not in data:
+                # Never dumped, so key it as validation reads it.
+                key = field.alias or name
+            data[key] = whole(getattr(instance, name), data.get(key, _ABSENT))
+        return data

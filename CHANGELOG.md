@@ -61,17 +61,20 @@ Each release links to full notes on the
   ([#350](https://github.com/awslabs/stickler/issues/350))
 
 - **Breaking:** on the zero-config path (`stickler.evaluate()`, `eval_for()`,
-  `StructuredModel.from_pydantic()`), a field marked `Field(exclude=True)` or
-  `exclude_if` is no longer evaluated. It was left out of the dump but kept in
-  the inferred model, so it was blank on both sides: a wrong value scored `1.0`
-  and was listed in `field_scores` and `explain()` as compared, and a required
-  one raised `ValidationError`. It is now absent from `field_scores`,
-  `explain()`, `non_matches` and reports, at any depth, so a value kept out of
-  serialization is never scored or published. `exclude_if` counts whether or
-  not it fires. A `StructuredModel` is unchanged: its `ComparableField`s declare
-  what is compared, so an excluded field there is still scored, and
-  `evaluate()` now agrees with `compare_with()` on it instead of scoring `1.0`.
-  See [Excluded fields](https://awslabs.github.io/stickler/API-Reference/auto/#excluded-fields)
+  `StructuredModel.from_pydantic()`), a field marked `Field(exclude=True)` is no
+  longer evaluated. It was left out of the dump but kept in the inferred model,
+  so it was blank on both sides: a wrong value scored `1.0` and was listed in
+  `field_scores` and `explain()` as compared, and a required one raised
+  `ValidationError`. It is now absent from `field_scores`, `explain()`,
+  `non_matches` and reports, at any depth, so a value kept out of serialization
+  is never scored or published. A nested model left with no field to score is
+  left out the same way. `exclude_if` is decided per value: a value it keeps is
+  scored, and a value it omits is absent, like `None`, so a required field it
+  omits no longer raises. A `StructuredModel` is unchanged: its
+  `ComparableField`s declare what is compared, so an excluded field there is
+  still scored, and `evaluate()` now agrees with `compare_with()` on it instead
+  of scoring `1.0`. See
+  [Excluded fields](https://awslabs.github.io/stickler/API-Reference/auto/#excluded-fields)
   ([#379](https://github.com/awslabs/stickler/issues/379))
 
 - **Breaking:** a `None` element in a list is now absent. It is left out
@@ -101,19 +104,22 @@ Each release links to full notes on the
 
 ### Fixed
 
-- **`stickler.evaluate()` and `eval_for()` now read a plain model dumped by
+- **`stickler.evaluate()` and `eval_for()` now read a model dumped by
   alias.** With `serialize_by_alias=True` the dump carried alias keys that the
   inferred model never read, so the field was blank on both sides: a wrong
   value scored `1.0`, and a required field raised `ValidationError`. Plain
-  models now reach it keyed by field name; a `StructuredModel` keeps its own key
-  spelling. Serializers and `ser_json_*` config still apply
+  models now reach it keyed by field name. A `StructuredModel` keeps its alias
+  keys, and a `serialization_alias`, which its validation never reads, is
+  keyed by field name, so `evaluate()` agrees with `compare_with()`.
+  Serializers and `ser_json_*` config still apply
   ([#378](https://github.com/awslabs/stickler/issues/378))
 
 - **`StructuredModel.from_json()` keeps a nested `StructuredModel` whole.** It
-  rebuilt each nested model and passed on its `model_dump()`, which drops every
+  passed each nested model on as its `model_dump()`, which drops every
   `exclude=True` field, so a nested excluded field read blank on both sides and
   `compare_with()` scored a wrong value `1.0`. The nested model's
-  `extra_fields` were lost the same way, and are now kept
+  `extra_fields` were lost the same way. Both are now put back into that dict,
+  at any depth, so a `mode="before"` validator still receives one
   ([#379](https://github.com/awslabs/stickler/issues/379))
 
 - **A `RootModel` is now refused when the evaluator is built, instead of failing

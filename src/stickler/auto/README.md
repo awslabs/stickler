@@ -124,10 +124,12 @@ Every decision is recorded in `InferredSpec.provenance` and surfaced by
 - **Semantic / BERT / LLM are never auto-selected.** They need embeddings/creds
   and would surprise as a silent default.
 - **Excluded fields are not evaluated.** A plain-model field with
-  `exclude=True` or `exclude_if` is left out of the shadow model, so it never
-  reaches `field_scores`, `explain()`, `non_matches` or a report. `exclude_if`
-  counts whether or not it fires. A `StructuredModel` is used as configured, so
-  its excluded fields are still scored. The rule and its reasons are in
+  `exclude=True` is left out of the shadow model, so it never reaches
+  `field_scores`, `explain()`, `non_matches` or a report. Neither does a field
+  holding a model left with nothing to score. `exclude_if` decides per value,
+  so that field stays in: a value it omits is absent, like `None`, and a
+  required one is not required. A `StructuredModel` is used as configured, so its excluded
+  fields are still scored. The rule and its reasons are in
   [Excluded fields](../../../docs/docs/API-Reference/auto.md#excluded-fields)
   ([#379](https://github.com/awslabs/stickler/issues/379)).
 - **Unavailable comparators degrade.** If `rapidfuzz` (Fuzzy) or
@@ -149,13 +151,16 @@ so `Model.from_json(instance.model_dump())` is safe either way.
 A field the shadow model cannot read is blank on both sides, and blank against
 blank scores as a match. `evaluate()` keeps pydantic's own dump, so serializers
 and `ser_json_*` config apply as usual, then walks it beside the instance and
-fixes two things:
+fixes three things:
 
 - A plain model's alias keys (`serialize_by_alias=True`) are renamed to field
   names, which the shadow model reads
   ([#378](https://github.com/awslabs/stickler/issues/378)). A `StructuredModel`
-  and everything under it keep their keys, since they validate through their
-  own config.
+  and everything under it validate through their own config, so they get the
+  key that validation reads: an alias stays, and a `serialization_alias`, which
+  validation never reads, becomes the field name.
+- On a plain model, a field holding a model with nothing left to score is
+  dropped, so it is not counted as an undeclared field.
 - Inside a `StructuredModel`, a field marked `exclude=True` or `exclude_if` is
   dumped from its annotation and added back, so `evaluate()` scores it as
   `compare_with()` does ([#379](https://github.com/awslabs/stickler/issues/379)).
@@ -168,7 +173,9 @@ fixes two things:
 The walk does not enter a `RootModel`, a `model_serializer`, anything a
 serializer produced, or a container whose length changed, since that output no
 longer lines up with the instance; it is kept as is. A field whose annotation
-cannot hold a model (`List[float]`) is not walked at all.
+cannot hold a model (`List[float]`) is not walked at all, and a class whose
+dump never needs a change keeps pydantic's dump as is, decided once per class.
+Anything else the walk leaves alone is kept, not copied.
 
 `dict` is the exception, and deliberately so. It keeps its shape rather than
 being flattened to a string, because ANLS\* scores it structurally and cannot do
