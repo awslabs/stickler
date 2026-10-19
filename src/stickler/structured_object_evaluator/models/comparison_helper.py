@@ -174,7 +174,11 @@ def _maybe_absent(val: Any) -> bool:
     return (
         val is None
         or NullHelper.is_nan(val)
-        or (isinstance(val, (str, list, dict)) and len(val) == 0)
+        or (isinstance(val, (str, dict)) and len(val) == 0)
+        or (
+            isinstance(val, list)
+            and all(NullHelper.is_absent_element(item) for item in val)
+        )
     )
 
 
@@ -300,15 +304,20 @@ class ComparisonHelper:
         # `_is_list_field` recognizes -- a list held in an `Any`-annotated field
         # arrives here empty.
 
+        # A None element is absent: it is not matched, counted or scored, and a
+        # list of only None is empty (#386). Every count and score below is
+        # over what remains; this path reports no indices, so none are remapped.
+        gt_list = NullHelper.present(gt_list)
+        pred_list = NullHelper.present(pred_list)
+
         # Use HungarianHelper for Hungarian matching operations
         hungarian_helper = HungarianHelper()
         from .structured_model import StructuredModel
 
         # Use the appropriate comparator based on item types
         # Import here to avoid circular import
-
-        if all(isinstance(item, StructuredModel) for item in gt_list[:1]) and all(
-            isinstance(item, StructuredModel) for item in pred_list[:1]
+        if (gt_list or pred_list) and all(
+            isinstance(item, StructuredModel) for item in gt_list[:1] + pred_list[:1]
         ):
             # For StructuredModel lists, we need to use individual comparison scoring for consistency
             # Use HungarianHelper to get optimal pairings - OPTIMIZED: Single call gets all info
@@ -325,17 +334,9 @@ class ComparisonHelper:
                     gt_item = gt_list[gt_idx]
                     pred_item = pred_list[pred_idx]
 
-                    if gt_item is None or pred_item is None:
-                        # Nullable object elements (List[Optional[Model]]) can pair
-                        # a None against a model; compare_with would crash on None,
-                        # so score it directly: both-None matches, one-None does not.
-                        threshold_applied_score = (
-                            1.0 if gt_item is None and pred_item is None else 0.0
-                        )
-                    else:
-                        # Use individual comparison with threshold application (same as .compare_with())
-                        individual_result = gt_item.compare_with(pred_item)
-                        threshold_applied_score = individual_result["overall_score"]
+                    # Use individual comparison with threshold application (same as .compare_with())
+                    individual_result = gt_item.compare_with(pred_item)
+                    threshold_applied_score = individual_result["overall_score"]
 
                     threshold_corrected_pairs.append(
                         (gt_idx, pred_idx, threshold_applied_score)

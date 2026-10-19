@@ -14,6 +14,16 @@ Stickler provides three methods for exporting model schemas. Two support round-t
 | `to_stickler_config()` | Custom Stickler JSON | Yes | `model_from_json()` | Hand-editing, version control |
 | `model_json_schema()` | Pydantic JSON Schema | No | N/A | API docs, LLM tool specs, runtime inspection |
 
+A plain Pydantic `BaseModel` field, or a list of them, is scored as one object and exports as a
+free-form object (`{"type": "object"}`, `"dict"` in a Stickler config). It re-imports as `dict` with
+its comparison settings, but its own field types are not exported, so the re-imported field does
+not coerce values. A list of lists exports as nested arrays; `to_stickler_config()` writes it as
+`List[List]`, without the inner element type. A plain model inside a nested list comes back as a
+`dict`, which can score slightly differently there. `to_stickler_config()` has no type for a union
+with a model arm (`Union[Card, Bank]`, `Union[Plain, str]`) or for a `StructuredModel` inside a
+nested list (`List[List[Card]]`), so both methods raise for these, to keep one rule
+([#349](https://github.com/awslabs/stickler/issues/349)).
+
 Both round-trip methods are also reachable from a plain Pydantic `BaseModel` that was never written
 as a `StructuredModel`, by converting first:
 

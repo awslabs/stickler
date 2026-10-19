@@ -20,6 +20,10 @@ from pydantic import BaseModel
 
 import stickler
 from stickler.auto import EvalResult
+from stickler.structured_object_evaluator import StructuredModel
+from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
+    BulkStructuredModelEvaluator,
+)
 from stickler.structured_object_evaluator.utils.pretty_print import (
     print_confusion_matrix,
     print_evaluation_results,
@@ -138,3 +142,114 @@ def test_the_lazy_computation_happens_once(evaluation_result, monkeypatch):
     assert evaluation_result.non_matches
     assert evaluation_result.non_matches
     assert len(calls) == 1
+
+
+# A `compare_with()` dict carries no `non_matches` key unless it was asked for
+# one, so `ev.raw`, or any default comparison dict, with a wrong field still
+# printed "all fields matched successfully!" after the fix above. The absence of
+# records is not evidence that nothing failed (#298).
+
+_NO_RECORDS = "document_non_matches=True"
+
+
+def _compare(gt: _Person, pred: _Person, **kwargs) -> dict:
+    model = StructuredModel.from_pydantic(_Person)
+    return model.from_json(gt.model_dump()).compare_with(
+        model.from_json(pred.model_dump()), include_confusion_matrix=True, **kwargs
+    )
+
+
+def test_a_raw_dict_without_records_is_not_reported_as_a_success(
+    evaluation_result, capsys
+):
+    """`ev.raw` has a wrong field and no records: say so, not that all matched."""
+    print_non_matches(evaluation_result.raw, use_color=False)
+
+    output = capsys.readouterr().out
+    assert "No non-matches found" not in output
+    assert _NO_RECORDS in output
+    # `evaluate()` takes no `document_non_matches`, so the actionable advice for
+    # `.raw` is to pass the `EvalResult`, which computes its records on demand.
+    assert "EvalResult" in output
+
+
+def test_print_evaluation_results_on_a_raw_dict_says_records_are_missing(capsys):
+    """The full report over a default `compare_with()` dict, the same case."""
+    raw = _compare(_Person(name="Ada", city="London"), _Person(name="Grace"))
+    assert "non_matches" not in raw
+
+    print_evaluation_results(raw, use_color=False)
+
+    output = capsys.readouterr().out
+    assert "CONFUSION MATRIX SUMMARY" in output
+    assert "No non-matches found" not in output
+    assert _NO_RECORDS in output
+
+
+def test_an_empty_record_list_is_a_success_without_the_removed_wording(capsys):
+    """Records were requested and there are none: success, minus #287's concept."""
+    same = _Person(name="Ada", city="London")
+    raw = _compare(same, same, document_non_matches=True)
+    assert raw["non_matches"] == []
+
+    print_evaluation_results(raw, use_color=False)
+
+    output = capsys.readouterr().out
+    assert "No non-matches found" in output
+    assert "all fields matched" not in output
+    assert _NO_RECORDS not in output
+
+
+def test_a_bulk_result_without_records_says_so(capsys):
+    """`ProcessEvaluation.non_matches` is None when the bulk evaluator skipped them."""
+    model = StructuredModel.from_pydantic(_Person)
+    evaluator = BulkStructuredModelEvaluator(
+        target_schema=model, document_non_matches=False
+    )
+    evaluator.update(
+        model.from_json({"name": "Ada", "city": "London"}),
+        model.from_json({"name": "Grace", "city": "London"}),
+    )
+    result = evaluator.compute()
+    assert result.non_matches is None
+
+    print_non_matches(result, use_color=False)
+
+    output = capsys.readouterr().out
+    assert "No non-matches found" not in output
+    assert _NO_RECORDS in output
+
+
+def test_a_bulk_result_with_records_and_no_failures_is_a_success(capsys):
+    """The bulk counterpart of the empty-list case: a real list, empty, is clean."""
+    model = StructuredModel.from_pydantic(_Person)
+    evaluator = BulkStructuredModelEvaluator(target_schema=model)
+    same = model.from_json({"name": "Ada", "city": "London"})
+    evaluator.update(same, same)
+    result = evaluator.compute()
+    assert result.non_matches == []
+
+    print_non_matches(result, use_color=False)
+
+    output = capsys.readouterr().out
+    assert "No non-matches found" in output
+    assert _NO_RECORDS not in output
+
+
+@pytest.mark.parametrize(
+    "not_a_result",
+    [object(), None, [{"field_path": "name"}]],
+    ids=["object", "None", "list_of_records"],
+)
+def test_print_non_matches_rejects_input_that_is_not_a_result(not_a_result, capsys):
+    """Unreadable input is an error, not a success and not a hint to collect records.
+
+    A list of records is the likely mistake here, and telling its owner to pass
+    `document_non_matches=True` would send them after something they already did.
+    """
+    print_non_matches(not_a_result, use_color=False)
+
+    output = capsys.readouterr().out
+    assert "Error" in output
+    assert "No non-matches found" not in output
+    assert _NO_RECORDS not in output
