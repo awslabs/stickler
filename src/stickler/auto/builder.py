@@ -137,7 +137,17 @@ def specs_for(
     under a dotted path (``lines.sku``), so every comparator decision at every
     depth is auditable. Primitive-list fields report the spec of the ELEMENT
     type, matching what the builder actually installs.
+
+    Raises the same ``TypeError`` as :func:`structured_model_for` for any class
+    it refuses, such as a ``RootModel``: specs for a model that cannot be built
+    would describe paths that are never scored. A ``StructuredModel`` is used
+    as configured and never built, so it is not checked.
     """
+    if not (isinstance(cls, type) and issubclass(cls, StructuredModel)):
+        # Cached, so this is free when the builder already ran (#423).
+        structured_model_for(
+            cls, weight_hints=weight_hints, match_threshold=match_threshold
+        )
     registry = get_global_registry()
     result: Dict[str, InferredSpec] = {}
     _collect_specs(

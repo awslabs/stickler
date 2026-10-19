@@ -137,6 +137,14 @@ Each release links to full notes on the
   the caller declared
   ([#366](https://github.com/awslabs/stickler/issues/366))
 
+- **`specs_for` now refuses a `RootModel` too, with the builder's message.**
+  After #366 it still returned specs for the root's internal `root` attribute,
+  such as `pt.root.x`, a path no data carries and that is never scored. It now
+  raises the same `TypeError` as `structured_model_for` for any class the
+  builder refuses. An explicitly configured `StructuredModel` is never built,
+  so it is not checked: a `RootModel` reached through one is still described
+  ([#423](https://github.com/awslabs/stickler/issues/423))
+
 - **A float `NaN` is now absent, the same as `None`.** Two identical `NaN`s
   scored `0.0` and counted as a false discovery, because `NaN` equals nothing
   under IEEE 754. `NaN` vs `NaN` or `None` is now a true negative scoring `1.0`,

@@ -38,7 +38,7 @@ from pydantic import BaseModel, RootModel
 
 import stickler
 from stickler import ComparableField, eval_for
-from stickler.auto.builder import structured_model_for
+from stickler.auto.builder import specs_for, structured_model_for
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 
 
@@ -190,3 +190,40 @@ def test_a_structured_model_holding_a_root_model_field_is_untouched():
     # a perfect match. Asserting only `name` would pass even if `pt` returned
     # the false 1.0 this work removes everywhere else.
     assert result.field_scores["pt"] < 1.0
+
+
+class _Holder(BaseModel):
+    name: str
+    pt: RootModel[Point]
+
+
+class _ListHolder(BaseModel):
+    items: List[RootModel[Point]]
+
+
+@pytest.mark.parametrize(
+    "cls",
+    [row[0] for row in ROOTS] + [_Holder, _ListHolder],
+    ids=ROOT_IDS + ["field", "list-element"],
+)
+def test_specs_for_refuses_what_the_builder_refuses(cls):
+    """``specs_for`` reported ``root.*`` paths that are never scored (#423).
+
+    It describes the model the builder makes, so it refuses whatever the
+    builder refuses, with the same message and the same path.
+    """
+    with pytest.raises(TypeError) as built:
+        structured_model_for(cls)
+    with pytest.raises(TypeError) as described:
+        specs_for(cls)
+    assert str(described.value) == str(built.value)
+
+
+def test_explain_on_a_structured_model_holding_a_root_model_field_still_works():
+    """The configured path is never built, so ``specs_for`` does not refuse it."""
+
+    class Configured(StructuredModel):
+        name: str = ComparableField(default="")
+        pt: Optional[RootModel[Point]] = ComparableField(default=None)
+
+    assert "name" in eval_for(Configured).explain()
