@@ -5,9 +5,10 @@ was ``List[str]`` and rejected the data the original model accepted. These tests
 export, re-import, load the ORIGINAL data, and require the same scores.
 """
 
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping, MutableMapping, Optional, OrderedDict
 
 import pytest
+from pydantic import Field
 
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.structured_object_evaluator.models.configuration_helper import (
@@ -104,13 +105,67 @@ def test_reimported_field_does_not_coerce_values():
     assert Reimported(rows=[{"n": "5"}]).rows == [{"n": "5"}]
 
 
-def test_stickler_config_refuses_a_list_of_mapping_element():
-    """Pins the documented limitation: `List[Mapping]` is not a config type."""
-
+@pytest.mark.parametrize(
+    "element",
+    [Mapping[str, str], MutableMapping[str, str], OrderedDict[str, str], dict],
+)
+def test_stickler_config_writes_every_mapping_element_as_dict(element):
     class WithMapping(StructuredModel):
-        rows: List[Mapping[str, str]] = ComparableField()
+        rows: List[element] = ComparableField(threshold=0.9)
 
     config = WithMapping.to_stickler_config()
-    assert config["fields"]["rows"]["type"] == "List[Mapping]"
-    with pytest.raises(ValueError, match="Unknown type: 'Mapping'"):
-        StructuredModel.model_from_json(config)
+    assert config["fields"]["rows"]["type"] == "List[Dict]"
+
+    Reimported = StructuredModel.model_from_json(config)
+    gt, pred = {"rows": GT["default_clip"]}, {"rows": PRED["default_clip"]}
+    original = WithMapping(**gt).compare_with(WithMapping(**pred))
+    rebuilt = Reimported(**gt).compare_with(Reimported(**pred))
+    assert rebuilt["field_scores"] == pytest.approx(original["field_scores"])
+
+
+class BareRows(StructuredModel):
+    """No ``ComparableField``, so the engine's defaults are what must survive."""
+
+    match_threshold = 0.8
+    rows: List[Dict[str, str]] = Field(default_factory=list)
+    optional_rows: Optional[List[Mapping[str, str]]] = None
+
+
+BARE_FIELDS = ["rows", "optional_rows"]
+BARE_GT = {name: GT["default_clip"] for name in BARE_FIELDS}
+BARE_PRED = {name: PRED["default_clip"] for name in BARE_FIELDS}
+
+
+def _resolved(model, name):
+    info = ConfigurationHelper.get_comparison_info(model, name)
+    return (
+        type(info.comparator),
+        info.threshold,
+        info.weight,
+        info.clip_under_threshold,
+    )
+
+
+@pytest.mark.parametrize(
+    "roundtrip",
+    [
+        lambda m: StructuredModel.from_json_schema(m.to_json_schema()),
+        lambda m: StructuredModel.model_from_json(m.to_stickler_config()),
+    ],
+    ids=["json_schema", "stickler_config"],
+)
+def test_undeclared_field_roundtrips_its_resolved_comparison(roundtrip):
+    Reimported = roundtrip(BareRows)
+
+    for name in BARE_FIELDS:
+        assert _resolved(Reimported, name) == _resolved(BareRows, name)
+    original = BareRows(**BARE_GT).compare_with(BareRows(**BARE_PRED))
+    rebuilt = Reimported(**BARE_GT).compare_with(Reimported(**BARE_PRED))
+    assert rebuilt["field_scores"] == pytest.approx(original["field_scores"])
+    assert rebuilt["field_scores"]["rows"] == pytest.approx(0.5)
+
+
+def test_undeclared_field_reexports_the_same_schema():
+    schema = BareRows.to_json_schema()
+    Reimported = StructuredModel.from_json_schema(schema)
+    assert Reimported.to_json_schema()["properties"] == schema["properties"]

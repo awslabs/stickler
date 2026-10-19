@@ -1917,8 +1917,9 @@ class StructuredModel(BaseModel):
                             else json_element_type
                         },
                     }
-                    # Extract and add stickler extensions from field metadata
-                    metadata = converter._extract_field_metadata(field_info)
+                    metadata = cls._list_export_metadata(
+                        converter, field_name, field_info, element_type
+                    )
                     extensions = converter._build_comparison_extensions(
                         metadata, output_format="json_schema"
                     )
@@ -1939,6 +1940,31 @@ class StructuredModel(BaseModel):
                 schema["required"].append(field_name)
 
         return schema
+
+    @classmethod
+    def _list_export_metadata(
+        cls, converter, field_name: str, field_info, element_type
+    ) -> Dict[str, Any]:
+        """Comparison metadata to export for a list of scalars or mappings.
+
+        A field declared without ``ComparableField`` carries none, so each
+        importer applies its own default. For a list of mappings that default
+        is wrong: the engine scores it with ANLS*, the class's
+        ``match_threshold`` and no clip, while ``from_json_schema()`` rebuilt it
+        as ``ExactComparator`` at 1.0 with clipping on and ``model_from_json()``
+        refused it for having no comparator. Export what the engine resolves.
+        Scalar lists keep the importer defaults (#348).
+        """
+        metadata = converter._extract_field_metadata(field_info)
+        if metadata or not ConfigurationHelper.is_mapping_annotation(element_type):
+            return metadata
+        resolved = ConfigurationHelper.get_comparison_info(cls, field_name)
+        return {
+            "comparator": resolved.comparator,
+            "threshold": resolved.threshold,
+            "weight": resolved.weight,
+            "clip_under_threshold": resolved.clip_under_threshold,
+        }
 
     @staticmethod
     def _unwrap_optional(field_type: Type) -> tuple:
@@ -2085,7 +2111,21 @@ class StructuredModel(BaseModel):
                     field_config = converter.field_to_stickler_config(
                         element_type, field_info
                     )
-                    field_config["type"] = f"List[{element_type.__name__}]"
+                    if ConfigurationHelper.is_mapping_annotation(element_type):
+                        # Every mapping element is written `Dict`, the spelling
+                        # `model_from_json()` reads. `__name__` wrote
+                        # `List[Mapping]` or `List[Counter]`, which it refused.
+                        field_config["type"] = "List[Dict]"
+                        metadata = cls._list_export_metadata(
+                            converter, field_name, field_info, element_type
+                        )
+                        field_config.update(
+                            converter._build_comparison_extensions(
+                                metadata, output_format="stickler_config"
+                            )
+                        )
+                    else:
+                        field_config["type"] = f"List[{element_type.__name__}]"
             else:
                 # Primitive type - use converter for consistent formatting
                 field_config = converter.field_to_stickler_config(

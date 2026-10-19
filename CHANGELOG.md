@@ -69,12 +69,16 @@ Each release links to full notes on the
   model accepted. A list whose element is any mapping (`Dict`, `dict`,
   `Mapping`, optionally `Optional`) now exports `items: {"type": "object"}`
   (`["object", "null"]` for an optional element) and re-imports as
-  `List[dict]` with the comparator, threshold, weight and clip setting its
-  `ComparableField` declared, so it scores as the original did unless the data
-  relied on coercion to the value type, which is not exported. A consumer
-  reading the exported schema sees the `items` type change from `"string"` to
-  `"object"`. `to_stickler_config()` already round-tripped a `Dict` or `dict`
-  element ([#333](https://github.com/awslabs/stickler/issues/333))
+  `List[dict]`. A consumer reading the exported schema sees the `items` type
+  change from `"string"` to `"object"`. `to_stickler_config()` now writes every
+  mapping element as `List[Dict]`; it wrote `List[Mapping]` or `List[Counter]`,
+  which `model_from_json()` refused with `Unknown type`. Both exports now carry
+  the comparator, threshold, weight and clip the field resolves even when it is
+  declared without `ComparableField`, so it scores as the original did (`0.5`,
+  not `0.0`, for one wrong key of two) unless the data relied on coercion to the
+  value type, which is not exported. Such a field was refused by
+  `model_from_json()` for having no comparator
+  ([#333](https://github.com/awslabs/stickler/issues/333))
 
 - **A `RootModel` is now refused when the evaluator is built, instead of failing
   once per document or scoring a wrong value `1.0`.** `eval_for()` accepted one
