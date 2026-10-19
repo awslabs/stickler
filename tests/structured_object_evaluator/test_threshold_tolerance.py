@@ -11,7 +11,7 @@ Each gate below is checked at four scores: one float rounding error under the
 threshold, exactly at it, just outside the tolerance, and clearly under it.
 """
 
-from typing import List
+from typing import List, Optional
 
 import pytest
 
@@ -24,6 +24,10 @@ from stickler import (
 )
 from stickler.algorithms.hungarian import HungarianMatcher
 from stickler.comparators.base import BaseComparator
+from stickler.structured_object_evaluator.models.comparison_info import (
+    ComparableFieldConfig,
+    ComparisonInfo,
+)
 from stickler.structured_object_evaluator.models.metrics_helper import MetricsHelper
 from stickler.structured_object_evaluator.models.threshold_helper import (
     ThresholdHelper,
@@ -49,8 +53,8 @@ CASES = [
 class _FixedScore(BaseComparator):
     """Scores equal values 1.0 and every other pair at ``score``."""
 
-    def __init__(self, score: float):
-        super().__init__()
+    def __init__(self, score: float, threshold: Optional[float] = None):
+        super().__init__(threshold=threshold)
         self.score = score
 
     def _compare(self, str1, str2) -> float:
@@ -306,3 +310,14 @@ class TestStandaloneGates:
         """The fallback ``evaluator_format=True`` uses without a confusion matrix."""
         metrics = MetricsHelper().convert_score_to_binary_metrics(score, THRESHOLD)
         assert metrics["recall"] == (1.0 if matches else 0.0)
+
+    @pytest.mark.parametrize("score,matches", CASES)
+    def test_comparator_and_field_config(self, score, matches):
+        """``binary_compare`` and the field configs' clipping ``compare``."""
+        comparator = _FixedScore(score, threshold=THRESHOLD)
+        assert comparator.binary_compare("a", "b") == ((1, 0) if matches else (0, 1))
+
+        kept = score if matches else 0.0
+        for config_cls in (ComparisonInfo, ComparableFieldConfig):
+            config = config_cls(_FixedScore(score), threshold=THRESHOLD)
+            assert config.compare("a", "b") == kept

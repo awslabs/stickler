@@ -95,10 +95,11 @@ Given three GT products and three Pred products:
 **GT:** `Product("PROD-001", "Laptop", 999.99)`
 **Pred:** `Product("PROD-001", "Laptop Computer", 999.99)`
 
+- Similarity: `(3 * 1.0 + 2 * 0.4 + 1 * 1.0) / 6`, which floating point evaluates to `0.7999999999999999`. It meets `0.8` through the [rounding tolerance](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold).
 - Classification: **TP**
 - Nested field analysis is performed:
     - `product_id`: TP (exact match)
-    - `name`: TP (similarity ~0.9)
+    - `name`: FD (Levenshtein similarity 0.4, under its 0.7 threshold)
     - `price`: TP (exact match)
 
 ### Poor Match (similarity < 0.8)
@@ -127,10 +128,11 @@ No nested analysis for either.
     },
     "fields": {
       "product_id": { "tp": 1 },
-      "name":       { "tp": 1 },
+      "name":       { "fd": 1 },
       "price":      { "tp": 1 }
     },
     "non_matches": [
+      { "type": "FD", "field_path": "products[0].name", "similarity": 0.4 },
       {
         "type": "FD",
         "gt_object": "Product(PROD-002, Mouse, 29.99)",
@@ -144,10 +146,10 @@ No nested analysis for either.
 }
 ```
 
-Field-level metrics appear only for the single TP pair. The `non_matches` list
-documents each FD, FN, and FA once at object level; `field_comparisons` uses the
-same boundary. Neither report expands a rejected or unmatched object into
-leaves.
+Field-level metrics appear only for the single TP pair, and its `name` is the
+only leaf in `non_matches`. That list documents every other FD, FN, and FA once
+at object level; `field_comparisons` uses the same boundary. Neither report
+expands a rejected or unmatched object into leaves.
 
 ## Delegation Pattern
 
@@ -203,7 +205,8 @@ field's own `threshold` decides that verdict. See
 
 `overall_score` is the scalar summary, and `EvalResult.matched` from
 `stickler.evaluate()` is the object-level verdict
-(`overall_score >= match_threshold`).
+(`overall_score >= match_threshold`, see
+[Meeting a Threshold](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold)).
 
 For the raw object similarity used by Hungarian matching, fields absent on both sides are omitted from both totals. They remain TNs in the confusion matrix, but do not help a pair clear `match_threshold`. If no fields remain, the similarity is defined as `1.0`, because nothing disagreed.
 
@@ -211,7 +214,7 @@ For the raw object similarity used by Hungarian matching, fields absent on both 
 
 **Empty lists** -- `[] vs []` is TN. `[] vs [items]` generates one FA per item. `[items] vs []` generates one FN per item.
 
-**Threshold boundary** -- `similarity >= threshold` counts as TP and triggers recursion. Values exactly at the boundary are matches, and so are values up to `1e-10` under it, so a rounding error does not flip the verdict.
+**Threshold boundary** -- `similarity >= threshold` counts as TP and triggers recursion. Values exactly at the boundary are matches, and so are values less than `1e-10` under it, so a rounding error does not flip the verdict. See [Meeting a Threshold](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold).
 
 **Different thresholds per model** -- Each `StructuredModel` subclass can define its own `match_threshold`. A `Product` with `match_threshold = 0.8` and an `Address` with `match_threshold = 0.6` are each evaluated independently.
 

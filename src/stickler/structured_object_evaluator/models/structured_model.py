@@ -33,7 +33,7 @@ from .metrics_helper import MetricsHelper
 from .null_helper import NullHelper
 from .optional_annotation import union_args, unwrap_annotated, unwrap_optional
 from .rich_value_helper import RichValueHelper
-from .threshold_helper import THRESHOLD_DOCS_URL
+from .threshold_helper import THRESHOLD_DOCS_URL, ThresholdHelper
 from .threshold_helper import model_identity as _model_identity
 from .threshold_helper import warn_if_threshold_is_zero as _warn_if_threshold_is_zero
 
@@ -1306,7 +1306,7 @@ class StructuredModel(BaseModel):
         tp_objects = 0  # Objects with similarity >= match_threshold
         fd_objects = 0  # Objects with similarity < match_threshold
         for gt_idx, pred_idx, similarity in matched_pairs:
-            if similarity >= match_threshold:
+            if ThresholdHelper.is_above_threshold(similarity, match_threshold):
                 tp_objects += 1
             else:
                 fd_objects += 1

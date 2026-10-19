@@ -86,9 +86,9 @@ themselves:
 | `HungarianHelper.get_complete_matching_info` | derives the matched and unmatched index sets for object matching over `List[StructuredModel]` |
 | `ComparisonHelper.compare_unordered_lists` | hands them to `unordered_list_metrics`, which counts against its own `classification_threshold` |
 
-`unordered_list_metrics` uses the same derivation as `calculate_metrics`, so the
-two agree on what a count means. The remaining difference is the tolerant
-threshold test noted above.
+`unordered_list_metrics` uses the same derivation and the same threshold test as
+`calculate_metrics`, so for the same pairs and threshold the two return the same
+counts.
 
 Because neither caller reads the counts, a change to how `calculate_metrics`
 classifies cannot move an evaluator score. It is a public API in its own right
