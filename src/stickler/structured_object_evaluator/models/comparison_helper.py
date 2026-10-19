@@ -168,6 +168,10 @@ def _match_non_structured_lists(
     """Use the same raw-value matcher and class gate for scoring and direct reports."""
     from stickler.algorithms.hungarian import HungarianMatcher
 
+    gt_indices = NullHelper.present_indices(gt_list)
+    pred_indices = NullHelper.present_indices(pred_list)
+    gt_list = [gt_list[i] for i in gt_indices]
+    pred_list = [pred_list[i] for i in pred_indices]
     element_comparator = comparator
     if _holds_a_plain_model(gt_list) or _holds_a_plain_model(pred_list):
         element_comparator = _ClassGatedComparator(
@@ -179,7 +183,7 @@ def _match_non_structured_lists(
     pairs = matcher.calculate_metrics(gt_list, pred_list)["matched_pairs"]
     if warn_selected and isinstance(element_comparator, _ClassGatedComparator):
         element_comparator.warn_for_selected(gt_list, pred_list, pairs)
-    return pairs
+    return [(gt_indices[i], pred_indices[j], score) for i, j, score in pairs]
 
 
 def _maybe_absent(val: Any) -> bool:
@@ -200,7 +204,11 @@ def _maybe_absent(val: Any) -> bool:
     return (
         val is None
         or NullHelper.is_nan(val)
-        or (isinstance(val, (str, list, dict)) and len(val) == 0)
+        or (isinstance(val, (str, dict)) and len(val) == 0)
+        or (
+            isinstance(val, list)
+            and all(NullHelper.is_absent_element(item) for item in val)
+        )
     )
 
 
@@ -329,15 +337,23 @@ class ComparisonHelper:
         # `_is_list_field` recognizes -- a list held in an `Any`-annotated field
         # arrives here empty.
 
+        # A None element is absent: it is not matched, counted or scored, and a
+        # list of only None is empty (#386). Every count and score below is
+        # over what remains. Saved reporting pairs must use original indices.
+        if matching_sink is not None:
+            gt_indices = NullHelper.present_indices(gt_list)
+            pred_indices = NullHelper.present_indices(pred_list)
+        gt_list = NullHelper.present(gt_list)
+        pred_list = NullHelper.present(pred_list)
+
         # Use HungarianHelper for Hungarian matching operations
         hungarian_helper = HungarianHelper()
         from .structured_model import StructuredModel
 
         # Use the appropriate comparator based on item types
         # Import here to avoid circular import
-
-        if all(isinstance(item, StructuredModel) for item in gt_list[:1]) and all(
-            isinstance(item, StructuredModel) for item in pred_list[:1]
+        if (gt_list or pred_list) and all(
+            isinstance(item, StructuredModel) for item in gt_list[:1] + pred_list[:1]
         ):
             # For StructuredModel lists, we need to use individual comparison scoring for consistency
             # Use HungarianHelper to get optimal pairings - OPTIMIZED: Single call gets all info
@@ -354,17 +370,9 @@ class ComparisonHelper:
                     gt_item = gt_list[gt_idx]
                     pred_item = pred_list[pred_idx]
 
-                    if gt_item is None or pred_item is None:
-                        # Nullable object elements (List[Optional[Model]]) can pair
-                        # a None against a model; compare_with would crash on None,
-                        # so score it directly: both-None matches, one-None does not.
-                        threshold_applied_score = (
-                            1.0 if gt_item is None and pred_item is None else 0.0
-                        )
-                    else:
-                        # Use individual comparison with threshold application (same as .compare_with())
-                        individual_result = gt_item.compare_with(pred_item)
-                        threshold_applied_score = individual_result["overall_score"]
+                    # Use individual comparison with threshold application (same as .compare_with())
+                    individual_result = gt_item.compare_with(pred_item)
+                    threshold_applied_score = individual_result["overall_score"]
 
                     threshold_corrected_pairs.append(
                         (gt_idx, pred_idx, threshold_applied_score)
@@ -411,7 +419,7 @@ class ComparisonHelper:
                 model_cls=model_cls, field_name=field_name, warn_selected=True,
             )
 
-        return ComparisonHelper.unordered_list_metrics(
+        result = ComparisonHelper.unordered_list_metrics(
             matched_pairs=matched_pairs,
             clip_under_threshold=clip_under_threshold,
             gt_list=gt_list,
@@ -419,6 +427,12 @@ class ComparisonHelper:
             classification_threshold=classification_threshold,
             matching_sink=matching_sink,
         )
+        if matching_sink is not None:
+            matching_sink["pairs"] = [
+                (gt_indices[i], pred_indices[j], score)
+                for i, j, score in matched_pairs
+            ]
+        return result
 
     @staticmethod
     def unordered_list_metrics(

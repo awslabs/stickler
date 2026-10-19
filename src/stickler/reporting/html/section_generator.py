@@ -95,7 +95,18 @@ class SectionGenerator:
         html_string = '<div class="section"><h2>Non-Matches Analysis</h2>'
         
         non_matches = DataExtractor.extract_non_matches(self.results)
-        
+
+        if non_matches is None:
+            # No records were collected, which says nothing about whether the
+            # fields matched. Reporting success here is how a document with a
+            # wrong field was rendered as clean (#411).
+            html_string += (
+                "<p>No non-match records in these results. Call "
+                "<code>compare_with()</code> or the bulk evaluator with "
+                "<code>document_non_matches=True</code> to collect them.</p></div>"
+            )
+            return html_string
+
         if not non_matches:
             html_string += "<p>No non-matches found.</p></div>"
             return html_string

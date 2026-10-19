@@ -503,7 +503,8 @@ def test_accepted_structured_child_reports_share_field_threshold_tolerance():
     assert result["non_matches"] == []
     (row,) = result["field_comparisons"]
     assert row["match"] is True
-    assert "within threshold tolerance" in row["reason"]
+    assert row["score"] == 0.7 - 1e-12
+    assert row["reason"] == f"all elements matched (score {row['score']!r} < 0.7)"
 
 
 def test_structured_child_custom_compare_with_override_is_preserved():

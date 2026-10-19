@@ -9,6 +9,7 @@ from stickler.comparators.base import BaseComparator
 
 from .comparison_helper import ComparisonHelper, _match_non_structured_lists
 from .hungarian_helper import HungarianHelper
+from .null_helper import NullHelper
 from .reporting_context import ReportingContext
 
 DEFAULT_MATCH_THRESHOLD = 0.7
@@ -51,12 +52,10 @@ class ComparisonHelperBase(ABC):
         Returns:
             Match threshold value
         """
-        if (
-            obj_list
-            and hasattr(obj_list[0], "__class__")
-            and hasattr(obj_list[0].__class__, "match_threshold")
-        ):
-            return obj_list[0].__class__.match_threshold
+        # The element class, read past any leading None (#322).
+        element = NullHelper.first_present(obj_list)
+        if element is not None and hasattr(element.__class__, "match_threshold"):
+            return element.__class__.match_threshold
         return DEFAULT_MATCH_THRESHOLD
 
     def get_optimal_assignments(
@@ -213,7 +212,10 @@ class ComparisonHelperBase(ABC):
         matched_gt_indices = set(idx for idx, _ in assignments)
         
         for gt_idx, gt_item in enumerate(gt_list):
-            if gt_idx not in matched_gt_indices:
+            # A None element is absent, so it is never an FN (#386).
+            if gt_idx not in matched_gt_indices and not NullHelper.is_absent_element(
+                gt_item
+            ):
                 extracted_entries = self._extract_entries_from_objects(
                     field_name=field_name,
                     gt_object=gt_item,
@@ -248,7 +250,10 @@ class ComparisonHelperBase(ABC):
         matched_pred_indices = set(idx for _, idx in assignments)
         
         for pred_idx, pred_item in enumerate(pred_list):
-            if pred_idx not in matched_pred_indices:
+            # A None element is absent, so it is never an FA (#386).
+            if pred_idx not in matched_pred_indices and not (
+                NullHelper.is_absent_element(pred_item)
+            ):
                 extracted_entries = self._extract_entries_from_objects(
                     field_name=field_name,
                     gt_object=None,
@@ -281,13 +286,20 @@ class ComparisonHelperBase(ABC):
         """
         entries = []
 
+        # A list of only None elements is empty (#386). Enumerating the
+        # original lists keeps each present element's original index.
+        gt_present = NullHelper.present(gt_list)
+        pred_present = NullHelper.present(pred_list)
+
         # Check if both lists are empty
-        if not gt_list and not pred_list:
+        if not gt_present and not pred_present:
             return entries
 
         # Handle gt null case (FA items when GT is empty)
-        if not gt_list and pred_list:
+        if not gt_present and pred_present:
             for pred_idx, pred_item in enumerate(pred_list):
+                if NullHelper.is_absent_element(pred_item):
+                    continue
                 extracted_entries = self._extract_entries_from_objects(
                     field_name=field_name,
                     gt_object=None,
@@ -301,8 +313,10 @@ class ComparisonHelperBase(ABC):
                 entries.extend(extracted_entries)
 
         # Handle pred null case (FN items when prediction is empty)
-        elif gt_list and not pred_list:
+        elif gt_present and not pred_present:
             for gt_idx, gt_item in enumerate(gt_list):
+                if NullHelper.is_absent_element(gt_item):
+                    continue
                 extracted_entries = self._extract_entries_from_objects(
                     field_name=field_name,
                     gt_object=gt_item,
@@ -359,7 +373,7 @@ class ComparisonHelperBase(ABC):
 
         if matching is not None:
             return {"matching": matching}
-        if gt_list and isinstance(gt_list[0], StructuredModel):
+        if isinstance(NullHelper.first_present(gt_list), StructuredModel):
             return {}
         info = model._get_comparison_info(field_name)
         return {"comparator": info.comparator, "match_threshold": info.threshold}
@@ -386,7 +400,7 @@ class ComparisonHelperBase(ABC):
         """
         entries = []
 
-        if not gt_list and not pred_list:
+        if not NullHelper.present(gt_list) and not NullHelper.present(pred_list):
             return entries
 
         from .structured_model import StructuredModel
@@ -398,7 +412,7 @@ class ComparisonHelperBase(ABC):
             verdicts = matching["verdicts"]
         else:
             # Direct helper callers still compute their own assignments.
-            if gt_list and isinstance(gt_list[0], StructuredModel):
+            if isinstance(NullHelper.first_present(gt_list), StructuredModel):
                 if comparator is not None or match_threshold is not None:
                     raise ValueError(
                         "A StructuredModel list uses its element-model matcher and "
@@ -411,7 +425,9 @@ class ComparisonHelperBase(ABC):
                 )
             )
             if match_threshold is None:
-                match_threshold = self.get_match_threshold(gt_list or pred_list)
+                match_threshold = self.get_match_threshold(
+                    NullHelper.present(gt_list) or NullHelper.present(pred_list)
+                )
             verdicts = None
             if comparator is not None:
                 # A direct collector or legacy override has no side context.

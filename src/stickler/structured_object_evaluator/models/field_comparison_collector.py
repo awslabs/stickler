@@ -80,8 +80,13 @@ class FieldComparisonCollector:
             gt_val = getattr(self.model, field_name)
             pred_val = getattr(other, field_name, None)
 
-            gt_is_empty = bool(isinstance(gt_val, list) and len(gt_val) == 0)
-            pred_is_empty = bool(isinstance(pred_val, list) and len(pred_val) == 0)
+            # A list of only None elements is empty (#386).
+            gt_is_empty = isinstance(
+                gt_val, list
+            ) and NullHelper.is_effectively_null_for_lists(gt_val)
+            pred_is_empty = isinstance(
+                pred_val, list
+            ) and NullHelper.is_effectively_null_for_lists(pred_val)
 
             # Handle null list cases
             if gt_is_empty or pred_is_empty:

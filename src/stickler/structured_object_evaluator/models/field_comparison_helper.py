@@ -163,13 +163,23 @@ class FieldComparisonHelper(ComparisonHelperBase):
                 if (
                     field_result is not None
                     and "fields" in field_result
-                    and not field_is_match
-                    and field_score >= info.threshold
+                    and field_is_match != (field_score >= info.threshold)
                 ):
-                    field_reason = (
-                        f"score {field_score:.3f} >= {info.threshold}, but nested "
-                        "comparison has non-matching or unmatched values"
-                    )
+                    if field_is_match:
+                        score_text = f"{field_score:.3f}"
+                        # Do not round a below-threshold score up to the bar.
+                        if float(score_text) >= info.threshold:
+                            score_text = repr(field_score)
+                        field_reason = (
+                            f"all elements matched (score {score_text} < {info.threshold})"
+                        )
+                    else:
+                        non_matches = sum(metrics.get(key, 0) for key in ("fd", "fa", "fn"))
+                        noun = "item" if non_matches == 1 else "items"
+                        field_reason = (
+                            f"score {field_score:.3f} >= {info.threshold}, but "
+                            f"{non_matches} {noun} did not match"
+                        )
                 
                 # Keep the scored NaN-as-missing decision when formatting child fields.
                 gt_missing = gt_nested_val is None or NullHelper.is_nan(gt_nested_val)

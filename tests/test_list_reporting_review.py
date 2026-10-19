@@ -194,7 +194,7 @@ def test_nested_list_verdict_comes_from_element_metrics_not_aggregate_threshold(
     (row,) = result["field_comparisons"]
     assert row["score"] == 0.5
     assert row["match"] is False
-    assert "non-matching" in row["reason"]
+    assert row["reason"] == "score 0.500 >= 0.3, but 1 item did not match"
 
 
 @pytest.mark.parametrize("direct_collector", [False, True])
@@ -205,25 +205,25 @@ def test_nested_list_verdict_comes_from_element_metrics_not_aggregate_threshold(
             ["red", "green"],
             2 / 3,
             "false_negative",
-            "score 0.667 >= 0.5, but nested comparison has non-matching or unmatched values",
+            "score 0.667 >= 0.5, but 1 item did not match",
         ),
         (
             ["red", "green", "blue", "yellow"],
             0.75,
             "false_alarm",
-            "score 0.750 >= 0.5, but nested comparison has non-matching or unmatched values",
+            "score 0.750 >= 0.5, but 1 item did not match",
         ),
         (
             ["red", "green", "yellow"],
             2 / 3,
             "false_discovery",
-            "score 0.667 >= 0.5, but nested comparison has non-matching or unmatched values",
+            "score 0.667 >= 0.5, but 1 item did not match",
         ),
         (
             ["red", "green", "blue", "yellow", "orange", "purple"],
             0.5,
             "false_alarm",
-            "score 0.500 >= 0.5, but nested comparison has non-matching or unmatched values",
+            "score 0.500 >= 0.5, but 3 items did not match",
         ),
         (["red"], 1 / 3, "false_negative", "below threshold (0.333 < 0.5)"),
         ([], 0.0, "false_negative", "below threshold (0.000 < 0.5)"),
@@ -422,6 +422,51 @@ def test_reused_engine_reports_are_serializable_and_do_not_retain_prior_pairs(
     assert "pair_results" not in json.dumps(result, default=str)
 
 
+@pytest.mark.parametrize("kind", ["string", "zero", "plain-model"])
+@pytest.mark.parametrize("direct_collector", [False, True])
+def test_sparse_primitive_and_plain_model_lists_keep_original_indices(
+    kind, direct_collector
+):
+    from pydantic import BaseModel
+
+    class Plain(BaseModel):
+        code: str
+
+    class Values(StructuredModel):
+        values: list[Any] = ComparableField(comparator=ExactComparator())
+
+    a, b = {
+        "string": ("", "b"),
+        "zero": (0, 2),
+        "plain-model": (Plain(code="a"), Plain(code="b")),
+    }[kind]
+    gt = Values(values=[None, a, float("nan"), b])
+    pred = Values(values=[b, None, a, float("nan")])
+    result = gt.compare_with(
+        pred,
+        include_confusion_matrix=True,
+        document_non_matches=True,
+        document_field_comparisons=True,
+    )
+    assert result["confusion_matrix"]["fields"]["values"]["overall"]["tp"] == 2
+    recursive = gt.compare_recursive(pred)
+    non_matches = (
+        NonMatchCollector(gt).collect_enhanced_non_matches(recursive, pred)
+        if direct_collector
+        else result["non_matches"]
+    )
+    rows = (
+        FieldComparisonCollector(gt).collect_field_comparisons(recursive, pred)
+        if direct_collector
+        else result["field_comparisons"]
+    )
+    assert non_matches == []
+    assert [(row["expected_key"], row["actual_key"], row["match"]) for row in rows] == [
+        ("values[1]", "values[2]", True),
+        ("values[3]", "values[0]", True),
+    ]
+
+
 def test_engine_recovery_after_scoring_error_does_not_reuse_partial_report_state():
     class Failable(BaseComparator):
         def _compare(self, left, right):
@@ -489,5 +534,124 @@ def test_direct_collectors_share_nullable_list_dispatch(none_first):
     )
     rows = FieldComparisonCollector(gt).collect_field_comparisons(recursive, pred)
     assert rows == result["field_comparisons"]
-    assert len(rows) == 2
+    # Since #399, absent elements do not contribute a row.
+    assert len(rows) == 1
     assert all(row["match"] for row in rows)
+
+
+@pytest.mark.parametrize("direct_collector", [False, True])
+def test_accepted_inner_list_reason_describes_element_matches(direct_collector):
+    class Leaf(StructuredModel):
+        match_threshold = 0.3
+        first: str = ComparableField(comparator=ExactComparator())
+        second: str = ComparableField(comparator=ExactComparator())
+        third: str = ComparableField(comparator=ExactComparator())
+
+    class Group(StructuredModel):
+        match_threshold = 0.3
+        leaves: list[Leaf] = ComparableField()
+
+    class Root(StructuredModel):
+        groups: list[Group]
+
+    gt = Root(groups=[Group(leaves=[Leaf(first="a", second="b", third="c")])])
+    pred = Root(groups=[Group(leaves=[Leaf(first="a", second="x", third="y")])])
+    result = gt.compare_with(
+        pred,
+        include_confusion_matrix=True,
+        document_non_matches=True,
+        document_field_comparisons=True,
+    )
+    counts = result["confusion_matrix"]["fields"]["groups"]["fields"]["leaves"][
+        "overall"
+    ]
+    assert (counts["tp"], counts["fd"], counts["fa"], counts["fn"]) == (1, 0, 0, 0)
+    rows = (
+        FieldComparisonCollector(gt).collect_field_comparisons(
+            gt.compare_recursive(pred), pred
+        )
+        if direct_collector
+        else result["field_comparisons"]
+    )
+    (row,) = rows
+    assert row["expected_key"] == row["actual_key"] == "groups[0].leaves"
+    assert row["match"] is True
+    assert row["score"] == pytest.approx(1 / 3)
+    assert {entry["field_path"] for entry in result["non_matches"]} == {
+        "groups[0].leaves[0].second",
+        "groups[0].leaves[0].third",
+    }
+    assert row["reason"] == "all elements matched (score 0.333 < 0.5)"
+
+
+@pytest.mark.parametrize("absent", [None, float("nan")], ids=["none", "nan"])
+@pytest.mark.parametrize("nested", [False, True])
+def test_sparse_reordered_lists_reuse_the_correct_child_results(absent, nested):
+    class CountingExact(BaseComparator):
+        calls = 0
+
+        def _compare(self, left, right):
+            type(self).calls += 1
+            return float(left == right)
+
+    class Row(StructuredModel):
+        match_threshold = 0.4
+        code: str = ComparableField(comparator=CountingExact())
+        detail: str = ComparableField(comparator=CountingExact())
+
+    class Rows(StructuredModel):
+        match_threshold = 0.4
+        rows: list[Any]
+
+    class Root(StructuredModel):
+        groups: list[Any]
+
+    gt = Rows(
+        rows=[absent, Row(code="a", detail="aa"), absent, Row(code="b", detail="bb")]
+    )
+    pred = Rows(
+        rows=[Row(code="b", detail="bb"), absent, absent, Row(code="a", detail="xx")]
+    )
+    prefix = ""
+    if nested:
+        gt, pred = Root(groups=[absent, gt]), Root(groups=[pred, absent])
+        prefix = "groups[1]."
+    baseline = gt.compare_with(pred, include_confusion_matrix=True)
+    calls = CountingExact.calls
+    CountingExact.calls = 0
+    result = gt.compare_with(
+        pred,
+        include_confusion_matrix=True,
+        document_non_matches=True,
+        document_field_comparisons=True,
+    )
+    assert result["overall_score"] == baseline["overall_score"]
+    assert result["confusion_matrix"] == baseline["confusion_matrix"]
+    assert [entry["field_path"] for entry in result["non_matches"]] == [
+        prefix + "rows[1].detail"
+    ]
+    if nested:
+        (row,) = result["field_comparisons"]
+        assert (row["expected_key"], row["actual_key"], row["match"]) == (
+            "groups[1].rows",
+            "groups[0].rows",
+            True,
+        )
+    else:
+        assert [
+            (
+                row["expected_key"],
+                row["actual_key"],
+                row["expected_value"],
+                row["actual_value"],
+                row["match"],
+            )
+            for row in result["field_comparisons"]
+        ] == [
+            ("rows[1].code", "rows[3].code", "a", "a", True),
+            ("rows[1].detail", "rows[3].detail", "aa", "xx", False),
+            ("rows[3].code", "rows[0].code", "b", "b", True),
+            ("rows[3].detail", "rows[0].detail", "bb", "bb", True),
+        ]
+    assert CountingExact.calls == calls
+    assert "pair_results" not in json.dumps(result, default=str)
