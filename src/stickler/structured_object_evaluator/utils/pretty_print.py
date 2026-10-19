@@ -5,6 +5,7 @@ This module provides functions for displaying confusion matrix metrics
 in a more readable and visually appealing format.
 """
 
+import contextlib
 import os
 import re
 import sys
@@ -344,28 +345,25 @@ def print_confusion_matrix(
     # Direct output to file if specified
     if output_file:
         try:
-            with open(output_file, "w", encoding="utf-8") as f:
-                original_stdout = sys.stdout
-                sys.stdout = f
-                use_color = False  # Disable color for file output
-
-                # Print overall summary
-                _print_overall_summary(results, use_color)
-
-                # Print field-level metrics if requested
-                if show_details:
-                    _print_field_details(
-                        results, field_filter, sort_by, use_color, nested_detail
-                    )
-
-                    # Print matrix visualization
-                    _print_matrix_visualization(results, use_color)
-
-                # Restore stdout before context manager closes
-                sys.stdout = original_stdout
+            f = open(output_file, "w", encoding="utf-8")
         except Exception as e:
             print(f"Error opening output file: {e}")
             return
+
+        with f, contextlib.redirect_stdout(f):
+            use_color = False  # Disable color for file output
+
+            # Print overall summary
+            _print_overall_summary(results, use_color)
+
+            # Print field-level metrics if requested
+            if show_details:
+                _print_field_details(
+                    results, field_filter, sort_by, use_color, nested_detail
+                )
+
+                # Print matrix visualization
+                _print_matrix_visualization(results, use_color)
     else:
         # Print to stdout
         # Print overall summary
