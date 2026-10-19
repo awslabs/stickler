@@ -114,6 +114,11 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **The HTML report's field performance table now escapes field names.** It
+  wrote each name into the page as raw HTML, while the chart beside it escaped
+  the same name, so a name containing `<`, `>` or `&` was read by the browser as
+  markup ([#422](https://github.com/awslabs/stickler/issues/422))
+
 - **A `RootModel` is now refused when the evaluator is built, instead of failing
   once per document or scoring a wrong value `1.0`.** `eval_for()` accepted one
   and returned a spec. What happened next depended on the root type:
