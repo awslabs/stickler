@@ -207,6 +207,7 @@ ELSE:
 
 - **Equal length** -- Every element gets paired. Only TP and FD are possible.
 - **Unequal length** -- Extra GT items become FN; extra Pred items become FA.
+- **`None` elements** -- Left out before matching, so they are never paired or counted, and lengths are counted without them. See [`None` elements in a list](classification-logic.md#none-elements-in-a-list).
 
 ## See Also
 
