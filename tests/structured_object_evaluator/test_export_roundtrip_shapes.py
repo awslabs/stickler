@@ -1,4 +1,4 @@
-"""Neither exporter writes a structured field as a scalar (#349, parts B and C).
+"""Plain models, lists of lists and model unions are not exported as scalars (#349).
 
 `to_json_schema()` and `to_stickler_config()` fell back to `"string"` / `"str"`
 for any annotation missing from their type tables. A plain `BaseModel`, a list
@@ -9,13 +9,18 @@ A plain model is scored as one object, as a mapping is, so it now exports as a
 free-form object and comes back as `dict`, and a list of lists exports as nested
 arrays. `to_stickler_config()` has no type for a union with a model arm or for a
 StructuredModel inside a nested list, so both exporters refuse those, to keep
-one rule.
+one rule. `Optional` and `Annotated` are stripped first, so a nested model under
+`Field(...)` on an optional field exports as the model.
+
+The refusal reads the field, its list levels and the arms of a union, not other
+containers, so `Union[List[Card], str]` and `Tuple[Card, ...]` are not refused
+yet and still export as `"string"`.
 """
 
 from typing import Annotated, Dict, List, Optional, Union
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.structured_object_evaluator.models.configuration_helper import (
@@ -152,6 +157,59 @@ def test_value_types_are_not_exported():
         assert Reimported(counted={"n": "5"}).counted == {"n": "5"}
 
 
+def test_an_annotated_scalar_exports_as_its_own_type():
+    class Holder(StructuredModel):
+        count: Optional[Annotated[int, Field(description="d")]] = ComparableField()
+
+    assert Holder.to_json_schema()["properties"]["count"]["type"] == ["integer", "null"]
+    assert Holder.to_stickler_config()["fields"]["count"]["type"] == "int"
+
+
+# Pydantic keeps `Annotated` inside `Optional`, so `Annotated[Card, Field(...)] | None`
+# wraps the type the exporters dispatch on. Card's threshold is 0.9, so 0.9375 on
+# the first pan is a partial match.
+ANNOTATED_MODELS = {
+    "Optional[Annotated[Card, Field]]": (
+        Optional[Annotated[Card, Field(description="d")]],
+        {"pan": "pan-000000000001"},
+        {"pan": "pan-000000000002"},
+    ),
+    "List[Annotated[Card]]": (
+        List[Annotated[Card, "m"]],
+        [{"pan": "pan-000000000001"}, {"pan": "pan-000000000099"}],
+        [{"pan": "pan-000000000002"}, {"pan": "pan-000000000099"}],
+    ),
+    "Optional[Annotated[List[Card], Field]]": (
+        Optional[Annotated[List[Card], Field(description="d")]],
+        [{"pan": "pan-000000000001"}, {"pan": "pan-000000000099"}],
+        [{"pan": "pan-000000000002"}, {"pan": "pan-000000000099"}],
+    ),
+}
+
+
+@pytest.mark.parametrize("path", REIMPORT)
+@pytest.mark.parametrize("spelling", ANNOTATED_MODELS)
+def test_an_annotated_nested_model_round_trips(path, spelling):
+    annotation, gt, pred = ANNOTATED_MODELS[spelling]
+
+    class Holder(StructuredModel):
+        held: annotation = ComparableField()
+
+    Reimported = REIMPORT[path](Holder)
+    original = Holder(held=gt).compare_with(
+        Holder(held=pred), include_confusion_matrix=True
+    )
+    rebuilt = Reimported(held=gt).compare_with(
+        Reimported(held=pred), include_confusion_matrix=True
+    )
+    assert rebuilt["field_scores"] == pytest.approx(original["field_scores"])
+    assert rebuilt["overall_score"] == pytest.approx(original["overall_score"])
+    assert (
+        rebuilt["confusion_matrix"]["overall"]
+        == original["confusion_matrix"]["overall"]
+    )
+
+
 UNION_ANNOTATIONS = {
     "Union[Card, Bank]": Union[Card, Bank],
     "Optional[Union[Card, Bank]]": Optional[Union[Card, Bank]],
@@ -241,6 +299,10 @@ class TestFieldToProperty:
     def test_a_structured_model_is_still_refused(self):
         with pytest.raises(ValueError, match="StructuredModel"):
             self._convert(Card)
+
+    def test_a_single_list_of_models_is_not_called_a_nested_list(self):
+        with pytest.raises(ValueError, match="as a scalar"):
+            self._convert(Optional[Annotated[List[Card], Field(description="d")]])
 
     def test_a_plain_model_is_written_as_an_object(self):
         assert self._convert(Plain)["type"] == "object"

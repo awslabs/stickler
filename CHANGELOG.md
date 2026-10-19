@@ -27,6 +27,15 @@ Each release links to full notes on the
   (`List[List[Card]]`), so both methods now raise `ValueError` for these, to
   keep one rule, where they returned a schema that could not load the original
   data or (for the nested list, in the Stickler config) scored it differently.
+  `Optional` and `Annotated` are stripped before the type is chosen, so a
+  nested model or list of models declared as `Annotated[..., Field(...)] | None`
+  exports as the model, and an annotated scalar such as
+  `Annotated[int, Field(...)] | None` as its own type rather than a string. The
+  refusal reads the field, its list levels and the arms of a union, not other
+  containers: `Union[List[Card], str]`, `Union[Dict[str, Card], str]` and
+  `Tuple[Card, ...]` still export as `"string"`, `List[List[Dict[str, Card]]]`
+  exports without the model's schema, and a union leaf in a list of lists
+  (`List[List[Union[str, int]]]`) is still written as `"string"`.
   Parts B and C of [#349](https://github.com/awslabs/stickler/issues/349)
 
 - **Breaking:** a `StructuredModel` field typed `date`, `datetime`, `time`,
