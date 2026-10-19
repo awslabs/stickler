@@ -56,12 +56,14 @@ class _ClassGatedComparator(BaseComparator):
     The dict row zeroed three elements that score 1.0 on their own, in the same
     list, on `dev`, and here the moment the plain model is removed -- and it drew
     a "holds a mapping" warning on a field whose annotation says nothing about
-    mappings. The declared-comparator row is worse than wrong-looking: it
-    enforces the cross-class rule that #327 is explicitly holding open, so a user
-    got the #327 answer or the documented one according to whether an unrelated
-    plain model shared the list. Both rules now apply to exactly the population
-    the wrapper was installed for. That row now scores 1.0; the bare row scores
-    0.5, because the bare annotation still refuses the `Plain` pair on its own
+    mappings. The two `[Plain, NoteSM]` rows are worse than wrong-looking: both
+    enforce the cross-class rule that #327 is explicitly holding open (the bare
+    row's 0.0 is fd=2, the refused `Plain` pair plus `NoteSM`/`Note2SM`; with
+    `[Plain, NoteSM]` on both sides it scores 0.5), so a user got the #327 answer
+    or the documented one according to whether an unrelated plain model shared
+    the list. Both rules now apply to exactly the population the wrapper was
+    installed for. The declared row now scores 1.0; the bare row scores 0.5,
+    because the bare annotation still refuses the `Plain` pair on its own
     (`[Plain]` vs `[Plain]` scores 0.0), not because of the cross-class rule.
 
     A dict element does not reach the gate -- neither because

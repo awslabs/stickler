@@ -1713,11 +1713,12 @@ class TestTheElementGateJudgesAPairNotAList:
     The string row is the shape the refusal is FOR: one element out of four cannot
     be scored, and the field loses a quarter. The dict row zeroed three elements
     that score 1.0 on their own, in the same list, on `dev`, and here the moment
-    the plain model is removed. The declared row enforced the cross-class rule
-    that #327 is deliberately holding open, so the answer depended on whether an
-    unrelated plain model shared the list. The bare row's 0.5 is the refused
-    `Plain` pair (`[Plain]` vs `[Plain]` scores 0.0 bare), not that rule, which is
-    why `test_two_structured_model_classes_keep_the_declared_gap` uses `Declared`.
+    the plain model is removed. Both `[Plain, NoteSM]` rows enforced the
+    cross-class rule that #327 is deliberately holding open (bare: fd=2 under the
+    list-wide gate), so the answer depended on whether an unrelated plain model
+    shared the list. The bare row's 0.5 now is the refused `Plain` pair
+    (`[Plain]` vs `[Plain]` scores 0.0 bare), not that rule, which is why
+    `test_two_structured_model_classes_keep_the_declared_gap` uses `Declared`.
     """
 
     class Plain(BaseModel):
@@ -1802,6 +1803,23 @@ class TestTheElementGateJudgesAPairNotAList:
         ]["f"]
         assert alone == pytest.approx(1.0)
         assert beside_a_plain_model == pytest.approx(alone)
+
+    def test_the_bare_row_loses_the_refused_plain_pair(self):
+        """Pins the bare `[Plain, NoteSM]` row of the table above (#338).
+
+        The row drifted from behaviour once because nothing asserted it. The bare
+        0.5 is the refused `Plain` pair: `[Plain]` alone scores 0.0, and the
+        cross-class `NoteA`/`NoteB` pair still scores as a match (tp=1).
+        """
+        Bare = self._bare()
+        assert self._score(Bare, (self.Plain(sku="p"),)) == pytest.approx(0.0)
+        result = Bare(f=[self.Plain(sku="p"), self.NoteA(sku="a")]).compare_with(
+            Bare(f=[self.Plain(sku="p"), self.NoteB(sku="a")]),
+            include_confusion_matrix=True,
+        )
+        node = result["confusion_matrix"]["fields"]["f"]["overall"]
+        assert result["field_scores"]["f"] == pytest.approx(0.5)
+        assert (node["tp"], node["fd"]) == (1, 1)
 
     def test_a_plain_model_against_a_structured_model_is_still_a_mismatch(self):
         """The pair `and` would have waved through, which is why the rule reads `or`.

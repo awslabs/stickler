@@ -460,8 +460,11 @@ class BulkStructuredModelEvaluator:
         fields of a list of StructuredModel, so CM counts are recorded at
         every node compare_with emits. Score sums (for ``mean_score``) are
         recorded only where a node carries a finite
-        ``threshold_applied_score``. Leaves under a list parent carry CM
-        counts only, so their paths get no ``mean_score`` (see #249).
+        ``threshold_applied_score``. Leaves anywhere inside a list element,
+        and primitive lists inside a list element, carry CM counts only, so
+        their paths get no ``mean_score`` (see #249). An element pair below
+        the match threshold emits no element fields, so every path inside an
+        element counts matched pairs only.
         ``nested_fields`` is also walked, but compare_with no longer emits it.
         """
         for field_name, field_data in fields_dict.items():

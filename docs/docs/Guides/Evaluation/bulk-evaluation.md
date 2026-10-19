@@ -139,7 +139,7 @@ Because each document's `overall_score = Σ_f(score × weight) / Σ_f(weight)` a
 
 The denominator is the count of documents whose `overall_score` was a finite number: error docs (`update()` raised) and successful docs carrying a non-finite or missing `overall_score` are both excluded. With zero eligible documents the score is `0.0` — disambiguate via `document_count` when that matters.
 
-Per-field `mean_score` is reported at every nested path (leaf and object/list aggregate) where `threshold_applied_score` was observed in at least one document, averaging over just those documents. Paths with confusion-matrix counts but no score data (e.g., leaves inside `List[StructuredModel]`, which `compare_with()` emits without a score) are surfaced without a `mean_score` key rather than reported as `0.0`.
+Per-field `mean_score` is reported at every nested path (leaf and object/list aggregate) where `threshold_applied_score` was observed in at least one document, averaging over just those documents. Paths with confusion-matrix counts but no score data (leaves and primitive lists anywhere inside a `List[StructuredModel]` element, such as `items.name`, `items.addr.city` or `items.tags`) are surfaced without a `mean_score` key rather than reported as `0.0`. Every path inside an element, scored or not, counts only element pairs that met the match threshold: `compare_with()` emits no element fields for a pair below it.
 
 ---
 
