@@ -94,6 +94,31 @@ Each release links to full notes on the
   later on subscripting
   ([#350](https://github.com/awslabs/stickler/issues/350))
 
+- **Breaking:** a `None` element in a list is now absent. It is left out
+  before matching, so it is never paired, counted or scored, and a list of only
+  `None` is an empty list. A float `NaN` element counts as `None`; an empty
+  string is still a value. This holds for lists of models and of primitives,
+  in `compare_with()` and `compare()`, and reports keep each element's
+  original index. Counting a `None` as an element credited two of them as a
+  true positive, and counted a missed row as a false discovery, or as a true
+  positive in a list of models, so recall stayed at `1.0`. For lists holding a
+  `None`:
+  - `[A, None]` against `[A, None]` is 1 TP, not 2;
+  - `[A, B, C]` against `[A, None, C]` is 2 TP and 1 FN, where the missed `B`
+    was an FD in a list of strings and a TP in a list of models;
+  - `[A]` against `[None]` is an FN and `[None]` against `[A]` an FA, both
+    previously FD, except a model against `None`, which was a TP;
+  - `[None]` against `[None]` is a TN, not a TP.
+
+  It also removes the order dependence these lists had. What a list held was
+  read from its first element, so `[None, Model]` was treated as a list of
+  primitives: the class gate and field-by-field scoring were skipped, and a
+  `Cat` scored against a `Dog` got `0.961` with no warning
+  ([#386](https://github.com/awslabs/stickler/issues/386)). The element class's
+  `match_threshold` was likewise replaced by the parent's
+  ([#322](https://github.com/awslabs/stickler/issues/322)). See
+  [`None` elements in a list](https://awslabs.github.io/stickler/Advanced/classification-logic/#none-elements-in-a-list)
+
 ### Fixed
 
 - **A `RootModel` is now refused when the evaluator is built, instead of failing
@@ -141,6 +166,22 @@ Each release links to full notes on the
   each report, and a second `model_from_json` in the same process still warns.
   Keyed on the leaf name alone, the first model built in a process silenced every
   later one carrying the same typo.
+
+- **The pretty printers no longer report success over results that carry no
+  non-match records.** `print_non_matches` and `print_evaluation_results` printed
+  `✅ No non-matches found - all fields matched successfully!` for `EvalResult.raw`
+  or a `compare_with()` dict computed without `document_non_matches=True`,
+  including one with a wrong field, because that dict has no `non_matches` key
+  and the printers fell back to the always-empty `confusion_matrix["non_matches"]`
+  placeholder. They now say the records are missing and how to collect them. The
+  same applies to a bulk `ProcessEvaluation` built with
+  `document_non_matches=False`. `print_non_matches` on input that is not a result
+  at all now prints an error. An empty record list still prints a success
+  message, now `✅ No non-matches found.` without the `all_fields_matched`
+  wording removed in #287. An `evaluator_format=True` dict still prints that
+  success without records, because it always carries a `non_matches` list,
+  empty unless records were requested
+  ([#298](https://github.com/awslabs/stickler/issues/298))
 
 ## [1.0.0] - 2026-09-11
 

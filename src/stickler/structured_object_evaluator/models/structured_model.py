@@ -386,6 +386,7 @@ class StructuredModel(BaseModel):
 
     Example Usage:
     --------------
+    ```python
     >>> from stickler import StructuredModel
     >>> from stickler import ComparableField
     >>> from stickler import LevenshteinComparator
@@ -412,6 +413,7 @@ class StructuredModel(BaseModel):
     >>> result = gt.compare_with(pred, include_confusion_matrix=True)
     >>> print(f"TP: {result['overall']['tp']}, FD: {result['overall']['fd']}")
     >>> print(f"F1: {result['aggregate']['derived']['cm_f1']:.2f}")
+    ```
     """
 
     # Default match threshold - can be overridden in subclasses
