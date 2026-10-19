@@ -836,7 +836,7 @@ class TestTheDocsAndTheEngineCannotDrift:
             for tree in _TREES_WE_AUTHOR
             for pattern in ("**/*.py", "**/*.md")
             for path in repo_root.glob(f"{tree}/{pattern}")
-        ]
+        ] + [repo_root / "README.md"]
         for path in sorted(set(candidates)):
             if path == Path(__file__).resolve():
                 continue

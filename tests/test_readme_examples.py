@@ -1,4 +1,5 @@
-"""The numbers the docs publish are the numbers the code produces.
+"""The README's annotated example output and the Extension Reference defaults
+are the numbers the code produces.
 
 Both surfaces here were wrong for as long as they existed and nothing read them:
 the README's schema example annotated a 0.562 as ``~0.85``, and its Quick
@@ -16,10 +17,10 @@ import pytest
 from stickler import StructuredModel
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-README = (REPO_ROOT / "README.md").read_text()
+README = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
 EXTENSION_REFERENCE = (
     REPO_ROOT / "docs" / "docs" / "Guides" / "Evaluation" / "README.md"
-).read_text()
+).read_text(encoding="utf-8")
 
 
 def _section_block(text: str, heading: str, lang: str) -> str:
@@ -28,22 +29,31 @@ def _section_block(text: str, heading: str, lang: str) -> str:
     return match.group(1)
 
 
-def _run_readme_schema_example():
-    """Run "Using Your Schema" against the schema in the block above it.
+QUICK_START = "## Get Started in 30 Seconds"
+SCHEMA_EXAMPLE = "### Using Your Schema"
+README_EXAMPLES = [QUICK_START, SCHEMA_EXAMPLE]
 
-    Returns (schema, [(label, printed value, annotated value)]).
+
+def _run_readme_example(heading: str):
+    """Run the ```python block under ``heading``.
+
+    Returns (namespace, [(label, field, printed value, annotated value)]) for
+    every print line annotated ``# <number>``. ``field`` is the
+    ``field_scores[...]`` key the line prints, or None for the overall score.
     """
-    schema = json.loads(
-        _section_block(README, "### Complete Real-World Example", "json")
-    )
-    code = _section_block(README, "### Using Your Schema", "python")
-    load = "with open('invoice_schema.json') as f:\n    schema = json.load(f)"
-    assert load in code, "the example no longer loads its schema this way"
-    code = code.replace(load, "schema = SCHEMA")
+    code = _section_block(README, heading, "python")
+    namespace = {}
+    if heading == SCHEMA_EXAMPLE:
+        load = "with open('invoice_schema.json') as f:\n    schema = json.load(f)"
+        assert load in code, "the example no longer loads its schema this way"
+        code = code.replace(load, "schema = SCHEMA")
+        namespace["SCHEMA"] = json.loads(
+            _section_block(README, "### Complete Real-World Example", "json")
+        )
 
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
-        exec(code, {"SCHEMA": schema})
+        exec(code, namespace)
     prints = [line for line in code.splitlines() if line.startswith("print(")]
     outputs = out.getvalue().splitlines()
     assert len(prints) == len(outputs)
@@ -52,32 +62,39 @@ def _run_readme_schema_example():
     for source, output in zip(prints, outputs):
         claim = re.search(r"\)\s*#\s*~?([0-9.]+)", source)
         if claim:
+            field = re.search(r"\['field_scores'\]\['(\w+)'\]", source)
             label, value = output.rsplit(":", 1)
-            rows.append((label, float(value), float(claim.group(1))))
-    return schema, rows
+            rows.append(
+                (
+                    label,
+                    field and field.group(1),
+                    float(value),
+                    float(claim.group(1)),
+                )
+            )
+    return namespace, rows
 
 
-def test_readme_schema_example_prints_its_annotations():
-    _, rows = _run_readme_schema_example()
+@pytest.mark.parametrize("heading", README_EXAMPLES)
+def test_readme_example_prints_its_annotations(heading):
+    _, rows = _run_readme_example(heading)
     assert rows, "no annotated print lines found"
-    for label, measured, claimed in rows:
+    for label, _, measured, claimed in rows:
         assert measured == pytest.approx(claimed, abs=0.005), label
 
 
-def test_readme_schema_example_does_not_annotate_a_miss_as_a_pass():
-    """An annotation must not put a below-threshold score above its threshold."""
-    schema, rows = _run_readme_schema_example()
-    thresholds = {
-        name: prop["x-aws-stickler-threshold"]
-        for name, prop in schema["properties"].items()
-        if "x-aws-stickler-threshold" in prop
-    }
-    field_for_label = {"Invoice ID": "invoice_id", "Customer": "customer_name"}
-    for label, measured, claimed in rows:
-        field = field_for_label.get(label)
-        if field is None:
-            continue
-        threshold = thresholds[field]
+@pytest.mark.parametrize("heading", README_EXAMPLES)
+def test_readme_example_does_not_annotate_a_miss_as_a_pass(heading):
+    """An annotation within 0.005 of its score must still sit on the same side
+    of the threshold the model applies: the field's, or ``match_threshold``."""
+    namespace, rows = _run_readme_example(heading)
+    model = namespace["Invoice"]
+    for label, field, measured, claimed in rows:
+        threshold = (
+            model.match_threshold
+            if field is None
+            else model._get_comparison_info(field).threshold
+        )
         assert (measured >= threshold) == (claimed >= threshold), label
 
 
@@ -117,10 +134,19 @@ UNDECLARED_PROPERTIES = {
     },
     # A format that selects no comparator stays a plain scalar.
     "emailed": {"type": "string", "format": "email"},
+    # `enum` and `const` default to 1.0 whatever the type.
+    "int_enum": {"type": "integer", "enum": [1, 2]},
+    "num_const": {"type": "number", "const": 3},
+    "typeless_enum": {"enum": ["a", "b"]},
+    # The same keywords on array items.
+    "dated_items": {"type": "array", "items": {"type": "string", "format": "date"}},
+    "enumed_items": {"type": "array", "items": {"type": "integer", "enum": [1, 2]}},
+    "emailed_items": {"type": "array", "items": {"type": "string", "format": "email"}},
+    "mappings": {"type": "array", "items": {"type": "object"}},
 }
 FORMAT_ENUM_CONST = (
-    "string with `format` `date`/`date-time`/`uri`/`uuid`/`time`, "
-    "or with `enum` or `const`"
+    "`enum` or `const` on any type, or a string `format` of "
+    "`date`/`date-time`/`uri`/`uuid`/`time`, on the property or its array `items`"
 )
 UNDECLARED = StructuredModel.from_json_schema(
     {"type": "object", "properties": UNDECLARED_PROPERTIES}
@@ -145,10 +171,13 @@ def test_extension_reference_defaults_match_an_undeclared_schema():
 @pytest.mark.parametrize(
     "position, fields",
     [
-        ("scalar (`string`, `number`, ...)", ["scalar", "emailed"]),
+        ("plain scalar (`string`, `number`, ...)", ["scalar", "emailed"]),
         ("object with `properties` (a nested model)", ["nested"]),
-        ('free-form `{"type": "object"}` (a `Dict`)', ["mapping"]),
-        ("array of scalars", ["scalars"]),
+        (
+            'free-form `{"type": "object"}` (a `Dict`), or an array of them',
+            ["mapping", "mappings"],
+        ),
+        ("array of plain scalars", ["scalars", "emailed_items"]),
         ("array of models", ["models"]),
         (
             FORMAT_ENUM_CONST,
@@ -161,6 +190,11 @@ def test_extension_reference_defaults_match_an_undeclared_schema():
                 "enumed",
                 "constant",
                 "dated_levenshtein",
+                "int_enum",
+                "num_const",
+                "typeless_enum",
+                "dated_items",
+                "enumed_items",
             ],
         ),
     ],

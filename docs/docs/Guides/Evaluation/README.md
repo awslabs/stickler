@@ -200,15 +200,17 @@ on the position, because different positions fall back to different defaults:
 
 | Position | Default threshold | Where it comes from |
 |---|---|---|
-| scalar (`string`, `number`, ...) | `0.5` | `ComparableField`'s own default |
+| plain scalar (`string`, `number`, ...) | `0.5` | `ComparableField`'s own default |
 | object with `properties` (a nested model) | `0.7` | the class's `match_threshold` |
-| free-form `{"type": "object"}` (a `Dict`) | `1.0` | the mapping default |
-| array of scalars | `0.5` | `ComparableField`'s own default |
+| free-form `{"type": "object"}` (a `Dict`), or an array of them | `1.0` | the mapping default |
+| array of plain scalars | `0.5` | `ComparableField`'s own default |
 | array of models | `0.5`, and never read from the schema | the element class's `match_threshold` gates instead |
-| string with `format` `date`/`date-time`/`uri`/`uuid`/`time`, or with `enum` or `const` | `1.0` | the type that keyword parses to, even when a comparator is declared. Any other `format` (`email`, `hostname`, ...) is a plain scalar |
+| `enum` or `const` on any type, or a string `format` of `date`/`date-time`/`uri`/`uuid`/`time`, on the property or its array `items` | `1.0` | the type that keyword parses to, even when a comparator is declared |
 
-Declaring the key explicitly overrides the default in every position that reads
-it. `x-aws-stickler-clip-under-threshold` defaults to `true` in all of them.
+A scalar is plain when it has none of the keywords in the last row. Any other
+`format` (`email`, `hostname`, ...) leaves it plain. Declaring the key explicitly
+overrides the default in every position that reads it.
+`x-aws-stickler-clip-under-threshold` defaults to `true` in all of them.
 
 ### Example Schema
 
@@ -277,7 +279,7 @@ print(f"Overall Score: {result['overall_score']:.3f}")
 
     Note that `customer_name` scores 0.0: "Acme Corp" vs "ACME Corporation" produces a Levenshtein similarity below the 0.8 threshold, so `clip_under_threshold` zeros it out.
 
-For the complete reference on all extensions, default comparators by type, and a full production example, see the [JSON Schema Extensions](https://github.com/awslabs/stickler#json-schema-extensions-x-aws-stickler--complete-reference) section in the project README.
+Per-extension detail, default comparators by type, and a full production example are in the [JSON Schema Extensions](https://github.com/awslabs/stickler#json-schema-extensions-x-aws-stickler--complete-reference) section in the project README.
 
 ---
 
