@@ -76,19 +76,19 @@ class SectionGenerator:
         return html_string
     
     def generate_confusion_matrix(self) -> str:
-        html = '<div class="section"><h2>Confusion Matrix</h2>'
+        html_string = '<div class="section"><h2>Confusion Matrix</h2>'
         
         cm_data = DataExtractor.extract_confusion_matrix(self.results)
         
         if not cm_data:
-            html += "<p>No confusion matrix data available.</p></div>"
-            return html
+            html_string += "<p>No confusion matrix data available.</p></div>"
+            return html_string
         
         # Add color-coded confusion matrix heatmap
-        html += self.viz_engine.generate_confusion_matrix_heatmap(cm_data, {})
+        html_string += self.viz_engine.generate_confusion_matrix_heatmap(cm_data, {})
         
-        html += '</div>'
-        return html
+        html_string += '</div>'
+        return html_string
     
     def generate_non_matches(self, config: ReportConfig) -> str:
         """Generate non-matches section."""
