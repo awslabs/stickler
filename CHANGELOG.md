@@ -11,6 +11,33 @@ Each release links to full notes on the
 
 ### Changed
 
+- **Breaking:** `to_json_schema()` and `to_stickler_config()` no longer write a
+  plain pydantic `BaseModel`, a list of lists or a union of models as a string.
+  Both fell back to `"string"` / `"str"` for a type they had no entry for, so
+  the re-imported model could not load the data the original accepted. A plain
+  model field, or a list of them, now exports as a free-form object
+  (`{"type": "object"}`, `"dict"` in a Stickler config), since it is scored as
+  one object the way a mapping is, and re-imports as `dict` with the
+  comparator, threshold, weight and clip setting it declared; its own field
+  types are not exported. A list of lists, including `List[List[Dict]]`,
+  exports as nested arrays. A consumer reading the exported schema sees these
+  types change. `to_stickler_config()` has no type for a union with a model
+  arm, such as the `Union[Card, Bank]` that `from_json_schema()` builds from a
+  multi-arm `anyOf`, or for a `StructuredModel` inside a nested list
+  (`List[List[Card]]`), so both methods now raise `ValueError` for these, to
+  keep one rule, where they returned a schema that could not load the original
+  data or (for the nested list, in the Stickler config) scored it differently.
+  `Optional` and `Annotated` are stripped before the type is chosen, so a
+  nested model or list of models declared as `Annotated[..., Field(...)] | None`
+  exports as the model, and an annotated scalar such as
+  `Annotated[int, Field(...)] | None` as its own type rather than a string. The
+  refusal reads the field, its list levels and the arms of a union, not other
+  containers: `Union[List[Card], str]`, `Union[Dict[str, Card], str]` and
+  `Tuple[Card, ...]` still export as `"string"`, `List[List[Dict[str, Card]]]`
+  exports without the model's schema, and a union leaf in a list of lists
+  (`List[List[Union[str, int]]]`) is still written as `"string"`.
+  Parts B and C of [#349](https://github.com/awslabs/stickler/issues/349)
+
 - **Breaking:** a `StructuredModel` field typed `date`, `datetime`, `time`,
   `timedelta`, `Decimal`, `UUID` or `Enum` now reaches its comparator, and a
   declared comparator is always called. The dispatcher treated only `str`,
@@ -133,6 +160,22 @@ Each release links to full notes on the
   Keyed on the leaf name alone, the first model built in a process silenced every
   later one carrying the same typo.
 
+- **The pretty printers no longer report success over results that carry no
+  non-match records.** `print_non_matches` and `print_evaluation_results` printed
+  `✅ No non-matches found - all fields matched successfully!` for `EvalResult.raw`
+  or a `compare_with()` dict computed without `document_non_matches=True`,
+  including one with a wrong field, because that dict has no `non_matches` key
+  and the printers fell back to the always-empty `confusion_matrix["non_matches"]`
+  placeholder. They now say the records are missing and how to collect them. The
+  same applies to a bulk `ProcessEvaluation` built with
+  `document_non_matches=False`. `print_non_matches` on input that is not a result
+  at all now prints an error. An empty record list still prints a success
+  message, now `✅ No non-matches found.` without the `all_fields_matched`
+  wording removed in #287. An `evaluator_format=True` dict still prints that
+  success without records, because it always carries a `non_matches` list,
+  empty unless records were requested
+  ([#298](https://github.com/awslabs/stickler/issues/298))
+
 - **The HTML report no longer claims a document is clean when it holds no
   non-match records.** The Non-Matches Analysis section rendered `No non-matches
   found.` for a `compare_with()` dict computed without `document_non_matches=True`,
@@ -141,7 +184,10 @@ Each release links to full notes on the
   returned `[]` for both "no records collected" and "collected and empty", so the
   renderer could not tell them apart. It now returns `None` for the first, and the
   section says the records are missing and how to collect them. An empty record
-  list still renders the success message
+  list still renders the success message. Not yet covered: results from
+  `aggregate_from_comparisons()`, a bulk run in which every document raised
+  ([#425](https://github.com/awslabs/stickler/issues/425)), and an
+  `evaluator_format=True` dict ([#413](https://github.com/awslabs/stickler/issues/413))
   ([#411](https://github.com/awslabs/stickler/issues/411))
 
 ## [1.0.0] - 2026-09-11
