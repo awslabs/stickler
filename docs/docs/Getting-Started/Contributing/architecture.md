@@ -128,12 +128,18 @@ The dispatcher routes each field comparison through a 5-step decision tree:
 | 5. **Type-based dispatch** | Route by runtime types to specialized comparator | Terminal |
 
 ```python
-# See: comparison_dispatcher.py:65-225
+# See: comparison_dispatcher.py, dispatch_field_comparison
 # Step 5 type routing:
 #   (str|int|float, str|int|float) → FieldComparator
+#   (value, value), neither a list, dict or model → FieldComparator when
+#     the field declared its comparator; an inferred one also needs numbers
+#     incl. Decimal, or related date/time/timedelta/UUID/Enum values (#383).
+#     The rule is comparison_helper.scalar_pair_reaches_comparator, shared
+#     with compare_field_raw so compare() and compare_with() agree.
 #   (list, list) where list[0] is StructuredModel → StructuredListComparator
 #   (list, list) otherwise → PrimitiveListComparator
 #   (StructuredModel, StructuredModel) → FieldComparator
+#   (dict, dict) and (plain BaseModel, plain BaseModel) → FieldComparator
 #   Mismatched types → FD result (score=0.0)
 ```
 

@@ -777,6 +777,10 @@ class ConfigurationHelper:
                     threshold=threshold,
                     weight=weight,
                     clip_under_threshold=clip_under_threshold,
+                    # Read exactly as the substitution above reads it.
+                    comparator_explicit=getattr(
+                        json_func, "_comparator_explicit", True
+                    ),
                 )
 
         # FALLBACK: Legacy JSON schema approach for backward compatibility
@@ -818,6 +822,7 @@ class ConfigurationHelper:
                     threshold=threshold,
                     weight=weight,
                     clip_under_threshold=clip_under_threshold,
+                    comparator_explicit="comparator_type" in comparison_config,
                 )
 
         # Check if this is a structured field type that needs special handling

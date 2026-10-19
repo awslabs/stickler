@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
+from .null_helper import NullHelper
 
 
 class EvaluatorFormatHelper:
@@ -185,7 +186,7 @@ class EvaluatorFormatHelper:
         # Import here to avoid circular import
         from .structured_model import StructuredModel
 
-        if gt_list and isinstance(gt_list[0], StructuredModel):
+        if isinstance(NullHelper.first_present(gt_list, pred_list), StructuredModel):
             # Use HungarianHelper for Hungarian matching operations
             hungarian_helper = HungarianHelper()
 
@@ -200,13 +201,6 @@ class EvaluatorFormatHelper:
                 if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                     gt_item = gt_list[gt_idx]
                     pred_item = pred_list[pred_idx]
-
-                    # Nullable object elements (List[Optional[Model]]) may pair a
-                    # None against a model; compare_with would crash on None. The
-                    # pair's score is handled at the list level, so it carries no
-                    # per-item breakdown here.
-                    if gt_item is None or pred_item is None:
-                        continue
 
                     # Compare the items with evaluator format
                     item_comparison = gt_item.compare_with(

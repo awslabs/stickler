@@ -36,6 +36,9 @@ class FieldHelper:
         """
         if value is None or NullHelper.is_nan(value):
             return True
+        elif isinstance(value, list):
+            # A list of only None elements is empty (#386).
+            return NullHelper.is_effectively_null_for_lists(value)
         elif hasattr(value, "__len__") and not isinstance(
             value, (str, bytes, bytearray)
         ):
