@@ -723,3 +723,223 @@ class TestDefinitionsAreChecked:
                     },
                 ),
             )
+
+    def test_a_field_key_used_from_items_names_the_array_property(self):
+        """`items` does not read field keys, so beside the `$ref` is wrong there."""
+        with pytest.raises(ValueError) as exc:
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {
+                        "rows": {"type": "array", "items": {"$ref": "#/$defs/Inner"}}
+                    },
+                    "$defs": {
+                        "Inner": dict(self.INNER, **{"x-aws-stickler-weight": 3.0})
+                    },
+                }
+            )
+        assert "on the array property when the definition is its 'items'" in str(
+            exc.value
+        )
+
+    def test_the_array_property_reads_it(self):
+        """Where the error sends the author for `items`."""
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "rows": {
+                        "type": "array",
+                        "items": {"$ref": "#/$defs/Inner"},
+                        "x-aws-stickler-weight": 3.0,
+                    }
+                },
+                "$defs": {"Inner": self.INNER},
+            }
+        )
+        assert model._get_comparison_info("rows").weight == 3.0
+
+    @pytest.mark.parametrize(
+        "body",
+        (
+            {"type": "object", "additionalProperties": {"type": "string"}},
+            {"type": "object"},
+        ),
+        ids=("mapping", "bare-object"),
+    )
+    def test_a_model_key_on_a_definition_without_properties_raises(self, body):
+        """Such a body becomes a `dict` field and generates no class to configure."""
+        with pytest.raises(ValueError, match="not read on definition '\\$defs.Inner'"):
+            self._via("$defs", dict(body, **{"x-aws-stickler-match-threshold": 0.9}))
+
+
+_KEYED = dict(
+    TestDefinitionsAreChecked.INNER,
+    **{
+        "x-aws-stickler-model-name": "Renamed",
+        "x-aws-stickler-match-threshold": 0.93,
+    },
+)
+_PLAIN = {"type": "object", "properties": {"z": {"type": "string"}}}
+
+
+class TestModelKeysWhereNoClassIsBuiltFromThem:
+    """Model keys raise where they cannot reach the class they name.
+
+    An `allOf` arm is merged into one class at the default name and match
+    threshold, and a root `$ref` builds the root class from the root's own keys.
+    Model keys on such an arm, or on a definition reached that way, passed the
+    check and were dropped: a declared `0.93` built at `0.7`. See #340.
+    """
+
+    @staticmethod
+    def _import(schema):
+        return StructuredModel.from_json_schema(schema)
+
+    @pytest.mark.parametrize(
+        "schema, reached",
+        (
+            (
+                {
+                    "type": "object",
+                    "properties": {"a": {"allOf": [{"$ref": "#/$defs/Addr"}]}},
+                    "$defs": {"Addr": _KEYED},
+                },
+                "'allOf' at 'a'",
+            ),
+            (
+                {
+                    "type": "object",
+                    "properties": {
+                        "a": {
+                            "type": "array",
+                            "items": {"allOf": [{"$ref": "#/$defs/Addr"}]},
+                        }
+                    },
+                    "$defs": {"Addr": _KEYED},
+                },
+                "'allOf' at 'a[]'",
+            ),
+            (
+                {
+                    "type": "object",
+                    "properties": {"a": {"$ref": "#/$defs/Comp"}},
+                    "$defs": {
+                        "Addr": _KEYED,
+                        "Comp": {"allOf": [{"$ref": "#/$defs/Addr"}]},
+                    },
+                },
+                "'allOf' at '$defs.Comp'",
+            ),
+            (
+                {
+                    "type": "object",
+                    "properties": {"a": {"allOf": [{"$ref": "#/definitions/Alias"}]}},
+                    "definitions": {
+                        "Addr": _KEYED,
+                        "Alias": {"$ref": "#/definitions/Addr"},
+                    },
+                },
+                "'allOf' at 'a'",
+            ),
+            (
+                {"allOf": [{"$ref": "#/$defs/Addr"}], "$defs": {"Addr": _KEYED}},
+                "'allOf' at '(root)'",
+            ),
+            (
+                {"$ref": "#/$defs/Addr", "$defs": {"Addr": _KEYED}},
+                "the root '$ref'",
+            ),
+        ),
+        ids=("property", "items", "definition", "alias", "root-allOf", "root-ref"),
+    )
+    def test_a_definition_reached_there_raises(self, schema, reached):
+        with pytest.raises(ValueError) as exc:
+            self._import(schema)
+        message = str(exc.value)
+        assert "x-aws-stickler-match-threshold" in message
+        assert "Addr'" in message
+        assert f"reached through {reached}" in message
+
+    def test_an_inline_allof_arm_raises(self):
+        with pytest.raises(ValueError, match=r"object 'a\.allOf\[0\]'"):
+            self._import({"type": "object", "properties": {"a": {"allOf": [_KEYED]}}})
+
+    def test_the_root_reads_keys_beside_its_ref(self):
+        """Where the root `$ref` error sends the author."""
+        model = self._import(
+            {
+                "$ref": "#/$defs/Addr",
+                "x-aws-stickler-model-name": "Root",
+                "x-aws-stickler-match-threshold": 0.93,
+                "$defs": {"Addr": _PLAIN},
+            }
+        )
+        assert (model.__name__, model.match_threshold) == ("Root", 0.93)
+
+    @pytest.mark.parametrize(
+        "prop",
+        (
+            {"$ref": "#/$defs/Addr"},
+            {"type": "array", "items": {"$ref": "#/$defs/Addr"}},
+            {"anyOf": [{"$ref": "#/$defs/Addr"}, {"type": "null"}]},
+            {"anyOf": [{"$ref": "#/$defs/Addr"}, {"$ref": "#/$defs/Plain"}]},
+        ),
+        ids=("property", "items", "nullable", "union"),
+    )
+    def test_the_positions_that_build_it_still_read_them(self, prop):
+        model = self._import(
+            {
+                "type": "object",
+                "properties": {"a": prop},
+                "$defs": {"Addr": _KEYED, "Plain": _PLAIN},
+            }
+        )
+
+        def classes(annotation):
+            yield annotation
+            for arg in typing.get_args(annotation):
+                yield from classes(arg)
+
+        built = {
+            (c.__name__, c.match_threshold)
+            for c in classes(model.model_fields["a"].annotation)
+            if isinstance(c, type) and issubclass(c, StructuredModel)
+        }
+        assert ("Renamed", 0.93) in built
+
+    def test_an_unused_definition_is_left_alone(self):
+        self._import(
+            {
+                "type": "object",
+                "properties": {"a": {"type": "string"}},
+                "$defs": {"Addr": _KEYED},
+            }
+        )
+
+
+class TestTheRootMustBeOneObject:
+    """A union root crashed with `AttributeError: model_fields`."""
+
+    @pytest.mark.parametrize(
+        "root",
+        (
+            {"type": ["object", "null"]},
+            {"type": ["null", "object"]},
+            {"anyOf": [_PLAIN, {"type": "null"}]},
+            {"oneOf": [_PLAIN, TestDefinitionsAreChecked.INNER]},
+        ),
+        ids=("object-null", "null-object", "anyOf", "oneOf"),
+    )
+    def test_a_union_root_raises_a_value_error(self, root):
+        schema = dict(root)
+        if "type" in schema:
+            schema["properties"] = {"c": {"type": "string"}}
+        with pytest.raises(ValueError, match="root of a JSON Schema must be a single"):
+            StructuredModel.from_json_schema(schema)
+
+    def test_a_single_element_list_still_imports(self):
+        model = StructuredModel.from_json_schema(
+            {"type": ["object"], "properties": {"c": {"type": "string"}}}
+        )
+        assert "c" in model.model_fields
