@@ -37,11 +37,13 @@ def defer_pair_warnings() -> Iterator[None]:
 
     The previous value is restored on exit, including when the body raises.
     """
-    token = _DEFER_PAIR_WARNINGS.set(True)
+    token = None
     try:
+        token = _DEFER_PAIR_WARNINGS.set(True)
         yield
     finally:
-        _DEFER_PAIR_WARNINGS.reset(token)
+        if token is not None:
+            _DEFER_PAIR_WARNINGS.reset(token)
 
 
 class HungarianHelper:
