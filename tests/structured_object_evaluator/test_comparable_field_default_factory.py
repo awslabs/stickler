@@ -10,9 +10,10 @@ See: https://github.com/awslabs/stickler/issues/306
 
 import inspect
 import json
-from typing import Dict, List, Set
+from typing import Annotated, Dict, List, Optional, Set
 
 import pytest
+from pydantic import Field
 
 from stickler.comparators.exact import ExactComparator
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
@@ -64,6 +65,19 @@ def test_supplying_explicit_none_default_and_factory_raises():
     """
     with pytest.raises(TypeError, match="default_factory"):
         ComparableField(default=None, default_factory=list)
+
+
+def test_an_ellipsis_default_beside_a_factory_is_ignored_as_in_pydantic():
+    """Pydantic reads `default=...` as "no default", so it does not collide with
+    a factory: the field is optional and takes the factory's value. Mirrored,
+    not refused, so a ComparableField behaves as the Field it wraps."""
+    assert not Field(default=..., default_factory=list).is_required()
+
+    class EllipsisModel(StructuredModel):
+        tags: List[str] = ComparableField(default=..., default_factory=list)
+
+    assert not EllipsisModel.model_fields["tags"].is_required()
+    assert EllipsisModel().tags == []
 
 
 def test_omitted_default_is_still_none():
@@ -304,3 +318,27 @@ def test_a_required_list_of_models_stays_required_through_stickler_config():
     assert config["fields"]["subs"]["required"] is True
     assert StructuredModel.model_from_json(config).model_fields["subs"].is_required()
     assert ParentModel.to_stickler_config()["fields"]["subs"]["required"] is False
+
+
+class AnnotatedListParent(StructuredModel):
+    """Pydantic keeps `Annotated` inside a union, so these reach the exporters
+    as `Optional[Annotated[List[...], ...]]`, which read as a scalar."""
+
+    name: str = ComparableField(comparator=ExactComparator())
+    tags: Optional[Annotated[List[str], "m"]] = ComparableField(default_factory=list)
+    subs: Optional[Annotated[List[Sub], "m"]] = ComparableField(default_factory=list)
+
+
+@pytest.mark.parametrize("field", ["tags", "subs"])
+def test_an_annotated_optional_list_factory_round_trips(field):
+    """Both exporters wrote no default, so both rebuilt models gave None."""
+    schema = AnnotatedListParent.to_json_schema()
+    config = AnnotatedListParent.to_stickler_config()
+    assert schema["properties"][field]["default"] == []
+    assert config["fields"][field]["default"] == []
+
+    for rebuilt in (
+        StructuredModel.from_json_schema(json.loads(json.dumps(schema))),
+        StructuredModel.model_from_json(json.loads(json.dumps(config))),
+    ):
+        assert getattr(rebuilt(name="a"), field) == []

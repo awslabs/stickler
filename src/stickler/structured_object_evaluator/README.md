@@ -315,7 +315,9 @@ ComparableField(
 ```
 
 `default_factory` is honored, for a mutable default such as `default_factory=list`. Combining
-it with `default` raises, as in Pydantic. `ComparableField` passes any other keyword through to
+it with `default` raises `TypeError`, as in Pydantic, for any value including `None`. The one
+exception is `default=...`, which Pydantic ignores beside a factory, so the field is optional
+(`is_required()` is False), not required. `ComparableField` passes any other keyword through to
 Pydantic's `Field`, so a name it does not recognize is accepted without error and has no effect
 on comparison.
 

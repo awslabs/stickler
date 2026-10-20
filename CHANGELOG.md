@@ -38,6 +38,18 @@ Each release links to full notes on the
   (`List[List[Union[str, int]]]`) is still written as `"string"`.
   Parts B and C of [#349](https://github.com/awslabs/stickler/issues/349)
 
+- **Breaking:** a mapping field exports as a mapping. `to_json_schema()` wrote
+  a `Dict[...]` field as `"type": "string"` and `to_stickler_config()` as
+  `"type": "str"`, so the rebuilt model rejected every mapping, including the
+  `{}` its own `default_factory=dict` exported. They now write
+  `"type": "object"`, with `additionalProperties` for a primitive value type,
+  and `"Dict[str, str]"`, or `"dict"` when a key or value type has no config
+  name. A consumer reading the exported schema sees this type change. Through
+  JSON Schema the field rebuilds as `dict`, without the value type.
+  `List[Dict[...]]` items are not covered and still export as `"string"` (see
+  [#333](https://github.com/awslabs/stickler/issues/333))
+  ([#306](https://github.com/awslabs/stickler/issues/306))
+
 - **Breaking:** a `StructuredModel` field typed `date`, `datetime`, `time`,
   `timedelta`, `Decimal`, `UUID` or `Enum` now reaches its comparator, and a
   declared comparator is always called. The dispatcher treated only `str`,
@@ -194,7 +206,8 @@ Each release links to full notes on the
   `default` to pydantic's `Field`, so the two collided and every collection field
   raised `TypeError: cannot specify both default and default_factory` -- the case
   pydantic's own documentation tells users to reach for. Supplying both a `default`
-  and a `default_factory` still raises, as it does in plain pydantic
+  and a `default_factory` still raises, as it does in plain pydantic, except
+  `default=...`, which pydantic ignores beside a factory, so the field is optional
   ([#306](https://github.com/awslabs/stickler/issues/306))
 
   Both exporters were taught about factories at the same time, since nothing could
@@ -210,17 +223,6 @@ Each release links to full notes on the
   default, from a factory or written literally, is emitted as a list, because JSON
   has no set type. `to_stickler_config()` also writes `required` on a
   `List[StructuredModel]` field now; without it a required list rebuilt as optional.
-
-- **A mapping field exports as a mapping.** `to_json_schema()` wrote a `Dict[...]`
-  field as `"type": "string"` and `to_stickler_config()` as `"type": "str"`, so the
-  rebuilt model rejected every mapping, including the `{}` its own
-  `default_factory=dict` exported. They now write `"type": "object"`, with
-  `additionalProperties` for a primitive value type, and `"Dict[str, str]"`, or
-  `"dict"` when a key or value type has no config name. Through JSON Schema the
-  field rebuilds as `dict`, without the value type. `List[Dict[...]]` items are not
-  covered and still export as `"string"` (see
-  [#333](https://github.com/awslabs/stickler/issues/333))
-  ([#306](https://github.com/awslabs/stickler/issues/306))
 
 ## [1.0.0] - 2026-09-11
 

@@ -90,9 +90,12 @@ def _exports_as_container(annotation: Any) -> bool:
     Those are the only exported types a factory's ``[]`` or ``{}`` fits.
     Anything else exports as a scalar (``Set[str]`` included, as ``"str"``),
     and a collection default written into a scalar field rebuilt a model
-    that rejected every value except its own default.
+    that rejected every value except its own default. ``Annotated`` is
+    stripped too: pydantic keeps it inside a union, so
+    ``Optional[Annotated[List[str], ...]]`` read as a scalar and exported no
+    default.
     """
-    inner, _ = unwrap_optional(annotation)
+    inner = ConfigurationHelper.strip_annotation_wrappers(annotation)
     return get_origin(inner) is list or ConfigurationHelper.is_mapping_annotation(inner)
 
 

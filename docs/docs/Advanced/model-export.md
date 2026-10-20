@@ -24,6 +24,13 @@ with a model arm (`Union[Card, Bank]`, `Union[Plain, str]`) or for a `Structured
 nested list (`List[List[Card]]`), so both methods raise for these, to keep one rule
 ([#349](https://github.com/awslabs/stickler/issues/349)).
 
+A `Dict` field exports as `{"type": "object"}`, with `additionalProperties` for a primitive value
+type, and as `"Dict[str, int]"` in a Stickler config (`"dict"` when a key or value type has no config
+name). Through JSON Schema it re-imports as `dict`, so the value type is not enforced. A
+`default_factory` of `list`, `dict` or `set` on a list or mapping field exports as the value it
+produces (`[]`, `{}`, a set as a list) and re-imports as that default. Any other factory, or one on a
+field exported as a scalar such as `Set[str]`, exports no default and re-imports as `None`.
+
 Both round-trip methods are also reachable from a plain Pydantic `BaseModel` that was never written
 as a `StructuredModel`, by converting first:
 
