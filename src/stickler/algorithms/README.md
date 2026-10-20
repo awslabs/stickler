@@ -93,6 +93,11 @@ Because neither caller reads the counts, a change to how `calculate_metrics`
 classifies cannot move an evaluator score. It is a public API in its own right
 though, so a change there is still breaking for a direct caller.
 
+**`filling_cost_matrix()`** is true only while `HungarianHelper` matches a list
+of `StructuredModel` rows. Its caller scores the kept pairs again, so the class
+gate stays silent for the matrix cells and warns on the re-score (#336). A bare
+`HungarianMatcher` never sets it, because nothing re-scores its pairs.
+
 ## Design notes
 
 **One derivation, one return.** The method used to return from five places, one

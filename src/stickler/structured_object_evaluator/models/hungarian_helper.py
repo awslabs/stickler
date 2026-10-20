@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, List
 
-from stickler.algorithms.hungarian import HungarianMatcher
+from stickler.algorithms.hungarian import _FILLING_COST_MATRIX, HungarianMatcher
 from stickler.comparators.structured import StructuredModelComparator
 
 from .null_helper import NullHelper
@@ -52,10 +52,17 @@ class HungarianHelper:
                 "matched_pred_indices": set(),
             }
 
-        # Single Hungarian algorithm call - this is the only expensive operation
-        metrics = self.hungarian.calculate_metrics(
-            [gt_list[i] for i in gt_present], [pred_list[j] for j in pred_present]
-        )
+        # Single Hungarian algorithm call - this is the only expensive operation.
+        # Most of the cells it scores are discarded, and the kept pairs are
+        # scored again by the caller, so diagnostics wait for those; see
+        # `filling_cost_matrix` (#336).
+        token = _FILLING_COST_MATRIX.set(True)
+        try:
+            metrics = self.hungarian.calculate_metrics(
+                [gt_list[i] for i in gt_present], [pred_list[j] for j in pred_present]
+            )
+        finally:
+            _FILLING_COST_MATRIX.reset(token)
         matched_pairs = [
             (gt_present[i], pred_present[j], score)
             for i, j, score in metrics["matched_pairs"]

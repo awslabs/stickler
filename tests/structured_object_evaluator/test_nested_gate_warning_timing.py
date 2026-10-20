@@ -9,15 +9,19 @@ and was fixed in #319; see `TestTheGateDoesNotWarnAboutDiscardedPairs`.
 """
 
 import warnings
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 import pytest
 from pydantic import BaseModel
 
 from stickler.algorithms.hungarian import HungarianMatcher
+from stickler.comparators import StructuredModelComparator
 from stickler.comparators.anls import ANLSStarComparator
 from stickler.structured_object_evaluator.models.comparable_field import (
     ComparableField,
+)
+from stickler.structured_object_evaluator.models.hungarian_helper import (
+    HungarianHelper,
 )
 from stickler.structured_object_evaluator.models.structured_model import (
     StructuredModel,
@@ -50,8 +54,25 @@ class Deep(StructuredModel):
     rows: Optional[List[Row]] = None
 
 
+class Loose(StructuredModel):
+    rows: Any = ComparableField(comparator=StructuredModelComparator())
+
+
+class Tagged(StructuredModel):
+    meta: Any = None
+    key: Optional[str] = None
+
+
+class TaggedDoc(StructuredModel):
+    rows: Optional[List[Tagged]] = None
+
+
 def _mismatch_warnings(caught):
     return [w for w in caught if "Different classes are scored" in str(w.message)]
+
+
+def _mapping_warnings(caught):
+    return [w for w in caught if "holds a mapping" in str(w.message)]
 
 
 def _rows():
@@ -136,7 +157,56 @@ class TestASelectedMismatchStillWarns:
         assert _mismatch_warnings(caught)
 
 
+class TestAPairNothingScoresAgainStillWarns:
+    """The flag is set only where the kept pairs are scored again.
+
+    A bare matcher and an `Any` field's list return the cell scores as the
+    result, so silencing the matrix there would lose the only warning.
+    """
+
+    def test_a_bare_matcher_warns_for_the_pair_it_keeps(self):
+        gt, pred = _swapped_class()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            metrics = HungarianMatcher(StructuredModelComparator()).calculate_metrics(
+                gt.rows, pred.rows
+            )
+        assert [(i, j) for i, j, _ in metrics["matched_pairs"]] == [(0, 0), (1, 1)]
+        assert metrics["matched_pairs"][0][2] == pytest.approx(0.0)
+        assert len(_mismatch_warnings(caught)) == 1
+
+    def test_an_any_field_with_a_structured_comparator_warns(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = Loose(
+                rows=["s", Holder(pet=Cat(name="a")), Holder(pet=Cat(name="b"))]
+            ).compare_with(
+                Loose(rows=["s", Holder(pet=Cat(name="a")), Holder(pet=Dog(name="b"))])
+            )
+        assert result["field_scores"]["rows"] == pytest.approx(2 / 3)
+        assert len(_mismatch_warnings(caught)) == 1
+
+    def test_a_mapping_the_comparator_cannot_score_warns_once(self):
+        """The `can_score_object` half of the gate, through the same matrix."""
+
+        def doc():
+            return TaggedDoc(
+                rows=[Tagged(meta={"a": 1}, key="x"), Tagged(meta={"b": 2}, key="y")]
+            )
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            doc().compare_with(doc())
+        assert len(_mapping_warnings(caught)) == 1
+
+
 class TestTheMatrixFlagIsScoped:
+    @staticmethod
+    def _helper(scorer):
+        helper = HungarianHelper()
+        helper.hungarian = HungarianMatcher(scorer)
+        return helper
+
     def test_it_is_set_only_while_cells_are_scored(self):
         from stickler.algorithms.hungarian import filling_cost_matrix
 
@@ -147,9 +217,21 @@ class TestTheMatrixFlagIsScoped:
             return 1.0 if a == b else 0.0
 
         assert not filling_cost_matrix()
-        HungarianMatcher(scorer).match(["a", "b"], ["a", "b"])
+        self._helper(scorer).get_complete_matching_info(["a", "b"], ["a", "b"])
         assert seen and all(seen)
         assert not filling_cost_matrix()
+
+    def test_a_bare_matcher_does_not_set_it(self):
+        from stickler.algorithms.hungarian import filling_cost_matrix
+
+        seen = []
+
+        def scorer(a, b):
+            seen.append(filling_cost_matrix())
+            return 1.0 if a == b else 0.0
+
+        HungarianMatcher(scorer).match(["a", "b"], ["a", "b"])
+        assert seen and not any(seen)
 
     def test_it_is_cleared_when_a_cell_raises(self):
         from stickler.algorithms.hungarian import filling_cost_matrix
@@ -158,5 +240,5 @@ class TestTheMatrixFlagIsScoped:
             raise ValueError("boom")
 
         with pytest.raises(ValueError):
-            HungarianMatcher(scorer).match(["a", "b"], ["a", "b"])
+            self._helper(scorer).get_complete_matching_info(["a", "b"], ["a", "b"])
         assert not filling_cost_matrix()
