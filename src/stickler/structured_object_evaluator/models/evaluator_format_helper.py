@@ -30,10 +30,10 @@ class EvaluatorFormatHelper:
             other: The other model being compared
             recall_with_fd: Whether to include FD in recall denominator
             recursive_result: The ``compare_recursive`` result ``result`` was
-                built from. Its confusion counts give ``overall`` and each list
-                field's ``overall`` their precision and recall. Without it they
-                fall back to a conversion of the score, which cannot tell a
-                missed value from a spurious one.
+                built from. Its confusion counts give ``overall`` and each
+                field their precision and recall. Without it they fall back to
+                a conversion of the score, which cannot tell a missed value
+                from a spurious one.
 
         Returns:
             Dictionary in evaluator format with overall, fields,
@@ -45,83 +45,46 @@ class EvaluatorFormatHelper:
         confusion_matrix = result.get("confusion_matrix", {})
         counts_by_field = (recursive_result or {}).get("fields", {})
 
-        # If we have confusion matrix data, use its derived metrics for overall
-        if (
-            confusion_matrix
-            and "overall" in confusion_matrix
-            and "derived" in confusion_matrix["overall"]
-        ):
-            # Use the derived metrics from confusion matrix for overall
-            cm_derived = confusion_matrix["overall"]["derived"]
-            overall_metrics = {
-                "precision": cm_derived["cm_precision"],
-                "recall": cm_derived["cm_recall"],
-                "f1": cm_derived["cm_f1"],
-                "accuracy": cm_derived["cm_accuracy"],
-                "anls_score": overall_score,
-            }
-        elif EvaluatorFormatHelper._has_decisions(
-            (recursive_result or {}).get("overall")
-        ):
-            # The same counts, read before the confusion matrix is built, so
-            # precision and recall do not depend on include_confusion_matrix.
+        if recursive_result is not None:
+            # The counts the confusion matrix is built from, so overall does
+            # not depend on include_confusion_matrix. With no TP, FP or FN
+            # (all true negatives) precision, recall and f1 read 0.0, as in
+            # the confusion matrix's ``derived`` block.
             overall_metrics = EvaluatorFormatHelper._metrics_from_counts(
                 recursive_result["overall"], overall_score, recall_with_fd
             )
         else:
-            # Fallback to binary conversion if no confusion matrix
-            metrics_helper = MetricsHelper()
-            overall_metrics = metrics_helper.convert_score_to_binary_metrics(
+            overall_metrics = MetricsHelper().convert_score_to_binary_metrics(
                 overall_score
             )
 
-        # Calculate field metrics with proper nested structure for list fields
         field_metrics = {}
+        for field_name, score in field_scores.items():
+            # Count-based wherever the field has a decision. A score
+            # conversion read a missed list element as precision 0.5, recall
+            # 1.0, the wrong way round, and an unclipped FD scalar the same.
+            field_counts = (counts_by_field.get(field_name) or {}).get("overall")
+            if EvaluatorFormatHelper._has_decisions(field_counts):
+                metrics = EvaluatorFormatHelper._metrics_from_counts(
+                    field_counts, score, recall_with_fd
+                )
+            else:
+                metrics = MetricsHelper().convert_score_to_binary_metrics(score)
 
-        # Determine which fields are list fields by checking the actual field types
-        list_fields = set()
-        for field_name in field_scores.keys():
             field_value = getattr(structured_model_instance, field_name)
             if isinstance(field_value, list):
-                list_fields.add(field_name)
-
-        for field_name, score in field_scores.items():
-            if field_name in list_fields:
-                # This is a list field - create nested structure expected by tests
-                list_counts = counts_by_field.get(field_name, {}).get("overall")
-                if EvaluatorFormatHelper._has_decisions(list_counts):
-                    # Count-based, from the list's own elements. A score
-                    # conversion read [A, B] vs [A] (one TP, one FN) as
-                    # precision 0.5 and recall 1.0, the wrong way round.
-                    overall_metrics_for_list = (
-                        EvaluatorFormatHelper._metrics_from_counts(
-                            list_counts, score, recall_with_fd
-                        )
-                    )
-                else:
-                    metrics_helper = MetricsHelper()
-                    overall_metrics_for_list = (
-                        metrics_helper.convert_score_to_binary_metrics(score)
-                    )
-
-                # Get individual item metrics by comparing list items
-                items_metrics = EvaluatorFormatHelper.calculate_list_item_metrics(
-                    field_name,
-                    getattr(structured_model_instance, field_name),
-                    getattr(other, field_name, []),
-                    recall_with_fd,
-                )
-
+                # List fields nest their overall beside per-item metrics.
                 field_metrics[field_name] = {
-                    "overall": overall_metrics_for_list,
-                    "items": items_metrics,
+                    "overall": metrics,
+                    "items": EvaluatorFormatHelper.calculate_list_item_metrics(
+                        field_name,
+                        field_value,
+                        getattr(other, field_name, []),
+                        recall_with_fd,
+                    ),
                 }
             else:
-                # Regular field
-                metrics_helper = MetricsHelper()
-                field_metrics[field_name] = (
-                    metrics_helper.convert_score_to_binary_metrics(score)
-                )
+                field_metrics[field_name] = metrics
 
         # Flatten confusion matrix fields for evaluator compatibility
         # The evaluator expects direct access like cm["fields"]["name"]["tp"]
@@ -146,9 +109,9 @@ class EvaluatorFormatHelper:
 
     @staticmethod
     def _has_decisions(counts: Any) -> bool:
-        """Whether a node has a TP, FP or FN to compute precision and recall from.
+        """Whether a field has a TP, FP or FN to compute precision and recall from.
 
-        A node that is only true negatives (both sides empty) has neither, and
+        A field that is only true negatives (both sides empty) has neither, and
         keeps the score conversion it always had rather than reading 0.0.
         """
         return isinstance(counts, dict) and any(

@@ -131,3 +131,29 @@ def test_structured_list_raw_score_matches_compare():
     assert node["raw_similarity_score"] == pytest.approx(0.75)
     assert node["threshold_applied_score"] == pytest.approx(0.75)
     assert result["field_scores"]["items"] == pytest.approx(0.75)
+
+
+def test_explain_list_verdict_does_not_read_raw_as_one_score():
+    """A list's raw is a coverage-scaled mean, so the verdict does not compare
+    it to the per-element threshold: 'banxxx' scored 0.5, not the 0.25 shown."""
+    from pydantic import BaseModel
+
+    import stickler
+
+    class Doc(BaseModel):
+        name: str
+        tags: List[str]
+
+    explained = stickler.evaluate(
+        Doc(name="banana", tags=["banana", "cherry"]),
+        Doc(name="banxxx", tags=["banxxx"]),
+    ).explain()
+
+    assert explained["tags"]["raw_similarity"] == pytest.approx(0.25)
+    assert explained["tags"]["verdict"] == (
+        "each paired element < threshold 0.7 -> clipped to 0.0 "
+        "(raw 0.25 is their coverage-scaled mean)"
+    )
+    assert explained["name"]["verdict"] == (
+        "raw 0.50 < threshold 0.85 -> clipped to 0.0"
+    )

@@ -112,6 +112,16 @@ Each release links to full notes on the
   ([#322](https://github.com/awslabs/stickler/issues/322)). See
   [`None` elements in a list](https://awslabs.github.io/stickler/Advanced/classification-logic/#none-elements-in-a-list)
 
+- **Breaking:** `evaluator_format=True` output carries `non_matches` only
+  with `document_non_matches=True`, as the default `compare_with()` dict does,
+  so `result["non_matches"]` without it now raises `KeyError`. It always wrote
+  `"non_matches": []`, so `print_non_matches` and the HTML report both said
+  `No non-matches found.` over a document with a wrong field, despite the #298
+  and #411 fixes. Both now say the records are missing. To read records, pass
+  `document_non_matches=True`; to tell "not collected" from "none found", test
+  `"non_matches" in result`. Scores and counts are unchanged
+  ([#413](https://github.com/awslabs/stickler/issues/413))
+
 ### Fixed
 
 - **A `RootModel` is now refused when the evaluator is built, instead of failing
@@ -196,33 +206,29 @@ Each release links to full notes on the
   reported `0.5` and now reports `0.75`, which is what `compare()` returns. It
   differs only where an element was clipped, so `List[StructuredModel]` is in
   practice unchanged. Report-only: `similarity_score`, `threshold_applied_score`,
-  `field_scores`, `overall_score` and every confusion count are unchanged
+  `field_scores`, `overall_score` and every confusion count are unchanged.
+  `EvalResult.explain()` reads it, so a list field's `raw_similarity` moves the
+  same way, and a list whose paired elements were all clipped now gets a
+  `verdict`, worded for a coverage-scaled mean
   ([#330](https://github.com/awslabs/stickler/issues/330))
 
 - **`evaluator_format=True` precision and recall no longer swap when a value is
   missed.** Without `include_confusion_matrix=True`, `overall` was a conversion
   of the score that charged every lost point to precision once the score reached
-  0.5, and each list field's `overall` always was. One TP and one FN, such as
+  0.5, and every field's metrics always were. One TP and one FN, such as
   `[A, B]` vs `[A]`, reported precision `0.5` and recall `1.0`; they now report
   `1.0` and `0.5`, as `TP / (TP + FP)` and `TP / (TP + FN)` define them and as
-  the same call already reported with the confusion matrix included. Both now
-  read the node's confusion counts, honour `recall_with_fd`, and equal that
-  node's `derived` block. A node with no TP, FP or FN (both sides empty) has no
-  precision or recall to read and keeps its previous value. `anls_score`, and
-  the metrics of a field that is not a list, are unchanged.
-  Only evaluator-format output moves: scores and counts are unchanged
-
-- **`evaluator_format=True` no longer reports an empty `non_matches` list when
-  records were not requested.** It always wrote `"non_matches": []`, so
-  `print_non_matches` and the HTML report both said `No non-matches found.`
-  over a document with a wrong field, despite the #298 and #411 fixes above.
-  The key is now present only with `document_non_matches=True`, as in the
-  default `compare_with()` dict, so both say the records are missing. Code
-  that indexes `result["non_matches"]` on evaluator-format output without
-  requesting records should pass `document_non_matches=True` or use
-  `.get("non_matches", [])`.
-  Scores and counts are unchanged
-  ([#413](https://github.com/awslabs/stickler/issues/413))
+  the same call already reported with the confusion matrix included. `overall`,
+  and every field with a TP, FP or FN, now read their confusion counts, honour
+  `recall_with_fd`, and equal that node's `derived` block. Scalar fields move
+  too: an unclipped false discovery (`"banana"` vs `"banxxx"`, threshold 0.9)
+  read precision `0.5` and recall `1.0` and now reads `0.0` and `0.0`, and a
+  true positive scoring `0.94` read precision `0.94` and now reads `1.0`. A
+  document of only true negatives now reads `overall` precision, recall and F1
+  `0.0`, as `derived` does, where it read `1.0` without the confusion matrix; a
+  field of only true negatives keeps its score conversion. `anls_score` is
+  unchanged. Only evaluator-format output moves: scores and counts are
+  unchanged
 
 ## [1.0.0] - 2026-09-11
 

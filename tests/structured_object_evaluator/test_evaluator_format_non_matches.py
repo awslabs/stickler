@@ -48,6 +48,8 @@ def test_printer_says_records_are_missing_not_that_all_matched(capsys):
 
     assert "No non-matches found" not in out
     assert "document_non_matches=True" in out
+    # No EvalResult has an evaluator-format .raw, so that hint does not apply.
+    assert "EvalResult" not in out
 
 
 def test_printer_lists_requested_records(capsys):

@@ -22,7 +22,10 @@ from typing import Any, Dict, List, Optional, Type, Union
 
 from pydantic import BaseModel
 
-from ..structured_object_evaluator.models.structured_model import StructuredModel
+from ..structured_object_evaluator.models.structured_model import (
+    StructuredModel,
+    _annotation_is_list,
+)
 from .builder import specs_for, structured_model_for
 
 #: Object-level match threshold applied when neither the caller nor the model
@@ -137,10 +140,23 @@ class EvalResult:
                     and threshold is not None
                     and raw_sim < threshold
                 ):
-                    entry["verdict"] = (
-                        f"raw {raw_sim:.2f} < threshold {threshold} -> clipped to 0.0"
-                    )
+                    if self._is_list_field(name):
+                        entry["verdict"] = (
+                            f"each paired element < threshold {threshold} -> "
+                            f"clipped to 0.0 (raw {raw_sim:.2f} is their "
+                            "coverage-scaled mean)"
+                        )
+                    else:
+                        entry["verdict"] = (
+                            f"raw {raw_sim:.2f} < threshold {threshold} -> clipped to 0.0"
+                        )
         return out
+
+    def _is_list_field(self, name: str) -> bool:
+        # A list's raw is a coverage-scaled mean, not one comparator score, so
+        # comparing it to the per-element threshold misreads it.
+        info = self._spec.eval_model.model_fields.get(name)
+        return info is not None and _annotation_is_list(info.annotation)
 
     def __repr__(self) -> str:  # pragma: no cover - display only
         return (
