@@ -69,6 +69,41 @@ Each release links to full notes on the
   merging the two readers into one implementation
   ([#383](https://github.com/awslabs/stickler/issues/383))
 
+- **Breaking:** a Stickler config and a JSON Schema now resolve an unstated
+  `threshold` and `clip_under_threshold` the way the Python path does. Both
+  importers filled in their own defaults (0.5 and `true`) before building the
+  field, so every imported field read as "the author stated this", and the two
+  defaults that key on that were skipped:
+  - **A threshold named on the comparator reaches the field.**
+    `"comparator_config": {"threshold": 0.9}` (or
+    `x-aws-stickler-comparator-config`) with no field `threshold` gated at the
+    importer's own default instead (0.5 for a string), so a pair scoring 0.78
+    was a TP there and an FD in Python. It is 0.9 on all
+    three paths now. A field threshold still wins, and a comparator threshold
+    outranks an inferred one
+    ([#334](https://github.com/awslabs/stickler/issues/334)).
+  - **A mapping field keeps its partial credit.** A `dict` field naming a
+    comparator, or a list of them, defaulted to `clip_under_threshold: true`,
+    so ANLS\* partial credit below the threshold was zeroed: 0.0 where Python
+    reports 0.3333 for two of three keys wrong. It now defaults to `false` on
+    both importers, as it does in Python; an explicit `true` is still honoured
+    ([#348](https://github.com/awslabs/stickler/issues/348)).
+
+  Any other field that states neither is unchanged. The schema path's
+  free-form object default (`ExactComparator` at 1.0, #348 item 1) is unchanged
+  too, except that its `clip_under_threshold` now reads `false`; Exact scores
+  0 or 1, so its scores do not move
+
+- **Breaking:** `x-aws-stickler-comparator` or
+  `x-aws-stickler-comparator-config` on an object property with `properties`
+  now raises `ValueError`. An object is scored field by field, so neither was
+  ever read, and `explain()` reported the placeholder `LevenshteinComparator`
+  as the author's explicit choice. The config path already refuses `comparator`
+  on a `structured_model` field. No released `to_json_schema()` writes either
+  key there, so exported schemas still import. Move it onto the properties
+  inside the object
+  ([#348](https://github.com/awslabs/stickler/issues/348))
+
 - **Breaking:** `match_threshold` on a **primitive** field now raises
   `ValueError`. It is the object-level threshold; nothing read it on a leaf, so
   `"match_threshold": 0.99` beside a `float` left that field at `threshold` 0.5
