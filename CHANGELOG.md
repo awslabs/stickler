@@ -124,6 +124,18 @@ Each release links to full notes on the
 
 ### Fixed
 
+- List reporting ([#332](https://github.com/awslabs/stickler/issues/332)):
+  `non_matches` and `field_comparisons` reuse the pairings, scores, and
+  threshold decisions made during list scoring. Rejected pairs produce indexed
+  false-discovery records. Primitive-list reports avoid extra comparator calls
+  and preserve scoring's threshold tolerance. Standard structured-child reports
+  reuse scored child results; custom comparison overrides retain their fallback.
+  Field-comparison rows treat float `NaN` as missing, consistently with scoring,
+  both for top-level fields and fields in accepted structured-list pairs.
+  A nested list row inside a list element reports `match=False` when an element
+  was a false discovery, false alarm or false negative, so `field_comparisons`
+  agrees with `non_matches`.
+
 - **A `RootModel` is now refused when the evaluator is built, instead of failing
   once per document or scoring a wrong value `1.0`.** `eval_for()` accepted one
   and returned a spec. What happened next depended on the root type:
