@@ -79,9 +79,12 @@ jobs:
         # itself is exempt up to a fixed cutoff just after the pinned release
         # (1.6.0 was uploaded 2026-10-14T22:45Z), so the job tests the release
         # the integration shipped in. Move the cutoff with the pin. The -c
-        # constraints hold every package uv.lock pins at its locked version.
+        # constraints hold every package in uv.lock's default (no-extras)
+        # export at its locked version; packages locked only under extras
+        # (boto3, httpx, ...) can move. A file in $RUNNER_TEMP, not <(...), so
+        # a failed export fails the step instead of installing unconstrained.
         run: |
-          uv export --frozen --no-hashes --no-emit-project -o "$RUNNER_TEMP/uv-lock.txt"
+          uv export --frozen --no-hashes --no-emit-project -q -o "$RUNNER_TEMP/uv-lock.txt"
           uv pip install --python .venv -c "$RUNNER_TEMP/uv-lock.txt" \
             --exclude-newer-package "strands-agents-evals=2026-10-15T00:00:00Z" \
             "strands-agents-evals==1.6.0"

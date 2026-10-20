@@ -13,6 +13,7 @@ tests assert that keys EXIST, rather than that a lookup succeeds.
 Line numbers below refer to structured_output.py in strands-agents-evals 1.6.0.
 """
 
+import functools
 import inspect
 import json
 import math
@@ -52,8 +53,15 @@ def _spec(model, threshold=STRANDS_DEFAULT_THRESHOLD, weight_hints=False):
     return eval_for(model, match_threshold=threshold, weight_hints=weight_hints)
 
 
+@functools.lru_cache(maxsize=None)
+def _shared_spec(model, threshold):
+    # One spec per model and threshold, shared across cases, as the evaluator
+    # shares the one it builds at line 344.
+    return _spec(model, threshold)
+
+
 def _evaluate(case, threshold=STRANDS_DEFAULT_THRESHOLD):
-    return _spec(case.model, threshold).evaluate(case.expected, case.actual)
+    return _shared_spec(case.model, threshold).evaluate(case.expected, case.actual)
 
 
 def _case(case_id):
@@ -118,7 +126,7 @@ class TestEvalForSignature:
                 inspect.Parameter.POSITIONAL_OR_KEYWORD,
             )
         inspect.signature(eval_for).bind(
-            Invoice, match_threshold=0.7, weight_hints=False
+            Invoice, match_threshold=STRANDS_DEFAULT_THRESHOLD, weight_hints=False
         )
 
     @pytest.mark.parametrize("model", MODELS, ids=lambda m: m.__name__)
