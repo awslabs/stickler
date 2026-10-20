@@ -46,6 +46,13 @@ class Doc(StructuredModel):
     rows: Optional[List[Holder]] = None
 
 
+class Labelled(StructuredModel):
+    label: Optional[str] = None
+    pet: Optional[Union[Cat, Dog]] = ComparableField(
+        comparator=ANLSStarComparator(), default=None
+    )
+
+
 class Row(StructuredModel):
     holder: Optional[Holder] = None
 
@@ -85,6 +92,27 @@ def _swapped_class():
         Doc(rows=[Holder(pet=Cat(name="xavier")), Holder(pet=Cat(name="yolanda"))]),
         Doc(rows=[Holder(pet=Dog(name="xavier")), Holder(pet=Cat(name="yolanda"))]),
     )
+
+
+def _only_kept_pairs_cross_classes():
+    """Rows the matcher pairs by ``label``, where only the kept pairs cross classes.
+
+    The kept pairs are (0, 0) and (1, 1), both Cat-vs-Dog. Every discarded cell
+    is Cat-vs-Cat or Dog-vs-Dog, so a class-mismatch warning can only come from
+    a kept pair. A fixture with a Cat-vs-Dog discarded cell passes on that
+    cell's warning even if the kept pair never warns.
+    """
+    gt = [
+        Labelled(label="xavier", pet=Cat(name="a")),
+        Labelled(label="yolanda", pet=Dog(name="b")),
+    ]
+    pred = [
+        Labelled(label="xavier", pet=Dog(name="a")),
+        Labelled(label="yolanda", pet=Cat(name="b")),
+    ]
+    discarded = [(0, 1), (1, 0)]
+    assert all(type(gt[i].pet) is type(pred[j].pet) for i, j in discarded)
+    return gt, pred
 
 
 class TestADiscardedCellDoesNotWarn:
@@ -165,29 +193,33 @@ class TestAPairNothingScoresAgainStillWarns:
     """
 
     def test_a_bare_matcher_warns_for_the_pair_it_keeps(self):
-        gt, pred = _swapped_class()
+        gt, pred = _only_kept_pairs_cross_classes()
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             metrics = HungarianMatcher(StructuredModelComparator()).calculate_metrics(
-                gt.rows, pred.rows
+                gt, pred
             )
         assert [(i, j) for i, j, _ in metrics["matched_pairs"]] == [(0, 0), (1, 1)]
-        assert metrics["matched_pairs"][0][2] == pytest.approx(0.0)
+        assert [s for _, _, s in metrics["matched_pairs"]] == pytest.approx([0.5, 0.5])
         assert len(_mismatch_warnings(caught)) == 1
 
     def test_an_any_field_with_a_structured_comparator_warns(self):
+        """The list starts with a scalar, so it is not matched by `HungarianHelper`."""
+        gt, pred = _only_kept_pairs_cross_classes()
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            result = Loose(
-                rows=["s", Holder(pet=Cat(name="a")), Holder(pet=Cat(name="b"))]
-            ).compare_with(
-                Loose(rows=["s", Holder(pet=Cat(name="a")), Holder(pet=Dog(name="b"))])
-            )
+            result = Loose(rows=["s", *gt]).compare_with(Loose(rows=["s", *pred]))
         assert result["field_scores"]["rows"] == pytest.approx(2 / 3)
         assert len(_mismatch_warnings(caught)) == 1
 
-    def test_a_mapping_the_comparator_cannot_score_warns_once(self):
-        """The `can_score_object` half of the gate, through the same matrix."""
+    def test_a_mapping_the_comparator_cannot_score_still_warns(self):
+        """Deferring the mapping warning to the kept pairs did not silence it.
+
+        This guards against over-silencing only. It does not reproduce #336: the
+        mapping warning is keyed per field, and every cell here holds a mapping,
+        so a discarded cell and a kept pair spend the same message. It passes
+        with or without the deferral, and fails only if nothing warns.
+        """
 
         def doc():
             return TaggedDoc(
@@ -207,7 +239,7 @@ class TestTheMatrixFlagIsScoped:
         helper.hungarian = HungarianMatcher(scorer)
         return helper
 
-    def test_it_is_set_only_while_cells_are_scored(self):
+    def test_it_is_set_for_the_whole_helper_match_and_cleared_after(self):
         from stickler.algorithms.hungarian import filling_cost_matrix
 
         seen = []
@@ -233,12 +265,25 @@ class TestTheMatrixFlagIsScoped:
         HungarianMatcher(scorer).match(["a", "b"], ["a", "b"])
         assert seen and not any(seen)
 
-    def test_it_is_cleared_when_a_cell_raises(self):
+    @pytest.mark.parametrize("error", [ValueError, KeyboardInterrupt])
+    def test_it_is_cleared_when_a_cell_raises(self, error):
         from stickler.algorithms.hungarian import filling_cost_matrix
 
         def scorer(a, b):
-            raise ValueError("boom")
+            raise error("boom")
 
-        with pytest.raises(ValueError):
+        with pytest.raises(error):
             self._helper(scorer).get_complete_matching_info(["a", "b"], ["a", "b"])
+        assert not filling_cost_matrix()
+
+    def test_the_context_manager_restores_the_previous_value(self):
+        from stickler.algorithms.hungarian import (
+            filling_cost_matrix,
+            scoring_cost_matrix,
+        )
+
+        with scoring_cost_matrix():
+            with scoring_cost_matrix():
+                assert filling_cost_matrix()
+            assert filling_cost_matrix()
         assert not filling_cost_matrix()

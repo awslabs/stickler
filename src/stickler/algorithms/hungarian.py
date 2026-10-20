@@ -6,8 +6,9 @@ key information extraction tasks.
 """
 
 import traceback
+from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 from munkres import Munkres, make_cost_matrix
@@ -27,19 +28,38 @@ _FILLING_COST_MATRIX: ContextVar[bool] = ContextVar(
 
 
 def filling_cost_matrix() -> bool:
-    """Whether the current call is scoring a cell of a cost matrix.
+    """Whether a ``HungarianHelper`` match is running, so its pairs get re-scored.
 
-    ``HungarianHelper.get_complete_matching_info`` sets this while it matches a
-    list of ``StructuredModel`` rows. The matcher scores every pair and keeps one
-    per row, so a diagnostic emitted then may describe a pair that is discarded.
-    The kept pairs are scored again afterwards, outside the matrix, so code that
-    warns about a scored pair checks this and leaves the warning to them. A
-    bare :class:`HungarianMatcher` does not set it: nothing re-scores its pairs.
+    True for the whole of ``HungarianHelper.get_complete_matching_info``, which
+    matches a list of ``StructuredModel`` rows: every cell of the cost matrix,
+    the solve, and the metrics derived from it. False everywhere else, including
+    inside a bare :class:`HungarianMatcher`.
+
+    The matcher scores every pair and keeps one per row, so a diagnostic emitted
+    while this is true may describe a pair that is discarded. The helper's caller
+    scores the kept pairs again afterwards, with this false, so code that warns
+    about a scored pair checks it and leaves the warning to that re-score (#336).
+    A bare matcher does not set it, because nothing re-scores its pairs.
 
     A ``ContextVar`` does not carry into a worker thread unless the work is run
     in a ``contextvars.copy_context()``.
     """
     return _FILLING_COST_MATRIX.get()
+
+
+@contextmanager
+def scoring_cost_matrix() -> Iterator[None]:
+    """Make :func:`filling_cost_matrix` true for the body, and restore it after.
+
+    Use it only where the caller scores the kept pairs again outside the block.
+    The previous value is restored even if the body raises, including
+    ``KeyboardInterrupt``.
+    """
+    token = _FILLING_COST_MATRIX.set(True)
+    try:
+        yield
+    finally:
+        _FILLING_COST_MATRIX.reset(token)
 
 
 class HungarianMatcher:

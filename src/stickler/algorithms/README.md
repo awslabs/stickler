@@ -93,10 +93,12 @@ Because neither caller reads the counts, a change to how `calculate_metrics`
 classifies cannot move an evaluator score. It is a public API in its own right
 though, so a change there is still breaking for a direct caller.
 
-**`filling_cost_matrix()`** is true only while `HungarianHelper` matches a list
-of `StructuredModel` rows. Its caller scores the kept pairs again, so the class
-gate stays silent for the matrix cells and warns on the re-score (#336). A bare
-`HungarianMatcher` never sets it, because nothing re-scores its pairs.
+**`filling_cost_matrix()`** is true for the whole of a `HungarianHelper` match
+of `StructuredModel` rows (every cell and the solve), set by the
+`scoring_cost_matrix()` context manager. Its caller scores the kept pairs again,
+so the class and mapping gates stay silent for the matrix and warn on the
+re-score (#336). A bare `HungarianMatcher` never sets it, because nothing
+re-scores its pairs. Use `scoring_cost_matrix()` only where that holds.
 
 ## Design notes
 
