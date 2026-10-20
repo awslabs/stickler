@@ -137,12 +137,17 @@ Each release links to full notes on the
   the caller declared
   ([#366](https://github.com/awslabs/stickler/issues/366))
 
-- **`specs_for` now refuses a `RootModel` too, with the builder's message.**
-  After #366 it still returned specs for the root's internal `root` attribute,
-  such as `pt.root.x`, a path no data carries and that is never scored. It now
-  raises the same `TypeError` as `structured_model_for` for any class the
-  builder refuses. An explicitly configured `StructuredModel` is never built,
-  so it is not checked: a `RootModel` reached through one is still described
+- **`specs_for` now refuses what the builder refuses, starting with a
+  `RootModel`.** After #366 it still returned specs for the root's internal
+  `root` attribute, such as `pt.root.x`, a path no data carries and that is
+  never scored. It now raises the same `TypeError` as `structured_model_for`
+  for any class the builder refuses: a `RootModel`, a recursive model, a field
+  named `extra_fields`, or a model with no fields. A class that is not a
+  pydantic model now raises `TypeError` rather than `AttributeError`.
+  `explain()` on an `EvalSpec` is unchanged: its model was either already
+  built, or written by hand and never built. An explicitly configured
+  `StructuredModel` is never built either, so it is not checked: a `RootModel`
+  reached through one is still described
   ([#423](https://github.com/awslabs/stickler/issues/423))
 
 - **A float `NaN` is now absent, the same as `None`.** Two identical `NaN`s
