@@ -99,6 +99,15 @@ class TestVisualizationEngine:
         assert 'width: 75%' in result
         mock_color_utils.assert_called_once_with(0.75, config.color_thresholds)
     
+    def test_generate_field_performance_chart_escapes_field_names(self):
+        """The chart escapes field names, so a later edit cannot quietly undo it (#422)."""
+        field_metrics = {"<b>vendor</b> & co": {"f1": 1.0}}
+
+        result = self.viz_engine.generate_field_performance_chart(field_metrics, ReportConfig())
+
+        assert '<div class="field-label">&lt;b&gt;vendor&lt;/b&gt; &amp; co</div>' in result
+        assert "<b>vendor</b>" not in result
+
     def test_generate_field_performance_chart_empty_metrics(self):
         """Test field performance chart with empty metrics."""
         field_metrics = {}
@@ -170,6 +179,14 @@ class TestVisualizationEngine:
 
         assert "<td>&lt;b&gt;vendor&lt;/b&gt; &amp; co</td>" in result
         assert "<b>vendor</b>" not in result
+
+    def test_field_name_that_is_not_a_string_does_not_raise(self):
+        """A hand-built results dict can key a field by a non-``str``."""
+        field_metrics = {7: {"precision": 1.0, "recall": 1.0, "f1": 1.0}}
+        config = ReportConfig()
+
+        assert "<td>7</td>" in self.viz_engine.generate_field_performance_table(field_metrics, config)
+        assert '<div class="field-label">7</div>' in self.viz_engine.generate_field_performance_chart(field_metrics, config)
 
     def test_generate_field_performance_table_with_fallback_keys(self):
         """Test field performance table with fallback metric keys."""

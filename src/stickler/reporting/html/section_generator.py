@@ -126,8 +126,8 @@ class SectionGenerator:
             doc_id = html.escape(nm.get('doc_id', 'N/A'))
             field_path = html.escape(nm.get('field_path', 'N/A'))
             non_match_type = html.escape(str(nm.get('non_match_type', 'N/A')).replace('NonMatchType.',''))
-            ground_truth_value = html.escape(str(nm.get('ground_truth_value', 'None')))[:100]  # Truncate long values
-            prediction_value = html.escape(str(nm.get('prediction_value', 'None')))[:100]
+            ground_truth_value = html.escape(str(nm.get('ground_truth_value', 'None'))[:100])  # Truncate long values
+            prediction_value = html.escape(str(nm.get('prediction_value', 'None'))[:100])
             
             html_string += f'''
             <tr>
