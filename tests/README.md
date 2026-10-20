@@ -54,6 +54,7 @@ tests/
 │   │   └── test_comparators.py
 │   └── algorithms/                # Algorithm tests
 │       └── test_hungarian.py
+├── integrations/                  # Strands Evals contract, snapshot, e2e (see its README)
 └── reporting/
     └── html/                      # Report generation tests
 ```

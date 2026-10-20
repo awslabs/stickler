@@ -5,6 +5,7 @@ CI/CD workflows for the Stickler project.
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
 | `run_pytest.yaml` | PR, push to `dev`/`main` | Test suite with coverage (installs `--extra llm --extra bert`) |
+| `run_pytest.yaml` (`strands-evals` job) | same | `tests/integrations` against `strands-agents-evals==1.6.0`, installed without its `[stickler]` extra so it tests this checkout. The package is exempt from the 7-day cooldown up to a fixed cutoff after the pinned release; its dependencies are not |
 | `lint.yaml` | PR, push to `dev`/`main` | Ruff lint (non-blocking via `continue-on-error`) |
 | `security.yaml` | PR, push to `dev`/`main` | Bandit + ASH security scans; uploads `security-reports` artifact |
 | `security-pr-comment.yaml` | `workflow_run` after Security Scan | Posts/updates the ASH summary as a PR comment |
@@ -24,6 +25,10 @@ waiting indefinitely.
   bumps the SHA and comment together.
 - **Locked dependencies**: all `uv sync` / `uv run` invocations use
   `--frozen` so CI resolves exactly what `uv.lock` specifies.
+- **Packages outside the lockfile**: install with `uv pip install --python
+  .venv` and an exact `==` pin after `uv sync --frozen`, then run with
+  `uv run --no-sync`, since a syncing `uv run` reverts to `uv.lock`. The
+  `[tool.uv]` cooldown applies, so a release resolves once it is 7 days old.
 - **Least privilege**: workflows default to `permissions: contents: read`
   and grant extra scopes per job only where needed.
 - **One run per pull request**: the three PR-validating workflows limit `push`
