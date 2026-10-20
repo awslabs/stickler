@@ -14,6 +14,16 @@ Stickler provides three methods for exporting model schemas. Two support round-t
 | `to_stickler_config()` | Custom Stickler JSON | Yes | `model_from_json()` | Hand-editing, version control |
 | `model_json_schema()` | Pydantic JSON Schema | No | N/A | API docs, LLM tool specs, runtime inspection |
 
+A plain Pydantic `BaseModel` field, or a list of them, is scored as one object and exports as a
+free-form object (`{"type": "object"}`, `"dict"` in a Stickler config). It re-imports as `dict` with
+its comparison settings, but its own field types are not exported, so the re-imported field does
+not coerce values. A list of lists exports as nested arrays; `to_stickler_config()` writes it as
+`List[List]`, without the inner element type. A plain model inside a nested list comes back as a
+`dict`, which can score slightly differently there. `to_stickler_config()` has no type for a union
+with a model arm (`Union[Card, Bank]`, `Union[Plain, str]`) or for a `StructuredModel` inside a
+nested list (`List[List[Card]]`), so both methods raise for these, to keep one rule
+([#349](https://github.com/awslabs/stickler/issues/349)).
+
 Both round-trip methods are also reachable from a plain Pydantic `BaseModel` that was never written
 as a `StructuredModel`, by converting first:
 
@@ -97,10 +107,12 @@ schema = Product.to_json_schema()
 
 The export is complete, not minimal: every field carries its weight, clip flag, and comparator
 configuration even where those were left at their defaults, and the root carries its match
-threshold. This is what makes the round trip exact — the re-imported model cannot drift if a default
-changes in a later release. `price` has no `x-aws-stickler-comparator-config` only because
+threshold. `price` has no `x-aws-stickler-comparator-config` only because
 `NumericComparator()` was constructed with no arguments to record. Fields declared `Optional` export
 as `{"type": ["string", "null"]}`; see [Optional fields and `null`](dynamic-models.md#optional-fields-and-null).
+Re-importing an export preserves comparison settings. A field that is not required (a bare `T`
+without `default=...`) is currently re-imported as nullable `Optional[T]`
+([#189](https://github.com/awslabs/stickler/issues/189)).
 
 ## to_stickler_config()
 

@@ -1,6 +1,7 @@
 """Base class for comparators."""
 
 import inspect
+import math
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Tuple
 
@@ -56,6 +57,11 @@ def _caller_named_it(comparator: "BaseComparator", threshold: float) -> bool:
         category=UserWarning,
     )
     return threshold != declared.default
+
+
+def _is_missing(value: Any) -> bool:
+    """``None`` or a float NaN, the two values the shared policy reads as absent."""
+    return value is None or (isinstance(value, float) and math.isnan(value))
 
 
 class BaseComparator(ABC):
@@ -180,7 +186,8 @@ class BaseComparator(ABC):
         Applies the shared ``None`` policy -- two missing values are an
         exact match, a missing value against a present one is a non-match,
         regardless of what "present" means for a particular comparator --
-        then delegates to :meth:`_compare`.
+        then delegates to :meth:`_compare`. A float NaN counts as missing,
+        matching ``NullHelper.is_nan`` on the field path (#367).
 
         Args:
             str1: First value
@@ -189,10 +196,12 @@ class BaseComparator(ABC):
         Returns:
             Similarity score between 0.0 and 1.0
         """
-        if str1 is None and str2 is None:
+        missing1 = _is_missing(str1)
+        missing2 = _is_missing(str2)
+        if missing1 and missing2:
             return 1.0
 
-        if str1 is None or str2 is None:
+        if missing1 or missing2:
             return 0.0
 
         return self._compare(str1, str2)
