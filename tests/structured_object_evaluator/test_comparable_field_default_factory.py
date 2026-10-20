@@ -255,22 +255,33 @@ def test_a_literal_set_default_exports_as_a_list():
 
 
 def test_an_unknown_factory_is_matched_by_identity():
-    """`in` compares with ==, so export consulted the factory object's __eq__."""
+    """`in` compares with ==, so export consulted the factory object's __eq__.
+
+    The trap is armed only after the class exists: on Python < 3.13, pydantic's
+    `inspect.signature(factory)` at class definition compares it with == too.
+    """
 
     class Factory:
+        armed = False
+
         def __call__(self):
             return []
 
         def __eq__(self, other):
-            raise AssertionError("export compared the factory with ==")
+            if self.armed:
+                raise AssertionError("export compared the factory with ==")
+            return NotImplemented
 
         __hash__ = object.__hash__
 
+    factory = Factory()
+
     class Custom(StructuredModel):
         tags: List[str] = ComparableField(
-            default_factory=Factory(), comparator=ExactComparator()
+            default_factory=factory, comparator=ExactComparator()
         )
 
+    factory.armed = True
     assert "default" not in Custom.to_json_schema()["properties"]["tags"]
     assert "default" not in Custom.to_stickler_config()["fields"]["tags"]
 
