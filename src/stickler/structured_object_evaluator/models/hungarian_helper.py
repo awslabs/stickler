@@ -35,15 +35,15 @@ def deferring_pair_warnings() -> bool:
 def defer_pair_warnings() -> Iterator[None]:
     """Make :func:`deferring_pair_warnings` true for the body; see there.
 
-    The previous value is restored on exit, including when the body raises.
+    The previous value is restored on exit, including when the body raises or
+    an interrupt arrives as the set returns.
     """
-    token = None
+    previous = _DEFER_PAIR_WARNINGS.get()
     try:
-        token = _DEFER_PAIR_WARNINGS.set(True)
+        _DEFER_PAIR_WARNINGS.set(True)
         yield
     finally:
-        if token is not None:
-            _DEFER_PAIR_WARNINGS.reset(token)
+        _DEFER_PAIR_WARNINGS.set(previous)
 
 
 class HungarianHelper:

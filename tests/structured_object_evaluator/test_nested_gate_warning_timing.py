@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from stickler.algorithms.hungarian import HungarianMatcher
 from stickler.comparators import StructuredModelComparator
 from stickler.comparators.anls import ANLSStarComparator
+from stickler.structured_object_evaluator.models import hungarian_helper
 from stickler.structured_object_evaluator.models.comparable_field import (
     ComparableField,
 )
@@ -114,7 +115,7 @@ def _only_kept_pairs_cross_classes():
 
 
 @pytest.fixture(autouse=True)
-def _the_matrix_flag_is_clear_around_each_test():
+def _pair_warnings_are_not_deferred_around_each_test():
     assert not deferring_pair_warnings()
     yield
     assert not deferring_pair_warnings()
@@ -237,7 +238,7 @@ class TestAPairNothingScoresAgainStillWarns:
         assert len(_mapping_warnings(caught)) == 1
 
 
-class TestTheMatrixFlagIsScoped:
+class TestPairWarningDeferralIsScoped:
     @staticmethod
     def _helper(scorer):
         helper = HungarianHelper()
@@ -281,3 +282,23 @@ class TestTheMatrixFlagIsScoped:
                 assert deferring_pair_warnings()
             assert deferring_pair_warnings()
         assert not deferring_pair_warnings()
+
+    def test_an_interrupt_raised_by_the_set_itself_is_restored(self, monkeypatch):
+        """A pending signal is raised when ``ContextVar.set`` returns, after the
+        value has changed but before a token could be stored."""
+        real = hungarian_helper._DEFER_PAIR_WARNINGS
+
+        class InterruptedOnSet:
+            get = staticmethod(real.get)
+
+            @staticmethod
+            def set(value):
+                real.set(value)
+                if value:
+                    raise KeyboardInterrupt
+
+        monkeypatch.setattr(hungarian_helper, "_DEFER_PAIR_WARNINGS", InterruptedOnSet)
+        with pytest.raises(KeyboardInterrupt):
+            with defer_pair_warnings():
+                pass
+        assert not real.get()

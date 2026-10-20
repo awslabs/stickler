@@ -539,8 +539,7 @@ class ConfigurationHelper:
 
         ``warn=False`` gives the same verdict silently; see
         :meth:`can_score_object`. It is also silent, whatever ``warn`` says,
-        while :func:`deferring_pair_warnings` is true; see
-        there (#336).
+        while :func:`deferring_pair_warnings` is true; see there (#336).
         """
         warn = warn and not deferring_pair_warnings()
         if not ConfigurationHelper.values_are_same_model_class(
