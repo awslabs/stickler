@@ -232,7 +232,7 @@ Every field comparison produces three score variants:
 
 | Score | Description |
 |-------|-------------|
-| `raw_similarity_score` | Unclipped score (0.0–1.0). On a list node it is the coverage-scaled mean of the matched pairs' unclipped scores, `sum(pair scores) / max(len(gt), len(pred))`, which is what `compare()` returns for the field. No score or count reads it. On a scalar field it decides `match` in `field_comparisons`, the label confidence metrics score against, and gives an FD non-match record its similarity and reason |
+| `raw_similarity_score` | Unclipped score (0.0–1.0). On a list node it is the coverage-scaled mean of the matched pairs' unclipped scores, `sum(pair scores) / max(len(gt), len(pred))`, which is what `compare()` returns for the field. No score or count reads it. `EvalResult.explain()` (`raw_similarity`, `verdict`) and the HTML report's `DataExtractor.extract_similarity_score` show it for any field. On a scalar field it also decides `match` in `field_comparisons`, the label confidence metrics score against, and gives an FD non-match record its similarity and reason |
 | `similarity_score` | Maintained for API compatibility. Equal to `raw_similarity_score` on a scalar or nested model, and to `threshold_applied_score` on a list node |
 | `threshold_applied_score` | Raw score with `clip_under_threshold` applied (0.0 if below threshold and clipping is enabled). The score: `field_scores` and `overall_score` read it |
 

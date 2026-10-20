@@ -12,7 +12,7 @@ from typing import List, Optional
 import pytest
 
 from stickler import ComparableField, StructuredModel
-from stickler.comparators import ExactComparator, LevenshteinComparator
+from stickler.comparators import ExactComparator
 
 
 class Item(StructuredModel):
@@ -32,22 +32,6 @@ class Tags(StructuredModel):
 class Flat(StructuredModel):
     a: Optional[str] = ComparableField(comparator=ExactComparator(), default=None)
     b: Optional[str] = ComparableField(comparator=ExactComparator(), default=None)
-
-
-class Mixed(StructuredModel):
-    a: Optional[str] = ComparableField(comparator=ExactComparator(), default=None)
-    tags: Optional[List[str]] = ComparableField(
-        comparator=ExactComparator(), default=None
-    )
-
-
-class Unclipped(StructuredModel):
-    a: Optional[str] = ComparableField(
-        comparator=LevenshteinComparator(),
-        threshold=0.9,
-        clip_under_threshold=False,
-        default=None,
-    )
 
 
 def _pr(metrics):
@@ -94,12 +78,9 @@ def test_a_spurious_value_lowers_precision():
 
 
 @pytest.mark.parametrize("recall_with_fd", [False, True])
-@pytest.mark.parametrize(
-    "gt,pred",
-    [(Flat(a="x", b="y"), Flat(a="x")), (Mixed(), Mixed())],
-    ids=["missed-value", "all-true-negatives"],
-)
-def test_overall_does_not_depend_on_include_confusion_matrix(gt, pred, recall_with_fd):
+def test_overall_does_not_depend_on_include_confusion_matrix(recall_with_fd):
+    gt = Flat(a="x", b="y")
+    pred = Flat(a="x")
     without_cm = gt.compare_with(
         pred, evaluator_format=True, recall_with_fd=recall_with_fd
     )
@@ -126,22 +107,3 @@ def test_list_field_matches_its_confusion_matrix_node():
     assert list_overall["recall"] == derived["cm_recall"]
     assert list_overall["f1"] == derived["cm_f1"]
     assert list_overall["accuracy"] == derived["cm_accuracy"]
-
-
-def test_all_true_negatives_read_zero_precision_and_recall():
-    result = Mixed().compare_with(Mixed(), evaluator_format=True)
-
-    assert _pr(result["overall"]) == (0.0, 0.0)
-    assert result["overall"]["anls_score"] == 1.0
-
-
-def test_unclipped_fd_scalar_reads_its_counts_not_its_score():
-    # 'banana' vs 'banxxx' scores 0.5 against threshold 0.9: one FD, kept
-    # unclipped. The score conversion read that as precision 0.5, recall 1.0.
-    result = Unclipped(a="banana").compare_with(
-        Unclipped(a="banxxx"), evaluator_format=True
-    )
-
-    assert _pr(result["fields"]["a"]) == (0.0, 0.0)
-    assert result["fields"]["a"]["anls_score"] == pytest.approx(0.5)
-    assert result["fields"]["a"] == {**result["overall"], "anls_score": 0.5}

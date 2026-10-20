@@ -311,9 +311,9 @@ For the `ground_truth` and `prediction` above, where `customer_name` is a false 
 Key differences from the default output:
 
 - The top-level key is `overall` (a dict of metrics), not `overall_score` (a float).
-- `overall` and each field take precision, recall, F1 and accuracy from their confusion counts, as in [Derived Metrics](understanding-results.md#derived-metrics), whether or not `include_confusion_matrix=True` was passed. The false discovery counts as an FP, so it lowers precision, not recall (`recall_with_fd=True` counts it in recall too). `anls_score` is the score.
-- With no TP, FP or FN (both sides empty), `overall` reads `0.0` precision, recall and F1, as `derived` does, while such a field keeps a conversion of its score (`1.0`).
-- A list field nests these under `overall`, beside per-item `items`.
+- `overall`, and the `overall` of each list field, take precision, recall, F1 and accuracy from the confusion counts, as in [Derived Metrics](understanding-results.md#derived-metrics), so they equal that node's `derived` block whether or not `include_confusion_matrix=True` was passed. The false discovery above counts as an FP, so it lowers precision, not recall (`recall_with_fd=True` counts it in recall too). This needs at least one TP, FP or FN: a node with none (both sides empty) keeps the score conversion below, except that `overall` reads `derived` (`0.0`) when `include_confusion_matrix=True`. `anls_score` is the score.
+- A list field nests that `overall` beside per-item `items`.
+- Any other field's metrics are a conversion of its score, not counts: a score of at least 0.5 reads precision equal to the score and recall `1.0`, a lower one `0.0` for both. `customer_name` scores `0.0`, so reads `0.0`; a true positive at `0.94` would read precision `0.94`.
 - `confusion_matrix` is `{}` unless `include_confusion_matrix=True`.
 - `non_matches` is present only with `document_non_matches=True`, as in the default output. Without it the key is absent, so a missing key means "not collected", never "no non-matches".
 
