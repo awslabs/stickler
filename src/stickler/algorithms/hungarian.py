@@ -290,8 +290,9 @@ class HungarianMatcher:
             as ``cm_recall`` there.
 
             The threshold test is ``ThresholdHelper.is_above_threshold``, the
-            one every evaluator gate uses. It accepts a score up to ``1e-10``
-            under the threshold, so ``0.7 + 0.1`` against ``0.8`` is a TP.
+            one every classification gate listed in Meeting a Threshold uses.
+            It accepts a score up to ``1e-10`` under the threshold, so
+            ``0.7 + 0.1`` against ``0.8`` is a TP.
 
             ``match_threshold=0.0`` is used elsewhere as a capture all
             sentinel. Every score satisfies ``>= 0.0``, so ``tp`` then counts

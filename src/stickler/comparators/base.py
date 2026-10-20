@@ -241,8 +241,8 @@ class BaseComparator(ABC):
         based on the threshold. If the similarity meets the threshold, it returns
         (1, 0) indicating true positive. Otherwise, it returns (0, 1) indicating
         false positive. The test is ``ThresholdHelper.is_above_threshold``, the
-        one every evaluator gate uses, so a score less than ``1e-10`` under the
-        threshold meets it.
+        one every classification gate listed in Meeting a Threshold uses, so a
+        score less than ``1e-10`` under the threshold meets it.
 
         Args:
             str1: First value

@@ -141,7 +141,7 @@ class EvalResult:
                     score == 0.0
                     and raw_sim
                     and threshold is not None
-                    and raw_sim < threshold
+                    and ThresholdHelper.is_below_threshold(raw_sim, threshold)
                 ):
                     entry["verdict"] = (
                         f"raw {raw_sim:.2f} < threshold {threshold} -> clipped to 0.0"

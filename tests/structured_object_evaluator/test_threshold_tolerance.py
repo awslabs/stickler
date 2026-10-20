@@ -201,8 +201,8 @@ class TestListObjectGate:
         else:
             assert _comparison_rows(result) == {"items[0]": False}
 
-    def test_the_documented_laptop_pair_is_a_true_positive(self):
-        """The Good Match scenario in ``threshold-gated-evaluation.md``."""
+    def test_the_documented_worked_example(self):
+        """The scenarios and result block in ``threshold-gated-evaluation.md``."""
 
         class Product(StructuredModel):
             product_id: str = ComparableField(
@@ -215,19 +215,58 @@ class TestListObjectGate:
             match_threshold = 0.8
 
         class Order(StructuredModel):
+            order_id: str = ComparableField(
+                comparator=ExactComparator(), threshold=1.0, weight=2.0
+            )
             products: List[Product] = ComparableField(weight=3.0)
 
-        gt = Product(product_id="PROD-001", name="Laptop", price=999.99)
-        pred = Product(product_id="PROD-001", name="Laptop Computer", price=999.99)
-        assert gt.compare(pred) == NEAR
+        gt = [
+            Product(product_id="PROD-001", name="Laptop", price=999.99),
+            Product(product_id="PROD-002", name="Mouse", price=29.99),
+            Product(product_id="PROD-003", name="Cable", price=14.99),
+        ]
+        pred = [
+            Product(product_id="PROD-001", name="Laptop Computer", price=999.99),
+            Product(product_id="PROD-002", name="Different Product", price=99.99),
+            Product(product_id="PROD-004", name="New Product", price=19.99),
+        ]
+        assert gt[0].compare(pred[0]) == NEAR
 
-        result = _full_result(Order(products=[gt]), Order(products=[pred]))
+        def run(gt_items, pred_items):
+            return _full_result(
+                Order(order_id="ORD-1", products=gt_items),
+                Order(order_id="ORD-1", products=pred_items),
+            )
+
+        result = run(gt, pred)
         products = result["confusion_matrix"]["fields"]["products"]
-        assert _counts(products) == (1, 0)
+        overall = products["overall"]
+        assert [overall[key] for key in ("tp", "fd", "fn", "fa")] == [1, 2, 0, 0]
+        assert overall["derived"]["cm_precision"] == pytest.approx(1 / 3)
+        assert overall["derived"]["cm_recall"] == 1.0
+        assert overall["derived"]["cm_f1"] == pytest.approx(0.5)
         assert _counts(products["fields"]["product_id"]) == (1, 0)
         assert _counts(products["fields"]["name"]) == (0, 1)
         assert _counts(products["fields"]["price"]) == (1, 0)
-        assert _non_match_paths(result) == ["products[0].name"]
+        assert [
+            (entry["field_path"], entry["non_match_type"], round(entry["similarity_score"], 4))
+            for entry in result["non_matches"]
+        ] == [
+            ("products[0].name", "false_discovery", 0.4),
+            ("products[1]", "false_discovery", 0.6725),
+            ("products[2]", "false_discovery", 0.1333),
+        ]
+
+        # Only lists of different lengths leave an item unmatched.
+        for gt_items, pred_items, kind, counts in (
+            (gt, pred[:2], "false_negative", [1, 1, 1, 0]),
+            (gt[:2], pred, "false_alarm", [1, 1, 0, 1]),
+        ):
+            result = run(gt_items, pred_items)
+            overall = result["confusion_matrix"]["fields"]["products"]["overall"]
+            assert [overall[key] for key in ("tp", "fd", "fn", "fa")] == counts
+            last = result["non_matches"][-1]
+            assert (last["field_path"], last["non_match_type"]) == ("products[2]", kind)
 
 
 class TestListSubFieldGate:

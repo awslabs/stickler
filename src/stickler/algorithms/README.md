@@ -72,8 +72,10 @@ purpose and reads only `matched_pairs`. Nothing should read `tp` from a
 matcher built with `0.0`.
 
 **The threshold test is `ThresholdHelper.is_above_threshold`**, the one every
-evaluator gate uses. It accepts a score up to `1e-10` under the threshold, so a
-float rounding error does not turn a TP into an FD
+classification gate listed in
+[Meeting a Threshold](https://awslabs.github.io/stickler/Getting-Started/thresholds-and-metrics/#meeting-a-threshold)
+uses. It accepts a score up to `1e-10` under the threshold, so a float rounding
+error does not turn a TP into an FD
 ([#417](https://github.com/awslabs/stickler/issues/417)).
 
 ## How the evaluator uses it
