@@ -28,10 +28,16 @@ A `Dict` field exports as `{"type": "object"}`, with `additionalProperties` for 
 type, and as `"Dict[str, int]"` in a Stickler config (`"dict"` when a key or value type has no config
 name). Through JSON Schema it re-imports as `dict`, so the value type is not enforced. A
 `default_factory` of `list`, `dict` or `set` on a list or mapping field exports as the value it
-produces (`[]`, `{}`, a set as a list) and re-imports as that default. On an `Optional` field,
-`to_stickler_config()` writes no empty default, because a config cannot mark a field nullable
-otherwise; it re-imports with `None`, which scores the same as `[]` or `{}`. Any other factory, or one
-on a field exported as a scalar such as `Set[str]`, exports no default and re-imports as `None`.
+produces (`[]`, `{}`, a set as a list) and re-imports as that default. Any other factory, or one on
+a field exported as a scalar such as `Set[str]`, exports no default and re-imports as `None`.
+
+A Stickler config has no nullable flag: `model_from_json()` makes a field `Optional` only when its
+default is `None`. So on an `Optional` field `to_stickler_config()` writes no empty `[]` or `{}`
+default, from a factory or written literally. The field re-imports nullable with a `None` default,
+which scores the same as the original's `[]` or `{}`, though the rebuilt instance holds `None`
+(`model_dump()` shows `null`). This covers empty defaults only. A non-empty default on an `Optional`
+field, such as `Optional[List[int]] = [1]` or `Optional[str] = ""`, is written and re-imports
+non-nullable, rejecting `None`.
 
 Both round-trip methods are also reachable from a plain Pydantic `BaseModel` that was never written
 as a `StructuredModel`, by converting first:

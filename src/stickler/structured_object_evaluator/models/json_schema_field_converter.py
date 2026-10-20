@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Tuple, Type, get_args, get_origin
 from pydantic.fields import FieldInfo, PydanticUndefined
 
 from .configuration_helper import ConfigurationHelper
-from .optional_annotation import unwrap_annotated, unwrap_optional
+from .optional_annotation import is_optional_union, unwrap_annotated, unwrap_optional
 
 # Bidirectional type mappings for export
 PYTHON_TYPE_TO_JSON_TYPE = {
@@ -99,11 +99,6 @@ def _exports_as_container(annotation: Any) -> bool:
     return get_origin(inner) is list or ConfigurationHelper.is_mapping_annotation(inner)
 
 
-def _is_nullable(annotation: Any) -> bool:
-    """Whether the annotation admits ``None``, with ``Annotated`` stripped."""
-    return unwrap_optional(unwrap_annotated(annotation))[1]
-
-
 def add_exportable_default(
     target: Dict[str, Any],
     field_info: FieldInfo,
@@ -126,8 +121,12 @@ def add_exportable_default(
     is ``None``, so ``Optional[List[int]] = ComparableField(default_factory=list)``
     rebuilt as ``List[int]`` and rejected the ``None`` the original accepts.
     Omitted, the default rebuilds as ``None``, which an empty list or mapping
-    scores identically to. JSON Schema carries ``null`` in ``type``, so that
-    path keeps the default.
+    scores identically to. Only an empty default is dropped: a non-empty one
+    does not score like ``None``, so it is written and still rebuilds
+    non-nullable, as on ``dev``. The JSON Schema path keeps the default, and
+    its rebuild still accepts ``None`` because the importer
+    (``JsonSchemaImporter``) widens every non-required field to ``Optional``,
+    not because the exported ``type`` names ``null``.
     """
     if field_info.is_required():
         return
@@ -143,7 +142,7 @@ def add_exportable_default(
         stickler_config
         and isinstance(value, (list, dict))
         and not value
-        and _is_nullable(field_info.annotation)
+        and is_optional_union(unwrap_annotated(field_info.annotation))
     ):
         return
     target["default"] = value

@@ -382,3 +382,62 @@ def test_an_optional_factory_field_round_trips(annotation, factory, sample):
     ):
         assert rebuilt(name="n", tags=None).tags is None
         assert scores(rebuilt) == expected
+
+
+def _config_round_trip(model):
+    return StructuredModel.model_from_json(
+        json.loads(json.dumps(model.to_stickler_config()))
+    )
+
+
+def _accepts_none(model, field):
+    try:
+        model(**{field: None})
+    except ValueError:
+        return False
+    return True
+
+
+@pytest.mark.parametrize(
+    "field_kwargs",
+    [{"default_factory": list}, {"default": []}],
+    ids=["factory", "literal"],
+)
+def test_a_non_optional_list_of_models_stays_non_nullable_over_two_round_trips(
+    field_kwargs,
+):
+    """The list-of-models branch dropped a literal `[]`, so the first rebuild's
+    default went missing in the second export, and model_from_json() widened
+    the missing default to Optional."""
+    original = type(
+        "Leaves",
+        (StructuredModel,),
+        {
+            "__annotations__": {"subs": List[Sub]},
+            "subs": ComparableField(**field_kwargs),
+        },
+    )
+    once = _config_round_trip(original)
+    twice = _config_round_trip(once)
+    assert once.to_stickler_config()["fields"]["subs"]["default"] == []
+    for model in (original, once, twice):
+        assert not _accepts_none(model, "subs")
+        assert model().subs == []
+
+
+@pytest.mark.parametrize("required", [False, True])
+def test_a_hand_written_list_of_models_is_nullable_unless_required(required):
+    """model_from_json() widens a None default to Optional on this path as on
+    the primitive one (#149); a required list stays `List[Model]`."""
+    config = {
+        "model_name": "Hand",
+        "fields": {
+            "subs": {
+                "type": "list_structured_model",
+                "required": required,
+                "fields": {"sku": {"type": "str", "comparator": "ExactComparator"}},
+            }
+        },
+    }
+    model = StructuredModel.model_from_json(config)
+    assert _accepts_none(model, "subs") is not required

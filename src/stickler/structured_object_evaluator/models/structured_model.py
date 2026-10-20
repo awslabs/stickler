@@ -2174,8 +2174,18 @@ class StructuredModel(BaseModel):
                     # model_from_json() reads a missing one as False, so a
                     # required List[Model] rebuilt as optional.
                     field_config["required"] = field_info.is_required()
+                    # A literal `[]` is written, as field_to_stickler_config
+                    # writes one: omitted, model_from_json() reads the missing
+                    # default as None and widens the field to Optional, so a
+                    # `List[Model]` turned nullable after a second round trip.
+                    # A non-empty literal holds model instances, which are not
+                    # JSON, so it is still not exported.
+                    literal = field_info.default
                     add_exportable_default(
-                        field_config, field_info, stickler_config=True
+                        field_config,
+                        field_info,
+                        include_literal=isinstance(literal, list) and not literal,
+                        stickler_config=True,
                     )
                     metadata = converter._extract_field_metadata(field_info)
                     metadata.pop("comparator", None)

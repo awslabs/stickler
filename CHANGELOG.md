@@ -227,9 +227,14 @@ Each release links to full notes on the
   `List[StructuredModel]` field now; without it a required list rebuilt as optional.
   On an `Optional` field `to_stickler_config()` writes no empty `[]` or `{}`
   default, since a config has no nullable flag and only a `None` default
-  rebuilds the field as `Optional`; `None` scores the same. `model_from_json()`
-  now applies that widening to a `list_structured_model` field too, which
-  rebuilt as `List[Model]` and rejected `None`.
+  rebuilds the field as `Optional`. The rebuilt field defaults to `None` where
+  the original had `[]` or `{}`; scores are identical, though `model_dump()`
+  shows `null`. Only empty defaults are covered: a non-empty one on an
+  `Optional` field (`Optional[List[int]] = [1]`, `Optional[str] = ""`) still
+  rebuilds non-nullable, as before. `model_from_json()` now applies the
+  widening to a `list_structured_model` field too, which rebuilt as
+  `List[Model]` and rejected `None`; an empty literal `[]` on a non-Optional
+  `List[Model]` is now exported, so that field stays non-nullable.
 
 ## [1.0.0] - 2026-09-11
 

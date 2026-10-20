@@ -250,6 +250,8 @@ Person = StructuredModel.model_from_json(person_config)
 
 **Nested model fields** use `"type": "structured_model"` with a nested `"fields"` object. **List of models** use `"type": "list_structured_model"`. **Optional models** use `"type": "optional_structured_model"`.
 
+A field that is not `required` and has no `default`, or `"default": null`, is built as `Optional[T]` with a `None` default, so it accepts `null`; this includes a `list_structured_model` field. A non-`None` default such as `"default": []` keeps the field non-nullable.
+
 A key that is not listed above is not read. Rather than being dropped in silence, it emits a `UserWarning` naming the key, the full field path (`billing.city`), and the keys that position does accept; the model still builds, without the key. `match_threshold` is the exception: it is the object-level threshold, so on a primitive field it raises rather than warns — use `threshold` there.
 
 ### Nested Model Example
