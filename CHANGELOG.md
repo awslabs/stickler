@@ -11,6 +11,33 @@ Each release links to full notes on the
 
 ### Changed
 
+- **Breaking:** `to_json_schema()` and `to_stickler_config()` no longer write a
+  plain pydantic `BaseModel`, a list of lists or a union of models as a string.
+  Both fell back to `"string"` / `"str"` for a type they had no entry for, so
+  the re-imported model could not load the data the original accepted. A plain
+  model field, or a list of them, now exports as a free-form object
+  (`{"type": "object"}`, `"dict"` in a Stickler config), since it is scored as
+  one object the way a mapping is, and re-imports as `dict` with the
+  comparator, threshold, weight and clip setting it declared; its own field
+  types are not exported. A list of lists, including `List[List[Dict]]`,
+  exports as nested arrays. A consumer reading the exported schema sees these
+  types change. `to_stickler_config()` has no type for a union with a model
+  arm, such as the `Union[Card, Bank]` that `from_json_schema()` builds from a
+  multi-arm `anyOf`, or for a `StructuredModel` inside a nested list
+  (`List[List[Card]]`), so both methods now raise `ValueError` for these, to
+  keep one rule, where they returned a schema that could not load the original
+  data or (for the nested list, in the Stickler config) scored it differently.
+  `Optional` and `Annotated` are stripped before the type is chosen, so a
+  nested model or list of models declared as `Annotated[..., Field(...)] | None`
+  exports as the model, and an annotated scalar such as
+  `Annotated[int, Field(...)] | None` as its own type rather than a string. The
+  refusal reads the field, its list levels and the arms of a union, not other
+  containers: `Union[List[Card], str]`, `Union[Dict[str, Card], str]` and
+  `Tuple[Card, ...]` still export as `"string"`, `List[List[Dict[str, Card]]]`
+  exports without the model's schema, and a union leaf in a list of lists
+  (`List[List[Union[str, int]]]`) is still written as `"string"`.
+  Parts B and C of [#349](https://github.com/awslabs/stickler/issues/349)
+
 - **Breaking:** a `StructuredModel` field typed `date`, `datetime`, `time`,
   `timedelta`, `Decimal`, `UUID` or `Enum` now reaches its comparator, and a
   declared comparator is always called. The dispatcher treated only `str`,
@@ -144,10 +171,21 @@ Each release links to full notes on the
   `document_non_matches=False`. `print_non_matches` on input that is not a result
   at all now prints an error. An empty record list still prints a success
   message, now `✅ No non-matches found.` without the `all_fields_matched`
-  wording removed in #287. An `evaluator_format=True` dict still prints that
-  success without records, because it always carries a `non_matches` list,
-  empty unless records were requested
+  wording removed in #287
   ([#298](https://github.com/awslabs/stickler/issues/298))
+
+- **The HTML report no longer claims a document is clean when it holds no
+  non-match records.** The Non-Matches Analysis section rendered `No non-matches
+  found.` for a `compare_with()` dict computed without `document_non_matches=True`,
+  including one with a field scoring `0.0`, and for a bulk `ProcessEvaluation`
+  built with `document_non_matches=False`. `DataExtractor.extract_non_matches`
+  returned `[]` for both "no records collected" and "collected and empty", so the
+  renderer could not tell them apart. It now returns `None` for the first, and the
+  section says the records are missing and how to collect them. An empty record
+  list still renders the success message. Not yet covered: results from
+  `aggregate_from_comparisons()`, a bulk run in which every document raised
+  ([#425](https://github.com/awslabs/stickler/issues/425))
+  ([#411](https://github.com/awslabs/stickler/issues/411))
 
 - **`raw_similarity_score` on a list node is now the unclipped score.** It
   carried the clipped, coverage-scaled mean, the same number as
@@ -176,15 +214,13 @@ Each release links to full notes on the
 
 - **`evaluator_format=True` no longer reports an empty `non_matches` list when
   records were not requested.** It always wrote `"non_matches": []`, so
-  `print_non_matches` printed `✅ No non-matches found.` over a document with a
-  wrong field, the case the #298 entry above leaves open. The key is now present
-  only with `document_non_matches=True`, as in the default `compare_with()`
-  dict, and the printers say the records are missing. The HTML report's
-  non-match section likewise says records were not collected, instead of
-  `No non-matches found.`, for a dict without the key or a `ProcessEvaluation`
-  built with `document_non_matches=False`. Code that indexes
-  `result["non_matches"]` on evaluator-format output without requesting records
-  should pass `document_non_matches=True` or use `.get("non_matches", [])`.
+  `print_non_matches` and the HTML report both said `No non-matches found.`
+  over a document with a wrong field, despite the #298 and #411 fixes above.
+  The key is now present only with `document_non_matches=True`, as in the
+  default `compare_with()` dict, so both say the records are missing. Code
+  that indexes `result["non_matches"]` on evaluator-format output without
+  requesting records should pass `document_non_matches=True` or use
+  `.get("non_matches", [])`.
   Scores and counts are unchanged
   ([#413](https://github.com/awslabs/stickler/issues/413))
 

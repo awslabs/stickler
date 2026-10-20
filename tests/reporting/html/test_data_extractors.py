@@ -169,14 +169,32 @@ class TestDataExtractor:
         assert result[0]["doc_id"] == "doc1"
     
     def test_extract_non_matches_bulk_results_none(self):
-        """Test non-matches extraction when non_matches is None."""
+        """None is passed through, not flattened to an empty list.
+
+        The bulk evaluator leaves `non_matches` at None when it was built with
+        `document_non_matches=False`. Returning `[]` there made it
+        indistinguishable from a clean document, which the HTML report then
+        announced as a success (#411).
+        """
         mock_process_eval = Mock(spec=ProcessEvaluation)
         mock_process_eval.non_matches = None
-        
+
         result = DataExtractor.extract_non_matches(mock_process_eval)
-        
+
+        assert result is None
+
+    def test_extract_non_matches_individual_results_without_the_key(self):
+        """A default `compare_with()` dict has no `non_matches` key at all."""
+        result = DataExtractor.extract_non_matches({'field_scores': {'name': 0.0}})
+
+        assert result is None
+
+    def test_extract_non_matches_individual_results_empty_list(self):
+        """Records were requested and none were produced: an empty list, not None."""
+        result = DataExtractor.extract_non_matches({'non_matches': []})
+
         assert result == []
-    
+
     def test_extract_non_matches_individual_results(self):
         """Test non-matches extraction from individual results dict."""
         individual_results = {
