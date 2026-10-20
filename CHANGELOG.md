@@ -114,6 +114,18 @@ Each release links to full notes on the
 
 ### Fixed
 
+- List reporting ([#332](https://github.com/awslabs/stickler/issues/332)):
+  `non_matches` and `field_comparisons` reuse the pairings, scores, and
+  threshold decisions made during list scoring. Rejected pairs produce indexed
+  false-discovery records. Primitive-list reports avoid extra comparator calls
+  and preserve scoring's threshold tolerance. Standard structured-child reports
+  reuse scored child results; custom comparison overrides retain their fallback.
+  Field-comparison rows treat float `NaN` as missing, consistently with scoring,
+  both for top-level fields and fields in accepted structured-list pairs.
+  A nested list row inside a list element reports `match=False` when an element
+  was a false discovery, false alarm or false negative, so `field_comparisons`
+  agrees with `non_matches`.
+
 - **A `List[Dict[...]]` field exported by `to_json_schema()` can now load its
   own data.** The element was exported as `items: {"type": "string"}`, so
   `from_json_schema()` rebuilt the field as `List[str]` and raised
@@ -193,6 +205,20 @@ Each release links to full notes on the
   success without records, because it always carries a `non_matches` list,
   empty unless records were requested
   ([#298](https://github.com/awslabs/stickler/issues/298))
+
+- **The HTML report no longer claims a document is clean when it holds no
+  non-match records.** The Non-Matches Analysis section rendered `No non-matches
+  found.` for a `compare_with()` dict computed without `document_non_matches=True`,
+  including one with a field scoring `0.0`, and for a bulk `ProcessEvaluation`
+  built with `document_non_matches=False`. `DataExtractor.extract_non_matches`
+  returned `[]` for both "no records collected" and "collected and empty", so the
+  renderer could not tell them apart. It now returns `None` for the first, and the
+  section says the records are missing and how to collect them. An empty record
+  list still renders the success message. Not yet covered: results from
+  `aggregate_from_comparisons()`, a bulk run in which every document raised
+  ([#425](https://github.com/awslabs/stickler/issues/425)), and an
+  `evaluator_format=True` dict ([#413](https://github.com/awslabs/stickler/issues/413))
+  ([#411](https://github.com/awslabs/stickler/issues/411))
 
 ## [1.0.0] - 2026-09-11
 
