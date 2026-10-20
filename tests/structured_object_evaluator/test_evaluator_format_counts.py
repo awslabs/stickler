@@ -107,3 +107,22 @@ def test_list_field_matches_its_confusion_matrix_node():
     assert list_overall["recall"] == derived["cm_recall"]
     assert list_overall["f1"] == derived["cm_f1"]
     assert list_overall["accuracy"] == derived["cm_accuracy"]
+
+
+class Pair(StructuredModel):
+    a: Optional[str] = ComparableField(comparator=ExactComparator(), default=None)
+    b: Optional[str] = ComparableField(comparator=ExactComparator(), default=None)
+
+
+class Pairs(StructuredModel):
+    items: Optional[List[Pair]] = ComparableField(default=None)
+
+
+def test_per_item_overall_reads_counts():
+    """Each `items[i]` is that pair's own evaluator-format result, so a missed
+    `b` lowers its recall, not its precision."""
+    result = Pairs(items=[Pair(a="x", b="y")]).compare_with(
+        Pairs(items=[Pair(a="x")]), evaluator_format=True
+    )
+
+    assert _pr(result["fields"]["items"]["items"][0]["overall"]) == (1.0, 0.5)

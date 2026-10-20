@@ -209,20 +209,21 @@ Each release links to full notes on the
   ([#425](https://github.com/awslabs/stickler/issues/425))
   ([#411](https://github.com/awslabs/stickler/issues/411))
 
-- **`raw_similarity_score` on a list node is now the unclipped score.** It
-  carried the clipped, coverage-scaled mean, the same number as
+- **`raw_similarity_score` on a primitive list node is now the unclipped
+  score.** It carried the clipped, coverage-scaled mean, the same number as
   `threshold_applied_score`, so it contradicted its name and `compare()`, and
   the unclipped number could not be read from `compare_with()` output. It is now
   the same mean with no element clipped, `sum(pair scores) / max(len(gt),
   len(pred))`: `["apple", "banana"]` vs `["apple", "banxxx"]` at threshold 0.9
-  reported `0.5` and now reports `0.75`, which is what `compare()` returns. It
-  differs only where an element was clipped, so `List[StructuredModel]` is in
-  practice unchanged. Report-only: `similarity_score`, `threshold_applied_score`,
-  `field_scores`, `overall_score` and every confusion count are unchanged.
-  `EvalResult.explain()` reads it, so a list field's `raw_similarity` moves the
-  same way, and a list whose paired elements were all clipped now gets a
-  `verdict`, worded for a coverage-scaled mean
-  ([#330](https://github.com/awslabs/stickler/issues/330))
+  reported `0.5` and now reports `0.75`, which is what `compare()` returns. On a
+  `List[StructuredModel]` each pair's score is the item's own `overall_score`,
+  whose fields are already clipped, so its raw score is in practice unchanged
+  and still clipped inside each item (#330). Report-only: `similarity_score`,
+  `threshold_applied_score`, `field_scores`, `overall_score` and every
+  confusion count are unchanged. `EvalResult.explain()` reads it, so a list
+  field's `raw_similarity` moves the same way, and a primitive list whose paired
+  elements were all clipped now gets a `verdict`, worded for a coverage-scaled
+  mean ([#330](https://github.com/awslabs/stickler/issues/330))
 
 - **`evaluator_format=True` precision and recall no longer swap when a value is
   missed.** Without `include_confusion_matrix=True`, `overall` was a conversion
@@ -232,8 +233,12 @@ Each release links to full notes on the
   `1.0` and `0.5`, as `TP / (TP + FP)` and `TP / (TP + FN)` define them and as
   the same call already reported with the confusion matrix included. Both now
   read the node's confusion counts, honour `recall_with_fd`, and equal that
-  node's `derived` block. A node with no TP, FP or FN (both sides empty) has no
-  precision or recall to read and keeps its previous value. `anls_score`, and
+  node's `derived` block. Each `items[i]` of a `List[StructuredModel]` field is
+  that pair's own evaluator-format result, so its `overall` moves the same way.
+  A node with no TP, FP or FN (both sides empty) has no precision or recall to
+  read and keeps its previous value, which still depends on the flag: precision,
+  recall and F1 are `1.0` without the confusion matrix and `0.0` with it
+  ([#434](https://github.com/awslabs/stickler/issues/434)). `anls_score`, and
   the metrics of a field that is not a list, are unchanged.
   Only evaluator-format output moves: scores and counts are unchanged
 

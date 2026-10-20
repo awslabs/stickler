@@ -58,5 +58,4 @@ def test_printer_lists_requested_records(capsys):
         use_color=False,
     )
 
-    assert "b" in capsys.readouterr().out
-
+    assert '📍 b: "y" → "z"' in capsys.readouterr().out

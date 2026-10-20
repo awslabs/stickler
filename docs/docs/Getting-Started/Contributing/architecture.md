@@ -232,7 +232,7 @@ Every field comparison produces three score variants:
 
 | Score | Description |
 |-------|-------------|
-| `raw_similarity_score` | Unclipped score (0.0–1.0). On a list node it is the coverage-scaled mean of the matched pairs' unclipped scores, `sum(pair scores) / max(len(gt), len(pred))`, which is what `compare()` returns for the field. No score or count reads it. `EvalResult.explain()` shows it (`raw_similarity`, `verdict`) for each top-level field. On a scalar field it also decides `match` in `field_comparisons`, the label confidence metrics score against, and gives an FD non-match record its similarity and reason |
+| `raw_similarity_score` | Unclipped score (0.0–1.0). On a list node it is the coverage-scaled mean of the matched pairs' unclipped scores, `sum(pair scores) / max(len(gt), len(pred))`, which is what `compare()` returns for the field. On a `List[StructuredModel]` each pair's score is the item's own `overall_score`, so it is still clipped inside each item. No score or count reads it. `EvalResult.explain()` shows it (`raw_similarity`, `verdict`) for each top-level field. On a scalar field it also decides `match` in `field_comparisons`, the label confidence metrics score against, and gives an FD non-match record its similarity and reason |
 | `similarity_score` | Maintained for API compatibility. Equal to `raw_similarity_score` on a scalar or nested model, and to `threshold_applied_score` on a list node |
 | `threshold_applied_score` | Raw score with `clip_under_threshold` applied (0.0 if below threshold and clipping is enabled). The score: `field_scores` and `overall_score` read it |
 
@@ -291,7 +291,8 @@ else:
     [#330](https://github.com/awslabs/stickler/issues/330):
     `List[StructuredModel]` does not honour the flag, because each pair is scored
     through the item's own `compare_with` and clipping has already happened per
-    item.
+    item. For the same reason its `raw_similarity_score` is unclipped only at the
+    list level.
 
 ### `_aggregate_to_overall()`
 

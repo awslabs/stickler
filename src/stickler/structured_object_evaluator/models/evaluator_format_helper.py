@@ -45,28 +45,24 @@ class EvaluatorFormatHelper:
         confusion_matrix = result.get("confusion_matrix", {})
         counts_by_field = (recursive_result or {}).get("fields", {})
 
+        overall_counts = (recursive_result or {}).get("overall")
+
         # If we have confusion matrix data, use its derived metrics for overall
         if (
             confusion_matrix
             and "overall" in confusion_matrix
             and "derived" in confusion_matrix["overall"]
         ):
-            # Use the derived metrics from confusion matrix for overall
-            cm_derived = confusion_matrix["overall"]["derived"]
-            overall_metrics = {
-                "precision": cm_derived["cm_precision"],
-                "recall": cm_derived["cm_recall"],
-                "f1": cm_derived["cm_f1"],
-                "accuracy": cm_derived["cm_accuracy"],
-                "anls_score": overall_score,
-            }
-        elif EvaluatorFormatHelper._has_decisions(
-            (recursive_result or {}).get("overall")
-        ):
-            # The same counts, read before the confusion matrix is built, so
-            # precision and recall do not depend on include_confusion_matrix.
+            overall_metrics = EvaluatorFormatHelper._metrics_from_derived(
+                confusion_matrix["overall"]["derived"], overall_score
+            )
+        elif EvaluatorFormatHelper._has_decisions(overall_counts):
+            # The same counts, read before the confusion matrix is built, so a
+            # node with a TP, FP or FN gets the same precision and recall with
+            # or without include_confusion_matrix. A TN-only node does not
+            # (#434).
             overall_metrics = EvaluatorFormatHelper._metrics_from_counts(
-                recursive_result["overall"], overall_score, recall_with_fd
+                overall_counts, overall_score, recall_with_fd
             )
         else:
             # Fallback to binary conversion if no confusion matrix
@@ -169,6 +165,13 @@ class EvaluatorFormatHelper:
             {k: counts.get(k, 0) for k in ("tp", "fa", "fd", "fp", "tn", "fn")},
             recall_with_fd,
         )
+        return EvaluatorFormatHelper._metrics_from_derived(derived, score)
+
+    @staticmethod
+    def _metrics_from_derived(
+        derived: Dict[str, Any], score: float
+    ) -> Dict[str, float]:
+        """Evaluator-format metrics from a ``derived`` block and the node's score."""
         return {
             "precision": derived["cm_precision"],
             "recall": derived["cm_recall"],

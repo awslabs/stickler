@@ -13,6 +13,7 @@ from typing import List, Optional
 import pytest
 
 from stickler import ComparableField, StructuredModel
+from stickler.auto import eval_for
 from stickler.comparators import ExactComparator, LevenshteinComparator
 
 
@@ -157,3 +158,51 @@ def test_explain_list_verdict_does_not_read_raw_as_one_score():
     assert explained["name"]["verdict"] == (
         "raw 0.50 < threshold 0.85 -> clipped to 0.0"
     )
+
+
+class Code(StructuredModel):
+    code: Optional[str] = ComparableField(
+        comparator=LevenshteinComparator(), threshold=0.9, default=None
+    )
+
+
+class Codes(StructuredModel):
+    items: Optional[List[Code]] = ComparableField(default=None)
+
+
+def test_structured_list_raw_is_clipped_inside_each_item():
+    """Each pair's score is the item's own `overall_score`, which has already
+    clipped `code` (0.5 < 0.9), so the list's raw score is 0.0, not 0.5."""
+    _, node = _node(
+        Codes(items=[Code(code="banana")]), Codes(items=[Code(code="banxxx")]), "items"
+    )
+
+    assert node["raw_similarity_score"] == 0.0
+    assert node["threshold_applied_score"] == 0.0
+
+
+class TinyCode(StructuredModel):
+    code: Optional[str] = ComparableField(
+        comparator=LevenshteinComparator(),
+        threshold=0.9,
+        clip_under_threshold=False,
+        default=None,
+    )
+
+
+class TinyCodes(StructuredModel):
+    items: Optional[List[TinyCode]] = ComparableField(default=None)
+
+
+def test_explain_gives_no_verdict_for_a_list_of_models():
+    """The list clips a pair below 0.01, not at the field's threshold, so a
+    verdict naming that threshold would state the wrong cause."""
+    result = eval_for(TinyCodes).evaluate(
+        TinyCodes(items=[TinyCode(code="a")]),
+        TinyCodes(items=[TinyCode(code="a" + "b" * 199)]),
+    )
+    explained = result.explain()
+
+    assert explained["items"]["score"] == 0.0
+    assert explained["items"]["raw_similarity"] == pytest.approx(0.005)
+    assert "verdict" not in explained["items"]

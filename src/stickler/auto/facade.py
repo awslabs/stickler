@@ -139,6 +139,7 @@ class EvalResult:
                     and raw_sim
                     and threshold is not None
                     and raw_sim < threshold
+                    and not self._is_list_of_models(name)
                 ):
                     if self._is_list_field(name):
                         entry["verdict"] = (
@@ -157,6 +158,15 @@ class EvalResult:
         # comparing it to the per-element threshold misreads it.
         info = self._spec.eval_model.model_fields.get(name)
         return info is not None and _annotation_is_list(info.annotation)
+
+    def _is_list_of_models(self, name: str) -> bool:
+        # A List[StructuredModel] pair is scored by the item's own compare_with
+        # and clipped by the list at 0.01, not at this field's threshold, so a
+        # verdict naming that threshold would misstate the cause.
+        info = self._spec.eval_model.model_fields.get(name)
+        return info is not None and bool(
+            StructuredModel._is_list_of_structured_model_type(info.annotation)
+        )
 
     def __repr__(self) -> str:  # pragma: no cover - display only
         return (
