@@ -117,7 +117,10 @@ Each release links to full notes on the
 - **The HTML report's field performance table now escapes field names.** It
   wrote each name into the page as raw HTML, while the chart beside it escaped
   the same name, so a name containing `<`, `>` or `&` was read by the browser as
-  markup ([#422](https://github.com/awslabs/stickler/issues/422))
+  markup. A field name that is not a string no longer raises there, and the
+  non-matches table truncates a long value before escaping it, so the cut can
+  no longer split an entity such as `&amp;`
+  ([#422](https://github.com/awslabs/stickler/issues/422))
 
 - List reporting ([#332](https://github.com/awslabs/stickler/issues/332)):
   `non_matches` and `field_comparisons` reuse the pairings, scores, and
