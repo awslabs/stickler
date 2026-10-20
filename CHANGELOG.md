@@ -229,12 +229,17 @@ Each release links to full notes on the
   default, since a config has no nullable flag and only a `None` default
   rebuilds the field as `Optional`. The rebuilt field defaults to `None` where
   the original had `[]` or `{}`; scores are identical, though `model_dump()`
-  shows `null`. Only empty defaults are covered: a non-empty one on an
-  `Optional` field (`Optional[List[int]] = [1]`, `Optional[str] = ""`) still
-  rebuilds non-nullable, as before. `model_from_json()` now applies the
-  widening to a `list_structured_model` field too, which rebuilt as
-  `List[Model]` and rejected `None`; an empty literal `[]` on a non-Optional
-  `List[Model]` is now exported, so that field stays non-nullable.
+  shows `null`. Only an empty list or mapping default is covered: any other
+  default on an `Optional` field (`Optional[List[int]] = [1]`,
+  `Optional[str] = ""`) is written and still rebuilds non-nullable, as before.
+  `model_from_json()` now applies the widening to a `list_structured_model`
+  field too, which rebuilt as `List[Model]` and rejected `None`; an empty
+  literal `[]` on a non-Optional `List[Model]` is now exported, so that field
+  stays non-nullable. A `List[Model]` default that is not written (a non-empty
+  literal such as `[Sub(...)]`, a tuple, or a factory other than `list`,
+  `dict` or `set`) rebuilds as `Optional` with a `None` default, so the
+  rebuilt model now accepts `None` even where the original `List[Model]` was
+  not `Optional`; `None` scores the same as `[]`.
 
 ## [1.0.0] - 2026-09-11
 

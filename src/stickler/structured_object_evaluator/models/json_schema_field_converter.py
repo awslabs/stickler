@@ -123,7 +123,7 @@ def add_exportable_default(
     Omitted, the default rebuilds as ``None``, which an empty list or mapping
     scores identically to. Only an empty default is dropped: a non-empty one
     does not score like ``None``, so it is written and still rebuilds
-    non-nullable, as on ``dev``. The JSON Schema path keeps the default, and
+    non-nullable, as before #306. The JSON Schema path keeps the default, and
     its rebuild still accepts ``None`` because the importer
     (``JsonSchemaImporter``) widens every non-required field to ``Optional``,
     not because the exported ``type`` names ``null``.

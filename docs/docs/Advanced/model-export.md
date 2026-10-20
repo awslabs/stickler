@@ -35,9 +35,12 @@ A Stickler config has no nullable flag: `model_from_json()` makes a field `Optio
 default is `None`. So on an `Optional` field `to_stickler_config()` writes no empty `[]` or `{}`
 default, from a factory or written literally. The field re-imports nullable with a `None` default,
 which scores the same as the original's `[]` or `{}`, though the rebuilt instance holds `None`
-(`model_dump()` shows `null`). This covers empty defaults only. A non-empty default on an `Optional`
-field, such as `Optional[List[int]] = [1]` or `Optional[str] = ""`, is written and re-imports
-non-nullable, rejecting `None`.
+(`model_dump()` shows `null`). This covers an empty list or mapping default only. Any other default
+on an `Optional` field, such as `Optional[List[int]] = [1]` or `Optional[str] = ""`, is written and
+re-imports non-nullable, rejecting `None`. A `List[Model]` field is the exception: a non-empty
+literal (`[Sub(...)]`), a tuple, or a factory other than `list`, `dict` or `set` is not written, so
+the field re-imports as `Optional` with a `None` default and accepts `None`, which scores the same
+as `[]`. That holds whether or not the original was `Optional`.
 
 Both round-trip methods are also reachable from a plain Pydantic `BaseModel` that was never written
 as a `StructuredModel`, by converting first:
