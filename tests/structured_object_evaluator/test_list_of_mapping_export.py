@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Mapping, MutableMapping, Optional, OrderedDi
 import pytest
 from pydantic import Field
 
+from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
 from stickler.structured_object_evaluator.models.configuration_helper import (
     ConfigurationHelper,
@@ -118,6 +119,17 @@ def test_stickler_config_keeps_an_optional_element_nullable():
     original = WithNone(**gt).compare_with(WithNone(**pred))
     rebuilt = Reimported(**gt).compare_with(Reimported(**pred))
     assert rebuilt["field_scores"] == pytest.approx(original["field_scores"])
+
+
+def test_stickler_config_keeps_a_declared_comparator_config_in_place():
+    class Tuned(StructuredModel):
+        rows: List[Dict[str, str]] = ComparableField(
+            comparator=LevenshteinComparator(normalize=False), threshold=0.8
+        )
+
+    field = Tuned.to_stickler_config()["fields"]["rows"]
+    assert field["comparator_config"] == {"normalize": False}
+    assert list(field)[:3] == ["type", "comparator", "comparator_config"]
 
 
 class LateRows(StructuredModel):

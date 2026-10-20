@@ -133,16 +133,21 @@ Each release links to full notes on the
   model accepted. A list whose element is any mapping (`Dict`, `dict`,
   `Mapping`, optionally `Optional`) now exports `items: {"type": "object"}`
   (`["object", "null"]` for an optional element) and re-imports as
-  `List[dict]`. A consumer reading the exported schema sees the `items` type
-  change from `"string"` to `"object"`. `to_stickler_config()` now writes every
-  mapping element as `List[Dict]` (`List[Optional[Dict]]` for an optional
-  element); it wrote `List[Mapping]` or `List[Counter]`, which
-  `model_from_json()` refused with `Unknown type`. Both exports now carry
-  the comparator, threshold, weight and clip the field resolves even when it is
-  declared without `ComparableField`, so it scores as the original did (`0.5`,
-  not `0.0`, for one wrong key of two) unless the data relied on coercion to the
-  value type, which is not exported. Such a field was refused by
-  `model_from_json()` for having no comparator
+  `List[dict]` (`List[Optional[dict]]` for an optional element). A consumer
+  reading the exported schema sees the `items` type change from `"string"` to
+  `"object"`. `to_stickler_config()` now writes every mapping element as
+  `List[Dict]` (`List[Optional[Dict]]` for an optional element), which
+  `model_from_json()` re-imports as written; it wrote `List[Mapping]` or
+  `List[Counter]`, which `model_from_json()` refused with `Unknown type`. Both
+  exports now carry the comparator, threshold, weight and clip the field
+  resolves even when it is declared without `ComparableField`, so it scores as
+  the original did (`0.5`, not `0.0`, for one wrong key of two) unless the data
+  relied on coercion to the value type, which is not exported. Such a field was
+  refused by `model_from_json()` for having no comparator. A declared
+  `ComparableField` whose annotation resolves only at `model_rebuild()` now
+  exports ANLS* with clip off, what the engine scores with, instead of
+  Levenshtein with clip on (`0.5`, not `0.95`, for the same data after the
+  round trip)
   ([#333](https://github.com/awslabs/stickler/issues/333))
 
 - **A `RootModel` is now refused when the evaluator is built, instead of failing

@@ -2224,12 +2224,13 @@ class StructuredModel(BaseModel):
                         )
                         # Replace the raw attributes the converter wrote, so a
                         # substituted comparator does not keep the old config.
-                        field_config.pop("comparator_config", None)
-                        field_config.update(
-                            converter._build_comparison_extensions(
-                                metadata, output_format="stickler_config"
-                            )
+                        # Updating in place keeps a surviving config's key order.
+                        extensions = converter._build_comparison_extensions(
+                            metadata, output_format="stickler_config"
                         )
+                        if "comparator_config" not in extensions:
+                            field_config.pop("comparator_config", None)
+                        field_config.update(extensions)
                     else:
                         # A plain model's class name is not a type
                         # model_from_json() knows; it is written as `dict`, as
