@@ -322,7 +322,10 @@ GUARD_VERDICTS = {
 class TestGuard:
     @pytest.mark.parametrize("case_id,expected", sorted(GUARD_VERDICTS.items()))
     def test_verdict(self, case_id, expected):
-        assert strands_test_pass(_evaluate(_case(case_id)), 0.7) is expected
+        assert (
+            strands_test_pass(_evaluate(_case(case_id)), STRANDS_DEFAULT_THRESHOLD)
+            is expected
+        )
 
     def test_sparse_empty_prediction_is_matched_but_fails(self):
         # The case the guard exists for: blank-on-both fields lift the score
@@ -330,7 +333,7 @@ class TestGuard:
         result = _evaluate(_case("lead/sparse_empty_prediction"))
         assert result.matched is True
         assert result.recall == 0.0
-        assert strands_test_pass(result, 0.7) is False
+        assert strands_test_pass(result, STRANDS_DEFAULT_THRESHOLD) is False
 
     def test_nothing_to_find_passes_on_score(self):
         result = _evaluate(_case("lead/nothing_to_find_empty"))
@@ -338,42 +341,39 @@ class TestGuard:
         assert overall["tp"] + overall["fn"] + overall["fd"] == 0
         assert overall["fa"] == 0
         assert result.overall_score == 1.0
-        assert strands_test_pass(result, 0.7) is True
+        assert strands_test_pass(result, STRANDS_DEFAULT_THRESHOLD) is True
 
     def test_nothing_to_find_with_invention_fails(self):
         result = _evaluate(_case("lead/nothing_to_find_invented"))
         overall = result.raw["confusion_matrix"]["overall"]
         assert overall["tp"] + overall["fn"] + overall["fd"] == 0
         assert overall["fa"] > 0
-        assert strands_test_pass(result, 0.7) is False
+        assert strands_test_pass(result, STRANDS_DEFAULT_THRESHOLD) is False
 
     @pytest.mark.parametrize("case", CORPUS, ids=CASE_IDS)
     def test_expected_against_itself_passes(self, case):
         result = _spec(case.model).evaluate(case.expected, case.expected)
-        assert strands_test_pass(result, 0.7) is True
+        assert strands_test_pass(result, STRANDS_DEFAULT_THRESHOLD) is True
 
     @pytest.mark.parametrize("case", CORPUS, ids=CASE_IDS)
     def test_verdict_never_passes_unmatched(self, case):
         result = _evaluate(case)
         if not result.matched:
-            assert strands_test_pass(result, 0.7) is False
+            assert strands_test_pass(result, STRANDS_DEFAULT_THRESHOLD) is False
 
     def test_a_renamed_key_would_silently_pass(self):
         # Why the shape tests above assert presence: with the subtree gone,
         # every `.get()` falls back to 0 and the empty prediction passes.
         result = _evaluate(_case("lead/sparse_empty_prediction"))
         result.raw = {k: v for k, v in result.raw.items() if k != "confusion_matrix"}
-        assert strands_test_pass(result, 0.7) is True
+        assert strands_test_pass(result, STRANDS_DEFAULT_THRESHOLD) is True
 
 
 # --- aggregate_from_comparisons ---------------------------------------------------
 
 
-def _by_model():
-    grouped: Dict[type, List[Any]] = {}
-    for case in CORPUS:
-        grouped.setdefault(case.model, []).append(_evaluate(case))
-    return grouped
+def _results(model) -> List[Any]:
+    return [_evaluate(case) for case in CORPUS if case.model is model]
 
 
 class TestAggregate:
@@ -383,14 +383,14 @@ class TestAggregate:
     def test_returns_process_evaluation_without_warnings(self, model):
         from stickler.utils.process_evaluation import ProcessEvaluation
 
-        results = _by_model()[model]
+        results = _results(model)
         evaluation = _aggregate([stored_comparison(r) for r in results])
         assert type(evaluation) is ProcessEvaluation
         assert evaluation.document_count == len(results)
 
     @pytest.mark.parametrize("model", MODELS, ids=lambda m: m.__name__)
     def test_field_metrics_keyed_by_explain_paths(self, model):
-        results = _by_model()[model]
+        results = _results(model)
         evaluation = _aggregate([stored_comparison(r) for r in results])
         assert set(evaluation.field_metrics) == set(_spec(model).explain())
         for path, entry in evaluation.field_metrics.items():
@@ -401,7 +401,7 @@ class TestAggregate:
 
     @pytest.mark.parametrize("model", MODELS, ids=lambda m: m.__name__)
     def test_overall_metrics_sum_the_documents(self, model):
-        results = _by_model()[model]
+        results = _results(model)
         evaluation = _aggregate([stored_comparison(r) for r in results])
         for key in COUNT_KEYS:
             assert evaluation.metrics[key] == sum(
@@ -415,7 +415,7 @@ class TestAggregate:
         # Line 447: "does not affect field_metrics".
         from stickler import aggregate_from_comparisons
 
-        results = _by_model()[model]
+        results = _results(model)
         stripped = _aggregate([stored_comparison(r) for r in results])
         with warnings.catch_warnings():
             # The unstripped raw warns (ConfidenceAccumulator sees prediction_raw
@@ -429,7 +429,7 @@ class TestAggregate:
     @pytest.mark.parametrize("model", MODELS, ids=lambda m: m.__name__)
     def test_json_reloaded_comparisons_aggregate_the_same(self, model):
         # StructuredOutputReport.from_file(...).metrics() aggregates the JSON form.
-        stored = [stored_comparison(r) for r in _by_model()[model]]
+        stored = [stored_comparison(r) for r in _results(model)]
         in_memory = _aggregate(stored)
         reloaded = _aggregate(json.loads(json.dumps(stored)))
         assert reloaded.field_metrics == in_memory.field_metrics
