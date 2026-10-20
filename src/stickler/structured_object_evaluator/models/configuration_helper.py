@@ -10,12 +10,12 @@ from typing import TYPE_CHECKING, Any, Dict, List, get_args, get_origin
 
 from pydantic import BaseModel
 
-from stickler.algorithms.hungarian import filling_cost_matrix
 from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.utils.deprecation import warn_once
 
 from .comparable_field import _LEGACY_DEFAULT_THRESHOLD
+from .hungarian_helper import deferring_pair_warnings
 from .optional_annotation import (
     is_union,
     union_args,
@@ -538,17 +538,11 @@ class ConfigurationHelper:
         declared treatment of a multi-arm union.
 
         ``warn=False`` gives the same verdict silently; see
-        :meth:`can_score_object`. The gate is also silent, whatever ``warn``
-        says, while ``HungarianHelper`` matches a list of ``StructuredModel``
-        rows. ``compare()`` is the cost function there, and it reaches this gate
-        for a nested field of every cell, including the cells the matcher
-        discards. Warning there reported mismatches for pairs nothing was decided
-        from and spent ``warn_once`` before the real one arrived (#336). The
-        selected pairs are judged again afterwards, outside the matrix. A bare
-        ``HungarianMatcher`` does not silence it, because nothing re-scores the
-        pairs it keeps.
+        :meth:`can_score_object`. It is also silent, whatever ``warn`` says,
+        while :func:`deferring_pair_warnings` is true; see
+        there (#336).
         """
-        warn = warn and not filling_cost_matrix()
+        warn = warn and not deferring_pair_warnings()
         if not ConfigurationHelper.values_are_same_model_class(
             model_cls, field_name, gt_val, pred_val, warn=warn
         ):

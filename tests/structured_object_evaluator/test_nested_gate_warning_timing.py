@@ -14,11 +14,7 @@ from typing import Any, List, Optional, Union
 import pytest
 from pydantic import BaseModel
 
-from stickler.algorithms.hungarian import (
-    HungarianMatcher,
-    filling_cost_matrix,
-    scoring_cost_matrix,
-)
+from stickler.algorithms.hungarian import HungarianMatcher
 from stickler.comparators import StructuredModelComparator
 from stickler.comparators.anls import ANLSStarComparator
 from stickler.structured_object_evaluator.models.comparable_field import (
@@ -26,6 +22,8 @@ from stickler.structured_object_evaluator.models.comparable_field import (
 )
 from stickler.structured_object_evaluator.models.hungarian_helper import (
     HungarianHelper,
+    defer_pair_warnings,
+    deferring_pair_warnings,
 )
 from stickler.structured_object_evaluator.models.structured_model import (
     StructuredModel,
@@ -117,9 +115,9 @@ def _only_kept_pairs_cross_classes():
 
 @pytest.fixture(autouse=True)
 def _the_matrix_flag_is_clear_around_each_test():
-    assert not filling_cost_matrix()
+    assert not deferring_pair_warnings()
     yield
-    assert not filling_cost_matrix()
+    assert not deferring_pair_warnings()
 
 
 class TestADiscardedCellDoesNotWarn:
@@ -250,19 +248,19 @@ class TestTheMatrixFlagIsScoped:
         seen = []
 
         def scorer(a, b):
-            seen.append(filling_cost_matrix())
+            seen.append(deferring_pair_warnings())
             return 1.0 if a == b else 0.0
 
-        assert not filling_cost_matrix()
+        assert not deferring_pair_warnings()
         self._helper(scorer).get_complete_matching_info(["a", "b"], ["a", "b"])
         assert seen and all(seen)
-        assert not filling_cost_matrix()
+        assert not deferring_pair_warnings()
 
     def test_a_bare_matcher_does_not_set_it(self):
         seen = []
 
         def scorer(a, b):
-            seen.append(filling_cost_matrix())
+            seen.append(deferring_pair_warnings())
             return 1.0 if a == b else 0.0
 
         HungarianMatcher(scorer).match(["a", "b"], ["a", "b"])
@@ -275,11 +273,11 @@ class TestTheMatrixFlagIsScoped:
 
         with pytest.raises(error):
             self._helper(scorer).get_complete_matching_info(["a", "b"], ["a", "b"])
-        assert not filling_cost_matrix()
+        assert not deferring_pair_warnings()
 
     def test_the_context_manager_restores_the_previous_value(self):
-        with scoring_cost_matrix():
-            with scoring_cost_matrix():
-                assert filling_cost_matrix()
-            assert filling_cost_matrix()
-        assert not filling_cost_matrix()
+        with defer_pair_warnings():
+            with defer_pair_warnings():
+                assert deferring_pair_warnings()
+            assert deferring_pair_warnings()
+        assert not deferring_pair_warnings()

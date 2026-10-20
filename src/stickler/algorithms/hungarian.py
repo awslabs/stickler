@@ -6,9 +6,7 @@ key information extraction tasks.
 """
 
 import traceback
-from contextlib import contextmanager
-from contextvars import ContextVar
-from typing import Any, Callable, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 import numpy as np
 from munkres import Munkres, make_cost_matrix
@@ -21,44 +19,6 @@ HUNGARIAN_SIZE_WARNING_THRESHOLD = 10000  # Matrix size (product of dimensions)
 
 # Global Munkres instance for optimization
 _MUNKRES = Munkres()
-
-_FILLING_COST_MATRIX: ContextVar[bool] = ContextVar(
-    "stickler_filling_cost_matrix", default=False
-)
-
-
-def filling_cost_matrix() -> bool:
-    """Whether ``HungarianHelper`` is scoring and solving a cost matrix.
-
-    True while ``HungarianHelper.get_complete_matching_info`` scores the cells
-    of the cost matrix for a list of ``StructuredModel`` rows and solves it.
-    False elsewhere, including inside a bare :class:`HungarianMatcher`.
-
-    The matcher scores every pair and keeps one per row, so a diagnostic emitted
-    while this is true may describe a pair that is discarded. The helper's caller
-    scores the kept pairs again, so code that warns about a scored pair checks
-    this and leaves the warning to that re-score (#336). A bare matcher does not
-    set it, because nothing re-scores its pairs.
-
-    A ``ContextVar`` does not carry into a worker thread unless the work is run
-    in a ``contextvars.copy_context()``.
-    """
-    return _FILLING_COST_MATRIX.get()
-
-
-@contextmanager
-def scoring_cost_matrix() -> Iterator[None]:
-    """Make :func:`filling_cost_matrix` true for the body, and restore it after.
-
-    Use it only where the caller scores the kept pairs again outside the block.
-    The previous value is restored when the body raises. A signal that arrives
-    between the set and the ``try`` could leave it set; that is not guarded.
-    """
-    token = _FILLING_COST_MATRIX.set(True)
-    try:
-        yield
-    finally:
-        _FILLING_COST_MATRIX.reset(token)
 
 
 class HungarianMatcher:
