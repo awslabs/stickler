@@ -46,7 +46,8 @@ Each release links to full notes on the
   and `"Dict[str, str]"`, or `"dict"` when a key or value type has no config
   name. A consumer reading the exported schema sees this type change. Through
   JSON Schema the field rebuilds as `dict`, without the value type.
-  `List[Dict[...]]` items are not covered and still export as `"string"` (see
+  `List[Dict[...]]` items are not covered: `to_json_schema()` still exports
+  them as `"string"` (see
   [#333](https://github.com/awslabs/stickler/issues/333))
   ([#306](https://github.com/awslabs/stickler/issues/306))
 
@@ -207,7 +208,8 @@ Each release links to full notes on the
   raised `TypeError: cannot specify both default and default_factory` -- the case
   pydantic's own documentation tells users to reach for. Supplying both a `default`
   and a `default_factory` still raises, as it does in plain pydantic, except
-  `default=...`, which pydantic ignores beside a factory, so the field is optional
+  `default=...` or `PydanticUndefined`, which pydantic ignores beside a factory,
+  so the field is optional
   ([#306](https://github.com/awslabs/stickler/issues/306))
 
   Both exporters were taught about factories at the same time, since nothing could
@@ -223,6 +225,11 @@ Each release links to full notes on the
   default, from a factory or written literally, is emitted as a list, because JSON
   has no set type. `to_stickler_config()` also writes `required` on a
   `List[StructuredModel]` field now; without it a required list rebuilt as optional.
+  On an `Optional` field `to_stickler_config()` writes no empty `[]` or `{}`
+  default, since a config has no nullable flag and only a `None` default
+  rebuilds the field as `Optional`; `None` scores the same. `model_from_json()`
+  now applies that widening to a `list_structured_model` field too, which
+  rebuilt as `List[Model]` and rejected `None`.
 
 ## [1.0.0] - 2026-09-11
 

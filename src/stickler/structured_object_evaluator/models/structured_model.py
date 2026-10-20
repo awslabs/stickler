@@ -2174,7 +2174,9 @@ class StructuredModel(BaseModel):
                     # model_from_json() reads a missing one as False, so a
                     # required List[Model] rebuilt as optional.
                     field_config["required"] = field_info.is_required()
-                    add_exportable_default(field_config, field_info)
+                    add_exportable_default(
+                        field_config, field_info, stickler_config=True
+                    )
                     metadata = converter._extract_field_metadata(field_info)
                     metadata.pop("comparator", None)
                     extensions = converter._build_comparison_extensions(

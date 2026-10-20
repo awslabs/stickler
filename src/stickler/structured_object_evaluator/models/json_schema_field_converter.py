@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Tuple, Type, get_args, get_origin
 from pydantic.fields import FieldInfo, PydanticUndefined
 
 from .configuration_helper import ConfigurationHelper
-from .optional_annotation import unwrap_optional
+from .optional_annotation import unwrap_annotated, unwrap_optional
 
 # Bidirectional type mappings for export
 PYTHON_TYPE_TO_JSON_TYPE = {
@@ -99,8 +99,17 @@ def _exports_as_container(annotation: Any) -> bool:
     return get_origin(inner) is list or ConfigurationHelper.is_mapping_annotation(inner)
 
 
+def _is_nullable(annotation: Any) -> bool:
+    """Whether the annotation admits ``None``, with ``Annotated`` stripped."""
+    return unwrap_optional(unwrap_annotated(annotation))[1]
+
+
 def add_exportable_default(
-    target: Dict[str, Any], field_info: FieldInfo, *, include_literal: bool = False
+    target: Dict[str, Any],
+    field_info: FieldInfo,
+    *,
+    include_literal: bool = False,
+    stickler_config: bool = False,
 ) -> None:
     """Set ``target["default"]`` to the field's exportable default, if it has one.
 
@@ -110,6 +119,15 @@ def add_exportable_default(
     :func:`resolve_exportable_default` will call. A literal ``default=...`` is
     written only with ``include_literal``: ``to_stickler_config()`` has always
     exported it and ``to_json_schema()`` never has.
+
+    With ``stickler_config``, an empty ``[]`` or ``{}`` default on a nullable
+    field is not written. A Stickler config has no nullable flag, and
+    ``model_from_json()`` widens a field to ``Optional`` only when its default
+    is ``None``, so ``Optional[List[int]] = ComparableField(default_factory=list)``
+    rebuilt as ``List[int]`` and rejected the ``None`` the original accepts.
+    Omitted, the default rebuilds as ``None``, which an empty list or mapping
+    scores identically to. JSON Schema carries ``null`` in ``type``, so that
+    path keeps the default.
     """
     if field_info.is_required():
         return
@@ -119,8 +137,16 @@ def add_exportable_default(
     elif not include_literal:
         return
     has_default, value = resolve_exportable_default(field_info)
-    if has_default:
-        target["default"] = value
+    if not has_default:
+        return
+    if (
+        stickler_config
+        and isinstance(value, (list, dict))
+        and not value
+        and _is_nullable(field_info.annotation)
+    ):
+        return
+    target["default"] = value
 
 
 def _mapping_value_type(annotation: Any) -> Any:
@@ -288,7 +314,9 @@ class JsonSchemaFieldConverter:
 
         # Add Pydantic field params
         field_config["required"] = field_info.is_required()
-        add_exportable_default(field_config, field_info, include_literal=True)
+        add_exportable_default(
+            field_config, field_info, include_literal=True, stickler_config=True
+        )
         if field_info.description:
             field_config["description"] = field_info.description
         if field_info.alias:

@@ -113,8 +113,8 @@ def ComparableField(
                  None, or what ``default_factory`` returns if one is given).
                  Pass ``default_factory`` instead for a mutable default such
                  as a list or dict; supplying both raises, as in plain pydantic,
-                 except ``default=...``, which pydantic ignores beside a
-                 factory, leaving the field optional.
+                 except ``default=...`` or ``PydanticUndefined``, which
+                 pydantic ignores beside a factory, leaving the field optional.
         clip_under_threshold: Whether to zero out scores below threshold
                   (effective default: True). ``None`` means "not specified",
                   which lets a dict-annotated field default it to False so

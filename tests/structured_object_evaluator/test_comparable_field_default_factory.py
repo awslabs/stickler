@@ -320,25 +320,65 @@ def test_a_required_list_of_models_stays_required_through_stickler_config():
     assert ParentModel.to_stickler_config()["fields"]["subs"]["required"] is False
 
 
-class AnnotatedListParent(StructuredModel):
-    """Pydantic keeps `Annotated` inside a union, so these reach the exporters
-    as `Optional[Annotated[List[...], ...]]`, which read as a scalar."""
+def _optional_factory_model(annotation, factory):
+    return type(
+        "OptionalFactory",
+        (StructuredModel,),
+        {
+            "__annotations__": {"name": str, "tags": annotation},
+            "name": ComparableField(comparator=ExactComparator()),
+            "tags": ComparableField(default_factory=factory),
+        },
+    )
 
-    name: str = ComparableField(comparator=ExactComparator())
-    tags: Optional[Annotated[List[str], "m"]] = ComparableField(default_factory=list)
-    subs: Optional[Annotated[List[Sub], "m"]] = ComparableField(default_factory=list)
+
+_UNSET = object()
+
+# Pydantic keeps `Annotated` inside a union, so the first two reach the
+# exporters as `Optional[Annotated[List[...], ...]]`, which read as a scalar.
+_OPTIONAL_FACTORY_SHAPES = {
+    "annotated-str-list": (Optional[Annotated[List[str], "m"]], list, ["a"]),
+    "annotated-model-list": (Optional[Annotated[List[Sub], "m"]], list, [{"sku": "a"}]),
+    "int-list": (Optional[List[int]], list, [1]),
+    "int-mapping": (Optional[Dict[str, int]], dict, {"a": 1}),
+}
 
 
-@pytest.mark.parametrize("field", ["tags", "subs"])
-def test_an_annotated_optional_list_factory_round_trips(field):
-    """Both exporters wrote no default, so both rebuilt models gave None."""
-    schema = AnnotatedListParent.to_json_schema()
-    config = AnnotatedListParent.to_stickler_config()
-    assert schema["properties"][field]["default"] == []
-    assert config["fields"][field]["default"] == []
+@pytest.mark.parametrize(
+    "annotation, factory, sample",
+    list(_OPTIONAL_FACTORY_SHAPES.values()),
+    ids=list(_OPTIONAL_FACTORY_SHAPES),
+)
+def test_an_optional_factory_field_round_trips(annotation, factory, sample):
+    """Both rebuilt models accept None and score every pair as the original does.
 
+    JSON Schema carries the factory's empty value. A Stickler config has no
+    nullable flag and `model_from_json()` widens to Optional only for a None
+    default, so it writes none: written, the field rebuilt non-nullable and
+    rejected None. An empty list or mapping scores the same as None.
+    """
+    original = _optional_factory_model(annotation, factory)
+    schema = original.to_json_schema()
+    config = original.to_stickler_config()
+    assert schema["properties"]["tags"]["default"] == factory()
+    assert "default" not in config["fields"]["tags"]
+
+    values = [_UNSET, None, factory(), sample]
+
+    def scores(model):
+        def build(value):
+            return model(name="n") if value is _UNSET else model(name="n", tags=value)
+
+        return [
+            build(gt).compare_with(build(pred))["field_scores"]["tags"]
+            for gt in values
+            for pred in values
+        ]
+
+    expected = scores(original)
     for rebuilt in (
         StructuredModel.from_json_schema(json.loads(json.dumps(schema))),
         StructuredModel.model_from_json(json.loads(json.dumps(config))),
     ):
-        assert getattr(rebuilt(name="a"), field) == []
+        assert rebuilt(name="n", tags=None).tags is None
+        assert scores(rebuilt) == expected
