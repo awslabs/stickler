@@ -105,6 +105,56 @@ def test_reimported_field_does_not_coerce_values():
     assert Reimported(rows=[{"n": "5"}]).rows == [{"n": "5"}]
 
 
+def test_stickler_config_keeps_an_optional_element_nullable():
+    class WithNone(StructuredModel):
+        rows: List[Optional[Dict[str, str]]] = ComparableField(threshold=0.9)
+
+    config = WithNone.to_stickler_config()
+    assert config["fields"]["rows"]["type"] == "List[Optional[Dict]]"
+
+    Reimported = StructuredModel.model_from_json(config)
+    gt = {"rows": [{"a": "x", "b": "y"}, None]}
+    pred = {"rows": [{"a": "x", "b": "z"}, None]}
+    original = WithNone(**gt).compare_with(WithNone(**pred))
+    rebuilt = Reimported(**gt).compare_with(Reimported(**pred))
+    assert rebuilt["field_scores"] == pytest.approx(original["field_scores"])
+
+
+class LateRows(StructuredModel):
+    """Declared, but the element only resolves at ``model_rebuild()``.
+
+    The class-definition substitution cannot see a mapping yet, so the field
+    still holds Levenshtein; the engine swaps in ANLS* when it reads the field.
+    The export must carry what the engine scores with.
+    """
+
+    rows: "List[_LateElement]" = ComparableField(threshold=0.9)
+
+
+_LateElement = Dict[str, str]
+LateRows.model_rebuild()
+
+
+@pytest.mark.parametrize(
+    "roundtrip",
+    [
+        lambda m: StructuredModel.from_json_schema(m.to_json_schema()),
+        lambda m: StructuredModel.model_from_json(m.to_stickler_config()),
+    ],
+    ids=["json_schema", "stickler_config"],
+)
+def test_late_resolved_field_exports_the_engine_comparator(roundtrip):
+    assert "comparator_config" not in LateRows.to_stickler_config()["fields"]["rows"]
+    Reimported = roundtrip(LateRows)
+
+    assert _resolved(Reimported, "rows") == _resolved(LateRows, "rows")
+    gt, pred = {"rows": GT["default_clip"]}, {"rows": PRED["default_clip"]}
+    original = LateRows(**gt).compare_with(LateRows(**pred))
+    rebuilt = Reimported(**gt).compare_with(Reimported(**pred))
+    assert rebuilt["field_scores"]["rows"] == pytest.approx(0.5)
+    assert original["field_scores"]["rows"] == pytest.approx(0.5)
+
+
 @pytest.mark.parametrize(
     "element",
     [Mapping[str, str], MutableMapping[str, str], OrderedDict[str, str], dict],

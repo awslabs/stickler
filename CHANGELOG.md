@@ -135,8 +135,9 @@ Each release links to full notes on the
   (`["object", "null"]` for an optional element) and re-imports as
   `List[dict]`. A consumer reading the exported schema sees the `items` type
   change from `"string"` to `"object"`. `to_stickler_config()` now writes every
-  mapping element as `List[Dict]`; it wrote `List[Mapping]` or `List[Counter]`,
-  which `model_from_json()` refused with `Unknown type`. Both exports now carry
+  mapping element as `List[Dict]` (`List[Optional[Dict]]` for an optional
+  element); it wrote `List[Mapping]` or `List[Counter]`, which
+  `model_from_json()` refused with `Unknown type`. Both exports now carry
   the comparator, threshold, weight and clip the field resolves even when it is
   declared without `ComparableField`, so it scores as the original did (`0.5`,
   not `0.0`, for one wrong key of two) unless the data relied on coercion to the

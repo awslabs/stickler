@@ -1964,17 +1964,16 @@ class StructuredModel(BaseModel):
     ) -> Dict[str, Any]:
         """Comparison metadata to export for a list of scalars or mappings.
 
-        A field declared without ``ComparableField`` carries none, so each
-        importer applies its own default. For a list of mappings that default
-        is wrong: the engine scores it with ANLS*, the class's
-        ``match_threshold`` and no clip, while ``from_json_schema()`` rebuilt it
-        as ``ExactComparator`` at 1.0 with clipping on and ``model_from_json()``
-        refused it for having no comparator. Export what the engine resolves.
-        Scalar lists keep the importer defaults (#348).
+        A list of mappings exports what the engine resolves, so each importer
+        rebuilds the field the engine scores. The raw attributes differ from it
+        for a field declared without ``ComparableField`` (none, so importers
+        applied their own defaults) and for a declared field whose annotation
+        resolved after class definition (Levenshtein, which the engine replaces
+        with ANLS* when it reads the field). Scalar lists keep the importer
+        defaults (#348).
         """
-        metadata = converter._extract_field_metadata(field_info)
-        if metadata or not ConfigurationHelper.is_mapping_annotation(element_type):
-            return metadata
+        if not ConfigurationHelper.is_mapping_annotation(element_type):
+            return converter._extract_field_metadata(field_info)
         resolved = ConfigurationHelper.get_comparison_info(cls, field_name)
         return {
             "comparator": resolved.comparator,
@@ -2180,6 +2179,7 @@ class StructuredModel(BaseModel):
                 # `element_type.__name__`, which a union does not have. Annotated
                 # is stripped too, so `List[Annotated[Card, "m"]]` is a list of
                 # models.
+                _, element_is_nullable = cls._unwrap_optional(unwrap_annotated(args[0]))
                 element_type = ConfigurationHelper.strip_annotation_wrappers(args[0])
 
                 if cls._is_structured_model_type(element_type):
@@ -2212,10 +2212,19 @@ class StructuredModel(BaseModel):
                         # Every mapping element is written `Dict`, the spelling
                         # `model_from_json()` reads. `__name__` wrote
                         # `List[Mapping]` or `List[Counter]`, which it refused.
-                        field_config["type"] = "List[Dict]"
+                        # An optional element keeps its nullability, as
+                        # to_json_schema() does, or None elements are rejected.
+                        field_config["type"] = (
+                            "List[Optional[Dict]]"
+                            if element_is_nullable
+                            else "List[Dict]"
+                        )
                         metadata = cls._list_export_metadata(
                             converter, field_name, field_info, element_type
                         )
+                        # Replace the raw attributes the converter wrote, so a
+                        # substituted comparator does not keep the old config.
+                        field_config.pop("comparator_config", None)
                         field_config.update(
                             converter._build_comparison_extensions(
                                 metadata, output_format="stickler_config"

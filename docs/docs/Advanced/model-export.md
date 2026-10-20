@@ -207,11 +207,12 @@ config = Order.to_stickler_config()
 ```
 
 A list of mappings (`List[Dict[str, str]]`, `List[Mapping[...]]`) exports free-form object items:
-`items: {"type": "object"}` from `to_json_schema()`, `List[Dict]` from `to_stickler_config()`. Both
-re-import as `List[dict]` with the comparator, threshold, weight and clip the field resolves, declared
-or default, so it scores as the original did. The value type is not exported, so the re-imported field
-does not coerce its values. A mapping field that is not in a list, and a list whose element is a union
-such as `List[Union[Dict, str]]` or another list, still export as a string
+`items: {"type": "object"}` from `to_json_schema()`, `List[Dict]` from `to_stickler_config()`. An
+optional element exports as `["object", "null"]` and `List[Optional[Dict]]`. Both re-import as
+`List[dict]` with the comparator, threshold, weight and clip the field resolves, declared or default,
+so it scores as the original did. The value type is not exported, so the re-imported field does not
+coerce its values. A mapping field that is not in a list, and a list whose element is a union such as
+`List[Union[Dict, str]]`, still export as a string
 ([#349](https://github.com/awslabs/stickler/issues/349)).
 
 ## Round-Trip Examples
