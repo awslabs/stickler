@@ -14,7 +14,11 @@ from typing import Any, List, Optional, Union
 import pytest
 from pydantic import BaseModel
 
-from stickler.algorithms.hungarian import HungarianMatcher
+from stickler.algorithms.hungarian import (
+    HungarianMatcher,
+    filling_cost_matrix,
+    scoring_cost_matrix,
+)
 from stickler.comparators import StructuredModelComparator
 from stickler.comparators.anls import ANLSStarComparator
 from stickler.structured_object_evaluator.models.comparable_field import (
@@ -53,6 +57,10 @@ class Labelled(StructuredModel):
     )
 
 
+class LabelledDoc(StructuredModel):
+    rows: Optional[List[Labelled]] = None
+
+
 class Row(StructuredModel):
     holder: Optional[Holder] = None
 
@@ -86,14 +94,6 @@ def _rows():
     return [Holder(pet=Cat(name="a")), Holder(pet=Dog(name="b"))]
 
 
-def _swapped_class():
-    """Two rows where the matcher must select a Cat-vs-Dog pair."""
-    return (
-        Doc(rows=[Holder(pet=Cat(name="xavier")), Holder(pet=Cat(name="yolanda"))]),
-        Doc(rows=[Holder(pet=Dog(name="xavier")), Holder(pet=Cat(name="yolanda"))]),
-    )
-
-
 def _only_kept_pairs_cross_classes():
     """Rows the matcher pairs by ``label``, where only the kept pairs cross classes.
 
@@ -113,6 +113,13 @@ def _only_kept_pairs_cross_classes():
     discarded = [(0, 1), (1, 0)]
     assert all(type(gt[i].pet) is type(pred[j].pet) for i, j in discarded)
     return gt, pred
+
+
+@pytest.fixture(autouse=True)
+def _the_matrix_flag_is_clear_around_each_test():
+    assert not filling_cost_matrix()
+    yield
+    assert not filling_cost_matrix()
 
 
 class TestADiscardedCellDoesNotWarn:
@@ -169,20 +176,20 @@ class TestASelectedMismatchStillWarns:
 
     def test_a_mismatch_selected_from_a_full_matrix_warns(self):
         """Two rows go through the matrix rather than the one-pair fast path."""
-        gt, pred = _swapped_class()
+        gt, pred = _only_kept_pairs_cross_classes()
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            score = gt.compare_with(pred)["field_scores"]["rows"]
-        assert score == pytest.approx(0.5)
-        assert _mismatch_warnings(caught)
+            result = LabelledDoc(rows=gt).compare_with(LabelledDoc(rows=pred))
+        assert result["field_scores"]["rows"] == pytest.approx(0.5)
+        assert len(_mismatch_warnings(caught)) == 1
 
     def test_compare_warns_for_it_too(self):
-        gt, pred = _swapped_class()
+        gt, pred = _only_kept_pairs_cross_classes()
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            score = gt.compare(pred)
+            score = LabelledDoc(rows=gt).compare(LabelledDoc(rows=pred))
         assert score == pytest.approx(0.5)
-        assert _mismatch_warnings(caught)
+        assert len(_mismatch_warnings(caught)) == 1
 
 
 class TestAPairNothingScoresAgainStillWarns:
@@ -239,9 +246,7 @@ class TestTheMatrixFlagIsScoped:
         helper.hungarian = HungarianMatcher(scorer)
         return helper
 
-    def test_it_is_set_for_the_whole_helper_match_and_cleared_after(self):
-        from stickler.algorithms.hungarian import filling_cost_matrix
-
+    def test_it_is_set_while_the_helper_scores_cells_and_cleared_after(self):
         seen = []
 
         def scorer(a, b):
@@ -254,8 +259,6 @@ class TestTheMatrixFlagIsScoped:
         assert not filling_cost_matrix()
 
     def test_a_bare_matcher_does_not_set_it(self):
-        from stickler.algorithms.hungarian import filling_cost_matrix
-
         seen = []
 
         def scorer(a, b):
@@ -267,8 +270,6 @@ class TestTheMatrixFlagIsScoped:
 
     @pytest.mark.parametrize("error", [ValueError, KeyboardInterrupt])
     def test_it_is_cleared_when_a_cell_raises(self, error):
-        from stickler.algorithms.hungarian import filling_cost_matrix
-
         def scorer(a, b):
             raise error("boom")
 
@@ -277,11 +278,6 @@ class TestTheMatrixFlagIsScoped:
         assert not filling_cost_matrix()
 
     def test_the_context_manager_restores_the_previous_value(self):
-        from stickler.algorithms.hungarian import (
-            filling_cost_matrix,
-            scoring_cost_matrix,
-        )
-
         with scoring_cost_matrix():
             with scoring_cost_matrix():
                 assert filling_cost_matrix()
