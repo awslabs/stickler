@@ -2,7 +2,7 @@
 
 One module, one public class. `HungarianMatcher` pairs the items of two lists so
 that the total similarity is as high as it can be, which is what lets a list
-field be scored without caring about order. Both of its internal callers are on
+field be scored without caring about order. Its internal callers are on
 the traditional evaluation path.
 
 **ANLS Star does not go through this class.** `trees/list_tree.py` calls
@@ -78,19 +78,20 @@ float rounding error does not turn a TP into an FD
 
 ## How the evaluator uses it
 
-Both internal callers read **only** `matched_pairs` and classify the scores
+All internal callers read **only** `matched_pairs` and classify the scores
 themselves:
 
 | Caller | What it does with the pairs |
 |---|---|
 | `HungarianHelper.get_complete_matching_info` | derives the matched and unmatched index sets for object matching over `List[StructuredModel]` |
 | `ComparisonHelper.compare_unordered_lists` | hands them to `unordered_list_metrics`, which counts against its own `classification_threshold` |
+| `ComparisonHelperBase.get_optimal_assignments` | provides pairings for direct report-helper calls; `compare_with` reports instead reuse the scoring pass's pairings |
 
 `unordered_list_metrics` uses the same derivation and the same threshold test as
 `calculate_metrics`, so for the same pairs and threshold the two return the same
 counts.
 
-Because neither caller reads the counts, a change to how `calculate_metrics`
+Because these callers do not read the counts, a change to how `calculate_metrics`
 classifies cannot move an evaluator score. It is a public API in its own right
 though, so a change there is still breaking for a direct caller.
 

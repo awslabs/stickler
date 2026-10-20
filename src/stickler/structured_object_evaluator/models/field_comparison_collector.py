@@ -5,10 +5,11 @@ and documentation of ALL field comparisons (both matches and non-matches) during
 structured object comparison.
 """
 import math
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from .field_comparison_helper import FieldComparisonHelper
 from .null_helper import NullHelper
+from .reporting_context import ReportingContext
 from .threshold_helper import ThresholdHelper
 
 if TYPE_CHECKING:
@@ -35,7 +36,8 @@ class FieldComparisonCollector:
     def collect_field_comparisons(
         self, 
         recursive_result: dict, 
-        other: "StructuredModel"
+        other: "StructuredModel",
+        report_context: Optional[ReportingContext] = None,
     ) -> List[Dict[str, Any]]:
         """Collect all field comparisons with detailed metadata.
         
@@ -100,8 +102,14 @@ class FieldComparisonCollector:
                 and isinstance(pred_val, list)
             ):
                 # Use FieldComparisonHelper for primitive list collection
+                matching_kwargs = self.helper.resolve_list_matching(
+                    self.model, field_name, gt_val,
+                    report_context.lists.get(field_name) if report_context else None,
+                )
                 list_comparisons = self.helper.collect_list_entries(
-                    field_name, gt_val, pred_val
+                    field_name, gt_val, pred_val, **self.helper._supported_options(
+                        self.helper.collect_list_entries, **matching_kwargs,
+                    )
                 )
                 all_field_comparisons.extend(list_comparisons)
 
@@ -116,7 +124,8 @@ class FieldComparisonCollector:
                     # Recursively collect field comparisons from nested objects
                     nested_collector = FieldComparisonCollector(gt_val)
                     nested_comparisons = nested_collector.collect_field_comparisons(
-                        field_result, pred_val
+                        field_result, pred_val,
+                        report_context.children.get(field_name) if report_context else None,
                     )
                     # Prefix nested field paths with the parent field name
                     for nested_comp in nested_comparisons:
@@ -151,13 +160,15 @@ class FieldComparisonCollector:
                     else:
                         reason = f"below threshold ({raw_score:.3f} < {info.threshold})"
                     
-                    # Handle missing fields
-                    if pred_val is None and gt_val is not None:
+                    # Use scoring's float-NaN-as-missing rule without changing the displayed values.
+                    gt_missing = gt_val is None or NullHelper.is_nan(gt_val)
+                    pred_missing = pred_val is None or NullHelper.is_nan(pred_val)
+                    if pred_missing and not gt_missing:
                         reason = "false negative (unmatched ground truth)"
                         is_match = False
                         raw_score = 0.0
                         weighted_score = 0.0
-                    elif gt_val is None and pred_val is not None:
+                    elif gt_missing and not pred_missing:
                         reason = "false alarm (unmatched prediction)"
                         is_match = False
                         raw_score = 0.0
