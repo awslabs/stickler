@@ -307,8 +307,9 @@ ComparableField(
     weight=1.0,                          # field weight for overall score (default: 1.0)
     clip_under_threshold=True,           # zero out scores below threshold (default: True)
     default=None,                        # field default (None if omitted without default_factory);
-                                         # setting one does not make the field required —
-                                         # is_required() is False either way, so a missing
+                                         # use default=... (Ellipsis) for a required field
+                                         # (is_required() is True). default=None or omitting
+                                         # default leaves the field optional so a missing
                                          # prediction scores rather than failing validation
 )
 ```

@@ -32,6 +32,7 @@ False Alarm (FA) and False Discovery (FD) together make up the broader False Pos
 | `null` | `"value"` | FA | Spurious prediction |
 | `null` | `null` | TN | Correctly absent |
 | `""` | `null` | TN | Empty string treated as null |
+| `NaN` | `NaN` | TN | Float NaN treated as null |
 
 ### Lists
 
@@ -40,6 +41,24 @@ Lists use the [Hungarian algorithm](hungarian-matching.md) for optimal element p
 1. **Empty lists**: `[] vs []` is TN; `[] vs [items]` produces one FA per item; `[items] vs []` produces one FN per item.
 2. **Matched elements**: similarity >= threshold is TP; below threshold is FD.
 3. **Unmatched elements**: leftover GT elements are FN; leftover EST elements are FA.
+4. **`None` elements**: absent, so they are not matched or counted. A list of only `None` is an empty list. See [`None` elements in a list](#none-elements-in-a-list).
+
+#### `None` elements in a list {: #none-elements-in-a-list }
+
+A `None` element marks an absence, not an object or a value, so it is left out before matching. This holds for a list field of models (`List[Optional[Model]]`) or of primitives (`List[Optional[str]]`), at any depth, and for a float `NaN` element, which counts as `None`. An empty string element is still a value. A list inside a list (`List[List[str]]`) or a dict value is compared as one whole value, so its `None`s are part of that value.
+
+| GT | EST | Result |
+|---|---|---|
+| `[A, None]` | `[A, None]` | 1 TP |
+| `[A, B, C]` | `[A, None, C]` | 2 TP, 1 FN: `B` was missed |
+| `[A]` | `[None]` | 1 FN, as `[A] vs []` |
+| `[None]` | `[A]` | 1 FA, as `[] vs [A]` |
+| `[None]` | `[None]` | TN, as `[] vs []` |
+
+This follows the null rules above: an absent value against a present one is an FN or FA, and two absences are not evidence of a match. Counting a `None` as an element would credit two `None`s as a TP, and would count a missed row as an FD (or, in a list of models, a TP), so the miss would keep recall at `1.0`. Elements keep their original positions in reports: in `[A, None, C]`, `C` is reported as `[2]`.
+
+- **Positional lists are not supported either way.** Matching ignores order, so a `None` cannot mean "slot 3 is empty": `[None, A]` and `[A, None]` already compare as identical. Put the position in the data instead, for example a `page_number` field, and matching pairs elements by it.
+- **To score an absence, give it content.** If ground truth marks a row as unreadable and agreeing on that should earn credit, model it as a value, such as `Line(status="illegible")`. A `None` carries nothing to compare.
 
 #### Example: Mixed Matching
 
@@ -171,7 +190,7 @@ These are computed at every node of the result tree, from that node's own counts
 
 ## Edge Cases
 
-**Null vs. empty equivalence** -- Empty strings (`""`), empty lists (`[]`), and empty objects (`{}`) are treated as null. Comparing any of these with `null` yields TN.
+**Null vs. empty equivalence** -- Empty strings (`""`), empty lists (`[]`), empty objects (`{}`), and float `NaN` are treated as null. Comparing any of these with `null` yields TN.
 
 **TN in object matching** -- A TN is absence of evidence, not evidence of a match. Fields absent on both sides are excluded from the weighted object similarity used by Hungarian matching. If every field is absent, the similarity is defined as `1.0`.
 

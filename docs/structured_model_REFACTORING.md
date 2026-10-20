@@ -156,7 +156,7 @@ class StructuredModel(BaseModel):
 
 ### Legacy private methods are kept as delegating shims
 
-Older callers (and many tests) reach for private methods on `StructuredModel` such as `_dispatch_field_comparison`, `compare_recursive`, `_calculate_list_confusion_matrix`, `_calculate_nested_field_metrics`, `_collect_enhanced_non_matches`, `_add_derived_metrics_to_result`, `_format_for_evaluator`, etc. These were **not removed** — they now exist as one-line wrappers that build the appropriate component and forward the call. They are retained for backward compatibility; new code should call the component directly.
+Older callers (and many tests) reach for private methods on `StructuredModel` such as `_dispatch_field_comparison`, `compare_recursive`, `_collect_enhanced_non_matches`, `_add_derived_metrics_to_result`, `_format_for_evaluator`, etc. These were **not removed** — they now exist as one-line wrappers that build the appropriate component and forward the call. They are retained for backward compatibility; new code should call the component directly.
 
 ## Component Responsibilities
 
@@ -375,9 +375,6 @@ These methods still exist on `StructuredModel` as thin delegating shims for back
 | `compare_recursive`                   | `ComparisonEngine.compare_recursive`                             |
 | `compare_with`                        | `ComparisonEngine.compare_with`                                  |
 | `_classify_field_for_confusion_matrix`| `ConfusionMatrixCalculator.classify_field_for_confusion_matrix`  |
-| `_calculate_list_confusion_matrix`    | `ConfusionMatrixCalculator.calculate_list_confusion_matrix`      |
-| `_calculate_nested_field_metrics`     | `ConfusionMatrixCalculator.calculate_nested_field_metrics`       |
-| `_calculate_single_nested_field_metrics` | `ConfusionMatrixCalculator.calculate_single_nested_field_metrics` |
 | `_add_derived_metrics_to_result`      | `DerivedMetricsCalculator.add_derived_metrics_to_result`         |
 | `_collect_enhanced_non_matches`       | `NonMatchCollector.collect_enhanced_non_matches`                 |
 | `_format_for_evaluator`               | `EvaluatorFormatHelper.format_for_evaluator`                     |

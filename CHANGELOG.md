@@ -11,6 +11,64 @@ Each release links to full notes on the
 
 ### Changed
 
+- **Breaking:** `to_json_schema()` and `to_stickler_config()` no longer write a
+  plain pydantic `BaseModel`, a list of lists or a union of models as a string.
+  Both fell back to `"string"` / `"str"` for a type they had no entry for, so
+  the re-imported model could not load the data the original accepted. A plain
+  model field, or a list of them, now exports as a free-form object
+  (`{"type": "object"}`, `"dict"` in a Stickler config), since it is scored as
+  one object the way a mapping is, and re-imports as `dict` with the
+  comparator, threshold, weight and clip setting it declared; its own field
+  types are not exported. A list of lists, including `List[List[Dict]]`,
+  exports as nested arrays. A consumer reading the exported schema sees these
+  types change. `to_stickler_config()` has no type for a union with a model
+  arm, such as the `Union[Card, Bank]` that `from_json_schema()` builds from a
+  multi-arm `anyOf`, or for a `StructuredModel` inside a nested list
+  (`List[List[Card]]`), so both methods now raise `ValueError` for these, to
+  keep one rule, where they returned a schema that could not load the original
+  data or (for the nested list, in the Stickler config) scored it differently.
+  `Optional` and `Annotated` are stripped before the type is chosen, so a
+  nested model or list of models declared as `Annotated[..., Field(...)] | None`
+  exports as the model, and an annotated scalar such as
+  `Annotated[int, Field(...)] | None` as its own type rather than a string. The
+  refusal reads the field, its list levels and the arms of a union, not other
+  containers: `Union[List[Card], str]`, `Union[Dict[str, Card], str]` and
+  `Tuple[Card, ...]` still export as `"string"`, `List[List[Dict[str, Card]]]`
+  exports without the model's schema, and a union leaf in a list of lists
+  (`List[List[Union[str, int]]]`) is still written as `"string"`.
+  Parts B and C of [#349](https://github.com/awslabs/stickler/issues/349)
+
+- **Breaking:** a `StructuredModel` field typed `date`, `datetime`, `time`,
+  `timedelta`, `Decimal`, `UUID` or `Enum` now reaches its comparator, and a
+  declared comparator is always called. The dispatcher treated only `str`,
+  `int` and `float` as scalars, so these fell through to the mismatched-types
+  case: an identical value scored `0.0` and counted as a false discovery, and
+  the declared comparator (including `DateComparator`) was never called. The
+  zero-config path (`stickler.evaluate()` on a plain pydantic model) was
+  unaffected, because its shadow models convert these values first.
+
+  `compare_with()` and `compare()` now share one rule, so the two no longer
+  disagree on such a pair. Results move for existing callers:
+  - **A declared comparator is called for any non-structured pair**, including
+    `bytes`, a custom class, a tuple or set, or a `date` against its ISO string
+    under `DateComparator`. In `compare_with()` these scored `0.0` without the
+    comparator being called.
+  - **An inferred comparator sees only `str`/`int`/`float`, numbers (`Decimal`
+    included), and related `date`/`time`/`timedelta`/`UUID`/`Enum` values.**
+    Anything else is a mismatch in both readers. `compare()`, which feeds list
+    matching, used to call the comparator for such a pair, so a `date` against
+    its ISO string, `bytes`, or an arbitrary object now score `0.0` there.
+  - **Enum members match only members of a related `Enum` class.** With an
+    inferred comparator, two different `IntEnum` or `StrEnum` classes, or a
+    member against a bare value, are now a mismatch where they used to compare
+    as `int`/`str`.
+  - **A `Decimal` is compared with an `int` or `float` as a number.**
+
+  `Tuple` and `Set` fields with an inferred comparator are unchanged
+  ([#391](https://github.com/awslabs/stickler/issues/391)), and #392 tracks
+  merging the two readers into one implementation
+  ([#383](https://github.com/awslabs/stickler/issues/383))
+
 - **Breaking:** `match_threshold` on a **primitive** field now raises
   `ValueError`. It is the object-level threshold; nothing read it on a leaf, so
   `"match_threshold": 0.99` beside a `float` left that field at `threshold` 0.5
@@ -29,7 +87,62 @@ Each release links to full notes on the
   later on subscripting
   ([#350](https://github.com/awslabs/stickler/issues/350))
 
+- **Breaking:** a `None` element in a list is now absent. It is left out
+  before matching, so it is never paired, counted or scored, and a list of only
+  `None` is an empty list. A float `NaN` element counts as `None`; an empty
+  string is still a value. This holds for lists of models and of primitives,
+  in `compare_with()` and `compare()`, and reports keep each element's
+  original index. Counting a `None` as an element credited two of them as a
+  true positive, and counted a missed row as a false discovery, or as a true
+  positive in a list of models, so recall stayed at `1.0`. For lists holding a
+  `None`:
+  - `[A, None]` against `[A, None]` is 1 TP, not 2;
+  - `[A, B, C]` against `[A, None, C]` is 2 TP and 1 FN, where the missed `B`
+    was an FD in a list of strings and a TP in a list of models;
+  - `[A]` against `[None]` is an FN and `[None]` against `[A]` an FA, both
+    previously FD, except a model against `None`, which was a TP;
+  - `[None]` against `[None]` is a TN, not a TP.
+
+  It also removes the order dependence these lists had. What a list held was
+  read from its first element, so `[None, Model]` was treated as a list of
+  primitives: the class gate and field-by-field scoring were skipped, and a
+  `Cat` scored against a `Dog` got `0.961` with no warning
+  ([#386](https://github.com/awslabs/stickler/issues/386)). The element class's
+  `match_threshold` was likewise replaced by the parent's
+  ([#322](https://github.com/awslabs/stickler/issues/322)). See
+  [`None` elements in a list](https://awslabs.github.io/stickler/Advanced/classification-logic/#none-elements-in-a-list)
+
 ### Fixed
+
+- **A `RootModel` is now refused when the evaluator is built, instead of failing
+  once per document or scoring a wrong value `1.0`.** `eval_for()` accepted one
+  and returned a spec. What happened next depended on the root type:
+  `RootModel[list[...]]` raised `AttributeError: 'list' object has no attribute
+  'keys'`, `RootModel[int]` raised `'int' object has no attribute 'copy'`,
+  `RootModel[dict[...]]` raised a `ValidationError` for a missing `root`, and
+  **`RootModel[Model]` scored `1.0` for two values that differed in every
+  field.** The two `AttributeError`s named neither the shape nor a field; the
+  mapping case named `root`, the shadow's own field rather than the model field
+  that held the value. None of the three said the shape was unsupported, and all
+  three arrived once per document rather than once at configuration time; the
+  fourth reported a perfect match for a wrong prediction. `eval_for()`,
+  `evaluate()` and `StructuredModel.from_pydantic()` now raise `TypeError`
+  naming the class and pointing at declaring the root value as a named field on
+  a `BaseModel`. The refusal covers every model the zero-config builder mirrors,
+  so a `RootModel` in a field (`Holder.pt`) or as a list element
+  (`Holder.items[]`) is refused too, with the path in the message; both scored
+  `1.0` for values differing in every field before this. A root value is still
+  not compared, and an explicitly configured `StructuredModel` is unchanged: it
+  is used as configured and never mirrored, so its fields keep the comparators
+  the caller declared
+  ([#366](https://github.com/awslabs/stickler/issues/366))
+
+- **A float `NaN` is now absent, the same as `None`.** Two identical `NaN`s
+  scored `0.0` and counted as a false discovery, because `NaN` equals nothing
+  under IEEE 754. `NaN` vs `NaN` or `None` is now a true negative scoring `1.0`,
+  `NaN` vs a number is a false alarm or false negative, and comparators apply
+  the same rule. This changes confusion counts for any field holding `NaN`
+  ([#367](https://github.com/awslabs/stickler/issues/367))
 
 - **An unrecognized key in a model config is now reported instead of dropped.**
   `model_from_json` read a closed set of keys and ignored everything else, so
@@ -46,6 +159,36 @@ Each release links to full notes on the
   each report, and a second `model_from_json` in the same process still warns.
   Keyed on the leaf name alone, the first model built in a process silenced every
   later one carrying the same typo.
+
+- **The pretty printers no longer report success over results that carry no
+  non-match records.** `print_non_matches` and `print_evaluation_results` printed
+  `✅ No non-matches found - all fields matched successfully!` for `EvalResult.raw`
+  or a `compare_with()` dict computed without `document_non_matches=True`,
+  including one with a wrong field, because that dict has no `non_matches` key
+  and the printers fell back to the always-empty `confusion_matrix["non_matches"]`
+  placeholder. They now say the records are missing and how to collect them. The
+  same applies to a bulk `ProcessEvaluation` built with
+  `document_non_matches=False`. `print_non_matches` on input that is not a result
+  at all now prints an error. An empty record list still prints a success
+  message, now `✅ No non-matches found.` without the `all_fields_matched`
+  wording removed in #287. An `evaluator_format=True` dict still prints that
+  success without records, because it always carries a `non_matches` list,
+  empty unless records were requested
+  ([#298](https://github.com/awslabs/stickler/issues/298))
+
+- **The HTML report no longer claims a document is clean when it holds no
+  non-match records.** The Non-Matches Analysis section rendered `No non-matches
+  found.` for a `compare_with()` dict computed without `document_non_matches=True`,
+  including one with a field scoring `0.0`, and for a bulk `ProcessEvaluation`
+  built with `document_non_matches=False`. `DataExtractor.extract_non_matches`
+  returned `[]` for both "no records collected" and "collected and empty", so the
+  renderer could not tell them apart. It now returns `None` for the first, and the
+  section says the records are missing and how to collect them. An empty record
+  list still renders the success message. Not yet covered: results from
+  `aggregate_from_comparisons()`, a bulk run in which every document raised
+  ([#425](https://github.com/awslabs/stickler/issues/425)), and an
+  `evaluator_format=True` dict ([#413](https://github.com/awslabs/stickler/issues/413))
+  ([#411](https://github.com/awslabs/stickler/issues/411))
 
 - **`ComparableField` accepts `default_factory`.** It always forwarded its own
   `default` to pydantic's `Field`, so the two collided and every collection field
