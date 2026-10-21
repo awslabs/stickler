@@ -52,18 +52,20 @@ class _ScriptBodies(HTMLParser):
             self.bodies[-1] += data
 
 
-def _report(tmp_path, predicted_vendor):
+def _report(tmp_path, predicted_vendor, model=Invoice, gt=None, pred=None):
     jsonl = tmp_path / "results.jsonl"
     jsonl.touch()
     evaluator = BulkStructuredModelEvaluator(
-        target_schema=Invoice, individual_results_jsonl=str(jsonl)
+        target_schema=model, individual_results_jsonl=str(jsonl)
     )
-    evaluator.update(Invoice(vendor="Acme"), Invoice(vendor=predicted_vendor), doc_id="doc1")
+    gt = gt if gt is not None else model(vendor="Acme")
+    pred = pred if pred is not None else model(vendor=predicted_vendor)
+    evaluator.update(gt, pred, doc_id="doc1")
     out = tmp_path / "report.html"
     result = EvaluationHTMLReporter().generate_report(
         evaluator.compute(),
         str(out),
-        model_schema=Invoice,
+        model_schema=model,
         individual_results_jsonl_path=str(jsonl),
     )
     assert result.success
@@ -78,6 +80,29 @@ def test_a_document_value_cannot_end_the_script_block(tmp_path):
     plain.mkdir()
     _, baseline = _report(plain, "Acme Corp")
     page, bodies = _report(tmp_path, PAYLOAD)
+
+    assert len(bodies) == len(baseline)
+    assert not any(body.strip() == "alert(1)" for body in bodies)
+    assert PAYLOAD not in page
+
+
+def test_a_field_name_cannot_end_the_script_block(tmp_path):
+    """A JSON Schema property name reaches the page through the field
+    thresholds, the second blob in the same block, so it is guarded too."""
+    name = "a" + PAYLOAD
+    model = StructuredModel.from_json_schema(
+        {"type": "object", "properties": {"vendor": {"type": "string"}, name: {"type": "string"}}}
+    )
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    _, baseline = _report(plain, "Acme Corp")
+    page, bodies = _report(
+        tmp_path,
+        None,
+        model=model,
+        gt=model(**{"vendor": "Acme", name: "x"}),
+        pred=model(**{"vendor": "Acme", name: "y"}),
+    )
 
     assert len(bodies) == len(baseline)
     assert not any(body.strip() == "alert(1)" for body in bodies)

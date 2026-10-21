@@ -218,7 +218,8 @@ Each release links to full notes on the
   ends the block at the first `</script`, so a ground-truth or predicted value
   carrying `</script><script>...</script>` ran as its own script when the
   report was opened. Values are model output or third-party documents, so this
-  needed no access to stickler or the host. `<`, `>`, `&`, U+2028 and U+2029
+  needed no access to stickler or the host. A JSON Schema property name reached
+  the same block through the field thresholds. `<`, `>`, `&`, U+2028 and U+2029
   are now written as `\uXXXX`, which the page's JavaScript reads as the same
   characters. Present since 0.1.3
   ([#431](https://github.com/awslabs/stickler/issues/431))
