@@ -162,6 +162,15 @@ class TestVisualizationEngine:
         
         assert mock_color_utils.call_count == 2
     
+    def test_generate_field_performance_table_escapes_field_names(self):
+        """A field name is text, not markup, as in the chart (#422)."""
+        field_metrics = {"<b>vendor</b> & co": {"precision": 1.0, "recall": 1.0, "f1": 1.0}}
+
+        result = self.viz_engine.generate_field_performance_table(field_metrics, ReportConfig())
+
+        assert "<td>&lt;b&gt;vendor&lt;/b&gt; &amp; co</td>" in result
+        assert "<b>vendor</b>" not in result
+
     def test_generate_field_performance_table_with_fallback_keys(self):
         """Test field performance table with fallback metric keys."""
         field_metrics = {
