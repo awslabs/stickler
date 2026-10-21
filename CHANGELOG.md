@@ -210,6 +210,19 @@ Each release links to full notes on the
   `evaluator_format=True` dict ([#413](https://github.com/awslabs/stickler/issues/413))
   ([#411](https://github.com/awslabs/stickler/issues/411))
 
+### Security
+
+- **A document value can no longer run as script in the HTML report.** With
+  `individual_results_jsonl_path`, the report embeds each document's values as
+  JSON inside a `<script>` block, and `json.dumps` left `<` as is. A browser
+  ends the block at the first `</script`, so a ground-truth or predicted value
+  carrying `</script><script>...</script>` ran as its own script when the
+  report was opened. Values are model output or third-party documents, so this
+  needed no access to stickler or the host. `<`, `>`, `&`, U+2028 and U+2029
+  are now written as `\uXXXX`, which the page's JavaScript reads as the same
+  characters. Present since 0.1.3
+  ([#431](https://github.com/awslabs/stickler/issues/431))
+
 ## [1.0.0] - 2026-09-11
 
 ### Added
