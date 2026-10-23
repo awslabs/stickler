@@ -428,6 +428,27 @@ def _cases() -> List[CorpusCase]:
             full_lead(),
             full_lead().model_copy(update={"keywords": ["consulting", "software"]}),
         ),
+        # A float NaN reads as absent since #381, so these move in both
+        # directions against v1.0.0: a NaN where a number is expected is now a
+        # miss (fn, so recall drops), and NaN against NaN or None now matches.
+        CorpusCase(
+            "lead/nan_for_value",
+            Lead,
+            lead(annual_revenue=4.5e7),
+            lead(annual_revenue=float("nan")),
+        ),
+        CorpusCase(
+            "lead/nan_both",
+            Lead,
+            lead(annual_revenue=float("nan")),
+            lead(annual_revenue=float("nan")),
+        ),
+        CorpusCase(
+            "lead/nan_vs_none",
+            Lead,
+            lead(annual_revenue=float("nan")),
+            lead(),
+        ),
         # Order: List[Model] inside List[Model].
         CorpusCase("order/identical", Order, order(), order()),
         CorpusCase(
