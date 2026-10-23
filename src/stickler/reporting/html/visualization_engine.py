@@ -63,7 +63,7 @@ class VisualizationEngine:
                     
                     html_string += f'''
                     <div class="field-bar">
-                        <div class="field-label">{html.escape(field_name)}</div>
+                        <div class="field-label">{html.escape(str(field_name))}</div>
                         <div class="bar-container">
                             <div class="bar-fill" style="width: {percentage}%; background-color: {color};"></div>
                             <span class="bar-value">{f1_score:.3f}</span>
@@ -122,7 +122,7 @@ class VisualizationEngine:
                 
                 html_string += f'''
                 <tr>
-                    <td>{html.escape(field_name)}</td>
+                    <td>{html.escape(str(field_name))}</td>
                     <td>{precision:.3f}</td>
                     <td>{recall:.3f}</td>
                     <td style="background-color: {f1_color}; color: white; font-weight: bold;">{f1:.3f}</td>
