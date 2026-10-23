@@ -1814,6 +1814,7 @@ class StructuredModel(BaseModel):
         from .json_schema_field_converter import (
             PYTHON_TYPE_TO_JSON_TYPE,
             JsonSchemaFieldConverter,
+            add_exportable_default,
         )
 
         # schema/field_path unused for export operations - only needed for import
@@ -1890,6 +1891,9 @@ class StructuredModel(BaseModel):
                         "type": "array",
                         "items": items_schema,
                     }
+                    # Without the factory's `[]`, `default_factory=list`
+                    # imported back as None (#360).
+                    add_exportable_default(property_schema, field_info)
                     metadata = converter._extract_field_metadata(field_info)
                     metadata.pop("comparator", None)
                     # Drop the threshold for the same reason as the comparator:
@@ -1918,6 +1922,8 @@ class StructuredModel(BaseModel):
                             else json_element_type
                         },
                     }
+                    # As above. A literal default is still not exported here.
+                    add_exportable_default(property_schema, field_info)
                     # Extract and add stickler extensions from field metadata
                     metadata = converter._extract_field_metadata(field_info)
                     extensions = converter._build_comparison_extensions(
@@ -2084,7 +2090,10 @@ class StructuredModel(BaseModel):
             >>> ReconstructedProduct = StructuredModel.model_from_json(config)
             >>> # ReconstructedProduct has identical comparison behavior
         """
-        from .json_schema_field_converter import JsonSchemaFieldConverter
+        from .json_schema_field_converter import (
+            JsonSchemaFieldConverter,
+            add_exportable_default,
+        )
 
         # schema/field_path unused for export operations - only needed for import
         converter = JsonSchemaFieldConverter(schema={}, field_path="")
@@ -2161,6 +2170,23 @@ class StructuredModel(BaseModel):
                         field_config["match_threshold"] = nested_config[
                             "match_threshold"
                         ]
+                    # `required`, as field_to_stickler_config writes it:
+                    # model_from_json() reads a missing one as False, so a
+                    # required List[Model] rebuilt as optional.
+                    field_config["required"] = field_info.is_required()
+                    # A literal `[]` is written, as field_to_stickler_config
+                    # writes one: omitted, model_from_json() reads the missing
+                    # default as None and widens the field to Optional, so a
+                    # `List[Model]` turned nullable after a second round trip.
+                    # A non-empty literal holds model instances, which are not
+                    # JSON, so it is still not exported.
+                    literal = field_info.default
+                    add_exportable_default(
+                        field_config,
+                        field_info,
+                        include_literal=isinstance(literal, list) and not literal,
+                        stickler_config=True,
+                    )
                     metadata = converter._extract_field_metadata(field_info)
                     metadata.pop("comparator", None)
                     extensions = converter._build_comparison_extensions(
