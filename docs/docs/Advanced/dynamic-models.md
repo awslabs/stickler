@@ -110,6 +110,39 @@ The `x-aws-stickler-*` extensions control comparison behavior on each property:
 | `x-aws-stickler-match-threshold` | Hungarian match threshold (object-level) | `0.75` |
 | `x-aws-stickler-infer-unspecified` | Infer comparators for properties that name none (object-level). See [Inferring unspecified fields](#inferring-unspecified-fields) | `true` |
 
+A nested object typed `["object", "null"]` reads the same keys as one typed `"object"`.
+The root must be `"object"`: it is the document being scored, so a nullable root (or a
+root `anyOf`/`oneOf`) raises.
+
+A `$defs` (or `definitions`) entry is a type, not a property. A definition with
+`properties` generates a class, and its object-level keys configure that class for every
+property, `items` or `anyOf`/`oneOf` arm that `$ref`s it. Field-level keys describe one
+use of that type, so they go beside the `$ref` on the referencing property, or on the
+array property when the definition is its `items`; inside a definition they raise, as a
+misspelled key does. Any other definition (a scalar, an array, a combiner, an alias, a
+mapping) generates no class, so it accepts neither set:
+
+```python
+{
+    "type": "object",
+    "properties": {
+        "billing": {"$ref": "#/$defs/Address", "x-aws-stickler-weight": 2.0},
+        "shipping": {"$ref": "#/$defs/Address"}
+    },
+    "$defs": {
+        "Address": {
+            "type": "object",
+            "x-aws-stickler-match-threshold": 0.8,
+            "properties": {"street": {"type": "string"}}
+        }
+    }
+}
+```
+
+Two positions build a different class, so object-level keys there raise: an `allOf` arm
+(inline or `$ref`) is merged into one class that nothing configures, and a root `$ref`
+builds the root class, which reads the keys beside that `$ref`.
+
 With no extension specified, the property is parsed to a strict Python annotation and the comparator
 is chosen from that annotation, which is then widened back to the JSON value type so an invalid
 extraction scores `0.0` instead of raising. So `format`, `enum` and `const` participate in the

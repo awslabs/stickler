@@ -177,23 +177,53 @@ def _reject_unknown_extensions(
     if not isinstance(extra, dict):
         return
 
-    if scope == "model":
+    # Each entry names a set of real keys that are not read here and where they
+    # belong instead, so a misplaced key is answered with its position.
+    misplaced: Tuple[Tuple[str, FrozenSet[str]], ...]
+    # `items` does not read field keys, so a definition used there takes them on
+    # the array property instead; the message has to name both positions.
+    beside_ref = (
+        "property that uses this definition: beside its '$ref', or on the array "
+        "property when the definition is its 'items' (an array pairs its elements "
+        "by this definition's 'x-aws-stickler-match-threshold')"
+    )
+    if scope in ("model", "definition"):
+        # A definition is a type that several positions can `$ref`, and not all
+        # of them read field keys (`items` does not). Honouring them there would
+        # make one key work at one reference and vanish at the next, so they go
+        # on the property that uses the definition.
         accepted = _KNOWN_MODEL_EXTENSIONS
         suggestible = _KNOWN_MODEL_EXTENSIONS
-        other_scope, other_keys = "field", _DOCUMENTED_FIELD_EXTENSIONS
-        where = f"object '{field_path}'"
+        if scope == "model":
+            misplaced = (("field", _DOCUMENTED_FIELD_EXTENSIONS),)
+            where = f"object '{field_path}'"
+        else:
+            misplaced = ((beside_ref, _DOCUMENTED_FIELD_EXTENSIONS),)
+            where = f"definition '{field_path}'"
+    elif scope == "value_definition":
+        # A definition that generates no class (a scalar, an array, a combiner,
+        # an alias `$ref`, a mapping) reads neither set. Accepting the model keys
+        # here passed the check and then dropped them.
+        accepted = frozenset()
+        suggestible = frozenset()
+        misplaced = (
+            (beside_ref, _DOCUMENTED_FIELD_EXTENSIONS),
+            ("object definition with 'properties'", _KNOWN_MODEL_EXTENSIONS),
+        )
+        where = f"definition '{field_path}'"
     elif scope == "field_or_model":
         # An object-typed property honours both sets, so there is no misplacement
         # to report and nothing to route elsewhere.
         accepted = _KNOWN_FIELD_EXTENSIONS | _KNOWN_MODEL_EXTENSIONS
         suggestible = _DOCUMENTED_FIELD_EXTENSIONS | _KNOWN_MODEL_EXTENSIONS
-        other_scope, other_keys = "", frozenset()
+        misplaced = ()
         where = f"field '{field_path}'"
     else:
         accepted = _KNOWN_FIELD_EXTENSIONS
         suggestible = _DOCUMENTED_FIELD_EXTENSIONS
-        other_scope, other_keys = "object", _KNOWN_MODEL_EXTENSIONS
+        misplaced = (("object", _KNOWN_MODEL_EXTENSIONS),)
         where = f"field '{field_path}'"
+    valid_here = ", ".join(sorted(suggestible)) or "none"
 
     for key in extra:
         if not isinstance(key, str):
@@ -205,12 +235,13 @@ def _reject_unknown_extensions(
 
         # A real key in the wrong position. Naming the position is the whole
         # answer here, so say that instead of offering a spelling correction.
-        if key in other_keys:
-            raise ValueError(
-                f"Stickler extension '{key}' is not read on {where}. It belongs "
-                f"on the {other_scope}. Left in place it would be dropped "
-                f"silently. Valid keys here: {', '.join(sorted(suggestible))}."
-            )
+        for other_scope, other_keys in misplaced:
+            if key in other_keys:
+                raise ValueError(
+                    f"Stickler extension '{key}' is not read on {where}. It "
+                    f"belongs on the {other_scope}. Left in place it would be "
+                    f"dropped silently. Valid keys here: {valid_here}."
+                )
 
         suggestion = _closest_known_key(key, suggestible)
         hint = f" Did you mean '{suggestion}'?" if suggestion else ""
@@ -218,7 +249,7 @@ def _reject_unknown_extensions(
             f"Unrecognized Stickler extension '{key}' on {where}."
             f"{hint} It would otherwise be dropped silently, leaving the "
             "configuration to fall back while its correctly-spelled siblings "
-            f"were honoured. Valid keys here: {', '.join(sorted(suggestible))}."
+            f"were honoured. Valid keys here: {valid_here}."
         )
 
 
@@ -339,6 +370,18 @@ class JsonSchemaImporter:
             raise ValueError(
                 f"Could not import JSON Schema{location}: {message}"
             ) from exc
+
+        # A root typed `["object", "null"]`, or a root `anyOf`/`oneOf`, parses to
+        # a union rather than a class, and crashed below with
+        # `AttributeError: model_fields`. The root is the document being scored,
+        # so it cannot be null or one of several shapes.
+        if not (isinstance(source_model, type) and issubclass(source_model, BaseModel)):
+            raise ValueError(
+                "The root of a JSON Schema must be a single object. A root typed "
+                "['object', 'null'], or a root anyOf/oneOf, is a union, and the "
+                "document being scored cannot be null or one of several shapes. "
+                "Type the root 'object'."
+            )
 
         if not source_model.model_fields:
             if "patternProperties" in schema:
@@ -847,8 +890,23 @@ class JsonSchemaImporter:
                     for key, value in prepared.items()
                     if key not in metadata and key != "type"
                 }
+                # The object arm generates the class, and `_build_nested_model`
+                # reads the class's own keys off that arm. Leaving them only as
+                # siblings of `anyOf` built `DynamicModel` at 0.7 for a node that
+                # declared a name and threshold, while its field keys, read off
+                # the property, were honoured. See #349.
+                model_keys = {
+                    key: deepcopy(value)
+                    for key, value in metadata.items()
+                    if key in _KNOWN_MODEL_EXTENSIONS
+                }
                 metadata["anyOf"] = [
-                    {**deepcopy(non_metadata), "type": value} for value in raw_type
+                    {
+                        **deepcopy(non_metadata),
+                        **(model_keys if value == "object" else {}),
+                        "type": value,
+                    }
+                    for value in raw_type
                 ]
                 prepared = metadata
 
@@ -909,6 +967,22 @@ class JsonSchemaImporter:
             for key, value in node.items():
                 child_path = path
                 child_scope: Optional[str] = None
+                if key in ("$defs", "definitions") and isinstance(value, dict):
+                    for name, body in value.items():
+                        # Checked like any other node. Walking a definition with
+                        # no scope let a typo there import silently while the
+                        # same typo inline raised. See #340. Only a body with
+                        # `properties` generates a class: a `type: "object"`
+                        # mapping becomes a `dict` field, judged against its
+                        # parent's threshold, so it reads no model keys.
+                        walk(
+                            body,
+                            f"{path}.{key}.{name}" if path else f"{key}.{name}",
+                            "definition"
+                            if isinstance(body, dict) and "properties" in body
+                            else "value_definition",
+                        )
+                    continue
                 if key == "properties" and isinstance(value, dict):
                     for name, child in value.items():
                         # A property is scored as a field of this object, and if
@@ -928,10 +1002,102 @@ class JsonSchemaImporter:
                     # class's own settings are read.
                     child_scope = "model"
                 elif key in _COMBINERS or key in ("$defs", "definitions"):
+                    # A `$defs` that is not a mapping is not a set of definitions;
+                    # it is still walked, as before, rather than skipped.
                     child_scope = "model"
                 walk(value, child_path, child_scope)
 
         walk(schema, "", "model")
+        cls._reject_unread_model_keys(schema)
+
+    @staticmethod
+    def _reject_unread_model_keys(schema: Dict[str, Any]) -> None:
+        """Raise for model keys on a class that is never built from them.
+
+        The walk above checks each node by its own position, but an object's
+        model keys are read only where its class is built. Two positions build a
+        different class: an `allOf` arm is merged into `AllOfModel`, and a root
+        `$ref` builds the root class, which reads the root's own keys. Model keys
+        on such an arm, or on a definition reached that way, passed the walk and
+        were dropped. See #340.
+        """
+        data_keywords = {"const", "default", "enum", "examples"}
+
+        def resolve(ref: Any) -> Tuple[Optional[Dict[str, Any]], str]:
+            if not isinstance(ref, str) or not ref.startswith("#/"):
+                return None, ""
+            parts = [
+                part.replace("~1", "/").replace("~0", "~")
+                for part in ref[2:].split("/")
+            ]
+            node: Any = schema
+            for part in parts:
+                if not isinstance(node, dict) or part not in node:
+                    return None, ""
+                node = node[part]
+            return (node if isinstance(node, dict) else None), ".".join(parts)
+
+        def check(node: Any, where: str, reached: str, advice: str) -> None:
+            # Follows an alias chain, since each hop is the same class.
+            seen: set = set()
+            while isinstance(node, dict):
+                declared = sorted(key for key in node if key in _KNOWN_MODEL_EXTENSIONS)
+                if declared:
+                    raise ValueError(
+                        f"Stickler extension '{declared[0]}' on {where} is not "
+                        f"read when it is reached through {reached}. {advice} "
+                        "Left in place it would be dropped silently."
+                    )
+                ref = node.get("$ref")
+                if not isinstance(ref, str) or ref in seen:
+                    return
+                seen.add(ref)
+                node, target = resolve(ref)
+                where = f"definition '{target}'"
+
+        def visit(node: Any, path: str) -> None:
+            if isinstance(node, list):
+                for index, value in enumerate(node):
+                    visit(value, f"{path}[{index}]")
+                return
+            if not isinstance(node, dict):
+                return
+            arms = node.get("allOf")
+            if isinstance(arms, list):
+                for index, arm in enumerate(arms):
+                    arm_path = f"{path}.allOf[{index}]" if path else f"allOf[{index}]"
+                    check(
+                        arm,
+                        f"object '{arm_path}'",
+                        f"'allOf' at '{path or '(root)'}'",
+                        "The arms are merged into one class with the default name "
+                        "and match threshold, and no position sets them. Reference "
+                        "the object directly, without 'allOf', to configure it.",
+                    )
+            for key, value in node.items():
+                if key in data_keywords or key == _PRESERVED_EXAMPLES_KEY:
+                    continue
+                if key == "properties" and isinstance(value, dict):
+                    for name, child in value.items():
+                        visit(child, f"{path}.{name}" if path else name)
+                elif key in ("$defs", "definitions") and isinstance(value, dict):
+                    for name, body in value.items():
+                        visit(body, f"{path}.{key}.{name}" if path else f"{key}.{name}")
+                elif key == "items":
+                    visit(value, f"{path}[]" if path else "[]")
+                else:
+                    visit(value, f"{path}.{key}" if path else key)
+
+        visit(schema, "")
+        target, target_path = resolve(schema.get("$ref"))
+        if target is not None:
+            check(
+                target,
+                f"definition '{target_path}'",
+                "the root '$ref'",
+                "The root class reads the root's own keys: put it on the root, "
+                "beside the '$ref'.",
+            )
 
     @staticmethod
     def _translate_import_error(message: str, schema: Dict[str, Any]) -> str:
