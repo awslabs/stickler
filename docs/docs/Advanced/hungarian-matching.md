@@ -165,6 +165,18 @@ The Hungarian algorithm produces:
 
 Because the lists are equal length, every element gets paired. Only the TP pair (GT[0] -> Pred[0]) receives field-level analysis; the FD pairs are treated as atomic mismatches.
 
+### Step 4: List Score
+
+The list's score is the sum of the pair scores over the longer list's length ([Score](classification-logic.md#list-contract)). For `List[StructuredModel]` a pair's score is `GT[i].compare_with(Pred[j])["overall_score"]`, which applies each field's threshold, so it can differ from the pairing similarity in Step 1:
+
+| Pair | Pairing similarity | Pair score |
+|------|-------------------|-----------|
+| GT[0] -> Pred[0] | 0.860 | 0.667 (`description` 0.579 is below 0.7, so it contributes 0.0) |
+| GT[1] -> Pred[1] | 0.572 | 0.500 |
+| GT[2] -> Pred[2] | 0.124 | 0.000 |
+
+`field_scores["transactions"]` = (0.667 + 0.5 + 0.0) / 3 = **0.3889**, and the account scores (2 x 1.0 + 3 x 0.3889) / 5 = 0.6333.
+
 ### Result Structure
 
 ```python
@@ -175,17 +187,19 @@ Because the lists are equal length, every element gets paired. Only the TP pair 
     "fields": {
         # Only from the TP pair (GT[0] -> Pred[0])
         "transaction_id": {"tp": 1, "fd": 0, "fa": 0, "fn": 0},
-        "description":    {"tp": 1, "fd": 0, "fa": 0, "fn": 0},
+        "description":    {"tp": 0, "fd": 1, "fa": 0, "fn": 0},  # 0.579 < 0.7
         "amount":         {"tp": 1, "fd": 0, "fa": 0, "fn": 0}
     }
 }
 ```
 
+A TP pair can still hold a failing leaf: the pair cleared `match_threshold`, and its `description` did not clear its own `threshold`.
+
 ## Key Architectural Principles
 
 ### Threshold Source
 
-The threshold for Hungarian classification comes from the element model's `match_threshold` class attribute (default 0.7). It is **not** taken from the `ComparableField` on the parent list field.
+The threshold for Hungarian classification comes from the element model's `match_threshold` class attribute (default 0.7). It is **not** taken from the `ComparableField` on the parent list field: `ComparableField(threshold=...)` on a `List[StructuredModel]` raises `ValueError` in Python, and `x-aws-stickler-threshold` on an array of models warns and is ignored.
 
 ### Metric Separation
 

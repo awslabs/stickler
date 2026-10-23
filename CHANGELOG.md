@@ -207,6 +207,28 @@ Each release links to full notes on the
   `evaluator_format=True` dict ([#413](https://github.com/awslabs/stickler/issues/413))
   ([#411](https://github.com/awslabs/stickler/issues/411))
 
+### Documentation
+
+- The list contract is now stated in one place, the table in
+  `classification-logic.md` (pairing, bar, counts, recursion, score, reports),
+  with each place `dev` does not yet follow it linked to its issue. Other pages
+  link to it. No behaviour changes. Claims corrected against measured output:
+  - "A field below its threshold contributes 0.0" now says a list clips per
+    element, never as a whole, and states how a list's score is computed.
+  - The runtime `match_threshold` of `evaluate()` / `eval_for()` does not gate
+    pairing for a `StructuredModel` element class, only `matched`
+    ([#416](https://github.com/awslabs/stickler/issues/416)); the docstrings
+    now say TP/FD, not TP/FN/FA.
+  - The worked examples in `threshold-gated-evaluation.md` and
+    `hungarian-matching.md` show measured counts (the Laptop pair is an FD at
+    `0.7999999999999999`; the TP Transaction's `description` is an FD).
+  - `aggregate` leaves out unmatched FN/FA items beside an accepted sibling;
+    lists are unordered; a field `threshold` on `List[StructuredModel]` raises;
+    `clip_under_threshold` has no effect there
+    ([#415](https://github.com/awslabs/stickler/issues/415)); `raw_similarity_score`
+    on a list node and bulk `mean_score` inside list items are described as
+    they are today ([#330](https://github.com/awslabs/stickler/issues/330)).
+
 ## [1.0.0] - 2026-09-11
 
 ### Added

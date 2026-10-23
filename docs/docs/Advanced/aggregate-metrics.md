@@ -9,7 +9,7 @@ Stickler automatically includes an `aggregate` field at every node in the confus
 ## Key Features
 
 - **Automatic** -- Every node gets an `aggregate` field, with no per-field configuration.
-- **Hierarchical** -- Parent nodes sum metrics from all child primitive fields, except where a list's items were all rejected and the node reports object rows instead ([why](#aggregate-counts-objects-for-an-all-rejected-list)).
+- **Hierarchical** -- Parent nodes sum metrics from all child primitive fields, except where a list's items were all rejected and the node reports object rows instead ([why](#aggregate-counts-objects-for-an-all-rejected-list)). In a list of models only accepted (TP) items contribute leaves, so an unmatched FN or FA item beside an accepted sibling appears on `overall` only ([Recursion](classification-logic.md#list-contract)).
 - **Consistent** -- The same access pattern works at every level: `result['confusion_matrix']['aggregate']` or `result['confusion_matrix']['fields']['contact']['aggregate']`.
 - **Derived metrics included** -- Each aggregate contains precision, recall, F1, and accuracy.
 
@@ -142,7 +142,10 @@ Coinciding is not evidence that nothing was hidden, which is the separate and mo
     has **no child field nodes at all**. `AggregateMetricsCalculator` decides leaf
     versus parent on exactly that -- whether `fields` has any entries -- so such a
     node is treated as a leaf and its `aggregate` becomes a copy of its own
-    `overall`: one row per rejected item. The **unit of the count changes with the
+    `overall`: one row per rejected item. The same holds for any list with no
+    accepted item, so its FN and FA items count here as object rows too; beside an
+    accepted sibling they are left out of `aggregate` (`[A, B]` vs `[A]` reads
+    `overall tp=1 fn=1`, `aggregate tp=2`). The **unit of the count changes with the
     data**. This is decided per node, and needs only that one list's items to be
     rejected -- not the whole document:
 
