@@ -4,7 +4,7 @@ This module provides utilities for formatting comparison results for evaluator
 compatibility and calculating list item metrics.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
@@ -20,6 +20,7 @@ class EvaluatorFormatHelper:
         result: Dict[str, Any],
         other: Any,
         recall_with_fd: bool = False,
+        recursive_result: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Format comparison results for evaluator compatibility.
 
@@ -28,14 +29,23 @@ class EvaluatorFormatHelper:
             result: Standard comparison result from compare_with
             other: The other model being compared
             recall_with_fd: Whether to include FD in recall denominator
+            recursive_result: The ``compare_recursive`` result ``result`` was
+                built from. Its confusion counts give ``overall`` and each list
+                field's ``overall`` their precision and recall. Without it they
+                fall back to a conversion of the score, which cannot tell a
+                missed value from a spurious one.
 
         Returns:
-            Dictionary in evaluator format with overall, fields, confusion_matrix
+            Dictionary in evaluator format with overall, fields,
+            confusion_matrix, and ``non_matches`` when ``result`` carries
+            records (``document_non_matches=True``)
         """
         field_scores = result["field_scores"]
         overall_score = result["overall_score"]
         confusion_matrix = result.get("confusion_matrix", {})
-        non_matches = result.get("non_matches", [])
+        counts_by_field = (recursive_result or {}).get("fields", {})
+
+        overall_counts = (recursive_result or {}).get("overall")
 
         # If we have confusion matrix data, use its derived metrics for overall
         if (
@@ -43,15 +53,17 @@ class EvaluatorFormatHelper:
             and "overall" in confusion_matrix
             and "derived" in confusion_matrix["overall"]
         ):
-            # Use the derived metrics from confusion matrix for overall
-            cm_derived = confusion_matrix["overall"]["derived"]
-            overall_metrics = {
-                "precision": cm_derived["cm_precision"],
-                "recall": cm_derived["cm_recall"],
-                "f1": cm_derived["cm_f1"],
-                "accuracy": cm_derived["cm_accuracy"],
-                "anls_score": overall_score,
-            }
+            overall_metrics = EvaluatorFormatHelper._metrics_from_derived(
+                confusion_matrix["overall"]["derived"], overall_score
+            )
+        elif EvaluatorFormatHelper._has_decisions(overall_counts):
+            # The same counts, read before the confusion matrix is built, so a
+            # node with a TP, FP or FN gets the same precision and recall with
+            # or without include_confusion_matrix. A TN-only node does not
+            # (#434).
+            overall_metrics = EvaluatorFormatHelper._metrics_from_counts(
+                overall_counts, overall_score, recall_with_fd
+            )
         else:
             # Fallback to binary conversion if no confusion matrix
             metrics_helper = MetricsHelper()
@@ -72,10 +84,21 @@ class EvaluatorFormatHelper:
         for field_name, score in field_scores.items():
             if field_name in list_fields:
                 # This is a list field - create nested structure expected by tests
-                metrics_helper = MetricsHelper()
-                overall_metrics_for_list = (
-                    metrics_helper.convert_score_to_binary_metrics(score)
-                )
+                list_counts = counts_by_field.get(field_name, {}).get("overall")
+                if EvaluatorFormatHelper._has_decisions(list_counts):
+                    # Count-based, from the list's own elements. A score
+                    # conversion read [A, B] vs [A] (one TP, one FN) as
+                    # precision 0.5 and recall 1.0, the wrong way round.
+                    overall_metrics_for_list = (
+                        EvaluatorFormatHelper._metrics_from_counts(
+                            list_counts, score, recall_with_fd
+                        )
+                    )
+                else:
+                    metrics_helper = MetricsHelper()
+                    overall_metrics_for_list = (
+                        metrics_helper.convert_score_to_binary_metrics(score)
+                    )
 
                 # Get individual item metrics by comparing list items
                 items_metrics = EvaluatorFormatHelper.calculate_list_item_metrics(
@@ -105,11 +128,56 @@ class EvaluatorFormatHelper:
             )
         )
 
-        return {
+        formatted = {
             "overall": overall_metrics,
             "fields": field_metrics,
             "confusion_matrix": flattened_confusion_matrix,
-            "non_matches": non_matches,
+        }
+        # Only when records were collected, as in the default compare_with()
+        # dict. An always-present empty list read as "no non-matches" on a
+        # document with a wrong field (#413).
+        if "non_matches" in result:
+            formatted["non_matches"] = result["non_matches"]
+        return formatted
+
+    @staticmethod
+    def _has_decisions(counts: Any) -> bool:
+        """Whether a node has a TP, FP or FN to compute precision and recall from.
+
+        A node that is only true negatives (both sides empty) has neither, and
+        keeps the score conversion it always had rather than reading 0.0.
+        """
+        return isinstance(counts, dict) and any(
+            counts.get(k, 0) for k in ("tp", "fa", "fd", "fn")
+        )
+
+    @staticmethod
+    def _metrics_from_counts(
+        counts: Dict[str, Any], score: float, recall_with_fd: bool = False
+    ) -> Dict[str, float]:
+        """Evaluator-format metrics for one node, from its confusion counts.
+
+        Precision is ``tp / (tp + fp)`` and recall ``tp / (tp + fn)``
+        (``tp / (tp + fn + fd)`` with ``recall_with_fd``), as in the confusion
+        matrix's own ``derived`` block. ``anls_score`` stays the node's score.
+        """
+        derived = MetricsHelper().calculate_derived_metrics(
+            {k: counts.get(k, 0) for k in ("tp", "fa", "fd", "fp", "tn", "fn")},
+            recall_with_fd,
+        )
+        return EvaluatorFormatHelper._metrics_from_derived(derived, score)
+
+    @staticmethod
+    def _metrics_from_derived(
+        derived: Dict[str, Any], score: float
+    ) -> Dict[str, float]:
+        """Evaluator-format metrics from a ``derived`` block and the node's score."""
+        return {
+            "precision": derived["cm_precision"],
+            "recall": derived["cm_recall"],
+            "f1": derived["cm_f1"],
+            "accuracy": derived["cm_accuracy"],
+            "anls_score": score,
         }
 
     @staticmethod

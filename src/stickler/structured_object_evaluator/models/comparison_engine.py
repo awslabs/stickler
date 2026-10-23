@@ -474,7 +474,9 @@ class ComparisonEngine:
 
         # If evaluator_format is requested, transform the result
         if evaluator_format:
-            return self.model._format_for_evaluator(result, other, recall_with_fd)
+            return self.model._format_for_evaluator(
+                result, other, recall_with_fd, recursive_result
+            )
         
 
         return result

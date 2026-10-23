@@ -1700,6 +1700,7 @@ class StructuredModel(BaseModel):
         result: Dict[str, Any],
         other: "StructuredModel",
         recall_with_fd: bool = False,
+        recursive_result: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Format comparison results for evaluator compatibility.
 
@@ -1707,12 +1708,14 @@ class StructuredModel(BaseModel):
             result: Standard comparison result from compare_with
             other: The other model being compared
             recall_with_fd: Whether to include FD in recall denominator
+            recursive_result: The ``compare_recursive`` result, whose counts
+                give precision and recall
 
         Returns:
             Dictionary in evaluator format with overall, fields, confusion_matrix
         """
         return EvaluatorFormatHelper.format_for_evaluator(
-            self, result, other, recall_with_fd
+            self, result, other, recall_with_fd, recursive_result
         )
 
     def _calculate_list_item_metrics(
