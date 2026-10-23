@@ -4,9 +4,12 @@ Models are the shapes users pass to a Strands agent as ``structured_output_model
 and cases are the (expected, actual) pairs an eval suite feeds them. They live at
 module level so ``StructuredOutputSimilarity.to_dict`` can name them by dotted path.
 
-``snapshot=False`` marks a shape an open 1.0.1 change is deliberately moving (for
-example a ``None`` element inside a list). Those cases still run through every
-invariant in the contract tests, but stay out of the golden snapshot.
+Every case is in the golden snapshot. The two ``None``-in-a-list shapes were
+held out of it while the change that moves them (#399) was still open; that
+change is merged, so the snapshot now records their current values and any
+further movement of them turns the snapshot test red. ``CorpusCase.snapshot``
+is kept for the next time a shape has to be held out; no case sets it to
+``False`` today, so ``SNAPSHOT_CORPUS`` is currently every case.
 """
 
 from __future__ import annotations
@@ -456,20 +459,19 @@ def _cases() -> List[CorpusCase]:
             order(),
             order(shipments=[]),
         ),
-        # Edge shapes: invariants only, kept out of the snapshot.
+        # The two shapes the merged #399 moves. In the snapshot on purpose: that is
+        # what makes a further move fail CI instead of passing unnoticed.
         CorpusCase(
             "tagged/none_element",
             Tagged,
             Tagged(label="x", values=["a", None, "c"]),
             Tagged(label="x", values=["a", "b", "c"]),
-            snapshot=False,
         ),
         CorpusCase(
             "tagged/leading_none",
             Tagged,
             Tagged(label="x", values=[None, "b"]),
             Tagged(label="x", values=["b"]),
-            snapshot=False,
         ),
     ]
 
