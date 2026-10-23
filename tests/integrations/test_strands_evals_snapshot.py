@@ -53,14 +53,13 @@ def build_snapshot() -> Dict[str, Any]:
     stored: Dict[str, List[Dict[str, Any]]] = {}
     cases: Dict[str, Any] = {}
     for case in SNAPSHOT_CORPUS:
-        spec = specs.setdefault(
-            case.model,
-            eval_for(
+        if case.model not in specs:
+            specs[case.model] = eval_for(
                 case.model,
                 match_threshold=STRANDS_DEFAULT_THRESHOLD,
                 weight_hints=False,
-            ),
-        )
+            )
+        spec = specs[case.model]
         result = spec.evaluate(case.expected, case.actual)
         overall = result.raw["confusion_matrix"]["overall"]
         cases[case.id] = _round(

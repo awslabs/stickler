@@ -8,9 +8,7 @@ extra, so the stickler under test is this checkout.
 """
 
 import importlib
-import inspect
 import json
-from pathlib import Path
 
 import pytest
 
@@ -27,7 +25,6 @@ if not hasattr(_evaluators, "StructuredOutputSimilarity") or not hasattr(
 from strands_evals import Case, Experiment  # noqa: E402
 from strands_evals.types.evaluation import EvaluationData  # noqa: E402
 
-import stickler  # noqa: E402
 from stickler import aggregate_from_comparisons, eval_for  # noqa: E402
 from stickler.utils.process_evaluation import ProcessEvaluation  # noqa: E402
 from tests.integrations.strands_corpus import (  # noqa: E402
@@ -44,7 +41,6 @@ from tests.integrations.test_strands_evals_snapshot import SNAPSHOT_PATH  # noqa
 StructuredOutputReport = _evaluators.StructuredOutputReport
 StructuredOutputSimilarity = _evaluators.StructuredOutputSimilarity
 
-CHECKOUT_SRC = Path(__file__).resolve().parents[2] / "src"
 MARKER = "StructuredOutputSimilarity"
 PER_CASE_KEYS = {
     "case",
@@ -62,19 +58,8 @@ CASE_IDS = [case.id for case in CORPUS]
 
 
 @pytest.fixture(scope="module", autouse=True)
-def _this_checkout_offline():
-    """Fail loudly unless the stickler under test is this checkout (AGENTS.md).
-
-    Installing strands-agents-evals with its `stickler` extra pulls a PyPI
-    stickler-eval, and every number below would then measure the wrong tree.
-    """
-    imported = Path(inspect.getfile(stickler)).resolve()
-    if not imported.is_relative_to(CHECKOUT_SRC.resolve()):
-        pytest.fail(
-            f"stickler imported from {imported}, not this checkout ({CHECKOUT_SRC}). "
-            "Install strands-agents-evals without the [stickler] extra.",
-            pytrace=False,
-        )
+def _offline():
+    # conftest.py checks that the stickler under test is this checkout.
     with pytest.MonkeyPatch.context() as mp:
         # The only network path in Experiment: CloudWatch logging when set.
         mp.delenv("AGENT_OBSERVABILITY_ENABLED", raising=False)
@@ -95,7 +80,7 @@ def _run(model, cases, **kwargs):
 
 
 @pytest.fixture(scope="module")
-def reports(_this_checkout_offline):
+def reports(_offline):
     return {
         model: _run(model, [case for case in CORPUS if case.model is model])
         for model in MODELS

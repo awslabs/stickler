@@ -11,6 +11,7 @@ makes every case pass instead of raising. Tests assert that keys exist.
 
 | File | Pins | Needs strands |
 | --- | --- | --- |
+| `conftest.py` | Fails every test here unless `stickler` is imported from this checkout | no |
 | `strands_corpus.py` | Models, cases, and `strands_test_pass`, a verbatim copy of 1.6.0's `_passed` | no |
 | `test_strands_evals_contract.py` | Import paths, `eval_for` kwargs, `evaluate`/`explain` shapes, every `EvalResult` attribute, `raw["confusion_matrix"]["overall"]` counts, `matched`, the guard, `aggregate_from_comparisons` | no |
 | `test_strands_evals_snapshot.py` + `strands_evals_snapshot.json` | Exact scores, verdicts and aggregate metrics for typical shapes | no |
@@ -22,8 +23,17 @@ makes every case pass instead of raising. Tests assert that keys exist.
 pytest tests/integrations                   # e2e skips without strands_evals
 
 # e2e: install strands-agents-evals WITHOUT the [stickler] extra, which would
-# pull a PyPI stickler-eval over this checkout. The e2e fails if it did.
-uv pip install --python .venv "strands-agents-evals==1.6.0"
+# pull a PyPI stickler-eval over this checkout. Every test fails if it did.
+# Same command as CI. -c holds every package in uv.lock's default (no-extras)
+# export at its locked version; packages locked only under extras (boto3,
+# httpx, ...) can move. The cutoff lets the pin through the [tool.uv] cooldown.
+# A temp file, not <(...): with <(...) a failed export installs unconstrained.
+lock=$(mktemp)
+uv export --frozen --no-hashes --no-emit-project -q -o "$lock" &&
+  uv pip install --python .venv -c "$lock" \
+    --exclude-newer-package "strands-agents-evals=2026-10-15T00:00:00Z" \
+    "strands-agents-evals==1.6.0"
+rm -f "$lock"
 uv run --no-sync pytest tests/integrations
 ```
 
@@ -45,5 +55,9 @@ Keep shapes an open change is deliberately moving out of the snapshot with
 ## Bumping strands-agents-evals
 
 Re-read `structured_output.py` in the new wheel, update the line references and
-`strands_test_pass` if `_passed` changed, then bump the pin in the workflow. The
-e2e checks the copied guard against the real evaluator on every case.
+`strands_test_pass` if `_passed` changed, then change the `==1.6.0` pin and move
+the `--exclude-newer-package` cutoff to just after the new release's upload
+time, in both the workflow and the command above. `git grep -n 1.6.0` finds the
+remaining references. The cutoff replaces the cooldown for strands-agents-evals,
+so a pin newer than the cutoff never resolves. The e2e checks the copied guard
+against the real evaluator on every case.
