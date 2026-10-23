@@ -114,7 +114,8 @@ Each release links to full notes on the
 
 - The Strands Evals golden snapshot now covers three `NaN` shapes
   (`lead/nan_for_value`, `lead/nan_both`, `lead/nan_vs_none`), so the `NaN`
-  change under Fixed below is recorded and any further movement fails CI. The
+  change ([#367](https://github.com/awslabs/stickler/issues/367)) is recorded
+  and any further movement fails CI. The
   snapshot's `Lead` aggregate moves because it now averages over three more
   cases; no existing case's values change. Test-only; no runtime behaviour
   changes.
