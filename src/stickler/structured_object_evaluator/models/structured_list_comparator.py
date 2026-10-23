@@ -15,6 +15,7 @@ from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
 from .null_helper import NullHelper
 from .reporting_context import ReportingContext
+from .threshold_helper import ThresholdHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -157,7 +158,10 @@ class StructuredListComparator:
         # Count OBJECTS, not individual fields
         tp_objects = 0  # Objects with similarity >= match_threshold
         fd_objects = 0  # Objects with similarity < match_threshold
-        verdicts = [score >= match_threshold for _, _, score in matched_pairs]
+        verdicts = [
+            ThresholdHelper.is_above_threshold(score, match_threshold)
+            for _, _, score in matched_pairs
+        ]
         for is_match in verdicts:
             if is_match:
                 tp_objects += 1

@@ -46,7 +46,7 @@ Maps each field name to its similarity score (0.0 to 1.0). For nested objects, t
 
 ### Asking whether anything failed
 
-`overall_score` is the scalar summary, and for a single object-level verdict `stickler.evaluate()` returns an `EvalResult` whose `matched` attribute is `overall_score >= match_threshold`.
+`overall_score` is the scalar summary, and for a single object-level verdict `stickler.evaluate()` returns an `EvalResult` whose `matched` attribute is `overall_score >= match_threshold` (see [Meeting a Threshold](../../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold)).
 
 To ask whether anything at all went wrong, read **both** rollup nodes, because they scope different things:
 

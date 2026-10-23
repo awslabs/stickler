@@ -238,9 +238,11 @@ class BaseComparator(ABC):
         """Compare two values and return a binary result as (tp, fp) tuple.
 
         This method converts the continuous similarity score to a binary decision
-        based on the threshold. If the similarity is greater than or equal to the
-        threshold, it returns (1, 0) indicating true positive. Otherwise, it returns
-        (0, 1) indicating false positive.
+        based on the threshold. If the similarity meets the threshold, it returns
+        (1, 0) indicating true positive. Otherwise, it returns (0, 1) indicating
+        false positive. The test is ``ThresholdHelper.is_above_threshold``, the
+        one every classification gate listed in Meeting a Threshold uses, so a
+        score less than ``1e-10`` under the threshold meets it.
 
         Args:
             str1: First value
@@ -250,8 +252,15 @@ class BaseComparator(ABC):
             Tuple of (tp, fp) where tp is 1 if similar, 0 otherwise,
             and fp is the opposite
         """
+        # Imported here, as in HungarianMatcher.calculate_metrics, so this
+        # module has no import-time dependency on the evaluator package, which
+        # imports it.
+        from stickler.structured_object_evaluator.models.threshold_helper import (
+            ThresholdHelper,
+        )
+
         score = self.compare(str1, str2)
-        if score >= self.threshold:
+        if ThresholdHelper.is_above_threshold(score, self.threshold):
             return (1, 0)  # True positive
         else:
             return (0, 1)  # False positive

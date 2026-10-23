@@ -117,6 +117,32 @@ Each release links to full notes on the
   shapes fails CI instead of passing unnoticed. Test-only; no runtime behaviour
   changes.
 
+- **Breaking:** a score that floating-point arithmetic leaves just under its
+  threshold now gets the same verdict at every classification gate. A
+  primitive list element allowed a `1e-10` tolerance, but a field, a nested
+  model, a `List[StructuredModel]` pair, `EvalResult.matched` and
+  `binary_compare()` used a bare `>=`. The Laptop pair in the threshold-gating
+  docs scores `0.7999999999999999` against `match_threshold = 0.8`, so it was an
+  FD and was not descended into, while the same score on a `List[str]` element
+  was a TP. Each of these now uses `ThresholdHelper.is_above_threshold`. A score
+  up to `1e-10` under its threshold:
+  - counts as a TP instead of an FD, in the confusion matrix, `non_matches` and
+    `field_comparisons`, for a field, a nested model, a list item's sub-field and
+    a list pair;
+  - keeps its score instead of being clipped to `0.0`, so `field_scores` and
+    `overall_score` can rise, and `ComparisonInfo.compare()` and
+    `ComparableFieldConfig.compare()` return it;
+  - opens a list pair for field-by-field evaluation;
+  - sets `EvalResult.matched`, makes `BaseComparator.binary_compare()` return
+    `(1, 0)`, and counts as a TP in `HungarianMatcher.calculate_metrics` and the
+    `evaluator_format=True` fallback metrics.
+
+  A score further under the threshold is unchanged, and so is a primitive list
+  element. `ANLSStarComparator`'s `leaf_threshold` and the bounding-box
+  `iou_thresholds` are separate metrics and keep their exact comparison
+  ([#417](https://github.com/awslabs/stickler/issues/417)). See
+  [Meeting a Threshold](https://awslabs.github.io/stickler/Getting-Started/thresholds-and-metrics/#meeting-a-threshold)
+
 ### Fixed
 
 - **The HTML report's field performance table now escapes field names.** It

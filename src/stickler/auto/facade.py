@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional, Type, Union
 from pydantic import BaseModel
 
 from ..structured_object_evaluator.models.structured_model import StructuredModel
+from ..structured_object_evaluator.models.threshold_helper import ThresholdHelper
 from .builder import specs_for, structured_model_for
 
 #: Object-level match threshold applied when neither the caller nor the model
@@ -76,8 +77,13 @@ class EvalResult:
         # it against `match_threshold` gives one definition that cannot disagree
         # with the score sitting beside it. The threshold is whatever the spec
         # resolved: the caller's argument, else a StructuredModel's own declared
-        # `match_threshold`, else DEFAULT_MATCH_THRESHOLD. See `eval_for`.
-        self.matched: bool = bool(self.overall_score >= spec._match_threshold)
+        # `match_threshold`, else DEFAULT_MATCH_THRESHOLD. See `eval_for`. The
+        # test is the one list pairing uses for the same threshold (#417).
+        self.matched: bool = bool(
+            ThresholdHelper.is_above_threshold(
+                self.overall_score, spec._match_threshold
+            )
+        )
 
     @property
     def non_matches(self) -> List[Dict[str, Any]]:
@@ -135,7 +141,7 @@ class EvalResult:
                     score == 0.0
                     and raw_sim
                     and threshold is not None
-                    and raw_sim < threshold
+                    and ThresholdHelper.is_below_threshold(raw_sim, threshold)
                 ):
                     entry["verdict"] = (
                         f"raw {raw_sim:.2f} < threshold {threshold} -> clipped to 0.0"
