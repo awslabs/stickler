@@ -402,7 +402,7 @@ This is useful for comprehensive auditing of all comparisons, not just failures.
 The per-document `overall_score` above is a weighted average of field scores. When you aggregate across many documents with `BulkStructuredModelEvaluator.compute()`, the weight information is preserved via two keys:
 
 - **`metrics["weighted_overall_score"]`** (float) -- Arithmetic mean of each document's `overall_score`. Prefer this over `cm_f1` whenever your schema uses non-uniform `ComparableField(weight=...)` values: `cm_f1` treats every field-match equally, while `weighted_overall_score` preserves the declared per-field weights across the dataset.
-- **`field_metrics[path]["mean_score"]`** (float, when present) -- Arithmetic mean of each document's `threshold_applied_score` at that path, reported at every nested node that was actually scored. Paths with confusion-matrix counts but no score data (e.g., leaves inside `List[StructuredModel]`, where `compare_with()` only emits the score at the list parent) are surfaced without a `mean_score` key rather than as `0.0`.
+- **`field_metrics[path]["mean_score"]`** (float, when present) -- Arithmetic mean of each document's `threshold_applied_score` at that path, reported at every nested node that was actually scored. Paths with confusion-matrix counts but no score data (leaves and primitive lists anywhere inside a `List[StructuredModel]` element, such as `items.name`, `items.addr.city` or `items.tags`) are surfaced without a `mean_score` key rather than as `0.0`. Every path inside an element, scored or not, counts only element pairs that met the match threshold: `compare_with()` emits no element fields for a pair below it.
 
 ```python
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (

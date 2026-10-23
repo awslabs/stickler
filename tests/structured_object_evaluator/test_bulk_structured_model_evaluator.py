@@ -1164,9 +1164,10 @@ class TestWeightedOverallScore:
     def test_list_of_model_leaf_omits_mean_score_key(self):
         """Leaves inside List[StructuredModel] get CM counts but no mean_score.
 
-        compare_with() only emits threshold_applied_score at the list parent,
-        so nested leaves never accumulate a score. The key is omitted rather
-        than reported as a misleading 0.0.
+        compare_with() emits element leaves without threshold_applied_score
+        (the list parent and object nodes inside an element are scored), so
+        these leaves never accumulate a score. The key is omitted rather than
+        reported as a misleading 0.0.
         """
         from typing import List as _List
 
@@ -1191,7 +1192,7 @@ class TestWeightedOverallScore:
         # Nested leaves get CM counts bubbled up...
         assert "items.name" in result.field_metrics
         assert result.field_metrics["items.name"].get("tp", 0) > 0
-        # ...but no mean_score because compare_with emits it only at the parent.
+        # ...but no mean_score, because compare_with emits element leaves unscored.
         assert "mean_score" not in result.field_metrics["items.name"]
         assert "mean_score" not in result.field_metrics["items.qty"]
         # List parent and sibling leaves do surface mean_score.

@@ -207,6 +207,26 @@ Each release links to full notes on the
   `evaluator_format=True` dict ([#413](https://github.com/awslabs/stickler/issues/413))
   ([#411](https://github.com/awslabs/stickler/issues/411))
 
+### Documentation
+
+- Corrected which paths in `BulkStructuredModelEvaluator` `field_metrics` get a
+  `mean_score`. The guides said `compare_with()` scores only the list parent of a
+  `List[StructuredModel]`. An object inside a list element (`items.addr`) is
+  scored too. Leaves and primitive lists anywhere inside an element
+  (`items.name`, `items.addr.city`, `items.tags`) carry confusion-matrix counts
+  but no `mean_score`, and only from element pairs that met the match
+  threshold: a pair below it emits no element fields at all. Scoring is
+  unchanged ([#249](https://github.com/awslabs/stickler/issues/249))
+
+- Corrected the last row of the 1.0.0 table under "The element gate judges a
+  PAIR, not a list". Under its bare `Optional[List[Any]]` heading,
+  `[Plain, NoteSM]` vs `[Plain, Note2SM]` scores `0.5`, not `1.0`, and scored
+  `0.0`, not `0.5`, under the list-wide gate. The published `1.0`, `0.5`, `1.0`
+  hold only with a comparator declared on `f`. The bare `0.5` is the refused
+  `Plain` pair (`[Plain]` vs `[Plain]` scores `0.0` bare), not the cross-class
+  rule. Scoring is unchanged
+  ([#338](https://github.com/awslabs/stickler/issues/338))
+
 ## [1.0.0] - 2026-09-11
 
 ### Added
