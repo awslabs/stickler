@@ -216,6 +216,7 @@ class EvalSpec:
             self.source_cls,
             weight_hints=self._weight_hints,
             match_threshold=self._match_threshold,
+            _check_buildable=False,
         ).items():
             out[name] = {
                 "comparator": spec.comparator_name,
