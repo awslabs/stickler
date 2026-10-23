@@ -28,7 +28,6 @@ from .comparable_field import ComparableField, _named_comparator_threshold
 from .comparison_helper import ComparisonHelper, _maybe_absent
 from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper
-from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
 from .null_helper import NullHelper
 from .optional_annotation import union_args, unwrap_annotated, unwrap_optional
@@ -323,8 +322,7 @@ class StructuredModel(BaseModel):
     **Metrics Calculation:**
     - ConfusionMatrixCalculator: Calculates confusion matrix metrics
       - Computes TP, FP, TN, FN, FD, FA counts
-      - Handles list-level and field-level metrics
-      - Calculates nested field metrics for structured lists
+      - Classifies the primitive sub-fields of matched list items
 
     - AggregateMetricsCalculator: Rolls up child metrics to parent nodes
       - Performs recursive traversal of result tree
@@ -337,7 +335,7 @@ class StructuredModel(BaseModel):
       - Delegates to MetricsHelper for calculations
 
     - ConfusionMatrixBuilder: Orchestrates all metrics calculation
-      - Coordinates between the three calculator classes
+      - Coordinates the aggregate and derived calculators
       - Ensures correct calculation order
       - Builds complete confusion matrices
 
@@ -1283,61 +1281,6 @@ class StructuredModel(BaseModel):
         dispatcher = ComparisonDispatcher(self)
         return dispatcher.handle_list_field_dispatch(gt_val, pred_val, weight)
 
-    def _calculate_object_level_metrics(
-        self,
-        gt_list: List["StructuredModel"],
-        pred_list: List["StructuredModel"],
-        match_threshold: float,
-    ) -> tuple:
-        """Calculate object-level metrics using Hungarian matching.
-
-        Args:
-            gt_list: Ground truth list
-            pred_list: Predicted list
-            match_threshold: Threshold for considering objects as matches
-
-        Returns:
-            Tuple of (object_metrics_dict, matched_pairs, matched_gt_indices, matched_pred_indices)
-        """
-        # Use Hungarian matching for OBJECT-LEVEL counts - OPTIMIZED: Single call gets all info
-        hungarian_helper = HungarianHelper()
-        hungarian_info = hungarian_helper.get_complete_matching_info(gt_list, pred_list)
-        matched_pairs = hungarian_info["matched_pairs"]
-
-        # Count OBJECTS, not individual fields
-        tp_objects = 0  # Objects with similarity >= match_threshold
-        fd_objects = 0  # Objects with similarity < match_threshold
-        for gt_idx, pred_idx, similarity in matched_pairs:
-            if similarity >= match_threshold:
-                tp_objects += 1
-            else:
-                fd_objects += 1
-
-        # Count unmatched objects
-        matched_gt_indices = {idx for idx, _, _ in matched_pairs}
-        matched_pred_indices = {idx for _, idx, _ in matched_pairs}
-        fn_objects = len(gt_list) - len(matched_gt_indices)  # Unmatched GT objects
-        fa_objects = len(pred_list) - len(
-            matched_pred_indices
-        )  # Unmatched pred objects
-
-        # Build list-level metrics counting OBJECTS (not fields)
-        object_level_metrics = {
-            "tp": tp_objects,
-            "fa": fa_objects,
-            "fd": fd_objects,
-            "fp": fa_objects + fd_objects,  # Total false positives
-            "tn": 0,  # No true negatives at object level for non-empty lists
-            "fn": fn_objects,
-        }
-
-        return (
-            object_level_metrics,
-            matched_pairs,
-            matched_gt_indices,
-            matched_pred_indices,
-        )
-
     def _compare_unordered_lists(
         self,
         gt_list: List[Any],
@@ -1486,7 +1429,7 @@ class StructuredModel(BaseModel):
 
     def _classify_field_for_confusion_matrix(
         self, field_name: str, other_value: Any, threshold: float = None
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, int]:
         """Classify a field comparison according to the confusion matrix rules.
 
         This method delegates to ConfusionMatrixCalculator for the actual implementation.
@@ -1497,13 +1440,12 @@ class StructuredModel(BaseModel):
             threshold: Threshold for matching (uses field's threshold if None)
 
         Returns:
-            Dictionary with TP, FP, TN, FN, FD counts and derived metrics
+            Dictionary with the six counts: tp, fa, fd, fp, tn, fn
         """
         from .confusion_matrix_calculator import ConfusionMatrixCalculator
 
-        calculator = ConfusionMatrixCalculator(self)
-        return calculator.classify_field_for_confusion_matrix(
-            field_name, other_value, threshold
+        return ConfusionMatrixCalculator.classify_field_for_confusion_matrix(
+            self, field_name, other_value, threshold
         )
 
     def _collect_enhanced_non_matches(
