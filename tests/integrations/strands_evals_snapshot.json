@@ -1037,6 +1037,44 @@
       "precision": 1.0,
       "recall": 1.0,
       "test_pass": true
+    },
+    "tagged/leading_none": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 2
+      },
+      "f1": 1.0,
+      "field_scores": {
+        "label": 1.0,
+        "values": 1.0
+      },
+      "matched": true,
+      "overall_score": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "tagged/none_element": {
+      "confusion_matrix": {
+        "fa": 1,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 3
+      },
+      "f1": 0.857143,
+      "field_scores": {
+        "label": 1.0,
+        "values": 0.666667
+      },
+      "matched": true,
+      "overall_score": 0.833333,
+      "precision": 0.75,
+      "recall": 1.0,
+      "test_pass": true
     }
   },
   "match_threshold": 0.7,
@@ -2245,6 +2283,66 @@
         "tn": 0,
         "tp": 17,
         "weighted_overall_score": 0.894444
+      }
+    },
+    "Tagged": {
+      "document_count": 2,
+      "explain": {
+        "label": {
+          "clip_under_threshold": true,
+          "comparator": "LevenshteinComparator",
+          "source": "type",
+          "threshold": 0.7,
+          "weight": 1.0
+        },
+        "values": {
+          "clip_under_threshold": true,
+          "comparator": "LevenshteinComparator",
+          "source": "type",
+          "threshold": 0.7,
+          "weight": 1.0
+        }
+      },
+      "field_metrics": {
+        "label": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "mean_score": 1.0,
+          "tn": 0,
+          "tp": 2
+        },
+        "values": {
+          "cm_accuracy": 0.75,
+          "cm_f1": 0.857143,
+          "cm_precision": 0.75,
+          "cm_recall": 1.0,
+          "fa": 1,
+          "fd": 0,
+          "fn": 0,
+          "fp": 1,
+          "mean_score": 0.833333,
+          "tn": 0,
+          "tp": 3
+        }
+      },
+      "metrics": {
+        "cm_accuracy": 0.833333,
+        "cm_f1": 0.909091,
+        "cm_precision": 0.833333,
+        "cm_recall": 1.0,
+        "fa": 1,
+        "fd": 0,
+        "fn": 0,
+        "fp": 1,
+        "tn": 0,
+        "tp": 5,
+        "weighted_overall_score": 0.916667
       }
     }
   }
