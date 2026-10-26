@@ -296,3 +296,120 @@ class TestVisualizationEngine:
         assert '57.1%' in result  # 20/35 * 100
         assert '42.9%' in result  # 15/35 * 100
         assert '0.0%' in result   # 0/35 * 100
+
+
+class TestFieldPerformanceValuesAreEscaped:
+    """The confusion counts in the field performance table are rendered, not trusted.
+
+    `generate_report` publicly accepts a plain dict, so a caller who assembles
+    their own metrics — rather than passing a `ProcessEvaluation`, where these
+    are library-computed ints — can put a string in `tp`/`fd`/`fa`/`fn`. Those
+    four cells carried no escaping and no format spec, unlike the
+    `precision`/`recall`/`f1` cells beside them, whose `:.3f` rejects a string
+    by accident. #431 closed the `<script>` blob; this closes the same class in
+    the table two functions over.
+    """
+
+    HOSTILE = {
+        "ven<dor>&": {
+            "cm_precision": 1.0,
+            "cm_recall": 1.0,
+            "cm_f1": 1.0,
+            "tp": "<img src=x onerror=alert(1)>",
+            "fd": "</td></tr></table><script>alert(2)</script>",
+            "fa": "<img src=x onerror=alert(3)>",
+            "fn": "</td></tr></table><script>alert(4)</script>",
+        }
+    }
+
+    def _table(self, field_metrics):
+        from stickler.reporting.html.report_config import ReportConfig
+        from stickler.reporting.html.visualization_engine import VisualizationEngine
+
+        return VisualizationEngine().generate_field_performance_table(
+            field_metrics, ReportConfig()
+        )
+
+    @staticmethod
+    def _parse(markup):
+        """What a browser would actually see: elements, attributes, script bodies."""
+        from html.parser import HTMLParser
+
+        class Seen(HTMLParser):
+            def __init__(self):
+                super().__init__(convert_charrefs=True)
+                self.attrs = []
+                self.scripts = []
+                self._in_script = False
+
+            def handle_starttag(self, tag, attrs):
+                self.attrs += [(tag, k, v) for k, v in attrs]
+                if tag == "script":
+                    self._in_script = True
+
+            def handle_endtag(self, tag):
+                if tag == "script":
+                    self._in_script = False
+
+            def handle_data(self, data):
+                if self._in_script and data.strip():
+                    self.scripts.append(data.strip())
+
+        p = Seen()
+        p.feed(markup)
+        return p
+
+    def test_a_hostile_value_is_inert_in_the_table(self):
+        out = self._table(self.HOSTILE)
+        seen = self._parse(out)
+        # The characters survive as text; what must not survive is any parse of
+        # them as markup.
+        assert [a for a in seen.attrs if a[1].startswith("on")] == []
+        assert seen.scripts == []
+        assert "&lt;img src=x" in out
+        assert "&lt;script&gt;" in out
+        # the row key is a field name, which is its own injection route (#422)
+        assert "ven<dor>&" not in out
+        assert "ven&lt;dor&gt;&amp;" in out
+
+    def test_the_confusion_matrix_cell_is_inert(self):
+        """A numeric subclass with a hostile __str__ reaches the cell.
+
+        `generate_confusion_matrix_heatmap` sums the counts first, so a plain
+        string raises `TypeError` before rendering — which is why this looked
+        unreachable. An `int` subclass sums and divides fine and then renders
+        through `str()`, so the escape there is load-bearing, and this test
+        reddens when it is reverted.
+        """
+        from stickler.reporting.html.report_config import ReportConfig
+        from stickler.reporting.html.visualization_engine import VisualizationEngine
+
+        class Hostile(int):
+            def __str__(self):
+                return "<img src=x onerror=alert(1)>"
+
+        out = VisualizationEngine().generate_confusion_matrix_heatmap(
+            {"tp": Hostile(1), "fd": 0, "fa": 0, "fn": 0}, ReportConfig()
+        )
+        seen = self._parse(out)
+        assert [a for a in seen.attrs if a[1].startswith("on")] == []
+        assert seen.scripts == []
+        assert "<img src=x" not in out
+        assert "&lt;img src=x" in out
+
+    def test_ordinary_counts_still_render_unchanged(self):
+        out = self._table(
+            {
+                "vendor": {
+                    "cm_precision": 1.0,
+                    "cm_recall": 1.0,
+                    "cm_f1": 1.0,
+                    "tp": 7,
+                    "fd": 0,
+                    "fa": 1,
+                    "fn": 2,
+                }
+            }
+        )
+        for n in ("7", "0", "1", "2"):
+            assert f"<td>{n}</td>" in out
