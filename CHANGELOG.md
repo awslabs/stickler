@@ -9,6 +9,63 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-26
+
+### Security
+
+- **A document value can no longer run as script in the HTML report.** With
+  `individual_results_jsonl_path`, the report embeds each document's values as
+  JSON inside a `<script>` block, and `json.dumps` left `<` as is. A browser
+  ends the block at the first `</script`, so a ground-truth or predicted value
+  carrying `</script><script>...</script>` ran as its own script when the
+  report was opened. Values are model output or third-party documents, so this
+  needed no access to stickler or the host. A JSON Schema property name reached
+  the same block through the field thresholds. `<`, `>` and `&` are now written
+  as `\uXXXX`, which the page's JavaScript reads as the same characters;
+  U+2028 and U+2029 were already escaped by `json.dumps` and stay covered
+  defensively
+  ([#431](https://github.com/awslabs/stickler/issues/431))
+
+- **A field name can no longer inject markup into the report.** The field
+  performance table wrote each name into the page as raw HTML while the chart
+  beside it escaped the same name, so a name containing `<`, `>` or `&` was
+  read by the browser as markup. Field names come from a JSON Schema or a
+  Stickler config, so they are arbitrary strings. This section renders whether
+  or not `individual_results_jsonl_path` is passed. The table's confusion
+  counts and the confusion-matrix cell are escaped alongside it; those are
+  library-computed integers on the `ProcessEvaluation` path and were reachable
+  only by passing `generate_report()` a hand-assembled metrics dict
+  ([#422](https://github.com/awslabs/stickler/issues/422))
+
+- **Affected versions.** Every release from 0.1.3 to 1.0.0 carries the
+  `<script>` breakout, and there is no patch for the 0.x line. If you cannot
+  upgrade: do not pass `individual_results_jsonl_path`, do not open a report
+  built from untrusted document data, and do not build a report from a schema
+  or Stickler config whose field names you do not control.
+
+### Fixed
+
+- **A truncated non-match value no longer ends in half an entity.** The
+  non-matches table escaped a value and then cut it to 100 characters, so the
+  cut could land inside an entity and leave `&am`. It truncates first and
+  escapes after, which also means the cell now keeps 100 raw characters rather
+  than 100 escaped ones
+  ([#431](https://github.com/awslabs/stickler/issues/431))
+
+- **A field name that is not a string no longer raises** in the field
+  performance chart
+  ([#422](https://github.com/awslabs/stickler/issues/422))
+
+- **A non-string document identifier no longer takes the whole report down in the non-matches
+  table.**
+  The non-matches table escaped `doc_id` and `field_path` without converting
+  them first, while the three columns beside them converted.
+  `evaluate_dataframe` reads `doc_id` straight off a DataFrame column, so an
+  integer id — ordinary for one read from CSV, parquet or a database — raised
+  and `generate_report()` returned `success=False` having written no page at
+  all. The document gallery, reached through the `document_files` argument, is
+  unchanged and still requires `str` keys and paths
+
 ## [1.0.0] - 2026-09-11
 
 ### Added
@@ -2331,7 +2388,8 @@ Initial public release: structured JSON comparison with configurable
 comparators, Hungarian-algorithm list matching, confusion-matrix metrics, and
 HTML reporting.
 
-[Unreleased]: https://github.com/awslabs/stickler/compare/v1.0.0...dev
+[Unreleased]: https://github.com/awslabs/stickler/compare/v1.0.1...dev
+[1.0.1]: https://github.com/awslabs/stickler/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/awslabs/stickler/compare/v0.7.0...v1.0.0
 [0.7.0]: https://github.com/awslabs/stickler/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/awslabs/stickler/compare/v0.5.0...v0.6.0
