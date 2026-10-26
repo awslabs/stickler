@@ -23,7 +23,10 @@ logger = logging.getLogger(__name__)
 # A browser ends a <script> block at the first `</script`, even inside a JSON
 # string, and `json.dumps` leaves `<` as is. Escaping these as `\uXXXX` keeps
 # the JSON identical to the page's JavaScript while no document value can end
-# the block early (#431). U+2028/U+2029 are line terminators in older JS.
+# the block early (#431). `json.dumps` already escapes U+2028/U+2029 under its
+# default `ensure_ascii=True`, so those two entries do not change today's
+# output; they are kept so the table stays correct if that ever changes, since
+# both are line terminators outside a JS string literal.
 _SCRIPT_SAFE = str.maketrans({
     "<": "\\u003c",
     ">": "\\u003e",
