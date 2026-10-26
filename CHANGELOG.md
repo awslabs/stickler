@@ -122,7 +122,10 @@ Each release links to full notes on the
 - **The HTML report's field performance table now escapes field names.** It
   wrote each name into the page as raw HTML, while the chart beside it escaped
   the same name, so a name containing `<`, `>` or `&` was read by the browser as
-  markup ([#422](https://github.com/awslabs/stickler/issues/422))
+  markup. A field name that is not a string no longer raises there, and the
+  non-matches table truncates a long value before escaping it, so the cut can
+  no longer split an entity such as `&amp;`
+  ([#422](https://github.com/awslabs/stickler/issues/422))
 
 - List reporting ([#332](https://github.com/awslabs/stickler/issues/332)):
   `non_matches` and `field_comparisons` reuse the pairings, scores, and
@@ -211,6 +214,20 @@ Each release links to full notes on the
   ([#425](https://github.com/awslabs/stickler/issues/425)), and an
   `evaluator_format=True` dict ([#413](https://github.com/awslabs/stickler/issues/413))
   ([#411](https://github.com/awslabs/stickler/issues/411))
+
+### Security
+
+- **A document value can no longer run as script in the HTML report.** With
+  `individual_results_jsonl_path`, the report embeds each document's values as
+  JSON inside a `<script>` block, and `json.dumps` left `<` as is. A browser
+  ends the block at the first `</script`, so a ground-truth or predicted value
+  carrying `</script><script>...</script>` ran as its own script when the
+  report was opened. Values are model output or third-party documents, so this
+  needed no access to stickler or the host. A JSON Schema property name reached
+  the same block through the field thresholds. `<`, `>`, `&`, U+2028 and U+2029
+  are now written as `\uXXXX`, which the page's JavaScript reads as the same
+  characters. Present since 0.1.3
+  ([#431](https://github.com/awslabs/stickler/issues/431))
 
 ## [1.0.0] - 2026-09-11
 

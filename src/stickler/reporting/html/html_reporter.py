@@ -20,6 +20,24 @@ from stickler.utils.process_evaluation import ProcessEvaluation
 
 logger = logging.getLogger(__name__)
 
+# A browser ends a <script> block at the first `</script`, even inside a JSON
+# string, and `json.dumps` leaves `<` as is. Escaping these as `\uXXXX` keeps
+# the JSON identical to the page's JavaScript while no document value can end
+# the block early (#431). U+2028/U+2029 are line terminators in older JS.
+_SCRIPT_SAFE = str.maketrans({
+    "<": "\\u003c",
+    ">": "\\u003e",
+    "&": "\\u0026",
+    "\u2028": "\\u2028",
+    "\u2029": "\\u2029",
+})
+
+
+def _json_for_script(value: Any) -> str:
+    """Serialize ``value`` as JSON that is safe to place inside ``<script>``."""
+    return json.dumps(value).translate(_SCRIPT_SAFE)
+
+
 class EvaluationHTMLReporter:
     """
     Simple HTML report generator for evaluation results.
@@ -295,8 +313,8 @@ class EvaluationHTMLReporter:
         field_thresholds = DataExtractor.extract_all_field_thresholds(model_schema) if model_schema else None
         
         # Convert documents and analysis to JSON for JavaScript
-        docs_json = json.dumps(individual_docs)
-        thresholds_json = json.dumps(field_thresholds)
+        docs_json = _json_for_script(individual_docs)
+        thresholds_json = _json_for_script(field_thresholds)
         
         # Load external JavaScript file
         js_file_content = self._load_javascript_file()
