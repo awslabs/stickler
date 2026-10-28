@@ -1,11 +1,49 @@
 """Hungarian matching helper for StructuredModel comparisons."""
 
-from typing import Any, Dict, List
+from contextlib import contextmanager
+from contextvars import ContextVar
+from typing import Any, Dict, Iterator, List
 
 from stickler.algorithms.hungarian import HungarianMatcher
 from stickler.comparators.structured import StructuredModelComparator
 
 from .null_helper import NullHelper
+
+_DEFER_PAIR_WARNINGS: ContextVar[bool] = ContextVar(
+    "stickler_defer_pair_warnings", default=False
+)
+
+
+def deferring_pair_warnings() -> bool:
+    """Whether warnings about a scored pair wait for the caller's re-score.
+
+    True while ``HungarianHelper.get_complete_matching_info`` scores and solves
+    the cost matrix for a list of ``StructuredModel`` rows. The matcher scores
+    every pair and keeps one per row, so a warning emitted then may describe a
+    discarded pair and spend ``warn_once`` before the real one arrives (#336).
+    The helper's caller scores the kept pairs again, so code that warns about a
+    scored pair checks this and leaves the warning to that re-score. A bare
+    ``HungarianMatcher`` does not set it, because nothing re-scores its pairs.
+
+    A ``ContextVar`` does not carry into a worker thread unless the work is run
+    in a ``contextvars.copy_context()``.
+    """
+    return _DEFER_PAIR_WARNINGS.get()
+
+
+@contextmanager
+def defer_pair_warnings() -> Iterator[None]:
+    """Make :func:`deferring_pair_warnings` true for the body; see there.
+
+    The previous value is restored on exit, including when the body raises or
+    an interrupt arrives as the set returns.
+    """
+    previous = _DEFER_PAIR_WARNINGS.get()
+    try:
+        _DEFER_PAIR_WARNINGS.set(True)
+        yield
+    finally:
+        _DEFER_PAIR_WARNINGS.set(previous)
 
 
 class HungarianHelper:
@@ -21,6 +59,10 @@ class HungarianHelper:
 
         This method performs Hungarian matching once and returns all derived information,
         eliminating the need for multiple calls that recalculate the same matching.
+
+        Warnings about scored pairs are deferred while the matrix is scored; see
+        :func:`deferring_pair_warnings`. A caller that needs them must score the
+        kept pairs again outside this call.
 
         Args:
             gt_list: Ground truth list
@@ -52,10 +94,11 @@ class HungarianHelper:
                 "matched_pred_indices": set(),
             }
 
-        # Single Hungarian algorithm call - this is the only expensive operation
-        metrics = self.hungarian.calculate_metrics(
-            [gt_list[i] for i in gt_present], [pred_list[j] for j in pred_present]
-        )
+        # Single Hungarian algorithm call - this is the only expensive operation.
+        with defer_pair_warnings():
+            metrics = self.hungarian.calculate_metrics(
+                [gt_list[i] for i in gt_present], [pred_list[j] for j in pred_present]
+            )
         matched_pairs = [
             (gt_present[i], pred_present[j], score)
             for i, j, score in metrics["matched_pairs"]

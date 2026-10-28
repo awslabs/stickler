@@ -53,6 +53,7 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   holds models is read from its first present element
   (`NullHelper.first_present`), not from `[0]` of the raw list (#386, #322). The rule is in
   `docs/docs/Advanced/classification-logic.md`, "`None` elements in a list".
+  A new pair-level warning must stay silent while `deferring_pair_warnings()` is true.
 - `field_comparison_collector.py` / `field_comparison_helper.py` — produce the
   `field_comparisons` rows (each carries a GT-side `expected_key` and a
   prediction-side `actual_key`, which diverge for reordered list items).

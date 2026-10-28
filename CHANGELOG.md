@@ -211,6 +211,20 @@ Each release links to full notes on the
   Keyed on the leaf name alone, the first model built in a process silenced every
   later one carrying the same typo.
 
+- **The class gate on a nested field no longer warns about discarded pairs when
+  `StructuredModel` list rows are matched.** `compare()` is the cost function for a list of `StructuredModel`
+  rows, and it reached the gate for every cell of the cost matrix. An all-correct
+  `List[Holder]` scored `1.0` with `tp=2` and still warned that a `Cat` had been
+  compared against a `Dog`, and because `warn_once` spends one message per field,
+  the real `Cat`-vs-`Dog` pair that followed warned nothing. When `HungarianHelper`
+  matches `StructuredModel` list rows (`compare_with`, `compare`, and nested lists),
+  the class-mismatch and mapping warnings are now deferred to the pairs the matcher
+  keeps, which are scored again through `compare_with` and carry the warning. A
+  bare `HungarianMatcher`, and an `Any` field whose list does not start with a
+  model, still score every cell with warnings on, as before, so they can still
+  spend the field's one message on a discarded cell; that is left to a follow-up.
+  Scores and counts are unchanged ([#336](https://github.com/awslabs/stickler/issues/336))
+
 - **The pretty printers no longer report success over results that carry no
   non-match records.** `print_non_matches` and `print_evaluation_results` printed
   `✅ No non-matches found - all fields matched successfully!` for `EvalResult.raw`
