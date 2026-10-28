@@ -57,7 +57,7 @@ This table is the single statement of what Stickler does with a list field. Othe
 - **Rows inside list items** report a clipped `score` and give a nested list or object one row instead of expanding it ([#418](https://github.com/awslabs/stickler/issues/418)).
 - **Sub-fields inside list items**: some value kinds (tuple, set, bytes, whitespace-only string, a list in an `Any` field) count differently than at top level ([#406](https://github.com/awslabs/stickler/pull/406)).
 - **Threshold boundary**: the object-level gate uses a bare `>=`, so a pair at `0.7999999999999999` against `0.8` is an FD ([#417](https://github.com/awslabs/stickler/issues/417)).
-- **`raw_similarity_score` on a list node** is the list's score, which already has per-element clipping applied ([#330](https://github.com/awslabs/stickler/issues/330)).
+- **`raw_similarity_score` on a `List[StructuredModel]` node** is unclipped at the list level only: each pair's score is the item's own `overall_score`, whose fields are already clipped ([#437](https://github.com/awslabs/stickler/issues/437)).
 
 #### `None` elements in a list {: #none-elements-in-a-list }
 
