@@ -329,6 +329,49 @@ class TestSectionGenerator:
         # Should not contain any image items
         assert '<div class="image-item">' not in result
 
+    def test_generate_document_gallery_image_mode_coerces_int_key(self):
+        """Image gallery accepts an integer document_files key (issue #454)."""
+        document_images = {1001: 'images/scan.png'}
+        config = ReportConfig(document_file_type='image')
+
+        result = SectionGenerator.generate_document_gallery(document_images, config)
+
+        assert '<img src="images/scan.png" alt="1001">' in result
+        assert '<p><strong>1001</strong></p>' in result
+
+    def test_generate_document_gallery_image_mode_coerces_int_path(self):
+        """Image gallery accepts a non-str document_files path (issue #454)."""
+        document_images = {'doc-1': 1001}
+        config = ReportConfig(document_file_type='image')
+
+        result = SectionGenerator.generate_document_gallery(document_images, config)
+
+        assert '<img src="1001" alt="doc-1">' in result
+        assert '<p><strong>doc-1</strong></p>' in result
+
+    def test_generate_document_gallery_pdf_mode_coerces_int_key(self):
+        """PDF gallery accepts an integer document_files key (issue #454)."""
+        document_pdfs = {1001: 'pdfs/scan.pdf'}
+        config = ReportConfig(document_file_type='pdf')
+
+        result = SectionGenerator.generate_document_gallery(document_pdfs, config)
+
+        assert 'data-doc-id="1001"' in result
+        assert 'data-pdf-path="pdfs/scan.pdf"' in result
+        assert 'id="pdf-canvas-1001"' in result
+        assert '<p><strong>1001</strong></p>' in result
+
+    def test_generate_document_gallery_pdf_mode_coerces_int_path(self):
+        """PDF gallery accepts a non-str document_files path (issue #454)."""
+        document_pdfs = {'doc-1': 1001}
+        config = ReportConfig(document_file_type='pdf')
+
+        result = SectionGenerator.generate_document_gallery(document_pdfs, config)
+
+        assert 'data-doc-id="doc-1"' in result
+        assert 'data-pdf-path="1001"' in result
+        assert '<p><strong>doc-1</strong></p>' in result
+
 
 class TestSectionGeneratorIntegration:
     """Integration tests for SectionGenerator with real data structures."""
