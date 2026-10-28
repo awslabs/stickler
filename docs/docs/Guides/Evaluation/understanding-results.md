@@ -36,13 +36,13 @@ A weighted average of all field scores, ranging from 0.0 to 1.0. Calculated as:
 overall_score = sum(field_score * field_weight) / sum(field_weights)
 ```
 
-Fields with `clip_under_threshold=True` (the default) contribute 0.0 if they score below their threshold, rather than their partial similarity.
+Fields with `clip_under_threshold=True` (the default) contribute 0.0 if they score below their threshold, rather than their partial similarity. A list field is not clipped as a whole: the rule applies per element ([list contract](../../Advanced/classification-logic.md#list-contract)).
 
 A field absent on both sides scores `1.0` and carries its full weight: a value the model correctly left blank is a value it got right. On a schema where most fields are usually empty this makes `overall_score` behave more like accuracy than like a hit rate. See [Sparse Objects](../../Getting-Started/thresholds-and-metrics.md#sparse-objects) for which metric answers which question.
 
 ### `field_scores` (dict)
 
-Maps each field name to its similarity score (0.0 to 1.0). For nested objects, the value is the weighted average of the sub-fields. For lists, it reflects the Hungarian-matched aggregate.
+Maps each field name to its similarity score (0.0 to 1.0). For nested objects, the value is the weighted average of the sub-fields. For lists, it is the sum of the Hungarian pair scores divided by the longer list's length ([Score](../../Advanced/classification-logic.md#list-contract)): the [Transaction example](../../Advanced/hungarian-matching.md#step-4-list-score) scores (0.667 + 0.5 + 0.0) / 3 = 0.3889.
 
 ### Asking whether anything failed
 
@@ -105,7 +105,7 @@ The `confusion_matrix` object has four keys:
 - **`overall`** -- Metrics for this node's direct children. Where the field is a list, those children are item pairings rather than leaves.
 - **`fields`** -- Field-by-field breakdown, with nested structure for objects and lists.
 - **`non_matches`** -- Always `[]`, a placeholder, also in evaluator-format output. With `document_non_matches=True` the records are in the result's top-level `non_matches`.
-- **`aggregate`** -- Primitive field metrics summed recursively below this node, excluding list items rejected at their element class's `match_threshold`. A single nested `StructuredModel` field is not excluded; its leaves are always counted. Where a list's items were *all* rejected the counts become object rows rather than primitive-field metrics, so check that before computing a leaf rate ([why](../../Advanced/aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list)). See [`overall` vs `aggregate`](#overall-vs-aggregate).
+- **`aggregate`** -- Primitive field metrics summed recursively below this node, excluding list items rejected at their element class's `match_threshold`, and unmatched (FN/FA) items when a sibling was accepted ([Recursion](../../Advanced/classification-logic.md#list-contract)). A single nested `StructuredModel` field is not excluded; its leaves are always counted. Where a list's items were *all* rejected the counts become object rows rather than primitive-field metrics, so check that before computing a leaf rate ([why](../../Advanced/aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list)). See [`overall` vs `aggregate`](#overall-vs-aggregate).
 
 ### `overall` vs `aggregate`
 
@@ -370,7 +370,7 @@ For list fields (e.g., products, line items), non-match entries can be at the ob
 
 ## Field Comparisons
 
-When you pass `document_field_comparisons=True`, the result includes a `field_comparisons` list documenting every individual field comparison -- both matches and non-matches.
+When you pass `document_field_comparisons=True`, the result includes a `field_comparisons` list documenting every individual field comparison -- both matches and non-matches. For a list there is one row per primitive element or per leaf of a TP item, and one object row per FD, FN or FA item ([Reports](../../Advanced/classification-logic.md#list-contract)). Inside a list item, a nested list or object currently gets one row instead of being expanded ([#418](https://github.com/awslabs/stickler/issues/418)).
 
 ```python
 result = ground_truth.compare_with(prediction, document_field_comparisons=True)
@@ -388,9 +388,9 @@ Each entry contains:
 | `expected_value` | any | The ground truth value. |
 | `actual_key` | string | Field path in prediction (may differ for list items due to Hungarian matching). |
 | `actual_value` | any | The predicted value. |
-| `match` | bool | Whether the score met the threshold. |
-| `score` | float | Raw similarity score. |
-| `weighted_score` | float | Score multiplied by the field's weight. |
+| `match` | bool | Whether the row's own classification is TP or TN: a value or object row met its threshold; a list row had every element paired as a TP ([Reports](../../Advanced/classification-logic.md#list-contract)). On `dev` a list row inside a list item still carries the string `"True"`/`"False"` from its score against the field threshold, and primitive, dict and plain-model element rows come from an equality pairing; [#364](https://github.com/awslabs/stickler/pull/364) brings both to this rule. |
+| `score` | float | Raw similarity score. Inside a list item it is currently the clipped score ([#418](https://github.com/awslabs/stickler/issues/418)). |
+| `weighted_score` | float | The clipped score multiplied by the field's weight. A list element row ignores the list field's weight: a primitive element or object row carries its score unweighted, and a leaf of a TP item uses the leaf's own weight. |
 | `reason` | string | Human-readable explanation. |
 
 This is useful for comprehensive auditing of all comparisons, not just failures.
@@ -402,7 +402,7 @@ This is useful for comprehensive auditing of all comparisons, not just failures.
 The per-document `overall_score` above is a weighted average of field scores. When you aggregate across many documents with `BulkStructuredModelEvaluator.compute()`, the weight information is preserved via two keys:
 
 - **`metrics["weighted_overall_score"]`** (float) -- Arithmetic mean of each document's `overall_score`. Prefer this over `cm_f1` whenever your schema uses non-uniform `ComparableField(weight=...)` values: `cm_f1` treats every field-match equally, while `weighted_overall_score` preserves the declared per-field weights across the dataset.
-- **`field_metrics[path]["mean_score"]`** (float, when present) -- Arithmetic mean of each document's `threshold_applied_score` at that path, reported at every nested node that was actually scored. Paths with confusion-matrix counts but no score data (e.g., leaves inside `List[StructuredModel]`, where `compare_with()` only emits the score at the list parent) are surfaced without a `mean_score` key rather than as `0.0`.
+- **`field_metrics[path]["mean_score"]`** (float, when present) -- Arithmetic mean of each document's `threshold_applied_score` at that path, reported at every nested node that was actually scored. Paths inside a `List[StructuredModel]` carry no `mean_score` key rather than `0.0`, since `compare_with()` only emits the score at the list parent ([exception](bulk-evaluation.md#weighted-overall-score)).
 
 ```python
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (

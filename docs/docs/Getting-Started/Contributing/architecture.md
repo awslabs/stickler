@@ -232,7 +232,7 @@ Every field comparison produces three score variants:
 
 | Score | Description |
 |-------|-------------|
-| `raw_similarity_score` | Unclipped score (0.0–1.0). On a list node it is the coverage-scaled mean of the matched pairs' unclipped scores, `sum(pair scores) / max(len(gt), len(pred))`, which is what `compare()` returns for the field. On a `List[StructuredModel]` each pair's score is the item's own `overall_score`, so it is still clipped inside each item. No score or count reads it. `EvalResult.explain()` shows it (`raw_similarity`, `verdict`) for each top-level field. On a scalar field it also decides `match` in `field_comparisons`, the label confidence metrics score against, and gives an FD non-match record its similarity and reason |
+| `raw_similarity_score` | Unclipped score (0.0–1.0). On a list node it is the coverage-scaled mean of the matched pairs' unclipped scores, `sum(pair scores) / max(len(gt), len(pred))`, which is what `compare()` returns for the field. On a `List[StructuredModel]` each pair's score is the item's own `overall_score`, so it is still clipped inside each item. No score or count reads it. `EvalResult.explain()` shows it (`raw_similarity`, `verdict`) for each top-level field. On a scalar field it also decides `match` in `field_comparisons`, the label confidence metrics score against, and gives an FD non-match record its similarity and reason (see [Score](../../Advanced/classification-logic.md#list-contract)) |
 | `similarity_score` | Maintained for API compatibility. Equal to `raw_similarity_score` on a scalar or nested model, and to `threshold_applied_score` on a list node |
 | `threshold_applied_score` | Raw score with `clip_under_threshold` applied (0.0 if below threshold and clipping is enabled). The score: `field_scores` and `overall_score` read it |
 
@@ -248,7 +248,7 @@ Weights are configured per-field via `ComparableField` metadata. Default weight 
 
 ### `clip_under_threshold`
 
-When enabled on a field (the default), a score below the threshold contributes 0.0 instead of its partial similarity. This holds for **every** field kind; the layer that applies it differs.
+When enabled on a field (the default), a score below the threshold contributes 0.0 instead of its partial similarity. This holds for every field kind except `List[StructuredModel]`, where it currently has no effect ([#415](https://github.com/awslabs/stickler/issues/415)); the layer that applies it differs.
 
 For a primitive or a single nested `StructuredModel`, `FieldComparator` clips when producing `threshold_applied_score`, and the engine's percolation loop uses the already-clipped score:
 

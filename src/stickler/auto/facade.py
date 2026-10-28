@@ -276,15 +276,20 @@ def eval_for(
             weights stay uniform and precision/recall are not skewed by guessed
             business-criticality). Ignored for ``StructuredModel`` classes.
         match_threshold: The similarity score at or above which an OBJECT
-            counts as a match. It drives ``EvalResult.matched`` and, for
-            ``List[Model]`` fields, the Hungarian TP/FN/FA classification of
-            each element (at every nesting level). It does NOT change
-            per-field similarity scores or ``overall_score``.
+            counts as a match. It drives ``EvalResult.matched``. For a plain
+            pydantic class it also becomes the ``match_threshold`` of every
+            inferred element model, so it decides TP vs FD for each
+            ``List[Model]`` element at every nesting level. A
+            ``StructuredModel`` element class keeps its own
+            ``match_threshold`` for that decision, so on a ``StructuredModel``
+            class this value drives only ``matched`` (#416). It does NOT
+            change per-field similarity scores or ``overall_score``.
 
             Left unset, a ``StructuredModel`` subclass's own declared
             ``match_threshold`` wins, so the AS CONFIGURED promise above holds
             for this knob too; any other class gets
-            ``DEFAULT_MATCH_THRESHOLD``. Passing a value overrides both.
+            ``DEFAULT_MATCH_THRESHOLD``. Passing a value overrides both for
+            ``matched``.
     """
     if isinstance(cls, type) and issubclass(cls, StructuredModel):
         # Explicit configuration wins: never re-infer over a model the user
@@ -324,10 +329,11 @@ def evaluate(
         prediction: The instance to score (e.g. a Strands ``response_model``).
         weight_hints: Enable name-token weight heuristics (default off).
         match_threshold: The similarity score at or above which an object
-            counts as a match (drives ``EvalResult.matched`` and list-element
-            TP/FN classification; does not change similarity scores). Left
-            unset, a ``StructuredModel``'s own declaration wins; see
-            :func:`eval_for`.
+            counts as a match (drives ``EvalResult.matched`` and, for a plain
+            pydantic class, list-element TP/FD classification; a
+            ``StructuredModel`` element class keeps its own; does not change
+            similarity scores). Left unset, a ``StructuredModel``'s own
+            declaration wins; see :func:`eval_for`.
 
     Returns:
         An :class:`EvalResult` with ``overall_score``, ``precision``,
