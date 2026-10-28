@@ -31,11 +31,29 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
 **Comparison pipeline**
 - `comparison_engine.py` — `ComparisonEngine`, the orchestrator behind
   `compare_with()`. Runs a single recursive traversal, then layers on confusion
-  matrix, non-matches, field comparisons, and optional metrics.
+  matrix, non-matches, field comparisons, and optional metrics. Structured-list
+  reporting reuses accepted child traversals from the standard `compare_with`
+  implementation. `reporting_context.py` keeps pairings and scorer verdicts in
+  operation-local side maps, separate from public results; child traversals are
+  retained only when a report needs them. Both collectors share the model's
+  fallback matching settings for direct calls and custom overrides, which keep
+  their existing call signatures. Helper hooks receive new optional metadata
+  only when they declare the parameter by name; a forwarding `**kwargs` wrapper
+  keeps its original arguments. Legacy hooks and custom non-match formatters
+  retain their own matching/formatting behavior rather than the built-in cache
+  guarantees. Nested field rows use the scored metrics to
+  classify matches instead of applying an element threshold to a list average.
 - `comparison_dispatcher.py`, `field_comparator.py`,
   `primitive_list_comparator.py`, `structured_list_comparator.py`,
   `hungarian_helper.py` — dispatch and per-type comparison, including Hungarian
-  matching for lists.
+  matching for lists. A `None` (or NaN) element is absent
+  (`NullHelper.is_absent_element`): the comparators drop it before matching
+  (`NullHelper.present`), `HungarianHelper` matches only present elements and
+  returns original indices, and the reporting helpers skip it. Whether a list
+  holds models is read from its first present element
+  (`NullHelper.first_present`), not from `[0]` of the raw list (#386, #322). The rule is in
+  `docs/docs/Advanced/classification-logic.md`, "`None` elements in a list".
+  A new pair-level warning must stay silent while `deferring_pair_warnings()` is true.
 - `field_comparison_collector.py` / `field_comparison_helper.py` — produce the
   `field_comparisons` rows (each carries a GT-side `expected_key` and a
   prediction-side `actual_key`, which diverge for reordered list items).

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the architectural refactoring of the `StructuredModel` class from a monolithic ~2584-line implementation to a modular architecture using the delegation pattern. `StructuredModel` is now ~1486 lines (down from 2584, a ~42% reduction), and most of the comparison, metrics, and dynamic-model logic now lives in dedicated modules under `src/stickler/structured_object_evaluator/models/`. The public `compare`, `compare_with`, `from_json`, `from_json_schema`, `model_from_json`, `to_json_schema`, and `to_stickler_config` APIs are preserved.
+This document describes the architectural refactoring of the `StructuredModel` class from a monolithic ~2584-line implementation to a modular architecture using the delegation pattern. `StructuredModel` is now ~2030 lines (down from 2584, a ~21% reduction), and most of the comparison, metrics, and dynamic-model logic now lives in dedicated modules under `src/stickler/structured_object_evaluator/models/`. The public `compare`, `compare_with`, `from_json`, `from_json_schema`, `model_from_json`, `to_json_schema`, and `to_stickler_config` APIs are preserved.
 
 ## Table of Contents
 
@@ -34,7 +34,7 @@ StructuredModel (2584 lines)
 ### After Refactoring
 
 ```
-StructuredModel (~1486 lines)
+StructuredModel (~2030 lines)
 ├── Public API (compare, compare_with, compare_field_raw, from_json,
 │              model_from_json, from_json_schema, to_json_schema,
 │              to_stickler_config, model_json_schema)
@@ -56,7 +56,7 @@ Specialized Components (selected — ~36 modules total in models/):
 │   ├── PrimitiveListComparator       - Lists of primitives
 │   └── StructuredListComparator      - Lists of StructuredModels (Hungarian)
 ├── Metrics
-│   ├── ConfusionMatrixBuilder        - Orchestrates the three calculators
+│   ├── ConfusionMatrixBuilder        - Runs the aggregate and derived calculators
 │   ├── ConfusionMatrixCalculator     - TP/FP/TN/FN/FD/FA
 │   ├── AggregateMetricsCalculator    - Rolls up child metrics
 │   └── DerivedMetricsCalculator      - Precision / recall / F1 / accuracy
@@ -79,7 +79,7 @@ Specialized Components (selected — ~36 modules total in models/):
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        StructuredModel                          │
-│                       (Public API ~1486 lines)                  │
+│                       (Public API ~2030 lines)                  │
 │  • compare()  • compare_with()  • compare_field_raw()           │
 │  • from_json() / model_from_json() / from_json_schema()         │
 │  • to_json_schema() / to_stickler_config()                      │
@@ -156,7 +156,9 @@ class StructuredModel(BaseModel):
 
 ### Legacy private methods are kept as delegating shims
 
-Older callers (and many tests) reach for private methods on `StructuredModel` such as `_dispatch_field_comparison`, `compare_recursive`, `_collect_enhanced_non_matches`, `_add_derived_metrics_to_result`, `_format_for_evaluator`, etc. These were **not removed** — they now exist as one-line wrappers that build the appropriate component and forward the call. They are retained for backward compatibility; new code should call the component directly.
+Older callers (and many tests) reach for private methods on `StructuredModel` such as `_dispatch_field_comparison`, `compare_recursive`, `_collect_enhanced_non_matches`, `_add_derived_metrics_to_result`, `_format_for_evaluator`, etc. The ones that still have callers are kept as short wrappers that forward the call to the component that does the work. They are retained for backward compatibility; new code should call the component directly. Four private methods that nothing called have been removed, as listed below.
+
+Three wrappers that nothing called were removed in [#390](https://github.com/awslabs/stickler/pull/390): `_calculate_list_confusion_matrix`, `_calculate_nested_field_metrics` and `_calculate_single_nested_field_metrics`. Their work is done by `StructuredListComparator` for a list of models, including the fields inside matched items, and by `FieldComparator.compare_structured_field` for a single nested model. [#398](https://github.com/awslabs/stickler/pull/398) removed `_calculate_object_level_metrics`, an uncalled copy of `StructuredListComparator._calculate_object_level_metrics`.
 
 ## Component Responsibilities
 
@@ -175,7 +177,7 @@ Older callers (and many tests) reach for private methods on `StructuredModel` su
 - `from_json_schema(schema)` - Create a dynamic subclass from a JSON Schema document with `x-aws-stickler-*` extensions
 - `to_json_schema()` / `to_stickler_config()` - Round-trip exporters back to either format
 
-**Size**: ~1486 lines (down from 2584)
+**Size**: ~2030 lines (down from 2584)
 
 ### 2. ModelFactory and JSON-Schema path
 
@@ -458,9 +460,9 @@ print("Field result:", field_result)
 
 The refactoring achieved:
 
-- **Significant size reduction** in `StructuredModel`: 2584 → ~1486 lines (~42%), with the rest now spread across dedicated components under `models/`.
+- **Significant size reduction** in `StructuredModel`: 2584 → ~2030 lines (~21%), with the rest now spread across dedicated components under `models/`.
 - **Delegation-over-inheritance architecture** with single-responsibility components for dynamic-model creation, comparison routing, list comparison, confusion-matrix metrics, derived metrics, non-match reporting, evaluator formatting, and confidence calibration.
-- **100% public-API backward compatibility** — `compare`, `compare_with`, `from_json`, `model_from_json`, `from_json_schema`, `to_json_schema`, `to_stickler_config`, and the legacy private methods (as shims) all still work.
+- **100% public-API backward compatibility** — `compare`, `compare_with`, `from_json`, `model_from_json`, `from_json_schema`, `to_json_schema`, `to_stickler_config`, and the remaining legacy private methods (as shims) all still work.
 - **Single-traversal optimization** preserved.
 - **Confidence-calibration pipeline** added (v0.4.0+) under `models/confidence/`, plumbed through `compare_with(add_confidence_metrics=True, ...)`.
 
