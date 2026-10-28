@@ -78,6 +78,38 @@ result.explain()["invoice_id"]
 `explain()` on the `EvalSpec` instead omits `score` and `raw_similarity`, since no pair has been
 scored yet — use it to review the configuration before running a dataset.
 
+## Excluded fields
+
+A field marked `Field(exclude=True)` is not evaluated, at any depth: in nested models, list
+elements and dict values.
+
+```python
+class Answer(BaseModel):
+    value: str
+    reasoning: str = Field(exclude=True)
+
+result = stickler.evaluate(Answer(value="42", reasoning="..."),
+                           Answer(value="42", reasoning="something else"))
+result.field_scores   # {'value': 1.0}
+```
+
+`reasoning` does not appear in `field_scores`, `explain()`, `non_matches` or an HTML report, and
+it carries no weight in `overall_score`. A required excluded field is not required by the
+evaluation either. A nested model left with no field to score is left out the same way.
+
+The reasoning: `exclude` marks a field as outside the model's output, which on a `response_model`
+is usually a reasoning trace or internal notes. Scoring it would grade text nobody asked to be
+graded, and reporting a mismatch would publish a value the author chose not to serialize.
+
+- **`exclude_if` is decided per value, as Pydantic decides it.** A value it keeps is scored. A
+  value it omits is absent, like `None`: never read or published, and missing against a kept
+  value. A required field it can omit is not required.
+- **A `StructuredModel` is different.** Its `ComparableField`s declare what is compared, and
+  `exclude` there only affects serialization, so the field is scored by `compare_with()` and by
+  `stickler.evaluate()` alike.
+- **To score an excluded field,** remove `exclude`, or evaluate an explicit `StructuredModel`
+  that declares the field.
+
 ## Inference
 
 The rules behind every decision above, plus the precedence between the type signal and the

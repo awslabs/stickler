@@ -152,6 +152,54 @@ def specs_for(
     return result
 
 
+def is_excluded(field_info: FieldInfo) -> bool:
+    """Whether pydantic always leaves the field out of serialization.
+
+    Only ``exclude=True`` counts. ``exclude_if`` decides per value, so that
+    field stays in the shadow model and a value it omits reads as absent.
+    """
+    return bool(field_info.exclude)
+
+
+def has_exclude_if(field_info: FieldInfo) -> bool:
+    return getattr(field_info, "exclude_if", None) is not None
+
+
+def left_out(field_info: FieldInfo, _visiting: Optional[set] = None) -> bool:
+    """Whether a plain model's shadow leaves the field out (#379).
+
+    That is an ``exclude=True`` field, or one holding a plain model (alone or
+    as a list element) with nothing left to score once its own excluded fields
+    are gone. A ``StructuredModel`` is used as configured and keeps both.
+    """
+    if is_excluded(field_info):
+        return True
+    annotation, _ = unwrap_optional(field_info.annotation)
+    kind = _field_kind(annotation)
+    if kind == "model_list":
+        annotation, _ = unwrap_optional(_list_element(annotation))
+    elif kind != "model":
+        return False
+    return not _has_scorable_field(
+        annotation, set() if _visiting is None else _visiting
+    )
+
+
+def _has_scorable_field(cls: Type[BaseModel], _visiting: set) -> bool:
+    # A StructuredModel is used as configured, and _build refuses a cycle or a
+    # model with no fields at all, so all three count as scorable here.
+    if issubclass(cls, StructuredModel) or cls in _visiting or not cls.model_fields:
+        return True
+    _visiting.add(cls)
+    try:
+        return any(
+            not left_out(field_info, _visiting)
+            for field_info in cls.model_fields.values()
+        )
+    finally:
+        _visiting.discard(cls)
+
+
 def _inferred_provenance(cls: Type[BaseModel], name: str) -> tuple:
     """The inference trail for a field, or empty if the author configured it.
 
@@ -181,6 +229,8 @@ def _collect_specs(
         for name, field_info in cls.model_fields.items():
             if name in _RESERVED_FIELD_NAMES:
                 continue
+            if not is_structured and left_out(field_info):
+                continue  # not in the shadow model, so not explained either
             path = f"{prefix}{name}"
             annotation, _ = unwrap_optional(field_info.annotation)
             kind = _field_kind(annotation)
@@ -338,8 +388,12 @@ def _build(
     try:
         registry = get_global_registry()
         field_definitions: Dict[str, Tuple[Any, Any]] = {}
+        skipped = False
 
         for name, field_info in cls.model_fields.items():
+            if left_out(field_info):
+                skipped = True
+                continue
             if name in _RESERVED_FIELD_NAMES:
                 raise TypeError(
                     f"evaluate() cannot mirror field {cls.__name__}.{name}: "
@@ -364,7 +418,8 @@ def _build(
         if not field_definitions:
             raise TypeError(
                 f"evaluate() needs at least one field to score; "
-                f"{cls.__name__} defines none."
+                f"{cls.__name__} defines none"
+                + (" outside exclude=True, which is not scored." if skipped else ".")
             )
 
         model_name = _valid_identifier(f"{cls.__name__}Eval")
@@ -405,7 +460,10 @@ def _field_definition(
     # An omitted optional field materializes as None after model_dump, so the
     # shadow must accept None whenever the source annotation does OR the field
     # can be absent. Any admits None by definition.
-    nullable = was_optional or not field_info.is_required() or annotation is Any
+    # A value exclude_if omits is absent from the dump, so that field can be
+    # absent too, whatever its annotation says.
+    absent_ok = not field_info.is_required() or has_exclude_if(field_info)
+    nullable = was_optional or absent_ok or annotation is Any
 
     if kind == "model":
         child = _shadow_for(
@@ -473,7 +531,7 @@ def _field_definition(
         match_threshold=match_threshold,
     )
     wire = _scalar_wire_type(annotation)
-    default = ... if field_info.is_required() else None
+    default = None if absent_ok else ...
     return (
         Optional[wire] if nullable else wire,
         _comparable_from_spec(spec, default=default),
