@@ -104,6 +104,20 @@ Each release links to full notes on the
   [Excluded fields](https://awslabs.github.io/stickler/API-Reference/auto/#excluded-fields)
   ([#379](https://github.com/awslabs/stickler/issues/379))
 
+- **Breaking:** a float `NaN` is now absent, the same as `None`. Two identical
+  `NaN`s scored `0.0` and counted as a false discovery, because `NaN` equals
+  nothing under IEEE 754. `NaN` vs `NaN` or `None` is now a true negative
+  scoring `1.0`, `NaN` vs a number is a false alarm or false negative, and
+  comparators apply the same rule. This changes confusion counts for any field
+  holding `NaN`, and can move a pass/fail verdict in either direction. A
+  prediction of `NaN` where a number is expected was a false discovery and is
+  now a false negative, which lowers recall: a Strands Evals `test_pass` that
+  gates on recall can go from pass to fail at its default threshold. `NaN` vs
+  `NaN` or `None` can now pass where it failed. First listed under Fixed; its
+  effect on verdicts was measured in
+  [#443](https://github.com/awslabs/stickler/issues/443)
+  ([#367](https://github.com/awslabs/stickler/issues/367))
+
 - **Breaking:** a `None` element in a list is now absent. It is left out
   before matching, so it is never paired, counted or scored, and a list of only
   `None` is an empty list. A float `NaN` element counts as `None`; an empty
@@ -129,7 +143,39 @@ Each release links to full notes on the
   ([#322](https://github.com/awslabs/stickler/issues/322)). See
   [`None` elements in a list](https://awslabs.github.io/stickler/Advanced/classification-logic/#none-elements-in-a-list)
 
+- **Breaking:** `evaluator_format=True` output carries `non_matches` only
+  with `document_non_matches=True`, as the default `compare_with()` dict does,
+  so `result["non_matches"]` without it now raises `KeyError`. It always wrote
+  `"non_matches": []`, so `print_non_matches` and the HTML report both said
+  `No non-matches found.` over a document with a wrong field, despite the #298
+  and #411 fixes. Both now say the records are missing. To read records, pass
+  `document_non_matches=True`; to tell "not collected" from "none found", test
+  `"non_matches" in result`. Scores and counts are unchanged
+  ([#413](https://github.com/awslabs/stickler/issues/413))
+
+- The Strands Evals golden snapshot now covers three `NaN` shapes
+  (`lead/nan_for_value`, `lead/nan_both`, `lead/nan_vs_none`), so the `NaN`
+  change ([#367](https://github.com/awslabs/stickler/issues/367)) is recorded
+  and any further movement fails CI. The
+  snapshot's `Lead` aggregate moves because it now averages over three more
+  cases; no existing case's values change. Test-only; no runtime behaviour
+  changes.
+
+- The Strands Evals golden snapshot now covers the two `None`-in-a-list corpus
+  shapes (`tagged/none_element`, `tagged/leading_none`). They were held out of it
+  while the change that moves them was open, so future behaviour drift in those
+  shapes fails CI instead of passing unnoticed. Test-only; no runtime behaviour
+  changes.
+
 ### Fixed
+
+- **The HTML report's field performance table now escapes field names.** It
+  wrote each name into the page as raw HTML, while the chart beside it escaped
+  the same name, so a name containing `<`, `>` or `&` was read by the browser as
+  markup. A field name that is not a string no longer raises there, and the
+  non-matches table truncates a long value before escaping it, so the cut can
+  no longer split an entity such as `&amp;`
+  ([#422](https://github.com/awslabs/stickler/issues/422))
 
 - List reporting ([#332](https://github.com/awslabs/stickler/issues/332)):
   `non_matches` and `field_comparisons` reuse the pairings, scores, and
@@ -184,13 +230,6 @@ Each release links to full notes on the
   the caller declared
   ([#366](https://github.com/awslabs/stickler/issues/366))
 
-- **A float `NaN` is now absent, the same as `None`.** Two identical `NaN`s
-  scored `0.0` and counted as a false discovery, because `NaN` equals nothing
-  under IEEE 754. `NaN` vs `NaN` or `None` is now a true negative scoring `1.0`,
-  `NaN` vs a number is a false alarm or false negative, and comparators apply
-  the same rule. This changes confusion counts for any field holding `NaN`
-  ([#367](https://github.com/awslabs/stickler/issues/367))
-
 - **An unrecognized key in a model config is now reported instead of dropped.**
   `model_from_json` read a closed set of keys and ignored everything else, so
   `"threshhold": 0.99` built at the fallback 0.5 with no exception and no warning,
@@ -207,6 +246,20 @@ Each release links to full notes on the
   Keyed on the leaf name alone, the first model built in a process silenced every
   later one carrying the same typo.
 
+- **The class gate on a nested field no longer warns about discarded pairs when
+  `StructuredModel` list rows are matched.** `compare()` is the cost function for a list of `StructuredModel`
+  rows, and it reached the gate for every cell of the cost matrix. An all-correct
+  `List[Holder]` scored `1.0` with `tp=2` and still warned that a `Cat` had been
+  compared against a `Dog`, and because `warn_once` spends one message per field,
+  the real `Cat`-vs-`Dog` pair that followed warned nothing. When `HungarianHelper`
+  matches `StructuredModel` list rows (`compare_with`, `compare`, and nested lists),
+  the class-mismatch and mapping warnings are now deferred to the pairs the matcher
+  keeps, which are scored again through `compare_with` and carry the warning. A
+  bare `HungarianMatcher`, and an `Any` field whose list does not start with a
+  model, still score every cell with warnings on, as before, so they can still
+  spend the field's one message on a discarded cell; that is left to a follow-up.
+  Scores and counts are unchanged ([#336](https://github.com/awslabs/stickler/issues/336))
+
 - **The pretty printers no longer report success over results that carry no
   non-match records.** `print_non_matches` and `print_evaluation_results` printed
   `✅ No non-matches found - all fields matched successfully!` for `EvalResult.raw`
@@ -218,9 +271,7 @@ Each release links to full notes on the
   `document_non_matches=False`. `print_non_matches` on input that is not a result
   at all now prints an error. An empty record list still prints a success
   message, now `✅ No non-matches found.` without the `all_fields_matched`
-  wording removed in #287. An `evaluator_format=True` dict still prints that
-  success without records, because it always carries a `non_matches` list,
-  empty unless records were requested
+  wording removed in #287
   ([#298](https://github.com/awslabs/stickler/issues/298))
 
 - **The HTML report no longer claims a document is clean when it holds no
@@ -233,9 +284,59 @@ Each release links to full notes on the
   section says the records are missing and how to collect them. An empty record
   list still renders the success message. Not yet covered: results from
   `aggregate_from_comparisons()`, a bulk run in which every document raised
-  ([#425](https://github.com/awslabs/stickler/issues/425)), and an
-  `evaluator_format=True` dict ([#413](https://github.com/awslabs/stickler/issues/413))
+  ([#425](https://github.com/awslabs/stickler/issues/425))
   ([#411](https://github.com/awslabs/stickler/issues/411))
+
+- **`raw_similarity_score` on a primitive list node is now the unclipped
+  score.** It carried the clipped, coverage-scaled mean, the same number as
+  `threshold_applied_score`, so it contradicted its name and `compare()`, and
+  the unclipped number could not be read from `compare_with()` output. It is now
+  the same mean with no element clipped, `sum(pair scores) / max(len(gt),
+  len(pred))`: `["apple", "banana"]` vs `["apple", "banxxx"]` at threshold 0.9
+  reported `0.5` and now reports `0.75`, which is what `compare()` returns. On a
+  `List[StructuredModel]` each pair's score is the item's own `overall_score`,
+  whose fields are already clipped, so its raw score is still clipped inside
+  each item and moves only where a pair's own score is below the list's 0.01
+  floor: one pair scoring `0.005` reported `0.0` and now reports `0.005`.
+  Report-only: `similarity_score`, `threshold_applied_score`, `field_scores`,
+  `overall_score` and every confusion count are unchanged.
+  `EvalResult.explain()` reads it, so a list field's `raw_similarity` moves the
+  same way, and a primitive list whose paired elements were all clipped now gets
+  a `verdict`, worded for a coverage-scaled mean
+  ([#330](https://github.com/awslabs/stickler/issues/330))
+
+- **`evaluator_format=True` precision and recall no longer swap when a value is
+  missed.** Without `include_confusion_matrix=True`, `overall` was a conversion
+  of the score that charged every lost point to precision once the score reached
+  0.5, and each list field's `overall` always was. One TP and one FN, such as
+  `[A, B]` vs `[A]`, reported precision `0.5` and recall `1.0`; they now report
+  `1.0` and `0.5`, as `TP / (TP + FP)` and `TP / (TP + FN)` define them and as
+  the same call already reported with the confusion matrix included. Both now
+  read the node's confusion counts, honour `recall_with_fd`, and equal that
+  node's `derived` block. Each `items[i]` of a `List[StructuredModel]` field is
+  that pair's own evaluator-format result, so its `overall` moves the same way.
+  A node with no TP, FP or FN (both sides empty) has no precision or recall to
+  read and keeps its previous value. For a TN-only document that value still
+  depends on the flag: the document's `overall` precision, recall and F1 are
+  `1.0` without the confusion matrix and `0.0` with it
+  ([#434](https://github.com/awslabs/stickler/issues/434)). A TN-only list
+  field's `overall` is `1.0` either way. `anls_score`, and
+  the metrics of a field that is not a list, are unchanged.
+  Only evaluator-format output moves: scores and counts are unchanged
+
+### Security
+
+- **A document value can no longer run as script in the HTML report.** With
+  `individual_results_jsonl_path`, the report embeds each document's values as
+  JSON inside a `<script>` block, and `json.dumps` left `<` as is. A browser
+  ends the block at the first `</script`, so a ground-truth or predicted value
+  carrying `</script><script>...</script>` ran as its own script when the
+  report was opened. Values are model output or third-party documents, so this
+  needed no access to stickler or the host. A JSON Schema property name reached
+  the same block through the field thresholds. `<`, `>`, `&`, U+2028 and U+2029
+  are now written as `\uXXXX`, which the page's JavaScript reads as the same
+  characters. Present since 0.1.3
+  ([#431](https://github.com/awslabs/stickler/issues/431))
 
 ## [1.0.0] - 2026-09-11
 
