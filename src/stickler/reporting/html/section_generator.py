@@ -76,19 +76,19 @@ class SectionGenerator:
         return html_string
     
     def generate_confusion_matrix(self) -> str:
-        html = '<div class="section"><h2>Confusion Matrix</h2>'
+        html_string = '<div class="section"><h2>Confusion Matrix</h2>'
         
         cm_data = DataExtractor.extract_confusion_matrix(self.results)
         
         if not cm_data:
-            html += "<p>No confusion matrix data available.</p></div>"
-            return html
+            html_string += "<p>No confusion matrix data available.</p></div>"
+            return html_string
         
         # Add color-coded confusion matrix heatmap
-        html += self.viz_engine.generate_confusion_matrix_heatmap(cm_data, {})
+        html_string += self.viz_engine.generate_confusion_matrix_heatmap(cm_data, {})
         
-        html += '</div>'
-        return html
+        html_string += '</div>'
+        return html_string
     
     def generate_non_matches(self, config: ReportConfig) -> str:
         """Generate non-matches section."""
@@ -137,8 +137,8 @@ class SectionGenerator:
             doc_id = html.escape(nm.get('doc_id', 'N/A'))
             field_path = html.escape(nm.get('field_path', 'N/A'))
             non_match_type = html.escape(str(nm.get('non_match_type', 'N/A')).replace('NonMatchType.',''))
-            ground_truth_value = html.escape(str(nm.get('ground_truth_value', 'None')))[:100]  # Truncate long values
-            prediction_value = html.escape(str(nm.get('prediction_value', 'None')))[:100]
+            ground_truth_value = html.escape(str(nm.get('ground_truth_value', 'None'))[:100])  # Truncate long values
+            prediction_value = html.escape(str(nm.get('prediction_value', 'None'))[:100])
             
             html_string += f'''
             <tr>

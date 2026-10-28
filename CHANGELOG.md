@@ -87,6 +87,20 @@ Each release links to full notes on the
   later on subscripting
   ([#350](https://github.com/awslabs/stickler/issues/350))
 
+- **Breaking:** a float `NaN` is now absent, the same as `None`. Two identical
+  `NaN`s scored `0.0` and counted as a false discovery, because `NaN` equals
+  nothing under IEEE 754. `NaN` vs `NaN` or `None` is now a true negative
+  scoring `1.0`, `NaN` vs a number is a false alarm or false negative, and
+  comparators apply the same rule. This changes confusion counts for any field
+  holding `NaN`, and can move a pass/fail verdict in either direction. A
+  prediction of `NaN` where a number is expected was a false discovery and is
+  now a false negative, which lowers recall: a Strands Evals `test_pass` that
+  gates on recall can go from pass to fail at its default threshold. `NaN` vs
+  `NaN` or `None` can now pass where it failed. First listed under Fixed; its
+  effect on verdicts was measured in
+  [#443](https://github.com/awslabs/stickler/issues/443)
+  ([#367](https://github.com/awslabs/stickler/issues/367))
+
 - **Breaking:** a `None` element in a list is now absent. It is left out
   before matching, so it is never paired, counted or scored, and a list of only
   `None` is an empty list. A float `NaN` element counts as `None`; an empty
@@ -122,7 +136,29 @@ Each release links to full notes on the
   `"non_matches" in result`. Scores and counts are unchanged
   ([#413](https://github.com/awslabs/stickler/issues/413))
 
+- The Strands Evals golden snapshot now covers three `NaN` shapes
+  (`lead/nan_for_value`, `lead/nan_both`, `lead/nan_vs_none`), so the `NaN`
+  change ([#367](https://github.com/awslabs/stickler/issues/367)) is recorded
+  and any further movement fails CI. The
+  snapshot's `Lead` aggregate moves because it now averages over three more
+  cases; no existing case's values change. Test-only; no runtime behaviour
+  changes.
+
+- The Strands Evals golden snapshot now covers the two `None`-in-a-list corpus
+  shapes (`tagged/none_element`, `tagged/leading_none`). They were held out of it
+  while the change that moves them was open, so future behaviour drift in those
+  shapes fails CI instead of passing unnoticed. Test-only; no runtime behaviour
+  changes.
+
 ### Fixed
+
+- **The HTML report's field performance table now escapes field names.** It
+  wrote each name into the page as raw HTML, while the chart beside it escaped
+  the same name, so a name containing `<`, `>` or `&` was read by the browser as
+  markup. A field name that is not a string no longer raises there, and the
+  non-matches table truncates a long value before escaping it, so the cut can
+  no longer split an entity such as `&amp;`
+  ([#422](https://github.com/awslabs/stickler/issues/422))
 
 - List reporting ([#332](https://github.com/awslabs/stickler/issues/332)):
   `non_matches` and `field_comparisons` reuse the pairings, scores, and
@@ -158,13 +194,6 @@ Each release links to full notes on the
   is used as configured and never mirrored, so its fields keep the comparators
   the caller declared
   ([#366](https://github.com/awslabs/stickler/issues/366))
-
-- **A float `NaN` is now absent, the same as `None`.** Two identical `NaN`s
-  scored `0.0` and counted as a false discovery, because `NaN` equals nothing
-  under IEEE 754. `NaN` vs `NaN` or `None` is now a true negative scoring `1.0`,
-  `NaN` vs a number is a false alarm or false negative, and comparators apply
-  the same rule. This changes confusion counts for any field holding `NaN`
-  ([#367](https://github.com/awslabs/stickler/issues/367))
 
 - **An unrecognized key in a model config is now reported instead of dropped.**
   `model_from_json` read a closed set of keys and ignored everything else, so
@@ -245,6 +274,20 @@ Each release links to full notes on the
   field's `overall` is `1.0` either way. `anls_score`, and
   the metrics of a field that is not a list, are unchanged.
   Only evaluator-format output moves: scores and counts are unchanged
+
+### Security
+
+- **A document value can no longer run as script in the HTML report.** With
+  `individual_results_jsonl_path`, the report embeds each document's values as
+  JSON inside a `<script>` block, and `json.dumps` left `<` as is. A browser
+  ends the block at the first `</script`, so a ground-truth or predicted value
+  carrying `</script><script>...</script>` ran as its own script when the
+  report was opened. Values are model output or third-party documents, so this
+  needed no access to stickler or the host. A JSON Schema property name reached
+  the same block through the field thresholds. `<`, `>`, `&`, U+2028 and U+2029
+  are now written as `\uXXXX`, which the page's JavaScript reads as the same
+  characters. Present since 0.1.3
+  ([#431](https://github.com/awslabs/stickler/issues/431))
 
 ## [1.0.0] - 2026-09-11
 

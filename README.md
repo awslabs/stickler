@@ -311,8 +311,9 @@ even though the field on the built class ends up a plain `str` — read the choi
 | `"format": "date"` or `"date-time"` | `DateComparator` | `1.0` | Parses as `date`/`datetime`, so dates compare as dates |
 | `"enum"`, `"const"`, `"format": "uri"`/`"uuid"`/`"time"` | `ExactComparator` | `1.0` | A closed set or an opaque identifier has no partial credit |
 | `"array"` (primitives) | Based on item type | Based on item type | Inherits from element type |
-| `"array"` (objects) | Hungarian matching | `0.5`, pairing elements at `0.7` | Optimal pairing of list elements |
-| `"object"` | Recursive comparison | `0.7` | Field-by-field nested comparison |
+| `"array"` of objects with `properties` | Hungarian matching | `0.5`, pairing elements at `0.7` | Optimal pairing of list elements |
+| `"object"` with `properties` | Recursive comparison | `0.7` | Field-by-field nested comparison |
+| `"object"` without `properties`, or an `"array"` of them | `ExactComparator` | `1.0` | Parsed to a `Dict`, compared whole: any difference scores `0.0` |
 
 **Example:**
 
@@ -343,10 +344,12 @@ even though the field on the built class ends up a plain `str` — read the choi
 
 **Type:** `number` (0.0 to 1.0, inclusive)  
 **Required:** No  
-**Default:** position-dependent, not one number. `0.5` for a scalar, an array of scalars, and an
-array of models; `0.7` for an object with `properties`; `1.0` for a free-form `{"type": "object"}`
-and for anything whose comparator came from a `format`, `enum` or `const`. See the table in
-[Evaluation](docs/docs/Guides/Evaluation/README.md#extension-reference).
+**Default:** position-dependent, not one number. `0.5` for a plain scalar, an array of plain
+scalars, and an array of models; `0.7` for an object with `properties`; `1.0` for a free-form
+`{"type": "object"}` (or an array of them) and for any property or array `items` with `enum`,
+`const`, or a string `format` of `date`/`date-time`/`uri`/`uuid`/`time`, whether or not a
+comparator is declared. See the table in
+[Evaluation](https://awslabs.github.io/stickler/Guides/Evaluation/#extension-reference).
 
 Minimum similarity score required for binary match classification.
 
@@ -477,7 +480,7 @@ Controls whether similarity scores below threshold are clipped to 0.0. Clipping 
 
 | Setting | Use Case | Effect |
 |---------|----------|--------|
-| `true` | Critical fields where partial matches are meaningless | Score is either threshold or 0.0 |
+| `true` | Critical fields where partial matches are meaningless | A score below threshold becomes 0.0 |
 | `false` | Fields where partial similarity has value | Preserves granular similarity information |
 
 **Example:**
@@ -662,24 +665,15 @@ prediction = Invoice(**{
 # Compare
 result = ground_truth.compare_with(prediction)
 
-print(f"Overall Score: {result['overall_score']:.3f}")
+print(f"Overall Score: {result['overall_score']:.3f}")  # 0.919
 print(f"Invoice ID: {result['field_scores']['invoice_id']:.3f}")  # 1.000 - exact
-print(f"Customer: {result['field_scores']['customer_name']:.3f}")  # ~0.85 - close
-print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # ~1.0 - matched
+print(f"Customer: {result['field_scores']['customer_name']:.3f}")  # 0.562 - below its 0.8 threshold, unclipped because clip is false
+print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # 1.000 - reordered, still matched
 ```
 
 ### Quick Reference
 
-| Extension | Type | Default | Purpose |
-|-----------|------|---------|---------|
-| `x-aws-stickler-comparator` | string | Type-dependent | Comparison algorithm |
-| `x-aws-stickler-threshold` | number (0.0-1.0) | 0.5 or 1.0 | Match classification cutoff |
-| `x-aws-stickler-weight` | number (> 0.0) | 1.0 | Field importance multiplier |
-| `x-aws-stickler-clip-under-threshold` | boolean | false | Zero out low scores |
-| `x-aws-stickler-model-name` | string | "DynamicModel" | Generated class name |
-| `x-aws-stickler-match-threshold` | number (0.0-1.0) | 0.7 | Model-level threshold |
-| `x-aws-stickler-infer-unspecified` | boolean | false | Infer comparators for properties that name none (root level) |
-| `x-aws-stickler-comparator-config` | object | `{}` | Keyword arguments for the named comparator |
+Every extension, its default, and the default threshold for each field position are listed in [Evaluation: Extension Reference](https://awslabs.github.io/stickler/Guides/Evaluation/#extension-reference).
 
 ### Additional Resources
 
