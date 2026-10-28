@@ -2,7 +2,7 @@
 
 For each matched pair, ``StructuredListComparator._handle_non_hierarchical_field``
 asks ``StructuredModel._classify_field_for_confusion_matrix`` for a verdict on
-every primitive sub-field and adds up the counts (#395).
+every non-list sub-field and adds up the counts (#395).
 
 - The verdict is the six counts and nothing else. The caller only adds them up.
 - A sub-field annotated ``Union[A, B]`` or ``Any`` is not routed as a nested

@@ -322,7 +322,7 @@ class StructuredModel(BaseModel):
     **Metrics Calculation:**
     - ConfusionMatrixCalculator: Calculates confusion matrix metrics
       - Computes TP, FP, TN, FN, FD, FA counts
-      - Classifies the primitive sub-fields of matched list items
+      - Classifies the non-list sub-fields of matched list items
 
     - AggregateMetricsCalculator: Rolls up child metrics to parent nodes
       - Performs recursive traversal of result tree
