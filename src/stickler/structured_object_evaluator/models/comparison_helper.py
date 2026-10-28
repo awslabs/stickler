@@ -456,6 +456,9 @@ class ComparisonHelper:
                 - fn: False negatives (unmatched ground truth items)
                 - fp: Total false positives (fd + fa)
                 - overall_score: Similarity score for backward compatibility
+                - raw_overall_score: The same coverage-scaled mean with no
+                  element clipped, so ``sum(pair scores) / max(len)``. Only
+                  ``raw_similarity_score`` reads it; no score or count does.
         """
         tp = 0  # True positives (score >= threshold)
         fd = 0  # False discoveries (score < threshold, including 0)
@@ -497,6 +500,7 @@ class ComparisonHelper:
             # keeps the raw path in agreement with it.
             # See https://github.com/awslabs/stickler/issues/233
             overall_score = 1.0 if not gt_list and not pred_list else 0.0
+            raw_overall_score = overall_score
         else:
             # Apply threshold to each similarity score (same logic as individual
             # comparison), UNLESS the field turned clipping off.
@@ -537,6 +541,15 @@ class ComparisonHelper:
             coverage_ratio = len(matched_pairs) / max_items if max_items > 0 else 1.0
             overall_score = avg_threshold_similarity * coverage_ratio
 
+            # The unclipped twin, for `raw_similarity_score` (#330). Reported
+            # only: `overall_score` above stays the field's score, and the
+            # counts were settled before either was computed. Same arithmetic
+            # as above, so the two are bit-identical when nothing was clipped.
+            raw_similarities = [score for _, _, score in matched_pairs]
+            raw_overall_score = (
+                sum(raw_similarities) / len(raw_similarities)
+            ) * coverage_ratio
+
         return {
             "tp": tp,
             "fd": fd,
@@ -544,6 +557,7 @@ class ComparisonHelper:
             "fn": fn,
             "fp": fp,
             "overall_score": overall_score,
+            "raw_overall_score": raw_overall_score,
         }
 
     @staticmethod

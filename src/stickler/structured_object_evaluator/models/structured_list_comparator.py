@@ -85,7 +85,7 @@ class StructuredListComparator:
             verdicts,
         ) = self._calculate_object_level_metrics(gt_list, pred_list, match_threshold)
 
-        # Calculate raw similarity score using extracted method
+        # The field's score and its unclipped twin (#330).
         matching = None
         if self.report_context is not None:
             matching = {
@@ -94,7 +94,7 @@ class StructuredListComparator:
                 "verdicts": verdicts,
                 "pair_results": {},
             }
-        raw_similarity = self._calculate_struct_list_similarity(
+        list_score, raw_similarity = self._calculate_struct_list_similarity(
             matched_pairs, gt_list, pred_list, info, matching
         )
         if matching is not None:
@@ -107,9 +107,6 @@ class StructuredListComparator:
                 for (i, j), child in matching["pair_results"].items()
             }
             self.report_context.lists[field_name] = matching
-
-        # CRITICAL FIX: For structured lists, we NEVER clip under threshold - partial matches are important
-        threshold_applied_score = raw_similarity  # Always use raw score for lists
 
         # Get field-level details for nested structure (but DON'T aggregate to list level)
         # THRESHOLD-GATED RECURSION: Only generate field details for good matches
@@ -125,9 +122,10 @@ class StructuredListComparator:
         final_result = {
             "overall": object_level_metrics,  # Count OBJECTS, not fields
             "fields": field_details,  # Field-level details kept separate
+            # Report-only; the score is `threshold_applied_score`.
             "raw_similarity_score": raw_similarity,
-            "similarity_score": raw_similarity,
-            "threshold_applied_score": threshold_applied_score,
+            "similarity_score": list_score,
+            "threshold_applied_score": list_score,
             "weight": weight,
         }
 
@@ -197,8 +195,8 @@ class StructuredListComparator:
         pred_list: List["StructuredModel"],
         info: "ComparableField",
         matching: Dict[str, Any] | None = None,
-    ) -> float:
-        """Calculate raw similarity score for structured list.
+    ) -> tuple:
+        """Calculate the score of a structured list, and its unclipped twin.
 
         Args:
             gt_list: Ground truth list
@@ -207,7 +205,12 @@ class StructuredListComparator:
             matching: Side map receiving accepted child traversals when reporting
 
         Returns:
-            Raw similarity score between 0.0 and 1.0
+            ``(score, raw_score)``, each between 0.0 and 1.0. ``score`` is the
+            field's score. ``raw_score`` is the same coverage-scaled mean with
+            no pair clipped, and is reported as ``raw_similarity_score`` only.
+            Each pair's score is the item's own ``overall_score``, which has
+            already clipped the item's fields, so ``raw_score`` is unclipped at
+            the list level only (#330).
         """
         from .comparison_engine import ComparisonEngine
         from .structured_model import StructuredModel
@@ -250,7 +253,8 @@ class StructuredListComparator:
             threshold_corrected_pairs, gt_list, pred_list, classification_threshold
         )
 
-        return match_result.get("overall_score", 0.0)
+        score = match_result.get("overall_score", 0.0)
+        return score, match_result.get("raw_overall_score", score)
 
     def _calculate_nested_field_metrics(
         self,

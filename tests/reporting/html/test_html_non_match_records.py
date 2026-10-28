@@ -105,3 +105,27 @@ def test_a_bulk_result_with_records_lists_them():
 
     assert "No non-matches found" not in _section(results)
     assert "document_non_matches=True" not in _section(results)
+
+
+def test_an_evaluator_format_dict_without_records_is_not_reported_as_clean():
+    """`evaluator_format=True` writes `non_matches` only when requested (#413)."""
+    gt, pred = _wrong_pair()
+    results = gt.compare_with(pred, evaluator_format=True)
+
+    assert "non_matches" not in results
+    assert DataExtractor.extract_non_matches(results) is None
+
+    html = _section(results)
+
+    assert "No non-matches found" not in html
+    assert "document_non_matches=True" in html
+
+
+def test_an_evaluator_format_dict_with_empty_records_is_a_success():
+    """Requested and none produced: the evaluator-format `[]` still means clean."""
+    same = _Person(name="Ada", city="London")
+    results = same.compare_with(same, evaluator_format=True, document_non_matches=True)
+
+    assert DataExtractor.extract_non_matches(results) == []
+
+    assert "<p>No non-matches found.</p>" in _section(results)

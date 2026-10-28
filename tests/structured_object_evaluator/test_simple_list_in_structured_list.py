@@ -448,6 +448,7 @@ def test_raw_empty_lists_score_as_perfect_match():
         "fn": 0,
         "fp": 0,
         "overall_score": 1.0,
+        "raw_overall_score": 1.0,
     }
 
 

@@ -126,6 +126,16 @@ Each release links to full notes on the
   ([#322](https://github.com/awslabs/stickler/issues/322)). See
   [`None` elements in a list](https://awslabs.github.io/stickler/Advanced/classification-logic/#none-elements-in-a-list)
 
+- **Breaking:** `evaluator_format=True` output carries `non_matches` only
+  with `document_non_matches=True`, as the default `compare_with()` dict does,
+  so `result["non_matches"]` without it now raises `KeyError`. It always wrote
+  `"non_matches": []`, so `print_non_matches` and the HTML report both said
+  `No non-matches found.` over a document with a wrong field, despite the #298
+  and #411 fixes. Both now say the records are missing. To read records, pass
+  `document_non_matches=True`; to tell "not collected" from "none found", test
+  `"non_matches" in result`. Scores and counts are unchanged
+  ([#413](https://github.com/awslabs/stickler/issues/413))
+
 - The Strands Evals golden snapshot now covers three `NaN` shapes
   (`lead/nan_for_value`, `lead/nan_both`, `lead/nan_vs_none`), so the `NaN`
   change ([#367](https://github.com/awslabs/stickler/issues/367)) is recorded
@@ -212,9 +222,7 @@ Each release links to full notes on the
   `document_non_matches=False`. `print_non_matches` on input that is not a result
   at all now prints an error. An empty record list still prints a success
   message, now `✅ No non-matches found.` without the `all_fields_matched`
-  wording removed in #287. An `evaluator_format=True` dict still prints that
-  success without records, because it always carries a `non_matches` list,
-  empty unless records were requested
+  wording removed in #287
   ([#298](https://github.com/awslabs/stickler/issues/298))
 
 - **The HTML report no longer claims a document is clean when it holds no
@@ -227,9 +235,45 @@ Each release links to full notes on the
   section says the records are missing and how to collect them. An empty record
   list still renders the success message. Not yet covered: results from
   `aggregate_from_comparisons()`, a bulk run in which every document raised
-  ([#425](https://github.com/awslabs/stickler/issues/425)), and an
-  `evaluator_format=True` dict ([#413](https://github.com/awslabs/stickler/issues/413))
+  ([#425](https://github.com/awslabs/stickler/issues/425))
   ([#411](https://github.com/awslabs/stickler/issues/411))
+
+- **`raw_similarity_score` on a primitive list node is now the unclipped
+  score.** It carried the clipped, coverage-scaled mean, the same number as
+  `threshold_applied_score`, so it contradicted its name and `compare()`, and
+  the unclipped number could not be read from `compare_with()` output. It is now
+  the same mean with no element clipped, `sum(pair scores) / max(len(gt),
+  len(pred))`: `["apple", "banana"]` vs `["apple", "banxxx"]` at threshold 0.9
+  reported `0.5` and now reports `0.75`, which is what `compare()` returns. On a
+  `List[StructuredModel]` each pair's score is the item's own `overall_score`,
+  whose fields are already clipped, so its raw score is still clipped inside
+  each item and moves only where a pair's own score is below the list's 0.01
+  floor: one pair scoring `0.005` reported `0.0` and now reports `0.005`.
+  Report-only: `similarity_score`, `threshold_applied_score`, `field_scores`,
+  `overall_score` and every confusion count are unchanged.
+  `EvalResult.explain()` reads it, so a list field's `raw_similarity` moves the
+  same way, and a primitive list whose paired elements were all clipped now gets
+  a `verdict`, worded for a coverage-scaled mean
+  ([#330](https://github.com/awslabs/stickler/issues/330))
+
+- **`evaluator_format=True` precision and recall no longer swap when a value is
+  missed.** Without `include_confusion_matrix=True`, `overall` was a conversion
+  of the score that charged every lost point to precision once the score reached
+  0.5, and each list field's `overall` always was. One TP and one FN, such as
+  `[A, B]` vs `[A]`, reported precision `0.5` and recall `1.0`; they now report
+  `1.0` and `0.5`, as `TP / (TP + FP)` and `TP / (TP + FN)` define them and as
+  the same call already reported with the confusion matrix included. Both now
+  read the node's confusion counts, honour `recall_with_fd`, and equal that
+  node's `derived` block. Each `items[i]` of a `List[StructuredModel]` field is
+  that pair's own evaluator-format result, so its `overall` moves the same way.
+  A node with no TP, FP or FN (both sides empty) has no precision or recall to
+  read and keeps its previous value. For a TN-only document that value still
+  depends on the flag: the document's `overall` precision, recall and F1 are
+  `1.0` without the confusion matrix and `0.0` with it
+  ([#434](https://github.com/awslabs/stickler/issues/434)). A TN-only list
+  field's `overall` is `1.0` either way. `anls_score`, and
+  the metrics of a field that is not a list, are unchanged.
+  Only evaluator-format output moves: scores and counts are unchanged
 
 ### Security
 
