@@ -21,22 +21,30 @@ Trade-offs:
 - Architecturally less pure than type-based structure (primitives flat, structured hierarchical)
 """
 
-from typing import TYPE_CHECKING, Any, List
+from typing import TYPE_CHECKING, Any, List, Optional
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
+
+from .comparison_helper import ComparisonHelper
+from .reporting_context import ReportingContext
 
 
 class PrimitiveListComparator:
     """Handles comparison of List[primitive] fields using Hungarian matching."""
 
-    def __init__(self, parent_model: "StructuredModel"):
+    def __init__(
+        self,
+        parent_model: "StructuredModel",
+        report_context: Optional[ReportingContext] = None,
+    ):
         """Initialize the comparator with reference to parent model.
 
         Args:
             parent_model: The StructuredModel instance that owns the list field
         """
         self.parent_model = parent_model
+        self.report_context = report_context
 
     def compare_primitive_list_with_scores(
         self, gt_list: List[Any], pred_list: List[Any], field_name: str
@@ -100,17 +108,39 @@ class PrimitiveListComparator:
         comparator = info.comparator
         # The field's own clip setting reaches the per-element decision here.
         # Without it, `clip_under_threshold=False` was a no-op on every list:
-        # the zeroing happens inside `unordered_list_metrics`, upstream of the
-        # `threshold_applied_score = raw_similarity` line below, so that line
-        # preserved a score that had already been thrown away.
-        match_result = self.parent_model._compare_unordered_lists(
-            gt_list,
-            pred_list,
-            comparator,
-            threshold,
-            info.clip_under_threshold,
-            field_name=field_name,
-        )
+        # the zeroing happens inside `unordered_list_metrics`, upstream of this
+        # method, so copying its score through preserved a score that had
+        # already been thrown away.
+        from .structured_model import StructuredModel
+
+        if (
+            self.report_context is not None
+            and type(self.parent_model)._compare_unordered_lists
+            is StructuredModel._compare_unordered_lists
+        ):
+            matching = {}
+            match_result = ComparisonHelper.compare_unordered_lists(
+                gt_list,
+                pred_list,
+                comparator,
+                threshold,
+                info.clip_under_threshold,
+                model_cls=type(self.parent_model),
+                field_name=field_name,
+                matching_sink=matching,
+            )
+            self.report_context.lists[field_name] = matching
+        else:
+            # Existing overrides receive only their original arguments. Without
+            # built-in scoring data, collectors use the shared fallback matcher.
+            match_result = self.parent_model._compare_unordered_lists(
+                gt_list,
+                pred_list,
+                comparator,
+                threshold,
+                info.clip_under_threshold,
+                field_name=field_name,
+            )
 
         # Extract the counts from the match result
         tp = match_result.get("tp", 0)
@@ -118,18 +148,18 @@ class PrimitiveListComparator:
         fa = match_result.get("fa", 0)
         fn = match_result.get("fn", 0)
 
-        # Use the overall_score from the match result for raw similarity
-        raw_similarity = match_result.get("overall_score", 0.0)
-
-        # CRITICAL FIX: For lists, we NEVER clip under threshold - partial matches are important
-        threshold_applied_score = raw_similarity  # Always use raw score for lists
+        # The field's score: per-element clipping has already been applied
+        # inside `unordered_list_metrics`, so nothing more is clipped here.
+        list_score = match_result.get("overall_score", 0.0)
 
         # Return hierarchical structure expected by tests
         return {
             "overall": {"tp": tp, "fa": fa, "fd": fd, "fp": fa + fd, "tn": 0, "fn": fn},
             "fields": {},  # Empty for primitive lists - no nested structure
-            "raw_similarity_score": raw_similarity,
-            "similarity_score": raw_similarity,
-            "threshold_applied_score": threshold_applied_score,
+            # Unclipped, as on every other node and as `compare()` reports
+            # (#330). Report-only: the score is `threshold_applied_score`.
+            "raw_similarity_score": match_result.get("raw_overall_score", list_score),
+            "similarity_score": list_score,
+            "threshold_applied_score": list_score,
             "weight": weight,
         }
