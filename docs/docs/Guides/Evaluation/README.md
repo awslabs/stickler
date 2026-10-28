@@ -200,14 +200,17 @@ on the position, because different positions fall back to different defaults:
 
 | Position | Default threshold | Where it comes from |
 |---|---|---|
-| scalar (`string`, `number`, ...) | `0.5` | `ComparableField`'s own default |
+| plain scalar (`string`, `number`, ...) | `0.5` | `ComparableField`'s own default |
 | object with `properties` (a nested model) | `0.7` | the class's `match_threshold` |
-| free-form `{"type": "object"}` (a `Dict`) | `1.0` | the mapping default |
-| array of scalars | `0.5` | `ComparableField`'s own default |
+| free-form `{"type": "object"}` (a `Dict`), or an array of them | `1.0` | the mapping default |
+| array of plain scalars | `0.5` | `ComparableField`'s own default |
 | array of models | `0.5`, and never read from the schema | the element class's `match_threshold` gates instead |
+| `enum` or `const` on any type, or a string `format` of `date`/`date-time`/`uri`/`uuid`/`time`, on the property or its array `items` | `1.0` | the type that keyword parses to, even when a comparator is declared |
 
-Declaring the key explicitly overrides the default in every position that reads
-it. `x-aws-stickler-clip-under-threshold` defaults to `true` in all of them.
+A scalar is plain when it has none of the keywords in the last row. Any other
+`format` (`email`, `hostname`, ...) leaves it plain. Declaring the key explicitly
+overrides the default in every position that reads it.
+`x-aws-stickler-clip-under-threshold` defaults to `true` in all of them.
 
 ### Example Schema
 
@@ -276,7 +279,7 @@ print(f"Overall Score: {result['overall_score']:.3f}")
 
     Note that `customer_name` scores 0.0: "Acme Corp" vs "ACME Corporation" produces a Levenshtein similarity below the 0.8 threshold, so `clip_under_threshold` zeros it out.
 
-For the complete reference on all extensions, default comparators by type, and a full production example, see the [JSON Schema Extensions](https://github.com/awslabs/stickler#json-schema-extensions-x-aws-stickler--complete-reference) section in the project README.
+Per-extension detail, default comparators by type, and a full production example are in the [JSON Schema Extensions](https://github.com/awslabs/stickler#json-schema-extensions-x-aws-stickler--complete-reference) section in the project README.
 
 ---
 
@@ -288,31 +291,34 @@ When you need output structured for bulk evaluation pipelines, pass `evaluator_f
 result = ground_truth.compare_with(prediction, evaluator_format=True)
 ```
 
-The output changes to:
+For the `ground_truth` and `prediction` above, where `customer_name` is a false discovery, the output changes to:
 
 ```json
 {
   "overall": {
-    "precision": 0.83,
+    "precision": 0.667,
     "recall": 1.0,
-    "f1": 0.91,
-    "accuracy": 0.83,
-    "anls_score": 0.83
+    "f1": 0.8,
+    "accuracy": 0.667,
+    "anls_score": 0.786
   },
   "fields": {
     "invoice_id": { "precision": 1.0, "recall": 1.0, "f1": 1.0, "accuracy": 1.0, "anls_score": 1.0 },
-    "customer_name": { "precision": 1.0, "recall": 1.0, "f1": 1.0, "accuracy": 1.0, "anls_score": 0.85 }
+    "customer_name": { "precision": 0.0, "recall": 0.0, "f1": 0.0, "accuracy": 0.0, "anls_score": 0.0 },
+    "total_amount": { "precision": 1.0, "recall": 1.0, "f1": 1.0, "accuracy": 1.0, "anls_score": 1.0 }
   },
-  "confusion_matrix": {},
-  "non_matches": []
+  "confusion_matrix": {}
 }
 ```
 
 Key differences from the default output:
 
 - The top-level key is `overall` (a dict of metrics), not `overall_score` (a float).
-- Each field in `fields` contains precision, recall, F1, accuracy, and ANLS score.
-- The `confusion_matrix` and `non_matches` keys are present but empty in this format.
+- `overall`, and the `overall` of each list field, take precision, recall, F1 and accuracy from the confusion counts, as in [Derived Metrics](understanding-results.md#derived-metrics), so they equal that node's `derived` block whether or not `include_confusion_matrix=True` was passed. The false discovery above counts as an FP, so it lowers precision, not recall (`recall_with_fd=True` counts it in recall too). This needs at least one TP, FP or FN: a node with none (both sides empty) keeps the score conversion below, except that `overall` reads `derived` when `include_confusion_matrix=True` (precision, recall and F1 `0.0`, accuracy `1.0`). `anls_score` is the score.
+- A list field nests that `overall` beside per-item `items` (filled for a list of models). Which shape a field gets follows the ground-truth value: a list field whose ground truth is `None` comes back flat, with converted metrics.
+- Any other field's metrics are a conversion of its score, not counts: a score of at least 0.5 reads precision equal to the score and recall `1.0`, a lower one `0.0` for both. `customer_name` scores `0.0`, so reads `0.0`; a true positive at `0.94` would read precision `0.94`.
+- `confusion_matrix` is `{}` unless `include_confusion_matrix=True`.
+- `non_matches` is present only with `document_non_matches=True`, as in the default output. Without it the key is absent, so a missing key means "not collected", never "no non-matches".
 
 This format is what `BulkStructuredModelEvaluator` expects when aggregating results across many documents.
 

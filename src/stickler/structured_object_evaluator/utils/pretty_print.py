@@ -940,7 +940,7 @@ def print_non_matches(
         if non_matches is None and not _is_results_object(results):
             print("Error: Results do not contain recognizable non-match records")
         elif show_summary:
-            _print_no_non_matches(non_matches, use_color)
+            _print_no_non_matches(non_matches, use_color, results)
         return
 
     # Direct output to file if specified
@@ -1026,21 +1026,22 @@ def _is_results_object(results: Any) -> bool:
 
 
 def _print_no_non_matches(
-    non_matches: Optional[List[Dict[str, Any]]], use_color: bool = True
+    non_matches: Optional[List[Dict[str, Any]]],
+    use_color: bool = True,
+    results: Any = None,
 ) -> None:
     """
     Say why there are no non-matches to list, claiming no more than the input shows.
     """
     if non_matches is None:
-        print(
-            _colorize(
-                "No non-match records in these results. Pass the EvalResult "
-                "itself rather than its .raw, or call compare_with() or the "
-                "bulk evaluator with document_non_matches=True.",
-                Colors.YELLOW,
-                use_color,
-            )
+        message = (
+            "No non-match records in these results. Call compare_with() or the "
+            "bulk evaluator with document_non_matches=True."
         )
+        # Only a default compare_with() dict can be an EvalResult's .raw.
+        if isinstance(results, dict) and "overall_score" in results:
+            message += " For an EvalResult's .raw, pass the EvalResult itself."
+        print(_colorize(message, Colors.YELLOW, use_color))
     else:
         print(_colorize("✅ No non-matches found.", Colors.GREEN, use_color))
 
@@ -1363,7 +1364,7 @@ def _print_evaluation_results_content(
             print_non_matches(results, use_color=use_color)
         elif show_confusion_matrix and _normalize_results_format(results) is not None:
             # Only show this message when the supplied results were recognized.
-            _print_no_non_matches(non_matches, use_color)
+            _print_no_non_matches(non_matches, use_color, results)
             print()
 
 

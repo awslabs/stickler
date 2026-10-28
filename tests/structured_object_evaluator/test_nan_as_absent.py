@@ -95,3 +95,49 @@ def test_null_predicates_agree_on_nan():
     assert not NullHelper.is_nan("nan")
     assert NullHelper.is_effectively_null_for_primitives(NAN)
     assert FieldHelper.is_null_value(NAN)
+
+
+@pytest.mark.parametrize("nested", [False, True])
+@pytest.mark.parametrize(
+    "gt, pred, score, count, reason",
+    [
+        (NAN, NAN, 1.0, "tn", "exact match"),
+        (NAN, None, 1.0, "tn", "exact match"),
+        (None, NAN, 1.0, "tn", "exact match"),
+        (NAN, 5.0, 0.0, "fa", "false alarm (unmatched prediction)"),
+        (5.0, NAN, 0.0, "fn", "false negative (unmatched ground truth)"),
+        (0.0, 0.0, 1.0, "tp", "exact match"),
+        (0.0, 5.0, 0.0, "fd", "below threshold (0.000 < 0.5)"),
+    ],
+)
+def test_field_reports_agree_with_missing_value_counts(
+    nested, gt, pred, score, count, reason
+):
+    class ReportItem(Item):
+        # The matching sku must keep the pair accepted when value is missing.
+        match_threshold = 0.4
+
+    class ReportOrder(StructuredModel):
+        items: List[ReportItem] = ComparableField()
+
+    if nested:
+        expected = ReportOrder(items=[ReportItem(value=gt)])
+        actual = ReportOrder(items=[ReportItem(value=pred)])
+        path = "items[0].value"
+    else:
+        expected, actual = Reading(value=gt), Reading(value=pred)
+        path = "value"
+
+    result = expected.compare_with(
+        actual, include_confusion_matrix=True, document_field_comparisons=True
+    )
+    fields = result["confusion_matrix"]["fields"]
+    if nested:
+        assert fields["items"]["overall"]["tp"] == 1
+        fields = fields["items"]["fields"]
+    assert fields["value"]["overall"][count] == 1
+    row = next(r for r in result["field_comparisons"] if r["expected_key"] == path)
+    assert row["actual_key"] == path
+    assert row["match"] is (count in ("tp", "tn"))
+    assert row["score"] == score
+    assert row["reason"] == reason
