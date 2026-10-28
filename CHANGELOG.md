@@ -125,6 +125,15 @@ Each release links to full notes on the
   `match_threshold` was likewise replaced by the parent's
   ([#322](https://github.com/awslabs/stickler/issues/322)). See
   [`None` elements in a list](https://awslabs.github.io/stickler/Advanced/classification-logic/#none-elements-in-a-list)
+
+- The Strands Evals golden snapshot now covers three `NaN` shapes
+  (`lead/nan_for_value`, `lead/nan_both`, `lead/nan_vs_none`), so the `NaN`
+  change ([#367](https://github.com/awslabs/stickler/issues/367)) is recorded
+  and any further movement fails CI. The
+  snapshot's `Lead` aggregate moves because it now averages over three more
+  cases; no existing case's values change. Test-only; no runtime behaviour
+  changes.
+
 - The Strands Evals golden snapshot now covers the two `None`-in-a-list corpus
   shapes (`tagged/none_element`, `tagged/leading_none`). They were held out of it
   while the change that moves them was open, so future behaviour drift in those

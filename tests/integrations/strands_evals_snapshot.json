@@ -749,6 +749,87 @@
       "recall": 1.0,
       "test_pass": true
     },
+    "lead/nan_both": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 8,
+        "tp": 2
+      },
+      "f1": 1.0,
+      "field_scores": {
+        "annual_revenue": 1.0,
+        "company": 1.0,
+        "contact_name": 1.0,
+        "employees": 1.0,
+        "founded": 1.0,
+        "hq": 1.0,
+        "is_public": 1.0,
+        "keywords": 1.0,
+        "notes": 1.0,
+        "status": 1.0
+      },
+      "matched": true,
+      "overall_score": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "lead/nan_for_value": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 1,
+        "tn": 7,
+        "tp": 2
+      },
+      "f1": 0.8,
+      "field_scores": {
+        "annual_revenue": 0.0,
+        "company": 1.0,
+        "contact_name": 1.0,
+        "employees": 1.0,
+        "founded": 1.0,
+        "hq": 1.0,
+        "is_public": 1.0,
+        "keywords": 1.0,
+        "notes": 1.0,
+        "status": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.9,
+      "precision": 1.0,
+      "recall": 0.666667,
+      "test_pass": false
+    },
+    "lead/nan_vs_none": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 8,
+        "tp": 2
+      },
+      "f1": 1.0,
+      "field_scores": {
+        "annual_revenue": 1.0,
+        "company": 1.0,
+        "contact_name": 1.0,
+        "employees": 1.0,
+        "founded": 1.0,
+        "hq": 1.0,
+        "is_public": 1.0,
+        "keywords": 1.0,
+        "notes": 1.0,
+        "status": 1.0
+      },
+      "matched": true,
+      "overall_score": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "test_pass": true
+    },
     "lead/nothing_to_find_empty": {
       "confusion_matrix": {
         "fa": 0,
@@ -1792,7 +1873,7 @@
       }
     },
     "Lead": {
-      "document_count": 10,
+      "document_count": 13,
       "explain": {
         "annual_revenue": {
           "clip_under_threshold": true,
@@ -1888,33 +1969,33 @@
       },
       "field_metrics": {
         "annual_revenue": {
-          "cm_accuracy": 0.9,
-          "cm_f1": 0.8,
+          "cm_accuracy": 0.846154,
+          "cm_f1": 0.666667,
           "cm_precision": 1.0,
-          "cm_recall": 0.666667,
+          "cm_recall": 0.5,
           "fa": 0,
           "fd": 0,
-          "fn": 1,
+          "fn": 2,
           "fp": 0,
-          "mean_score": 0.9,
-          "tn": 7,
+          "mean_score": 0.846154,
+          "tn": 9,
           "tp": 2
         },
         "company": {
-          "cm_accuracy": 0.7,
-          "cm_f1": 0.8,
-          "cm_precision": 0.857143,
-          "cm_recall": 0.75,
+          "cm_accuracy": 0.769231,
+          "cm_f1": 0.857143,
+          "cm_precision": 0.9,
+          "cm_recall": 0.818182,
           "fa": 1,
           "fd": 0,
           "fn": 2,
           "fp": 1,
-          "mean_score": 0.7,
+          "mean_score": 0.769231,
           "tn": 1,
-          "tp": 6
+          "tp": 9
         },
         "contact_name": {
-          "cm_accuracy": 0.9,
+          "cm_accuracy": 0.923077,
           "cm_f1": 0.8,
           "cm_precision": 1.0,
           "cm_recall": 0.666667,
@@ -1922,25 +2003,25 @@
           "fd": 0,
           "fn": 1,
           "fp": 0,
-          "mean_score": 0.9,
-          "tn": 7,
+          "mean_score": 0.923077,
+          "tn": 10,
           "tp": 2
         },
         "employees": {
-          "cm_accuracy": 0.6,
-          "cm_f1": 0.666667,
-          "cm_precision": 0.8,
-          "cm_recall": 0.571429,
+          "cm_accuracy": 0.692308,
+          "cm_f1": 0.777778,
+          "cm_precision": 0.875,
+          "cm_recall": 0.7,
           "fa": 0,
           "fd": 1,
           "fn": 3,
           "fp": 1,
-          "mean_score": 0.6,
+          "mean_score": 0.692308,
           "tn": 2,
-          "tp": 4
+          "tp": 7
         },
         "founded": {
-          "cm_accuracy": 0.9,
+          "cm_accuracy": 0.923077,
           "cm_f1": 0.8,
           "cm_precision": 1.0,
           "cm_recall": 0.666667,
@@ -1948,12 +2029,12 @@
           "fd": 0,
           "fn": 1,
           "fp": 0,
-          "mean_score": 0.9,
-          "tn": 7,
+          "mean_score": 0.923077,
+          "tn": 10,
           "tp": 2
         },
         "hq": {
-          "cm_accuracy": 0.9,
+          "cm_accuracy": 0.923077,
           "cm_f1": 0.8,
           "cm_precision": 1.0,
           "cm_recall": 0.666667,
@@ -1961,8 +2042,8 @@
           "fd": 0,
           "fn": 1,
           "fp": 0,
-          "mean_score": 0.9,
-          "tn": 7,
+          "mean_score": 0.923077,
+          "tn": 10,
           "tp": 2
         },
         "hq.city": {
@@ -2005,7 +2086,7 @@
           "tp": 2
         },
         "is_public": {
-          "cm_accuracy": 0.9,
+          "cm_accuracy": 0.923077,
           "cm_f1": 0.8,
           "cm_precision": 1.0,
           "cm_recall": 0.666667,
@@ -2013,12 +2094,12 @@
           "fd": 0,
           "fn": 1,
           "fp": 0,
-          "mean_score": 0.9,
-          "tn": 7,
+          "mean_score": 0.923077,
+          "tn": 10,
           "tp": 2
         },
         "keywords": {
-          "cm_accuracy": 0.846154,
+          "cm_accuracy": 0.875,
           "cm_f1": 0.8,
           "cm_precision": 1.0,
           "cm_recall": 0.666667,
@@ -2026,12 +2107,12 @@
           "fd": 0,
           "fn": 2,
           "fp": 0,
-          "mean_score": 0.9,
-          "tn": 7,
+          "mean_score": 0.923077,
+          "tn": 10,
           "tp": 4
         },
         "notes": {
-          "cm_accuracy": 0.8,
+          "cm_accuracy": 0.846154,
           "cm_f1": 0.666667,
           "cm_precision": 0.666667,
           "cm_recall": 0.666667,
@@ -2039,12 +2120,12 @@
           "fd": 0,
           "fn": 1,
           "fp": 1,
-          "mean_score": 0.8,
-          "tn": 6,
+          "mean_score": 0.846154,
+          "tn": 9,
           "tp": 2
         },
         "status": {
-          "cm_accuracy": 0.9,
+          "cm_accuracy": 0.923077,
           "cm_f1": 0.8,
           "cm_precision": 1.0,
           "cm_recall": 0.666667,
@@ -2052,23 +2133,23 @@
           "fd": 0,
           "fn": 1,
           "fp": 0,
-          "mean_score": 0.9,
-          "tn": 7,
+          "mean_score": 0.923077,
+          "tn": 10,
           "tp": 2
         }
       },
       "metrics": {
-        "cm_accuracy": 0.834951,
-        "cm_f1": 0.767123,
-        "cm_precision": 0.903226,
-        "cm_recall": 0.666667,
+        "cm_accuracy": 0.864662,
+        "cm_f1": 0.790698,
+        "cm_precision": 0.918919,
+        "cm_recall": 0.693878,
         "fa": 2,
         "fd": 1,
-        "fn": 14,
+        "fn": 15,
         "fp": 3,
-        "tn": 58,
-        "tp": 28,
-        "weighted_overall_score": 0.84
+        "tn": 81,
+        "tp": 34,
+        "weighted_overall_score": 0.869231
       }
     },
     "Order": {
