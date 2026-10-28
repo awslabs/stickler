@@ -24,7 +24,7 @@ class ComparisonEngine:
     It coordinates between:
     - ComparisonDispatcher: Routes field comparisons to appropriate handlers
     - NonMatchCollector: Collects and documents non-matching fields
-    - ConfusionMatrixCalculator: Calculates confusion matrix metrics
+    - ConfusionMatrixBuilder: Adds aggregate and derived confusion matrix metrics
     
     The engine implements a single-traversal optimization where all comparison
     data (scores, metrics, non-matches) is collected in one pass through the
@@ -474,7 +474,9 @@ class ComparisonEngine:
 
         # If evaluator_format is requested, transform the result
         if evaluator_format:
-            return self.model._format_for_evaluator(result, other, recall_with_fd)
+            return self.model._format_for_evaluator(
+                result, other, recall_with_fd, recursive_result
+            )
         
 
         return result

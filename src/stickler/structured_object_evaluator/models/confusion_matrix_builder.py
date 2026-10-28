@@ -15,7 +15,6 @@ class ConfusionMatrixBuilder:
     
     This class orchestrates the calculation of complete confusion matrices by
     coordinating between:
-    - ConfusionMatrixCalculator: Calculates basic confusion matrix metrics
     - AggregateMetricsCalculator: Rolls up child metrics to parent nodes
     - DerivedMetricsCalculator: Calculates precision, recall, F1, accuracy
     
@@ -27,7 +26,7 @@ class ConfusionMatrixBuilder:
     -------------
     This class is part of the StructuredModel refactoring that extracts metrics
     calculation logic into dedicated helper classes. It serves as the main
-    orchestrator for metrics calculation, coordinating between the three
+    orchestrator for metrics calculation, coordinating between the two
     calculator classes.
     
     The builder is used by ComparisonEngine to add confusion matrix metrics
@@ -45,7 +44,6 @@ class ConfusionMatrixBuilder:
     
     Attributes:
         model: The ground truth StructuredModel instance used for comparison
-        calculator: ConfusionMatrixCalculator for basic metrics
         aggregate_calculator: AggregateMetricsCalculator for rollup
         derived_calculator: DerivedMetricsCalculator for derived metrics
     
@@ -69,17 +67,8 @@ class ConfusionMatrixBuilder:
         self.model = model
         
         # Initialize calculators lazily to avoid circular imports
-        self._calculator = None
         self._aggregate_calculator = None
         self._derived_calculator = None
-
-    @property
-    def calculator(self):
-        """Lazy initialization of ConfusionMatrixCalculator."""
-        if self._calculator is None:
-            from .confusion_matrix_calculator import ConfusionMatrixCalculator
-            self._calculator = ConfusionMatrixCalculator(self.model)
-        return self._calculator
 
     @property
     def aggregate_calculator(self):
@@ -106,7 +95,7 @@ class ConfusionMatrixBuilder:
         """Build complete confusion matrix from recursive result.
         
         This method orchestrates the calculation of a complete confusion matrix
-        by coordinating between the three calculator classes:
+        in three steps:
         
         1. Basic confusion matrix metrics are already in recursive_result
            (calculated during compare_recursive)
@@ -196,16 +185,16 @@ class ConfusionMatrixBuilder:
         >>> # Access field-level metrics
         >>> print(confusion_matrix["fields"]["name"]["overall"]["tp"])
         """
-        # Start with the recursive result (already has basic confusion matrix metrics)
+        # Step 1: Start with the recursive result (already has basic confusion matrix metrics)
         confusion_matrix = recursive_result
 
-        # Step 1: Add universal aggregate metrics to all nodes
+        # Step 2: Add universal aggregate metrics to all nodes
         # This rolls up child metrics to parent nodes
         confusion_matrix = self.aggregate_calculator.calculate_aggregate_metrics(
             confusion_matrix
         )
 
-        # Step 2: Add derived metrics if requested
+        # Step 3: Add derived metrics if requested
         # This calculates precision, recall, F1, accuracy from basic metrics
         if add_derived_metrics:
             confusion_matrix = self.derived_calculator.add_derived_metrics_to_result(

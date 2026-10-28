@@ -35,7 +35,7 @@ opposed to which markup it emits.
 Three states, and they must stay distinguishable:
 
 - `None`: no records collected. `compare_with()` writes the `non_matches` key only under
-  `document_non_matches=True`, and `ProcessEvaluation.non_matches` is `None` when the bulk
+  `document_non_matches=True`, with or without `evaluator_format=True`, and `ProcessEvaluation.non_matches` is `None` when the bulk
   evaluator was built with `document_non_matches=False`. Says nothing about whether fields
   matched, so the section reports the records as missing.
 - `[]`: collected, none produced. The only state that may claim success.
