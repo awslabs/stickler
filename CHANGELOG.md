@@ -346,11 +346,13 @@ Each release links to full notes on the
 
 - Corrected which paths in `BulkStructuredModelEvaluator` `field_metrics` get a
   `mean_score`. The guides said `compare_with()` scores only the list parent of a
-  `List[StructuredModel]`. An object inside a list element (`items.addr`) is
-  scored too. Leaves and primitive lists anywhere inside an element
-  (`items.name`, `items.addr.city`, `items.tags`) carry confusion-matrix counts
-  but no `mean_score`, and only from element pairs that met the match
-  threshold: a pair below it emits no element fields at all. Scoring is
+  `List[StructuredModel]`. A list element's own object and `List[StructuredModel]`
+  fields (`items.addr`, `items.parts`) are scored too, but each document's value
+  is its first matched element pair's score, not a mean over pairs, so it
+  depends on element order. Every other path inside an element (`items.name`,
+  `items.tags`, `items.addr.city`, `items.addr.geo`) carries confusion-matrix
+  counts but no `mean_score`. All of them count only element pairs that met the
+  match threshold: a pair below it emits no element fields at all. Scoring is
   unchanged ([#249](https://github.com/awslabs/stickler/issues/249))
 
 - Corrected the last row of the 1.0.0 table under "The element gate judges a
