@@ -234,7 +234,7 @@ result = gt.compare_with(pred)
 - `x-aws-stickler-weight`: field importance weight (default: 1.0)
 - `x-aws-stickler-clip-under-threshold`: clip scores below threshold to 0.0 (boolean, default: true; false on a free-form object)
 
-`x-aws-stickler-comparator` and `-comparator-config` raise on an object with `properties`: it is scored field by field, so it has no comparator.
+An object with `properties` is scored field by field, so `x-aws-stickler-comparator` has no effect there and warns; only the `threshold` in `-comparator-config` is read. On an array of models neither is read, and both warn. The config path does the same for `comparator` and `comparator_config` on `structured_model`, `optional_structured_model` and `list_structured_model`, except that `comparator` on `list_structured_model` raises.
 
 **Object-level extensions**, valid on the root schema or on any object-typed property:
 

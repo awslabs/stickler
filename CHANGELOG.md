@@ -82,18 +82,22 @@ Each release links to full notes on the
   merging the two readers into one implementation
   ([#383](https://github.com/awslabs/stickler/issues/383))
 
-- **Breaking:** a Stickler config and a JSON Schema now resolve an unstated
-  `threshold` and `clip_under_threshold` the way the Python path does. Both
-  importers filled in their own defaults (0.5 and `true`) before building the
-  field, so every imported field read as "the author stated this", and the two
-  defaults that key on that were skipped:
+- **Breaking:** fixes to the Stickler-config and JSON Schema importers, so an
+  unstated `threshold` and `clip_under_threshold` resolve as the documented
+  Python path (`ComparableField`) resolves them. Both importers filled in their
+  own defaults (0.5 and `true`) before building the field, so every imported
+  field read as "the author stated this", and the two defaults that key on that
+  were skipped. Verdicts move wherever a field relied on that:
   - **A threshold named on the comparator reaches the field.**
     `"comparator_config": {"threshold": 0.9}` (or
     `x-aws-stickler-comparator-config`) with no field `threshold` gated at the
     importer's own default instead (0.5 for a string), so a pair scoring 0.78
     was a TP there and an FD in Python. It is 0.9 on all
     three paths now. A field threshold still wins, and a comparator threshold
-    outranks an inferred one
+    outranks an inferred one. This includes a `structured_model` or
+    `optional_structured_model` field and an object with `properties`, where
+    `ComparableField(comparator=X(threshold=0.9))` also gates at 0.9; the
+    config path dropped it there and the schema path did too
     ([#334](https://github.com/awslabs/stickler/issues/334)).
   - **A mapping field keeps its partial credit.** A `dict` field naming a
     comparator, or a list of them, defaulted to `clip_under_threshold: true`,
@@ -105,17 +109,10 @@ Each release links to full notes on the
   Any other field that states neither is unchanged. The schema path's
   free-form object default (`ExactComparator` at 1.0, #348 item 1) is unchanged
   too, except that its `clip_under_threshold` now reads `false`; Exact scores
-  0 or 1, so its scores do not move
-
-- **Breaking:** `x-aws-stickler-comparator` or
-  `x-aws-stickler-comparator-config` on an object property with `properties`
-  now raises `ValueError`. An object is scored field by field, so neither was
-  ever read, and `explain()` reported the placeholder `LevenshteinComparator`
-  as the author's explicit choice. The config path already refuses `comparator`
-  on a `structured_model` field. No released `to_json_schema()` writes either
-  key there, so exported schemas still import. Move it onto the properties
-  inside the object
-  ([#348](https://github.com/awslabs/stickler/issues/348))
+  0 or 1, so its scores do not move. `explain()` names an adopted comparator
+  threshold in `why` (`config: comparator_config.threshold=0.9 (overrides
+  above)`), as it already named a field `threshold`; on the schema path it now
+  names both
 
 - **Breaking:** `match_threshold` on a **primitive** field now raises
   `ValueError`. It is the object-level threshold; nothing read it on a leaf, so
@@ -225,6 +222,23 @@ Each release links to full notes on the
   changes.
 
 ### Fixed
+
+- **A comparator key on a nested model now warns instead of being dropped in
+  silence or refused.** A nested model is scored field by field, so its
+  comparator is never called, as on the Python path. `comparator` on a
+  `structured_model` or `optional_structured_model` field raised, and
+  `comparator_config` there, or on a `list_structured_model` field, was dropped
+  in silence; on the schema path `x-aws-stickler-comparator` and
+  `-comparator-config` on an object with `properties` were dropped, and on an
+  array of objects the config's `threshold` was reported by `explain()` as the
+  field's explicit threshold though nothing read it. Every such key that is
+  not read now emits a `UserWarning` naming it and where the effective setting
+  goes (`threshold` / `x-aws-stickler-threshold` on an object, `match_threshold`
+  / `x-aws-stickler-match-threshold` on a list); a `threshold` in the config of
+  a single nested model is read (see Changed). Nothing that loaded before
+  raises. `comparator` on a `list_structured_model` field, and `"auto"` on any
+  nested model, still raise
+  ([#348](https://github.com/awslabs/stickler/issues/348))
 
 - **The HTML report's field performance table now escapes field names.** It
   wrote each name into the page as raw HTML, while the chart beside it escaped

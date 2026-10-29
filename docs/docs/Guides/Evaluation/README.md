@@ -186,14 +186,14 @@ Add these extensions to any property in your JSON Schema to control comparison b
 
 | Extension | Type | Default | Purpose |
 |-----------|------|---------|---------|
-| `x-aws-stickler-comparator` | string | Type-dependent | Comparison algorithm (e.g., `"ExactComparator"`, `"LevenshteinComparator"`). Raises on an object with `properties`, which is scored field by field |
+| `x-aws-stickler-comparator` | string | Type-dependent | Comparison algorithm (e.g., `"ExactComparator"`, `"LevenshteinComparator"`). Has no effect, and warns, on an object with `properties`, which is scored field by field |
 | `x-aws-stickler-threshold` | number (0.0--1.0) | see below | Match classification cutoff. Read on a scalar, an object, and an array of scalars. **Ignored on an array of models** -- an array whose `items` declare `properties` -- where pairing is gated by the element class's `x-aws-stickler-match-threshold`, and a declared value warns there. Read, not ignored, on an array of free-form `{"type": "object"}` items |
 | `x-aws-stickler-weight` | number (> 0.0) | 1.0 | Field importance multiplier |
 | `x-aws-stickler-clip-under-threshold` | boolean | `true`, `false` on a free-form object | Zero out scores below threshold |
 | `x-aws-stickler-model-name` | string | `"DynamicModel"` | Name of the generated Python class (root level) |
 | `x-aws-stickler-match-threshold` | number (0.0--1.0) | 0.7 | Model-level matching threshold for Hungarian algorithm (root level) |
 | `x-aws-stickler-infer-unspecified` | boolean | `false` | Infer a comparator, threshold and weight for any property that names none, using the same rules `stickler.evaluate()` uses (root level) |
-| `x-aws-stickler-comparator-config` | object | `{}` | Keyword arguments passed to the named comparator |
+| `x-aws-stickler-comparator-config` | object | `{}` | Keyword arguments passed to the named comparator. On an object with `properties` only its `threshold` is read; on an array of models nothing is. Every key not read warns |
 
 An unstated `x-aws-stickler-threshold` does not resolve to one number. It depends
 on the position, because different positions fall back to different defaults:

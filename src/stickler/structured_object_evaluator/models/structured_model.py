@@ -981,9 +981,17 @@ class StructuredModel(BaseModel):
         Field-Level Extensions:
         -----------------------
         - x-aws-stickler-comparator: Comparator algorithm name (built-in or registered custom)
-        - x-aws-stickler-threshold: Similarity threshold for match/no-match (0.0-1.0, default: 0.5)
+        - x-aws-stickler-comparator-config: Keyword arguments for that comparator
+        - x-aws-stickler-threshold: Similarity threshold for match/no-match (0.0-1.0,
+          default: a threshold in x-aws-stickler-comparator-config, else the
+          type default, such as 0.5 for a string and 0.7 for a nested object)
         - x-aws-stickler-weight: Field importance in overall scoring (>0.0, default: 1.0)
-        - x-aws-stickler-clip-under-threshold: Clip scores below threshold to 0.0 (bool, default: true)
+        - x-aws-stickler-clip-under-threshold: Clip scores below threshold to 0.0
+          (bool, default: true; false on a free-form object)
+
+        An object with properties is scored field by field, so a comparator on
+        it, and any comparator-config key but threshold, has no effect and emits
+        a UserWarning. On an array of objects no comparator config is read.
 
         Model-Level Extensions:
         -----------------------
