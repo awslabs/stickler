@@ -1115,6 +1115,30 @@ class TestAllOfRaisesOnlyWhereNothingReadsTheKeys:
     def test_an_allof_that_builds_nothing_is_left_alone(self, schema):
         StructuredModel.from_json_schema(schema)
 
+    @pytest.mark.parametrize(
+        "other",
+        (
+            {"type": "string", "not": {"$ref": "#/$defs/Addr"}},
+            {"type": "object", "additionalProperties": {"$ref": "#/$defs/Addr"}},
+            {"type": "string", "if": {"$ref": "#/$defs/Addr"}},
+        ),
+        ids=("not", "additionalProperties", "if"),
+    )
+    def test_a_reference_that_builds_nothing_does_not_excuse_it(self, other):
+        # These positions reach `Addr` but build no class from it, so its model
+        # keys are still read nowhere and the `allOf` must raise.
+        with pytest.raises(ValueError, match="allOf"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {
+                        "w": {"allOf": [{"$ref": "#/$defs/Addr"}]},
+                        "x": other,
+                    },
+                    "$defs": {"Addr": _KEYED},
+                }
+            )
+
 
 class TestAListFormTypeBesideARef:
     """`["object", "null"]` beside a `$ref` builds one class, as `"object"` does.

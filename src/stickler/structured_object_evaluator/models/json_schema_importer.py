@@ -184,8 +184,7 @@ def _reject_unknown_extensions(
     # the array property instead; the message has to name both positions.
     beside_ref = (
         "property that uses this definition: beside its '$ref', or on the array "
-        "property when the definition is its 'items' (an array pairs its elements "
-        "by this definition's 'x-aws-stickler-match-threshold')"
+        "property when the definition is its 'items'"
     )
     if scope in ("model", "definition"):
         # A definition is a type that several positions can `$ref`, and not all
@@ -1010,15 +1009,14 @@ class JsonSchemaImporter:
             target, target_path, entry, entry_body = resolve(ref)
             if entry is not None:
                 pending.append((entry, entry_body, built))
-            if reads:
+            # Only a position that builds a class reads the model keys it
+            # reaches: a `$ref` under `not` or `additionalProperties` builds
+            # nothing, so it must not excuse an `allOf` that drops them.
+            if reads and built:
                 read.update(id(hop) for hop, _ in chain(node, ""))
                 # The class is built from the `$ref` target, which reads its own
                 # model keys. Only the root reads the ones beside its `$ref`.
-                if (
-                    built
-                    and isinstance(ref, str)
-                    and scope in ("model", "field_or_model")
-                ):
+                if isinstance(ref, str) and scope in ("model", "field_or_model"):
                     declared = sorted(k for k in node if k in _KNOWN_MODEL_EXTENSIONS)
                     if declared:
                         raise ValueError(
