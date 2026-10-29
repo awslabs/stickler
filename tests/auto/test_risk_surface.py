@@ -35,6 +35,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    Json,
     PlainSerializer,
     ValidationError,
     field_serializer,
@@ -1001,6 +1002,42 @@ class TestExcludedFieldsOnAStructuredModel:
         inv = Invoice(vendor=Party(name="Acme", internal_ref="r1"))
         assert Invoice.from_json(inv.model_dump()).vendor.name == "Acme"
 
+    def test_evaluate_does_not_refill_an_unset_excluded_field(self):
+        """Only a value that was set is put back; an unset one keeps its
+        default, which validation never checks."""
+
+        class Party(StructuredModel):
+            name: str = ComparableField()
+            internal_ref: str = ComparableField(exclude=True)
+
+        class Credential(BaseModel):
+            token: str = Field(None, exclude=True)
+
+        class Account(StructuredModel):
+            cred: Credential = ComparableField()
+
+        r = stickler.evaluate(Party(name="Acme"), Party(name="Acme"))
+        assert r.field_scores == {"name": 1.0, "internal_ref": 1.0}
+        a = Account(cred=Credential())
+        assert stickler.evaluate(a, a).overall_score == pytest.approx(1.0)
+        gt, pred = (
+            Party(name="A", internal_ref="r1"),
+            Party(name="A", internal_ref="zz"),
+        )
+        r = stickler.evaluate(gt, pred)
+        assert r.field_scores == gt.compare_with(pred)["field_scores"]
+        assert r.field_scores["internal_ref"] == pytest.approx(0.0)
+
+    def test_an_excluded_json_field_is_refilled_as_json_text(self):
+        class S(StructuredModel):
+            name: str = ComparableField(default="")
+            blob: Optional[Json[dict]] = ComparableField(default=None, exclude=True)
+
+        r = stickler.evaluate(
+            S(name="a", blob='{"k": 1}'), S(name="a", blob='{"k": 2}')
+        )
+        assert r.field_scores["blob"] == pytest.approx(0.0)
+
     def test_from_json_adds_no_key_the_input_lacked(self):
         """No extra_fields key and no default-valued excluded field: either
         changes which Union arm validates, and reaches a before-validator."""
@@ -1100,6 +1137,48 @@ class TestExcludedFieldsOnAStructuredModel:
         )
         assert (t.mid.m["k"].hid, t.mid.rows[0][0].hid) == ("h1", "h2")
         assert t.mid.answer.reasoning == "r"
+
+    def test_an_excluded_field_scored_as_one_value_is_not_published(self):
+        """Only a StructuredModel scored field by field gets its excluded
+        fields back. A plain model under one, and a StructuredModel inside a
+        Union, Any or Dict field, are scored as one value."""
+
+        class Cred(BaseModel):
+            token: Optional[str] = Field(None, exclude=True)
+            user: str = ""
+
+        class Account(StructuredModel):
+            name: str = ComparableField(default="")
+            cred: Optional[Cred] = ComparableField(default=None)
+
+        r = stickler.evaluate(
+            Account(name="n", cred=Cred(token="SECRET-GT", user="alice")),
+            Account(name="n", cred=Cred(token="SECRET-PRED", user="bob")),
+        )
+        assert r.non_matches
+        assert "SECRET" not in repr(r.non_matches)
+
+        class S(StructuredModel):
+            name: str = ComparableField(default="n")
+            secret: Optional[str] = ComparableField(default=None, exclude=True)
+
+        class B(BaseModel):
+            other: int = 0
+
+        class M(BaseModel):
+            k: str = "k"
+            u: Union[S, B]
+            anyv: Any = None
+            ds: Dict[str, S] = {}
+
+        def m(secret):
+            return M(
+                u=S(secret=secret), anyv=S(secret=secret), ds={"a": S(secret=secret)}
+            )
+
+        r = stickler.evaluate(m("SECRET-GT"), m("SECRET-PRED"))
+        assert r.overall_score == pytest.approx(1.0)
+        assert "SECRET" not in repr(r.non_matches)
 
 
 class TestNullability:

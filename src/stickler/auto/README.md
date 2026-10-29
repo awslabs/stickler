@@ -159,14 +159,18 @@ fixes two things:
   and everything under it validate through their own config, so they get the
   key that validation reads: an alias stays, and a `serialization_alias`, which
   validation never reads, becomes the field name.
-- Inside a `StructuredModel`, a field marked `exclude=True` or `exclude_if` is
-  dumped from its annotation and added back, so `evaluate()` scores it as
-  `compare_with()` does ([#379](https://github.com/awslabs/stickler/issues/379)).
-  Annotated serializers and the parent's `ser_json_*` settings apply to it; a
-  `@field_serializer` does not. One that fails to dump stays out.
-  `StructuredModel.extra_fields` is the engine's own and is never added. On a
-  plain model nothing is added back: the shadow model has no such field (see
-  Honesty rules).
+- On a `StructuredModel` scored field by field (the top level, or reached only
+  through model and list-of-model fields), a field marked `exclude=True` or
+  `exclude_if` that was set is dumped from its annotation and added back, so
+  `evaluate()` scores it as `compare_with()` does
+  ([#379](https://github.com/awslabs/stickler/issues/379)). Annotated
+  serializers and the parent's `ser_json_*` settings apply to it; a
+  `@field_serializer` does not. One that fails to dump stays out, and an unset
+  one keeps its default. `StructuredModel.extra_fields` is the engine's own and
+  is never added. Nothing is added to a plain model (see Honesty rules), below
+  a plain model a `StructuredModel` holds, or inside a `Union`, `Any`, `Dict`
+  or nested-list field: each is scored as one value, so an added field would
+  only be published in `non_matches`.
 
 A field holding a model with nothing left to score is still dumped, and input
 data can carry an excluded field. The shadow model sets

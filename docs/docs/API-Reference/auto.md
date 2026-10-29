@@ -106,7 +106,7 @@ graded, and reporting a mismatch would publish a value the author chose not to s
   value. A required field it can omit is not required.
 - **A `StructuredModel` is different.** Its `ComparableField`s declare what is compared, and
   `exclude` there only affects serialization, so the field is scored by `compare_with()` and by
-  `stickler.evaluate()` alike.
+  `stickler.evaluate()` alike. A plain model's excluded field is not scored under one either.
 - **To score an excluded field,** remove `exclude`, or evaluate an explicit `StructuredModel`
   that declares the field.
 

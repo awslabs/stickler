@@ -56,6 +56,7 @@ from ..structured_object_evaluator.models.structured_model import (
 )
 from ..structured_object_evaluator.models.threshold_helper import ThresholdHelper
 from .builder import (
+    _field_kind,
     has_exclude_if,
     is_excluded,
     specs_for,
@@ -402,7 +403,7 @@ def _dump(instance: BaseModel) -> Dict[str, Any]:
     return _restore(instance, instance.model_dump(mode="json"), own_keys=False)
 
 
-def _restore(value: Any, dumped: Any, own_keys: bool) -> Any:
+def _restore(value: Any, dumped: Any, own_keys: bool, refill: bool = True) -> Any:
     """Re-key and refill ``dumped`` (the dump of ``value``) for the shadow model.
 
     - A plain model's shadow reads field names, so alias keys
@@ -410,10 +411,16 @@ def _restore(value: Any, dumped: Any, own_keys: bool) -> Any:
       ``StructuredModel`` validates through its own classes, so it and
       everything under it (``own_keys``) get the key validation reads instead:
       an alias stays, a ``serialization_alias`` becomes the field name.
-    - Inside a ``StructuredModel`` (``own_keys``), a field marked
-      ``exclude=True`` or ``exclude_if`` that is missing from the dump is
-      dumped from its annotation and added back, so ``evaluate()`` scores it as
-      ``compare_with()`` does (#379). One that fails to dump stays out.
+    - On a ``StructuredModel`` scored field by field (``refill``: the top
+      level, or reached only through model and list-of-model fields), a field
+      marked ``exclude=True`` or ``exclude_if`` that was set and is missing
+      from the dump is dumped from its annotation and added back, so
+      ``evaluate()`` scores it as ``compare_with()`` does (#379). One that
+      fails to dump stays out, and an unset one keeps its default, which
+      validation never checks. Nothing is added to a plain model, below a
+      plain model a ``StructuredModel`` holds, or inside a ``Union``, ``Any``,
+      ``Dict`` or nested-list field: each is scored as one value, so a refilled
+      field would only be scored and published in ``non_matches``.
 
     The walk does not enter a ``RootModel``, a ``model_serializer``, anything a
     serializer produced, or a container whose length changed: that output is
@@ -425,9 +432,14 @@ def _restore(value: Any, dumped: Any, own_keys: bool) -> Any:
         cls = type(value)
         if not isinstance(dumped, dict) or _is_opaque(cls):
             return dumped
-        own_keys = own_keys or isinstance(value, StructuredModel)
+        is_structured = isinstance(value, StructuredModel)
+        own_keys = own_keys or is_structured
         if _passes_through(cls, own_keys):
             return dumped
+        # A plain model under a StructuredModel validates as itself and is
+        # scored as one value, so refilling stops at it.
+        refill_fields = refill and is_structured
+        refill_below = refill and (is_structured or not own_keys)
         plan = _field_plan(cls)
         # A fresh dict: renaming in place would let one field's alias that is
         # another field's name overwrite it.
@@ -442,14 +454,19 @@ def _restore(value: Any, dumped: Any, own_keys: bool) -> Any:
                 changed = changed or present
                 continue
             key = entry.valid_key if own_keys else entry.name
+            below = refill_below and entry.structured
             if present:
                 item = original = dumped[entry.dumped_key]
                 if entry.descend and not entry.serialized:
-                    item = _restore(raw, item, own_keys)
+                    item = _restore(raw, item, own_keys, below)
                 out[key] = item
                 changed = changed or key != entry.dumped_key or item is not original
-            elif entry.excluded and own_keys:
-                item = _dump_excluded(cls, entry, raw, own_keys)
+            elif (
+                entry.excluded
+                and refill_fields
+                and entry.name in value.model_fields_set
+            ):
+                item = _dump_excluded(cls, entry, raw, own_keys, below)
                 if item is not _MISSING:
                     out[key] = item
                     changed = True
@@ -458,7 +475,7 @@ def _restore(value: Any, dumped: Any, own_keys: bool) -> Any:
         if len(value) == len(dumped):
             out = None
             for i, (v, d) in enumerate(zip(value, dumped)):
-                r = d if isinstance(v, _LEAVES) else _restore(v, d, own_keys)
+                r = d if isinstance(v, _LEAVES) else _restore(v, d, own_keys, refill)
                 if out is None and r is not d:
                     out = dumped[:i]
                 if out is not None:
@@ -469,7 +486,7 @@ def _restore(value: Any, dumped: Any, own_keys: bool) -> Any:
         if len(value) == len(dumped):
             out = None
             for i, ((k, d), v) in enumerate(zip(dumped.items(), value.values())):
-                r = d if isinstance(v, _LEAVES) else _restore(v, d, own_keys)
+                r = d if isinstance(v, _LEAVES) else _restore(v, d, own_keys, refill)
                 if out is None and r is not d:
                     out = dict(itertools.islice(dumped.items(), i))
                 if out is not None:
@@ -494,6 +511,7 @@ class _FieldPlan(NamedTuple):
     dumped_key: str  # the key pydantic's default dump writes
     valid_key: str  # the key the class's own validation reads
     excluded: bool  # exclude=True or exclude_if
+    structured: bool  # holds a model scored field by field, or a list of them
     serialized: bool  # a serializer anywhere on the field
     models: Optional[frozenset]  # models the annotation can hold; None: unknown
 
@@ -586,6 +604,7 @@ def _build_field_plan(cls: Type[BaseModel]) -> Tuple[_FieldPlan, ...]:
                 dumped_key=dumped_key,
                 valid_key=_validation_key(cls, name, field, dumped_key),
                 excluded=is_excluded(field) or has_exclude_if(field),
+                structured=_field_kind(field.annotation) in ("model", "model_list"),
                 serialized=serialized,
                 models=_models_in(field.annotation),
             )
@@ -656,13 +675,14 @@ def _models_in(annotation: Any) -> Optional[frozenset]:
 
 
 def _dump_excluded(
-    cls: Type[BaseModel], entry: _FieldPlan, raw: Any, own_keys: bool
+    cls: Type[BaseModel], entry: _FieldPlan, raw: Any, own_keys: bool, refill: bool
 ) -> Any:
     adapter = _field_adapter(cls, entry.name)
     if adapter is None:
         return _MISSING
     try:
-        dumped = adapter.dump_python(raw, mode="json")
+        # round_trip: a Json[...] field dumps as the JSON text it validates from.
+        dumped = adapter.dump_python(raw, mode="json", round_trip=True)
     except (PydanticSerializationError, ValueError):
         # Before #379 this field never reached the dump at all, so a value that
         # cannot be dumped is left out as it always was, rather than aborting.
@@ -671,7 +691,7 @@ def _dump_excluded(
         # is left out too; undecodable bytes raise UnicodeDecodeError.
         return _MISSING
     if entry.descend and not entry.serialized:
-        return _restore(raw, dumped, own_keys)
+        return _restore(raw, dumped, own_keys, refill)
     return dumped
 
 
