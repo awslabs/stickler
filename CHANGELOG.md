@@ -213,13 +213,15 @@ Each release links to full notes on the
   `to_stickler_config()` now writes a mapping element as `List[Dict]`
   (`List[Optional[Dict]]` for an optional element), which `model_from_json()`
   re-imports as written; it wrote `List[Mapping]` or `List[Counter]`, which
-  `model_from_json()` refused with `Unknown type`. On a `from_pydantic()` model
+  `model_from_json()` refused with `Unknown type`, and `List[dict]` for a
+  `dict` element, which loaded and is now written `List[Dict]` too. On a `from_pydantic()` model
   it still writes `List[Any]`, which loads the same data. Both
   exports now carry the comparator, threshold, weight and clip the field
   resolves even when it is declared without `ComparableField`, so it scores as
-  the original did (`0.5`, not `0.0`, for one wrong key of two) unless the data
-  relied on coercion to the value type, which is not exported. Such a field was
-  refused by `model_from_json()` for having no comparator. One declared with a
+  the original did (`0.5` for one wrong key of two) unless the data relied on
+  coercion to the value type, which is not exported. Before, such a field could
+  not be re-imported: the JSON Schema path raised `ValidationError`, and
+  `model_from_json()` refused it for having no comparator. One declared with a
   plain `Field(default_factory=...)` now loads, but its exported config does
   not serialize with `json.dumps`, and `model_from_json()` rebuilds it as
   required, so a document that omits it raises `ValidationError`
