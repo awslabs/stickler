@@ -393,6 +393,30 @@ Each release links to full notes on the
   characters. Present since 0.1.3
   ([#431](https://github.com/awslabs/stickler/issues/431))
 
+### Documentation
+
+- Corrected which paths in `BulkStructuredModelEvaluator` `field_metrics` get a
+  `mean_score`. The guides said `compare_with()` scores only the list parent of a
+  `List[StructuredModel]`. A list element's own `StructuredModel` and
+  `List[StructuredModel]` fields (`items.addr`, `items.parts`) are scored too,
+  but each document's value is its first matched element pair's score, not a
+  mean over pairs, so it depends on element order
+  ([#428](https://github.com/awslabs/stickler/issues/428)). Every other path
+  inside an element (`items.name`, `items.tags`, `items.addr.city`,
+  `items.addr.geo`, a plain `BaseModel` field) carries confusion-matrix counts
+  but no `mean_score`. All of them count only element pairs that met the
+  match threshold: a pair below it emits no element fields at all. Scoring is
+  unchanged ([#249](https://github.com/awslabs/stickler/issues/249))
+
+- Corrected the last row of the 1.0.0 table under "The element gate judges a
+  PAIR, not a list". Under its bare `Optional[List[Any]]` heading,
+  `[Plain, NoteSM]` vs `[Plain, Note2SM]` scores `0.5`, not `1.0`, and scored
+  `0.0`, not `0.5`, under the list-wide gate. The published `1.0`, `0.5`, `1.0`
+  hold only with a comparator declared on `f`. The bare `0.5` is the refused
+  `Plain` pair (`[Plain]` vs `[Plain]` scores `0.0` bare), not the cross-class
+  rule. Scoring is unchanged
+  ([#338](https://github.com/awslabs/stickler/issues/338))
+
 ## [1.0.0] - 2026-09-11
 
 ### Added
