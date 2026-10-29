@@ -117,9 +117,10 @@ root `anyOf`/`oneOf`) raises.
 A `$defs` (or `definitions`) entry is a type, not a property. A definition with
 `properties` generates a class, and its object-level keys configure that class for every
 property, `items` or `anyOf`/`oneOf` arm that `$ref`s it. Field-level keys describe one
-use of that type, so they go beside the `$ref` on the referencing property, or on the
-array property when the definition is its `items`; inside a definition they raise, as a
-misspelled key does. Any other definition (a scalar, an array, a combiner, an alias, a
+use of that type, so they go beside the `$ref` on the referencing property; inside a
+definition they raise, as a misspelled key does. When the definition is an array's `items`,
+the array property reads only `x-aws-stickler-weight`, and the elements pair by the
+definition's `x-aws-stickler-match-threshold`. Any other definition (a scalar, an array, a combiner, an alias, a
 mapping) generates no class, so it accepts neither set. A definition is checked once a
 `$ref` reaches it; one nothing references is left alone:
 

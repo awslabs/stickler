@@ -247,7 +247,7 @@ extensions from other tooling are left alone. A nested `["object", "null"]` node
 reads the same keys as an `"object"` one; the root must be `"object"`. A `$defs`
 entry that a `$ref` reaches is checked: with `properties` it reads only
 object-level keys, otherwise none; field-level keys go beside the `$ref` that
-uses it, or on the array property for `items`. Object-level keys beside a
+uses it (for `items`, only the weight, on the array property). Object-level keys beside a
 non-root `$ref` are not read (they go on the target), nor on an `allOf` arm or a
 definition reached only through `allOf` or a root `$ref`, so they raise.
 

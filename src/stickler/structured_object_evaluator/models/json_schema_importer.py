@@ -181,10 +181,18 @@ def _reject_unknown_extensions(
     # belong instead, so a misplaced key is answered with its position.
     misplaced: Tuple[Tuple[str, FrozenSet[str]], ...]
     # `items` does not read field keys, so a definition used there takes them on
-    # the array property instead; the message has to name both positions.
+    # the array property instead; the message has to name both positions. An
+    # array of objects reads only the weight there, and pairs its elements by
+    # the definition's match threshold.
     beside_ref = (
         "property that uses this definition: beside its '$ref', or on the array "
         "property when the definition is its 'items'"
+    )
+    beside_ref_object = (
+        "property that uses this definition: beside its '$ref', or, for "
+        "'x-aws-stickler-weight', on the array property when the definition is "
+        "its 'items' (its elements pair by this definition's "
+        "'x-aws-stickler-match-threshold')"
     )
     if scope in ("model", "definition"):
         # A definition is a type that several positions can `$ref`, and not all
@@ -197,7 +205,7 @@ def _reject_unknown_extensions(
             misplaced = (("field", _DOCUMENTED_FIELD_EXTENSIONS),)
             where = f"object '{field_path}'"
         else:
-            misplaced = ((beside_ref, _DOCUMENTED_FIELD_EXTENSIONS),)
+            misplaced = ((beside_ref_object, _DOCUMENTED_FIELD_EXTENSIONS),)
             where = f"definition '{field_path}'"
     elif scope == "value_definition":
         # A definition that generates no class (a scalar, an array, a combiner,

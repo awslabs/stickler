@@ -110,7 +110,8 @@ Each release links to full notes on the
   `anyOf`/`oneOf` arm that `$ref`s it. A field-level key (`comparator`,
   `comparator-config`, `threshold`, `weight`, `clip-under-threshold`) inside
   one now raises and names where it belongs: beside the `$ref` on the property
-  that uses it, or on the array property when it is used as `items`. Honouring
+  that uses it, or, for the weight, on the array property when it is used as
+  `items`. Honouring
   it instead would make one key work on a property `$ref` and vanish on an
   `items` `$ref`, which does not read field keys. Any other definition (a
   scalar, an array, a combiner, an alias `$ref`, a mapping) generates no class
