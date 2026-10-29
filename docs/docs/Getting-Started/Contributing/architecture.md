@@ -211,14 +211,14 @@ The source header documents preserved behavioral bugs:
 
 #### Threshold-Gated Recursion Internals
 
-Field-level detail is only generated for object pairs with `similarity >= match_threshold`. Poor matches are treated as atomic failures without recursive field analysis. This is both a correctness decision (poor matches don't have meaningful field-level breakdowns) and a performance optimization.
+Field-level detail is only generated for object pairs with `similarity >= match_threshold` (see [Meeting a Threshold](../thresholds-and-metrics.md#meeting-a-threshold)). Poor matches are treated as atomic failures without recursive field analysis. This is both a correctness decision (poor matches don't have meaningful field-level breakdowns) and a performance optimization.
 
 ```python
-# See: structured_list_comparator.py:243-249
+# See: structured_list_comparator.py:245-249
 good_matched_pairs = [
     (gt_idx, pred_idx, similarity)
     for gt_idx, pred_idx, similarity in matched_pairs
-    if similarity >= match_threshold
+    if ThresholdHelper.is_above_threshold(similarity, match_threshold)
 ]
 ```
 

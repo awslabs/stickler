@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from .comparison_helper_base import ComparisonHelperBase
 from .null_helper import NullHelper
 from .reporting_context import ReportingContext
+from .threshold_helper import ThresholdHelper
 
 
 class FieldComparisonHelper(ComparisonHelperBase):
@@ -148,7 +149,10 @@ class FieldComparisonHelper(ComparisonHelperBase):
                 
                 # Get field configuration for threshold
                 info = gt_object._get_comparison_info(nested_field_name)
-                field_is_match = field_score >= info.threshold
+                score_is_match = ThresholdHelper.is_above_threshold(
+                    field_score, info.threshold
+                )
+                field_is_match = score_is_match
                 field_result = field_results.get(nested_field_name)
                 if field_result is not None:
                     metrics = field_result.get("overall", field_result)
@@ -163,7 +167,7 @@ class FieldComparisonHelper(ComparisonHelperBase):
                 if (
                     field_result is not None
                     and "fields" in field_result
-                    and field_is_match != (field_score >= info.threshold)
+                    and field_is_match != score_is_match
                 ):
                     if field_is_match:
                         score_text = f"{field_score:.3f}"
