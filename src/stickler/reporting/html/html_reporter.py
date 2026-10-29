@@ -181,6 +181,14 @@ class EvaluationHTMLReporter:
                     line = line.strip()
                     if line:
                         doc_data = json.loads(line)
+                        # The page finds the selected document by comparing ids
+                        # as strings, and the tables write str(doc_id), so a
+                        # numeric id (ordinary from a DataFrame) is embedded as
+                        # one. Left as a number, selecting it matched nothing and
+                        # the page kept showing aggregate numbers.
+                        doc_id = doc_data.get("doc_id") if isinstance(doc_data, dict) else None
+                        if doc_id is not None and not isinstance(doc_id, str):
+                            doc_data["doc_id"] = str(doc_id)
                         individual_docs.append(doc_data)
         except Exception as e:
             logger.warning(f"Failed to load individual results from {jsonl_path}: {e}")
