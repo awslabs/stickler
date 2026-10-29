@@ -211,13 +211,21 @@ A list of mappings (`List[Dict[str, str]]`, `List[Mapping[...]]`) exports free-f
 optional element exports as `["object", "null"]` and `List[Optional[Dict]]`. They re-import as
 `List[dict]` and `List[Dict]` respectively (`List[Optional[dict]]` and `List[Optional[Dict]]` for an
 optional element) with the comparator, threshold, weight and clip the field resolves, declared or
-default, so it scores as the original did. The same holds for a model built with `from_pydantic()`,
-except that `to_stickler_config()` writes its element as `List[Any]`, which loads the same data. The
-value type is not exported, so the re-imported field does not coerce its values. A field declared
-with a plain `Field(default_factory=...)` comes back from `to_stickler_config()` as required
-([#435](https://github.com/awslabs/stickler/issues/435)). A mapping field that is not in a list, and a list whose element is a union
-such as `List[Union[Dict, str]]`, still export as a string
-([#349](https://github.com/awslabs/stickler/issues/349)).
+default, so it scores as the original did. The value type is not exported, so the re-imported
+field does not coerce its values.
+
+A model built with `from_pydantic()` exports the same way, with two differences. Its element accepts
+any value, so a malformed prediction is scored rather than rejected; `to_stickler_config()` keeps
+that by writing `List[Any]`, but the `to_json_schema()` re-import validates each element as a dict,
+so a prediction element that is not a mapping raises instead of scoring `0.0`. An `Optional` written
+inside `Annotated` (`List[Annotated[Optional[Dict], ...]]`) loses its `null`; write
+`Optional[Annotated[...]]` instead.
+
+A field declared with a plain `Field(default_factory=...)` comes back from `to_stickler_config()`
+with no usable default: the config does not serialize with `json.dumps`, and the re-imported field
+is required ([#435](https://github.com/awslabs/stickler/issues/435)). A mapping field that is not in
+a list, and a list whose element is a union such as `List[Union[Dict, str]]`, still export as a
+string ([#349](https://github.com/awslabs/stickler/issues/349)).
 
 ## Round-Trip Examples
 

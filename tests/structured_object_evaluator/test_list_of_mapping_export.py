@@ -8,7 +8,7 @@ export, re-import, load the ORIGINAL data, and require the same scores.
 from typing import Any, Dict, List, Mapping, MutableMapping, Optional, OrderedDict
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
@@ -235,6 +235,7 @@ def test_undeclared_field_reexports_the_same_schema():
 
 @pytest.mark.xfail(
     strict=True,
+    raises=ValidationError,
     reason="#435: a plain Field(default_factory=...) exports default PydanticUndefined",
 )
 def test_undeclared_factory_default_survives_stickler_config():

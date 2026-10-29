@@ -206,7 +206,9 @@ Each release links to full notes on the
   `Mapping`, optionally `Optional`) now exports `items: {"type": "object"}`
   (`["object", "null"]` for an optional element) and re-imports as
   `List[dict]` (`List[Optional[dict]]` for an optional element), including on
-  a model built with `from_pydantic()`. A consumer reading the exported schema
+  a model built with `from_pydantic()`, with the two limits the
+  [export guide](https://awslabs.github.io/stickler/Advanced/model-export/)
+  states. A consumer reading the exported schema
   sees the `items` type change from `"string"` to `"object"`.
   `to_stickler_config()` now writes a mapping element as `List[Dict]`
   (`List[Optional[Dict]]` for an optional element), which `model_from_json()`
@@ -218,8 +220,9 @@ Each release links to full notes on the
   the original did (`0.5`, not `0.0`, for one wrong key of two) unless the data
   relied on coercion to the value type, which is not exported. Such a field was
   refused by `model_from_json()` for having no comparator. One declared with a
-  plain `Field(default_factory=...)` now loads, but `model_from_json()` rebuilds
-  it as required, so a document that omits it raises `ValidationError`
+  plain `Field(default_factory=...)` now loads, but its exported config does
+  not serialize with `json.dumps`, and `model_from_json()` rebuilds it as
+  required, so a document that omits it raises `ValidationError`
   ([#435](https://github.com/awslabs/stickler/issues/435)). A declared
   `ComparableField` whose annotation resolves only at `model_rebuild()` now
   exports ANLS* with clip off, what the engine scores with, instead of
