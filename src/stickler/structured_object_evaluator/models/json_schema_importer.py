@@ -1012,6 +1012,22 @@ class JsonSchemaImporter:
                 pending.append((entry, entry_body, built))
             if reads:
                 read.update(id(hop) for hop, _ in chain(node, ""))
+                # The class is built from the `$ref` target, which reads its own
+                # model keys. Only the root reads the ones beside its `$ref`.
+                if (
+                    built
+                    and isinstance(ref, str)
+                    and scope in ("model", "field_or_model")
+                ):
+                    declared = sorted(k for k in node if k in _KNOWN_MODEL_EXTENSIONS)
+                    if declared:
+                        raise ValueError(
+                            f"Stickler extension '{declared[0]}' beside the '$ref' "
+                            f"at '{path}' is not read: the class is built from "
+                            f"'{target_path or ref}', which reads only its own "
+                            "keys. Put it there. Left in place it would be dropped "
+                            "silently."
+                        )
 
             if "patternProperties" in node:
                 location = f" at '{path}'" if path else ""
