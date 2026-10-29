@@ -903,14 +903,21 @@ class JsonSchemaImporter:
                     if key in _KNOWN_MODEL_EXTENSIONS
                 }
 
-                metadata["anyOf"] = [
-                    {
-                        **deepcopy(non_metadata),
-                        **(model_keys if value == "object" else {}),
-                        "type": value,
-                    }
-                    for value in raw_type
-                ]
+                def arm(value: Any) -> Dict[str, Any]:
+                    # The null arm takes no structural keywords: a `$ref` copied
+                    # onto it parsed as a second object arm, so the node became
+                    # a union of two classes scored with ExactComparator.
+                    if value == "null":
+                        return {"type": "null"}
+                    if value != "object":
+                        return {**deepcopy(non_metadata), "type": value}
+                    # An arm `type` beside a `$ref` makes the parser merge the
+                    # two into a new class. A property typed `"object"` builds
+                    # the referenced class, so the arm keeps only the `$ref`.
+                    typed = {} if "$ref" in non_metadata else {"type": value}
+                    return {**deepcopy(non_metadata), **model_keys, **typed}
+
+                metadata["anyOf"] = [arm(value) for value in raw_type]
                 prepared = metadata
 
             return prepared
