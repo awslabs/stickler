@@ -144,7 +144,7 @@ Object-level keys raise where no class reads them. Beside a `$ref` (except at th
 the class is built from the target, so they go on the target. An `allOf` arm (inline or
 `$ref`) is merged into one class that nothing configures, and a root `$ref` builds the root
 class, which reads the keys beside that `$ref`; these two raise only if no other position
-builds the same object.
+builds the same object (a `$ref` under `not`, `additionalProperties` or `if` builds nothing).
 
 With no extension specified, the property is parsed to a strict Python annotation and the comparator
 is chosen from that annotation, which is then widened back to the JSON value type so an invalid

@@ -104,7 +104,8 @@ Each release links to full notes on the
   silently where inline it raises. An entry no `$ref` reaches builds nothing and
   is not checked, so a dereferenced schema, which keeps the originals beside
   their inlined copies, imports as before; so does `$defs` inside `default` or
-  `examples` data. A definition with `properties` reads only the object-level keys,
+  `examples` data. A typo in a property of an unreached entry, or
+  `patternProperties` there, raised before and now imports. A definition with `properties` reads only the object-level keys,
   which configure the class it generates for every property, `items` or
   `anyOf`/`oneOf` arm that `$ref`s it. A field-level key (`comparator`,
   `comparator-config`, `threshold`, `weight`, `clip-under-threshold`) inside
@@ -120,7 +121,9 @@ Each release links to full notes on the
   keys; on an `allOf` arm, inline or through `$ref`, which is merged into one
   class at the defaults; and on a definition reached through a root `$ref`,
   where the root reads the keys beside the `$ref` instead. The last two raise
-  only when no other position builds the same object from its keys. Each of
+  only when no other position builds the same object from its keys; a `$ref`
+  under `not`, `additionalProperties` or `if` builds nothing, so it does not
+  count. Each of
   these resolved the default in silence (`x-aws-stickler-threshold: 0.88` in
   `$defs` gave `0.7`, `items: {"$ref": ..., "x-aws-stickler-match-threshold":
   0.93}` built at `0.7`), so a schema that imported before and now raises loses
