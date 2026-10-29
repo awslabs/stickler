@@ -349,7 +349,7 @@ Each release links to full notes on the
   `List[StructuredModel]`. A list element's own object and `List[StructuredModel]`
   fields (`items.addr`, `items.parts`) are scored too, but each document's value
   is its first matched element pair's score, not a mean over pairs, so it
-  depends on element order. Every other path inside an element (`items.name`,
+  depends on element order ([#428](https://github.com/awslabs/stickler/issues/428)). Every other path inside an element (`items.name`,
   `items.tags`, `items.addr.city`, `items.addr.geo`) carries confusion-matrix
   counts but no `mean_score`. All of them count only element pairs that met the
   match threshold: a pair below it emits no element fields at all. Scoring is
