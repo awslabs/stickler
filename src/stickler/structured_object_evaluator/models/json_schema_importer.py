@@ -790,9 +790,30 @@ class JsonSchemaImporter:
         )
         _mark_unstated(field, threshold=threshold_defaulted, clip=clip_inferred)
         if inferred is not None and inferred.provenance:
+            # Name what the schema took back from inference, as the config path
+            # does, so the trail cannot contradict the row it sits under: a
+            # declared or comparator-config threshold was reported while the
+            # trail still quoted the inferred `@0.95`.
+            overridden = [
+                f"x-aws-stickler-{key.replace('_', '-')}={extensions[key]!r}"
+                for key in ("threshold", "weight", "clip_under_threshold")
+                if key in extensions
+            ]
+            if (
+                declared_threshold is None
+                and "threshold" in author_config
+                and not threshold_defaulted
+            ):
+                overridden.append(
+                    "x-aws-stickler-comparator-config.threshold="
+                    f"{_named_comparator_threshold(comparator)!r}"
+                )
+            provenance = list(inferred.provenance)
+            if overridden:
+                provenance.append(f"schema: {', '.join(overridden)} (overrides above)")
             extra_callable = field.json_schema_extra
             if callable(extra_callable):
-                extra_callable._inferred_provenance = tuple(inferred.provenance)
+                extra_callable._inferred_provenance = tuple(provenance)
         return field
 
     @staticmethod

@@ -364,6 +364,18 @@ class FieldConverter:
                 for key in ("threshold", "weight", "clip_under_threshold")
                 if key in field_config
             ]
+            # A threshold adopted from `comparator_config` replaces the inferred
+            # one too, so it is named the same way. Without it the row reported
+            # 0.9 while the trail still quoted `@0.7`.
+            if (
+                "threshold" not in field_config
+                and "threshold" in comparator_config
+                and _named_comparator_threshold(comparator) is not None
+            ):
+                overridden.append(
+                    "comparator_config.threshold="
+                    f"{_named_comparator_threshold(comparator)!r}"
+                )
             if overridden:
                 provenance.append(f"config: {', '.join(overridden)} (overrides above)")
 

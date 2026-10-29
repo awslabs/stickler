@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 
+import stickler
 from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator.models.comparable_field import (
@@ -161,6 +162,82 @@ class TestAComparatorThresholdReachesTheFieldOnEveryPath:
             }
         )
         assert _info(cfg).threshold == _info(sch).threshold == 0.9
+
+
+def _why(model):
+    return stickler.eval_for(model).explain()["f"]
+
+
+class TestTheTrailRecordsAnAdoptedComparatorThreshold:
+    """`explain()` must not contradict its own row.
+
+    A comparator threshold replaces the inferred one, so the trail names it the
+    way it names a field `threshold`. It used to report 0.9 under a trail that
+    quoted only the inferred `@0.7` / `@0.95`.
+    """
+
+    def test_on_the_config_path(self):
+        entry = _why(
+            _config(
+                {
+                    "type": "str",
+                    "comparator": "auto",
+                    "comparator_config": {"threshold": 0.9},
+                }
+            )
+        )
+        assert entry["threshold"] == 0.9
+        assert entry["why"] == [
+            "type:str -> LevenshteinComparator@0.7",
+            "config: comparator_config.threshold=0.9 (overrides above)",
+        ]
+
+    def test_on_the_schema_path(self):
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "x-aws-stickler-infer-unspecified": True,
+                "properties": {
+                    "f": {
+                        "type": "number",
+                        "x-aws-stickler-comparator-config": {"threshold": 0.9},
+                    }
+                },
+            }
+        )
+        entry = _why(model)
+        assert entry["threshold"] == 0.9
+        assert entry["why"][-1] == (
+            "schema: x-aws-stickler-comparator-config.threshold=0.9 (overrides above)"
+        )
+
+    def test_the_schema_path_names_a_field_threshold_too(self):
+        """The same gap for `x-aws-stickler-threshold`, closed alongside."""
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "x-aws-stickler-infer-unspecified": True,
+                "properties": {
+                    "f": {"type": "number", "x-aws-stickler-threshold": 0.6}
+                },
+            }
+        )
+        assert _why(model)["why"][-1] == (
+            "schema: x-aws-stickler-threshold=0.6 (overrides above)"
+        )
+
+    def test_a_field_threshold_that_wins_is_the_only_one_named(self):
+        entry = _why(
+            _config(
+                {
+                    "type": "str",
+                    "comparator": "auto",
+                    "comparator_config": {"threshold": 0.9},
+                    "threshold": 0.6,
+                }
+            )
+        )
+        assert entry["why"][-1] == "config: threshold=0.6 (overrides above)"
 
 
 class TestAnUnstatedThresholdKeepsEachPathsDefault:
