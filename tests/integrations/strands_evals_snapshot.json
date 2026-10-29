@@ -1,0 +1,2430 @@
+{
+  "cases": {
+    "contact/all_wrong": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 11,
+        "fn": 0,
+        "tn": 0,
+        "tp": 0
+      },
+      "f1": 0.0,
+      "field_scores": {
+        "age": 0.0,
+        "birth_date": 0.0,
+        "country": 0.0,
+        "email": 0.0,
+        "height_m": 0.0,
+        "is_active": 0.0,
+        "name": 0.0,
+        "nickname": 0.0,
+        "status": 0.0,
+        "tier": 0.0,
+        "updated_at": 0.0
+      },
+      "matched": false,
+      "overall_score": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "test_pass": false
+    },
+    "contact/default_left": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 1,
+        "fn": 0,
+        "tn": 0,
+        "tp": 10
+      },
+      "f1": 0.952381,
+      "field_scores": {
+        "age": 1.0,
+        "birth_date": 1.0,
+        "country": 0.0,
+        "email": 1.0,
+        "height_m": 1.0,
+        "is_active": 1.0,
+        "name": 1.0,
+        "nickname": 1.0,
+        "status": 1.0,
+        "tier": 1.0,
+        "updated_at": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.909091,
+      "precision": 0.909091,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "contact/identical": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 11
+      },
+      "f1": 1.0,
+      "field_scores": {
+        "age": 1.0,
+        "birth_date": 1.0,
+        "country": 1.0,
+        "email": 1.0,
+        "height_m": 1.0,
+        "is_active": 1.0,
+        "name": 1.0,
+        "nickname": 1.0,
+        "status": 1.0,
+        "tier": 1.0,
+        "updated_at": 1.0
+      },
+      "matched": true,
+      "overall_score": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "contact/near_float_and_typo": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 11
+      },
+      "f1": 1.0,
+      "field_scores": {
+        "age": 1.0,
+        "birth_date": 1.0,
+        "country": 1.0,
+        "email": 1.0,
+        "height_m": 1.0,
+        "is_active": 1.0,
+        "name": 0.916667,
+        "nickname": 1.0,
+        "status": 1.0,
+        "tier": 1.0,
+        "updated_at": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.992424,
+      "precision": 1.0,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "contact/one_wrong_str": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 1,
+        "fn": 0,
+        "tn": 0,
+        "tp": 10
+      },
+      "f1": 0.952381,
+      "field_scores": {
+        "age": 1.0,
+        "birth_date": 1.0,
+        "country": 1.0,
+        "email": 0.0,
+        "height_m": 1.0,
+        "is_active": 1.0,
+        "name": 1.0,
+        "nickname": 1.0,
+        "status": 1.0,
+        "tier": 1.0,
+        "updated_at": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.909091,
+      "precision": 0.909091,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "contact/optional_invented": {
+      "confusion_matrix": {
+        "fa": 1,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 10
+      },
+      "f1": 0.952381,
+      "field_scores": {
+        "age": 1.0,
+        "birth_date": 1.0,
+        "country": 1.0,
+        "email": 1.0,
+        "height_m": 1.0,
+        "is_active": 1.0,
+        "name": 1.0,
+        "nickname": 0.0,
+        "status": 1.0,
+        "tier": 1.0,
+        "updated_at": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.909091,
+      "precision": 0.909091,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "contact/optional_missing": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 1,
+        "tn": 0,
+        "tp": 10
+      },
+      "f1": 0.952381,
+      "field_scores": {
+        "age": 1.0,
+        "birth_date": 1.0,
+        "country": 1.0,
+        "email": 1.0,
+        "height_m": 1.0,
+        "is_active": 1.0,
+        "name": 1.0,
+        "nickname": 0.0,
+        "status": 1.0,
+        "tier": 1.0,
+        "updated_at": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.909091,
+      "precision": 1.0,
+      "recall": 0.909091,
+      "test_pass": true
+    },
+    "contact/wrong_date_bool_literal": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 3,
+        "fn": 0,
+        "tn": 0,
+        "tp": 8
+      },
+      "f1": 0.842105,
+      "field_scores": {
+        "age": 1.0,
+        "birth_date": 0.0,
+        "country": 1.0,
+        "email": 1.0,
+        "height_m": 1.0,
+        "is_active": 0.0,
+        "name": 1.0,
+        "nickname": 1.0,
+        "status": 1.0,
+        "tier": 0.0,
+        "updated_at": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.727273,
+      "precision": 0.727273,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "contact/wrong_int_and_enum": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 2,
+        "fn": 0,
+        "tn": 0,
+        "tp": 9
+      },
+      "f1": 0.9,
+      "field_scores": {
+        "age": 0.0,
+        "birth_date": 1.0,
+        "country": 1.0,
+        "email": 1.0,
+        "height_m": 1.0,
+        "is_active": 1.0,
+        "name": 1.0,
+        "nickname": 1.0,
+        "status": 0.0,
+        "tier": 1.0,
+        "updated_at": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.818182,
+      "precision": 0.818182,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "invoice/all_wrong": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 9,
+        "fn": 3,
+        "tn": 0,
+        "tp": 0
+      },
+      "f1": 0.0,
+      "field_scores": {
+        "credits": 0.125,
+        "currency": 0.0,
+        "invoice_number": 0.0,
+        "issue_date": 0.0,
+        "line_items": 0.035714,
+        "ship_to": 0.311111,
+        "tags": 0.0,
+        "total": 0.0,
+        "vendor": 0.047619
+      },
+      "matched": false,
+      "overall_score": 0.057716,
+      "precision": 0.0,
+      "recall": 0.0,
+      "test_pass": false
+    },
+    "invoice/identical": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 12
+      },
+      "f1": 1.0,
+      "field_scores": {
+        "credits": 1.0,
+        "currency": 1.0,
+        "invoice_number": 1.0,
+        "issue_date": 1.0,
+        "line_items": 1.0,
+        "ship_to": 1.0,
+        "tags": 1.0,
+        "total": 1.0,
+        "vendor": 1.0
+      },
+      "matched": true,
+      "overall_score": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "invoice/line_item_extra": {
+      "confusion_matrix": {
+        "fa": 1,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 12
+      },
+      "f1": 0.96,
+      "field_scores": {
+        "credits": 1.0,
+        "currency": 1.0,
+        "invoice_number": 1.0,
+        "issue_date": 1.0,
+        "line_items": 0.75,
+        "ship_to": 1.0,
+        "tags": 1.0,
+        "total": 1.0,
+        "vendor": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.972222,
+      "precision": 0.923077,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "invoice/line_item_missing": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 1,
+        "tn": 0,
+        "tp": 11
+      },
+      "f1": 0.956522,
+      "field_scores": {
+        "credits": 1.0,
+        "currency": 1.0,
+        "invoice_number": 1.0,
+        "issue_date": 1.0,
+        "line_items": 0.666667,
+        "ship_to": 1.0,
+        "tags": 1.0,
+        "total": 1.0,
+        "vendor": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.962963,
+      "precision": 1.0,
+      "recall": 0.916667,
+      "test_pass": true
+    },
+    "invoice/line_item_replaced": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 1,
+        "fn": 0,
+        "tn": 0,
+        "tp": 11
+      },
+      "f1": 0.956522,
+      "field_scores": {
+        "credits": 1.0,
+        "currency": 1.0,
+        "invoice_number": 1.0,
+        "issue_date": 1.0,
+        "line_items": 0.692308,
+        "ship_to": 1.0,
+        "tags": 1.0,
+        "total": 1.0,
+        "vendor": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.965812,
+      "precision": 0.916667,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "invoice/line_item_sub_field_wrong": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 12
+      },
+      "f1": 1.0,
+      "field_scores": {
+        "credits": 1.0,
+        "currency": 1.0,
+        "invoice_number": 1.0,
+        "issue_date": 1.0,
+        "line_items": 0.916667,
+        "ship_to": 1.0,
+        "tags": 1.0,
+        "total": 1.0,
+        "vendor": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.990741,
+      "precision": 1.0,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "invoice/line_items_reordered": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 12
+      },
+      "f1": 1.0,
+      "field_scores": {
+        "credits": 1.0,
+        "currency": 1.0,
+        "invoice_number": 1.0,
+        "issue_date": 1.0,
+        "line_items": 1.0,
+        "ship_to": 1.0,
+        "tags": 1.0,
+        "total": 1.0,
+        "vendor": 1.0
+      },
+      "matched": true,
+      "overall_score": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "invoice/lists_emptied": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 7,
+        "tn": 0,
+        "tp": 5
+      },
+      "f1": 0.588235,
+      "field_scores": {
+        "credits": 0.0,
+        "currency": 1.0,
+        "invoice_number": 1.0,
+        "issue_date": 1.0,
+        "line_items": 0.0,
+        "ship_to": 0.0,
+        "tags": 0.0,
+        "total": 1.0,
+        "vendor": 1.0
+      },
+      "matched": false,
+      "overall_score": 0.555556,
+      "precision": 1.0,
+      "recall": 0.416667,
+      "test_pass": false
+    },
+    "invoice/nested_field_wrong": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 1,
+        "fn": 0,
+        "tn": 0,
+        "tp": 11
+      },
+      "f1": 0.956522,
+      "field_scores": {
+        "credits": 1.0,
+        "currency": 1.0,
+        "invoice_number": 1.0,
+        "issue_date": 1.0,
+        "line_items": 1.0,
+        "ship_to": 1.0,
+        "tags": 1.0,
+        "total": 1.0,
+        "vendor": 0.666667
+      },
+      "matched": true,
+      "overall_score": 0.962963,
+      "precision": 0.916667,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "invoice/optional_list_invented": {
+      "confusion_matrix": {
+        "fa": 1,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 11
+      },
+      "f1": 0.956522,
+      "field_scores": {
+        "credits": 0.0,
+        "currency": 1.0,
+        "invoice_number": 1.0,
+        "issue_date": 1.0,
+        "line_items": 1.0,
+        "ship_to": 1.0,
+        "tags": 1.0,
+        "total": 1.0,
+        "vendor": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.888889,
+      "precision": 0.916667,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "invoice/optional_list_missing": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 1,
+        "tn": 0,
+        "tp": 11
+      },
+      "f1": 0.956522,
+      "field_scores": {
+        "credits": 0.0,
+        "currency": 1.0,
+        "invoice_number": 1.0,
+        "issue_date": 1.0,
+        "line_items": 1.0,
+        "ship_to": 1.0,
+        "tags": 1.0,
+        "total": 1.0,
+        "vendor": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.888889,
+      "precision": 1.0,
+      "recall": 0.916667,
+      "test_pass": true
+    },
+    "invoice/optional_nested_invented": {
+      "confusion_matrix": {
+        "fa": 1,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 11
+      },
+      "f1": 0.956522,
+      "field_scores": {
+        "credits": 1.0,
+        "currency": 1.0,
+        "invoice_number": 1.0,
+        "issue_date": 1.0,
+        "line_items": 1.0,
+        "ship_to": 0.0,
+        "tags": 1.0,
+        "total": 1.0,
+        "vendor": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.888889,
+      "precision": 0.916667,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "invoice/optional_nested_missing": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 1,
+        "tn": 0,
+        "tp": 11
+      },
+      "f1": 0.956522,
+      "field_scores": {
+        "credits": 1.0,
+        "currency": 1.0,
+        "invoice_number": 1.0,
+        "issue_date": 1.0,
+        "line_items": 1.0,
+        "ship_to": 0.0,
+        "tags": 1.0,
+        "total": 1.0,
+        "vendor": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.888889,
+      "precision": 1.0,
+      "recall": 0.916667,
+      "test_pass": true
+    },
+    "invoice/tags_extra": {
+      "confusion_matrix": {
+        "fa": 1,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 12
+      },
+      "f1": 0.96,
+      "field_scores": {
+        "credits": 1.0,
+        "currency": 1.0,
+        "invoice_number": 1.0,
+        "issue_date": 1.0,
+        "line_items": 1.0,
+        "ship_to": 1.0,
+        "tags": 0.666667,
+        "total": 1.0,
+        "vendor": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.962963,
+      "precision": 0.923077,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "invoice/tags_partial": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 1,
+        "tn": 0,
+        "tp": 11
+      },
+      "f1": 0.956522,
+      "field_scores": {
+        "credits": 1.0,
+        "currency": 1.0,
+        "invoice_number": 1.0,
+        "issue_date": 1.0,
+        "line_items": 1.0,
+        "ship_to": 1.0,
+        "tags": 0.5,
+        "total": 1.0,
+        "vendor": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.944444,
+      "precision": 1.0,
+      "recall": 0.916667,
+      "test_pass": true
+    },
+    "invoice/wrong_total": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 1,
+        "fn": 0,
+        "tn": 0,
+        "tp": 11
+      },
+      "f1": 0.956522,
+      "field_scores": {
+        "credits": 1.0,
+        "currency": 1.0,
+        "invoice_number": 1.0,
+        "issue_date": 1.0,
+        "line_items": 1.0,
+        "ship_to": 1.0,
+        "tags": 1.0,
+        "total": 0.0,
+        "vendor": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.888889,
+      "precision": 0.916667,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "lead/full_empty_prediction": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 11,
+        "tn": 0,
+        "tp": 0
+      },
+      "f1": 0.0,
+      "field_scores": {
+        "annual_revenue": 0.0,
+        "company": 0.0,
+        "contact_name": 0.0,
+        "employees": 0.0,
+        "founded": 0.0,
+        "hq": 0.0,
+        "is_public": 0.0,
+        "keywords": 0.0,
+        "notes": 0.0,
+        "status": 0.0
+      },
+      "matched": false,
+      "overall_score": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "test_pass": false
+    },
+    "lead/full_identical": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 11
+      },
+      "f1": 1.0,
+      "field_scores": {
+        "annual_revenue": 1.0,
+        "company": 1.0,
+        "contact_name": 1.0,
+        "employees": 1.0,
+        "founded": 1.0,
+        "hq": 1.0,
+        "is_public": 1.0,
+        "keywords": 1.0,
+        "notes": 1.0,
+        "status": 1.0
+      },
+      "matched": true,
+      "overall_score": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "lead/full_keywords_reordered": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 11
+      },
+      "f1": 1.0,
+      "field_scores": {
+        "annual_revenue": 1.0,
+        "company": 1.0,
+        "contact_name": 1.0,
+        "employees": 1.0,
+        "founded": 1.0,
+        "hq": 1.0,
+        "is_public": 1.0,
+        "keywords": 1.0,
+        "notes": 1.0,
+        "status": 1.0
+      },
+      "matched": true,
+      "overall_score": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "lead/nan_both": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 8,
+        "tp": 2
+      },
+      "f1": 1.0,
+      "field_scores": {
+        "annual_revenue": 1.0,
+        "company": 1.0,
+        "contact_name": 1.0,
+        "employees": 1.0,
+        "founded": 1.0,
+        "hq": 1.0,
+        "is_public": 1.0,
+        "keywords": 1.0,
+        "notes": 1.0,
+        "status": 1.0
+      },
+      "matched": true,
+      "overall_score": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "lead/nan_for_value": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 1,
+        "tn": 7,
+        "tp": 2
+      },
+      "f1": 0.8,
+      "field_scores": {
+        "annual_revenue": 0.0,
+        "company": 1.0,
+        "contact_name": 1.0,
+        "employees": 1.0,
+        "founded": 1.0,
+        "hq": 1.0,
+        "is_public": 1.0,
+        "keywords": 1.0,
+        "notes": 1.0,
+        "status": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.9,
+      "precision": 1.0,
+      "recall": 0.666667,
+      "test_pass": false
+    },
+    "lead/nan_vs_none": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 8,
+        "tp": 2
+      },
+      "f1": 1.0,
+      "field_scores": {
+        "annual_revenue": 1.0,
+        "company": 1.0,
+        "contact_name": 1.0,
+        "employees": 1.0,
+        "founded": 1.0,
+        "hq": 1.0,
+        "is_public": 1.0,
+        "keywords": 1.0,
+        "notes": 1.0,
+        "status": 1.0
+      },
+      "matched": true,
+      "overall_score": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "lead/nothing_to_find_empty": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 10,
+        "tp": 0
+      },
+      "f1": 0.0,
+      "field_scores": {
+        "annual_revenue": 1.0,
+        "company": 1.0,
+        "contact_name": 1.0,
+        "employees": 1.0,
+        "founded": 1.0,
+        "hq": 1.0,
+        "is_public": 1.0,
+        "keywords": 1.0,
+        "notes": 1.0,
+        "status": 1.0
+      },
+      "matched": true,
+      "overall_score": 1.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "test_pass": true
+    },
+    "lead/nothing_to_find_invented": {
+      "confusion_matrix": {
+        "fa": 1,
+        "fd": 0,
+        "fn": 0,
+        "tn": 9,
+        "tp": 0
+      },
+      "f1": 0.0,
+      "field_scores": {
+        "annual_revenue": 1.0,
+        "company": 0.0,
+        "contact_name": 1.0,
+        "employees": 1.0,
+        "founded": 1.0,
+        "hq": 1.0,
+        "is_public": 1.0,
+        "keywords": 1.0,
+        "notes": 1.0,
+        "status": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.9,
+      "precision": 0.0,
+      "recall": 0.0,
+      "test_pass": false
+    },
+    "lead/sparse_empty_prediction": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 2,
+        "tn": 8,
+        "tp": 0
+      },
+      "f1": 0.0,
+      "field_scores": {
+        "annual_revenue": 1.0,
+        "company": 0.0,
+        "contact_name": 1.0,
+        "employees": 0.0,
+        "founded": 1.0,
+        "hq": 1.0,
+        "is_public": 1.0,
+        "keywords": 1.0,
+        "notes": 1.0,
+        "status": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.8,
+      "precision": 0.0,
+      "recall": 0.0,
+      "test_pass": false
+    },
+    "lead/sparse_extra_invented": {
+      "confusion_matrix": {
+        "fa": 1,
+        "fd": 0,
+        "fn": 0,
+        "tn": 7,
+        "tp": 2
+      },
+      "f1": 0.8,
+      "field_scores": {
+        "annual_revenue": 1.0,
+        "company": 1.0,
+        "contact_name": 1.0,
+        "employees": 1.0,
+        "founded": 1.0,
+        "hq": 1.0,
+        "is_public": 1.0,
+        "keywords": 1.0,
+        "notes": 0.0,
+        "status": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.9,
+      "precision": 0.666667,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "lead/sparse_half_found": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 1,
+        "tn": 8,
+        "tp": 1
+      },
+      "f1": 0.666667,
+      "field_scores": {
+        "annual_revenue": 1.0,
+        "company": 1.0,
+        "contact_name": 1.0,
+        "employees": 0.0,
+        "founded": 1.0,
+        "hq": 1.0,
+        "is_public": 1.0,
+        "keywords": 1.0,
+        "notes": 1.0,
+        "status": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.9,
+      "precision": 1.0,
+      "recall": 0.5,
+      "test_pass": false
+    },
+    "lead/sparse_identical": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 8,
+        "tp": 2
+      },
+      "f1": 1.0,
+      "field_scores": {
+        "annual_revenue": 1.0,
+        "company": 1.0,
+        "contact_name": 1.0,
+        "employees": 1.0,
+        "founded": 1.0,
+        "hq": 1.0,
+        "is_public": 1.0,
+        "keywords": 1.0,
+        "notes": 1.0,
+        "status": 1.0
+      },
+      "matched": true,
+      "overall_score": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "lead/sparse_wrong_value": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 1,
+        "fn": 0,
+        "tn": 8,
+        "tp": 1
+      },
+      "f1": 0.666667,
+      "field_scores": {
+        "annual_revenue": 1.0,
+        "company": 1.0,
+        "contact_name": 1.0,
+        "employees": 0.0,
+        "founded": 1.0,
+        "hq": 1.0,
+        "is_public": 1.0,
+        "keywords": 1.0,
+        "notes": 1.0,
+        "status": 1.0
+      },
+      "matched": true,
+      "overall_score": 0.9,
+      "precision": 0.5,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "order/identical": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 4
+      },
+      "f1": 1.0,
+      "field_scores": {
+        "order_id": 1.0,
+        "placed_on": 1.0,
+        "shipments": 1.0
+      },
+      "matched": true,
+      "overall_score": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "order/inner_item_missing": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 4
+      },
+      "f1": 1.0,
+      "field_scores": {
+        "order_id": 1.0,
+        "placed_on": 1.0,
+        "shipments": 0.916667
+      },
+      "matched": true,
+      "overall_score": 0.972222,
+      "precision": 1.0,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "order/no_shipments": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 2,
+        "tn": 0,
+        "tp": 2
+      },
+      "f1": 0.666667,
+      "field_scores": {
+        "order_id": 1.0,
+        "placed_on": 1.0,
+        "shipments": 0.0
+      },
+      "matched": false,
+      "overall_score": 0.666667,
+      "precision": 1.0,
+      "recall": 0.5,
+      "test_pass": false
+    },
+    "order/shipment_missing": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 1,
+        "tn": 0,
+        "tp": 3
+      },
+      "f1": 0.857143,
+      "field_scores": {
+        "order_id": 1.0,
+        "placed_on": 1.0,
+        "shipments": 0.5
+      },
+      "matched": true,
+      "overall_score": 0.833333,
+      "precision": 1.0,
+      "recall": 0.75,
+      "test_pass": true
+    },
+    "order/shipments_reordered": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 4
+      },
+      "f1": 1.0,
+      "field_scores": {
+        "order_id": 1.0,
+        "placed_on": 1.0,
+        "shipments": 1.0
+      },
+      "matched": true,
+      "overall_score": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "tagged/leading_none": {
+      "confusion_matrix": {
+        "fa": 0,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 2
+      },
+      "f1": 1.0,
+      "field_scores": {
+        "label": 1.0,
+        "values": 1.0
+      },
+      "matched": true,
+      "overall_score": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "test_pass": true
+    },
+    "tagged/none_element": {
+      "confusion_matrix": {
+        "fa": 1,
+        "fd": 0,
+        "fn": 0,
+        "tn": 0,
+        "tp": 3
+      },
+      "f1": 0.857143,
+      "field_scores": {
+        "label": 1.0,
+        "values": 0.666667
+      },
+      "matched": true,
+      "overall_score": 0.833333,
+      "precision": 0.75,
+      "recall": 1.0,
+      "test_pass": true
+    }
+  },
+  "match_threshold": 0.7,
+  "models": {
+    "Contact": {
+      "document_count": 9,
+      "explain": {
+        "age": {
+          "clip_under_threshold": true,
+          "comparator": "NumericComparator",
+          "source": "type",
+          "threshold": 1.0,
+          "weight": 1.0
+        },
+        "birth_date": {
+          "clip_under_threshold": true,
+          "comparator": "DateComparator",
+          "source": "name-token",
+          "threshold": 0.95,
+          "weight": 1.0
+        },
+        "country": {
+          "clip_under_threshold": true,
+          "comparator": "LevenshteinComparator",
+          "source": "type",
+          "threshold": 0.7,
+          "weight": 1.0
+        },
+        "email": {
+          "clip_under_threshold": true,
+          "comparator": "ExactComparator",
+          "source": "name-token",
+          "threshold": 1.0,
+          "weight": 1.0
+        },
+        "height_m": {
+          "clip_under_threshold": true,
+          "comparator": "NumericComparator",
+          "source": "type",
+          "threshold": 0.95,
+          "weight": 1.0
+        },
+        "is_active": {
+          "clip_under_threshold": true,
+          "comparator": "ExactComparator",
+          "source": "type",
+          "threshold": 1.0,
+          "weight": 1.0
+        },
+        "name": {
+          "clip_under_threshold": true,
+          "comparator": "LevenshteinComparator",
+          "source": "name-token",
+          "threshold": 0.85,
+          "weight": 1.0
+        },
+        "nickname": {
+          "clip_under_threshold": true,
+          "comparator": "LevenshteinComparator",
+          "source": "type",
+          "threshold": 0.7,
+          "weight": 1.0
+        },
+        "status": {
+          "clip_under_threshold": true,
+          "comparator": "ExactComparator",
+          "source": "type",
+          "threshold": 1.0,
+          "weight": 1.0
+        },
+        "tier": {
+          "clip_under_threshold": true,
+          "comparator": "ExactComparator",
+          "source": "type",
+          "threshold": 1.0,
+          "weight": 1.0
+        },
+        "updated_at": {
+          "clip_under_threshold": true,
+          "comparator": "DateComparator",
+          "source": "name-token",
+          "threshold": 0.95,
+          "weight": 1.0
+        }
+      },
+      "field_metrics": {
+        "age": {
+          "cm_accuracy": 0.777778,
+          "cm_f1": 0.875,
+          "cm_precision": 0.777778,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 2,
+          "fn": 0,
+          "fp": 2,
+          "mean_score": 0.777778,
+          "tn": 0,
+          "tp": 7
+        },
+        "birth_date": {
+          "cm_accuracy": 0.777778,
+          "cm_f1": 0.875,
+          "cm_precision": 0.777778,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 2,
+          "fn": 0,
+          "fp": 2,
+          "mean_score": 0.777778,
+          "tn": 0,
+          "tp": 7
+        },
+        "country": {
+          "cm_accuracy": 0.777778,
+          "cm_f1": 0.875,
+          "cm_precision": 0.777778,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 2,
+          "fn": 0,
+          "fp": 2,
+          "mean_score": 0.777778,
+          "tn": 0,
+          "tp": 7
+        },
+        "email": {
+          "cm_accuracy": 0.777778,
+          "cm_f1": 0.875,
+          "cm_precision": 0.777778,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 2,
+          "fn": 0,
+          "fp": 2,
+          "mean_score": 0.777778,
+          "tn": 0,
+          "tp": 7
+        },
+        "height_m": {
+          "cm_accuracy": 0.888889,
+          "cm_f1": 0.941176,
+          "cm_precision": 0.888889,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 1,
+          "fn": 0,
+          "fp": 1,
+          "mean_score": 0.888889,
+          "tn": 0,
+          "tp": 8
+        },
+        "is_active": {
+          "cm_accuracy": 0.777778,
+          "cm_f1": 0.875,
+          "cm_precision": 0.777778,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 2,
+          "fn": 0,
+          "fp": 2,
+          "mean_score": 0.777778,
+          "tn": 0,
+          "tp": 7
+        },
+        "name": {
+          "cm_accuracy": 0.888889,
+          "cm_f1": 0.941176,
+          "cm_precision": 0.888889,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 1,
+          "fn": 0,
+          "fp": 1,
+          "mean_score": 0.87963,
+          "tn": 0,
+          "tp": 8
+        },
+        "nickname": {
+          "cm_accuracy": 0.666667,
+          "cm_f1": 0.8,
+          "cm_precision": 0.75,
+          "cm_recall": 0.857143,
+          "fa": 1,
+          "fd": 1,
+          "fn": 1,
+          "fp": 2,
+          "mean_score": 0.666667,
+          "tn": 0,
+          "tp": 6
+        },
+        "status": {
+          "cm_accuracy": 0.777778,
+          "cm_f1": 0.875,
+          "cm_precision": 0.777778,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 2,
+          "fn": 0,
+          "fp": 2,
+          "mean_score": 0.777778,
+          "tn": 0,
+          "tp": 7
+        },
+        "tier": {
+          "cm_accuracy": 0.777778,
+          "cm_f1": 0.875,
+          "cm_precision": 0.777778,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 2,
+          "fn": 0,
+          "fp": 2,
+          "mean_score": 0.777778,
+          "tn": 0,
+          "tp": 7
+        },
+        "updated_at": {
+          "cm_accuracy": 0.888889,
+          "cm_f1": 0.941176,
+          "cm_precision": 0.888889,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 1,
+          "fn": 0,
+          "fp": 1,
+          "mean_score": 0.888889,
+          "tn": 0,
+          "tp": 8
+        }
+      },
+      "metrics": {
+        "cm_accuracy": 0.79798,
+        "cm_f1": 0.88764,
+        "cm_precision": 0.806122,
+        "cm_recall": 0.9875,
+        "fa": 1,
+        "fd": 18,
+        "fn": 1,
+        "fp": 19,
+        "tn": 0,
+        "tp": 79,
+        "weighted_overall_score": 0.797138
+      }
+    },
+    "Invoice": {
+      "document_count": 16,
+      "explain": {
+        "credits": {
+          "clip_under_threshold": true,
+          "comparator": "Hungarian (per-element StructuredModel)",
+          "source": "type",
+          "threshold": 0.7,
+          "weight": 1.0
+        },
+        "credits.description": {
+          "clip_under_threshold": false,
+          "comparator": "FuzzyComparator",
+          "source": "name-token",
+          "threshold": 0.6,
+          "weight": 1.0
+        },
+        "credits.quantity": {
+          "clip_under_threshold": true,
+          "comparator": "NumericComparator",
+          "source": "name-token",
+          "threshold": 1.0,
+          "weight": 1.0
+        },
+        "credits.sku": {
+          "clip_under_threshold": true,
+          "comparator": "ExactComparator",
+          "source": "name-token",
+          "threshold": 1.0,
+          "weight": 1.0
+        },
+        "credits.unit_price": {
+          "clip_under_threshold": true,
+          "comparator": "NumericComparator",
+          "source": "name-token",
+          "threshold": 0.95,
+          "weight": 1.0
+        },
+        "currency": {
+          "clip_under_threshold": true,
+          "comparator": "ExactComparator",
+          "source": "type",
+          "threshold": 1.0,
+          "weight": 1.0
+        },
+        "invoice_number": {
+          "clip_under_threshold": true,
+          "comparator": "LevenshteinComparator",
+          "source": "type",
+          "threshold": 0.7,
+          "weight": 1.0
+        },
+        "issue_date": {
+          "clip_under_threshold": true,
+          "comparator": "DateComparator",
+          "source": "name-token",
+          "threshold": 0.95,
+          "weight": 1.0
+        },
+        "line_items": {
+          "clip_under_threshold": true,
+          "comparator": "Hungarian (per-element StructuredModel)",
+          "source": "type",
+          "threshold": 0.7,
+          "weight": 1.0
+        },
+        "line_items.description": {
+          "clip_under_threshold": false,
+          "comparator": "FuzzyComparator",
+          "source": "name-token",
+          "threshold": 0.6,
+          "weight": 1.0
+        },
+        "line_items.quantity": {
+          "clip_under_threshold": true,
+          "comparator": "NumericComparator",
+          "source": "name-token",
+          "threshold": 1.0,
+          "weight": 1.0
+        },
+        "line_items.sku": {
+          "clip_under_threshold": true,
+          "comparator": "ExactComparator",
+          "source": "name-token",
+          "threshold": 1.0,
+          "weight": 1.0
+        },
+        "line_items.unit_price": {
+          "clip_under_threshold": true,
+          "comparator": "NumericComparator",
+          "source": "name-token",
+          "threshold": 0.95,
+          "weight": 1.0
+        },
+        "ship_to": {
+          "clip_under_threshold": false,
+          "comparator": "StructuredModelComparator",
+          "source": "type",
+          "threshold": 0.7,
+          "weight": 1.0
+        },
+        "ship_to.city": {
+          "clip_under_threshold": true,
+          "comparator": "FuzzyComparator",
+          "source": "name-token",
+          "threshold": 0.8,
+          "weight": 1.0
+        },
+        "ship_to.postal_code": {
+          "clip_under_threshold": true,
+          "comparator": "ExactComparator",
+          "source": "name-token",
+          "threshold": 1.0,
+          "weight": 1.0
+        },
+        "ship_to.street": {
+          "clip_under_threshold": true,
+          "comparator": "FuzzyComparator",
+          "source": "name-token",
+          "threshold": 0.8,
+          "weight": 1.0
+        },
+        "tags": {
+          "clip_under_threshold": true,
+          "comparator": "LevenshteinComparator",
+          "source": "type",
+          "threshold": 0.7,
+          "weight": 1.0
+        },
+        "total": {
+          "clip_under_threshold": true,
+          "comparator": "NumericComparator",
+          "source": "name-token",
+          "threshold": 0.95,
+          "weight": 1.0
+        },
+        "vendor": {
+          "clip_under_threshold": false,
+          "comparator": "StructuredModelComparator",
+          "source": "type",
+          "threshold": 0.7,
+          "weight": 1.0
+        },
+        "vendor.city": {
+          "clip_under_threshold": true,
+          "comparator": "FuzzyComparator",
+          "source": "name-token",
+          "threshold": 0.8,
+          "weight": 1.0
+        },
+        "vendor.postal_code": {
+          "clip_under_threshold": true,
+          "comparator": "ExactComparator",
+          "source": "name-token",
+          "threshold": 1.0,
+          "weight": 1.0
+        },
+        "vendor.street": {
+          "clip_under_threshold": true,
+          "comparator": "FuzzyComparator",
+          "source": "name-token",
+          "threshold": 0.8,
+          "weight": 1.0
+        }
+      },
+      "field_metrics": {
+        "credits": {
+          "cm_accuracy": 0.75,
+          "cm_f1": 0.857143,
+          "cm_precision": 0.857143,
+          "cm_recall": 0.857143,
+          "fa": 1,
+          "fd": 1,
+          "fn": 2,
+          "fp": 2,
+          "mean_score": 0.757812,
+          "tn": 0,
+          "tp": 12
+        },
+        "credits.description": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "tn": 0,
+          "tp": 12
+        },
+        "credits.quantity": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "tn": 0,
+          "tp": 12
+        },
+        "credits.sku": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "tn": 0,
+          "tp": 12
+        },
+        "credits.unit_price": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "tn": 0,
+          "tp": 12
+        },
+        "currency": {
+          "cm_accuracy": 0.9375,
+          "cm_f1": 0.967742,
+          "cm_precision": 0.9375,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 1,
+          "fn": 0,
+          "fp": 1,
+          "mean_score": 0.9375,
+          "tn": 0,
+          "tp": 15
+        },
+        "invoice_number": {
+          "cm_accuracy": 0.9375,
+          "cm_f1": 0.967742,
+          "cm_precision": 0.9375,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 1,
+          "fn": 0,
+          "fp": 1,
+          "mean_score": 0.9375,
+          "tn": 0,
+          "tp": 15
+        },
+        "issue_date": {
+          "cm_accuracy": 0.9375,
+          "cm_f1": 0.967742,
+          "cm_precision": 0.9375,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 1,
+          "fn": 0,
+          "fp": 1,
+          "mean_score": 0.9375,
+          "tn": 0,
+          "tp": 15
+        },
+        "line_items": {
+          "cm_accuracy": 0.816327,
+          "cm_f1": 0.898876,
+          "cm_precision": 0.930233,
+          "cm_recall": 0.869565,
+          "fa": 1,
+          "fd": 2,
+          "fn": 6,
+          "fp": 3,
+          "mean_score": 0.816335,
+          "tn": 0,
+          "tp": 40
+        },
+        "line_items.description": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "tn": 0,
+          "tp": 40
+        },
+        "line_items.quantity": {
+          "cm_accuracy": 0.975,
+          "cm_f1": 0.987342,
+          "cm_precision": 0.975,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 1,
+          "fn": 0,
+          "fp": 1,
+          "tn": 0,
+          "tp": 39
+        },
+        "line_items.sku": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "tn": 0,
+          "tp": 40
+        },
+        "line_items.unit_price": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "tn": 0,
+          "tp": 40
+        },
+        "ship_to": {
+          "cm_accuracy": 0.75,
+          "cm_f1": 0.857143,
+          "cm_precision": 0.857143,
+          "cm_recall": 0.857143,
+          "fa": 1,
+          "fd": 1,
+          "fn": 2,
+          "fp": 2,
+          "mean_score": 0.769444,
+          "tn": 0,
+          "tp": 12
+        },
+        "ship_to.city": {
+          "cm_accuracy": 0.923077,
+          "cm_f1": 0.96,
+          "cm_precision": 0.923077,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 1,
+          "fn": 0,
+          "fp": 1,
+          "mean_score": 0.923077,
+          "tn": 0,
+          "tp": 12
+        },
+        "ship_to.postal_code": {
+          "cm_accuracy": 0.923077,
+          "cm_f1": 0.96,
+          "cm_precision": 0.923077,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 1,
+          "fn": 0,
+          "fp": 1,
+          "mean_score": 0.923077,
+          "tn": 0,
+          "tp": 12
+        },
+        "ship_to.street": {
+          "cm_accuracy": 0.923077,
+          "cm_f1": 0.96,
+          "cm_precision": 0.923077,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 1,
+          "fn": 0,
+          "fp": 1,
+          "mean_score": 0.923077,
+          "tn": 0,
+          "tp": 12
+        },
+        "tags": {
+          "cm_accuracy": 0.818182,
+          "cm_f1": 0.9,
+          "cm_precision": 0.931034,
+          "cm_recall": 0.870968,
+          "fa": 1,
+          "fd": 1,
+          "fn": 4,
+          "fp": 2,
+          "mean_score": 0.822917,
+          "tn": 0,
+          "tp": 27
+        },
+        "total": {
+          "cm_accuracy": 0.875,
+          "cm_f1": 0.933333,
+          "cm_precision": 0.875,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 2,
+          "fn": 0,
+          "fp": 2,
+          "mean_score": 0.875,
+          "tn": 0,
+          "tp": 14
+        },
+        "vendor": {
+          "cm_accuracy": 0.875,
+          "cm_f1": 0.933333,
+          "cm_precision": 0.875,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 2,
+          "fn": 0,
+          "fp": 2,
+          "mean_score": 0.919643,
+          "tn": 0,
+          "tp": 14
+        },
+        "vendor.city": {
+          "cm_accuracy": 0.9375,
+          "cm_f1": 0.967742,
+          "cm_precision": 0.9375,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 1,
+          "fn": 0,
+          "fp": 1,
+          "mean_score": 0.9375,
+          "tn": 0,
+          "tp": 15
+        },
+        "vendor.postal_code": {
+          "cm_accuracy": 0.875,
+          "cm_f1": 0.933333,
+          "cm_precision": 0.875,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 2,
+          "fn": 0,
+          "fp": 2,
+          "mean_score": 0.875,
+          "tn": 0,
+          "tp": 14
+        },
+        "vendor.street": {
+          "cm_accuracy": 0.9375,
+          "cm_f1": 0.967742,
+          "cm_precision": 0.9375,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 1,
+          "fn": 0,
+          "fp": 1,
+          "mean_score": 0.9375,
+          "tn": 0,
+          "tp": 15
+        }
+      },
+      "metrics": {
+        "cm_accuracy": 0.845361,
+        "cm_f1": 0.916201,
+        "cm_precision": 0.911111,
+        "cm_recall": 0.921348,
+        "fa": 4,
+        "fd": 12,
+        "fn": 14,
+        "fp": 16,
+        "tn": 0,
+        "tp": 164,
+        "weighted_overall_score": 0.863739
+      }
+    },
+    "Lead": {
+      "document_count": 13,
+      "explain": {
+        "annual_revenue": {
+          "clip_under_threshold": true,
+          "comparator": "NumericComparator",
+          "source": "name-token",
+          "threshold": 0.95,
+          "weight": 1.0
+        },
+        "company": {
+          "clip_under_threshold": true,
+          "comparator": "LevenshteinComparator",
+          "source": "name-token",
+          "threshold": 0.85,
+          "weight": 1.0
+        },
+        "contact_name": {
+          "clip_under_threshold": true,
+          "comparator": "LevenshteinComparator",
+          "source": "name-token",
+          "threshold": 0.85,
+          "weight": 1.0
+        },
+        "employees": {
+          "clip_under_threshold": true,
+          "comparator": "NumericComparator",
+          "source": "type",
+          "threshold": 1.0,
+          "weight": 1.0
+        },
+        "founded": {
+          "clip_under_threshold": true,
+          "comparator": "DateComparator",
+          "source": "type",
+          "threshold": 0.95,
+          "weight": 1.0
+        },
+        "hq": {
+          "clip_under_threshold": false,
+          "comparator": "StructuredModelComparator",
+          "source": "type",
+          "threshold": 0.7,
+          "weight": 1.0
+        },
+        "hq.city": {
+          "clip_under_threshold": true,
+          "comparator": "FuzzyComparator",
+          "source": "name-token",
+          "threshold": 0.8,
+          "weight": 1.0
+        },
+        "hq.postal_code": {
+          "clip_under_threshold": true,
+          "comparator": "ExactComparator",
+          "source": "name-token",
+          "threshold": 1.0,
+          "weight": 1.0
+        },
+        "hq.street": {
+          "clip_under_threshold": true,
+          "comparator": "FuzzyComparator",
+          "source": "name-token",
+          "threshold": 0.8,
+          "weight": 1.0
+        },
+        "is_public": {
+          "clip_under_threshold": true,
+          "comparator": "ExactComparator",
+          "source": "type",
+          "threshold": 1.0,
+          "weight": 1.0
+        },
+        "keywords": {
+          "clip_under_threshold": true,
+          "comparator": "LevenshteinComparator",
+          "source": "type",
+          "threshold": 0.7,
+          "weight": 1.0
+        },
+        "notes": {
+          "clip_under_threshold": false,
+          "comparator": "FuzzyComparator",
+          "source": "name-token",
+          "threshold": 0.6,
+          "weight": 1.0
+        },
+        "status": {
+          "clip_under_threshold": true,
+          "comparator": "ExactComparator",
+          "source": "type",
+          "threshold": 1.0,
+          "weight": 1.0
+        }
+      },
+      "field_metrics": {
+        "annual_revenue": {
+          "cm_accuracy": 0.846154,
+          "cm_f1": 0.666667,
+          "cm_precision": 1.0,
+          "cm_recall": 0.5,
+          "fa": 0,
+          "fd": 0,
+          "fn": 2,
+          "fp": 0,
+          "mean_score": 0.846154,
+          "tn": 9,
+          "tp": 2
+        },
+        "company": {
+          "cm_accuracy": 0.769231,
+          "cm_f1": 0.857143,
+          "cm_precision": 0.9,
+          "cm_recall": 0.818182,
+          "fa": 1,
+          "fd": 0,
+          "fn": 2,
+          "fp": 1,
+          "mean_score": 0.769231,
+          "tn": 1,
+          "tp": 9
+        },
+        "contact_name": {
+          "cm_accuracy": 0.923077,
+          "cm_f1": 0.8,
+          "cm_precision": 1.0,
+          "cm_recall": 0.666667,
+          "fa": 0,
+          "fd": 0,
+          "fn": 1,
+          "fp": 0,
+          "mean_score": 0.923077,
+          "tn": 10,
+          "tp": 2
+        },
+        "employees": {
+          "cm_accuracy": 0.692308,
+          "cm_f1": 0.777778,
+          "cm_precision": 0.875,
+          "cm_recall": 0.7,
+          "fa": 0,
+          "fd": 1,
+          "fn": 3,
+          "fp": 1,
+          "mean_score": 0.692308,
+          "tn": 2,
+          "tp": 7
+        },
+        "founded": {
+          "cm_accuracy": 0.923077,
+          "cm_f1": 0.8,
+          "cm_precision": 1.0,
+          "cm_recall": 0.666667,
+          "fa": 0,
+          "fd": 0,
+          "fn": 1,
+          "fp": 0,
+          "mean_score": 0.923077,
+          "tn": 10,
+          "tp": 2
+        },
+        "hq": {
+          "cm_accuracy": 0.923077,
+          "cm_f1": 0.8,
+          "cm_precision": 1.0,
+          "cm_recall": 0.666667,
+          "fa": 0,
+          "fd": 0,
+          "fn": 1,
+          "fp": 0,
+          "mean_score": 0.923077,
+          "tn": 10,
+          "tp": 2
+        },
+        "hq.city": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "mean_score": 1.0,
+          "tn": 0,
+          "tp": 2
+        },
+        "hq.postal_code": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "mean_score": 1.0,
+          "tn": 0,
+          "tp": 2
+        },
+        "hq.street": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "mean_score": 1.0,
+          "tn": 0,
+          "tp": 2
+        },
+        "is_public": {
+          "cm_accuracy": 0.923077,
+          "cm_f1": 0.8,
+          "cm_precision": 1.0,
+          "cm_recall": 0.666667,
+          "fa": 0,
+          "fd": 0,
+          "fn": 1,
+          "fp": 0,
+          "mean_score": 0.923077,
+          "tn": 10,
+          "tp": 2
+        },
+        "keywords": {
+          "cm_accuracy": 0.875,
+          "cm_f1": 0.8,
+          "cm_precision": 1.0,
+          "cm_recall": 0.666667,
+          "fa": 0,
+          "fd": 0,
+          "fn": 2,
+          "fp": 0,
+          "mean_score": 0.923077,
+          "tn": 10,
+          "tp": 4
+        },
+        "notes": {
+          "cm_accuracy": 0.846154,
+          "cm_f1": 0.666667,
+          "cm_precision": 0.666667,
+          "cm_recall": 0.666667,
+          "fa": 1,
+          "fd": 0,
+          "fn": 1,
+          "fp": 1,
+          "mean_score": 0.846154,
+          "tn": 9,
+          "tp": 2
+        },
+        "status": {
+          "cm_accuracy": 0.923077,
+          "cm_f1": 0.8,
+          "cm_precision": 1.0,
+          "cm_recall": 0.666667,
+          "fa": 0,
+          "fd": 0,
+          "fn": 1,
+          "fp": 0,
+          "mean_score": 0.923077,
+          "tn": 10,
+          "tp": 2
+        }
+      },
+      "metrics": {
+        "cm_accuracy": 0.864662,
+        "cm_f1": 0.790698,
+        "cm_precision": 0.918919,
+        "cm_recall": 0.693878,
+        "fa": 2,
+        "fd": 1,
+        "fn": 15,
+        "fp": 3,
+        "tn": 81,
+        "tp": 34,
+        "weighted_overall_score": 0.869231
+      }
+    },
+    "Order": {
+      "document_count": 5,
+      "explain": {
+        "order_id": {
+          "clip_under_threshold": true,
+          "comparator": "ExactComparator",
+          "source": "name-token",
+          "threshold": 1.0,
+          "weight": 1.0
+        },
+        "placed_on": {
+          "clip_under_threshold": true,
+          "comparator": "DateComparator",
+          "source": "type",
+          "threshold": 0.95,
+          "weight": 1.0
+        },
+        "shipments": {
+          "clip_under_threshold": true,
+          "comparator": "Hungarian (per-element StructuredModel)",
+          "source": "type",
+          "threshold": 0.7,
+          "weight": 1.0
+        },
+        "shipments.carrier": {
+          "clip_under_threshold": true,
+          "comparator": "LevenshteinComparator",
+          "source": "type",
+          "threshold": 0.7,
+          "weight": 1.0
+        },
+        "shipments.items": {
+          "clip_under_threshold": true,
+          "comparator": "Hungarian (per-element StructuredModel)",
+          "source": "type",
+          "threshold": 0.7,
+          "weight": 1.0
+        },
+        "shipments.items.description": {
+          "clip_under_threshold": false,
+          "comparator": "FuzzyComparator",
+          "source": "name-token",
+          "threshold": 0.6,
+          "weight": 1.0
+        },
+        "shipments.items.quantity": {
+          "clip_under_threshold": true,
+          "comparator": "NumericComparator",
+          "source": "name-token",
+          "threshold": 1.0,
+          "weight": 1.0
+        },
+        "shipments.items.sku": {
+          "clip_under_threshold": true,
+          "comparator": "ExactComparator",
+          "source": "name-token",
+          "threshold": 1.0,
+          "weight": 1.0
+        },
+        "shipments.items.unit_price": {
+          "clip_under_threshold": true,
+          "comparator": "NumericComparator",
+          "source": "name-token",
+          "threshold": 0.95,
+          "weight": 1.0
+        },
+        "shipments.tracking_id": {
+          "clip_under_threshold": true,
+          "comparator": "ExactComparator",
+          "source": "name-token",
+          "threshold": 1.0,
+          "weight": 1.0
+        }
+      },
+      "field_metrics": {
+        "order_id": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "mean_score": 1.0,
+          "tn": 0,
+          "tp": 5
+        },
+        "placed_on": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "mean_score": 1.0,
+          "tn": 0,
+          "tp": 5
+        },
+        "shipments": {
+          "cm_accuracy": 0.7,
+          "cm_f1": 0.823529,
+          "cm_precision": 1.0,
+          "cm_recall": 0.7,
+          "fa": 0,
+          "fd": 0,
+          "fn": 3,
+          "fp": 0,
+          "mean_score": 0.683333,
+          "tn": 0,
+          "tp": 7
+        },
+        "shipments.carrier": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "tn": 0,
+          "tp": 7
+        },
+        "shipments.items": {
+          "cm_accuracy": 0.909091,
+          "cm_f1": 0.952381,
+          "cm_precision": 1.0,
+          "cm_recall": 0.909091,
+          "fa": 0,
+          "fd": 0,
+          "fn": 1,
+          "fp": 0,
+          "mean_score": 0.875,
+          "tn": 0,
+          "tp": 10
+        },
+        "shipments.items.description": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "tn": 0,
+          "tp": 10
+        },
+        "shipments.items.quantity": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "tn": 0,
+          "tp": 10
+        },
+        "shipments.items.sku": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "tn": 0,
+          "tp": 10
+        },
+        "shipments.items.unit_price": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "tn": 0,
+          "tp": 10
+        },
+        "shipments.tracking_id": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "tn": 0,
+          "tp": 7
+        }
+      },
+      "metrics": {
+        "cm_accuracy": 0.85,
+        "cm_f1": 0.918919,
+        "cm_precision": 1.0,
+        "cm_recall": 0.85,
+        "fa": 0,
+        "fd": 0,
+        "fn": 3,
+        "fp": 0,
+        "tn": 0,
+        "tp": 17,
+        "weighted_overall_score": 0.894444
+      }
+    },
+    "Tagged": {
+      "document_count": 2,
+      "explain": {
+        "label": {
+          "clip_under_threshold": true,
+          "comparator": "LevenshteinComparator",
+          "source": "type",
+          "threshold": 0.7,
+          "weight": 1.0
+        },
+        "values": {
+          "clip_under_threshold": true,
+          "comparator": "LevenshteinComparator",
+          "source": "type",
+          "threshold": 0.7,
+          "weight": 1.0
+        }
+      },
+      "field_metrics": {
+        "label": {
+          "cm_accuracy": 1.0,
+          "cm_f1": 1.0,
+          "cm_precision": 1.0,
+          "cm_recall": 1.0,
+          "fa": 0,
+          "fd": 0,
+          "fn": 0,
+          "fp": 0,
+          "mean_score": 1.0,
+          "tn": 0,
+          "tp": 2
+        },
+        "values": {
+          "cm_accuracy": 0.75,
+          "cm_f1": 0.857143,
+          "cm_precision": 0.75,
+          "cm_recall": 1.0,
+          "fa": 1,
+          "fd": 0,
+          "fn": 0,
+          "fp": 1,
+          "mean_score": 0.833333,
+          "tn": 0,
+          "tp": 3
+        }
+      },
+      "metrics": {
+        "cm_accuracy": 0.833333,
+        "cm_f1": 0.909091,
+        "cm_precision": 0.833333,
+        "cm_recall": 1.0,
+        "fa": 1,
+        "fd": 0,
+        "fn": 0,
+        "fp": 1,
+        "tn": 0,
+        "tp": 5,
+        "weighted_overall_score": 0.916667
+      }
+    }
+  }
+}

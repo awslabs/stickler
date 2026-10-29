@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Tuple, Type
 
 from pydantic.fields import FieldInfo
 
+from .configuration_helper import ConfigurationHelper
 from .optional_annotation import unwrap_optional
 
 # Bidirectional type mappings for export
@@ -78,25 +79,27 @@ class JsonSchemaFieldConverter:
             field_type = unwrapped
             is_nullable = True
 
-        # A StructuredModel must never reach the scalar fallback below. It has
-        # its own schema -- properties, nested thresholds, comparators -- and
-        # `PYTHON_TYPE_TO_JSON_TYPE.get(..., "string")` would silently discard
-        # all of it, emitting a schema that rebuilds into a structurally
-        # different model. Raise rather than produce a wrong schema quietly.
+        # A StructuredModel, or a union with a model arm, must never reach the
+        # scalar fallback below. `PYTHON_TYPE_TO_JSON_TYPE.get(..., "string")`
+        # would silently discard its schema, emitting one that rebuilds into a
+        # structurally different model. Raise rather than produce a wrong
+        # schema quietly.
         #
-        # Deliberately scoped to StructuredModel, not to every dict miss:
+        # Deliberately scoped to models, not to every dict miss:
         # Decimal, UUID and enums legitimately export as "string".
         from .structured_model import StructuredModel
 
-        if isinstance(field_type, type) and issubclass(field_type, StructuredModel):
-            raise ValueError(
-                f"Cannot export nested model field as a scalar: annotation "
-                f"{field_type!r} is a StructuredModel. Export it via its own "
-                f"to_json_schema() instead of field_to_property()."
-            )
+        StructuredModel._refuse_scalar_export(field_type)
 
         json_type = PYTHON_TYPE_TO_JSON_TYPE.get(field_type, "string")
         property_schema = {"type": [json_type, "null"] if is_nullable else json_type}
+
+        # A plain BaseModel is scored as one object, as a mapping is
+        # (`ConfigurationHelper.is_object_grade_annotation`), so it exports as a
+        # free-form object, which re-imports as `dict`. As "string" it rebuilt
+        # as `str` and rejected the original data (#349).
+        if ConfigurationHelper.is_plain_model_annotation(field_type):
+            property_schema["type"] = ["object", "null"] if is_nullable else "object"
 
         # Extract metadata and build extensions using consolidated helper
         metadata = self._extract_field_metadata(field_info)
@@ -132,6 +135,13 @@ class JsonSchemaFieldConverter:
         """
         stickler_type = PYTHON_TYPE_TO_STICKLER_TYPE.get(field_type, "str")
         field_config = {"type": stickler_type}
+        # As in field_to_property(): a model or a union with a model arm cannot
+        # be written as a scalar, and a plain BaseModel is written as `dict`.
+        from .structured_model import StructuredModel
+
+        StructuredModel._refuse_scalar_export(field_type)
+        if ConfigurationHelper.is_plain_model_annotation(field_type):
+            field_config["type"] = "dict"
 
         # Extract metadata and build extensions using consolidated helper
         metadata = self._extract_field_metadata(field_info)

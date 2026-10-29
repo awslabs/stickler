@@ -5,6 +5,7 @@ This module provides functions for displaying confusion matrix metrics
 in a more readable and visually appealing format.
 """
 
+import contextlib
 import os
 import re
 import sys
@@ -344,28 +345,25 @@ def print_confusion_matrix(
     # Direct output to file if specified
     if output_file:
         try:
-            with open(output_file, "w", encoding="utf-8") as f:
-                original_stdout = sys.stdout
-                sys.stdout = f
-                use_color = False  # Disable color for file output
-
-                # Print overall summary
-                _print_overall_summary(results, use_color)
-
-                # Print field-level metrics if requested
-                if show_details:
-                    _print_field_details(
-                        results, field_filter, sort_by, use_color, nested_detail
-                    )
-
-                    # Print matrix visualization
-                    _print_matrix_visualization(results, use_color)
-
-                # Restore stdout before context manager closes
-                sys.stdout = original_stdout
+            f = open(output_file, "w", encoding="utf-8")
         except Exception as e:
             print(f"Error opening output file: {e}")
             return
+
+        with f, contextlib.redirect_stdout(f):
+            use_color = False  # Disable color for file output
+
+            # Print overall summary
+            _print_overall_summary(results, use_color)
+
+            # Print field-level metrics if requested
+            if show_details:
+                _print_field_details(
+                    results, field_filter, sort_by, use_color, nested_detail
+                )
+
+                # Print matrix visualization
+                _print_matrix_visualization(results, use_color)
     else:
         # Print to stdout
         # Print overall summary
@@ -942,7 +940,7 @@ def print_non_matches(
         if non_matches is None and not _is_results_object(results):
             print("Error: Results do not contain recognizable non-match records")
         elif show_summary:
-            _print_no_non_matches(non_matches, use_color)
+            _print_no_non_matches(non_matches, use_color, results)
         return
 
     # Direct output to file if specified
@@ -1028,21 +1026,22 @@ def _is_results_object(results: Any) -> bool:
 
 
 def _print_no_non_matches(
-    non_matches: Optional[List[Dict[str, Any]]], use_color: bool = True
+    non_matches: Optional[List[Dict[str, Any]]],
+    use_color: bool = True,
+    results: Any = None,
 ) -> None:
     """
     Say why there are no non-matches to list, claiming no more than the input shows.
     """
     if non_matches is None:
-        print(
-            _colorize(
-                "No non-match records in these results. Pass the EvalResult "
-                "itself rather than its .raw, or call compare_with() or the "
-                "bulk evaluator with document_non_matches=True.",
-                Colors.YELLOW,
-                use_color,
-            )
+        message = (
+            "No non-match records in these results. Call compare_with() or the "
+            "bulk evaluator with document_non_matches=True."
         )
+        # Only a default compare_with() dict can be an EvalResult's .raw.
+        if isinstance(results, dict) and "overall_score" in results:
+            message += " For an EvalResult's .raw, pass the EvalResult itself."
+        print(_colorize(message, Colors.YELLOW, use_color))
     else:
         print(_colorize("✅ No non-matches found.", Colors.GREEN, use_color))
 
@@ -1365,7 +1364,7 @@ def _print_evaluation_results_content(
             print_non_matches(results, use_color=use_color)
         elif show_confusion_matrix and _normalize_results_format(results) is not None:
             # Only show this message when the supplied results were recognized.
-            _print_no_non_matches(non_matches, use_color)
+            _print_no_non_matches(non_matches, use_color, results)
             print()
 
 

@@ -15,6 +15,7 @@ from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.utils.deprecation import warn_once
 
 from .comparable_field import _LEGACY_DEFAULT_THRESHOLD
+from .hungarian_helper import deferring_pair_warnings
 from .optional_annotation import (
     is_union,
     union_args,
@@ -537,8 +538,10 @@ class ConfigurationHelper:
         declared treatment of a multi-arm union.
 
         ``warn=False`` gives the same verdict silently; see
-        :meth:`can_score_object`.
+        :meth:`can_score_object`. It is also silent, whatever ``warn`` says,
+        while :func:`deferring_pair_warnings` is true; see there (#336).
         """
+        warn = warn and not deferring_pair_warnings()
         if not ConfigurationHelper.values_are_same_model_class(
             model_cls, field_name, gt_val, pred_val, warn=warn
         ):
