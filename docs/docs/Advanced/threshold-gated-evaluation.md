@@ -90,15 +90,30 @@ class Order(StructuredModel):
 
 Given three GT products and three Pred products:
 
-### Good Match (similarity >= 0.8)
+```python
+gt = Order(order_id="ORD-1", products=[
+    Product(product_id="PROD-001", name="Laptop", price=999.99),
+    Product(product_id="PROD-002", name="Mouse", price=29.99),
+    Product(product_id="PROD-003", name="Cable", price=14.99),
+])
+pred = Order(order_id="ORD-1", products=[
+    Product(product_id="PROD-001", name="Laptop Computer", price=999.99),
+    Product(product_id="PROD-002", name="Different Product", price=99.99),
+    Product(product_id="PROD-004", name="New Product", price=19.99),
+])
+result = gt.compare_with(pred, include_confusion_matrix=True, document_non_matches=True)
+```
+
+### Good Match (meets 0.8)
 
 **GT:** `Product("PROD-001", "Laptop", 999.99)`
 **Pred:** `Product("PROD-001", "Laptop Computer", 999.99)`
 
+- Similarity: `(3 * 1.0 + 2 * 0.4 + 1 * 1.0) / 6`, which floating point evaluates to `0.7999999999999999`. It meets `0.8` through the [rounding tolerance](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold).
 - Classification: **TP**
 - Nested field analysis is performed:
     - `product_id`: TP (exact match)
-    - `name`: TP (similarity ~0.9)
+    - `name`: FD (Levenshtein similarity 0.4, under its 0.7 threshold)
     - `price`: TP (exact match)
 
 ### Poor Match (similarity < 0.8)
@@ -106,48 +121,54 @@ Given three GT products and three Pred products:
 **GT:** `Product("PROD-002", "Mouse", 29.99)`
 **Pred:** `Product("PROD-002", "Different Product", 99.99)`
 
+- Similarity: `(3 * 1.0 + 2 * 0.118 + 1 * 0.8) / 6`, about `0.6725`
 - Classification: **FD**
 - No nested field analysis -- the objects are too dissimilar for field-level breakdown to be useful.
 
-### Unmatched Items
+### Weak Pairing
 
-**GT:** `Product("PROD-003", "Cable", 14.99)` -- **FN** (no counterpart in Pred)
-**Pred:** `Product("PROD-004", "New Product", 19.99)` -- **FA** (no counterpart in GT)
+**GT:** `Product("PROD-003", "Cable", 14.99)`
+**Pred:** `Product("PROD-004", "New Product", 19.99)`
 
-No nested analysis for either.
+- Similarity: `0.1333`
+- Classification: **FD**, with no nested analysis
+
+Hungarian matching pairs every item when both lists have the same length, so
+these two are paired even though they share almost nothing. An item is left
+unmatched only when one list is longer: without `New Product` in Pred, `Cable`
+would be an **FN**, and without `Cable` in GT, `New Product` would be an **FA**.
+Neither is broken down into fields.
 
 ## Result Structure
 
+The `products` counts and the `non_matches` from the run above, with other keys
+left out and scores rounded to four places:
+
 ```json
 {
-  "products": {
+  "confusion_matrix": { "fields": { "products": {
     "overall": {
-      "tp": 1, "fd": 1, "fn": 1, "fa": 1,
-      "derived": { "cm_precision": 0.5, "cm_recall": 0.5, "cm_f1": 0.5 }
+      "tp": 1, "fd": 2, "fn": 0, "fa": 0,
+      "derived": { "cm_precision": 0.3333, "cm_recall": 1.0, "cm_f1": 0.5 }
     },
     "fields": {
-      "product_id": { "tp": 1 },
-      "name":       { "tp": 1 },
-      "price":      { "tp": 1 }
-    },
-    "non_matches": [
-      {
-        "type": "FD",
-        "gt_object": "Product(PROD-002, Mouse, 29.99)",
-        "pred_object": "Product(PROD-002, Different Product, 99.99)",
-        "similarity": 0.3
-      },
-      { "type": "FN", "gt_object": "Product(PROD-003, Cable, 14.99)" },
-      { "type": "FA", "pred_object": "Product(PROD-004, New Product, 19.99)" }
-    ]
-  }
+      "product_id": { "overall": { "tp": 1 } },
+      "name":       { "overall": { "fd": 1 } },
+      "price":      { "overall": { "tp": 1 } }
+    }
+  } } },
+  "non_matches": [
+    { "field_path": "products[0].name", "non_match_type": "false_discovery", "similarity_score": 0.4 },
+    { "field_path": "products[1]", "non_match_type": "false_discovery", "similarity_score": 0.6725 },
+    { "field_path": "products[2]", "non_match_type": "false_discovery", "similarity_score": 0.1333 }
+  ]
 }
 ```
 
-Field-level metrics appear only for the single TP pair. The `non_matches` list
-documents each FD, FN, and FA once at object level; `field_comparisons` uses the
-same boundary. Neither report expands a rejected or unmatched object into
-leaves.
+Field-level metrics appear only for the single TP pair, and its `name` is the
+only leaf in `non_matches`. That list documents each rejected pair once at
+object level, as it would an FN or FA; `field_comparisons` uses the same
+boundary. Neither report expands a rejected or unmatched object into leaves.
 
 ## Delegation Pattern
 
@@ -203,7 +224,8 @@ field's own `threshold` decides that verdict. See
 
 `overall_score` is the scalar summary, and `EvalResult.matched` from
 `stickler.evaluate()` is the object-level verdict
-(`overall_score >= match_threshold`).
+(`overall_score >= match_threshold`, see
+[Meeting a Threshold](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold)).
 
 For the raw object similarity used by Hungarian matching, fields absent on both sides are omitted from both totals. They remain TNs in the confusion matrix, but do not help a pair clear `match_threshold`. If no fields remain, the similarity is defined as `1.0`, because nothing disagreed.
 
@@ -211,7 +233,7 @@ For the raw object similarity used by Hungarian matching, fields absent on both 
 
 **Empty lists** -- `[] vs []` is TN. `[] vs [items]` generates one FA per item. `[items] vs []` generates one FN per item.
 
-**Threshold boundary** -- `similarity >= threshold` counts as TP and triggers recursion. Values exactly at the boundary are matches.
+**Threshold boundary** -- `similarity >= threshold` counts as TP and triggers recursion. Values exactly at the boundary are matches, and so are values less than `1e-10` under it, so a rounding error does not flip the verdict. See [Meeting a Threshold](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold).
 
 **Different thresholds per model** -- Each `StructuredModel` subclass can define its own `match_threshold`. A `Product` with `match_threshold = 0.8` and an `Address` with `match_threshold = 0.6` are each evaluated independently.
 

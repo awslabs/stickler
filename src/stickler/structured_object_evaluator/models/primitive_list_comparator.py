@@ -108,9 +108,9 @@ class PrimitiveListComparator:
         comparator = info.comparator
         # The field's own clip setting reaches the per-element decision here.
         # Without it, `clip_under_threshold=False` was a no-op on every list:
-        # the zeroing happens inside `unordered_list_metrics`, upstream of the
-        # `threshold_applied_score = raw_similarity` line below, so that line
-        # preserved a score that had already been thrown away.
+        # the zeroing happens inside `unordered_list_metrics`, upstream of this
+        # method, so copying its score through preserved a score that had
+        # already been thrown away.
         from .structured_model import StructuredModel
 
         if (
@@ -148,18 +148,18 @@ class PrimitiveListComparator:
         fa = match_result.get("fa", 0)
         fn = match_result.get("fn", 0)
 
-        # Use the overall_score from the match result for raw similarity
-        raw_similarity = match_result.get("overall_score", 0.0)
-
-        # CRITICAL FIX: For lists, we NEVER clip under threshold - partial matches are important
-        threshold_applied_score = raw_similarity  # Always use raw score for lists
+        # The field's score: per-element clipping has already been applied
+        # inside `unordered_list_metrics`, so nothing more is clipped here.
+        list_score = match_result.get("overall_score", 0.0)
 
         # Return hierarchical structure expected by tests
         return {
             "overall": {"tp": tp, "fa": fa, "fd": fd, "fp": fa + fd, "tn": 0, "fn": fn},
             "fields": {},  # Empty for primitive lists - no nested structure
-            "raw_similarity_score": raw_similarity,
-            "similarity_score": raw_similarity,
-            "threshold_applied_score": threshold_applied_score,
+            # Unclipped, as on every other node and as `compare()` reports
+            # (#330). Report-only: the score is `threshold_applied_score`.
+            "raw_similarity_score": match_result.get("raw_overall_score", list_score),
+            "similarity_score": list_score,
+            "threshold_applied_score": list_score,
             "weight": weight,
         }
