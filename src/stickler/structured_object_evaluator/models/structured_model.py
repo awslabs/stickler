@@ -5,6 +5,7 @@ with comparison configuration and evaluation capabilities.
 """
 
 from typing import (
+    Annotated,
     Any,
     ClassVar,
     Dict,
@@ -17,11 +18,12 @@ from typing import (
     get_origin,
 )
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
 from pydantic.json_schema import GenerateJsonSchema
 
 from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.base import BaseComparator
+from stickler.utils.canonical import jsonable_mapping
 from stickler.utils.deprecation import warn_once
 
 from .comparable_field import ComparableField, _named_comparator_threshold
@@ -1856,7 +1858,7 @@ class StructuredModel(BaseModel):
                     # the importer reads back as `dict`. Falling through to "string"
                     # re-imported `List[Dict[...]]` as `List[str]`, which then
                     # rejected the data the original accepted (#333).
-                    if ConfigurationHelper.is_mapping_annotation(element_type):
+                    if cls._is_mapping_element(args[0]):
                         json_element_type = "object"
                     else:
                         json_element_type = PYTHON_TYPE_TO_JSON_TYPE.get(
@@ -1871,7 +1873,7 @@ class StructuredModel(BaseModel):
                         },
                     }
                     metadata = cls._list_export_metadata(
-                        converter, field_name, field_info, element_type
+                        converter, field_name, field_info, args[0]
                     )
                     extensions = converter._build_comparison_extensions(
                         metadata, output_format="json_schema"
@@ -1903,6 +1905,25 @@ class StructuredModel(BaseModel):
 
         return schema
 
+    @staticmethod
+    def _is_mapping_element(element) -> bool:
+        """Whether a list element exports as a mapping from ``to_json_schema()``.
+
+        Any mapping annotation, plus the type ``from_pydantic()`` declares a
+        mapping as: ``Annotated[Any, BeforeValidator(jsonable_mapping)]``
+        (``_WireDict`` in ``auto/builder.py``). It is ``Any`` so a malformed
+        prediction is scored rather than rejected, which hides the mapping from
+        :meth:`ConfigurationHelper.is_mapping_annotation`; its items then
+        exported as ``"string"`` and the re-imported model rejected its own data.
+        """
+        if ConfigurationHelper.is_mapping_annotation(element):
+            return True
+        inner, _ = unwrap_optional(element)
+        return get_origin(inner) is Annotated and any(
+            isinstance(m, BeforeValidator) and m.func is jsonable_mapping
+            for m in inner.__metadata__
+        )
+
     @classmethod
     def _list_export_metadata(
         cls, converter, field_name: str, field_info, element_type
@@ -1917,7 +1938,7 @@ class StructuredModel(BaseModel):
         with ANLS* when it reads the field). Scalar lists keep the importer
         defaults (#348).
         """
-        if not ConfigurationHelper.is_mapping_annotation(element_type):
+        if not cls._is_mapping_element(element_type):
             return converter._extract_field_metadata(field_info)
         resolved = ConfigurationHelper.get_comparison_info(cls, field_name)
         return {

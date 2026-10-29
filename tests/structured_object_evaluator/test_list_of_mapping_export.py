@@ -8,7 +8,7 @@ export, re-import, load the ORIGINAL data, and require the same scores.
 from typing import Any, Dict, List, Mapping, MutableMapping, Optional, OrderedDict
 
 import pytest
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
@@ -231,3 +231,70 @@ def test_undeclared_field_reexports_the_same_schema():
     schema = BareRows.to_json_schema()
     Reimported = StructuredModel.from_json_schema(schema)
     assert Reimported.to_json_schema()["properties"] == schema["properties"]
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="#435: a plain Field(default_factory=...) exports default PydanticUndefined",
+)
+def test_undeclared_factory_default_survives_stickler_config():
+    """Pins the documented limit: the re-imported field is required."""
+    Reimported = StructuredModel.model_from_json(BareRows.to_stickler_config())
+    assert Reimported().rows == BareRows().rows
+
+
+class _PlainLeaf(BaseModel):
+    k: str
+    rows: List[Dict[str, str]] = []
+
+
+class _PlainRows(BaseModel):
+    rows: List[Dict[str, str]]
+    any_values: List[Dict[str, Any]] = []
+    mapping: List[Mapping[str, str]] = []
+    optional_items: List[Optional[Dict[str, str]]] = []
+    leaf: Optional[_PlainLeaf] = None
+    leaves: List[_PlainLeaf] = []
+
+
+def test_from_pydantic_mapping_items_export_as_object():
+    """``from_pydantic()`` declares a mapping as ``Annotated[Any, ...]``.
+
+    That wire type hid the mapping from the exporter, so the items exported as
+    ``"string"`` and the re-imported model rejected its own data.
+    """
+    Built = StructuredModel.from_pydantic(_PlainRows)
+    props = Built.to_json_schema()["properties"]
+    for name in ("rows", "any_values", "mapping"):
+        assert props[name]["items"] == {"type": "object"}
+    assert props["optional_items"]["items"] == {"type": ["object", "null"]}
+    assert props["leaf"]["properties"]["rows"]["items"] == {"type": "object"}
+    assert props["leaves"]["items"]["properties"]["rows"]["items"] == {"type": "object"}
+
+
+def test_from_pydantic_json_schema_roundtrip_loads_original_data():
+    Built = StructuredModel.from_pydantic(_PlainRows)
+    Reimported = StructuredModel.from_json_schema(Built.to_json_schema())
+    row, wrong = GT["default_clip"], PRED["default_clip"]
+    leaf = {"k": "q", "rows": row}
+    gt = {
+        "rows": row,
+        "any_values": [{"a": 1, "b": [1, 2]}],
+        "mapping": row,
+        "optional_items": [row[0], None],
+        "leaf": leaf,
+        "leaves": [leaf],
+    }
+    pred = {
+        **gt,
+        "rows": wrong,
+        "any_values": [{"a": 1, "b": [1, 3]}],
+        "optional_items": [wrong[0], None],
+        "leaf": {"k": "q", "rows": wrong},
+    }
+
+    original = Built(**gt).compare_with(Built(**pred))
+    rebuilt = Reimported(**gt).compare_with(Reimported(**pred))
+    assert rebuilt["field_scores"] == pytest.approx(original["field_scores"])
+    assert rebuilt["overall_score"] == pytest.approx(original["overall_score"])
+    assert rebuilt["field_scores"]["rows"] == pytest.approx(0.5)
