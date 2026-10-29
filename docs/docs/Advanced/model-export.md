@@ -211,8 +211,11 @@ A list of mappings (`List[Dict[str, str]]`, `List[Mapping[...]]`) exports free-f
 optional element exports as `["object", "null"]` and `List[Optional[Dict]]`. They re-import as
 `List[dict]` and `List[Dict]` respectively (`List[Optional[dict]]` and `List[Optional[Dict]]` for an
 optional element) with the comparator, threshold, weight and clip the field resolves, declared or
-default, so it scores as the original did. The value type is not exported, so the re-imported field
-does not coerce its values. A mapping field that is not in a list, and a list whose element is a union
+default, so it scores as the original did. The same holds for a model built with `from_pydantic()`,
+except that `to_stickler_config()` writes its element as `List[Any]`, which loads the same data. The
+value type is not exported, so the re-imported field does not coerce its values. A field declared
+with a plain `Field(default_factory=...)` comes back from `to_stickler_config()` as required
+([#435](https://github.com/awslabs/stickler/issues/435)). A mapping field that is not in a list, and a list whose element is a union
 such as `List[Union[Dict, str]]`, still export as a string
 ([#349](https://github.com/awslabs/stickler/issues/349)).
 

@@ -205,17 +205,22 @@ Each release links to full notes on the
   model accepted. A list whose element is any mapping (`Dict`, `dict`,
   `Mapping`, optionally `Optional`) now exports `items: {"type": "object"}`
   (`["object", "null"]` for an optional element) and re-imports as
-  `List[dict]` (`List[Optional[dict]]` for an optional element). A consumer
-  reading the exported schema sees the `items` type change from `"string"` to
-  `"object"`. `to_stickler_config()` now writes every mapping element as
-  `List[Dict]` (`List[Optional[Dict]]` for an optional element), which
-  `model_from_json()` re-imports as written; it wrote `List[Mapping]` or
-  `List[Counter]`, which `model_from_json()` refused with `Unknown type`. Both
+  `List[dict]` (`List[Optional[dict]]` for an optional element), including on
+  a model built with `from_pydantic()`. A consumer reading the exported schema
+  sees the `items` type change from `"string"` to `"object"`.
+  `to_stickler_config()` now writes a mapping element as `List[Dict]`
+  (`List[Optional[Dict]]` for an optional element), which `model_from_json()`
+  re-imports as written; it wrote `List[Mapping]` or `List[Counter]`, which
+  `model_from_json()` refused with `Unknown type`. On a `from_pydantic()` model
+  it still writes `List[Any]`, which loads the same data. Both
   exports now carry the comparator, threshold, weight and clip the field
   resolves even when it is declared without `ComparableField`, so it scores as
   the original did (`0.5`, not `0.0`, for one wrong key of two) unless the data
   relied on coercion to the value type, which is not exported. Such a field was
-  refused by `model_from_json()` for having no comparator. A declared
+  refused by `model_from_json()` for having no comparator. One declared with a
+  plain `Field(default_factory=...)` now loads, but `model_from_json()` rebuilds
+  it as required, so a document that omits it raises `ValidationError`
+  ([#435](https://github.com/awslabs/stickler/issues/435)). A declared
   `ComparableField` whose annotation resolves only at `model_rebuild()` now
   exports ANLS* with clip off, what the engine scores with, instead of
   Levenshtein with clip on (`0.5`, not `0.95`, for the same data after the
