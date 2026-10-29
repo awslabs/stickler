@@ -95,12 +95,13 @@ Each release links to full notes on the
   `ValidationError`. It is now absent from `field_scores`, `explain()`,
   `non_matches` and reports, at any depth, so a value kept out of serialization
   is never scored or published. A nested model left with no field to score is
-  left out the same way. `exclude_if` is decided per value: a value it keeps is
-  scored, and a value it omits is absent, like `None`, so a required field it
-  omits no longer raises. A `StructuredModel` is unchanged: its
-  `ComparableField`s declare what is compared, so an excluded field there is
-  still scored, and `evaluate()` now agrees with `compare_with()` on it instead
-  of scoring `1.0`. See
+  left out the same way, and the model `from_pydantic()` builds reads either
+  one's key in its input as not there, not as an extra field. `exclude_if` is
+  decided per value: a value it keeps is scored, and a value it omits is
+  absent, like `None`, so a required field it omits no longer raises. A
+  `StructuredModel` is unchanged: its `ComparableField`s declare what is
+  compared, so an excluded field there is still scored, and `evaluate()` now
+  agrees with `compare_with()` on it instead of scoring `1.0`. See
   [Excluded fields](https://awslabs.github.io/stickler/API-Reference/auto/#excluded-fields)
   ([#379](https://github.com/awslabs/stickler/issues/379))
 

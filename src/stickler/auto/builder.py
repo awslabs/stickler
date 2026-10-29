@@ -407,10 +407,16 @@ def _build(
         registry = get_global_registry()
         field_definitions: Dict[str, Tuple[Any, Any]] = {}
         skipped = False
+        ignored = set()
 
         for name, field_info in cls.model_fields.items():
             if left_out(field_info):
                 skipped = True
+                ignored.update(
+                    k
+                    for k in (name, field_info.alias, field_info.serialization_alias)
+                    if isinstance(k, str)
+                )
                 continue
             if name in _RESERVED_FIELD_NAMES:
                 raise TypeError(
@@ -447,6 +453,11 @@ def _build(
             match_threshold=match_threshold,
             base_class=StructuredModel,
         )
+        # pydantic still dumps a field holding a model with nothing to score,
+        # and input data can carry an excluded field. The shadow has no such
+        # field, so from_json reads those keys as not there instead of as
+        # extra fields (false alarms).
+        shadow._ignored_input_keys = frozenset(ignored - set(field_definitions))
         return shadow
     finally:
         _building.discard(cls)

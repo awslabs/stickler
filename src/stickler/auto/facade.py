@@ -58,7 +58,6 @@ from ..structured_object_evaluator.models.threshold_helper import ThresholdHelpe
 from .builder import (
     has_exclude_if,
     is_excluded,
-    left_out,
     specs_for,
     structured_model_for,
 )
@@ -411,9 +410,6 @@ def _restore(value: Any, dumped: Any, own_keys: bool) -> Any:
       ``StructuredModel`` validates through its own classes, so it and
       everything under it (``own_keys``) get the key validation reads instead:
       an alias stays, a ``serialization_alias`` becomes the field name.
-    - On a plain model, a dumped field the shadow leaves out (one holding a
-      model with nothing to score, see ``builder.left_out``) is dropped, so it
-      is not read as an undeclared field.
     - Inside a ``StructuredModel`` (``own_keys``), a field marked
       ``exclude=True`` or ``exclude_if`` that is missing from the dump is
       dumped from its annotation and added back, so ``evaluate()`` scores it as
@@ -441,9 +437,8 @@ def _restore(value: Any, dumped: Any, own_keys: bool) -> Any:
         for entry in plan:
             raw = getattr(value, entry.name, _MISSING)
             present = entry.dumped_key in dumped
-            if raw is _MISSING or (entry.drop and not own_keys):
-                # model_construct without it (validation reports it), or a
-                # field the plain shadow does not have.
+            if raw is _MISSING:
+                # model_construct without it: validation reports it.
                 changed = changed or present
                 continue
             key = entry.valid_key if own_keys else entry.name
@@ -499,7 +494,6 @@ class _FieldPlan(NamedTuple):
     dumped_key: str  # the key pydantic's default dump writes
     valid_key: str  # the key the class's own validation reads
     excluded: bool  # exclude=True or exclude_if
-    drop: bool  # dumped, but not in a plain model's shadow (builder.left_out)
     serialized: bool  # a serializer anywhere on the field
     models: Optional[frozenset]  # models the annotation can hold; None: unknown
 
@@ -562,7 +556,7 @@ def _entry_passes(entry: _FieldPlan, own_keys: bool, seen: frozenset) -> bool:
     if own_keys:
         if entry.excluded or entry.valid_key != entry.dumped_key:
             return False
-    elif entry.name != entry.dumped_key or entry.drop:
+    elif entry.name != entry.dumped_key:
         return False
     if entry.serialized or not entry.descend:
         return True
@@ -592,8 +586,6 @@ def _build_field_plan(cls: Type[BaseModel]) -> Tuple[_FieldPlan, ...]:
                 dumped_key=dumped_key,
                 valid_key=_validation_key(cls, name, field, dumped_key),
                 excluded=is_excluded(field) or has_exclude_if(field),
-                # exclude=True is never dumped, so only the rest need dropping.
-                drop=left_out(field) and not is_excluded(field),
                 serialized=serialized,
                 models=_models_in(field.annotation),
             )

@@ -151,7 +151,7 @@ so `Model.from_json(instance.model_dump())` is safe either way.
 A field the shadow model cannot read is blank on both sides, and blank against
 blank scores as a match. `evaluate()` keeps pydantic's own dump, so serializers
 and `ser_json_*` config apply as usual, then walks it beside the instance and
-fixes three things:
+fixes two things:
 
 - A plain model's alias keys (`serialize_by_alias=True`) are renamed to field
   names, which the shadow model reads
@@ -159,8 +159,6 @@ fixes three things:
   and everything under it validate through their own config, so they get the
   key that validation reads: an alias stays, and a `serialization_alias`, which
   validation never reads, becomes the field name.
-- On a plain model, a field holding a model with nothing left to score is
-  dropped, so it is not counted as an undeclared field.
 - Inside a `StructuredModel`, a field marked `exclude=True` or `exclude_if` is
   dumped from its annotation and added back, so `evaluate()` scores it as
   `compare_with()` does ([#379](https://github.com/awslabs/stickler/issues/379)).
@@ -169,6 +167,12 @@ fixes three things:
   `StructuredModel.extra_fields` is the engine's own and is never added. On a
   plain model nothing is added back: the shadow model has no such field (see
   Honesty rules).
+
+A field holding a model with nothing left to score is still dumped, and input
+data can carry an excluded field. The shadow model sets
+`_ignored_input_keys` to those fields' keys, and `from_json()` reads them as
+not there rather than as undeclared fields, so the `from_pydantic()` recipe and
+a `model_serializer`'s output need no walk for them.
 
 The walk does not enter a `RootModel`, a `model_serializer`, anything a
 serializer produced, or a container whose length changed, since that output no

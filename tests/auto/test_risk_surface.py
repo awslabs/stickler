@@ -710,6 +710,50 @@ class TestExcludedFieldsAreNotEvaluated:
         assert set(r.explain()) == {"answer"}
         assert r.confusion_matrix["overall"]["fa"] == 0
 
+    @pytest.mark.parametrize("with_trace", [True, False])
+    def test_the_from_pydantic_recipe_ignores_a_left_out_models_key(self, with_trace):
+        """pydantic still dumps the key of a model left with nothing to score,
+        and the documented recipe feeds that dump to from_json."""
+
+        class Trace(BaseModel):
+            steps: str = Field("", exclude=True)
+
+        class Out(BaseModel):
+            answer: str
+            trace: Optional[Trace] = None
+            traces: List[Trace] = []
+            secret: str = Field("", exclude=True)
+
+        trace = Trace(steps="x") if with_trace else None
+        doc = Out(answer="a", trace=trace, traces=[Trace(steps="x")])
+        M = StructuredModel.from_pydantic(Out)
+        cm = M.from_json(doc.model_dump()).compare_with(
+            M.from_json(doc.model_dump()), include_confusion_matrix=True
+        )["confusion_matrix"]["overall"]
+        assert (cm["fa"], cm["fp"]) == (0, 0)
+        # An excluded field's key in input data is not an extra field either.
+        a = M.from_json({"answer": "a", "trace": None, "secret": "s"})
+        assert "trace" not in a.extra_fields
+
+    def test_a_left_out_model_under_a_model_serializer_is_not_a_false_alarm(self):
+        """The dump walk does not enter a model_serializer's output, so the
+        left-out model's key reaches the shadow model, which ignores it."""
+
+        class Trace(BaseModel):
+            steps: str = Field("", exclude=True)
+
+        class Lead(BaseModel):
+            answer: str = "a"
+            trace: Trace = Trace()
+
+            @model_serializer(mode="wrap")
+            def ser(self, handler):
+                return handler(self)
+
+        d = Lead(trace=Trace(steps="x"))
+        cm = stickler.evaluate(d, d).confusion_matrix["overall"]
+        assert (cm["fa"], cm["derived"]["cm_precision"]) == (0, 1.0)
+
 
 @pytest.mark.skipif(not _HAS_EXCLUDE_IF, reason="needs Field(exclude_if=)")
 class TestExcludeIfIsDecidedPerValue:
