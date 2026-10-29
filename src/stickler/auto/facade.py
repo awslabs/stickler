@@ -54,6 +54,7 @@ from ..structured_object_evaluator.models.structured_model import (
     StructuredModel,
     _annotation_is_list,
 )
+from ..structured_object_evaluator.models.threshold_helper import ThresholdHelper
 from .builder import (
     has_exclude_if,
     is_excluded,
@@ -113,8 +114,13 @@ class EvalResult:
         # it against `match_threshold` gives one definition that cannot disagree
         # with the score sitting beside it. The threshold is whatever the spec
         # resolved: the caller's argument, else a StructuredModel's own declared
-        # `match_threshold`, else DEFAULT_MATCH_THRESHOLD. See `eval_for`.
-        self.matched: bool = bool(self.overall_score >= spec._match_threshold)
+        # `match_threshold`, else DEFAULT_MATCH_THRESHOLD. See `eval_for`. The
+        # test is the one list pairing uses for the same threshold (#417).
+        self.matched: bool = bool(
+            ThresholdHelper.is_above_threshold(
+                self.overall_score, spec._match_threshold
+            )
+        )
 
     @property
     def non_matches(self) -> List[Dict[str, Any]]:
@@ -172,7 +178,7 @@ class EvalResult:
                     score == 0.0
                     and raw_sim
                     and threshold is not None
-                    and raw_sim < threshold
+                    and ThresholdHelper.is_below_threshold(raw_sim, threshold)
                     and not self._is_list_of_models(name)
                 ):
                     if self._is_list_field(name):
@@ -276,6 +282,7 @@ class EvalSpec:
             self.source_cls,
             weight_hints=self._weight_hints,
             match_threshold=self._match_threshold,
+            _check_buildable=False,
         ).items():
             out[name] = {
                 "comparator": spec.comparator_name,

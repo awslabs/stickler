@@ -38,7 +38,7 @@ class Invoice(StructuredModel):
 
 **What it gates:**
 
-- **TP vs FD classification:** If `similarity >= threshold`, the field is a True Positive. Otherwise, it's a False Discovery.
+- **TP vs FD classification:** If `similarity >= threshold` (see [Meeting a Threshold](#meeting-a-threshold)), the field is a True Positive. Otherwise, it's a False Discovery.
 - **Score clipping:** When `clip_under_threshold=True` (the default), scores below the threshold are zeroed out in the weighted average.
 
 **Default:** `0.5`
@@ -128,6 +128,10 @@ In this example:
 Field threshold → threshold named on the comparator → `0.5`.
 
 A comparator's *default* threshold is not part of that chain. `LevenshteinComparator()` does not contribute its 0.7, because those defaults were chosen for `binary_compare()` and were never audited as classification cutoffs. `DateComparator` is the clearest case: it defaults to `1.0` while awarding `0.7` partial credit for a match with no year, so adopting its default would clip its own feature to zero.
+
+## Meeting a Threshold
+
+A score meets its threshold when it is at or above it, or less than `1e-10` under it. The allowance absorbs floating-point rounding: `0.7 + 0.1` is `0.7999999999999999`, which meets `0.8`, while `0.8 - 1e-9` does not. Field, list element and list pair classification, score clipping, recursion into a list pair, `EvalResult.matched` and `binary_compare()` all use this one test, `ThresholdHelper.is_above_threshold`, so wherever these docs write `similarity >= threshold` they mean it. `ANLSStarComparator`'s `leaf_threshold` and the bounding-box `iou_thresholds` are separate metrics and keep their exact comparison.
 
 ---
 

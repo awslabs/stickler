@@ -64,7 +64,7 @@ When defining a `StructuredModel` subclass in Python, each field is declared wit
 
 See the [Comparators](../Comparators/README.md) section for the complete list and detailed descriptions.
 
-**`threshold`** -- Acts as a binary classification cutoff. A similarity score at or above the threshold counts as a True Positive; below it counts as a False Discovery. Choose stricter thresholds (0.9--1.0) for critical fields and looser thresholds (0.5--0.7) for flexible fields.
+**`threshold`** -- Acts as a binary classification cutoff. A similarity score at or above the threshold counts as a True Positive; below it counts as a False Discovery. See [Meeting a Threshold](../../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold). Choose stricter thresholds (0.9--1.0) for critical fields and looser thresholds (0.5--0.7) for flexible fields.
 
 **`weight`** -- Controls how much a field contributes to the overall score. The overall score is computed as:
 
