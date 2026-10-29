@@ -245,10 +245,11 @@ rejected rather than dropped. An unrecognized or misspelled `x-aws-stickler-*`
 key raises and names the closest valid key for that position; unrelated `x-*`
 extensions from other tooling are left alone. A nested `["object", "null"]` node
 reads the same keys as an `"object"` one; the root must be `"object"`. A `$defs`
-entry with `properties` reads only object-level keys, any other `$defs` entry
-reads none; field-level keys go beside the `$ref` that uses it, or on the array
-property for `items`. Object-level keys on an `allOf` arm, or on a definition
-reached through `allOf` or a root `$ref`, are not read, so they raise.
+entry that a `$ref` reaches is checked: with `properties` it reads only
+object-level keys, otherwise none; field-level keys go beside the `$ref` that
+uses it, or on the array property for `items`. Object-level keys beside a
+non-root `$ref` are not read (they go on the target), nor on an `allOf` arm or a
+definition reached only through `allOf` or a root `$ref`, so they raise.
 
 Comparator names accepted by `x-aws-stickler-comparator` are the registered class names:
 `LevenshteinComparator`, `ExactComparator`, `NormalizedComparator`, `PhoneComparator`,

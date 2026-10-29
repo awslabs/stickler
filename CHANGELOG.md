@@ -92,13 +92,19 @@ Each release links to full notes on the
   discovery (`tp 0, fd 1, fp 1`), and inference inside the node now uses its
   tuned thresholds (`number` at `0.95` rather than `0.5`). An invalid value
   there (a match threshold of `1.5`, a name that is not an identifier) was
-  ignored and now raises, as it does on `"object"`. Part A of
+  ignored and now raises, as it does on `"object"`. Beside a `$ref`, the
+  rewrite also copied the `$ref` onto the null arm, so the node built a union of
+  two classes compared with `ExactComparator` (a one-character difference scored
+  `0.0`); it now builds one class and scores as `"object"` does (`0.9`). Part A of
   [#349](https://github.com/awslabs/stickler/issues/349)
 
 - **Breaking:** an `x-aws-stickler-*` key inside a `$defs` or `definitions`
-  entry is now checked, as it is inline. The walk entered a definition without
-  checking it, so `x-aws-stickler-thresold` there imported silently where inline
-  it raises. A definition with `properties` reads only the object-level keys,
+  entry that a `$ref` reaches is now checked, as it is inline. The walk entered a
+  definition without checking it, so `x-aws-stickler-thresold` there imported
+  silently where inline it raises. An entry no `$ref` reaches builds nothing and
+  is not checked, so a dereferenced schema, which keeps the originals beside
+  their inlined copies, imports as before; so does `$defs` inside `default` or
+  `examples` data. A definition with `properties` reads only the object-level keys,
   which configure the class it generates for every property, `items` or
   `anyOf`/`oneOf` arm that `$ref`s it. A field-level key (`comparator`,
   `comparator-config`, `threshold`, `weight`, `clip-under-threshold`) inside
@@ -108,13 +114,17 @@ Each release links to full notes on the
   `items` `$ref`, which does not read field keys. Any other definition (a
   scalar, an array, a combiner, an alias `$ref`, a mapping) generates no class
   and reads neither set, so an object-level key there raises too. Object-level
-  keys are also rejected where no class is built from them: on an `allOf` arm,
-  inline or through `$ref`, which is merged into one class at the defaults, and
-  on a definition reached through a root `$ref`, where the root reads the keys
-  beside the `$ref` instead. Each of these resolved the default in silence
-  (`x-aws-stickler-threshold: 0.88` in `$defs` gave `0.7`, a definition's
-  `match-threshold: 0.93` through `allOf` built at `0.7`), so a schema that
-  imported before and now raises loses no working configuration.
+  keys are also rejected where no class is built from them: beside a `$ref`
+  anywhere but the root (on `items`, an `anyOf`/`oneOf` arm, or an object
+  property), where the class is built from the target and reads the target's
+  keys; on an `allOf` arm, inline or through `$ref`, which is merged into one
+  class at the defaults; and on a definition reached through a root `$ref`,
+  where the root reads the keys beside the `$ref` instead. The last two raise
+  only when no other position builds the same object from its keys. Each of
+  these resolved the default in silence (`x-aws-stickler-threshold: 0.88` in
+  `$defs` gave `0.7`, `items: {"$ref": ..., "x-aws-stickler-match-threshold":
+  0.93}` built at `0.7`), so a schema that imported before and now raises loses
+  no working configuration.
   `to_json_schema()` never writes `$defs`, so its exports are unaffected.
   Closes the known gap recorded for this key in 1.0.0
   ([#340](https://github.com/awslabs/stickler/issues/340))
