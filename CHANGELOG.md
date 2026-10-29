@@ -362,6 +362,16 @@ Each release links to full notes on the
   metrics could put markup in the `tp`, `fd`, `fa` or `fn` cells and have a
   browser parse it. Not reachable from document data
 
+### Performance
+
+- **A report generated with `individual_results_jsonl_path` takes longer to
+  write.** The escaping that keeps document data from ending the report's
+  `<script>` block runs over the whole embedded blob and takes a slower path
+  than the plain `json.dumps` it wraps: 467 ms against 42 ms at 1.0.0 for
+  1,000 documents, a 13.3 MB blob. Evaluation results are unaffected; this is
+  report-generation time only. A faster form with byte-identical output is
+  tracked in [#457](https://github.com/awslabs/stickler/issues/457)
+
 ## [1.0.0] - 2026-09-11
 
 ### Added
