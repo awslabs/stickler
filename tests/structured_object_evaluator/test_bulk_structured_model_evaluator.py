@@ -1162,15 +1162,19 @@ class TestWeightedOverallScore:
         assert result.field_metrics["bar"].get("tp", 0) == 0
 
     def test_list_of_model_leaf_omits_mean_score_key(self):
-        """In a List[StructuredModel] element only its own objects get mean_score.
+        """In a List[StructuredModel] element only its own StructuredModel and
+        List[StructuredModel] fields get mean_score.
 
-        compare_with() scores the list parent and the element's own object
-        field (``items.addr``), but emits every other path inside an element
-        without threshold_applied_score: leaves, primitive lists, and objects
-        two levels down (``items.addr.geo``). Those get CM counts only, and the
-        key is omitted rather than reported as a misleading 0.0 (#249).
+        compare_with() scores the list parent and those fields (``items.addr``,
+        ``items.parts``), copied from the first matched pair (#428), but emits
+        every other path inside an element without threshold_applied_score:
+        leaves, primitive lists, a plain BaseModel field, and anything two levels
+        down (``items.addr.geo``, ``items.parts.sku``). Those get CM counts only,
+        and the key is omitted rather than reported as a misleading 0.0 (#249).
         """
         from typing import List as _List
+
+        from pydantic import BaseModel
 
         class _Geo(StructuredModel):
             lat: str = ComparableField(comparator=LevenshteinComparator())
@@ -1179,11 +1183,19 @@ class TestWeightedOverallScore:
             city: str = ComparableField(comparator=LevenshteinComparator())
             geo: _Geo = ComparableField()
 
+        class _Part(StructuredModel):
+            sku: str = ComparableField(comparator=LevenshteinComparator())
+
+        class _Plain(BaseModel):
+            note: str
+
         class _Line(StructuredModel):
             name: str = ComparableField(comparator=LevenshteinComparator(), weight=2.0)
             qty: int = ComparableField(comparator=NumericComparator(), weight=1.0)
             tags: _List[str] = ComparableField()
             addr: _Addr = ComparableField()
+            parts: _List[_Part] = ComparableField()
+            plain: _Plain = ComparableField()
 
         class _Order(StructuredModel):
             order_id: str = ComparableField(
@@ -1196,6 +1208,8 @@ class TestWeightedOverallScore:
             qty=1,
             tags=["red"],
             addr=_Addr(city="Oslo", geo=_Geo(lat="59.9")),
+            parts=[_Part(sku="A-1")],
+            plain=_Plain(note="n"),
         )
         gt = _Order(order_id="O-1", items=[line])
         pred = _Order(order_id="O-1", items=[line])
@@ -1212,15 +1226,17 @@ class TestWeightedOverallScore:
             "items.addr.city",
             "items.addr.geo",
             "items.addr.geo.lat",
+            "items.plain",
+            "items.parts.sku",
         )
         for path in unscored:
             # CM counts bubble up...
             assert fm[path].get("tp", 0) > 0, path
             # ...but compare_with emits these paths unscored.
             assert "mean_score" not in fm[path], path
-        # The list parent, the element's own object field, and top-level
-        # leaves do surface mean_score.
-        for path in ("items", "items.addr", "order_id"):
+        # The list parent, the element's own StructuredModel and
+        # List[StructuredModel] fields, and top-level leaves do surface mean_score.
+        for path in ("items", "items.addr", "items.parts", "order_id"):
             assert "mean_score" in fm[path], path
 
     def test_invalid_overall_score_skipped(self):

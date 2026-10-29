@@ -461,7 +461,7 @@ class BulkStructuredModelEvaluator:
         every node compare_with emits. Score sums (for ``mean_score``) are
         recorded only where a node carries a finite
         ``threshold_applied_score``. Inside a list element, only the
-        element's own object and list-of-StructuredModel fields
+        element's own StructuredModel and list-of-StructuredModel fields
         (``items.addr``, ``items.parts``) carry one, copied from the first
         matched element pair. Every other path inside an element (leaves,
         primitive lists, ``items.addr.geo``) carries CM counts only, so it
