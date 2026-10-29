@@ -254,6 +254,8 @@ def _reject_unknown_extensions(
 
 
 _COMBINERS = frozenset({"allOf", "anyOf", "oneOf"})
+# Keywords whose values are instance data, not schemas.
+_DATA_KEYWORDS = frozenset({"const", "default", "enum", "examples"})
 _NON_VALIDATING_SCHEMA_KEYWORDS = frozenset(
     {
         "const",
@@ -900,6 +902,7 @@ class JsonSchemaImporter:
                     for key, value in metadata.items()
                     if key in _KNOWN_MODEL_EXTENSIONS
                 }
+
                 metadata["anyOf"] = [
                     {
                         **deepcopy(non_metadata),
@@ -924,18 +927,84 @@ class JsonSchemaImporter:
         that produce a field, so a typo on the root object, on `items`, or on a
         `["object", "null"]` node was silently dropped while the same typo one
         level down raised.
-        """
 
-        def walk(node: Any, path: str, scope: Optional[str] = "model") -> None:
+        A `$defs`/`definitions` entry is checked only once a `$ref` reaches it.
+        A dereferenced schema keeps the originals beside their inlined copies,
+        and an entry nothing references builds nothing, so checking those
+        raised for keys that were read on the copies. Data keywords and `x-*`
+        payloads are values, not schemas, and are not walked.
+        """
+        # Nodes whose model keys some class reads, by identity: every position
+        # except an `allOf` arm and the root's own `$ref` target. Over-counting
+        # here can only skip an error, never raise one.
+        read: set = set()
+        # `allOf` arms at positions that build a class, checked once every
+        # reader is known.
+        merged: List[Tuple[Any, str, str]] = []
+        # Definition entries reached by a `$ref`, by JSON pointer, and whether a
+        # position that builds a class reached them.
+        walked: Dict[Tuple[str, ...], bool] = {}
+        pending: List[Tuple[Tuple[str, ...], Any, bool]] = []
+
+        def resolve(ref: Any) -> Tuple[Any, str, Optional[Tuple[str, ...]], Any]:
+            """Resolve a local `$ref`: its node, its dotted path, and the
+            innermost definition entry that contains it, with that entry's body."""
+            if not isinstance(ref, str) or not ref.startswith("#"):
+                return None, "", None, None
+            pointer = ref[1:]
+            if pointer and not pointer.startswith("/"):
+                return None, "", None, None
+            parts = (
+                tuple(
+                    part.replace("~1", "/").replace("~0", "~")
+                    for part in pointer[1:].split("/")
+                )
+                if pointer
+                else ()
+            )
+            node: Any = schema
+            entry: Optional[Tuple[str, ...]] = None
+            entry_body: Any = None
+            for index, part in enumerate(parts):
+                if not isinstance(node, dict) or part not in node:
+                    return None, "", None, None
+                if index > 0 and parts[index - 1] in ("$defs", "definitions"):
+                    entry, entry_body = parts[: index + 1], node[part]
+                node = node[part]
+            return node, ".".join(parts), entry, entry_body
+
+        def chain(node: Any, where: str):
+            """The node, then each alias it `$ref`s: every hop is the same class."""
+            seen: set = set()
+            while isinstance(node, dict) and id(node) not in seen:
+                seen.add(id(node))
+                yield node, where
+                node, target, entry, _ = resolve(node.get("$ref"))
+                where = f"{'definition' if entry else 'object'} '{target}'"
+
+        def walk(
+            node: Any,
+            path: str,
+            scope: Optional[str] = "model",
+            built: bool = True,
+            reads: bool = True,
+        ) -> None:
             if isinstance(node, list):
                 for index, value in enumerate(node):
-                    walk(value, f"{path}[{index}]", scope)
+                    walk(value, f"{path}[{index}]", scope, built, reads)
                 return
             if not isinstance(node, dict):
                 return
 
             if scope is not None:
                 _reject_unknown_extensions(node, path or "(root)", scope=scope)
+
+            ref = node.get("$ref")
+            target, target_path, entry, entry_body = resolve(ref)
+            if entry is not None:
+                pending.append((entry, entry_body, built))
+            if reads:
+                read.update(id(hop) for hop, _ in chain(node, ""))
 
             if "patternProperties" in node:
                 location = f" at '{path}'" if path else ""
@@ -965,23 +1034,11 @@ class JsonSchemaImporter:
                     )
 
             for key, value in node.items():
-                child_path = path
-                child_scope: Optional[str] = None
+                if key in _DATA_KEYWORDS or (
+                    isinstance(key, str) and key.startswith("x-")
+                ):
+                    continue
                 if key in ("$defs", "definitions") and isinstance(value, dict):
-                    for name, body in value.items():
-                        # Checked like any other node. Walking a definition with
-                        # no scope let a typo there import silently while the
-                        # same typo inline raised. See #340. Only a body with
-                        # `properties` generates a class: a `type: "object"`
-                        # mapping becomes a `dict` field, judged against its
-                        # parent's threshold, so it reads no model keys.
-                        walk(
-                            body,
-                            f"{path}.{key}.{name}" if path else f"{key}.{name}",
-                            "definition"
-                            if isinstance(body, dict) and "properties" in body
-                            else "value_definition",
-                        )
                     continue
                 if key == "properties" and isinstance(value, dict):
                     for name, child in value.items():
@@ -992,108 +1049,94 @@ class JsonSchemaImporter:
                             child,
                             f"{path}.{name}" if path else name,
                             "field_or_model" if _is_object_schema(child) else "field",
+                            built,
                         )
                     continue
+                if key == "allOf" and isinstance(value, list):
+                    # The arms are merged into one `AllOfModel`, so no arm, and
+                    # nothing an arm `$ref`s, has its model keys read here.
+                    for index, arm in enumerate(value):
+                        if built:
+                            merged.append(
+                                (
+                                    arm,
+                                    f"{path}.allOf[{index}]"
+                                    if path
+                                    else f"allOf[{index}]",
+                                    path or "(root)",
+                                )
+                            )
+                        walk(arm, f"{path}[{index}]", "model", built, reads=False)
+                    continue
+                child_path = path
+                child_scope: Optional[str] = None
+                # Only these positions build part of the model. Anything else,
+                # such as `not` or `if`, is walked for its shape but builds no
+                # class whose keys could be dropped.
+                child_built = False
                 if key == "items":
                     child_path = f"{path}[]" if path else "[]"
                     # Field keys are NOT read on `items`: weight, threshold and
                     # comparator there are all dropped, since the field they would
                     # configure is the array itself, one level up. Only the element
                     # class's own settings are read.
-                    child_scope = "model"
+                    child_scope, child_built = "model", built
                 elif key in _COMBINERS or key in ("$defs", "definitions"):
                     # A `$defs` that is not a mapping is not a set of definitions;
                     # it is still walked, as before, rather than skipped.
-                    child_scope = "model"
-                walk(value, child_path, child_scope)
+                    child_scope, child_built = "model", built
+                walk(value, child_path, child_scope, child_built)
 
-        walk(schema, "", "model")
-        cls._reject_unread_model_keys(schema)
+        read.add(id(schema))
+        walk(schema, "", "model", reads=False)
+        while pending:
+            entry, body, built = pending.pop()
+            if entry in walked and (walked[entry] or not built):
+                continue
+            walked[entry] = built
+            # Checked like any other node. Walking a definition with no scope let
+            # a typo there import silently while the same typo inline raised. See
+            # #340. Only a body with `properties` generates a class: a
+            # `type: "object"` mapping becomes a `dict` field, judged against its
+            # parent's threshold, so it reads no model keys.
+            walk(
+                body,
+                ".".join(entry),
+                "definition"
+                if isinstance(body, dict) and "properties" in body
+                else "value_definition",
+                built,
+                reads=False,
+            )
 
-    @staticmethod
-    def _reject_unread_model_keys(schema: Dict[str, Any]) -> None:
-        """Raise for model keys on a class that is never built from them.
-
-        The walk above checks each node by its own position, but an object's
-        model keys are read only where its class is built. Two positions build a
-        different class: an `allOf` arm is merged into `AllOfModel`, and a root
-        `$ref` builds the root class, which reads the root's own keys. Model keys
-        on such an arm, or on a definition reached that way, passed the walk and
-        were dropped. See #340.
-        """
-        data_keywords = {"const", "default", "enum", "examples"}
-
-        def resolve(ref: Any) -> Tuple[Optional[Dict[str, Any]], str]:
-            if not isinstance(ref, str) or not ref.startswith("#/"):
-                return None, ""
-            parts = [
-                part.replace("~1", "/").replace("~0", "~")
-                for part in ref[2:].split("/")
-            ]
-            node: Any = schema
-            for part in parts:
-                if not isinstance(node, dict) or part not in node:
-                    return None, ""
-                node = node[part]
-            return (node if isinstance(node, dict) else None), ".".join(parts)
-
+        # An object's model keys are read only where its class is built. An
+        # `allOf` arm is merged into `AllOfModel`, and a root `$ref` builds the
+        # root class from the root's own keys, so keys there are dropped unless
+        # another position builds the same object. See #340.
         def check(node: Any, where: str, reached: str, advice: str) -> None:
-            # Follows an alias chain, since each hop is the same class.
-            seen: set = set()
-            while isinstance(node, dict):
-                declared = sorted(key for key in node if key in _KNOWN_MODEL_EXTENSIONS)
-                if declared:
+            for hop, hop_where in chain(node, where):
+                declared = sorted(key for key in hop if key in _KNOWN_MODEL_EXTENSIONS)
+                if declared and id(hop) not in read:
                     raise ValueError(
-                        f"Stickler extension '{declared[0]}' on {where} is not "
+                        f"Stickler extension '{declared[0]}' on {hop_where} is not "
                         f"read when it is reached through {reached}. {advice} "
                         "Left in place it would be dropped silently."
                     )
-                ref = node.get("$ref")
-                if not isinstance(ref, str) or ref in seen:
-                    return
-                seen.add(ref)
-                node, target = resolve(ref)
-                where = f"definition '{target}'"
 
-        def visit(node: Any, path: str) -> None:
-            if isinstance(node, list):
-                for index, value in enumerate(node):
-                    visit(value, f"{path}[{index}]")
-                return
-            if not isinstance(node, dict):
-                return
-            arms = node.get("allOf")
-            if isinstance(arms, list):
-                for index, arm in enumerate(arms):
-                    arm_path = f"{path}.allOf[{index}]" if path else f"allOf[{index}]"
-                    check(
-                        arm,
-                        f"object '{arm_path}'",
-                        f"'allOf' at '{path or '(root)'}'",
-                        "The arms are merged into one class with the default name "
-                        "and match threshold, and no position sets them. Reference "
-                        "the object directly, without 'allOf', to configure it.",
-                    )
-            for key, value in node.items():
-                if key in data_keywords or key == _PRESERVED_EXAMPLES_KEY:
-                    continue
-                if key == "properties" and isinstance(value, dict):
-                    for name, child in value.items():
-                        visit(child, f"{path}.{name}" if path else name)
-                elif key in ("$defs", "definitions") and isinstance(value, dict):
-                    for name, body in value.items():
-                        visit(body, f"{path}.{key}.{name}" if path else f"{key}.{name}")
-                elif key == "items":
-                    visit(value, f"{path}[]" if path else "[]")
-                else:
-                    visit(value, f"{path}.{key}" if path else key)
-
-        visit(schema, "")
-        target, target_path = resolve(schema.get("$ref"))
-        if target is not None:
+        for arm, arm_path, at in merged:
             check(
-                target,
-                f"definition '{target_path}'",
+                arm,
+                f"object '{arm_path}'",
+                f"'allOf' at '{at}'",
+                "The arms are merged into one class with the default name and "
+                "match threshold, and no position sets them. Reference the object "
+                "directly, without 'allOf', to configure it.",
+            )
+        root_target, root_target_path, _, _ = resolve(schema.get("$ref"))
+        if isinstance(root_target, dict):
+            check(
+                root_target,
+                f"definition '{root_target_path}'",
                 "the root '$ref'",
                 "The root class reads the root's own keys: put it on the root, "
                 "beside the '$ref'.",
