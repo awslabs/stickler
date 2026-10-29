@@ -220,9 +220,9 @@ class TestOptionalFieldNoneFromJson:
         """OPTIONAL primitive INSIDE a nested object round-trips via from_json.
 
         This nests the optional primitive one level down so it travels the real
-        bug path: ConfigurationHelper._process_nested_structured_data round-trips
-        the nested object through from_json(...).model_dump(), which materializes
-        the None default and re-validates it. A *top-level* optional primitive
+        bug path: ConfigurationHelper.from_json prepares the nested object
+        separately, and once round-tripped it through from_json(...).model_dump(),
+        which materialized the None default and re-validated it. A *top-level* optional primitive
         never re-validates its default, so it would pass even without the fix and
         would not pin the bug (per @adiadd's review).
         """

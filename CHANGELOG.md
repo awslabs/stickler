@@ -226,11 +226,15 @@ Each release links to full notes on the
   ([#378](https://github.com/awslabs/stickler/issues/378))
 
 - **`StructuredModel.from_json()` keeps a nested `StructuredModel` whole.** It
-  passed each nested model on as its `model_dump()`, which drops every
-  `exclude=True` field, so a nested excluded field read blank on both sides and
-  `compare_with()` scored a wrong value `1.0`. The nested model's
-  `extra_fields` were lost the same way. Both are now put back into that dict,
-  at any depth, so a `mode="before"` validator still receives one
+  validated each nested model and passed it on as its `model_dump()`. The dump
+  drops every `exclude=True` field, so a nested excluded field, at any depth,
+  read blank on both sides and `compare_with()` scored a wrong value `1.0`; a
+  required one raised. It also keyed a field by its `serialization_alias`,
+  which validation never reads, so the value was lost, and the nested
+  `extra_fields` were lost too. The nested dict is now the input as given,
+  validated once, and `extra_fields` is kept at every level. A `mode="before"`
+  validator still receives a dict, holding the input's keys rather than every
+  field's default
   ([#379](https://github.com/awslabs/stickler/issues/379))
 
 - **A `RootModel` is now refused when the evaluator is built, instead of failing

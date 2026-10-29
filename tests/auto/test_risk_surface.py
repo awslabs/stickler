@@ -31,12 +31,14 @@ from typing import (
 
 import pytest
 from pydantic import (
+    AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
     PlainSerializer,
     ValidationError,
     field_serializer,
+    field_validator,
     model_serializer,
     model_validator,
 )
@@ -940,6 +942,120 @@ class TestExcludedFieldsOnAStructuredModel:
             x: Optional[Annotated[Inner, redact]] = Field(default=None, exclude=True)
 
         assert _dump(S(x=Inner(name="a", total=5.0)))["x"] == {"name": "redacted"}
+
+    def test_from_json_does_not_validate_an_unset_excluded_default(self):
+        """The dump drops the value, and a default is never validated, so
+        from_json must not put the default back as input."""
+
+        class Party(StructuredModel):
+            name: str = ComparableField()
+            internal_ref: str = ComparableField(exclude=True)
+
+        class Invoice(StructuredModel):
+            vendor: Party = ComparableField()
+
+        inv = Invoice(vendor=Party(name="Acme", internal_ref="r1"))
+        assert Invoice.from_json(inv.model_dump()).vendor.name == "Acme"
+
+    def test_from_json_adds_no_key_the_input_lacked(self):
+        """No extra_fields key and no default-valued excluded field: either
+        changes which Union arm validates, and reaches a before-validator."""
+
+        class Person(StructuredModel):
+            first: str = ComparableField(default="")
+
+        class Company(BaseModel):
+            legal_name: str
+            tax_id: str
+
+        class Doc(StructuredModel):
+            party: Optional[Union[Person, Company]] = ComparableField(default=None)
+
+        party = Doc.from_json({"party": {"legal_name": "ACME", "tax_id": "1"}}).party
+        assert type(party) is Company
+        gt = Doc(party=Company(legal_name="A", tax_id="1"))
+        pred = Doc(party=Company(legal_name="A", tax_id="2"))
+        r = stickler.evaluate(gt, pred)
+        assert r.field_scores == gt.compare_with(pred)["field_scores"]
+        assert r.confusion_matrix["overall"]["fa"] == 0
+
+        class Stripped(StructuredModel):
+            name: str = ComparableField(default="")
+            note: str = ComparableField(default="", exclude=True)
+
+            @field_validator("*", mode="before")
+            @classmethod
+            def strip(cls, v):
+                return v.strip()
+
+        class Holder(StructuredModel):
+            s: Stripped = ComparableField()
+
+        assert Holder.from_json({"s": {"name": " x "}}).s.name == "x"
+
+    def test_from_json_reads_a_nested_alias_as_validation_does(self):
+        """The nested dict keeps the input's keys, which are the ones the
+        nested model validated from (#378)."""
+
+        class C(StructuredModel):
+            model_config = ConfigDict(serialize_by_alias=True)
+            v: str = ComparableField(default="", serialization_alias="VV")
+
+        class Address(StructuredModel):
+            model_config = ConfigDict(alias_generator=to_camel)
+            zip_code: str = ComparableField(default="")
+
+        class Choice(StructuredModel):
+            x: str = ComparableField(
+                default="", validation_alias=AliasChoices("X", "xx")
+            )
+
+        class P(StructuredModel):
+            c: Optional[C] = ComparableField(default=None)
+            address: Optional[Address] = ComparableField(default=None)
+            choice: Optional[Choice] = ComparableField(default=None)
+
+        p = P.from_json(
+            {"c": {"v": "a"}, "address": {"zipCode": "1"}, "choice": {"xx": "2"}}
+        )
+        assert (p.c.v, p.address.zip_code, p.choice.x) == ("a", "1", "2")
+        gt = P(c=C(v="a"), address=Address(zipCode="1"), choice=Choice(X="1"))
+        pred = P(c=C(v="b"), address=Address(zipCode="2"), choice=Choice(X="2"))
+        r = stickler.evaluate(gt, pred)
+        assert r.field_scores == gt.compare_with(pred)["field_scores"]
+        assert r.field_scores == {"c": 0.0, "address": 0.0, "choice": 0.0}
+
+    def test_from_json_keeps_excluded_fields_below_any_annotation(self):
+        """Dict values, nested lists and plain models keep their excluded
+        fields, so a required one does not raise."""
+
+        class Sub(StructuredModel):
+            v: str = ComparableField(default="")
+            hid: str = ComparableField(default="", exclude=True)
+
+        class Ans(BaseModel):
+            value: str
+            reasoning: str = Field(exclude=True)
+
+        class Mid(StructuredModel):
+            m: Dict[str, Sub] = {}
+            rows: List[List[Sub]] = []
+            answer: Optional[Ans] = ComparableField(default=None)
+
+        class Top(StructuredModel):
+            mid: Mid = ComparableField()
+
+        t = Top.from_json(
+            {
+                "mid": {
+                    "m": {"k": {"v": "1", "hid": "h1"}},
+                    "rows": [[{"v": "2", "hid": "h2"}]],
+                    "answer": {"value": "3", "reasoning": "r"},
+                }
+            }
+        )
+        assert (t.mid.m["k"].hid, t.mid.rows[0][0].hid) == ("h1", "h2")
+        assert t.mid.answer.reasoning == "r"
 
 
 class TestNullability:

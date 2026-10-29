@@ -808,6 +808,24 @@ class StructuredModel(BaseModel):
         }
     )
 
+    # Keys from_json reads as not there, in addition to undeclared ones. The
+    # builder sets this on a shadow model to the keys pydantic still dumps for
+    # a field the shadow leaves out (#379), so a dump fed back through
+    # from_json does not count them as extra fields.
+    _ignored_input_keys: ClassVar[frozenset] = frozenset()
+
+    @classmethod
+    def _reject_reserved_keys(cls, json_data: Any) -> None:
+        if isinstance(json_data, dict):
+            reserved_in_payload = cls._RESERVED_DUNDER_NAMES.intersection(json_data)
+            if reserved_in_payload:
+                raise ValueError(
+                    f"json_data contains reserved key(s): "
+                    f"{sorted(reserved_in_payload)}. The "
+                    f"'__stickler_*' namespace is reserved for library "
+                    f"metadata and cannot appear in user payloads."
+                )
+
     @classmethod
     def from_json(
         cls,
@@ -836,15 +854,7 @@ class StructuredModel(BaseModel):
             ValueError: If ``json_data`` contains any reserved
                 ``__stickler_*`` dunder name at the top level.
         """
-        if isinstance(json_data, dict):
-            reserved_in_payload = cls._RESERVED_DUNDER_NAMES.intersection(json_data)
-            if reserved_in_payload:
-                raise ValueError(
-                    f"json_data contains reserved key(s): "
-                    f"{sorted(reserved_in_payload)}. The "
-                    f"'__stickler_*' namespace is reserved for library "
-                    f"metadata and cannot appear in user payloads."
-                )
+        cls._reject_reserved_keys(json_data)
 
         if process_confidence is not None:
             warn_once(

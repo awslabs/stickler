@@ -6,7 +6,7 @@ JSON processing, and schema generation for StructuredModel instances.
 
 import inspect
 from collections.abc import Mapping as abc_Mapping
-from typing import TYPE_CHECKING, Any, Dict, List, get_args, get_origin
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, get_args, get_origin
 
 from pydantic import BaseModel
 
@@ -29,9 +29,6 @@ if TYPE_CHECKING:
     )
 from stickler.comparators.structured import StructuredModelComparator
 
-# A field a dump left out, as opposed to one dumped as None.
-_ABSENT: Any = object()
-
 # Comparators that must not be handed a mapping, matched by exact class name.
 # Differently named external comparators are left alone, but this also misses
 # differently named subclasses of these comparators, even with inherited behavior.
@@ -53,7 +50,7 @@ class ConfigurationHelper:
         """Create a StructuredModel instance from JSON data.
 
         This method handles missing fields gracefully and stores extra fields
-        in the extra_fields attribute.
+        in the extra_fields attribute, at every nesting level.
 
         Args:
             cls: StructuredModel class
@@ -62,8 +59,31 @@ class ConfigurationHelper:
         Returns:
             StructuredModel instance created from the JSON data
         """
-        # Make a copy of the input data
+        data, extras = ConfigurationHelper._prepare(cls, json_data)
+        instance = cls.model_validate(data)
+        ConfigurationHelper._attach_extra_fields(instance, extras)
+        return instance
+
+    @staticmethod
+    def _prepare(cls, json_data: Dict[str, Any]) -> Tuple[Dict[str, Any], tuple]:
+        """The dict ``cls`` validates from, and the ``extra_fields`` it implies.
+
+        A nested ``StructuredModel`` (direct, ``Optional``, or a list of one)
+        is prepared the same way, recursively, and stays a dict, so a parent's
+        ``mode="before"`` validator receives one. Each value is the input
+        itself: nothing is added, and nothing is validated twice (#379). The
+        nested model used to be validated and passed on as its
+        ``model_dump()``, which dropped every ``exclude=True`` field and added
+        keys the input never had.
+
+        Returns ``(data, extras)``, where ``extras`` is ``(cls, extra_fields,
+        {field: nested extras})`` for :meth:`_attach_extra_fields`. A list
+        field maps to a list of nested extras, ``None`` for a non-dict item.
+        """
+        cls._reject_reserved_keys(json_data)
         data_copy = json_data.copy()
+        for key in cls._ignored_input_keys:
+            data_copy.pop(key, None)
 
         # Extract field names defined in the model
         model_fields = set(cls.model_fields.keys())
@@ -78,76 +98,70 @@ class ConfigurationHelper:
         # Extract extra fields into a separate dictionary
         extra_fields = {k: data_copy[k] for k in extra_field_names}
 
-        # Since ComparableField is now always a function, we don't need special handling
-        # for missing fields - Pydantic will handle them with the field's default value
-        pass
-
-        # CRITICAL FIX: Recursively handle nested StructuredModel objects
-        # For each field that exists in the data and is a StructuredModel, process it recursively
+        nested: Dict[str, Any] = {}
         for field_name in model_fields:
-            if field_name in data_copy:
-                field_info = cls.model_fields.get(field_name)
-                if field_info:
-                    # Check if this field is a StructuredModel type
-                    annotation = field_info.annotation
-
-                    # Handle direct StructuredModel annotations
-                    if ConfigurationHelper._is_structured_model_class(annotation):
-                        # Recursively process the nested object
-                        nested_data = data_copy[field_name]
-                        if isinstance(nested_data, dict):
-                            data_copy[field_name] = (
-                                ConfigurationHelper._process_nested_structured_data(
-                                    annotation, nested_data
-                                )
+            if field_name not in data_copy:
+                continue
+            annotation = cls.model_fields[field_name].annotation
+            value = data_copy[field_name]
+            if ConfigurationHelper._is_structured_model_class(annotation):
+                structured_class = annotation
+            elif ConfigurationHelper._is_optional_structured_model(annotation):
+                structured_class = (
+                    ConfigurationHelper._extract_structured_class_from_optional(
+                        annotation
+                    )
+                )
+            elif ConfigurationHelper._is_list_structured_model(annotation):
+                structured_class = (
+                    ConfigurationHelper._extract_structured_class_from_list(
+                        annotation
+                    )
+                )
+                if structured_class and isinstance(value, list):
+                    items, item_extras = [], []
+                    for item in value:
+                        tree = None  # a non-dict item is kept as is
+                        if isinstance(item, dict):
+                            item, tree = ConfigurationHelper._prepare(
+                                structured_class, item
                             )
+                        items.append(item)
+                        item_extras.append(tree)
+                    data_copy[field_name] = items
+                    nested[field_name] = item_extras
+                continue
+            else:
+                continue
+            if structured_class and isinstance(value, dict):
+                data_copy[field_name], nested[field_name] = (
+                    ConfigurationHelper._prepare(structured_class, value)
+                )
 
-                    # Handle Optional[StructuredModel] annotations
-                    elif ConfigurationHelper._is_optional_structured_model(annotation):
-                        nested_data = data_copy[field_name]
-                        if isinstance(nested_data, dict):
-                            # Extract the StructuredModel class from Optional[StructuredModel]
-                            structured_class = ConfigurationHelper._extract_structured_class_from_optional(
-                                annotation
-                            )
-                            if structured_class:
-                                data_copy[field_name] = (
-                                    ConfigurationHelper._process_nested_structured_data(
-                                        structured_class, nested_data
-                                    )
-                                )
+        return data_copy, (cls, extra_fields, nested)
 
-                    # Handle List[StructuredModel] and Optional[List[StructuredModel]] annotations
-                    elif ConfigurationHelper._is_list_structured_model(annotation):
-                        nested_data = data_copy[field_name]
-                        if isinstance(nested_data, list):
-                            # Extract the StructuredModel class from the list type
-                            structured_class = (
-                                ConfigurationHelper._extract_structured_class_from_list(
-                                    annotation
-                                )
-                            )
-                            if structured_class:
-                                # Process each item in the list
-                                processed_items = []
-                                for item_data in nested_data:
-                                    if isinstance(item_data, dict):
-                                        processed_item = ConfigurationHelper._process_nested_structured_data(
-                                            structured_class, item_data
-                                        )
-                                        processed_items.append(processed_item)
-                                    else:
-                                        # Non-dict items are kept as-is
-                                        processed_items.append(item_data)
-                                data_copy[field_name] = processed_items
+    @staticmethod
+    def _attach_extra_fields(instance: Any, extras: tuple) -> None:
+        """Store each level's ``extra_fields`` on the instance validated for it.
 
-        # Create the model instance
-        instance = cls.model_validate(data_copy)
-
-        # Store extra fields
+        A level whose value did not validate as the class it was prepared for
+        (a ``Union`` arm, or a validator that replaced it) is left alone.
+        """
+        cls, extra_fields, nested = extras
+        if type(instance) is not cls:
+            return
         instance.extra_fields = extra_fields
-
-        return instance
+        for name, sub in nested.items():
+            value = getattr(instance, name, None)
+            if isinstance(sub, list):
+                if isinstance(value, list) and len(value) == len(sub):
+                    for item, item_extras in zip(value, sub):
+                        if item_extras is not None:
+                            ConfigurationHelper._attach_extra_fields(
+                                item, item_extras
+                            )
+            else:
+                ConfigurationHelper._attach_extra_fields(value, sub)
 
     @staticmethod
     def can_score_object(
@@ -1091,59 +1105,3 @@ class ConfigurationHelper:
             return None
         except (TypeError, AttributeError):
             return None
-
-    @staticmethod
-    def _process_nested_structured_data(structured_class, nested_data):
-        """Process nested structured data recursively.
-
-        Args:
-            structured_class: The StructuredModel class to process with
-            nested_data: Dictionary data for the nested object
-
-        Returns:
-            Dictionary with processed nested data
-        """
-        # Recursively call from_json to handle missing fields in nested object
-        nested_instance = structured_class.from_json(
-            nested_data, process_rich_values=False
-        )
-        return ConfigurationHelper._dump_whole(nested_instance)
-
-    @staticmethod
-    def _dump_whole(instance: BaseModel) -> Dict[str, Any]:
-        """``instance.model_dump()``, plus the fields a dump leaves out.
-
-        A dump drops every ``exclude=True`` or ``exclude_if`` field, including
-        ``extra_fields``, so a nested excluded field read blank on both sides
-        and ``compare_with()`` scored a wrong value 1.0 (#379). Those are put
-        back as their values, at any depth, so a parent's ``mode="before"``
-        validator still receives a dict.
-        """
-        from .structured_model import StructuredModel
-
-        def whole(value: Any, dumped: Any) -> Any:
-            if isinstance(value, StructuredModel):
-                return ConfigurationHelper._dump_whole(value)
-            if isinstance(value, (list, tuple)) and any(
-                isinstance(v, StructuredModel) for v in value
-            ):
-                if not (isinstance(dumped, list) and len(dumped) == len(value)):
-                    dumped = [_ABSENT] * len(value)
-                return [whole(v, d) for v, d in zip(value, dumped)]
-            return value if dumped is _ABSENT else dumped
-
-        data = instance.model_dump()
-        if not isinstance(data, dict):
-            return data  # a model_serializer's own output, kept as is
-        by_alias = instance.model_config.get("serialize_by_alias")
-        for name, field in type(instance).model_fields.items():
-            if not hasattr(instance, name):
-                continue  # model_construct without it
-            key = (
-                (field.serialization_alias or field.alias or name) if by_alias else name
-            )
-            if key not in data:
-                # Never dumped, so key it as validation reads it.
-                key = field.alias or name
-            data[key] = whole(getattr(instance, name), data.get(key, _ABSENT))
-        return data
