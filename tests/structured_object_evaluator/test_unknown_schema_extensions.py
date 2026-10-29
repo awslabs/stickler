@@ -943,3 +943,272 @@ class TestTheRootMustBeOneObject:
             {"type": ["object"], "properties": {"c": {"type": "string"}}}
         )
         assert "c" in model.model_fields
+
+
+class TestOnlyReachedDefinitionsAreChecked:
+    """A `$defs` entry is checked once a `$ref` reaches it, and not before.
+
+    A dereferenced schema inlines every `$ref` and keeps `$defs`, so the
+    originals carry keys that are read on their inlined copies. Checking every
+    entry raised on such a schema, which imported and scored correctly before.
+    """
+
+    def test_a_dereferenced_schema_imports_and_reads_the_inlined_keys(self):
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "billTo": {
+                        "type": "object",
+                        "properties": {
+                            "state": {
+                                "type": "string",
+                                "x-aws-stickler-comparator": "ExactComparator",
+                            }
+                        },
+                        "x-aws-stickler-weight": 3.0,
+                    }
+                },
+                "$defs": {
+                    "Address": {
+                        "type": "object",
+                        "properties": {"state": {"$ref": "#/$defs/State"}},
+                        "x-aws-stickler-weight": 3.0,
+                    },
+                    "State": {
+                        "type": "string",
+                        "x-aws-stickler-comparator": "ExactComparator",
+                    },
+                },
+            }
+        )
+        assert model._get_comparison_info("billTo").weight == 3.0
+        bill_to = _unwrap(model.model_fields["billTo"].annotation)
+        state = bill_to._get_comparison_info("state")
+        assert type(state.comparator).__name__ == "ExactComparator"
+
+    @pytest.mark.parametrize(
+        "body",
+        (
+            dict(TestDefinitionsAreChecked.INNER, **{"x-aws-stickler-thresold": 0.9}),
+            dict(TestDefinitionsAreChecked.INNER, **{"x-aws-stickler-weight": 3.0}),
+            {"type": "number", "x-aws-stickler-match-threshold": 0.9},
+        ),
+        ids=("typo", "field-key", "model-key-on-scalar"),
+    )
+    def test_an_unreferenced_definition_is_not_checked(self, body):
+        StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {"a": {"type": "string"}},
+                "$defs": {"Unused": body},
+            }
+        )
+
+    @pytest.mark.parametrize("keyword", ("default", "examples"))
+    def test_definitions_inside_data_are_not_checked(self, keyword):
+        data = {"a": "x", "$defs": {"X": {"x-aws-stickler-weight": 2.0}}}
+        value = [data] if keyword == "examples" else data
+        StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "cfg": {
+                        "type": "object",
+                        "properties": {"a": {"type": "string"}},
+                        keyword: value,
+                    }
+                },
+            }
+        )
+
+    def test_a_definition_reached_through_another_is_checked(self):
+        with pytest.raises(ValueError, match=r"thresold.*definition '\$defs\.Inner'"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {"o": {"$ref": "#/$defs/Outer"}},
+                    "$defs": {
+                        "Outer": {
+                            "type": "object",
+                            "properties": {"i": {"$ref": "#/$defs/Inner"}},
+                        },
+                        "Inner": dict(
+                            TestDefinitionsAreChecked.INNER,
+                            **{"x-aws-stickler-thresold": 0.9},
+                        ),
+                    },
+                }
+            )
+
+
+class TestAllOfRaisesOnlyWhereNothingReadsTheKeys:
+    """An `allOf` arm drops its model keys, but the object it names may not.
+
+    Raising whenever an `allOf` arm reached a keyed object took away classes
+    that another position built from the same keys, and raised for an `allOf`
+    that builds nothing.
+    """
+
+    def test_a_definition_also_referenced_directly_is_built_from_them(self):
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "home": {"$ref": "#/$defs/Addr"},
+                    "work": {"allOf": [{"$ref": "#/$defs/Addr"}]},
+                },
+                "$defs": {"Addr": _KEYED},
+            }
+        )
+        home = _unwrap(model.model_fields["home"].annotation)
+        assert (home.__name__, home.match_threshold) == ("Renamed", 0.93)
+
+    def test_a_keyed_property_referenced_from_allof_is_built_from_them(self):
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "home": _KEYED,
+                    "work": {"allOf": [{"$ref": "#/properties/home"}]},
+                },
+            }
+        )
+        home = _unwrap(model.model_fields["home"].annotation)
+        assert (home.__name__, home.match_threshold) == ("Renamed", 0.93)
+
+    @pytest.mark.parametrize(
+        "schema",
+        (
+            {
+                "type": "object",
+                "properties": {"a": {"type": "string"}},
+                "$defs": {
+                    "Addr": _KEYED,
+                    "Employee": {"allOf": [{"$ref": "#/$defs/Addr"}]},
+                },
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "p": {
+                        "type": "object",
+                        "properties": {"a": {"type": "string"}},
+                        "not": {"allOf": [{"$ref": "#/$defs/Addr"}]},
+                    }
+                },
+                "$defs": {"Addr": _KEYED},
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "p": {
+                        "type": "object",
+                        "properties": {"a": {"type": "string"}},
+                        "not": {"allOf": [_KEYED]},
+                    }
+                },
+            },
+        ),
+        ids=("unused-definition", "not-ref", "not-inline"),
+    )
+    def test_an_allof_that_builds_nothing_is_left_alone(self, schema):
+        StructuredModel.from_json_schema(schema)
+
+
+class TestAListFormTypeBesideARef:
+    """`["object", "null"]` beside a `$ref` builds one class, as `"object"` does.
+
+    The list form is rewritten to `anyOf`, and the `$ref` was copied onto the
+    null arm too, so the node became a union of two classes compared with
+    ExactComparator: a one-character difference scored 0.0, not 0.9.
+    """
+
+    @staticmethod
+    def _model(declared, inner=TestDefinitionsAreChecked.INNER):
+        return StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {"child": {"type": declared, "$ref": "#/$defs/Inner"}},
+                "$defs": {"Inner": inner},
+            }
+        )
+
+    @pytest.mark.parametrize(
+        "declared",
+        ("object", ["object", "null"], ["null", "object"]),
+        ids=("object", "object-null", "null-object"),
+    )
+    def test_it_builds_one_class_and_scores_like_object(self, declared):
+        model = self._model(declared)
+        annotation = model.model_fields["child"].annotation
+        arms = [a for a in typing.get_args(annotation) if a is not type(None)]
+        assert len(arms) == 1 and issubclass(arms[0], StructuredModel)
+        info = model._get_comparison_info("child")
+        assert type(info.comparator).__name__ == "LevenshteinComparator"
+        gt = model(child={"b": "alpha", "c": "bravo"})
+        pred = model(child={"b": "alpha", "c": "brava"})
+        assert gt.compare_with(pred)["overall_score"] == pytest.approx(0.9)
+
+    def test_it_reads_the_definition_model_keys(self):
+        child = _unwrap(
+            self._model(["object", "null"], _KEYED).model_fields["child"].annotation
+        )
+        assert (child.__name__, child.match_threshold) == ("Renamed", 0.93)
+
+
+class TestModelKeysBesideANonRootRef:
+    """Model keys beside a `$ref` are read at the root and nowhere else.
+
+    Elsewhere the class is built from the `$ref` target, so the keys passed the
+    check and were dropped: `items: {"$ref": Row, match-threshold: 0.93}`
+    built `Row` at 0.7.
+    """
+
+    @pytest.mark.parametrize(
+        "key, value",
+        (
+            ("x-aws-stickler-model-name", "Renamed"),
+            ("x-aws-stickler-match-threshold", 0.93),
+            ("x-aws-stickler-infer-unspecified", True),
+        ),
+    )
+    @pytest.mark.parametrize(
+        "make, at",
+        (
+            (
+                lambda ext: {"type": "array", "items": {"$ref": "#/$defs/Row", **ext}},
+                "a[]",
+            ),
+            (
+                lambda ext: {
+                    "anyOf": [{"$ref": "#/$defs/Row", **ext}, {"type": "null"}]
+                },
+                "a[0]",
+            ),
+            (
+                lambda ext: {
+                    "oneOf": [{"$ref": "#/$defs/Row", **ext}, {"type": "null"}]
+                },
+                "a[0]",
+            ),
+            (lambda ext: {"type": "object", "$ref": "#/$defs/Row", **ext}, "a"),
+            (
+                lambda ext: {"type": ["object", "null"], "$ref": "#/$defs/Row", **ext},
+                "a",
+            ),
+        ),
+        ids=("items", "anyOf", "oneOf", "object", "object-null"),
+    )
+    def test_it_raises_and_names_the_target(self, make, at, key, value):
+        with pytest.raises(ValueError) as exc:
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {"a": make({key: value})},
+                    "$defs": {"Row": TestDefinitionsAreChecked.INNER},
+                }
+            )
+        message = str(exc.value)
+        assert f"'{key}' beside the '$ref' at '{at}' is not read" in message
+        assert "'$defs.Row'" in message
