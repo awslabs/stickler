@@ -46,7 +46,7 @@ Maps each field name to its similarity score (0.0 to 1.0). For nested objects, t
 
 ### Asking whether anything failed
 
-`overall_score` is the scalar summary, and for a single object-level verdict `stickler.evaluate()` returns an `EvalResult` whose `matched` attribute is `overall_score >= match_threshold`.
+`overall_score` is the scalar summary, and for a single object-level verdict `stickler.evaluate()` returns an `EvalResult` whose `matched` attribute is `overall_score >= match_threshold` (see [Meeting a Threshold](../../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold)).
 
 To ask whether anything at all went wrong, read **both** rollup nodes, because they scope different things:
 
@@ -104,7 +104,7 @@ The `confusion_matrix` object has four keys:
 
 - **`overall`** -- Metrics for this node's direct children. Where the field is a list, those children are item pairings rather than leaves.
 - **`fields`** -- Field-by-field breakdown, with nested structure for objects and lists.
-- **`non_matches`** -- Populated when `document_non_matches=True` (empty otherwise).
+- **`non_matches`** -- Always `[]`, a placeholder, also in evaluator-format output. With `document_non_matches=True` the records are in the result's top-level `non_matches`.
 - **`aggregate`** -- Primitive field metrics summed recursively below this node, excluding list items rejected at their element class's `match_threshold`. A single nested `StructuredModel` field is not excluded; its leaves are always counted. Where a list's items were *all* rejected the counts become object rows rather than primitive-field metrics, so check that before computing a leaf rate ([why](../../Advanced/aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list)). See [`overall` vs `aggregate`](#overall-vs-aggregate).
 
 ### `overall` vs `aggregate`

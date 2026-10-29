@@ -22,7 +22,11 @@ from typing import Any, Dict, List, Optional, Type, Union
 
 from pydantic import BaseModel
 
-from ..structured_object_evaluator.models.structured_model import StructuredModel
+from ..structured_object_evaluator.models.structured_model import (
+    StructuredModel,
+    _annotation_is_list,
+)
+from ..structured_object_evaluator.models.threshold_helper import ThresholdHelper
 from .builder import specs_for, structured_model_for
 
 #: Object-level match threshold applied when neither the caller nor the model
@@ -76,8 +80,13 @@ class EvalResult:
         # it against `match_threshold` gives one definition that cannot disagree
         # with the score sitting beside it. The threshold is whatever the spec
         # resolved: the caller's argument, else a StructuredModel's own declared
-        # `match_threshold`, else DEFAULT_MATCH_THRESHOLD. See `eval_for`.
-        self.matched: bool = bool(self.overall_score >= spec._match_threshold)
+        # `match_threshold`, else DEFAULT_MATCH_THRESHOLD. See `eval_for`. The
+        # test is the one list pairing uses for the same threshold (#417).
+        self.matched: bool = bool(
+            ThresholdHelper.is_above_threshold(
+                self.overall_score, spec._match_threshold
+            )
+        )
 
     @property
     def non_matches(self) -> List[Dict[str, Any]]:
@@ -135,12 +144,35 @@ class EvalResult:
                     score == 0.0
                     and raw_sim
                     and threshold is not None
-                    and raw_sim < threshold
+                    and ThresholdHelper.is_below_threshold(raw_sim, threshold)
+                    and not self._is_list_of_models(name)
                 ):
-                    entry["verdict"] = (
-                        f"raw {raw_sim:.2f} < threshold {threshold} -> clipped to 0.0"
-                    )
+                    if self._is_list_field(name):
+                        entry["verdict"] = (
+                            f"each paired element < threshold {threshold} -> "
+                            f"clipped to 0.0 (raw {raw_sim:.2f} is their "
+                            "coverage-scaled mean)"
+                        )
+                    else:
+                        entry["verdict"] = (
+                            f"raw {raw_sim:.2f} < threshold {threshold} -> clipped to 0.0"
+                        )
         return out
+
+    def _is_list_field(self, name: str) -> bool:
+        # A list's raw is a coverage-scaled mean, not one comparator score, so
+        # comparing it to the per-element threshold misreads it.
+        info = self._spec.eval_model.model_fields.get(name)
+        return info is not None and _annotation_is_list(info.annotation)
+
+    def _is_list_of_models(self, name: str) -> bool:
+        # A List[StructuredModel] pair is scored by the item's own compare_with
+        # and clipped by the list at 0.01, not at this field's threshold, so a
+        # verdict naming that threshold would misstate the cause.
+        info = self._spec.eval_model.model_fields.get(name)
+        return info is not None and bool(
+            StructuredModel._is_list_of_structured_model_type(info.annotation)
+        )
 
     def __repr__(self) -> str:  # pragma: no cover - display only
         return (
@@ -216,6 +248,7 @@ class EvalSpec:
             self.source_cls,
             weight_hints=self._weight_hints,
             match_threshold=self._match_threshold,
+            _check_buildable=False,
         ).items():
             out[name] = {
                 "comparator": spec.comparator_name,

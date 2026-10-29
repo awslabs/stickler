@@ -4,7 +4,10 @@ This module provides the FieldComparator class that handles comparison of
 primitive and structured fields during structured object comparison.
 """
 
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+from .reporting_context import ReportingContext
+from .threshold_helper import ThresholdHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -21,13 +24,16 @@ class FieldComparator:
     - Score calculation and metrics generation
     """
 
-    def __init__(self, model: "StructuredModel"):
+    def __init__(
+        self, model: "StructuredModel", report_context: Optional[ReportingContext] = None
+    ):
         """Initialize comparator with the ground truth model.
         
         Args:
             model: The ground truth StructuredModel instance
         """
         self.model = model
+        self.report_context = report_context
 
     def compare_primitive_with_scores(
         self, 
@@ -65,7 +71,7 @@ class FieldComparator:
         threshold = info.threshold
 
         # For binary classification metrics, always use threshold
-        if raw_similarity >= threshold:
+        if ThresholdHelper.is_above_threshold(raw_similarity, threshold):
             metrics = {"tp": 1, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
             threshold_applied_score = raw_similarity
         else:
@@ -131,7 +137,7 @@ class FieldComparator:
         raw_score = gt_val.compare(pred_val)  # Overall object similarity
 
         # Apply object-level binary classification based on threshold
-        if raw_score >= threshold:
+        if ThresholdHelper.is_above_threshold(raw_score, threshold):
             # Object matches threshold -> True Positive
             object_metrics = {"tp": 1, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
             threshold_applied_score = raw_score
@@ -163,7 +169,21 @@ class FieldComparator:
         #
         #       Impact: Moderate - primarily affects deeply nested structures (3+ levels)
         #       Estimated overhead: 2-3x for structures with 3 levels of nesting
-        nested_details = gt_val.compare_recursive(pred_val)["fields"]
+        from .comparison_engine import ComparisonEngine
+        from .structured_model import StructuredModel
+
+        if type(gt_val).compare_recursive is StructuredModel.compare_recursive:
+            child_context = None
+            if self.report_context is not None:
+                child_context = ReportingContext()
+                self.report_context.children[field_name] = child_context
+            nested_result = ComparisonEngine(gt_val).compare_recursive(
+                pred_val, _report_context=child_context
+            )
+        else:
+            # Existing overrides need not accept internal metadata options.
+            nested_result = gt_val.compare_recursive(pred_val)
+        nested_details = nested_result["fields"]
 
         # Return structure with object-level metrics and nested field details kept separate
         return {

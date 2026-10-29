@@ -260,7 +260,25 @@ class TestSectionGenerator:
         truncated_value = long_value[:100]
         assert truncated_value in result
         assert long_value not in result  # Full value should not be present
-    
+
+    @patch('stickler.reporting.html.utils.data_extractors.DataExtractor.extract_non_matches')
+    def test_generate_non_matches_truncation_never_splits_an_entity(self, mock_extract_non_matches):
+        """Truncate first, then escape, so the cut cannot land inside ``&amp;``."""
+        mock_extract_non_matches.return_value = [
+            {
+                'doc_id': 'doc1',
+                'field_path': 'description',
+                'non_match_type': 'MISMATCH',
+                'ground_truth_value': "x" * 97 + "&",
+                'prediction_value': 'short'
+            }
+        ]
+
+        result = self.section_generator.generate_non_matches(ReportConfig())
+
+        assert "x" * 97 + "&amp;" in result
+        assert "&am<" not in result
+
     def test_generate_document_gallery_image_mode(self):
         """Test document gallery generation in image mode."""
         document_images = {
