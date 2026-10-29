@@ -4,8 +4,9 @@ The importer read `weight` and `clip-under-threshold` from an object-typed
 property's extensions and used a hardcoded literal for `threshold`, so the same
 node honoured two of the field-level keys it was given and discarded this one,
 with no error and no warning. `x-aws-stickler-comparator` on that node was ALSO
-discarded; it is score-inert for a nested model, so it is now refused rather than
-carried (#348). `TestTheComparatorOnTheSameNodeIsRefused` pins that.
+discarded; it is score-inert for a nested model, as on the Python path, so it now
+warns rather than being dropped in silence, and a threshold in its config is read
+(#348). `TestTheComparatorOnTheSameNodeWarns` pins that.
 
 The key is NOT inert in that position, which is why carrying it is the fix rather
 than rejecting it the way #312 rejects a genuinely misplaced key. A nested-model
@@ -80,8 +81,8 @@ class TestTheDeclaredThresholdIsRead:
         """The asymmetry that identified this as a defect, pinned.
 
         One node, and the threshold was the only one of these three dropped.
-        `x-aws-stickler-comparator` on the same node is refused, not honoured;
-        see `TestTheComparatorOnTheSameNodeIsRefused`.
+        `x-aws-stickler-comparator` on the same node warns and is not
+        installed; see `TestTheComparatorOnTheSameNodeWarns`.
         """
         model = StructuredModel.from_json_schema(
             _schema(
@@ -486,26 +487,75 @@ class TestAnArrayOfFreeFormObjectsReadsIt:
         assert [m for m in messages if "has no effect on array property" in m]
 
 
-class TestTheComparatorOnTheSameNodeIsRefused:
-    """`x-aws-stickler-comparator` on an object property raises (#348 item 7).
+class TestTheComparatorOnTheSameNodeWarns:
+    """`x-aws-stickler-comparator` on an object property warns (#348 item 7).
 
     It used to be parsed, validated, then dropped: the object-typed branch passes
-    a fixed `comparator_name`, so `explain()` reported that placeholder as the
-    author's explicit choice. Score-inert for a nested model, which is compared
-    by recursion, so it is refused rather than carried, as the config path
-    refuses `comparator` on a `structured_model` field.
+    a fixed placeholder comparator, so `explain()` reported it as the author's
+    explicit choice. A nested model is scored by recursion, so the comparator is
+    never called, on the Python path too. It is warned about rather than refused,
+    because it loaded before. A threshold named in its config is read, as
+    `ComparableField(comparator=X(threshold=t))` reads it.
     """
 
-    @pytest.mark.parametrize(
-        "key, value",
-        [
-            ("x-aws-stickler-comparator", "ExactComparator"),
-            ("x-aws-stickler-comparator-config", {"threshold": 0.9}),
-        ],
-    )
-    def test_a_declared_comparator_is_refused_on_an_object_property(self, key, value):
-        with pytest.raises(ValueError, match=f"{key} is not read on field 'inner'"):
-            StructuredModel.from_json_schema(_schema(**{key: value}))
+    @staticmethod
+    def _import(schema):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            model = StructuredModel.from_json_schema(schema)
+        return model, [str(w.message) for w in caught]
+
+    def test_a_declared_comparator_warns_and_is_not_installed(self):
+        model, messages = self._import(
+            _schema(**{"x-aws-stickler-comparator": "ExactComparator"})
+        )
+        assert any(
+            m.startswith(
+                "'x-aws-stickler-comparator' has no effect on field 'inner' and "
+                "is ignored"
+            )
+            for m in messages
+        )
+        info = model._get_comparison_info("inner")
+        assert type(info.comparator).__name__ == "LevenshteinComparator"
+        assert info.threshold == pytest.approx(0.7)
+
+    def test_a_threshold_in_its_config_is_read_without_a_warning(self):
+        model, messages = self._import(
+            _schema(**{"x-aws-stickler-comparator-config": {"threshold": 0.9}})
+        )
+        assert not any("has no effect" in m for m in messages)
+        assert model._get_comparison_info("inner").threshold == pytest.approx(0.9)
+
+    def test_a_field_threshold_still_wins(self):
+        model, _ = self._import(
+            _schema(
+                **{
+                    "x-aws-stickler-comparator-config": {"threshold": 0.9},
+                    "x-aws-stickler-threshold": 0.3,
+                }
+            )
+        )
+        assert model._get_comparison_info("inner").threshold == pytest.approx(0.3)
+
+    def test_any_other_config_key_warns(self):
+        _, messages = self._import(
+            _schema(
+                **{
+                    "x-aws-stickler-comparator-config": {
+                        "threshold": 0.9,
+                        "case_sensitive": False,
+                    }
+                }
+            )
+        )
+        assert any(
+            m.startswith(
+                "'x-aws-stickler-comparator-config' key 'case_sensitive' has no "
+                "effect on field 'inner'"
+            )
+            for m in messages
+        )
 
     @pytest.mark.parametrize(
         "prop",
@@ -516,7 +566,7 @@ class TestTheComparatorOnTheSameNodeIsRefused:
             pytest.param({"allOf": [{"$ref": "#/$defs/Child"}]}, id="allOf-ref"),
         ],
     )
-    def test_every_spelling_of_an_object_property_refuses_it(self, prop):
+    def test_every_spelling_of_an_object_property_warns(self, prop):
         schema = {
             "type": "object",
             "title": "Parent",
@@ -525,8 +575,10 @@ class TestTheComparatorOnTheSameNodeIsRefused:
                 "inner": dict(prop, **{"x-aws-stickler-comparator": "ExactComparator"})
             },
         }
-        with pytest.raises(ValueError, match="is not read on field 'inner'"):
-            StructuredModel.from_json_schema(schema)
+        model, messages = self._import(schema)
+        assert any("has no effect on field 'inner'" in m for m in messages)
+        info = model._get_comparison_info("inner")
+        assert type(info.comparator).__name__ == "LevenshteinComparator"
 
     def test_a_free_form_object_still_honours_it(self):
         """No `properties`, so it is one value scored by its comparator."""

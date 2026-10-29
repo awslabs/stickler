@@ -16,8 +16,9 @@ meant to agree, so they cannot drift apart again. The schema path's free-form
 object threshold (1.0) still differs from Python's; that is #348 item 1,
 deferred, so the mapping tests compare clip and score rather than threshold.
 
-`x-aws-stickler-comparator` on an object property (#348 item 7) is covered by
-``test_object_property_threshold.TestTheComparatorOnTheSameNodeIsRefused``.
+Comparator keys on a nested model, a list of them, and an object property
+(#348 item 7) are asserted against the Python path below, and the schema
+spellings in ``test_object_property_threshold.TestTheComparatorOnTheSameNodeWarns``.
 """
 
 import warnings
@@ -27,6 +28,7 @@ import pytest
 
 import stickler
 from stickler.comparators.anls import ANLSStarComparator
+from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator.models.comparable_field import (
     ComparableField,
@@ -428,3 +430,267 @@ class TestAZeroThresholdWarningNamesItsSource:
             )
         )
         assert any(".f sets comparator threshold=0.0" in m for m in messages)
+
+
+# A nested model whose two Exact leaves score a half-matching pair 0.5: a TP at
+# 0.3 and an FD at 0.9 wherever the field's own threshold gates it.
+class _Inner(StructuredModel):
+    a: str = ComparableField(comparator=ExactComparator(), threshold=1.0)
+    b: str = ComparableField(comparator=ExactComparator(), threshold=1.0)
+
+
+_LEAF = {"type": "str", "comparator": "ExactComparator", "threshold": 1.0}
+_SLEAF = {
+    "type": "string",
+    "x-aws-stickler-comparator": "ExactComparator",
+    "x-aws-stickler-threshold": 1.0,
+}
+GT_INNER, PRED_INNER = {"a": "x", "b": "y"}, {"a": "x", "b": "z"}
+
+
+def _nested_verdict(model, *, is_list=False):
+    gt, pred = ([GT_INNER], [PRED_INNER]) if is_list else (GT_INNER, PRED_INNER)
+    result = model(f=gt).compare_with(model(f=pred), include_confusion_matrix=True)
+    overall = result["confusion_matrix"]["fields"]["f"]["overall"]
+    return overall["tp"], overall["fd"]
+
+
+def _imported(build):
+    """Build a model, returning it with the warnings it raised."""
+    deprecation._warned.clear()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = build()
+    return model, [str(w.message) for w in caught if "no effect" in str(w.message)]
+
+
+def _nested_paths(*, config_keys, schema_keys, python_field, shape="single"):
+    """One nested-model field carrying comparator keys, on each path."""
+    config_type = {
+        "single": "structured_model",
+        "optional": "optional_structured_model",
+        "list": "list_structured_model",
+    }[shape]
+    child = {
+        "type": "object",
+        "properties": {"a": _SLEAF, "b": _SLEAF},
+        "required": ["a", "b"],
+    }
+    if shape == "list":
+        prop = {"type": "array", "items": child, **schema_keys}
+    else:
+        prop = {**child, **schema_keys}
+        if shape == "optional":
+            prop["type"] = ["object", "null"]
+    annotation = List[_Inner] if shape == "list" else _Inner
+    return {
+        "python": _imported(lambda: _python(annotation, python_field())),
+        "config": _imported(
+            lambda: _config(
+                {"type": config_type, "fields": {"a": _LEAF, "b": _LEAF}, **config_keys}
+            )
+        ),
+        "schema": _imported(lambda: _schema(prop)),
+    }
+
+
+@pytest.mark.parametrize("shape", ["single", "optional"])
+class TestANestedModelReadsItsComparatorThresholdOnEveryPath:
+    """`ComparableField(comparator=X(threshold=t))` on a nested model gates at t.
+
+    The config path ignored `comparator_config` there in silence, and the
+    schema path raised on `x-aws-stickler-comparator-config` (dropped it on
+    `dev`), so a threshold the Python path reads was read by neither importer.
+    """
+
+    @staticmethod
+    def _paths(shape, threshold):
+        return _nested_paths(
+            config_keys={"comparator_config": {"threshold": threshold}},
+            schema_keys={"x-aws-stickler-comparator-config": {"threshold": threshold}},
+            python_field=lambda: ComparableField(
+                comparator=LevenshteinComparator(threshold=threshold)
+            ),
+            shape=shape,
+        )
+
+    @pytest.mark.parametrize("threshold, verdict", [(0.3, (1, 0)), (0.9, (0, 1))])
+    def test_the_three_paths_gate_at_it(self, shape, threshold, verdict):
+        paths = self._paths(shape, threshold)
+        assert {n: _info(m).threshold for n, (m, _) in paths.items()} == {
+            "python": threshold,
+            "config": threshold,
+            "schema": threshold,
+        }
+        assert {n: _nested_verdict(m) for n, (m, _) in paths.items()} == {
+            "python": verdict,
+            "config": verdict,
+            "schema": verdict,
+        }
+
+    def test_none_of_them_warns(self, shape):
+        """Read, so there is nothing to warn about."""
+        assert all(not msgs for _, msgs in self._paths(shape, 0.9).values())
+
+    def test_a_field_threshold_still_wins(self, shape):
+        paths = _nested_paths(
+            config_keys={"comparator_config": {"threshold": 0.9}, "threshold": 0.3},
+            schema_keys={
+                "x-aws-stickler-comparator-config": {"threshold": 0.9},
+                "x-aws-stickler-threshold": 0.3,
+            },
+            python_field=lambda: ComparableField(
+                comparator=LevenshteinComparator(threshold=0.9), threshold=0.3
+            ),
+            shape=shape,
+        )
+        assert {_info(m).threshold for m, _ in paths.values()} == {0.3}
+
+
+class TestANamedComparatorOnANestedModelWarnsOnBothImporters:
+    """The comparator is never called; Python accepts and ignores it.
+
+    The config path raised on `comparator` here and the schema path (on this
+    branch) on `x-aws-stickler-comparator`. Both now warn, in one wording, and
+    still read the threshold the comparator names.
+    """
+
+    @pytest.fixture
+    def paths(self):
+        return _nested_paths(
+            config_keys={
+                "comparator": "ExactComparator",
+                "comparator_config": {"threshold": 0.9},
+            },
+            schema_keys={
+                "x-aws-stickler-comparator": "ExactComparator",
+                "x-aws-stickler-comparator-config": {"threshold": 0.9},
+            },
+            python_field=lambda: ComparableField(
+                comparator=ExactComparator(threshold=0.9)
+            ),
+        )
+
+    def test_the_threshold_it_names_is_read(self, paths):
+        assert {_info(m).threshold for m, _ in paths.values()} == {0.9}
+        assert {_nested_verdict(m) for m, _ in paths.values()} == {(0, 1)}
+
+    def test_both_importers_warn_in_the_same_words(self, paths):
+        expected = {
+            "config": (
+                "'comparator' has no effect on field 'f' and is ignored: it is "
+                "a structured_model field, scored field by field, so its "
+                "comparator is never called. Set comparators on the fields "
+                "inside it, and this field's threshold with 'threshold'."
+            ),
+            "schema": (
+                "'x-aws-stickler-comparator' has no effect on field 'f' and is "
+                "ignored: it is an object with properties, scored field by "
+                "field, so its comparator is never called. Set comparators on "
+                "the properties inside it, and this field's threshold with "
+                "'x-aws-stickler-threshold'."
+            ),
+        }
+        assert {n: paths[n][1] for n in expected} == {
+            n: [m] for n, m in expected.items()
+        }
+
+    def test_explain_does_not_report_it_as_chosen(self, paths):
+        for name in ("config", "schema"):
+            model = paths[name][0]
+            assert type(_info(model).comparator).__name__ == "LevenshteinComparator"
+            assert stickler.eval_for(model).explain()["f"]["comparator"] != (
+                "ExactComparator"
+            )
+
+    def test_any_other_config_key_is_named(self):
+        _, messages = _imported(
+            lambda: _config(
+                {
+                    "type": "structured_model",
+                    "comparator_config": {"threshold": 0.9, "case_sensitive": False},
+                    "fields": {"a": _LEAF},
+                }
+            )
+        )
+        assert messages == [
+            "'comparator_config' key 'case_sensitive' has no effect on field 'f' "
+            "and is ignored: it is a structured_model field, scored field by "
+            "field, so its comparator is never called. Set comparators on the "
+            "fields inside it, and this field's threshold with 'threshold'."
+        ]
+
+    def test_a_config_that_is_not_a_mapping_warns_rather_than_raising(self):
+        """It loaded before, ignored; refusing it now would be a new raise."""
+        model, messages = _imported(
+            lambda: _config(
+                {
+                    "type": "structured_model",
+                    "comparator_config": "strict",
+                    "fields": {"a": _LEAF},
+                }
+            )
+        )
+        assert _info(model).threshold == 0.7
+        assert messages and messages[0].startswith("'comparator_config' has no effect")
+
+    def test_auto_is_still_refused(self):
+        with pytest.raises(ValueError, match="no comparator to infer"):
+            _config(
+                {
+                    "type": "structured_model",
+                    "comparator": "auto",
+                    "fields": {"a": _LEAF},
+                }
+            )
+
+
+class TestAListOfModelsReadsNoComparatorConfig:
+    """Hungarian matching pairs on the element class's `match_threshold`.
+
+    Python warns that a comparator threshold on `List[StructuredModel]` is not
+    consulted. The config path dropped `comparator_config` there in silence, and
+    the schema path forwarded it, so `explain()` reported it as the explicit
+    threshold. Both importers now warn, and the gate is unchanged.
+    """
+
+    @pytest.fixture
+    def paths(self):
+        return _nested_paths(
+            config_keys={"comparator_config": {"threshold": 0.3}},
+            schema_keys={"x-aws-stickler-comparator-config": {"threshold": 0.3}},
+            python_field=lambda: ComparableField(
+                comparator=LevenshteinComparator(threshold=0.3)
+            ),
+            shape="list",
+        )
+
+    def test_the_gate_is_the_element_match_threshold_on_every_path(self, paths):
+        """0.5 is below the default 0.7, so FD, though the comparator says 0.3."""
+        assert {n: _nested_verdict(m, is_list=True) for n, (m, _) in paths.items()} == {
+            "python": (0, 1),
+            "config": (0, 1),
+            "schema": (0, 1),
+        }
+
+    def test_neither_importer_reports_it_as_the_threshold(self, paths):
+        assert _info(paths["config"][0]).threshold == 0.5
+        assert _info(paths["schema"][0]).threshold == 0.5
+
+    def test_both_importers_warn_and_name_the_key_to_use(self, paths):
+        assert paths["config"][1] == [
+            "'comparator_config' key 'threshold' has no effect on field 'f' and "
+            "is ignored: it is a list_structured_model field, whose elements are "
+            "paired by Hungarian matching, so neither a comparator nor its "
+            "threshold is read for it. Set comparators on the fields inside each "
+            "element, and the pairing threshold with 'match_threshold' on this "
+            "field."
+        ]
+        assert paths["schema"][1] == [
+            "'x-aws-stickler-comparator-config' key 'threshold' has no effect on "
+            "field 'f' and is ignored: it is an array of objects, whose elements "
+            "are paired by Hungarian matching, so neither a comparator nor its "
+            "threshold is read for it. Set comparators on the properties inside "
+            "each element, and the pairing threshold with "
+            "'x-aws-stickler-match-threshold' in its 'items'."
+        ]
