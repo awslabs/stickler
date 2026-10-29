@@ -7,6 +7,7 @@ primitive and structured fields during structured object comparison.
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from .reporting_context import ReportingContext
+from .threshold_helper import ThresholdHelper
 
 if TYPE_CHECKING:
     from .structured_model import StructuredModel
@@ -70,7 +71,7 @@ class FieldComparator:
         threshold = info.threshold
 
         # For binary classification metrics, always use threshold
-        if raw_similarity >= threshold:
+        if ThresholdHelper.is_above_threshold(raw_similarity, threshold):
             metrics = {"tp": 1, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
             threshold_applied_score = raw_similarity
         else:
@@ -136,7 +137,7 @@ class FieldComparator:
         raw_score = gt_val.compare(pred_val)  # Overall object similarity
 
         # Apply object-level binary classification based on threshold
-        if raw_score >= threshold:
+        if ThresholdHelper.is_above_threshold(raw_score, threshold):
             # Object matches threshold -> True Positive
             object_metrics = {"tp": 1, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
             threshold_applied_score = raw_score

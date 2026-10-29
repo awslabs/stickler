@@ -504,7 +504,7 @@ def test_accepted_structured_child_reports_share_field_threshold_tolerance():
     (row,) = result["field_comparisons"]
     assert row["match"] is True
     assert row["score"] == 0.7 - 1e-12
-    assert row["reason"] == f"all elements matched (score {row['score']!r} < 0.7)"
+    assert row["reason"] == f"within threshold tolerance ({row['score']:.12g} vs 0.7)"
 
 
 def test_structured_child_custom_compare_with_override_is_preserved():
@@ -529,7 +529,7 @@ def test_structured_child_custom_compare_with_override_is_preserved():
     assert result["non_matches"] == []
 
 
-def test_accepted_structured_child_scalar_threshold_is_still_exact():
+def test_accepted_structured_child_scalar_threshold_shares_the_tolerance():
     class NearThresholdComparator(BaseComparator):
         def _compare(self, left, right):
             return 0.7 - 1e-12
@@ -547,9 +547,9 @@ def test_accepted_structured_child_scalar_threshold_is_still_exact():
 
     result = report([Item(code="a")], [Item(code="b")], model=Parent)
     child = result["confusion_matrix"]["fields"]["items"]["fields"]["code"]
-    assert child["overall"]["fd"] == 1
-    assert result["non_matches"][0]["field_path"] == "items[0].code"
-    assert result["field_comparisons"][0]["match"] is False
+    assert child["overall"]["tp"] == 1
+    assert result["non_matches"] == []
+    assert result["field_comparisons"][0]["match"] is True
 
 
 def test_nested_compare_recursive_override_keeps_its_original_signature():

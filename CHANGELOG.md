@@ -38,6 +38,19 @@ Each release links to full notes on the
   (`List[List[Union[str, int]]]`) is still written as `"string"`.
   Parts B and C of [#349](https://github.com/awslabs/stickler/issues/349)
 
+- **Breaking:** a mapping field exports as a mapping. `to_json_schema()` wrote
+  a `Dict[...]` field as `"type": "string"` and `to_stickler_config()` as
+  `"type": "str"`, so the rebuilt model rejected every mapping, including the
+  `{}` its own `default_factory=dict` exported. They now write
+  `"type": "object"`, with `additionalProperties` for a primitive value type,
+  and `"Dict[str, str]"`, or `"dict"` when a key or value type has no config
+  name. A consumer reading the exported schema sees this type change. Through
+  JSON Schema the field rebuilds as `dict`, without the value type.
+  `List[Dict[...]]` items are not covered: `to_json_schema()` still exports
+  them as `"string"` (see
+  [#333](https://github.com/awslabs/stickler/issues/333))
+  ([#306](https://github.com/awslabs/stickler/issues/306))
+
 - **Breaking:** a `StructuredModel` field typed `date`, `datetime`, `time`,
   `timedelta`, `Decimal`, `UUID` or `Enum` now reaches its comparator, and a
   declared comparator is always called. The dispatcher treated only `str`,
@@ -161,6 +174,32 @@ Each release links to full notes on the
   ([#322](https://github.com/awslabs/stickler/issues/322)). See
   [`None` elements in a list](https://awslabs.github.io/stickler/Advanced/classification-logic/#none-elements-in-a-list)
 
+- **Breaking:** a score that floating-point arithmetic leaves just under its
+  threshold now gets the same verdict at every classification gate. A
+  primitive list element allowed a `1e-10` tolerance, but a field, a nested
+  model, a `List[StructuredModel]` pair, `EvalResult.matched` and
+  `binary_compare()` used a bare `>=`. The Laptop pair in the threshold-gating
+  docs scores `0.7999999999999999` against `match_threshold = 0.8`, so it was an
+  FD and was not descended into, while the same score on a `List[str]` element
+  was a TP. Each of these now uses `ThresholdHelper.is_above_threshold`. A score
+  up to `1e-10` under its threshold:
+  - counts as a TP instead of an FD, in the confusion matrix, `non_matches` and
+    `field_comparisons`, for a field, a nested model, a list item's sub-field and
+    a list pair;
+  - keeps its score instead of being clipped to `0.0`, so `field_scores` and
+    `overall_score` can rise, and `ComparisonInfo.compare()` and
+    `ComparableFieldConfig.compare()` return it;
+  - opens a list pair for field-by-field evaluation;
+  - sets `EvalResult.matched`, makes `BaseComparator.binary_compare()` return
+    `(1, 0)`, and counts as a TP in `HungarianMatcher.calculate_metrics` and the
+    `evaluator_format=True` fallback metrics.
+
+  A score further under the threshold is unchanged, and so is a primitive list
+  element. `ANLSStarComparator`'s `leaf_threshold` and the bounding-box
+  `iou_thresholds` are separate metrics and keep their exact comparison
+  ([#417](https://github.com/awslabs/stickler/issues/417)). See
+  [Meeting a Threshold](https://awslabs.github.io/stickler/Getting-Started/thresholds-and-metrics/#meeting-a-threshold)
+
 - **Breaking:** `evaluator_format=True` output carries `non_matches` only
   with `document_non_matches=True`, as the default `compare_with()` dict does,
   so `result["non_matches"]` without it now raises `KeyError`. It always wrote
@@ -230,6 +269,19 @@ Each release links to full notes on the
   the caller declared
   ([#366](https://github.com/awslabs/stickler/issues/366))
 
+- **`specs_for` now refuses what the builder refuses, starting with a
+  `RootModel`.** After #366 it still returned specs for the root's internal
+  `root` attribute, such as `pt.root.x`, a path no data carries and that is
+  never scored. It now raises the same `TypeError` as `structured_model_for`
+  for any class the builder refuses: a `RootModel`, a recursive model, a field
+  named `extra_fields`, or a model with no fields. A class that is not a
+  pydantic model now raises `TypeError` rather than `AttributeError`.
+  `explain()` on an `EvalSpec` is unchanged: its model was either already
+  built, or written by hand and never built. An explicitly configured
+  `StructuredModel` is never built either, so it is not checked: a `RootModel`
+  reached through one is still described
+  ([#423](https://github.com/awslabs/stickler/issues/423))
+
 - **An unrecognized key in a model config is now reported instead of dropped.**
   `model_from_json` read a closed set of keys and ignored everything else, so
   `"threshhold": 0.99` built at the fallback 0.5 with no exception and no warning,
@@ -287,6 +339,44 @@ Each release links to full notes on the
   ([#425](https://github.com/awslabs/stickler/issues/425))
   ([#411](https://github.com/awslabs/stickler/issues/411))
 
+- **`ComparableField` accepts `default_factory`.** It always forwarded its own
+  `default` to pydantic's `Field`, so the two collided and every collection field
+  raised `TypeError: cannot specify both default and default_factory` -- the case
+  pydantic's own documentation tells users to reach for. Supplying both a `default`
+  and a `default_factory` still raises, as it does in plain pydantic, except
+  `default=...` or `PydanticUndefined`, which pydantic ignores beside a factory,
+  so the field is optional
+  ([#306](https://github.com/awslabs/stickler/issues/306))
+
+  Both exporters were taught about factories at the same time, since nothing could
+  reach them while the field itself refused to build. `to_stickler_config()` wrote
+  `PydanticUndefined` through verbatim, so `json.dumps()` on the result raised and
+  the in-process round trip rebuilt the field as required; `to_json_schema()` dropped
+  the default instead, so `from_json_schema()` gave back `None` where the author
+  wrote `default_factory=list` and the failure surfaced at the first `.append()`.
+  Both now emit the value the factory produces, for `list`, `dict` and `set`, on a
+  field exported as a list or a mapping. A field exported as a scalar (`Set[str]` is
+  written as `"str"`) gets no default rather than one its rebuilt type rejects. Any
+  other factory is left unexported rather than called during an export. A set
+  default, from a factory or written literally, is emitted as a list, because JSON
+  has no set type. `to_stickler_config()` also writes `required` on a
+  `List[StructuredModel]` field now; without it a required list rebuilt as optional.
+  On an `Optional` field `to_stickler_config()` writes no empty `[]` or `{}`
+  default, since a config has no nullable flag and only a `None` default
+  rebuilds the field as `Optional`. The rebuilt field defaults to `None` where
+  the original had `[]` or `{}`; scores are identical, though `model_dump()`
+  shows `null`. Only an empty list or mapping default is covered: any other
+  default on an `Optional` field (`Optional[List[int]] = [1]`,
+  `Optional[str] = ""`) is written and still rebuilds non-nullable, as before.
+  `model_from_json()` now applies the widening to a `list_structured_model`
+  field too, which rebuilt as `List[Model]` and rejected `None`; an empty
+  literal `[]` on a non-Optional `List[Model]` is now exported, so that field
+  stays non-nullable. A `List[Model]` default that is not written (a non-empty
+  literal such as `[Sub(...)]`, a tuple, or a factory other than `list`,
+  `dict` or `set`) rebuilds as `Optional` with a `None` default, so the
+  rebuilt model now accepts `None` even where the original `List[Model]` was
+  not `Optional`; `None` scores the same as `[]`.
+
 - **`raw_similarity_score` on a primitive list node is now the unclipped
   score.** It carried the clipped, coverage-scaled mean, the same number as
   `threshold_applied_score`, so it contradicted its name and `compare()`, and
@@ -337,6 +427,30 @@ Each release links to full notes on the
   are now written as `\uXXXX`, which the page's JavaScript reads as the same
   characters. Present since 0.1.3
   ([#431](https://github.com/awslabs/stickler/issues/431))
+
+### Documentation
+
+- Corrected which paths in `BulkStructuredModelEvaluator` `field_metrics` get a
+  `mean_score`. The guides said `compare_with()` scores only the list parent of a
+  `List[StructuredModel]`. A list element's own `StructuredModel` and
+  `List[StructuredModel]` fields (`items.addr`, `items.parts`) are scored too,
+  but each document's value is its first matched element pair's score, not a
+  mean over pairs, so it depends on element order
+  ([#428](https://github.com/awslabs/stickler/issues/428)). Every other path
+  inside an element (`items.name`, `items.tags`, `items.addr.city`,
+  `items.addr.geo`, a plain `BaseModel` field) carries confusion-matrix counts
+  but no `mean_score`. All of them count only element pairs that met the
+  match threshold: a pair below it emits no element fields at all. Scoring is
+  unchanged ([#249](https://github.com/awslabs/stickler/issues/249))
+
+- Corrected the last row of the 1.0.0 table under "The element gate judges a
+  PAIR, not a list". Under its bare `Optional[List[Any]]` heading,
+  `[Plain, NoteSM]` vs `[Plain, Note2SM]` scores `0.5`, not `1.0`, and scored
+  `0.0`, not `0.5`, under the list-wide gate. The published `1.0`, `0.5`, `1.0`
+  hold only with a comparator declared on `f`. The bare `0.5` is the refused
+  `Plain` pair (`[Plain]` vs `[Plain]` scores `0.0` bare), not the cross-class
+  rule. Scoring is unchanged
+  ([#338](https://github.com/awslabs/stickler/issues/338))
 
 ## [1.0.0] - 2026-09-11
 
