@@ -102,7 +102,7 @@ This directory contains comprehensive examples demonstrating the core functional
   - Six invoices broken six different ways, offline and deterministic
   - `report.per_case()` field scores and `report.metrics()` five-category confusion matrix, via `report_cls`
   - Why `test_pass` gates on recall as well as score
-  - Needs the evaluator, which is not on PyPI yet: install `strands-agents-evals` from the branch in cell 1
+  - Needs the evaluator: `pip install "strands-agents-evals[stickler]>=1.6.0"`
 
 - **`notebooks/Strands_Evals_FCC_Live_Agent.ipynb`** - The same evaluator against a live agent
   - Five real FCC invoices, downloaded from the HuggingFace datasets server at run time

@@ -14,11 +14,8 @@ The evaluator lives in Strands Evals, not in stickler. stickler is the optional
 `stickler` extra it depends on.
 
 ```bash
-pip install "strands-agents-evals[stickler]"
+pip install "strands-agents-evals[stickler]>=1.6.0"
 ```
-
-That extra is not published yet. Until the evaluator releases, install it from the
-branch — see [Status](#status) below.
 
 ```python
 from strands import Agent
@@ -149,8 +146,7 @@ data-dependent, so use `.get()` rather than indexing.
 
 All three live in
 [`examples/notebooks/`](https://github.com/awslabs/stickler/tree/dev/examples/notebooks). Two
-of them import the evaluator, so they need it installed from the branch — see
-[Status](#status) below.
+of them import the evaluator, so they need `strands-agents-evals[stickler]>=1.6.0`.
 
 - [`Strands_Evals_Evaluator.ipynb`](https://github.com/awslabs/stickler/blob/dev/examples/notebooks/Strands_Evals_Evaluator.ipynb)
   is the reference. Offline and deterministic, no credentials, covers every feature
@@ -173,22 +169,21 @@ of them import the evaluator, so they need it installed from the branch — see
 
 ## Status
 
-The `StructuredOutputSimilarity` evaluator is in review at
-[strands-agents/evals#400](https://github.com/strands-agents/evals/pull/400) and is not yet
-on PyPI. Until it releases, install it from the branch, pinned to a commit so a review push
-cannot change what you installed:
+The `StructuredOutputSimilarity` evaluator ships in `strands-agents-evals` 1.6.0 on PyPI:
 
 ```bash
-pip install "strands-agents-evals[stickler] @ git+https://github.com/sromoam/evals@73c2ae30b332550ef1dce9323aa9da1b93394f6c"
+pip install "strands-agents-evals[stickler]>=1.6.0"
 ```
 
 The `stickler` extra brings `stickler-eval` and pydantic 2.12, which the evaluator needs to
 read a cached value back.
 
 The evaluator's own design notes (why the field detail travels on the report rather than the
-evaluator, why a rollup covers one schema) live with the evaluator in that PR.
+evaluator, why a rollup covers one schema) live in the
+[Field-Level Structured Output Scoring](https://github.com/strands-agents/evals#field-level-structured-output-scoring)
+section of the Strands Evals README.
 
-Two rough edges to know while it is unreleased. `Experiment.to_dict` keeps only cases and
+Two rough edges to know. `Experiment.to_dict` keeps only cases and
 evaluators, so a reloaded experiment and the `strands-evals run` CLI both write the base
 `EvaluationReport`; read their JSON back through `StructuredOutputReport` to roll it up. And
 `to_file` serialises with `json.dump` rather than pydantic, on both the report and the
