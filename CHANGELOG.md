@@ -385,6 +385,13 @@ Each release links to full notes on the
   the metrics of a field that is not a list, are unchanged.
   Only evaluator-format output moves: scores and counts are unchanged
 
+- **The HTML report accepts a non-string document id.** `evaluate_dataframe`
+  reads `doc_id` straight off a DataFrame column, so an integer id, ordinary
+  from CSV, parquet or a database, made `generate_report()` return
+  `success=False` with no page written. The report now renders, and selecting
+  such a document in the Report View shows that document's numbers instead of
+  the aggregate. A `None` or missing id is left as is
+
 ### Security
 
 - **A document value can no longer run as script in the HTML report.** With
@@ -398,6 +405,29 @@ Each release links to full notes on the
   are now written as `\uXXXX`, which the page's JavaScript reads as the same
   characters. Present since 0.1.3
   ([#431](https://github.com/awslabs/stickler/issues/431))
+
+- **A PDF in `document_files` can no longer run script in the HTML report.**
+  The report loads pdf.js 3.11.174, which is affected by CVE-2024-4367: with
+  eval allowed, a crafted font runs JavaScript in the page's origin when the
+  PDF is opened in the Report View. That needs the report served over HTTP(S),
+  which the reporter README recommends for PDFs. The viewer now passes
+  `isEvalSupported: false`, the upstream mitigation; pdf.js itself is not
+  upgraded. Present since 0.3.0, the first wheel that ships the viewer
+
+- **The field performance table escapes its confusion counts.**
+  `generate_report()` accepts a plain dict, so a caller assembling its own
+  metrics could put markup in the `tp`, `fd`, `fa` or `fn` cells and have a
+  browser parse it. Not reachable from document data
+
+### Performance
+
+- **A report generated with `individual_results_jsonl_path` takes longer to
+  write.** The escaping that keeps document data from ending the report's
+  `<script>` block runs over the whole embedded blob and takes a slower path
+  than the plain `json.dumps` it wraps: 467 ms against 42 ms at 1.0.0 for
+  1,000 documents, a 13.3 MB blob. Evaluation results are unaffected; this is
+  report-generation time only. A faster form with byte-identical output is
+  tracked in [#457](https://github.com/awslabs/stickler/issues/457)
 
 ### Documentation
 

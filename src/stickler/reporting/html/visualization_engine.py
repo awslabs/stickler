@@ -137,10 +137,10 @@ class VisualizationEngine:
                 '''
 
                 html_string += f'''
-                    <td>{tp}</td>
-                    <td>{fd}</td>
-                    <td>{fa}</td>
-                    <td>{fn}</td>
+                    <td>{html.escape(str(tp))}</td>
+                    <td>{html.escape(str(fd))}</td>
+                    <td>{html.escape(str(fa))}</td>
+                    <td>{html.escape(str(fn))}</td>
                 </tr>
                 '''
         
@@ -174,7 +174,7 @@ class VisualizationEngine:
             html_string += f'''
             <div class="cm-cell" style="border-left-color: {metric_colors[metric]}">
                 <div class="cm-label">{metric.upper()}</div>
-                <div class="cm-value">{value}</div>
+                <div class="cm-value">{html.escape(str(value))}</div>
                 <div class="cm-percentage">{html.escape(f"{percentage:.1f}")}%</div>
             </div>
             '''

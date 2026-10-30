@@ -535,7 +535,9 @@ const loadPDF = (url, canvasId, loadingId, errorId) => {
     const context = canvas.getContext('2d');
     const docId = canvasId.replace('pdf-canvas-', '');
     
-    pdfjsLib.getDocument(url).promise.then(pdf => {
+    // pdf.js 3.11.174 is affected by CVE-2024-4367: with eval allowed, a crafted
+    // font in a PDF runs script in the page. Disabling it is the upstream mitigation.
+    pdfjsLib.getDocument({ url, isEvalSupported: false }).promise.then(pdf => {
         const pdfContainer = canvas.parentElement;
         const navControls = createElement('div', 'pdf-navigation');
 
