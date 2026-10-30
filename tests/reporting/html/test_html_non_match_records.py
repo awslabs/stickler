@@ -17,9 +17,6 @@ from stickler.structured_object_evaluator.bulk_structured_model_evaluator import
     BulkStructuredModelEvaluator,
 )
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
-from stickler.structured_object_evaluator.models.non_match_field import (
-    UncollectedNonMatches,
-)
 
 
 class _Person(StructuredModel):
@@ -110,23 +107,21 @@ def test_a_bulk_result_with_records_lists_them():
     assert "document_non_matches=True" not in _section(results)
 
 
-def test_an_evaluator_format_dict_without_records_is_not_reported_as_clean():
-    """Without `document_non_matches=True` its `non_matches` is a placeholder (#413).
+def test_an_evaluator_format_dict_without_records_reads_as_1_0_0_did():
+    """Known limit until 1.0.2: its `[]` cannot say "not collected" (#413).
 
-    1.0.1 keeps 1.0.0's `"non_matches": []` for callers that read it, as an
-    `UncollectedNonMatches`, which the extractor reads as no records.
+    1.0.1 keeps 1.0.0's plain `"non_matches": []` so 1.0.0 callers keep
+    working, and the report reads it as 1.0.0 did. 1.0.2 omits the key, and
+    the report then says the records were not collected.
     """
     gt, pred = _wrong_pair()
     results = gt.compare_with(pred, evaluator_format=True)
 
+    assert type(results["non_matches"]) is list
     assert results["non_matches"] == []
-    assert isinstance(results["non_matches"], UncollectedNonMatches)
-    assert DataExtractor.extract_non_matches(results) is None
+    assert DataExtractor.extract_non_matches(results) == []
 
-    html = _section(results)
-
-    assert "No non-matches found" not in html
-    assert "document_non_matches=True" in html
+    assert "<p>No non-matches found.</p>" in _section(results)
 
 
 def test_an_evaluator_format_dict_with_empty_records_is_a_success():
@@ -147,22 +142,17 @@ def _report_page(results, tmp_path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_the_full_report_says_a_placeholder_was_not_collected(tmp_path):
-    """Even over a clean document: the placeholder is not "none found".
-
-    Also after `copy.deepcopy`, which keeps the placeholder's class.
-    """
-    import copy
-
+def test_the_full_report_says_a_default_dict_without_records_was_not_collected(
+    tmp_path,
+):
+    """The #411 rule still holds for the default `compare_with()` dict."""
     same = _Person(name="Ada", city="London")
-    results = same.compare_with(same, evaluator_format=True)
+    page = _report_page(
+        same.compare_with(same, include_confusion_matrix=True), tmp_path
+    )
 
-    for page in (
-        _report_page(results, tmp_path),
-        _report_page(copy.deepcopy(results), tmp_path),
-    ):
-        assert "No non-matches found" not in page
-        assert "No non-match records in these results." in page
+    assert "No non-matches found" not in page
+    assert "No non-match records in these results." in page
 
 
 def test_the_full_report_says_a_collected_empty_list_is_clean(tmp_path):

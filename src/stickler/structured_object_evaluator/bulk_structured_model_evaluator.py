@@ -22,9 +22,6 @@ from stickler.structured_object_evaluator.models.confidence import (
 from stickler.structured_object_evaluator.models.confidence.accumulator import (
     ConfidenceAccumulator,
 )
-from stickler.structured_object_evaluator.models.non_match_field import (
-    has_non_match_records,
-)
 from stickler.structured_object_evaluator.models.post_comparison_accumulator import (
     PostComparisonAccumulator,
 )
@@ -288,9 +285,7 @@ class BulkStructuredModelEvaluator:
 
         try:
             # Collect non-matches if enabled and present
-            if self.document_non_matches and has_non_match_records(
-                comparison_result
-            ):
+            if self.document_non_matches and "non_matches" in comparison_result:
                 for non_match in comparison_result["non_matches"]:
                     non_match_with_doc = non_match.copy()
                     non_match_with_doc["doc_id"] = doc_id

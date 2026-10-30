@@ -294,7 +294,8 @@ def test_match_threshold_on_a_primitive_warns_and_is_ignored():
     """
     model, messages = build(MATCH_THRESHOLD_ON_LEAF)
     assert match_threshold_warnings(messages) == [
-        "'match_threshold' is not read on primitive field 'amount'; it is the "
+        "'match_threshold' is not read on primitive field 'amount' of model "
+        "'DynamicModel(fields: amount)'; it is the "
         "object-level threshold, so it is ignored and the field scores at its "
         "'threshold'. Use 'threshold' for this field, or set 'match_threshold' "
         "on the model or on a 'structured_model' field. This becomes a "
@@ -333,6 +334,30 @@ def test_match_threshold_on_a_nested_primitive_names_its_path():
     city = model.to_stickler_config()["fields"]["addr"]["fields"]["city"]
     assert city["threshold"] == 0.5
     assert "match_threshold" not in city
+
+
+def test_two_models_built_on_one_line_each_show_the_warning():
+    """Python's default filter dedupes by text and line, so the text names the model."""
+    configs = [
+        {"model_name": name, "fields": MATCH_THRESHOLD_ON_LEAF["fields"]}
+        for name in ("Invoice", "Receipt")
+    ]
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("default")
+        [StructuredModel.model_from_json(config) for config in configs]
+    warned = match_threshold_warnings([str(w.message) for w in caught])
+    assert len(warned) == 2
+    assert "of model 'Invoice'" in warned[0]
+    assert "of model 'Receipt'" in warned[1]
+
+
+def test_match_threshold_on_a_primitive_raises_on_every_call_as_an_error():
+    """Under `-W error` each build raises, not only the first (`warn_once`)."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        for _ in range(2):
+            with pytest.raises(UserWarning, match="'match_threshold' is not read"):
+                StructuredModel.model_from_json(MATCH_THRESHOLD_ON_LEAF)
 
 
 def test_match_threshold_on_a_primitive_warns_once_per_model_and_path():

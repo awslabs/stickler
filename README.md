@@ -139,7 +139,9 @@ class Invoice(StructuredModel):
     total: float = ComparableField(threshold=0.95)
 
 # Compare objects
-result = ground_truth.compare_with(prediction, evaluator_format=True)
+result = ground_truth.compare_with(
+    prediction, evaluator_format=True, document_non_matches=True
+)
 
 print(f"Overall Score: {result['overall']['anls_score']:.3f}")
 ```

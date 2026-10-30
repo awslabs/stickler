@@ -22,9 +22,6 @@ from typing import Any, Dict, List, Optional, Type, Union
 
 from pydantic import BaseModel
 
-from ..structured_object_evaluator.models.non_match_field import (
-    is_uncollected_non_matches,
-)
 from ..structured_object_evaluator.models.structured_model import (
     StructuredModel,
     _annotation_is_list,
@@ -108,8 +105,7 @@ class EvalResult:
             return self._non_matches
 
         carried = self.raw.get("non_matches")
-        # The `evaluator_format=True` placeholder is not records.
-        if carried is not None and not is_uncollected_non_matches(carried):
+        if carried is not None:
             self._non_matches = list(carried)
         elif self._ground_truth is None or self._prediction is None:
             self._non_matches = []

@@ -288,7 +288,9 @@ Per-extension detail, default comparators by type, and a full production example
 When you need output structured for bulk evaluation pipelines, pass `evaluator_format=True`. This restructures the result into a format optimized for aggregation.
 
 ```python
-result = ground_truth.compare_with(prediction, evaluator_format=True)
+result = ground_truth.compare_with(
+    prediction, evaluator_format=True, document_non_matches=True
+)
 ```
 
 For the `ground_truth` and `prediction` above, where `customer_name` is a false discovery, the output changes to:
@@ -308,7 +310,16 @@ For the `ground_truth` and `prediction` above, where `customer_name` is a false 
     "total_amount": { "precision": 1.0, "recall": 1.0, "f1": 1.0, "accuracy": 1.0, "anls_score": 1.0 }
   },
   "confusion_matrix": {},
-  "non_matches": []
+  "non_matches": [
+    {
+      "field_path": "customer_name",
+      "non_match_type": "false_discovery",
+      "ground_truth_value": "Acme Corp",
+      "prediction_value": "ACME Corporation",
+      "similarity_score": 0.5625,
+      "details": { "reason": "below threshold (0.562 < 0.8)" }
+    }
+  ]
 }
 ```
 
@@ -319,7 +330,7 @@ Key differences from the default output:
 - A list field nests that `overall` beside per-item `items` (filled for a list of models). Which shape a field gets follows the ground-truth value: a list field whose ground truth is `None` comes back flat, with converted metrics.
 - Any other field's metrics are a conversion of its score, not counts: a score of at least 0.5 reads precision equal to the score and recall `1.0`, a lower one `0.0` for both. `customer_name` scores `0.0`, so reads `0.0`; a true positive at `0.94` would read precision `0.94`.
 - `confusion_matrix` is `{}` unless `include_confusion_matrix=True`.
-- `non_matches` holds the records only with `document_non_matches=True`. Without it, it is an empty placeholder, an `UncollectedNonMatches` (in `stickler.structured_object_evaluator.models.non_match_field`) that still equals `[]` as in 1.0.0: the records were not collected, so it never means "no non-matches", and the printers and HTML report say so. A `DeprecationWarning` says the same once per process. From 1.0.2 the key is omitted instead, as in the default output, so read records with `document_non_matches=True`.
+- `non_matches` holds the records only with `document_non_matches=True`. Without it, it is `[]`, as in 1.0.0, because no records were collected, not because none were found, and a `DeprecationWarning` says so once per process. The printers and the HTML report cannot tell the two apart for evaluator-format output and print "No non-matches found" until 1.0.2, which omits the key, as the default output does.
 
 This format is what `BulkStructuredModelEvaluator` expects when aggregating results across many documents.
 

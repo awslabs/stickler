@@ -263,13 +263,18 @@ class FieldConverter:
         # ships no breaking change. 1.0.2 turns this into a `ValueError`, which
         # is what makes the two front doors agree.
         if "match_threshold" in field_config:
+            # Names the model: Python's default filter shows a message once per
+            # text and line, so two models built on one line with the same
+            # field name would otherwise show one warning between them.
+            of_model = f" of model {model_id!r}" if model_id else ""
             warn_once(
                 "field-config-match-threshold-on-primitive",
                 # Keyed on (root model, dotted path), as the unknown-key warning
                 # is, so a second model with the same misplacement still warns.
                 f"{model_id}|{field_path}",
                 f"'match_threshold' is not read on primitive field "
-                f"'{field_path}'; it is the object-level threshold, so it is "
+                f"'{field_path}'{of_model}; "
+                f"it is the object-level threshold, so it is "
                 f"ignored and the field scores at its 'threshold'. Use "
                 f"'threshold' for this field, or set 'match_threshold' on the "
                 f"model or on a 'structured_model' field. This becomes a "
