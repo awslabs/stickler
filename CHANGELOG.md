@@ -199,6 +199,12 @@ Each release links to full notes on the
   no longer split an entity such as `&amp;`
   ([#422](https://github.com/awslabs/stickler/issues/422))
 
+- **The HTML report's Executive Summary escapes its `Documents` count.** A
+  `document_count` assigned to a `ProcessEvaluation` after construction, or set
+  through `model_construct`, is not validated as an `int`, so a string assigned
+  there was written into the page unescaped. Document data does not reach this
+  value.
+
 - List reporting ([#332](https://github.com/awslabs/stickler/issues/332)):
   `non_matches` and `field_comparisons` reuse the pairings, scores, and
   threshold decisions made during list scoring. Rejected pairs produce indexed

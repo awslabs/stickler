@@ -30,7 +30,7 @@ class SectionGenerator:
         html_string += f"""
             <div class="summary-grid">
                 <div class="metric-card">
-                    <div class="metric-value">{doc_count}</div>
+                    <div class="metric-value">{html.escape(str(doc_count))}</div>
                     <div class="metric-label">Documents</div>
                 </div>
         """

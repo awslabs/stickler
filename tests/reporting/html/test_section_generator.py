@@ -65,7 +65,21 @@ class TestSectionGenerator:
         result = self.section_generator.generate_executive_summary(config)
         
         assert '<div class="metric-value">1</div>' in result  # Default value
-    
+
+    def test_executive_summary_escapes_the_document_count(self):
+        """A document_count assigned after construction is not validated, so it is escaped."""
+        results = ProcessEvaluation(document_count=3, metrics={})
+        results.document_count = '<img src=x onerror=alert(1)>'
+        generator = SectionGenerator(results, self.mock_viz_engine)
+
+        result = generator.generate_executive_summary(ReportConfig())
+
+        assert '<img src=x onerror=alert(1)>' not in result
+        assert (
+            '<div class="metric-value">&lt;img src=x onerror=alert(1)&gt;</div>'
+            in result
+        )
+
     @patch('stickler.reporting.html.utils.data_extractors.DataExtractor.extract_field_metrics')
     def test_generate_field_analysis(self, mock_extract_field_metrics):
         """Test field analysis generation."""
