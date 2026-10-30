@@ -24,6 +24,24 @@ with a model arm (`Union[Card, Bank]`, `Union[Plain, str]`) or for a `Structured
 nested list (`List[List[Card]]`), so both methods raise for these, to keep one rule
 ([#349](https://github.com/awslabs/stickler/issues/349)).
 
+A `Dict` field exports as `{"type": "object"}`, with `additionalProperties` for a primitive value
+type, and as `"Dict[str, int]"` in a Stickler config (`"dict"` when a key or value type has no config
+name). Through JSON Schema it re-imports as `dict`, so the value type is not enforced. A
+`default_factory` of `list`, `dict` or `set` on a list or mapping field exports as the value it
+produces (`[]`, `{}`, a set as a list) and re-imports as that default. Any other factory, or one on
+a field exported as a scalar such as `Set[str]`, exports no default and re-imports as `None`.
+
+A Stickler config has no nullable flag: `model_from_json()` makes a field `Optional` only when its
+default is `None`. So on an `Optional` field `to_stickler_config()` writes no empty `[]` or `{}`
+default, from a factory or written literally. The field re-imports nullable with a `None` default,
+which scores the same as the original's `[]` or `{}`, though the rebuilt instance holds `None`
+(`model_dump()` shows `null`). This covers an empty list or mapping default only. Any other default
+on an `Optional` field, such as `Optional[List[int]] = [1]` or `Optional[str] = ""`, is written and
+re-imports non-nullable, rejecting `None`. A `List[Model]` field is the exception: a non-empty
+literal (`[Sub(...)]`), a tuple, or a factory other than `list`, `dict` or `set` is not written, so
+the field re-imports as `Optional` with a `None` default and accepts `None`, which scores the same
+as `[]`. That holds whether or not the original was `Optional`.
+
 Both round-trip methods are also reachable from a plain Pydantic `BaseModel` that was never written
 as a `StructuredModel`, by converting first:
 

@@ -250,6 +250,8 @@ Person = StructuredModel.model_from_json(person_config)
 
 **Nested model fields** use `"type": "structured_model"` with a nested `"fields"` object. **List of models** use `"type": "list_structured_model"`. **Optional models** use `"type": "optional_structured_model"`.
 
+A primitive or `list_structured_model` field that is not `required` and has no `default`, or `"default": null`, is built as `Optional[T]` with a `None` default, so it accepts `null`. A non-`None` default such as `"default": []` keeps the field non-nullable, and a `structured_model` field is never widened: it rejects `null` with or without a default (use `optional_structured_model`).
+
 A key that is not listed above is not read. Rather than being dropped in silence, it emits a `UserWarning` naming the key, the full field path (`billing.city`), and the keys that position does accept; the model still builds, without the key. `match_threshold` is the exception: it is the object-level threshold, so on a primitive field it raises rather than warns — use `threshold` there.
 
 ### Nested Model Example
@@ -401,24 +403,6 @@ inferred rather than what you intended.
 
 Use `Invoice.to_stickler_config()` if you want the resolved configuration back as
 JSON, for example to commit the fully-expanded version once you are happy with it.
-
-!!! warning "The export is lossy for a `dict` field, so the round trip does not hold"
-
-    `to_stickler_config()` writes a mapping field as `"type": "str"`:
-
-    ```json
-    {"type": "str", "comparator": "ANLSStarComparator", "threshold": 0.7, ...}
-    ```
-
-    Re-importing that config gives a model whose field is a `str`, which then
-    rejects dict input with `Input should be a valid string`. The comparator and
-    threshold survive; the type does not.
-
-    This is not specific to inference -- an explicitly configured `dict` field
-    exports the same way -- but a bare `{"type": "dict"}` only became legal to write
-    with this feature, so following the advice above can now reach it. Until the
-    export is fixed, either keep `"type": "dict"` by hand in the committed config,
-    or treat the export as a readable record rather than a re-importable one.
 
 ### What inference chooses
 

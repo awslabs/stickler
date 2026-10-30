@@ -456,10 +456,19 @@ class BulkStructuredModelEvaluator:
     ) -> None:
         """Recursively accumulate field-level CM counts and threshold_applied_score.
 
-        Walks both ``fields`` (object subtrees) and ``nested_fields``
-        (list-of-StructuredModel) so per-field ``mean_score`` is recorded
-        at every node compare_with emits, including leaves under list
-        parents.
+        Walks ``fields``, which holds both object subtrees and the element
+        fields of a list of StructuredModel, so CM counts are recorded at
+        every node compare_with emits. Score sums (for ``mean_score``) are
+        recorded only where a node carries a finite
+        ``threshold_applied_score``. Inside a list element, only the
+        element's own StructuredModel and list-of-StructuredModel fields
+        (``items.addr``, ``items.parts``) carry one, copied from the first
+        matched element pair. Every other path inside an element (leaves,
+        primitive lists, ``items.addr.geo``) carries CM counts only, so it
+        gets no ``mean_score`` (see #249). An element pair below the match
+        threshold emits no element fields, so every path inside an element
+        counts matched pairs only.
+        ``nested_fields`` is also walked, but compare_with no longer emits it.
         """
         for field_name, field_data in fields_dict.items():
             if not isinstance(field_data, dict):

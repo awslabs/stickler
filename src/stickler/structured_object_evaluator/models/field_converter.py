@@ -491,6 +491,13 @@ class FieldConverter:
         elif not required and default == ...:
             default = None
 
+        # Widen a list of models to Optional when its default is None, as the
+        # primitive path above does (#149). Otherwise an exported
+        # `Optional[List[Model]]` rebuilt as `List[Model]` and rejected the
+        # None the original accepts, which scores the same as [].
+        if type_string == "list_structured_model" and default is None:
+            field_type = Optional[field_type]
+
         # CRITICAL FIX: Create ComparableField for nested models to enable proper comparison
         # Extract threshold and weight from field configuration
         weight = field_config.get("weight", 1.0)  # Default weight
