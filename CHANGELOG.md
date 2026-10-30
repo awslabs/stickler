@@ -27,7 +27,9 @@ Each release links to full notes on the
   (`List[List[Card]]`). Both methods still write these exactly as 1.0.0 did,
   typed as a string, which cannot load the original data or (for the nested
   list, in the Stickler config) scores it differently, and emit a
-  `UserWarning` naming the field on every export. This becomes a `ValueError`
+  `UserWarning` naming the field on every export. `to_stickler_config()` on
+  `List[A | B]`, which raised `AttributeError` in 1.0.0, now exports it as
+  `List[Union]` with the same warning. This becomes a `ValueError`
   in 1.0.2. `Optional` and `Annotated` are stripped before the type is chosen,
   so a nested model or list of models declared as
   `Annotated[..., Field(...)] | None` exports as the model, and an annotated
@@ -193,13 +195,13 @@ Each release links to full notes on the
   changes.
 
 ### Fixed
+
 - **A once-per-process warning raises on every call under `-W error`.** The
   helper recorded a warning as shown before showing it, so when the warning
   filter turned it into an exception (`-W error`, or pytest's
   `filterwarnings = error`) only the first call raised, every later one passed
   silently, and a later `pytest.warns` saw nothing. Which test failed depended
   on test order. A warning is now recorded only once it has been emitted.
-
 
 - **The HTML report's field performance table now escapes field names.** It
   wrote each name into the page as raw HTML, while the chart beside it escaped
