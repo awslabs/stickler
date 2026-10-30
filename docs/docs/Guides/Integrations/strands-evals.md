@@ -78,9 +78,11 @@ report, which is what `report_cls=StructuredOutputReport` is for:
   second pass over the data. Reach the field table through
   `report.metrics().field_metrics`.
 
-A rollup covers one schema, so give each output type its own `Experiment`: a case whose
-value belongs to another schema scores 0 and fails rather than dropping out of the dataset
-mean as not-applicable. It carries no field detail, so it is absent from both rollups
+A rollup covers one schema, so give each output type its own `Experiment`. A value from
+another schema that still validates against this one (it shares field names and meets the
+required fields) is scored as this schema; one that does not validate scores 0 and fails
+rather than dropping out of the dataset mean as not-applicable. That case carries no field
+detail, so it is absent from both rollups
 above — `report.scores` is where you see it. Because the detail is on the report and not on
 the evaluator, it survives a round trip through JSON —
 `StructuredOutputReport.from_file(path).metrics()` rolls up a saved report. Reading it
