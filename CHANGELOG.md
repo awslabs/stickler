@@ -11,11 +11,11 @@ Each release links to full notes on the
 
 ### Changed
 
-- **Breaking:** `to_json_schema()` and `to_stickler_config()` no longer write a
-  plain pydantic `BaseModel`, a list of lists or a union of models as a string.
-  Both fell back to `"string"` / `"str"` for a type they had no entry for, so
-  the re-imported model could not load the data the original accepted. A plain
-  model field, or a list of them, now exports as a free-form object
+- `to_json_schema()` and `to_stickler_config()` no longer write a plain
+  pydantic `BaseModel` or a list of lists as a string, and warn on a union of
+  models. Both fell back to `"string"` / `"str"` for a type they had no entry
+  for, so the re-imported model could not load the data the original accepted.
+  A plain model field, or a list of them, now exports as a free-form object
   (`{"type": "object"}`, `"dict"` in a Stickler config), since it is scored as
   one object the way a mapping is, and re-imports as `dict` with the
   comparator, threshold, weight and clip setting it declared; its own field
@@ -24,17 +24,19 @@ Each release links to full notes on the
   types change. `to_stickler_config()` has no type for a union with a model
   arm, such as the `Union[Card, Bank]` that `from_json_schema()` builds from a
   multi-arm `anyOf`, or for a `StructuredModel` inside a nested list
-  (`List[List[Card]]`), so both methods now raise `ValueError` for these, to
-  keep one rule, where they returned a schema that could not load the original
-  data or (for the nested list, in the Stickler config) scored it differently.
-  `Optional` and `Annotated` are stripped before the type is chosen, so a
-  nested model or list of models declared as `Annotated[..., Field(...)] | None`
-  exports as the model, and an annotated scalar such as
-  `Annotated[int, Field(...)] | None` as its own type rather than a string. The
-  refusal reads the field, its list levels and the arms of a union, not other
-  containers: `Union[List[Card], str]`, `Union[Dict[str, Card], str]` and
-  `Tuple[Card, ...]` still export as `"string"`, `List[List[Dict[str, Card]]]`
-  exports without the model's schema, and a union leaf in a list of lists
+  (`List[List[Card]]`). Both methods still write these exactly as 1.0.0 did,
+  typed as a string, which cannot load the original data or (for the nested
+  list, in the Stickler config) scores it differently, and emit a
+  `UserWarning` naming the field on every export. This becomes a `ValueError`
+  in 1.0.2. `Optional` and `Annotated` are stripped before the type is chosen,
+  so a nested model or list of models declared as
+  `Annotated[..., Field(...)] | None` exports as the model, and an annotated
+  scalar such as `Annotated[int, Field(...)] | None` as its own type rather
+  than a string. The warning reads the field, its list levels and the arms of
+  a union, not other containers: `Union[List[Card], str]`,
+  `Union[Dict[str, Card], str]` and `Tuple[Card, ...]` still export as
+  `"string"` without one, `List[List[Dict[str, Card]]]` exports without the
+  model's schema, and a union leaf in a list of lists
   (`List[List[Union[str, int]]]`) is still written as `"string"`.
   Parts B and C of [#349](https://github.com/awslabs/stickler/issues/349)
 
