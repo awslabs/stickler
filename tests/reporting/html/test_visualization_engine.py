@@ -413,3 +413,105 @@ class TestFieldPerformanceValuesAreEscaped:
         )
         for n in ("7", "0", "1", "2"):
             assert f"<td>{n}</td>" in out
+
+
+class TestFormatSpecCellsAreEscaped:
+    """``:.3f`` / ``:.1f`` cells must escape after formatting (#453).
+
+    A numeric subclass whose ``__format__`` returns markup reaches the page
+    unless the formatted string is escaped. Chart/table cells need only
+    ``__format__``; the heatmap percentage needs ``__truediv__`` + ``__mul__``
+    + ``__format__`` because the template formats ``(value / total) * 100``.
+    """
+
+    class HF(float):
+        def __format__(self, spec):
+            return "<img src=x onerror=alert(1)>"
+
+    class HeatHostile(float):
+        def __truediv__(self, other):
+            return TestFormatSpecCellsAreEscaped.HeatCarrier(float(self) / float(other))
+
+        def __rtruediv__(self, other):
+            return TestFormatSpecCellsAreEscaped.HeatCarrier(float(other) / float(self))
+
+    class HeatCarrier(float):
+        def __mul__(self, other):
+            return TestFormatSpecCellsAreEscaped.HeatHostileResult(float(self) * float(other))
+
+        def __rmul__(self, other):
+            return TestFormatSpecCellsAreEscaped.HeatHostileResult(float(other) * float(self))
+
+    class HeatHostileResult(float):
+        def __format__(self, spec):
+            return "<img src=x onerror=alert(1)>"
+
+    def _engine(self):
+        from stickler.reporting.html.report_config import ReportConfig
+        from stickler.reporting.html.visualization_engine import VisualizationEngine
+        return VisualizationEngine(), ReportConfig()
+
+    def test_table_precision_recall_f1_escape_format_markup(self):
+        eng, config = self._engine()
+        out = eng.generate_field_performance_table(
+            {
+                "vendor": {
+                    "precision": self.HF(0.9),
+                    "recall": self.HF(0.8),
+                    "f1": self.HF(0.85),
+                    "tp": 1,
+                    "fd": 0,
+                    "fa": 0,
+                    "fn": 0,
+                }
+            },
+            config,
+        )
+        assert "<img src=x" not in out
+        assert "&lt;img src=x" in out
+
+    def test_chart_bar_value_escapes_format_markup(self):
+        eng, config = self._engine()
+        out = eng.generate_field_performance_chart(
+            {"vendor": {"f1": self.HF(0.75)}},
+            config,
+        )
+        assert "<img src=x" not in out
+        assert "&lt;img src=x" in out
+
+    def test_heatmap_percentage_escapes_format_markup(self):
+        eng, config = self._engine()
+        out = eng.generate_confusion_matrix_heatmap(
+            {"tp": self.HeatHostile(1), "tn": 0, "fd": 0, "fa": 0, "fn": 0},
+            config,
+        )
+        assert "<img src=x" not in out
+        assert "&lt;img src=x" in out
+
+    def test_ordinary_format_values_still_render(self):
+        eng, config = self._engine()
+        table = eng.generate_field_performance_table(
+            {
+                "vendor": {
+                    "precision": 0.9123,
+                    "recall": 0.8,
+                    "f1": 0.85,
+                    "tp": 1,
+                    "fd": 0,
+                    "fa": 0,
+                    "fn": 0,
+                }
+            },
+            config,
+        )
+        chart = eng.generate_field_performance_chart(
+            {"vendor": {"f1": 0.75}},
+            config,
+        )
+        heat = eng.generate_confusion_matrix_heatmap(
+            {"tp": 1, "tn": 0, "fd": 0, "fa": 0, "fn": 0},
+            config,
+        )
+        assert "0.912" in table
+        assert "0.750" in chart
+        assert "100.0%" in heat
