@@ -196,6 +196,13 @@ Each release links to full notes on the
   changes.
 
 ### Fixed
+- **A once-per-process warning raises on every call under `-W error`.** The
+  helper recorded a warning as shown before showing it, so when the warning
+  filter turned it into an exception (`-W error`, or pytest's
+  `filterwarnings = error`) only the first call raised, every later one passed
+  silently, and a later `pytest.warns` saw nothing. Which test failed depended
+  on test order. A warning is now recorded only once it has been emitted.
+
 
 - **The HTML report's field performance table now escapes field names.** It
   wrote each name into the page as raw HTML, while the chart beside it escaped
