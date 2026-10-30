@@ -85,7 +85,7 @@ Each release links to full notes on the
   ([#383](https://github.com/awslabs/stickler/issues/383))
 
 - `match_threshold` on a **primitive** field in a Stickler config now emits a
-  `UserWarning`, once per model and field path. It is the object-level
+  `UserWarning` naming the model and field, once per model and field path. It is the object-level
   threshold; nothing reads it on a leaf, so `"match_threshold": 0.99` beside a
   `float` leaves that field at `threshold` 0.5 and scores it against a value
   the author never chose. The key is still ignored and the field scores as it
