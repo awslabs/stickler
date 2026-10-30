@@ -100,14 +100,13 @@ class TestTheDeclaredThresholdIsRead:
             False,
         )
 
-    def test_an_unstated_threshold_falls_back_to_the_class_match_threshold(self):
-        """`0.7` here is `StructuredModel.match_threshold`, not `ComparableField`'s.
+    def test_an_unstated_threshold_is_a_fixed_default_for_a_nested_model(self):
+        """`0.7` here is a fixed importer default for a nested model.
 
-        Named for the right mechanism. `ComparableField`'s own default is `0.5`
-        (`comparable_field.py`, `_LEGACY_DEFAULT_THRESHOLD`) and that is what a
-        SCALAR property falls back to; a nested model falls back to the class
-        gate instead. Calling this "the object-grade default" pointed at 0.5 and
-        asserted 0.7.
+        The nested class's own `match_threshold` does not change it, and it is
+        not `ComparableField`'s default either: that is `0.5`
+        (`comparable_field.py`, `_LEGACY_DEFAULT_THRESHOLD`), which a SCALAR
+        property falls back to. Python gives a different answer here (#468).
         """
         model = StructuredModel.from_json_schema(_schema())
         assert model._get_comparison_info("inner").threshold == 0.7

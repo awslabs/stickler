@@ -232,11 +232,13 @@ def _nested_model_keys_warning(
     importers before, so a raise would break configs that load today.
     """
     subject = " and ".join(keys)
-    verb = "has" if len(keys) == 1 else "have"
+    # A phrase from _config_keys_phrase can name several keys on its own.
+    plural = len(keys) > 1 or any(" keys " in k for k in keys)
+    verb, be = ("have", "are") if plural else ("has", "is")
     if is_list:
         return (
             f"{subject} {verb} no effect on field '{field_path}' and "
-            f"{'is' if len(keys) == 1 else 'are'} ignored: it is {shape}, whose "
+            f"{be} ignored: it is {shape}, whose "
             "elements are paired by Hungarian matching, so neither a comparator "
             "nor its threshold is read for it. Set comparators on the "
             f"{members} inside each element, and the pairing threshold with "
@@ -244,7 +246,7 @@ def _nested_model_keys_warning(
         )
     return (
         f"{subject} {verb} no effect on field '{field_path}' and "
-        f"{'is' if len(keys) == 1 else 'are'} ignored: it is {shape}, scored "
+        f"{be} ignored: it is {shape}, scored "
         "field by field, so its comparator is never called. Set comparators on "
         f"the {members} inside it, and this field's threshold with "
         f"{threshold_key}."

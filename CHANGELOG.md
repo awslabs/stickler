@@ -111,8 +111,9 @@ Each release links to full notes on the
   too, except that its `clip_under_threshold` now reads `false`; Exact scores
   0 or 1, so its scores do not move. `explain()` names an adopted comparator
   threshold in `why` (`config: comparator_config.threshold=0.9 (overrides
-  above)`), as it already named a field `threshold`; on the schema path it now
-  names both
+  above)`), as it already named a field `threshold`. The schema path named
+  neither and now names both, along with `-weight` and `-clip-under-threshold`
+  overrides.
 
 - **Breaking:** `match_threshold` on a **primitive** field now raises
   `ValueError`. It is the object-level threshold; nothing read it on a leaf, so

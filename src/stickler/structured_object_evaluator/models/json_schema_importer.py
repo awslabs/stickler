@@ -748,9 +748,13 @@ class JsonSchemaImporter:
                 UserWarning,
             )
             if "comparator" in extensions:
-                extensions["comparator"] = create_comparator(
-                    field_info.json_schema_extra["x-aws-stickler-comparator"], {}
-                )
+                try:
+                    extensions["comparator"] = create_comparator(
+                        field_info.json_schema_extra["x-aws-stickler-comparator"], {}
+                    )
+                except TypeError as exc:
+                    # Raised ValueError before the config was dropped; keep it.
+                    raise ValueError(str(exc)) from exc
 
         if annotation is None and extensions.get("infer"):
             # A list of objects is matched element-wise by Hungarian matching, so
