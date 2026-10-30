@@ -129,9 +129,9 @@ Nested rows are counted **per matched element pair, not per document**. A docume
 three line items contributes three to each `line_items.*` leaf, so on a schema with
 several elements per document the child rows total well above the document count.
 
-They are also gated: a pair only contributes child rows if it scored at or above the
-**element model's** `match_threshold` — the one declared on the element class, not the
-one on the enclosing document class. Below it, gating treats the pair as atomic and
+They are also gated: a pair only contributes child rows if it scored at or above
+`match_threshold`: the evaluator's, for a plain model, or the element class's own, for a
+`StructuredModel` element. Below it, gating treats the pair as atomic and
 emits no field breakdown, so the document appears as `fd` on the list field and is
 absent from the child rows. So `line_items.sku` showing `tp=5` on a six-document set of
 single-item invoices means five pairs were close enough to look inside, not that the SKU
@@ -198,5 +198,5 @@ StructuredOutputReport.from_file(path).metrics()
 
 Re-annotating the date as `str` also sidesteps it, but do not: the inferred comparator falls
 from `DateComparator` at threshold 0.95 to `LevenshteinComparator` at 0.7, so a date wrong by
-a month scores 0.9 and the document passes where the date-typed model scores it 0.0 and
-fails. Both edges are harness limitations rather than the evaluator's.
+a month scores 0.9 and clears its threshold, where the date-typed field scores 0.0. Both
+edges are harness limitations rather than the evaluator's.
