@@ -240,11 +240,7 @@ Each release links to full notes on the
   the original did (`0.5` for one wrong key of two) unless the data relied on
   coercion to the value type, which is not exported. Before, such a field could
   not be re-imported: the JSON Schema path raised `ValidationError`, and
-  `model_from_json()` refused it for having no comparator. One declared with a
-  plain `Field(default_factory=...)` now loads, but its exported config does
-  not serialize with `json.dumps`, and `model_from_json()` rebuilds it as
-  required, so a document that omits it raises `ValidationError`
-  ([#435](https://github.com/awslabs/stickler/issues/435)). A declared
+  `model_from_json()` refused it for having no comparator. A declared
   `ComparableField` whose annotation resolves only at `model_rebuild()` now
   exports ANLS* with clip off, what the engine scores with, instead of
   Levenshtein with clip on (`0.5`, not `0.95`, for the same data after the

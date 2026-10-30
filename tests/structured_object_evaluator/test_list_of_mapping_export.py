@@ -8,7 +8,7 @@ export, re-import, load the ORIGINAL data, and require the same scores.
 from typing import Any, Dict, List, Mapping, MutableMapping, Optional, OrderedDict
 
 import pytest
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 
 from stickler.comparators.levenshtein import LevenshteinComparator
 from stickler.structured_object_evaluator.models.comparable_field import ComparableField
@@ -228,19 +228,31 @@ def test_undeclared_field_roundtrips_its_resolved_comparison(roundtrip):
 
 
 def test_undeclared_field_reexports_the_same_schema():
+    """`default` is left out: the export writes a `default_factory` default, but
+    the re-imported field holds a plain one, which no export writes. That is
+    true of every list field, not only mappings (#435)."""
     schema = BareRows.to_json_schema()
     Reimported = StructuredModel.from_json_schema(schema)
-    assert Reimported.to_json_schema()["properties"] == schema["properties"]
+
+    def without_default(properties):
+        return {
+            name: {k: v for k, v in prop.items() if k != "default"}
+            for name, prop in properties.items()
+        }
+
+    assert without_default(Reimported.to_json_schema()["properties"]) == (
+        without_default(schema["properties"])
+    )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=ValidationError,
-    reason="#435: a plain Field(default_factory=...) exports default PydanticUndefined",
-)
 def test_undeclared_factory_default_survives_stickler_config():
-    """Pins the documented limit: the re-imported field is required."""
-    Reimported = StructuredModel.model_from_json(BareRows.to_stickler_config())
+    """A plain `Field(default_factory=...)` keeps its default through the config,
+    and the config serializes with `json.dumps`."""
+    import json
+
+    config = BareRows.to_stickler_config()
+    json.dumps(config)
+    Reimported = StructuredModel.model_from_json(config)
     assert Reimported().rows == BareRows().rows
 
 

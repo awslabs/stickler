@@ -239,11 +239,8 @@ so a prediction element that is not a mapping raises instead of scoring `0.0`. A
 inside `Annotated` (`List[Annotated[Optional[Dict], ...]]`) loses its `null`; write
 `Optional[Annotated[...]]` instead.
 
-A field declared with a plain `Field(default_factory=...)` comes back from `to_stickler_config()`
-with no usable default: the config does not serialize with `json.dumps`, and the re-imported field
-is required ([#435](https://github.com/awslabs/stickler/issues/435)). A mapping field that is not in
-a list, and a list whose element is a union such as `List[Union[Dict, str]]`, still export as a
-string ([#349](https://github.com/awslabs/stickler/issues/349)).
+A mapping field that is not in a list, and a list whose element is a union such as
+`List[Union[Dict, str]]`, still export as a string ([#349](https://github.com/awslabs/stickler/issues/349)).
 
 ## Round-Trip Examples
 
