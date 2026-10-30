@@ -217,6 +217,36 @@ Each release links to full notes on the
   was a false discovery, false alarm or false negative, so `field_comparisons`
   agrees with `non_matches`.
 
+- **A `List[Dict[...]]` field exported by `to_json_schema()` can now load its
+  own data.** The element was exported as `items: {"type": "string"}`, so
+  `from_json_schema()` rebuilt the field as `List[str]` and raised
+  `ValidationError: Input should be a valid string` on the data the original
+  model accepted. A list whose element is any mapping (`Dict`, `dict`,
+  `Mapping`, optionally `Optional`) now exports `items: {"type": "object"}`
+  (`["object", "null"]` for an optional element) and re-imports as
+  `List[dict]` (`List[Optional[dict]]` for an optional element), including on
+  a model built with `from_pydantic()`, with the two limits the
+  [export guide](https://awslabs.github.io/stickler/Advanced/model-export/)
+  states. A consumer reading the exported schema
+  sees the `items` type change from `"string"` to `"object"`.
+  `to_stickler_config()` now writes a mapping element as `List[Dict]`
+  (`List[Optional[Dict]]` for an optional element), which `model_from_json()`
+  re-imports as written; it wrote `List[Mapping]` or `List[Counter]`, which
+  `model_from_json()` refused with `Unknown type`, and `List[dict]` for a
+  `dict` element, which loaded and is now written `List[Dict]` too. On a `from_pydantic()` model
+  it still writes `List[Any]`, which loads the same data. Both
+  exports now carry the comparator, threshold, weight and clip the field
+  resolves even when it is declared without `ComparableField`, so it scores as
+  the original did (`0.5` for one wrong key of two) unless the data relied on
+  coercion to the value type, which is not exported. Before, such a field could
+  not be re-imported: the JSON Schema path raised `ValidationError`, and
+  `model_from_json()` refused it for having no comparator. A declared
+  `ComparableField` whose annotation resolves only at `model_rebuild()` now
+  exports ANLS* with clip off, what the engine scores with, instead of
+  Levenshtein with clip on (`0.5`, not `0.95`, for the same data after the
+  round trip)
+  ([#333](https://github.com/awslabs/stickler/issues/333))
+
 - **A `RootModel` is now refused when the evaluator is built, instead of failing
   once per document or scoring a wrong value `1.0`.** `eval_for()` accepted one
   and returned a spec. What happened next depended on the root type:

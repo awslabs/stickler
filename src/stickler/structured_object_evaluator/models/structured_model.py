@@ -5,6 +5,7 @@ with comparison configuration and evaluation capabilities.
 """
 
 from typing import (
+    Annotated,
     Any,
     ClassVar,
     Dict,
@@ -17,11 +18,12 @@ from typing import (
     get_origin,
 )
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
 from pydantic.json_schema import GenerateJsonSchema
 
 from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.base import BaseComparator
+from stickler.utils.canonical import jsonable_mapping
 from stickler.utils.deprecation import warn_once
 
 from .comparable_field import ComparableField, _named_comparator_threshold
@@ -1855,10 +1857,17 @@ class StructuredModel(BaseModel):
                     )
                     property_schema.update(extensions)
                 else:
-                    # Primitive list - build array schema manually
-                    json_element_type = PYTHON_TYPE_TO_JSON_TYPE.get(
-                        element_type, "string"
-                    )
+                    # List of scalars or mappings - build array schema manually.
+                    # A mapping element is a free-form `{"type": "object"}`, which
+                    # the importer reads back as `dict`. Falling through to "string"
+                    # re-imported `List[Dict[...]]` as `List[str]`, which then
+                    # rejected the data the original accepted (#333).
+                    if cls._is_mapping_element(args[0]):
+                        json_element_type = "object"
+                    else:
+                        json_element_type = PYTHON_TYPE_TO_JSON_TYPE.get(
+                            element_type, "string"
+                        )
                     property_schema = {
                         "type": "array",
                         "items": {
@@ -1869,8 +1878,9 @@ class StructuredModel(BaseModel):
                     }
                     # As above. A literal default is still not exported here.
                     add_exportable_default(property_schema, field_info)
-                    # Extract and add stickler extensions from field metadata
-                    metadata = converter._extract_field_metadata(field_info)
+                    metadata = cls._list_export_metadata(
+                        converter, field_name, field_info, args[0]
+                    )
                     extensions = converter._build_comparison_extensions(
                         metadata, output_format="json_schema"
                     )
@@ -1900,6 +1910,49 @@ class StructuredModel(BaseModel):
                 schema["required"].append(field_name)
 
         return schema
+
+    @staticmethod
+    def _is_mapping_element(element) -> bool:
+        """Whether a list element exports as a mapping from ``to_json_schema()``.
+
+        Any mapping annotation, plus the type ``from_pydantic()`` declares a
+        mapping as: ``Annotated[Any, BeforeValidator(jsonable_mapping)]``
+        (``_WireDict`` in ``auto/builder.py``). It is ``Any`` so a malformed
+        prediction is scored rather than rejected, which hides the mapping from
+        :meth:`ConfigurationHelper.is_mapping_annotation`; its items then
+        exported as ``"string"`` and the re-imported model rejected its own data.
+        """
+        if ConfigurationHelper.is_mapping_annotation(element):
+            return True
+        inner, _ = unwrap_optional(element)
+        return get_origin(inner) is Annotated and any(
+            isinstance(m, BeforeValidator) and m.func is jsonable_mapping
+            for m in inner.__metadata__
+        )
+
+    @classmethod
+    def _list_export_metadata(
+        cls, converter, field_name: str, field_info, element_type
+    ) -> Dict[str, Any]:
+        """Comparison metadata to export for a list of scalars or mappings.
+
+        A list of mappings exports what the engine resolves, so each importer
+        rebuilds the field the engine scores. The raw attributes differ from it
+        for a field declared without ``ComparableField`` (none, so importers
+        applied their own defaults) and for a declared field whose annotation
+        resolved after class definition (Levenshtein, which the engine replaces
+        with ANLS* when it reads the field). Scalar lists keep the importer
+        defaults (#348).
+        """
+        if not cls._is_mapping_element(element_type):
+            return converter._extract_field_metadata(field_info)
+        resolved = ConfigurationHelper.get_comparison_info(cls, field_name)
+        return {
+            "comparator": resolved.comparator,
+            "threshold": resolved.threshold,
+            "weight": resolved.weight,
+            "clip_under_threshold": resolved.clip_under_threshold,
+        }
 
     @staticmethod
     def _unwrap_optional(field_type: Type) -> tuple:
@@ -2101,6 +2154,7 @@ class StructuredModel(BaseModel):
                 # `element_type.__name__`, which a union does not have. Annotated
                 # is stripped too, so `List[Annotated[Card, "m"]]` is a list of
                 # models.
+                _, element_is_nullable = cls._unwrap_optional(unwrap_annotated(args[0]))
                 element_type = ConfigurationHelper.strip_annotation_wrappers(args[0])
 
                 if cls._is_structured_model_type(element_type):
@@ -2146,14 +2200,41 @@ class StructuredModel(BaseModel):
                     field_config = converter.field_to_stickler_config(
                         element_type, field_info
                     )
-                    # A plain model's class name is not a type model_from_json()
-                    # knows; it is written as `dict`, as the singular field is.
-                    element_name = (
-                        "dict"
-                        if ConfigurationHelper.is_plain_model_annotation(element_type)
-                        else element_type.__name__
-                    )
-                    field_config["type"] = f"List[{element_name}]"
+                    if ConfigurationHelper.is_mapping_annotation(element_type):
+                        # Every mapping element is written `Dict`, the spelling
+                        # `model_from_json()` reads. `__name__` wrote
+                        # `List[Mapping]` or `List[Counter]`, which it refused.
+                        # An optional element keeps its nullability, as
+                        # to_json_schema() does, or None elements are rejected.
+                        field_config["type"] = (
+                            "List[Optional[Dict]]"
+                            if element_is_nullable
+                            else "List[Dict]"
+                        )
+                        metadata = cls._list_export_metadata(
+                            converter, field_name, field_info, element_type
+                        )
+                        # Replace the raw attributes the converter wrote, so a
+                        # substituted comparator does not keep the old config.
+                        # Updating in place keeps a surviving config's key order.
+                        extensions = converter._build_comparison_extensions(
+                            metadata, output_format="stickler_config"
+                        )
+                        if "comparator_config" not in extensions:
+                            field_config.pop("comparator_config", None)
+                        field_config.update(extensions)
+                    else:
+                        # A plain model's class name is not a type
+                        # model_from_json() knows; it is written as `dict`, as
+                        # the singular field is.
+                        element_name = (
+                            "dict"
+                            if ConfigurationHelper.is_plain_model_annotation(
+                                element_type
+                            )
+                            else element_type.__name__
+                        )
+                        field_config["type"] = f"List[{element_name}]"
             else:
                 # Primitive type - use converter for consistent formatting
                 field_config = converter.field_to_stickler_config(
