@@ -263,20 +263,29 @@ class TestSectionGenerator:
 
     @patch('stickler.reporting.html.utils.data_extractors.DataExtractor.extract_non_matches')
     def test_generate_non_matches_truncation_never_splits_an_entity(self, mock_extract_non_matches):
-        """Truncate first, then escape, so the cut cannot land inside ``&amp;``."""
+        """Truncate first, then escape, so the cut cannot land inside ``&amp;``.
+
+        The fixture is 98 raw characters because ``section_generator`` truncates
+        at 100: under the limit raw, over it once ``&`` becomes ``&amp;``. That
+        is the only reason this test can tell the two orders apart. Raise the
+        truncation limit without raising the fixture and escape-then-truncate
+        also fits inside it, so the test keeps passing on the wrong order
+        instead of failing -- measured at ``[:200]``.
+        """
         mock_extract_non_matches.return_value = [
             {
                 'doc_id': 'doc1',
                 'field_path': 'description',
                 'non_match_type': 'MISMATCH',
                 'ground_truth_value': "x" * 97 + "&",
-                'prediction_value': 'short'
+                'prediction_value': "y" * 97 + "&"
             }
         ]
 
         result = self.section_generator.generate_non_matches(ReportConfig())
 
         assert "x" * 97 + "&amp;" in result
+        assert "y" * 97 + "&amp;" in result
         assert "&am<" not in result
 
     def test_generate_document_gallery_image_mode(self):
