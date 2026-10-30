@@ -58,7 +58,11 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   `field_comparisons` rows (each carries a GT-side `expected_key` and a
   prediction-side `actual_key`, which diverge for reordered list items).
 - `non_match_collector.py`, `null_helper.py`, `result_helper.py`,
-  `evaluator_format_helper.py` — result shaping.
+  `evaluator_format_helper.py` — result shaping. Without
+  `document_non_matches=True`, evaluator-format `non_matches` is an empty
+  `UncollectedNonMatches` (`non_match_field.py`), not records; readers that
+  decide "none found" must test it with `is_uncollected_non_matches` or
+  `has_non_match_records`, not with `"non_matches" in result`.
 
 **Metrics**
 - `confusion_matrix_builder.py`, `confusion_matrix_calculator.py`,

@@ -6,6 +6,7 @@ It also includes utilities for filtering, exporting, and analyzing non-matches.
 """
 
 import json
+from collections.abc import Mapping
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -19,6 +20,46 @@ class NonMatchType(str, Enum):
     FALSE_ALARM = "false_alarm"  # GT null, prediction non-null
     FALSE_DISCOVERY = "false_discovery"  # Both non-null but don't match
     FALSE_NEGATIVE = "false_negative"  # GT non-null, prediction null
+
+
+class UncollectedNonMatches(list):
+    """The empty ``non_matches`` that ``evaluator_format=True`` writes when records
+    were not collected.
+
+    ``compare_with(evaluator_format=True)`` without ``document_non_matches=True``
+    collects no records. 1.0.0 wrote ``"non_matches": []`` anyway, so 1.0.1 keeps
+    the key for callers that read it, but as this marker rather than a plain
+    list, so the printers and the HTML report can say the records were not
+    collected instead of "No non-matches found." (#413). It is an empty ``list``:
+    it equals ``[]``, ``json.dumps`` writes it as ``[]``, and ``copy.deepcopy``
+    and ``pickle`` keep the class. A JSON round trip does not, so a result
+    reloaded from JSON reads as a collected empty list. Test for it with
+    ``is_uncollected_non_matches``. From 1.0.2 the key is omitted instead.
+    """
+
+    __slots__ = ()
+
+
+def is_uncollected_non_matches(value: Any) -> bool:
+    """Whether ``value`` is the uncollected placeholder, not a list of records.
+
+    Only an empty :class:`UncollectedNonMatches` counts: records appended to one
+    are records.
+    """
+    return isinstance(value, UncollectedNonMatches) and not value
+
+
+def has_non_match_records(result: Any) -> bool:
+    """Whether a ``compare_with()`` dict carries collected ``non_matches``.
+
+    True for a collected list, including an empty one (the document was clean);
+    False when the key is absent or holds the uncollected placeholder.
+    """
+    return (
+        isinstance(result, Mapping)
+        and "non_matches" in result
+        and not is_uncollected_non_matches(result["non_matches"])
+    )
 
 
 class NonMatchField(BaseModel):

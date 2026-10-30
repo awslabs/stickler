@@ -307,7 +307,8 @@ For the `ground_truth` and `prediction` above, where `customer_name` is a false 
     "customer_name": { "precision": 0.0, "recall": 0.0, "f1": 0.0, "accuracy": 0.0, "anls_score": 0.0 },
     "total_amount": { "precision": 1.0, "recall": 1.0, "f1": 1.0, "accuracy": 1.0, "anls_score": 1.0 }
   },
-  "confusion_matrix": {}
+  "confusion_matrix": {},
+  "non_matches": []
 }
 ```
 
@@ -318,7 +319,7 @@ Key differences from the default output:
 - A list field nests that `overall` beside per-item `items` (filled for a list of models). Which shape a field gets follows the ground-truth value: a list field whose ground truth is `None` comes back flat, with converted metrics.
 - Any other field's metrics are a conversion of its score, not counts: a score of at least 0.5 reads precision equal to the score and recall `1.0`, a lower one `0.0` for both. `customer_name` scores `0.0`, so reads `0.0`; a true positive at `0.94` would read precision `0.94`.
 - `confusion_matrix` is `{}` unless `include_confusion_matrix=True`.
-- `non_matches` is present only with `document_non_matches=True`, as in the default output. Without it the key is absent, so a missing key means "not collected", never "no non-matches".
+- `non_matches` holds the records only with `document_non_matches=True`. Without it, it is an empty placeholder, an `UncollectedNonMatches` (in `stickler.structured_object_evaluator.models.non_match_field`) that still equals `[]` as in 1.0.0: the records were not collected, so it never means "no non-matches", and the printers and HTML report say so. A `DeprecationWarning` says the same once per process. From 1.0.2 the key is omitted instead, as in the default output, so read records with `document_non_matches=True`.
 
 This format is what `BulkStructuredModelEvaluator` expects when aggregating results across many documents.
 

@@ -122,6 +122,20 @@ def test_a_raw_dict_that_already_carries_non_matches_is_used_as_is():
     assert EvalResult(raw, spec).non_matches == raw["non_matches"]
 
 
+def test_a_carried_uncollected_placeholder_is_not_taken_as_records():
+    """The `evaluator_format=True` placeholder is not records, so they are computed."""
+    from stickler.structured_object_evaluator.models.non_match_field import (
+        UncollectedNonMatches,
+    )
+
+    result = stickler.evaluate(
+        _Person(name="Ada", city="London"), _Person(name="Grace", city="London")
+    )
+    result.raw["non_matches"] = UncollectedNonMatches()
+
+    assert [nm["field_path"] for nm in result.non_matches] == ["name"]
+
+
 def test_a_raw_dict_with_no_pair_and_no_key_is_empty_not_an_error():
     """It must not try to recompare a pair it was never given."""
     spec = stickler.eval_for(_Person)

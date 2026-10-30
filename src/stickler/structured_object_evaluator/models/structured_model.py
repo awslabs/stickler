@@ -29,7 +29,7 @@ from stickler.utils.deprecation import warn_once
 from .comparable_field import ComparableField, _named_comparator_threshold
 from .comparison_helper import ComparisonHelper, _maybe_absent
 from .configuration_helper import ConfigurationHelper
-from .evaluator_format_helper import EvaluatorFormatHelper
+from .evaluator_format_helper import EvaluatorFormatHelper, in_list_item_metrics
 from .metrics_helper import MetricsHelper
 from .null_helper import NullHelper
 from .optional_annotation import union_args, unwrap_annotated, unwrap_optional
@@ -1578,7 +1578,11 @@ class StructuredModel(BaseModel):
                 See
                 https://awslabs.github.io/stickler/Advanced/aggregate-metrics/
             document_non_matches: Whether to document non-matches for analysis
-            evaluator_format: Whether to format results for the evaluator
+            evaluator_format: Whether to format results for the evaluator.
+                Without ``document_non_matches=True`` its ``non_matches`` is an
+                empty ``UncollectedNonMatches`` placeholder, not records, and a
+                ``DeprecationWarning`` is emitted once per process: from 1.0.2
+                the key is omitted in that case.
             recall_with_fd: If True, include FD in recall denominator (TP/(TP+FN+FD))
                             If False, use traditional recall (TP/(TP+FN))
             add_derived_metrics: Whether to add derived metrics to confusion matrix
@@ -1608,6 +1612,24 @@ class StructuredModel(BaseModel):
             - confidence_metrics: (optional) Confidence calibration metrics if requested
         """
         from .comparison_engine import ComparisonEngine
+
+        if (
+            evaluator_format
+            and not document_non_matches
+            and not in_list_item_metrics.get()
+        ):
+            # Once per process, like the other result-key deprecations: a bulk
+            # loop makes this call per document and the advice does not change.
+            warn_once(
+                "evaluator-format-uncollected-non-matches",
+                "",
+                "compare_with(evaluator_format=True) without "
+                "document_non_matches=True returns 'non_matches' as an empty "
+                "placeholder: the records were not collected, so it does not mean "
+                "every field matched. Pass document_non_matches=True to collect "
+                "them. From 1.0.2 the 'non_matches' key is omitted unless "
+                "document_non_matches=True.",
+            )
 
         engine = ComparisonEngine(self)
         return engine.compare_with(

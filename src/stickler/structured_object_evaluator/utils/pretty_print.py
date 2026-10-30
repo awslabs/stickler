@@ -11,6 +11,8 @@ import re
 import sys
 from typing import Any, Dict, List, Optional, Union
 
+from ..models.non_match_field import is_uncollected_non_matches
+
 
 # ANSI color codes for terminal output
 class Colors:
@@ -991,7 +993,11 @@ def _extract_non_matches(
     # This also still covers ProcessEvaluation from the bulk evaluator, whose
     # `non_matches` is None when it was built with `document_non_matches=False`.
     if hasattr(results, "non_matches"):
-        return results.non_matches
+        return (
+            None
+            if is_uncollected_non_matches(results.non_matches)
+            else results.non_matches
+        )
 
     # Otherwise fall through to the dictionary formats, unwrapping `raw`.
     raw_results = getattr(results, "raw", None)
@@ -1000,7 +1006,11 @@ def _extract_non_matches(
 
     # Handle regular single document results
     if isinstance(results, dict):
+        # `evaluator_format=True` without `document_non_matches=True` writes an
+        # empty `UncollectedNonMatches` placeholder: present, but not records.
         if "non_matches" in results:
+            if is_uncollected_non_matches(results["non_matches"]):
+                return None
             return results["non_matches"]
         # The engine writes an empty `confusion_matrix["non_matches"]` placeholder
         # whether or not records were requested, so only a populated one counts.
@@ -1008,7 +1018,7 @@ def _extract_non_matches(
         if isinstance(cm, dict) and cm.get("non_matches"):
             return cm["non_matches"]
 
-    # No records at all. `compare_with()` only adds the key when called with
+    # No records at all. `compare_with()` only collects them when called with
     # `document_non_matches=True`, so this says nothing about whether fields
     # matched, and must not be reported as if it did.
     return None

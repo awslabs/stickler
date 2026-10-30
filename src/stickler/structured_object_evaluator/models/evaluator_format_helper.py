@@ -4,11 +4,21 @@ This module provides utilities for formatting comparison results for evaluator
 compatibility and calculating list item metrics.
 """
 
+from contextvars import ContextVar
 from typing import Any, Dict, List, Optional
 
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
+from .non_match_field import UncollectedNonMatches
 from .null_helper import NullHelper
+
+#: True while ``calculate_list_item_metrics`` scores list items through
+#: ``compare_with(evaluator_format=True)``. Those calls never request records, so
+#: without this a caller who passed ``document_non_matches=True`` would get the
+#: uncollected-placeholder warning for a call it did not make.
+in_list_item_metrics: ContextVar[bool] = ContextVar(
+    "stickler_in_list_item_metrics", default=False
+)
 
 
 class EvaluatorFormatHelper:
@@ -37,8 +47,9 @@ class EvaluatorFormatHelper:
 
         Returns:
             Dictionary in evaluator format with overall, fields,
-            confusion_matrix, and ``non_matches`` when ``result`` carries
-            records (``document_non_matches=True``)
+            confusion_matrix and non_matches. ``non_matches`` holds the records
+            when ``result`` carries them (``document_non_matches=True``), and an
+            empty ``UncollectedNonMatches`` placeholder otherwise
         """
         field_scores = result["field_scores"]
         overall_score = result["overall_score"]
@@ -133,11 +144,17 @@ class EvaluatorFormatHelper:
             "fields": field_metrics,
             "confusion_matrix": flattened_confusion_matrix,
         }
-        # Only when records were collected, as in the default compare_with()
-        # dict. An always-present empty list read as "no non-matches" on a
-        # document with a wrong field (#413).
-        if "non_matches" in result:
-            formatted["non_matches"] = result["non_matches"]
+        # Records when they were collected, as in the default compare_with()
+        # dict. Otherwise an empty placeholder, which keeps 1.0.0's
+        # `result["non_matches"] == []` working while letting the printers and
+        # the HTML report say the records were not collected: a plain empty list
+        # read as "no non-matches" on a document with a wrong field (#413).
+        # From 1.0.2 the key is omitted instead.
+        formatted["non_matches"] = (
+            result["non_matches"]
+            if "non_matches" in result
+            else UncollectedNonMatches()
+        )
         return formatted
 
     @staticmethod
@@ -264,16 +281,24 @@ class EvaluatorFormatHelper:
             )
             assignments = hungarian_info["assignments"]
 
-            # Create metrics for each matched pair
-            for gt_idx, pred_idx in assignments:
-                if gt_idx < len(gt_list) and pred_idx < len(pred_list):
-                    gt_item = gt_list[gt_idx]
-                    pred_item = pred_list[pred_idx]
+            # Create metrics for each matched pair. Through `compare_with`, so
+            # an item class's own override still runs; the flag keeps these
+            # internal calls from warning about records nobody asked for.
+            token = in_list_item_metrics.set(True)
+            try:
+                for gt_idx, pred_idx in assignments:
+                    if gt_idx < len(gt_list) and pred_idx < len(pred_list):
+                        gt_item = gt_list[gt_idx]
+                        pred_item = pred_list[pred_idx]
 
-                    # Compare the items with evaluator format
-                    item_comparison = gt_item.compare_with(
-                        pred_item, evaluator_format=True, recall_with_fd=recall_with_fd
-                    )
-                    items_metrics.append(item_comparison)
+                        # Compare the items with evaluator format
+                        item_comparison = gt_item.compare_with(
+                            pred_item,
+                            evaluator_format=True,
+                            recall_with_fd=recall_with_fd,
+                        )
+                        items_metrics.append(item_comparison)
+            finally:
+                in_list_item_metrics.reset(token)
 
         return items_metrics

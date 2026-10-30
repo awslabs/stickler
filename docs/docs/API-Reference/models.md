@@ -36,6 +36,10 @@
     options:
       heading_level: 3
 
+::: stickler.structured_object_evaluator.models.non_match_field.UncollectedNonMatches
+    options:
+      heading_level: 3
+
 ::: stickler.structured_object_evaluator.models.field
     options:
       heading_level: 2
