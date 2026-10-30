@@ -171,7 +171,8 @@ class SectionGenerator:
             for doc_id, image_path in document_images.items():
                 # Coerce before escape: html.escape requires str; int keys/paths
                 # (same shape as JSONL doc_id after 1.0.1) must not crash the gallery.
-                # str() also makes int 1001 and "1001" agree as the gallery key.
+                # Conversion can make distinct input keys render identically; preserve
+                # every ordered mapping entry rather than silently dropping one.
                 doc_id = str(doc_id)
                 image_path = str(image_path)
                 html_string += f'''
