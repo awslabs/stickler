@@ -65,7 +65,21 @@ class TestSectionGenerator:
         result = self.section_generator.generate_executive_summary(config)
         
         assert '<div class="metric-value">1</div>' in result  # Default value
-    
+
+    def test_executive_summary_escapes_the_document_count(self):
+        """A document_count assigned after construction is not validated, so it is escaped."""
+        results = ProcessEvaluation(document_count=3, metrics={})
+        results.document_count = '<img src=x onerror=alert(1)>'
+        generator = SectionGenerator(results, self.mock_viz_engine)
+
+        result = generator.generate_executive_summary(ReportConfig())
+
+        assert '<img src=x onerror=alert(1)>' not in result
+        assert (
+            '<div class="metric-value">&lt;img src=x onerror=alert(1)&gt;</div>'
+            in result
+        )
+
     @patch('stickler.reporting.html.utils.data_extractors.DataExtractor.extract_field_metrics')
     def test_generate_field_analysis(self, mock_extract_field_metrics):
         """Test field analysis generation."""
@@ -263,20 +277,29 @@ class TestSectionGenerator:
 
     @patch('stickler.reporting.html.utils.data_extractors.DataExtractor.extract_non_matches')
     def test_generate_non_matches_truncation_never_splits_an_entity(self, mock_extract_non_matches):
-        """Truncate first, then escape, so the cut cannot land inside ``&amp;``."""
+        """Truncate first, then escape, so the cut cannot land inside ``&amp;``.
+
+        The fixture is 98 raw characters because ``section_generator`` truncates
+        at 100: under the limit raw, over it once ``&`` becomes ``&amp;``. That
+        is the only reason this test can tell the two orders apart. Raise the
+        truncation limit without raising the fixture and escape-then-truncate
+        also fits inside it, so the test keeps passing on the wrong order
+        instead of failing -- measured at ``[:200]``.
+        """
         mock_extract_non_matches.return_value = [
             {
                 'doc_id': 'doc1',
                 'field_path': 'description',
                 'non_match_type': 'MISMATCH',
                 'ground_truth_value': "x" * 97 + "&",
-                'prediction_value': 'short'
+                'prediction_value': "y" * 97 + "&"
             }
         ]
 
         result = self.section_generator.generate_non_matches(ReportConfig())
 
         assert "x" * 97 + "&amp;" in result
+        assert "y" * 97 + "&amp;" in result
         assert "&am<" not in result
 
     def test_generate_document_gallery_image_mode(self):
@@ -379,3 +402,62 @@ class TestSectionGeneratorIntegration:
         assert 'price' in field_analysis
         assert 'TP' in confusion_matrix
         assert 'category' in non_matches
+
+
+class TestNonStrDocId:
+    """A non-`str` doc_id must not take the whole report down.
+
+    `BulkStructuredModelEvaluator.update` annotates `doc_id` as `Optional[str]`, but
+    Python does not enforce that at runtime and `evaluate_dataframe` reads the value
+    straight off a DataFrame column (`doc_id = row.get("doc_id", ...)`). An integer
+    id — the ordinary case for one read from CSV, parquet or a database — used to
+    reach `html.escape` unconverted and raise, so `generate_report` returned
+    `success=False` and wrote no page at all.
+    """
+
+    def test_non_matches_table_renders_a_non_str_doc_id(self):
+        viz = Mock(spec=VisualizationEngine)
+        results = Mock(spec=ProcessEvaluation)
+        results.non_matches = [
+            {
+                "doc_id": 1001,
+                "field_path": 7,
+                "non_match_type": "NonMatchType.FALSE_DISCOVERY",
+                "ground_truth_value": "Acme",
+                "prediction_value": "Globex",
+            }
+        ]
+        html_out = SectionGenerator(results, viz).generate_non_matches(ReportConfig())
+        assert "1001" in html_out
+        assert ">7<" in html_out
+
+    def test_a_dataframe_with_an_integer_doc_id_still_produces_a_report(self, tmp_path):
+        import json
+
+        import pandas as pd
+
+        from stickler import StructuredModel
+        from stickler.reporting.html.html_reporter import EvaluationHTMLReporter
+        from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
+            BulkStructuredModelEvaluator,
+        )
+
+        class Invoice(StructuredModel):
+            vendor: str
+
+        df = pd.DataFrame(
+            [
+                {
+                    "doc_id": 1001,
+                    "expected": json.dumps({"vendor": "Acme"}),
+                    "predicted": json.dumps({"vendor": "Globex"}),
+                }
+            ]
+        )
+        results = BulkStructuredModelEvaluator(Invoice).evaluate_dataframe(df)
+        assert {type(nm.get("doc_id")) for nm in results.non_matches} == {int}
+
+        out = tmp_path / "report.html"
+        report = EvaluationHTMLReporter().generate_report(results, str(out))
+        assert report.success, report.errors
+        assert out.exists()

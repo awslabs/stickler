@@ -1,5 +1,13 @@
 """
 Simple visualization engine for HTML reports - v0.
+
+Numeric cells that use a format spec (``:.3f`` / ``:.1f``) are rendered through
+``html.escape(f"{{value:.Nf}}")`` so a caller-supplied numeric subclass whose
+``__format__`` returns markup cannot land in the page (#453).
+
+``generate_performance_gauge`` is excluded on purpose: ``int(score * 100)``
+forces a plain ``int``, so ``__format__`` / ``__str__`` / ``__mul__`` on a
+subclass cannot reach the template.
 """
 import html
 from typing import Any, Dict
@@ -66,7 +74,7 @@ class VisualizationEngine:
                         <div class="field-label">{html.escape(str(field_name))}</div>
                         <div class="bar-container">
                             <div class="bar-fill" style="width: {percentage}%; background-color: {color};"></div>
-                            <span class="bar-value">{f1_score:.3f}</span>
+                            <span class="bar-value">{html.escape(f"{f1_score:.3f}")}</span>
                         </div>
                     </div>
                     '''
@@ -123,16 +131,16 @@ class VisualizationEngine:
                 html_string += f'''
                 <tr>
                     <td>{html.escape(str(field_name))}</td>
-                    <td>{precision:.3f}</td>
-                    <td>{recall:.3f}</td>
-                    <td style="background-color: {f1_color}; color: white; font-weight: bold;">{f1:.3f}</td>
+                    <td>{html.escape(f"{precision:.3f}")}</td>
+                    <td>{html.escape(f"{recall:.3f}")}</td>
+                    <td style="background-color: {f1_color}; color: white; font-weight: bold;">{html.escape(f"{f1:.3f}")}</td>
                 '''
 
                 html_string += f'''
-                    <td>{tp}</td>
-                    <td>{fd}</td>
-                    <td>{fa}</td>
-                    <td>{fn}</td>
+                    <td>{html.escape(str(tp))}</td>
+                    <td>{html.escape(str(fd))}</td>
+                    <td>{html.escape(str(fa))}</td>
+                    <td>{html.escape(str(fn))}</td>
                 </tr>
                 '''
         
@@ -166,8 +174,8 @@ class VisualizationEngine:
             html_string += f'''
             <div class="cm-cell" style="border-left-color: {metric_colors[metric]}">
                 <div class="cm-label">{metric.upper()}</div>
-                <div class="cm-value">{value}</div>
-                <div class="cm-percentage">{percentage:.1f}%</div>
+                <div class="cm-value">{html.escape(str(value))}</div>
+                <div class="cm-percentage">{html.escape(f"{percentage:.1f}")}%</div>
             </div>
             '''
         

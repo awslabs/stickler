@@ -23,7 +23,10 @@ logger = logging.getLogger(__name__)
 # A browser ends a <script> block at the first `</script`, even inside a JSON
 # string, and `json.dumps` leaves `<` as is. Escaping these as `\uXXXX` keeps
 # the JSON identical to the page's JavaScript while no document value can end
-# the block early (#431). U+2028/U+2029 are line terminators in older JS.
+# the block early (#431). `json.dumps` already escapes U+2028/U+2029 under its
+# default `ensure_ascii=True`, so those two entries do not change today's
+# output; they are kept so the table stays correct if that ever changes, since
+# both are line terminators outside a JS string literal.
 _SCRIPT_SAFE = str.maketrans({
     "<": "\\u003c",
     ">": "\\u003e",
@@ -178,6 +181,14 @@ class EvaluationHTMLReporter:
                     line = line.strip()
                     if line:
                         doc_data = json.loads(line)
+                        # The page finds the selected document by comparing ids
+                        # as strings, and the tables write str(doc_id), so a
+                        # numeric id (ordinary from a DataFrame) is embedded as
+                        # one. Left as a number, selecting it matched nothing and
+                        # the page kept showing aggregate numbers.
+                        doc_id = doc_data.get("doc_id") if isinstance(doc_data, dict) else None
+                        if doc_id is not None and not isinstance(doc_id, str):
+                            doc_data["doc_id"] = str(doc_id)
                         individual_docs.append(doc_data)
         except Exception as e:
             logger.warning(f"Failed to load individual results from {jsonl_path}: {e}")

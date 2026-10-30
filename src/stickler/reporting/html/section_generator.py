@@ -30,7 +30,7 @@ class SectionGenerator:
         html_string += f"""
             <div class="summary-grid">
                 <div class="metric-card">
-                    <div class="metric-value">{doc_count}</div>
+                    <div class="metric-value">{html.escape(str(doc_count))}</div>
                     <div class="metric-label">Documents</div>
                 </div>
         """
@@ -134,8 +134,8 @@ class SectionGenerator:
         '''
         
         for nm in displayed:
-            doc_id = html.escape(nm.get('doc_id', 'N/A'))
-            field_path = html.escape(nm.get('field_path', 'N/A'))
+            doc_id = html.escape(str(nm.get('doc_id', 'N/A')))
+            field_path = html.escape(str(nm.get('field_path', 'N/A')))
             non_match_type = html.escape(str(nm.get('non_match_type', 'N/A')).replace('NonMatchType.',''))
             ground_truth_value = html.escape(str(nm.get('ground_truth_value', 'None'))[:100])  # Truncate long values
             prediction_value = html.escape(str(nm.get('prediction_value', 'None'))[:100])
