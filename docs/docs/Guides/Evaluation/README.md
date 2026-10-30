@@ -201,7 +201,7 @@ on the position, because different positions fall back to different defaults:
 | Position | Default threshold | Where it comes from |
 |---|---|---|
 | plain scalar (`string`, `number`, ...) | `0.5` | `ComparableField`'s own default |
-| object with `properties` (a nested model) | `0.7` | the class's `match_threshold` |
+| object with `properties` (a nested model) | `0.7` | a fixed importer default; the nested class's own `x-aws-stickler-match-threshold` does not change it |
 | free-form `{"type": "object"}` (a `Dict`), or an array of them | `1.0` | the mapping default |
 | array of plain scalars | `0.5` | `ComparableField`'s own default |
 | array of models | `0.5`, and never read from the schema | the element class's `match_threshold` gates instead |
