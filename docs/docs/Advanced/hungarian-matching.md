@@ -26,7 +26,7 @@ The Hungarian algorithm solves the assignment problem in O(n^3) time, producing 
 
 ### 3. Threshold-Gated Classification
 
-Each matched pair is classified using `StructuredModel.match_threshold`:
+Each matched pair is classified using `StructuredModel.match_threshold`, with `>=` as described in [Meeting a Threshold](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold):
 
 | Condition | Classification | Nested analysis? |
 |-----------|---------------|-----------------|
@@ -195,7 +195,7 @@ The threshold for Hungarian classification comes from the element model's `match
 ### Recursion Gating
 
 ```
-IF object_similarity >= match_threshold:
+IF object_similarity meets match_threshold:
     classification = TP
     recurse into nested field analysis
 ELSE:
@@ -207,6 +207,7 @@ ELSE:
 
 - **Equal length** -- Every element gets paired. Only TP and FD are possible.
 - **Unequal length** -- Extra GT items become FN; extra Pred items become FA.
+- **`None` elements** -- Left out before matching, so they are never paired or counted, and lengths are counted without them. See [`None` elements in a list](classification-logic.md#none-elements-in-a-list).
 
 ## See Also
 

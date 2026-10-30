@@ -1,5 +1,13 @@
 """
 Simple visualization engine for HTML reports - v0.
+
+Numeric cells that use a format spec (``:.3f`` / ``:.1f``) are rendered through
+``html.escape(f"{{value:.Nf}}")`` so a caller-supplied numeric subclass whose
+``__format__`` returns markup cannot land in the page (#453).
+
+``generate_performance_gauge`` is excluded on purpose: ``int(score * 100)``
+forces a plain ``int``, so ``__format__`` / ``__str__`` / ``__mul__`` on a
+subclass cannot reach the template.
 """
 import html
 from typing import Any, Dict
@@ -63,10 +71,10 @@ class VisualizationEngine:
                     
                     html_string += f'''
                     <div class="field-bar">
-                        <div class="field-label">{html.escape(field_name)}</div>
+                        <div class="field-label">{html.escape(str(field_name))}</div>
                         <div class="bar-container">
                             <div class="bar-fill" style="width: {percentage}%; background-color: {color};"></div>
-                            <span class="bar-value">{f1_score:.3f}</span>
+                            <span class="bar-value">{html.escape(f"{f1_score:.3f}")}</span>
                         </div>
                     </div>
                     '''
@@ -84,11 +92,11 @@ class VisualizationEngine:
         Returns:
             HTML for field performance scale.
         """
-        html = ''
+        html_string = ''
 
         # Generate detailed field performance table
-        html += '<table class="data-table data-table-numeric" id="performance-table">'
-        html += '''
+        html_string += '<table class="data-table data-table-numeric" id="performance-table">'
+        html_string += '''
         <thead>
             <tr>
                 <th>Field</th>
@@ -97,7 +105,7 @@ class VisualizationEngine:
                 <th>F1 Score</th>
         '''
         
-        html += '''
+        html_string += '''
                 <th>TP</th>
                 <th>FD</th>
                 <th>FA</th>
@@ -120,15 +128,15 @@ class VisualizationEngine:
             
                 f1_color = ColorUtils.get_performance_color(f1, config.color_thresholds)
                 
-                html += f'''
+                html_string += f'''
                 <tr>
-                    <td>{field_name}</td>
-                    <td>{precision:.3f}</td>
-                    <td>{recall:.3f}</td>
-                    <td style="background-color: {f1_color}; color: white; font-weight: bold;">{f1:.3f}</td>
+                    <td>{html.escape(str(field_name))}</td>
+                    <td>{html.escape(f"{precision:.3f}")}</td>
+                    <td>{html.escape(f"{recall:.3f}")}</td>
+                    <td style="background-color: {f1_color}; color: white; font-weight: bold;">{html.escape(f"{f1:.3f}")}</td>
                 '''
 
-                html += f'''
+                html_string += f'''
                     <td>{tp}</td>
                     <td>{fd}</td>
                     <td>{fa}</td>
@@ -136,8 +144,8 @@ class VisualizationEngine:
                 </tr>
                 '''
         
-        html += '</tbody></table></div>'
-        return html
+        html_string += '</tbody></table></div>'
+        return html_string
     
     def generate_confusion_matrix_heatmap(self, cm_data: Dict[str, Any], config: Any) -> str:
         """
@@ -156,20 +164,20 @@ class VisualizationEngine:
         if total == 0:
             return '<p>No confusion matrix data to visualize.</p>'
         
-        html = '<div class="cm-grid">'
+        html_string = '<div class="cm-grid">'
         metric_colors = ColorUtils.get_confusion_matrix_colors()
         
         for metric in metrics:
             value = cm_data.get(metric, 0)
             percentage = (value / total) * 100 if total > 0 else 0
             
-            html += f'''
+            html_string += f'''
             <div class="cm-cell" style="border-left-color: {metric_colors[metric]}">
                 <div class="cm-label">{metric.upper()}</div>
                 <div class="cm-value">{value}</div>
-                <div class="cm-percentage">{percentage:.1f}%</div>
+                <div class="cm-percentage">{html.escape(f"{percentage:.1f}")}%</div>
             </div>
             '''
         
-        html += '</div>'
-        return html
+        html_string += '</div>'
+        return html_string

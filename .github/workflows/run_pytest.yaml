@@ -1,6 +1,23 @@
 name: Run Tests
 
-on: [push, pull_request]
+# `push` is limited to the long-lived branches. On a branch with an open pull
+# request both events fired, so every push validated the same commit twice.
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+# One run per pull request, newest head wins: a superseded run is cancelled,
+# since the older head is no longer what anyone is reviewing.
+#
+# A push gets a group of its own, keyed on its run id. Sharing one group per
+# branch would not have been safe even with the cancel off: a group holds one
+# running and one pending run, so a third push cancels the pending one
+# regardless, and `cancel-in-progress` only ever protects the run already
+# executing.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -21,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
@@ -32,3 +49,46 @@ jobs:
         run: uv run coverage run -m pytest -v -s
       - name: Generate Coverage Report
         run: uv run coverage report -m
+
+  # The Strands Evals integration end to end, against the real evaluator
+  # (tests/integrations, #365). The contract and snapshot tests there need no
+  # extra dependency and already run in `test`; this job adds the e2e file,
+  # which skips unless strands_evals is installed.
+  strands-evals:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor and ceiling both projects support.
+        python-version: ["3.10", "3.14"]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Install strands-agents-evals
+        # Exact pin, and deliberately WITHOUT the [stickler] extra: the extra
+        # requires stickler-eval and would replace this checkout with a PyPI
+        # release, so the tests would measure the wrong tree. Not added to
+        # uv.lock or pyproject.toml (see AGENTS.md). The [tool.uv] cooldown in
+        # pyproject.toml still applies to its dependencies. strands-agents-evals
+        # itself is exempt up to a fixed cutoff just after the pinned release
+        # (1.6.0 was uploaded 2026-10-14T22:45Z), so the job tests the release
+        # the integration shipped in. Move the cutoff with the pin. The -c
+        # constraints hold every package in uv.lock's default (no-extras)
+        # export at its locked version; packages locked only under extras
+        # (boto3, httpx, ...) can move. A file in $RUNNER_TEMP, not <(...), so
+        # a failed export fails the step instead of installing unconstrained.
+        run: |
+          uv export --frozen --no-hashes --no-emit-project -q -o "$RUNNER_TEMP/uv-lock.txt"
+          uv pip install --python .venv -c "$RUNNER_TEMP/uv-lock.txt" \
+            --exclude-newer-package "strands-agents-evals=2026-10-15T00:00:00Z" \
+            "strands-agents-evals==1.6.0"
+      - name: Test the Strands Evals integration
+        # --no-sync: a syncing `uv run` would put the environment back to
+        # uv.lock, undoing the install above.
+        run: uv run --no-sync pytest tests/integrations -v

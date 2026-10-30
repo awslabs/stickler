@@ -76,26 +76,37 @@ class SectionGenerator:
         return html_string
     
     def generate_confusion_matrix(self) -> str:
-        html = '<div class="section"><h2>Confusion Matrix</h2>'
+        html_string = '<div class="section"><h2>Confusion Matrix</h2>'
         
         cm_data = DataExtractor.extract_confusion_matrix(self.results)
         
         if not cm_data:
-            html += "<p>No confusion matrix data available.</p></div>"
-            return html
+            html_string += "<p>No confusion matrix data available.</p></div>"
+            return html_string
         
         # Add color-coded confusion matrix heatmap
-        html += self.viz_engine.generate_confusion_matrix_heatmap(cm_data, {})
+        html_string += self.viz_engine.generate_confusion_matrix_heatmap(cm_data, {})
         
-        html += '</div>'
-        return html
+        html_string += '</div>'
+        return html_string
     
     def generate_non_matches(self, config: ReportConfig) -> str:
         """Generate non-matches section."""
         html_string = '<div class="section"><h2>Non-Matches Analysis</h2>'
         
         non_matches = DataExtractor.extract_non_matches(self.results)
-        
+
+        if non_matches is None:
+            # No records were collected, which says nothing about whether the
+            # fields matched. Reporting success here is how a document with a
+            # wrong field was rendered as clean (#411).
+            html_string += (
+                "<p>No non-match records in these results. Call "
+                "<code>compare_with()</code> or the bulk evaluator with "
+                "<code>document_non_matches=True</code> to collect them.</p></div>"
+            )
+            return html_string
+
         if not non_matches:
             html_string += "<p>No non-matches found.</p></div>"
             return html_string
@@ -126,8 +137,8 @@ class SectionGenerator:
             doc_id = html.escape(nm.get('doc_id', 'N/A'))
             field_path = html.escape(nm.get('field_path', 'N/A'))
             non_match_type = html.escape(str(nm.get('non_match_type', 'N/A')).replace('NonMatchType.',''))
-            ground_truth_value = html.escape(str(nm.get('ground_truth_value', 'None')))[:100]  # Truncate long values
-            prediction_value = html.escape(str(nm.get('prediction_value', 'None')))[:100]
+            ground_truth_value = html.escape(str(nm.get('ground_truth_value', 'None'))[:100])  # Truncate long values
+            prediction_value = html.escape(str(nm.get('prediction_value', 'None'))[:100])
             
             html_string += f'''
             <tr>

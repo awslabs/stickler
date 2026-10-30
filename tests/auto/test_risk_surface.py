@@ -820,13 +820,16 @@ class TestDatetimeSensitivity:
 class TestNumericEdgeCases:
     """Numeric fields must not crash on non-finite values or mis-score Decimal."""
 
-    def test_nan_does_not_crash(self):
+    def test_nan_reads_as_absent(self):
         class M(BaseModel):
             x: float
 
-        # Must not raise decimal.InvalidOperation. NaN never equals NaN.
-        r = stickler.evaluate(M(x=float("nan")), M(x=float("nan")))
-        assert r.field_scores["x"] == pytest.approx(0.0)
+        # Must not raise decimal.InvalidOperation. NaN is absent, like None,
+        # so two NaNs match and NaN against a number does not (#367).
+        nan = float("nan")
+        assert stickler.evaluate(M(x=nan), M(x=nan)).field_scores["x"] == 1.0
+        assert stickler.evaluate(M(x=nan), M(x=1.5)).field_scores["x"] == 0.0
+        assert stickler.evaluate(M(x=1.5), M(x=nan)).field_scores["x"] == 0.0
 
     def test_infinity_matches_exactly(self):
         class M(BaseModel):
@@ -1004,6 +1007,42 @@ class TestMatchedHasOneDefinition:
         assert lenient.matched is True
 
         assert stickler.evaluate(gt, M(a="x", b="y")).matched is True
+
+    def test_matched_is_not_a_statement_about_every_field(self):
+        """It disagrees with "every field met its threshold" both ways (#352)."""
+
+        class Invoice(BaseModel):
+            invoice_id: str
+            customer_name: str
+            notes: str
+            vendor: str
+
+        gt = Invoice(
+            invoice_id="INV-001",
+            customer_name="Acme Corporation",
+            notes="net 30",
+            vendor="Initech",
+        )
+        one_field_fails = stickler.evaluate(
+            gt, gt.model_copy(update={"customer_name": "Globex Industries"})
+        )
+        ex = one_field_fails.explain()
+        assert any(e["score"] < e["threshold"] for e in ex.values())
+        assert one_field_fails.matched is True
+
+        class Note(BaseModel):
+            body: str
+            tail: str
+
+        text = "the quick brown fox jumps"
+        every_field_clears = stickler.evaluate(
+            Note(body=text, tail=text),
+            Note(body=text[:-1], tail=text[:-1]),
+            match_threshold=0.99,
+        )
+        ex = every_field_clears.explain()
+        assert all(e["score"] >= e["threshold"] for e in ex.values())
+        assert every_field_clears.matched is False
 
     def test_a_leaf_failure_under_a_nested_field_is_not_hidden(self):
         """The dilution the removed key allowed.

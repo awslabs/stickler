@@ -99,6 +99,15 @@ class TestVisualizationEngine:
         assert 'width: 75%' in result
         mock_color_utils.assert_called_once_with(0.75, config.color_thresholds)
     
+    def test_generate_field_performance_chart_escapes_field_names(self):
+        """The chart escapes field names, so a later edit cannot quietly undo it (#422)."""
+        field_metrics = {"<b>vendor</b> & co": {"f1": 1.0}}
+
+        result = self.viz_engine.generate_field_performance_chart(field_metrics, ReportConfig())
+
+        assert '<div class="field-label">&lt;b&gt;vendor&lt;/b&gt; &amp; co</div>' in result
+        assert "<b>vendor</b>" not in result
+
     def test_generate_field_performance_chart_empty_metrics(self):
         """Test field performance chart with empty metrics."""
         field_metrics = {}
@@ -162,6 +171,23 @@ class TestVisualizationEngine:
         
         assert mock_color_utils.call_count == 2
     
+    def test_generate_field_performance_table_escapes_field_names(self):
+        """A field name is text, not markup, as in the chart (#422)."""
+        field_metrics = {"<b>vendor</b> & co": {"precision": 1.0, "recall": 1.0, "f1": 1.0}}
+
+        result = self.viz_engine.generate_field_performance_table(field_metrics, ReportConfig())
+
+        assert "<td>&lt;b&gt;vendor&lt;/b&gt; &amp; co</td>" in result
+        assert "<b>vendor</b>" not in result
+
+    def test_field_name_that_is_not_a_string_does_not_raise(self):
+        """A hand-built results dict can key a field by a non-``str``."""
+        field_metrics = {7: {"precision": 1.0, "recall": 1.0, "f1": 1.0}}
+        config = ReportConfig()
+
+        assert "<td>7</td>" in self.viz_engine.generate_field_performance_table(field_metrics, config)
+        assert '<div class="field-label">7</div>' in self.viz_engine.generate_field_performance_chart(field_metrics, config)
+
     def test_generate_field_performance_table_with_fallback_keys(self):
         """Test field performance table with fallback metric keys."""
         field_metrics = {
@@ -270,3 +296,105 @@ class TestVisualizationEngine:
         assert '57.1%' in result  # 20/35 * 100
         assert '42.9%' in result  # 15/35 * 100
         assert '0.0%' in result   # 0/35 * 100
+
+
+class TestFormatSpecCellsAreEscaped:
+    """``:.3f`` / ``:.1f`` cells must escape after formatting (#453).
+
+    A numeric subclass whose ``__format__`` returns markup reaches the page
+    unless the formatted string is escaped. Chart/table cells need only
+    ``__format__``; the heatmap percentage needs ``__truediv__`` + ``__mul__``
+    + ``__format__`` because the template formats ``(value / total) * 100``.
+    """
+
+    class HF(float):
+        def __format__(self, spec):
+            return "<img src=x onerror=alert(1)>"
+
+    class HeatHostile(float):
+        def __truediv__(self, other):
+            return TestFormatSpecCellsAreEscaped.HeatCarrier(float(self) / float(other))
+
+        def __rtruediv__(self, other):
+            return TestFormatSpecCellsAreEscaped.HeatCarrier(float(other) / float(self))
+
+    class HeatCarrier(float):
+        def __mul__(self, other):
+            return TestFormatSpecCellsAreEscaped.HeatHostileResult(float(self) * float(other))
+
+        def __rmul__(self, other):
+            return TestFormatSpecCellsAreEscaped.HeatHostileResult(float(other) * float(self))
+
+    class HeatHostileResult(float):
+        def __format__(self, spec):
+            return "<img src=x onerror=alert(1)>"
+
+    def _engine(self):
+        from stickler.reporting.html.report_config import ReportConfig
+        from stickler.reporting.html.visualization_engine import VisualizationEngine
+        return VisualizationEngine(), ReportConfig()
+
+    def test_table_precision_recall_f1_escape_format_markup(self):
+        eng, config = self._engine()
+        out = eng.generate_field_performance_table(
+            {
+                "vendor": {
+                    "precision": self.HF(0.9),
+                    "recall": self.HF(0.8),
+                    "f1": self.HF(0.85),
+                    "tp": 1,
+                    "fd": 0,
+                    "fa": 0,
+                    "fn": 0,
+                }
+            },
+            config,
+        )
+        assert "<img src=x" not in out
+        assert "&lt;img src=x" in out
+
+    def test_chart_bar_value_escapes_format_markup(self):
+        eng, config = self._engine()
+        out = eng.generate_field_performance_chart(
+            {"vendor": {"f1": self.HF(0.75)}},
+            config,
+        )
+        assert "<img src=x" not in out
+        assert "&lt;img src=x" in out
+
+    def test_heatmap_percentage_escapes_format_markup(self):
+        eng, config = self._engine()
+        out = eng.generate_confusion_matrix_heatmap(
+            {"tp": self.HeatHostile(1), "tn": 0, "fd": 0, "fa": 0, "fn": 0},
+            config,
+        )
+        assert "<img src=x" not in out
+        assert "&lt;img src=x" in out
+
+    def test_ordinary_format_values_still_render(self):
+        eng, config = self._engine()
+        table = eng.generate_field_performance_table(
+            {
+                "vendor": {
+                    "precision": 0.9123,
+                    "recall": 0.8,
+                    "f1": 0.85,
+                    "tp": 1,
+                    "fd": 0,
+                    "fa": 0,
+                    "fn": 0,
+                }
+            },
+            config,
+        )
+        chart = eng.generate_field_performance_chart(
+            {"vendor": {"f1": 0.75}},
+            config,
+        )
+        heat = eng.generate_confusion_matrix_heatmap(
+            {"tp": 1, "tn": 0, "fd": 0, "fa": 0, "fn": 0},
+            config,
+        )
+        assert "0.912" in table
+        assert "0.750" in chart
+        assert "100.0%" in heat

@@ -448,6 +448,7 @@ def test_raw_empty_lists_score_as_perfect_match():
         "fn": 0,
         "fp": 0,
         "overall_score": 1.0,
+        "raw_overall_score": 1.0,
     }
 
 
@@ -840,9 +841,13 @@ def test_maybe_absent_is_a_superset_of_both_null_rules():
         {},
         "x",
         ["x"],
+        [None],
+        [float("nan")],
+        [None, "x"],
         {"k": "v"},
         0,
         0.0,
+        float("nan"),
         False,
         set(),
         (),

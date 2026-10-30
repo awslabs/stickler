@@ -2,7 +2,7 @@
 
 One module, one public class. `HungarianMatcher` pairs the items of two lists so
 that the total similarity is as high as it can be, which is what lets a list
-field be scored without caring about order. Both of its internal callers are on
+field be scored without caring about order. Its internal callers are on
 the traditional evaluation path.
 
 **ANLS Star does not go through this class.** `trees/list_tree.py` calls
@@ -63,33 +63,37 @@ the method was returning that same pair inside `matched_pairs`. The fix reaches
 only this class, so it says nothing about how `anls_score` treats a low score
 pair; that runs through `trees/list_tree.py`.
 
-## Two traps worth knowing before reading `tp`
+## Before reading `tp`
 
-**`match_threshold=0.0` is a capture all sentinel, not a threshold.** The test
-is a bare `>=`, so every score satisfies zero and `tp` counts pairs rather than
-true positives. `ComparisonHelper.compare_unordered_lists` builds a matcher
-this way on purpose and reads only `matched_pairs`. Nothing should read `tp`
-from a matcher built with `0.0`.
+**`match_threshold=0.0` is a capture all sentinel, not a threshold.** Every
+score satisfies zero, so `tp` counts pairs rather than true positives.
+`ComparisonHelper.compare_unordered_lists` builds a matcher this way on
+purpose and reads only `matched_pairs`. Nothing should read `tp` from a
+matcher built with `0.0`.
 
-**The threshold test here is exact.** `ThresholdHelper`, `ComparisonHelper` and
-`ConfusionMatrixCalculator` accept a score up to `1e-10` under the threshold, so
-a score inside that window is a TP there and an FD here.
+**The threshold test is `ThresholdHelper.is_above_threshold`**, the one every
+classification gate listed in
+[Meeting a Threshold](https://awslabs.github.io/stickler/Getting-Started/thresholds-and-metrics/#meeting-a-threshold)
+uses. It accepts a score up to `1e-10` under the threshold, so a float rounding
+error does not turn a TP into an FD
+([#417](https://github.com/awslabs/stickler/issues/417)).
 
 ## How the evaluator uses it
 
-Both internal callers read **only** `matched_pairs` and classify the scores
+All internal callers read **only** `matched_pairs` and classify the scores
 themselves:
 
 | Caller | What it does with the pairs |
 |---|---|
 | `HungarianHelper.get_complete_matching_info` | derives the matched and unmatched index sets for object matching over `List[StructuredModel]` |
 | `ComparisonHelper.compare_unordered_lists` | hands them to `unordered_list_metrics`, which counts against its own `classification_threshold` |
+| `ComparisonHelperBase.get_optimal_assignments` | provides pairings for direct report-helper calls; `compare_with` reports instead reuse the scoring pass's pairings |
 
-`unordered_list_metrics` uses the same derivation as `calculate_metrics`, so the
-two agree on what a count means. The remaining difference is the tolerant
-threshold test noted above.
+`unordered_list_metrics` uses the same derivation and the same threshold test as
+`calculate_metrics`, so for the same pairs and threshold the two return the same
+counts.
 
-Because neither caller reads the counts, a change to how `calculate_metrics`
+Because these callers do not read the counts, a change to how `calculate_metrics`
 classifies cannot move an evaluator score. It is a public API in its own right
 though, so a change there is still breaking for a direct caller.
 

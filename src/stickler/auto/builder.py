@@ -47,7 +47,7 @@ from typing import (
     get_origin,
 )
 
-from pydantic import BaseModel, BeforeValidator
+from pydantic import BaseModel, BeforeValidator, RootModel
 from pydantic.fields import FieldInfo
 
 from ..comparators.structured import StructuredModelComparator
@@ -92,6 +92,9 @@ def structured_model_for(
 
     Args:
         cls: A pydantic ``BaseModel`` subclass (e.g. a Strands ``response_model``).
+            A ``RootModel`` is refused: here, and at any nested model or
+            ``List[BaseModel]`` element this builder mirrors. Its value has no
+            field name to score it under.
         weight_hints: Enable name-token weight heuristics (default off).
         match_threshold: Overall match threshold for the generated model.
 
@@ -125,6 +128,7 @@ def specs_for(
     *,
     weight_hints: bool = False,
     match_threshold: float = 0.7,
+    _check_buildable: bool = True,
 ) -> Dict[str, InferredSpec]:
     """Return the inferred spec per field (for ``.explain()``), keyed by
     dotted path.
@@ -134,7 +138,24 @@ def specs_for(
     under a dotted path (``lines.sku``), so every comparator decision at every
     depth is auditable. Primitive-list fields report the spec of the ELEMENT
     type, matching what the builder actually installs.
+
+    Raises the same ``TypeError`` as :func:`structured_model_for` for any class
+    it refuses, such as a ``RootModel``: specs for a model that cannot be built
+    would describe paths that are never scored. A ``StructuredModel`` is used
+    as configured and never built, so it is not checked.
+
+    ``_check_buildable=False`` skips that check, for ``EvalSpec.explain()``: a
+    spec either holds the shadow the builder already built, so the check
+    cannot fail, or a hand-written ``eval_model``, which the builder's verdict
+    on ``cls`` does not bear on.
     """
+    if _check_buildable and not (
+        isinstance(cls, type) and issubclass(cls, StructuredModel)
+    ):
+        # Cached, so this is free when the builder already ran (#423).
+        structured_model_for(
+            cls, weight_hints=weight_hints, match_threshold=match_threshold
+        )
     registry = get_global_registry()
     result: Dict[str, InferredSpec] = {}
     _collect_specs(
@@ -298,6 +319,7 @@ def _build(
     weight_hints: bool,
     match_threshold: float,
     _building: set,
+    _path: str = "",
 ) -> Type[StructuredModel]:
     """Recursively assemble the shadow class for ``cls``.
 
@@ -305,7 +327,24 @@ def _build(
     mirrored as shadow classes: the shadow for ``cls`` would need itself as a
     field type before it exists. Rather than overflow the stack, raise a clear
     error naming the cycle.
+
+    ``_path`` is where ``cls`` sits: empty when it is the class the caller
+    passed, otherwise the dotted field path that reached it (``Holder.pt``,
+    ``Holder.items[]``). It names the offending field in a refusal.
     """
+    # A RootModel holds one unnamed value, so there are no fields to mirror and
+    # no keys for the shadow to read: the worst case scored 1.0 for two values
+    # differing in every field. Refused here rather than at the public entry
+    # point, so one check covers the class passed in and every model reached
+    # from it (#366).
+    if issubclass(cls, RootModel):
+        where = f" at {_path}" if _path else ""
+        raise TypeError(
+            f"evaluate() cannot mirror {cls.__name__}{where}: a RootModel holds "
+            "one unnamed value, so there is no field name to score it under. "
+            "Declare the root value as a named field on a BaseModel instead."
+        )
+
     if cls in _building:
         raise TypeError(
             f"evaluate() does not support recursive models: {cls.__name__} "
@@ -333,6 +372,11 @@ def _build(
                 match_threshold=match_threshold,
                 registry=registry,
                 _building=_building,
+                # The class name anchors the path, so a refusal one level down
+                # reads `Holder.pt` rather than a bare `pt`. It goes deeper than
+                # the refusals above, which name only the class they are raised
+                # for: a nested reserved name reads `Inner.extra_fields`.
+                _path=f"{_path}.{name}" if _path else f"{cls.__name__}.{name}",
             )
 
         if not field_definitions:
@@ -361,8 +405,12 @@ def _field_definition(
     match_threshold: float,
     registry,
     _building: set,
+    _path: str = "",
 ) -> Tuple[Any, Any]:
     """Produce a ``(type, Field)`` tuple for one field.
+
+    ``_path`` is this field's own dotted path, forwarded to any model reached
+    through it so a refusal can name the field rather than only the class.
 
     Nullability of the shadow field comes from the SOURCE annotation
     (``Optional[X]`` / ``X | None``), not from required-ness: a required
@@ -383,6 +431,7 @@ def _field_definition(
             weight_hints=weight_hints,
             match_threshold=match_threshold,
             _building=_building,
+            _path=_path,
         )
         # A single nested model may carry an explicit StructuredModelComparator
         # (unlike List[StructuredModel], which __init_subclass__ forbids).
@@ -407,6 +456,9 @@ def _field_definition(
             weight_hints=weight_hints,
             match_threshold=match_threshold,
             _building=_building,
+            # `[]` marks the element rather than the field: the two reach the
+            # builder through different branches, so a refusal should say which.
+            _path=f"{_path}[]",
         )
         element_type = Optional[child] if element_optional else child
         list_type = List[element_type]
@@ -452,12 +504,14 @@ def _shadow_for(
     weight_hints: bool,
     match_threshold: float,
     _building: set,
+    _path: str = "",
 ) -> Type[StructuredModel]:
     """Shadow class for a nested model annotation.
 
     A field typed as a ``StructuredModel`` subclass already carries its own
     comparators; use it directly instead of re-inferring (which would discard
-    the user's explicit configuration).
+    the user's explicit configuration). Such a class returns before ``_build``
+    runs, so the refusals in ``_build`` do not reach inside one.
     """
     if isinstance(annotation, type) and issubclass(annotation, StructuredModel):
         return annotation
@@ -466,6 +520,7 @@ def _shadow_for(
         weight_hints=weight_hints,
         match_threshold=match_threshold,
         _building=_building,
+        _path=_path,
     )
 
 

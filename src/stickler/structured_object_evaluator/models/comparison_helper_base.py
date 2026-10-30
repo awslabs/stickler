@@ -1,10 +1,17 @@
 """Base class for comparison helpers in StructuredModel comparisons."""
 
+import inspect
 import math
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
+from stickler.comparators.base import BaseComparator
+
+from .comparison_helper import ComparisonHelper, _match_non_structured_lists
 from .hungarian_helper import HungarianHelper
+from .null_helper import NullHelper
+from .reporting_context import ReportingContext
+from .threshold_helper import ThresholdHelper
 
 DEFAULT_MATCH_THRESHOLD = 0.7
 
@@ -13,6 +20,24 @@ class ComparisonHelperBase(ABC):
 
     def __init__(self):
         self.hungarian_helper = HungarianHelper()
+
+    @staticmethod
+    def _supported_options(method, **options):
+        """Pass new options only to hooks that explicitly declare them.
+
+        A **kwargs wrapper may forward to an old-signature implementation.
+        Preserve that call contract rather than treating the wrapper as opt-in.
+        """
+        parameters = inspect.signature(method).parameters
+        return {
+            name: value
+            for name, value in options.items()
+            if name in parameters
+            and parameters[name].kind in (
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            )
+        }
 
     @abstractmethod
     def create_entry(self, *args, **kwargs) -> Dict[str, Any]:
@@ -28,20 +53,22 @@ class ComparisonHelperBase(ABC):
         Returns:
             Match threshold value
         """
-        if (
-            obj_list
-            and hasattr(obj_list[0], "__class__")
-            and hasattr(obj_list[0].__class__, "match_threshold")
-        ):
-            return obj_list[0].__class__.match_threshold
+        # The element class, read past any leading None (#322).
+        element = NullHelper.first_present(obj_list)
+        if element is not None and hasattr(element.__class__, "match_threshold"):
+            return element.__class__.match_threshold
         return DEFAULT_MATCH_THRESHOLD
 
-    def get_optimal_assignments(self, gt_list: List[Any], pred_list: List[Any]) -> tuple:
+    def get_optimal_assignments(
+        self, gt_list: List[Any], pred_list: List[Any],
+        comparator: Optional[BaseComparator] = None,
+    ) -> tuple:
         """Get optimal assignments and matched pairs with scores.
         
         Args:
             gt_list: Ground truth list
             pred_list: Prediction list
+            comparator: Field comparator for non-structured list elements.
             
         Returns:
             Tuple of (assignments, matched_pairs_with_scores)
@@ -50,10 +77,17 @@ class ComparisonHelperBase(ABC):
         matched_pairs_with_scores = []
         
         if gt_list and pred_list:
-            hungarian_info = self.hungarian_helper.get_complete_matching_info(
-                gt_list, pred_list
-            )
-            matched_pairs_with_scores = hungarian_info["matched_pairs"]
+            if comparator is None:
+                hungarian_info = self.hungarian_helper.get_complete_matching_info(
+                    gt_list, pred_list
+                )
+                matched_pairs_with_scores = hungarian_info["matched_pairs"]
+            else:
+                # Direct helper calls use the scoring matcher, but do not emit
+                # selected-pair warnings a second time.
+                matched_pairs_with_scores = _match_non_structured_lists(
+                    gt_list, pred_list, comparator
+                )
             assignments = [(i, j) for i, j, _ in matched_pairs_with_scores]
             
         return assignments, matched_pairs_with_scores
@@ -70,7 +104,9 @@ class ComparisonHelperBase(ABC):
             Descriptive reason string
         """
         if is_match:
-            if math.isclose(score,1.0):
+            if score < threshold:
+                return f"within threshold tolerance ({score:.12g} vs {threshold})"
+            elif math.isclose(score,1.0):
                 return "exact match"
             else:
                 return f"above threshold ({score:.3f} >= {threshold})"
@@ -96,7 +132,9 @@ class ComparisonHelperBase(ABC):
         gt_list: List[Any], 
         pred_list: List[Any],
         matched_pairs_with_scores: List[tuple],
-        match_threshold: float
+        match_threshold: float,
+        verdicts: Optional[List[bool]] = None,
+        pair_results: Optional[Dict[tuple, ReportingContext]] = None,
     ) -> List[Dict[str, Any]]:
         """Process matched pairs and create entries.
         
@@ -106,24 +144,44 @@ class ComparisonHelperBase(ABC):
             pred_list: Prediction list
             matched_pairs_with_scores: List of (gt_idx, pred_idx, score) tuples
             match_threshold: Threshold for determining matches
+            verdicts: Optional decisions from scoring, including its tolerance
+            pair_results: Optional already-scored child results for structured lists
             
         Returns:
             List of entries for matched pairs
         """
         entries = []
         
-        for gt_idx, pred_idx, similarity_score in matched_pairs_with_scores:
+        for pair_index, (gt_idx, pred_idx, similarity_score) in enumerate(
+            matched_pairs_with_scores
+        ):
             if gt_idx < len(gt_list) and pred_idx < len(pred_list):
                 gt_item = gt_list[gt_idx]
                 pred_item = pred_list[pred_idx]
                 
                 # Determine if this is a match
-                is_match = bool(similarity_score >= match_threshold)
+                is_match = (
+                    bool(verdicts[pair_index])
+                    if verdicts is not None
+                    else bool(
+                        ThresholdHelper.is_above_threshold(
+                            similarity_score, match_threshold
+                        )
+                    )
+                )
                 
                 # Create reason
                 reason = self.generate_comparison_reason(is_match, similarity_score, match_threshold)
                 
                 # Extract entries from structured model objects
+                pair_result = (
+                    pair_results.get((gt_idx, pred_idx)) if pair_results else None
+                )
+                # Helpers implementing the pre-cache abstract signature remain
+                # valid extensions; only opt-in implementations receive context.
+                pair_kwargs = self._supported_options(
+                    self._extract_entries_from_objects, pair_result=pair_result,
+                ) if pair_result is not None else {}
                 extracted_entries = self._extract_entries_from_objects(
                     field_name,
                     gt_item,
@@ -133,6 +191,7 @@ class ComparisonHelperBase(ABC):
                     is_match,
                     similarity_score,
                     reason,
+                    **pair_kwargs,
                 )
                 entries.extend(extracted_entries)
                 
@@ -158,7 +217,10 @@ class ComparisonHelperBase(ABC):
         matched_gt_indices = set(idx for idx, _ in assignments)
         
         for gt_idx, gt_item in enumerate(gt_list):
-            if gt_idx not in matched_gt_indices:
+            # A None element is absent, so it is never an FN (#386).
+            if gt_idx not in matched_gt_indices and not NullHelper.is_absent_element(
+                gt_item
+            ):
                 extracted_entries = self._extract_entries_from_objects(
                     field_name=field_name,
                     gt_object=gt_item,
@@ -193,7 +255,10 @@ class ComparisonHelperBase(ABC):
         matched_pred_indices = set(idx for _, idx in assignments)
         
         for pred_idx, pred_item in enumerate(pred_list):
-            if pred_idx not in matched_pred_indices:
+            # A None element is absent, so it is never an FA (#386).
+            if pred_idx not in matched_pred_indices and not (
+                NullHelper.is_absent_element(pred_item)
+            ):
                 extracted_entries = self._extract_entries_from_objects(
                     field_name=field_name,
                     gt_object=None,
@@ -226,13 +291,20 @@ class ComparisonHelperBase(ABC):
         """
         entries = []
 
+        # A list of only None elements is empty (#386). Enumerating the
+        # original lists keeps each present element's original index.
+        gt_present = NullHelper.present(gt_list)
+        pred_present = NullHelper.present(pred_list)
+
         # Check if both lists are empty
-        if not gt_list and not pred_list:
+        if not gt_present and not pred_present:
             return entries
 
         # Handle gt null case (FA items when GT is empty)
-        if not gt_list and pred_list:
+        if not gt_present and pred_present:
             for pred_idx, pred_item in enumerate(pred_list):
+                if NullHelper.is_absent_element(pred_item):
+                    continue
                 extracted_entries = self._extract_entries_from_objects(
                     field_name=field_name,
                     gt_object=None,
@@ -246,8 +318,10 @@ class ComparisonHelperBase(ABC):
                 entries.extend(extracted_entries)
 
         # Handle pred null case (FN items when prediction is empty)
-        elif gt_list and not pred_list:
+        elif gt_present and not pred_present:
             for gt_idx, gt_item in enumerate(gt_list):
+                if NullHelper.is_absent_element(gt_item):
+                    continue
                 extracted_entries = self._extract_entries_from_objects(
                     field_name=field_name,
                     gt_object=gt_item,
@@ -272,7 +346,8 @@ class ComparisonHelperBase(ABC):
         pred_index: Optional[int],
         is_match: bool,
         similarity_score: float,
-        reason: str
+        reason: str,
+        pair_result: Optional[ReportingContext] = None,
     ) -> List[Dict[str, Any]]:
         """Extract entries from structured model objects. Must be implemented by subclasses.
         
@@ -285,14 +360,34 @@ class ComparisonHelperBase(ABC):
             is_match: Whether the overall objects match
             similarity_score: Overall similarity score
             reason: Overall comparison reason
+            pair_result: Optional accepted child traversal from scoring
             
         Returns:
             List of entries specific to the helper type
         """
         pass
 
+    @staticmethod
+    def resolve_list_matching(model, field_name, gt_list, matching=None):
+        """Resolve one fallback contract for both collectors.
+
+        Match the dispatcher's structured-list branch. Other lists use the
+        owning field's comparator and threshold, including its class gate.
+        """
+        from .structured_model import StructuredModel
+
+        if matching is not None:
+            return {"matching": matching}
+        if isinstance(NullHelper.first_present(gt_list), StructuredModel):
+            return {}
+        info = model._get_comparison_info(field_name)
+        return {"comparator": info.comparator, "match_threshold": info.threshold}
+
     def collect_list_entries(
-        self, field_name: str, gt_list: List[Any], pred_list: List[Any]
+        self, field_name: str, gt_list: List[Any], pred_list: List[Any],
+        comparator: Optional[BaseComparator] = None,
+        match_threshold: Optional[float] = None,
+        matching: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """Collect entries from a list field using the template method pattern.
 
@@ -300,22 +395,63 @@ class ComparisonHelperBase(ABC):
             field_name: Name of the list field
             gt_list: Ground truth list
             pred_list: Prediction list
+            comparator: Field comparator for non-structured list elements.
+            match_threshold: Field threshold for non-structured list elements.
+            matching: Pairings and decisions already produced by scoring. When
+                supplied, its list assignments and verdicts are reused.
 
         Returns:
             List of entries with individual information
         """
         entries = []
 
-        if not gt_list and not pred_list:
+        if not NullHelper.present(gt_list) and not NullHelper.present(pred_list):
             return entries
 
-        # Get optimal assignments with scores
-        assignments, matched_pairs_with_scores = self.get_optimal_assignments(gt_list, pred_list)
-        
-        match_threshold = self.get_match_threshold(gt_list or pred_list)
+        from .structured_model import StructuredModel
+
+        if matching is not None:
+            matched_pairs_with_scores = matching["pairs"]
+            assignments = [(i, j) for i, j, _ in matched_pairs_with_scores]
+            match_threshold = matching["threshold"]
+            verdicts = matching["verdicts"]
+        else:
+            # Direct helper callers still compute their own assignments.
+            if isinstance(NullHelper.first_present(gt_list), StructuredModel):
+                if comparator is not None or match_threshold is not None:
+                    raise ValueError(
+                        "A StructuredModel list uses its element-model matcher and "
+                        "threshold; field comparator/threshold overrides are not supported"
+                    )
+                match_threshold = None
+            assignments, matched_pairs_with_scores = self.get_optimal_assignments(
+                gt_list, pred_list, **self._supported_options(
+                    self.get_optimal_assignments, comparator=comparator,
+                )
+            )
+            if match_threshold is None:
+                match_threshold = self.get_match_threshold(
+                    NullHelper.present(gt_list) or NullHelper.present(pred_list)
+                )
+            verdicts = None
+            if comparator is not None:
+                # A direct collector or legacy override has no side context.
+                # Reuse the primitive scorer's classification (and tolerance).
+                decisions = {}
+                ComparisonHelper.unordered_list_metrics(
+                    matched_pairs_with_scores, gt_list, pred_list,
+                    match_threshold, matching_sink=decisions,
+                )
+                verdicts = decisions["verdicts"]
 
         entries.extend(self.process_matched_pairs(
-            field_name, gt_list, pred_list, matched_pairs_with_scores, match_threshold
+            field_name, gt_list, pred_list, matched_pairs_with_scores,
+            match_threshold, **self._supported_options(
+                self.process_matched_pairs, verdicts=verdicts,
+                pair_results=(
+                    matching.get("pair_results") if matching is not None else None
+                ),
+            ),
         ))
 
         # Process unmatched ground truth items (FN)
