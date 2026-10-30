@@ -73,6 +73,28 @@ def _named_comparator_threshold(comparator: BaseComparator) -> Optional[float]:
     return getattr(comparator, "threshold", None)
 
 
+def _mark_unstated(field, *, threshold: bool = False, clip: bool = False) -> None:
+    """Record that an importer, not the author, supplied ``threshold`` / ``clip``.
+
+    The importers have defaults ``ComparableField`` cannot express: a JSON Schema
+    type default such as ``ExactComparator@1.0`` for an enum, a nested object's
+    0.7, an inferred value. They pass the number, then clear the marker here, so
+    the markers keep meaning "the author wrote this on the field". Passing the
+    number alone marked every imported field as explicitly configured (#334).
+
+    Written onto the closure ``ComparableField`` just returned, which no caller
+    holds a reference to yet, so the shared-field hazard in
+    ``StructuredModel._install_object_grade_comparators`` does not apply.
+    """
+    extra = field.json_schema_extra
+    if not callable(extra):
+        return
+    if threshold:
+        extra._threshold_explicit = False
+    if clip:
+        extra._clip_explicit = False
+
+
 def ComparableField(
     comparator: Optional[BaseComparator] = None,
     threshold: Optional[float] = None,

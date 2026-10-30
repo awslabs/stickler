@@ -717,13 +717,25 @@ class StructuredModel(BaseModel):
                     # "sets threshold=0.0" points at a `ComparableField` argument
                     # absent from the call site -- the same misattribution this
                     # PR fixes for the `List[StructuredModel]` error one screen up.
-                    field_wrote_it = getattr(
-                        field_default.json_schema_extra, "_threshold_explicit", True
+                    #
+                    # "Not stated on the field" does not imply "from the
+                    # comparator": an importer clears the marker on its own
+                    # defaults too, and an inferred mapping threshold copies a
+                    # `match_threshold` of 0.0. So the comparator is credited only
+                    # when it actually named a threshold.
+                    extra = field_default.json_schema_extra
+                    from_comparator = not getattr(
+                        extra, "_threshold_explicit", True
+                    ) and (
+                        _named_comparator_threshold(
+                            getattr(extra, "_comparator_instance", None)
+                        )
+                        is not None
                     )
                     _warn_if_threshold_is_zero(
                         temp_schema["x-comparison"].get("threshold"),
                         f"{_model_identity(cls.__name__, cls.__annotations__)}.{field_name}",
-                        "threshold" if field_wrote_it else "comparator threshold",
+                        "comparator threshold" if from_comparator else "threshold",
                     )
 
         # `match_threshold` is a plain class attribute rather than a field, so
@@ -969,9 +981,17 @@ class StructuredModel(BaseModel):
         Field-Level Extensions:
         -----------------------
         - x-aws-stickler-comparator: Comparator algorithm name (built-in or registered custom)
-        - x-aws-stickler-threshold: Similarity threshold for match/no-match (0.0-1.0, default: 0.5)
+        - x-aws-stickler-comparator-config: Keyword arguments for that comparator
+        - x-aws-stickler-threshold: Similarity threshold for match/no-match (0.0-1.0,
+          default: a threshold in x-aws-stickler-comparator-config, else the
+          type default, such as 0.5 for a string and 0.7 for a nested object)
         - x-aws-stickler-weight: Field importance in overall scoring (>0.0, default: 1.0)
-        - x-aws-stickler-clip-under-threshold: Clip scores below threshold to 0.0 (bool, default: true)
+        - x-aws-stickler-clip-under-threshold: Clip scores below threshold to 0.0
+          (bool, default: true; false on a free-form object)
+
+        An object with properties is scored field by field, so a comparator on
+        it, and any comparator-config key but threshold, has no effect and emits
+        a UserWarning. On an array of objects no comparator config is read.
 
         Model-Level Extensions:
         -----------------------

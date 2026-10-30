@@ -102,10 +102,11 @@ The `x-aws-stickler-*` extensions control comparison behavior on each property:
 
 | Extension | Purpose | Example |
 |-----------|---------|---------|
-| `x-aws-stickler-comparator` | Comparison algorithm | `"LevenshteinComparator"` |
+| `x-aws-stickler-comparator` | Comparison algorithm. Has no effect, and warns, on an object with `properties`, which is scored field by field; set it on the properties inside | `"LevenshteinComparator"` |
+| `x-aws-stickler-comparator-config` | Keyword arguments for the comparator. On an object with `properties` only its `threshold` is read; on an array of models nothing is. Every key not read warns | `{"threshold": 0.9}` |
 | `x-aws-stickler-threshold` | Match threshold (0.0--1.0). Read on a scalar, an object, and an array of scalars; **ignored on an array of models** -- an array whose `items` declare `properties` -- where the element class's `x-aws-stickler-match-threshold` is the gate. Read, not ignored, on an array of free-form `{"type": "object"}` items, which become `List[dict]` | `0.8` |
 | `x-aws-stickler-weight` | Field importance weight | `2.0` |
-| `x-aws-stickler-clip-under-threshold` | Zero out scores below threshold | `true` |
+| `x-aws-stickler-clip-under-threshold` | Zero out scores below threshold. Defaults to `false` on a free-form object, which keeps its partial credit | `true` |
 | `x-aws-stickler-model-name` | Class name (object-level) | `"Invoice"` |
 | `x-aws-stickler-match-threshold` | Hungarian match threshold (object-level) | `0.75` |
 | `x-aws-stickler-infer-unspecified` | Infer comparators for properties that name none (object-level). See [Inferring unspecified fields](#inferring-unspecified-fields) | `true` |
@@ -247,6 +248,16 @@ Person = StructuredModel.model_from_json(person_config)
     "clip_under_threshold": true
 }
 ```
+
+A key the field leaves out resolves as it does on the Python path: a `threshold` in
+`comparator_config` is adopted when `threshold` is absent, and a `dict` field
+defaults to `clip_under_threshold: false`, so its partial credit survives.
+
+A nested model is scored field by field, so a `comparator` on a `structured_model`
+or `optional_structured_model` field has no effect and warns. A `threshold` in its
+`comparator_config` is still read, as above. On a `list_structured_model` field,
+`comparator` raises and `comparator_config` has no effect and warns: pairing is
+gated by `match_threshold`.
 
 **Nested model fields** use `"type": "structured_model"` with a nested `"fields"` object. **List of models** use `"type": "list_structured_model"`. **Optional models** use `"type": "optional_structured_model"`.
 
@@ -568,14 +579,15 @@ Every `model_from_json()` failure raises `ValueError`, and all but one are prefi
 | `'match_threshold' is not read on primitive field 'x'` | Object-level threshold written on a leaf | Use `threshold` on the field, or move `match_threshold` to the model or a `structured_model` field |
 | `Field 'x' configuration must be a mapping, got int` | A field's value is not a config object | Wrap it: `{"x": {"type": "str", ...}}` |
 
-One diagnostic is a `UserWarning` rather than a `ValueError`, because the key it names was never applied and the model still builds:
+These diagnostics are a `UserWarning` rather than a `ValueError`, because the key they name is not applied and the model still builds:
 
 | Message | Cause | Fix |
 |-------|-------|-----|
 | `Field 'billing.city' does not accept 'threshhold' in its config; ignored.` | Unrecognized key on a field | Use one of the accepted keys the message lists |
 | `Model config does not accept 'match_threshhold'; ignored.` | Unrecognized key at the top level | Use one of `fields`, `model_name`, `match_threshold`, `infer_unspecified_fields` |
+| `'comparator' has no effect on field 'billing' and is ignored` | A comparator, or a `comparator_config` key other than `threshold`, on a nested model, or any `comparator_config` key on a list of them. `from_json_schema()` warns the same way, on every import, for `x-aws-stickler-comparator` and `-comparator-config` | Set comparators on the fields inside it, and the threshold with the key the message names |
 
-It fires once per model, path and key, so repeated loads of the same config do not flood a batch run. Turn it into an error with `python -W error::UserWarning` to fail a build on a misspelled key.
+Each fires once per model, path and key, so repeated loads of the same config do not flood a batch run. Turn it into an error with `python -W error::UserWarning` to fail a build on a misspelled key.
 
 ## See Also
 

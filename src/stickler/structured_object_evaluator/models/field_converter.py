@@ -5,13 +5,17 @@ Pydantic Field instances with ComparableField functionality.
 """
 
 from collections.abc import Mapping
-from typing import Any, Dict, Optional, Tuple, Type, get_args, get_origin
+from typing import Any, Dict, List, Optional, Tuple, Type, get_args, get_origin
 
 from pydantic import Field
 
 from stickler.utils.deprecation import warn_once
 
-from .comparable_field import ComparableField
+from .comparable_field import (
+    ComparableField,
+    _mark_unstated,
+    _named_comparator_threshold,
+)
 from .comparator_registry import create_comparator, normalize_comparator_config
 from .type_resolver import resolve_type_string
 
@@ -160,6 +164,93 @@ def _nested_infer_flag(
             f"'{field_name}', got: {declared!r}"
         )
     return declared
+
+
+def _nested_model_comparator_threshold(
+    comparator: Any, comparator_config: Mapping, *, reads_threshold: bool
+) -> Tuple[Optional[float], List[str]]:
+    """Split a nested-model field's comparator keys into what is read and what is not.
+
+    Both importers resolve these as ``ComparableField`` does on the Python path.
+    A nested model is scored field by field, so its comparator is never called:
+    ``ExactComparator`` and ``LevenshteinComparator`` there score a half-matching
+    child the same 0.5. A threshold named on that comparator IS read, though:
+    ``ComparableField(comparator=ExactComparator(threshold=0.8))`` resolves 0.8
+    and gates the child. A list of models reads neither (``reads_threshold``
+    False), because Hungarian matching pairs elements on the element class's
+    ``match_threshold`` and Python warns that a comparator threshold there is not
+    consulted.
+
+    ``comparator`` is the instance built from a named comparator, or ``None`` when
+    the field gives only a config. Returns the threshold to adopt, or ``None``,
+    and the names of the config keys that have no effect. A threshold that is not
+    a number in 0.0-1.0 is reported as having no effect rather than raised on:
+    these keys were accepted and dropped before, so refusing one now would break a
+    config that loads.
+    """
+    named = (
+        _named_comparator_threshold(comparator)
+        if comparator is not None
+        else comparator_config.get("threshold")
+    )
+    adopted = (
+        named
+        if reads_threshold
+        and isinstance(named, (int, float))
+        and not isinstance(named, bool)
+        and 0.0 <= named <= 1.0
+        else None
+    )
+    ignored = sorted(
+        str(key)
+        for key in comparator_config
+        if not (key == "threshold" and adopted is not None)
+    )
+    return adopted, ignored
+
+
+def _config_keys_phrase(config_key: str, keys: List[str]) -> str:
+    """``'comparator_config' key 'a'`` or ``... keys 'a', 'b'`` for a warning."""
+    plural = "keys" if len(keys) > 1 else "key"
+    return f"'{config_key}' {plural} {', '.join(repr(k) for k in keys)}"
+
+
+def _nested_model_keys_warning(
+    field_path: str,
+    keys: List[str],
+    *,
+    shape: str,
+    is_list: bool,
+    members: str,
+    threshold_key: str,
+) -> str:
+    """The warning for comparator keys a nested-model field does not read.
+
+    One wording for both importers, which differ only in what they call the
+    shape and the key to use instead. Warned, not raised: the Python path accepts
+    a comparator on a nested model and ignores it, and these keys loaded on both
+    importers before, so a raise would break configs that load today.
+    """
+    subject = " and ".join(keys)
+    # A phrase from _config_keys_phrase can name several keys on its own.
+    plural = len(keys) > 1 or any(" keys " in k for k in keys)
+    verb, be = ("have", "are") if plural else ("has", "is")
+    if is_list:
+        return (
+            f"{subject} {verb} no effect on field '{field_path}' and "
+            f"{be} ignored: it is {shape}, whose "
+            "elements are paired by Hungarian matching, so neither a comparator "
+            "nor its threshold is read for it. Set comparators on the "
+            f"{members} inside each element, and the pairing threshold with "
+            f"{threshold_key}."
+        )
+    return (
+        f"{subject} {verb} no effect on field '{field_path}' and "
+        f"{be} ignored: it is {shape}, scored "
+        "field by field, so its comparator is never called. Set comparators on "
+        f"the {members} inside it, and this field's threshold with "
+        f"{threshold_key}."
+    )
 
 
 def _wants_inference(field_config: Dict[str, Any], infer_unspecified: bool) -> bool:
@@ -326,15 +417,26 @@ class FieldConverter:
         except (KeyError, TypeError) as e:
             raise ValueError(f"Invalid comparator for field '{field_name}': {e}")
 
-        # Extract other field parameters
-        threshold = field_config.get(
-            "threshold", inferred.threshold if inferred else 0.5
+        # `None` for what the config does not state, so `ComparableField` resolves
+        # it exactly as it does on the Python path. Defaulting to 0.5 and True here
+        # marked both as stated, which discarded a threshold named in
+        # `comparator_config` (#334) and suppressed the object-grade clip default,
+        # zeroing a dict field's partial credit (#348). Precedence is field, then
+        # comparator, then inference, so a comparator threshold outranks an
+        # inferred one: the author wrote it.
+        threshold = field_config.get("threshold")
+        threshold_inferred = (
+            threshold is None
+            and inferred is not None
+            and _named_comparator_threshold(comparator) is None
         )
+        if threshold_inferred:
+            threshold = inferred.threshold
         weight = field_config.get("weight", inferred.weight if inferred else 1.0)
-        clip_under_threshold = field_config.get(
-            "clip_under_threshold",
-            inferred.clip_under_threshold if inferred else True,
-        )
+        clip_under_threshold = field_config.get("clip_under_threshold")
+        clip_inferred = clip_under_threshold is None and inferred is not None
+        if clip_inferred:
+            clip_under_threshold = inferred.clip_under_threshold
 
         # Name the parameters the author took back, so the trail cannot contradict
         # the row it sits under. Inference fills only what the config left unnamed,
@@ -349,6 +451,18 @@ class FieldConverter:
                 for key in ("threshold", "weight", "clip_under_threshold")
                 if key in field_config
             ]
+            # A threshold adopted from `comparator_config` replaces the inferred
+            # one too, so it is named the same way. Without it the row reported
+            # 0.9 while the trail still quoted `@0.7`.
+            if (
+                "threshold" not in field_config
+                and "threshold" in comparator_config
+                and _named_comparator_threshold(comparator) is not None
+            ):
+                overridden.append(
+                    "comparator_config.threshold="
+                    f"{_named_comparator_threshold(comparator)!r}"
+                )
             if overridden:
                 provenance.append(f"config: {', '.join(overridden)} (overrides above)")
 
@@ -387,6 +501,9 @@ class FieldConverter:
             alias=alias,
             description=description,
             examples=examples,
+        )
+        _mark_unstated(
+            comparable_field, threshold=threshold_inferred, clip=clip_inferred
         )
 
         # Record what was inferred, so `explain()` reports the reason and a
@@ -428,8 +545,6 @@ class FieldConverter:
         Raises:
             ValueError: If configuration is invalid
         """
-        from typing import List, Optional
-
         type_string = field_config["type"]
         nested_fields_config = field_config["fields"]
 
@@ -501,32 +616,86 @@ class FieldConverter:
         # CRITICAL FIX: Create ComparableField for nested models to enable proper comparison
         # Extract threshold and weight from field configuration
         weight = field_config.get("weight", 1.0)  # Default weight
-        clip_under_threshold = field_config.get("clip_under_threshold", True)
+        # `None` when unstated, for the reason given in `convert_field_config`.
+        clip_under_threshold = field_config.get("clip_under_threshold")
 
-        # For list_structured_model, don't set threshold (Hungarian matching uses model's match_threshold)
-        # For single structured_model, use threshold from config
-        if type_string == "list_structured_model":
-            # `None`, not the legacy 0.5. Both resolve to the same number, but
-            # passing a value marks the field as having named a threshold, and
-            # `StructuredModel.__init_subclass__` refuses a named threshold on a
-            # list-of-model field. Passing 0.5 only slipped past that check while
-            # it compared against the literal 0.5; it now reads the explicitness
-            # marker, so a placeholder here would reject every imported schema
-            # containing an array of objects.
-            threshold = None
-        else:
-            threshold = field_config.get(
-                "threshold", 0.7
-            )  # Default threshold for single nested models
+        is_list = type_string == "list_structured_model"
+        field_path = f"{path_prefix}{field_name}"
 
-        # Create ComparableField with dummy comparator (never used for StructuredModel fields)
-        # The comparator is required by ComparableField but StructuredModel uses recursive compare()
+        # Comparator keys resolve as they do on the Python path; see
+        # `_nested_model_comparator_threshold`. A named comparator is never
+        # called, so it is reported rather than installed: `explain()` showed it
+        # as the author's explicit choice. `"auto"` and a comparator on a list of
+        # models are refused in `validate_nested_field_schema` before this runs.
         from stickler.comparators.levenshtein import LevenshteinComparator
 
-        dummy_comparator = LevenshteinComparator()  # Never actually called
+        ignored = []
+        named_comparator = None
+        if field_config.get("comparator") is not None:
+            ignored.append("'comparator'")
+            try:
+                named_comparator = create_comparator(
+                    field_config["comparator"],
+                    normalize_comparator_config(
+                        field_config.get("comparator_config"),
+                        f"field '{field_name}'",
+                    ),
+                )
+            except (KeyError, TypeError) as e:
+                raise ValueError(f"Invalid comparator for field '{field_name}': {e}")
+        raw_config = field_config.get("comparator_config")
+        comparator_threshold = None
+        if raw_config is not None and not isinstance(raw_config, Mapping):
+            ignored.append("'comparator_config'")
+        elif raw_config is not None:
+            comparator_threshold, ignored_keys = _nested_model_comparator_threshold(
+                named_comparator, raw_config, reads_threshold=not is_list
+            )
+            if ignored_keys:
+                ignored.append(_config_keys_phrase("comparator_config", ignored_keys))
+        if ignored:
+            warn_once(
+                "nested-model-comparator-keys",
+                f"{model_id}|{field_path}|{'|'.join(ignored)}",
+                _nested_model_keys_warning(
+                    field_path,
+                    ignored,
+                    shape=f"a {type_string} field"
+                    if type_string != "optional_structured_model"
+                    else f"an {type_string} field",
+                    is_list=is_list,
+                    members="fields",
+                    threshold_key="'match_threshold' on this field"
+                    if is_list
+                    else "'threshold'",
+                ),
+                category=UserWarning,
+                stacklevel=_UNKNOWN_KEY_STACKLEVEL + 1,
+            )
+
+        # Unused for scoring; ComparableField requires one. Carries an adopted
+        # comparator threshold, so `ComparableField` resolves it exactly as for
+        # `ComparableField(comparator=X(threshold=t))`: field threshold first.
+        placeholder = (
+            LevenshteinComparator(threshold=comparator_threshold)
+            if comparator_threshold is not None
+            else LevenshteinComparator()
+        )
+        if is_list:
+            # `None`, not the legacy 0.5: passing a value marks the field as
+            # having named a threshold, and `StructuredModel.__init_subclass__`
+            # refuses one on a list-of-model field. Hungarian matching uses the
+            # element model's `match_threshold`.
+            threshold = None
+        elif "threshold" in field_config:
+            threshold = field_config["threshold"]
+        elif comparator_threshold is not None:
+            threshold = None
+        else:
+            threshold = 0.7  # this path's default for a single nested model
 
         comparable_field = ComparableField(
-            comparator=dummy_comparator,  # Required but unused for StructuredModel fields
+            comparator=placeholder,
             threshold=threshold,
             weight=weight,
             default=default,
@@ -535,6 +704,8 @@ class FieldConverter:
             description=description,
             examples=examples,
         )
+        # The 0.7 above is this path's default, not the author's.
+        _mark_unstated(comparable_field, threshold="threshold" not in field_config)
 
         return field_type, comparable_field
 
@@ -764,8 +935,23 @@ class FieldConverter:
             "list_structured_model",
             "optional_structured_model",
         ]:
-            # Structured model fields cannot have comparators
-            if "comparator" in field_config:
+            # `"auto"` asks for inference, and a nested model has no comparator
+            # to infer. Refused as the JSON Schema path refuses it on an object.
+            if field_config.get("comparator") == AUTO_COMPARATOR:
+                raise ValueError(
+                    f"'comparator': '{AUTO_COMPARATOR}' cannot be applied to field "
+                    f"'{field_name}': it is a '{field_type}', scored field by "
+                    "field, so there is no comparator to infer. Set "
+                    "'infer_unspecified_fields': true on it to infer the fields "
+                    "inside it instead."
+                )
+
+            # A named comparator on a single nested model is accepted and
+            # ignored, as on the Python path; `_convert_nested_model_field`
+            # warns. On a list of models the Python path refuses any comparator
+            # but the default LevenshteinComparator, and this path has always
+            # refused every one, so it still does.
+            if field_type == "list_structured_model" and "comparator" in field_config:
                 raise ValueError(
                     f"Field '{field_name}' with type '{field_type}' cannot have a 'comparator'. "
                     "Structured models use recursive comparison, not primitive comparators."

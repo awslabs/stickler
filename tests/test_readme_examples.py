@@ -158,8 +158,15 @@ def test_extension_reference_defaults_match_an_undeclared_schema():
     default = {name.strip("`"): cells[1] for name, cells in table.items()}
 
     infos = [UNDECLARED._get_comparison_info(f) for f in UNDECLARED_PROPERTIES]
-    assert default["x-aws-stickler-clip-under-threshold"] == "`true`"
-    assert all(info.clip_under_threshold is True for info in infos)
+    assert (
+        default["x-aws-stickler-clip-under-threshold"]
+        == "`true`, `false` on a free-form object"
+    )
+    free_form = {"mapping", "mappings"}
+    assert all(
+        info.clip_under_threshold is (name not in free_form)
+        for name, info in zip(UNDECLARED_PROPERTIES, infos)
+    )
     assert default["x-aws-stickler-weight"] == "1.0"
     assert all(info.weight == 1.0 for info in infos)
     assert default["x-aws-stickler-model-name"] == '`"DynamicModel"`'

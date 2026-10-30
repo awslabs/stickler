@@ -230,9 +230,11 @@ result = gt.compare_with(pred)
 
 - `x-aws-stickler-comparator`: comparator **class name**, such as `"ExactComparator"`, `"FuzzyComparator"`, `"LevenshteinComparator"`, `"SemanticComparator"`. Lowercase aliases are not accepted and raise.
 - `x-aws-stickler-comparator-config`: keyword arguments for that comparator's constructor
-- `x-aws-stickler-threshold`: matching threshold, 0.0 to 1.0 (default: 0.5)
+- `x-aws-stickler-threshold`: matching threshold, 0.0 to 1.0 (default: a `threshold` in `x-aws-stickler-comparator-config`, else the type default)
 - `x-aws-stickler-weight`: field importance weight (default: 1.0)
-- `x-aws-stickler-clip-under-threshold`: clip scores below threshold to 0.0 (boolean, default: true)
+- `x-aws-stickler-clip-under-threshold`: clip scores below threshold to 0.0 (boolean, default: true; false on a free-form object)
+
+An object with `properties` is scored field by field, so `x-aws-stickler-comparator` has no effect there and warns; only the `threshold` in `-comparator-config` is read. On an array of models `-comparator-config` is not read and warns; `x-aws-stickler-comparator` is accepted only as `LevenshteinComparator`, and any other raises ([#468](https://github.com/awslabs/stickler/issues/468)). The config path does the same for `comparator` and `comparator_config` on `structured_model`, `optional_structured_model` and `list_structured_model`, except that `comparator` on `list_structured_model` raises.
 
 **Object-level extensions**, valid on the root schema or on any object-typed property:
 
