@@ -9,6 +9,8 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-30
+
 ### Changed
 
 - `to_json_schema()` and `to_stickler_config()` no longer write a plain
@@ -42,7 +44,7 @@ Each release links to full notes on the
   (`List[List[Union[str, int]]]`) is still written as `"string"`.
   Parts B and C of [#349](https://github.com/awslabs/stickler/issues/349)
 
-- **Breaking:** a mapping field exports as a mapping. `to_json_schema()` wrote
+- A mapping field exports as a mapping. `to_json_schema()` wrote
   a `Dict[...]` field as `"type": "string"` and `to_stickler_config()` as
   `"type": "str"`, so the rebuilt model rejected every mapping, including the
   `{}` its own `default_factory=dict` exported. They now write
@@ -55,7 +57,7 @@ Each release links to full notes on the
   [#333](https://github.com/awslabs/stickler/issues/333))
   ([#306](https://github.com/awslabs/stickler/issues/306))
 
-- **Breaking:** a `StructuredModel` field typed `date`, `datetime`, `time`,
+- A `StructuredModel` field typed `date`, `datetime`, `time`,
   `timedelta`, `Decimal`, `UUID` or `Enum` now reaches its comparator, and a
   declared comparator is always called. The dispatcher treated only `str`,
   `int` and `float` as scalars, so these fell through to the mismatched-types
@@ -104,7 +106,7 @@ Each release links to full notes on the
   later on subscripting
   ([#350](https://github.com/awslabs/stickler/issues/350))
 
-- **Breaking:** a float `NaN` is now absent, the same as `None`. Two identical
+- A float `NaN` is now absent, the same as `None`. Two identical
   `NaN`s scored `0.0` and counted as a false discovery, because `NaN` equals
   nothing under IEEE 754. `NaN` vs `NaN` or `None` is now a true negative
   scoring `1.0`, `NaN` vs a number is a false alarm or false negative, and
@@ -118,7 +120,7 @@ Each release links to full notes on the
   [#443](https://github.com/awslabs/stickler/issues/443)
   ([#367](https://github.com/awslabs/stickler/issues/367))
 
-- **Breaking:** a `None` element in a list is now absent. It is left out
+- A `None` element in a list is now absent. It is left out
   before matching, so it is never paired, counted or scored, and a list of only
   `None` is an empty list. A float `NaN` element counts as `None`; an empty
   string is still a value. This holds for lists of models and of primitives,
@@ -143,7 +145,7 @@ Each release links to full notes on the
   ([#322](https://github.com/awslabs/stickler/issues/322)). See
   [`None` elements in a list](https://awslabs.github.io/stickler/Advanced/classification-logic/#none-elements-in-a-list)
 
-- **Breaking:** a score that floating-point arithmetic leaves just under its
+- A score that floating-point arithmetic leaves just under its
   threshold now gets the same verdict at every classification gate. A
   primitive list element allowed a `1e-10` tolerance, but a field, a nested
   model, a `List[StructuredModel]` pair, `EvalResult.matched` and
@@ -432,7 +434,9 @@ Each release links to full notes on the
   from CSV, parquet or a database, made `generate_report()` return
   `success=False` with no page written. The report now renders, and selecting
   such a document in the Report View shows that document's numbers instead of
-  the aggregate. A `None` or missing id is left as is
+  the aggregate. A `None` or missing id is left as is. A `document_files`
+  mapping keyed by a non-string id still fails in the document gallery
+  ([#454](https://github.com/awslabs/stickler/issues/454))
 
 ### Security
 
@@ -2817,7 +2821,8 @@ Initial public release: structured JSON comparison with configurable
 comparators, Hungarian-algorithm list matching, confusion-matrix metrics, and
 HTML reporting.
 
-[Unreleased]: https://github.com/awslabs/stickler/compare/v1.0.0...dev
+[Unreleased]: https://github.com/awslabs/stickler/compare/v1.0.1...dev
+[1.0.1]: https://github.com/awslabs/stickler/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/awslabs/stickler/compare/v0.7.0...v1.0.0
 [0.7.0]: https://github.com/awslabs/stickler/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/awslabs/stickler/compare/v0.5.0...v0.6.0
