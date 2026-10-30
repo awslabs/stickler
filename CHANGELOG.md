@@ -11,11 +11,11 @@ Each release links to full notes on the
 
 ### Changed
 
-- **Breaking:** `to_json_schema()` and `to_stickler_config()` no longer write a
-  plain pydantic `BaseModel`, a list of lists or a union of models as a string.
-  Both fell back to `"string"` / `"str"` for a type they had no entry for, so
-  the re-imported model could not load the data the original accepted. A plain
-  model field, or a list of them, now exports as a free-form object
+- `to_json_schema()` and `to_stickler_config()` no longer write a plain
+  pydantic `BaseModel` or a list of lists as a string, and warn on a union of
+  models. Both fell back to `"string"` / `"str"` for a type they had no entry
+  for, so the re-imported model could not load the data the original accepted.
+  A plain model field, or a list of them, now exports as a free-form object
   (`{"type": "object"}`, `"dict"` in a Stickler config), since it is scored as
   one object the way a mapping is, and re-imports as `dict` with the
   comparator, threshold, weight and clip setting it declared; its own field
@@ -24,17 +24,21 @@ Each release links to full notes on the
   types change. `to_stickler_config()` has no type for a union with a model
   arm, such as the `Union[Card, Bank]` that `from_json_schema()` builds from a
   multi-arm `anyOf`, or for a `StructuredModel` inside a nested list
-  (`List[List[Card]]`), so both methods now raise `ValueError` for these, to
-  keep one rule, where they returned a schema that could not load the original
-  data or (for the nested list, in the Stickler config) scored it differently.
-  `Optional` and `Annotated` are stripped before the type is chosen, so a
-  nested model or list of models declared as `Annotated[..., Field(...)] | None`
-  exports as the model, and an annotated scalar such as
-  `Annotated[int, Field(...)] | None` as its own type rather than a string. The
-  refusal reads the field, its list levels and the arms of a union, not other
-  containers: `Union[List[Card], str]`, `Union[Dict[str, Card], str]` and
-  `Tuple[Card, ...]` still export as `"string"`, `List[List[Dict[str, Card]]]`
-  exports without the model's schema, and a union leaf in a list of lists
+  (`List[List[Card]]`). Both methods still write these exactly as 1.0.0 did,
+  typed as a string, which cannot load the original data or (for the nested
+  list, in the Stickler config) scores it differently, and emit a
+  `UserWarning` naming the field on every export. `to_stickler_config()` on
+  `List[A | B]`, which raised `AttributeError` in 1.0.0, now exports it as
+  `List[Union]` with the same warning. This becomes a `ValueError`
+  in 1.0.2. `Optional` and `Annotated` are stripped before the type is chosen,
+  so a nested model or list of models declared as
+  `Annotated[..., Field(...)] | None` exports as the model, and an annotated
+  scalar such as `Annotated[int, Field(...)] | None` as its own type rather
+  than a string. The warning reads the field, its list levels and the arms of
+  a union, not other containers: `Union[List[Card], str]`,
+  `Union[Dict[str, Card], str]` and `Tuple[Card, ...]` still export as
+  `"string"` without one, `List[List[Dict[str, Card]]]` exports without the
+  model's schema, and a union leaf in a list of lists
   (`List[List[Union[str, int]]]`) is still written as `"string"`.
   Parts B and C of [#349](https://github.com/awslabs/stickler/issues/349)
 
@@ -82,15 +86,15 @@ Each release links to full notes on the
   merging the two readers into one implementation
   ([#383](https://github.com/awslabs/stickler/issues/383))
 
-- **Breaking:** `match_threshold` on a **primitive** field now raises
-  `ValueError`. It is the object-level threshold; nothing read it on a leaf, so
-  `"match_threshold": 0.99` beside a `float` left that field at `threshold` 0.5
-  and scored it against a value the author never chose. The JSON Schema path
-  already refuses the same misplacement, so the two front doors now agree. It
-  stays accepted on the model and on a `structured_model` field, where it is
-  read and where `to_stickler_config()` exports it. A config that builds today
-  and relies on this will start raising, though only one that was scoring
-  against a threshold its author did not choose
+- `match_threshold` on a **primitive** field in a Stickler config now emits a
+  `UserWarning` naming the model and field, once per model and field path. It is the object-level
+  threshold; nothing reads it on a leaf, so `"match_threshold": 0.99` beside a
+  `float` leaves that field at `threshold` 0.5 and scores it against a value
+  the author never chose. The key is still ignored and the field scores as it
+  did in 1.0.0. Use `threshold` on the field. This becomes a `ValueError` in
+  1.0.2, matching the JSON Schema path, which already refuses the same
+  misplacement. It stays accepted on the model and on a `structured_model`
+  field, where it is read and where `to_stickler_config()` exports it
   ([#350](https://github.com/awslabs/stickler/issues/350))
 
 - A field config that is not a mapping now raises `ValueError` naming the type
@@ -165,14 +169,15 @@ Each release links to full notes on the
   ([#417](https://github.com/awslabs/stickler/issues/417)). See
   [Meeting a Threshold](https://awslabs.github.io/stickler/Getting-Started/thresholds-and-metrics/#meeting-a-threshold)
 
-- **Breaking:** `evaluator_format=True` output carries `non_matches` only
-  with `document_non_matches=True`, as the default `compare_with()` dict does,
-  so `result["non_matches"]` without it now raises `KeyError`. It always wrote
-  `"non_matches": []`, so `print_non_matches` and the HTML report both said
-  `No non-matches found.` over a document with a wrong field, despite the #298
-  and #411 fixes. Both now say the records are missing. To read records, pass
-  `document_non_matches=True`; to tell "not collected" from "none found", test
-  `"non_matches" in result`. Scores and counts are unchanged
+- `compare_with(evaluator_format=True)` without `document_non_matches=True`
+  now emits a `DeprecationWarning`, once per process. Its `"non_matches": []`
+  is unchanged from 1.0.0, a plain list, but it means the records were not
+  collected, not that none were found: `print_non_matches` and the HTML report
+  print `No non-matches found.` over it even for a document with a wrong field.
+  The printers' "records were not collected" message (#298, #411) does not yet
+  apply to evaluator-format output; it applies once 1.0.2 omits the key there,
+  as the default `compare_with()` dict already does. To read records, pass
+  `document_non_matches=True`. Scores and counts are unchanged
   ([#413](https://github.com/awslabs/stickler/issues/413))
 
 - The Strands Evals golden snapshot now covers three `NaN` shapes
@@ -190,6 +195,13 @@ Each release links to full notes on the
   changes.
 
 ### Fixed
+
+- **A once-per-process warning raises on every call under `-W error`.** The
+  helper recorded a warning as shown before showing it, so when the warning
+  filter turned it into an exception (`-W error`, or pytest's
+  `filterwarnings = error`) only the first call raised, every later one passed
+  silently, and a later `pytest.warns` saw nothing. Which test failed depended
+  on test order. A warning is now recorded only once it has been emitted.
 
 - **The HTML report's field performance table now escapes field names.** It
   wrote each name into the page as raw HTML, while the chart beside it escaped
