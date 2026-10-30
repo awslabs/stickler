@@ -167,17 +167,14 @@ Each release links to full notes on the
   ([#417](https://github.com/awslabs/stickler/issues/417)). See
   [Meeting a Threshold](https://awslabs.github.io/stickler/Getting-Started/thresholds-and-metrics/#meeting-a-threshold)
 
-- `evaluator_format=True` output without `document_non_matches=True` marks its
-  `non_matches` as not collected. It always wrote `"non_matches": []`, so
-  `print_non_matches` and the HTML report both said `No non-matches found.`
-  over a document with a wrong field, despite the #298 and #411 fixes. The key
-  is still there and still equals `[]`, so `result["non_matches"]` works as in
-  1.0.0, but it is now an empty `UncollectedNonMatches` placeholder, which the
-  printers and the HTML report recognise and report as records not collected.
-  A collected empty list still reads as `No non-matches found.` Using
-  `evaluator_format=True` without `document_non_matches=True` emits a
-  `DeprecationWarning` once per process: from 1.0.2 the key is omitted then,
-  as in the default `compare_with()` dict. To read records, pass
+- `compare_with(evaluator_format=True)` without `document_non_matches=True`
+  now emits a `DeprecationWarning`, once per process. Its `"non_matches": []`
+  is unchanged from 1.0.0, a plain list, but it means the records were not
+  collected, not that none were found: `print_non_matches` and the HTML report
+  print `No non-matches found.` over it even for a document with a wrong field.
+  The printers' "records were not collected" message (#298, #411) does not yet
+  apply to evaluator-format output; it applies once 1.0.2 omits the key there,
+  as the default `compare_with()` dict already does. To read records, pass
   `document_non_matches=True`. Scores and counts are unchanged
   ([#413](https://github.com/awslabs/stickler/issues/413))
 

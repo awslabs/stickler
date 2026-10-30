@@ -1580,10 +1580,10 @@ class StructuredModel(BaseModel):
                 https://awslabs.github.io/stickler/Advanced/aggregate-metrics/
             document_non_matches: Whether to document non-matches for analysis
             evaluator_format: Whether to format results for the evaluator.
-                Without ``document_non_matches=True`` its ``non_matches`` is an
-                empty ``UncollectedNonMatches`` placeholder, not records, and a
-                ``DeprecationWarning`` is emitted once per process: from 1.0.2
-                the key is omitted in that case.
+                Without ``document_non_matches=True`` its ``non_matches`` is
+                ``[]`` because no records were collected, not because none were
+                found, and a ``DeprecationWarning`` is emitted once per
+                process: from 1.0.2 the key is omitted in that case.
             recall_with_fd: If True, include FD in recall denominator (TP/(TP+FN+FD))
                             If False, use traditional recall (TP/(TP+FN))
             add_derived_metrics: Whether to add derived metrics to confusion matrix
@@ -1625,10 +1625,10 @@ class StructuredModel(BaseModel):
                 "evaluator-format-uncollected-non-matches",
                 "",
                 "compare_with(evaluator_format=True) without "
-                "document_non_matches=True returns 'non_matches' as an empty "
-                "placeholder: the records were not collected, so it does not mean "
-                "every field matched. Pass document_non_matches=True to collect "
-                "them. From 1.0.2 the 'non_matches' key is omitted unless "
+                "document_non_matches=True returns 'non_matches' as []: the "
+                "records were not collected, so it does not mean every field "
+                "matched. Pass document_non_matches=True to collect them. From "
+                "1.0.2 the 'non_matches' key is omitted unless "
                 "document_non_matches=True.",
             )
 

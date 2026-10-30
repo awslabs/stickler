@@ -9,7 +9,6 @@ from typing import Any, Dict, List, Optional
 
 from .hungarian_helper import HungarianHelper
 from .metrics_helper import MetricsHelper
-from .non_match_field import UncollectedNonMatches
 from .null_helper import NullHelper
 
 #: True while ``calculate_list_item_metrics`` scores list items through
@@ -48,8 +47,8 @@ class EvaluatorFormatHelper:
         Returns:
             Dictionary in evaluator format with overall, fields,
             confusion_matrix and non_matches. ``non_matches`` holds the records
-            when ``result`` carries them (``document_non_matches=True``), and an
-            empty ``UncollectedNonMatches`` placeholder otherwise
+            when ``result`` carries them (``document_non_matches=True``), and
+            ``[]`` otherwise, as in 1.0.0
         """
         field_scores = result["field_scores"]
         overall_score = result["overall_score"]
@@ -144,17 +143,12 @@ class EvaluatorFormatHelper:
             "fields": field_metrics,
             "confusion_matrix": flattened_confusion_matrix,
         }
-        # Records when they were collected, as in the default compare_with()
-        # dict. Otherwise an empty placeholder, which keeps 1.0.0's
-        # `result["non_matches"] == []` working while letting the printers and
-        # the HTML report say the records were not collected: a plain empty list
-        # read as "no non-matches" on a document with a wrong field (#413).
-        # From 1.0.2 the key is omitted instead.
-        formatted["non_matches"] = (
-            result["non_matches"]
-            if "non_matches" in result
-            else UncollectedNonMatches()
-        )
+        # Records when they were collected; otherwise `[]`, as 1.0.0 always
+        # wrote. That `[]` cannot tell "not collected" from "none found", so the
+        # printers read it as "No non-matches found" (#413). 1.0.1 keeps it for
+        # 1.0.0 callers and warns (`StructuredModel.compare_with`); 1.0.2 omits
+        # the key instead, as the default compare_with() dict does.
+        formatted["non_matches"] = result.get("non_matches", [])
         return formatted
 
     @staticmethod

@@ -6,9 +6,6 @@ import logging
 import types
 from typing import Any, Dict, List, Optional, Union, get_args, get_origin
 
-from stickler.structured_object_evaluator.models.non_match_field import (
-    is_uncollected_non_matches,
-)
 from stickler.utils.process_evaluation import ProcessEvaluation
 
 logger = logging.getLogger(__name__)
@@ -76,19 +73,17 @@ class DataExtractor:
 
         Returns:
             List of non-match dictionaries, or None when the results carry no
-            records at all. `compare_with()` only collects records when called
-            with `document_non_matches=True`: the default dict then has no
-            `non_matches` key, and `evaluator_format=True` writes an empty
-            `UncollectedNonMatches` placeholder, which reads as None here.
+            records at all. `compare_with()` only writes the `non_matches` key
+            when called with `document_non_matches=True`, and
             `ProcessEvaluation.non_matches` is None when the bulk evaluator was
-            built with `document_non_matches=False`. So an empty list and None
-            mean different things and only the first one means the document
-            was clean.
+            built with `document_non_matches=False`, so an empty list and no
+            list mean different things and only the first one means the
+            document was clean.
         """
         if isinstance(results, ProcessEvaluation):
             return results.non_matches
-        non_matches = results.get('non_matches')
-        return None if is_uncollected_non_matches(non_matches) else non_matches
+        else:
+            return results.get('non_matches')
     
     @staticmethod
     def get_document_count(results: Union[Dict[str, Any], ProcessEvaluation]) -> int:
