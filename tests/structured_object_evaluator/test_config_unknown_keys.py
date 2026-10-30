@@ -271,23 +271,88 @@ def test_a_non_mapping_field_config_raises_the_documented_error(field_config):
         StructuredModel.model_from_json({"fields": {"name": field_config}})
 
 
-def test_match_threshold_on_a_primitive_is_refused():
-    """It is the object-level threshold; on a leaf it was accepted and dropped.
-
-    The JSON Schema path already refuses the same misplacement, so refusing
-    here is what makes the two front doors agree.
-    """
-    config = {
-        "fields": {
-            "amount": {
-                "type": "float",
-                "comparator": "NumericComparator",
-                "match_threshold": 0.99,
-            }
+MATCH_THRESHOLD_ON_LEAF = {
+    "fields": {
+        "amount": {
+            "type": "float",
+            "comparator": "NumericComparator",
+            "match_threshold": 0.99,
         }
     }
-    with pytest.raises(ValueError, match="'match_threshold' is not read"):
-        build(config)
+}
+
+
+def match_threshold_warnings(messages):
+    return [m for m in messages if "'match_threshold' is not read" in m]
+
+
+def test_match_threshold_on_a_primitive_warns_and_is_ignored():
+    """It is the object-level threshold; on a leaf it was accepted and dropped.
+
+    1.0.1 keeps 1.0.0's result (the key is ignored, so the field keeps its
+    0.5 default) and warns; 1.0.2 raises, matching the JSON Schema path.
+    """
+    model, messages = build(MATCH_THRESHOLD_ON_LEAF)
+    assert match_threshold_warnings(messages) == [
+        "'match_threshold' is not read on primitive field 'amount'; it is the "
+        "object-level threshold, so it is ignored and the field scores at its "
+        "'threshold'. Use 'threshold' for this field, or set 'match_threshold' "
+        "on the model or on a 'structured_model' field. This becomes a "
+        "ValueError in 1.0.2."
+    ]
+    assert unknown_key_warnings(messages) == []
+    # What 1.0.0 built for this config, measured on v1.0.0.
+    assert model.to_stickler_config()["fields"]["amount"] == {
+        "type": "float",
+        "comparator": "NumericComparator",
+        "threshold": 0.5,
+        "weight": 1.0,
+        "clip_under_threshold": True,
+        "required": False,
+        "default": None,
+    }
+    result = model(amount=100.0).compare_with(model(amount=100.5))
+    assert result["field_scores"] == {"amount": 0.0}
+
+
+def test_match_threshold_on_a_nested_primitive_names_its_path():
+    """A leaf inside a `structured_model` field is ignored and warned the same way."""
+    model, messages = build(
+        {
+            "fields": {
+                "addr": {
+                    "type": "structured_model",
+                    "fields": {"city": dict(BASE_FIELD, match_threshold=0.99)},
+                }
+            }
+        }
+    )
+    warned = match_threshold_warnings(messages)
+    assert len(warned) == 1
+    assert "primitive field 'addr.city'" in warned[0]
+    city = model.to_stickler_config()["fields"]["addr"]["fields"]["city"]
+    assert city["threshold"] == 0.5
+    assert "match_threshold" not in city
+
+
+def test_match_threshold_on_a_primitive_warns_once_per_model_and_path():
+    """Rebuilding the same config does not repeat the warning (`warn_once`)."""
+    _, first = build(MATCH_THRESHOLD_ON_LEAF)
+    _, second = build(MATCH_THRESHOLD_ON_LEAF)
+    assert len(match_threshold_warnings(first)) == 1
+    assert match_threshold_warnings(second) == []
+
+
+def test_match_threshold_on_a_primitive_points_at_the_callers_line():
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        this_line = inspect.currentframe().f_lineno + 1
+        StructuredModel.model_from_json(MATCH_THRESHOLD_ON_LEAF)
+    warned = [w for w in caught if "'match_threshold' is not read" in str(w.message)]
+    assert len(warned) == 1
+    assert warned[0].category is UserWarning
+    assert warned[0].filename == __file__
+    assert warned[0].lineno == this_line
 
 
 def test_match_threshold_on_a_nested_model_field_is_still_accepted():

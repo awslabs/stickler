@@ -82,15 +82,15 @@ Each release links to full notes on the
   merging the two readers into one implementation
   ([#383](https://github.com/awslabs/stickler/issues/383))
 
-- **Breaking:** `match_threshold` on a **primitive** field now raises
-  `ValueError`. It is the object-level threshold; nothing read it on a leaf, so
-  `"match_threshold": 0.99` beside a `float` left that field at `threshold` 0.5
-  and scored it against a value the author never chose. The JSON Schema path
-  already refuses the same misplacement, so the two front doors now agree. It
-  stays accepted on the model and on a `structured_model` field, where it is
-  read and where `to_stickler_config()` exports it. A config that builds today
-  and relies on this will start raising, though only one that was scoring
-  against a threshold its author did not choose
+- `match_threshold` on a **primitive** field in a Stickler config now emits a
+  `UserWarning`, once per model and field path. It is the object-level
+  threshold; nothing reads it on a leaf, so `"match_threshold": 0.99` beside a
+  `float` leaves that field at `threshold` 0.5 and scores it against a value
+  the author never chose. The key is still ignored and the field scores as it
+  did in 1.0.0. Use `threshold` on the field. This becomes a `ValueError` in
+  1.0.2, matching the JSON Schema path, which already refuses the same
+  misplacement. It stays accepted on the model and on a `structured_model`
+  field, where it is read and where `to_stickler_config()` exports it
   ([#350](https://github.com/awslabs/stickler/issues/350))
 
 - A field config that is not a mapping now raises `ValueError` naming the type
