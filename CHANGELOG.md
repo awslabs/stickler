@@ -191,6 +191,11 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **The HTML report gallery now accepts non-string `document_files` keys and
+  paths.** Integer and NumPy keys and `pathlib.Path` values no longer make the
+  gallery step of `generate_report()` fail without writing a page
+  ([#454](https://github.com/awslabs/stickler/issues/454))
+
 - **The HTML report's field performance table now escapes field names.** It
   wrote each name into the page as raw HTML, while the chart beside it escaped
   the same name, so a name containing `<`, `>` or `&` was read by the browser as

@@ -163,6 +163,29 @@ class TestEvaluationHTMLReporter:
         
         assert result.success is True
         mock_copy_files.assert_called_once_with(document_files, self.output_path)
+
+    def test_generate_report_accepts_integer_document_file_key(self, tmp_path):
+        """The public report API does not silently fail on an integer key (#454)."""
+        path = tmp_path / 'scan.png'
+        path.write_bytes(b'image data')
+        output_path = tmp_path / 'report.html'
+        config = ReportConfig(
+            include_executive_summary=False,
+            include_field_analysis=False,
+            include_non_matches=False,
+            include_confusion_matrix=False,
+        )
+
+        result = self.reporter.generate_report(
+            evaluation_results={},
+            output_path=str(output_path),
+            config=config,
+            document_files={1001: path},
+        )
+
+        assert result.success is True
+        assert output_path.is_file()
+        assert 'alt="1001"' in output_path.read_text(encoding='utf-8')
     
     def test_copy_files_to_report_dir_success(self):
         """Test successful file copying to report directory."""

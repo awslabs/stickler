@@ -169,6 +169,12 @@ class SectionGenerator:
             html_string += '<div class="document-gallery">'
             
             for doc_id, image_path in document_images.items():
+                # Coerce before escape: html.escape requires str; int keys/paths
+                # (same shape as JSONL doc_id after 1.0.1) must not crash the gallery.
+                # Conversion can make distinct input keys render identically; preserve
+                # every ordered mapping entry rather than silently dropping one.
+                doc_id = str(doc_id)
+                image_path = str(image_path)
                 html_string += f'''
                     <div class="image-item">
                         <img src="{html.escape(image_path)}" alt="{html.escape(doc_id)}">
@@ -182,6 +188,8 @@ class SectionGenerator:
             html_string += '<div class="document-gallery">'
 
             for doc_id, pdf_path in document_images.items():
+                doc_id = str(doc_id)
+                pdf_path = str(pdf_path)
                 html_string += f'''
                     <div class="pdf-item" data-doc-id="{html.escape(doc_id)}" data-pdf-path="{html.escape(pdf_path)}">
                         <div class="pdf-container">
