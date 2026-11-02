@@ -46,11 +46,19 @@ def defer_pair_warnings() -> Iterator[None]:
         _DEFER_PAIR_WARNINGS.set(previous)
 
 
+def _fails_required_match(gt_item: Any, pred_item: Any) -> bool:
+    """Whether a required field vetoes this pair; False for a non-model item."""
+    fails = getattr(gt_item, "fails_required_match", None)
+    return fails is not None and fails(pred_item)
+
+
 class HungarianHelper:
     """Helper class for Hungarian matching operations with StructuredModel objects."""
 
     def __init__(self):
-        self.hungarian = HungarianMatcher(StructuredModelComparator())
+        self.hungarian = HungarianMatcher(
+            StructuredModelComparator(), is_pair_excluded=_fails_required_match
+        )
 
     def get_complete_matching_info(
         self, gt_list: List[Any], pred_list: List[Any]

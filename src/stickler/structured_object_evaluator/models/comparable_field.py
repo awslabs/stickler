@@ -80,6 +80,7 @@ def ComparableField(
     default: Any = _DEFAULT_UNSET,
     *,
     clip_under_threshold: Optional[bool] = None,
+    required_match: bool = False,
     # Pydantic Field parameters (all optional, just like Field)
     alias: Optional[str] = None,
     description: Optional[str] = None,
@@ -120,6 +121,13 @@ def ComparableField(
                   which lets a dict-annotated field default it to False so
                   partial credit survives, while an explicit True or False is
                   always honoured. See StructuredModel.__init_subclass__.
+        required_match: Whether a score below this field's resolved threshold
+                  vetoes the pair when the owning object is matched inside a
+                  list of objects (default: False). A vetoed pair is excluded
+                  before the assignment, so its two objects are left
+                  unmatched, one false negative and one false alarm. A
+                  field that is null on one side fails, null on both passes.
+                  Only primitive fields may be required.
         alias: Pydantic field alias for serialization (default: None)
         description: Field description for documentation (default: None)
         examples: Example values for the field (default: None)
@@ -204,6 +212,7 @@ def ComparableField(
     json_schema_extra_func._threshold_explicit = threshold_was_explicit
     json_schema_extra_func._threshold = threshold
     json_schema_extra_func._weight = weight
+    json_schema_extra_func._required_match = required_match
     json_schema_extra_func._clip_under_threshold = clip_under_threshold
     json_schema_extra_func._comparison_metadata = serializable_metadata
 
@@ -222,6 +231,7 @@ def ComparableField(
         enhanced_json_schema_extra._threshold_explicit = threshold_was_explicit
         enhanced_json_schema_extra._threshold = threshold
         enhanced_json_schema_extra._weight = weight
+        enhanced_json_schema_extra._required_match = required_match
         enhanced_json_schema_extra._clip_under_threshold = clip_under_threshold
         enhanced_json_schema_extra._comparison_metadata = serializable_metadata
         final_json_schema_extra = enhanced_json_schema_extra
@@ -238,6 +248,7 @@ def ComparableField(
         enhanced_json_schema_extra._threshold_explicit = threshold_was_explicit
         enhanced_json_schema_extra._threshold = threshold
         enhanced_json_schema_extra._weight = weight
+        enhanced_json_schema_extra._required_match = required_match
         enhanced_json_schema_extra._clip_under_threshold = clip_under_threshold
         enhanced_json_schema_extra._comparison_metadata = serializable_metadata
         final_json_schema_extra = enhanced_json_schema_extra

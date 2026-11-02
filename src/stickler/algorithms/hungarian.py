@@ -35,6 +35,7 @@ class HungarianMatcher:
         size_threshold: int = HUNGARIAN_SIZE_WARNING_THRESHOLD,
         normalize_values: bool = True,
         match_threshold: float = 0.7,
+        is_pair_excluded: Optional[Callable[[Any, Any], bool]] = None,
     ):
         """Initialize the Hungarian matcher.
 
@@ -68,11 +69,15 @@ class HungarianMatcher:
                              never sees ``""`` standing in for a missing
                              element.
             match_threshold: Minimum similarity score to consider a match as TP
+            is_pair_excluded: Tells whether a pair must never be assigned, as
+                          whatever its score. The pair is left unmatched, so it
+                          is neither a TP nor an FD. None excludes nothing.
         """
         self.comparator = comparator or (lambda x, y: float(x == y))
         self.size_threshold = size_threshold
         self.normalize_values = normalize_values
         self.match_threshold = match_threshold
+        self.is_pair_excluded = is_pair_excluded
 
     def _normalize_value(self, value: Any) -> Any:
         """Normalize a value to improve string matching.
@@ -235,8 +240,25 @@ class HungarianMatcher:
             # Cost is 1 - similarity (because Hungarian minimizes cost)
             cost_matrix = make_cost_matrix(similarity_matrix, lambda x: 1 - x)
 
+            # an excluded pair costs more than every allowed assignment can sum
+            # to, so the solver picks one only when no allowed pairing is left,
+            # and it is dropped below. Dropping it alone after an unconstrained
+            # solve would give up the allowed pairing the exclusion makes room for.
+            excluded_pairs = set()
+            if self.is_pair_excluded is not None:
+                excluded_cost = float(max(len(list1), len(list2)) + 1)
+                for i, item1 in enumerate(list1):
+                    for j, item2 in enumerate(list2):
+                        if self.is_pair_excluded(item1, item2):
+                            cost_matrix[i][j] = excluded_cost
+                            excluded_pairs.add((i, j))
+
             # Compute the optimal assignment
-            matched_indices = _MUNKRES.compute(cost_matrix)
+            matched_indices = [
+                pair
+                for pair in _MUNKRES.compute(cost_matrix)
+                if tuple(pair) not in excluded_pairs
+            ]
 
             # Clean up to help with memory usage
             del cost_matrix
@@ -266,7 +288,8 @@ class HungarianMatcher:
         Returns:
             The same nine keys for every input, empty lists included. Below,
             ``m`` and ``n`` are the two prepared lengths and ``k`` is the pair
-            count, which is always ``min(m, n)``.
+            count, which is ``min(m, n)`` unless ``is_pair_excluded`` leaves
+            pairs out.
 
                 matched_pairs: ``k`` tuples of ``(i, j, score)``
                 tp: pairs scoring at or above ``match_threshold``
@@ -313,7 +336,10 @@ class HungarianMatcher:
             # exactly like a longer one, so this branch produces the pair and
             # stops. The counting below is then shared, not repeated.
             score = self._score(prepared_list1[0], prepared_list2[0])
-            matched_pairs = [(0, 0, score)]
+            is_excluded = self.is_pair_excluded is not None and self.is_pair_excluded(
+                prepared_list1[0], prepared_list2[0]
+            )
+            matched_pairs = [] if is_excluded else [(0, 0, score)]
         else:
             # An empty list needs no branch of its own. match() returns no
             # pairs for one, which is what the counting below expects.
@@ -324,10 +350,10 @@ class HungarianMatcher:
                 (i, j, similarity_matrix[i, j]) for i, j in matched_indices
             ]
 
-        # match() assigns exactly min(m, n) pairs, so the four counts below
-        # cover max(m, n) items once each. The threshold splits the pairs into
-        # tp and fd. It does not un-match them, which is why a paired item
-        # never reaches fn or fa.
+        # match() assigns exactly min(m, n) pairs unless pairs are excluded, so
+        # the four counts below cover max(m, n) items once each. The threshold
+        # splits the pairs into tp and fd. It does not un-match them, which is
+        # why a paired item never reaches fn or fa.
         tp = sum(
             1
             for _, _, score in matched_pairs
