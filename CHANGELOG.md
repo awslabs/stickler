@@ -9,6 +9,14 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Added
+
+- `ComparableField(required_match=True)` makes a primitive field a veto when
+  objects are paired in a list: a pair whose required field is not at or above
+  its threshold is excluded before the assignment and counts as one false
+  negative and one false alarm, never a false discovery. Off by default; scores
+  and counts do not change unless a field sets it.
+
 ## [1.0.1] - 2026-11-02
 
 ### Changed

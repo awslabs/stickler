@@ -52,6 +52,7 @@ When defining a `StructuredModel` subclass in Python, each field is declared wit
 | `threshold` | `float` (0.0--1.0) | `0.5` | Minimum similarity score required for a field to be classified as a match. |
 | `weight` | `float` (> 0.0) | `1.0` | Relative importance of this field when computing aggregate scores. |
 | `clip_under_threshold` | `bool` | `True` | When `True`, scores below `threshold` are zeroed out before contributing to the weighted average. |
+| `required_match` | `bool` | `False` | When `True`, a score not at or above `threshold` vetoes the object pair when objects are matched inside a list. |
 
 ### How Each Parameter Affects Scoring
 
@@ -75,6 +76,8 @@ overall_score = sum(field_score * weight) / sum(weights)
 Fields with higher weights pull the overall score toward their individual result. At the dataset level, `BulkStructuredModelEvaluator.compute()` exposes this weight-aware aggregate as `metrics["weighted_overall_score"]` -- prefer it over `cm_f1` when weights are non-uniform, since `cm_f1` treats every field-match equally. See [Weighted Overall Score](bulk-evaluation.md#weighted-overall-score) in the bulk-evaluation guide.
 
 **`clip_under_threshold`** -- When enabled (the default), a field that scores below its threshold contributes 0.0 to the weighted average instead of its partial similarity. This prevents low-confidence matches from inflating the overall score.
+
+**`required_match`** -- Without it, an object with one wrong field still matches when its overall score reaches the element class's `match_threshold`. A required field that is not at or above its resolved threshold (the field's `threshold`, else one named on the comparator, else `0.5`) vetoes the pair before the Hungarian assignment, so a better pairing is found if one exists. A veto takes priority over similarity: the assignment keeps as many allowed pairs as it can, even at lower scores. The two objects left unmatched count as one False Negative (ground truth) and one False Alarm (prediction), never as a False Discovery. A value that is null on one side fails; null on both sides passes. Only `str`, `int`, `float` and `bool` fields (optionally `Optional`) may be required; any other annotation raises `ValueError` when the class is defined. The veto applies where objects are paired in a `List[StructuredModel]`. A single nested object has no pairing step, so it is not vetoed. The setting is Python only: `to_json_schema()` and `to_stickler_config()` do not write it, and `model_from_json()` and `from_json_schema()` do not read it.
 
 ### Example Model
 
