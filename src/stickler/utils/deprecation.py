@@ -26,6 +26,9 @@ def warn_once(
 ) -> None:
     """Emit ``message`` only the first time this ``(deprecation_id, context)`` is seen.
 
+    A warning the filters turn into an exception is not recorded, so every
+    call raises until one is emitted.
+
     The default ``stacklevel=3`` points at the caller of the function
     that wraps ``warn_once`` (one frame for ``warn_once`` itself, one
     for the wrapping call, one to land on user code).
@@ -33,5 +36,9 @@ def warn_once(
     key = (deprecation_id, context)
     if key in _warned:
         return
-    _warned.add(key)
     warnings.warn(message, category, stacklevel=stacklevel)
+    # Recorded only once the warning was emitted. Under `-W error` (or pytest's
+    # `filterwarnings = error`) `warnings.warn` raises; recorded first, the
+    # first call raised and every later one passed silently, so the outcome
+    # depended on call order and a later `pytest.warns` saw nothing.
+    _warned.add(key)

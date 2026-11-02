@@ -107,18 +107,21 @@ def test_a_bulk_result_with_records_lists_them():
     assert "document_non_matches=True" not in _section(results)
 
 
-def test_an_evaluator_format_dict_without_records_is_not_reported_as_clean():
-    """`evaluator_format=True` writes `non_matches` only when requested (#413)."""
+def test_an_evaluator_format_dict_without_records_reads_as_1_0_0_did():
+    """Known limit until 1.0.2: its `[]` cannot say "not collected" (#413).
+
+    1.0.1 keeps 1.0.0's plain `"non_matches": []` so 1.0.0 callers keep
+    working, and the report reads it as 1.0.0 did. 1.0.2 omits the key, and
+    the report then says the records were not collected.
+    """
     gt, pred = _wrong_pair()
     results = gt.compare_with(pred, evaluator_format=True)
 
-    assert "non_matches" not in results
-    assert DataExtractor.extract_non_matches(results) is None
+    assert type(results["non_matches"]) is list
+    assert results["non_matches"] == []
+    assert DataExtractor.extract_non_matches(results) == []
 
-    html = _section(results)
-
-    assert "No non-matches found" not in html
-    assert "document_non_matches=True" in html
+    assert "<p>No non-matches found.</p>" in _section(results)
 
 
 def test_an_evaluator_format_dict_with_empty_records_is_a_success():
@@ -129,3 +132,34 @@ def test_an_evaluator_format_dict_with_empty_records_is_a_success():
     assert DataExtractor.extract_non_matches(results) == []
 
     assert "<p>No non-matches found.</p>" in _section(results)
+
+
+def _report_page(results, tmp_path) -> str:
+    from stickler.reporting.html.html_reporter import EvaluationHTMLReporter
+
+    path = tmp_path / "report.html"
+    EvaluationHTMLReporter().generate_report(results, str(path))
+    return path.read_text(encoding="utf-8")
+
+
+def test_the_full_report_says_a_default_dict_without_records_was_not_collected(
+    tmp_path,
+):
+    """The #411 rule still holds for the default `compare_with()` dict."""
+    same = _Person(name="Ada", city="London")
+    page = _report_page(
+        same.compare_with(same, include_confusion_matrix=True), tmp_path
+    )
+
+    assert "No non-matches found" not in page
+    assert "No non-match records in these results." in page
+
+
+def test_the_full_report_says_a_collected_empty_list_is_clean(tmp_path):
+    same = _Person(name="Ada", city="London")
+    results = same.compare_with(same, evaluator_format=True, document_non_matches=True)
+
+    page = _report_page(results, tmp_path)
+
+    assert "<p>No non-matches found.</p>" in page
+    assert "No non-match records in these results." not in page
