@@ -4,7 +4,9 @@ This module provides the StructuredModel class for defining structured data mode
 with comparison configuration and evaluation capabilities.
 """
 
+import warnings
 from typing import (
+    Annotated,
     Any,
     ClassVar,
     Dict,
@@ -17,18 +19,18 @@ from typing import (
     get_origin,
 )
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
 from pydantic.json_schema import GenerateJsonSchema
 
 from stickler.comparators.anls import ANLSStarComparator
 from stickler.comparators.base import BaseComparator
+from stickler.utils.canonical import jsonable_mapping
 from stickler.utils.deprecation import warn_once
 
 from .comparable_field import ComparableField, _named_comparator_threshold
 from .comparison_helper import ComparisonHelper, _maybe_absent
 from .configuration_helper import ConfigurationHelper
-from .evaluator_format_helper import EvaluatorFormatHelper
-from .hungarian_helper import HungarianHelper
+from .evaluator_format_helper import EvaluatorFormatHelper, in_list_item_metrics
 from .metrics_helper import MetricsHelper
 from .null_helper import NullHelper
 from .optional_annotation import union_args, unwrap_annotated, unwrap_optional
@@ -323,8 +325,7 @@ class StructuredModel(BaseModel):
     **Metrics Calculation:**
     - ConfusionMatrixCalculator: Calculates confusion matrix metrics
       - Computes TP, FP, TN, FN, FD, FA counts
-      - Handles list-level and field-level metrics
-      - Calculates nested field metrics for structured lists
+      - Classifies the non-list sub-fields of matched list items
 
     - AggregateMetricsCalculator: Rolls up child metrics to parent nodes
       - Performs recursive traversal of result tree
@@ -337,7 +338,7 @@ class StructuredModel(BaseModel):
       - Delegates to MetricsHelper for calculations
 
     - ConfusionMatrixBuilder: Orchestrates all metrics calculation
-      - Coordinates between the three calculator classes
+      - Coordinates the aggregate and derived calculators
       - Ensures correct calculation order
       - Builds complete confusion matrices
 
@@ -386,6 +387,7 @@ class StructuredModel(BaseModel):
 
     Example Usage:
     --------------
+    ```python
     >>> from stickler import StructuredModel
     >>> from stickler import ComparableField
     >>> from stickler import LevenshteinComparator
@@ -412,6 +414,7 @@ class StructuredModel(BaseModel):
     >>> result = gt.compare_with(pred, include_confusion_matrix=True)
     >>> print(f"TP: {result['overall']['tp']}, FD: {result['overall']['fd']}")
     >>> print(f"F1: {result['aggregate']['derived']['cm_f1']:.2f}")
+    ```
     """
 
     # Default match threshold - can be overridden in subclasses
@@ -1093,7 +1096,10 @@ class StructuredModel(BaseModel):
         Args:
             model_cls: A ``pydantic.BaseModel`` subclass (e.g. a Strands
                 agent ``response_model``). A StructuredModel subclass is
-                returned unchanged (explicit configuration always wins).
+                returned unchanged (explicit configuration always wins). A
+                ``RootModel`` raises ``TypeError``, as this class and at any
+                nested model or ``List[BaseModel]`` element the builder
+                mirrors: its value has no field name to score it under.
             weight_hints: Apply name-token weight heuristics (default off, so
                 weights stay uniform).
             match_threshold: Overall match threshold for the generated model.
@@ -1278,61 +1284,6 @@ class StructuredModel(BaseModel):
         dispatcher = ComparisonDispatcher(self)
         return dispatcher.handle_list_field_dispatch(gt_val, pred_val, weight)
 
-    def _calculate_object_level_metrics(
-        self,
-        gt_list: List["StructuredModel"],
-        pred_list: List["StructuredModel"],
-        match_threshold: float,
-    ) -> tuple:
-        """Calculate object-level metrics using Hungarian matching.
-
-        Args:
-            gt_list: Ground truth list
-            pred_list: Predicted list
-            match_threshold: Threshold for considering objects as matches
-
-        Returns:
-            Tuple of (object_metrics_dict, matched_pairs, matched_gt_indices, matched_pred_indices)
-        """
-        # Use Hungarian matching for OBJECT-LEVEL counts - OPTIMIZED: Single call gets all info
-        hungarian_helper = HungarianHelper()
-        hungarian_info = hungarian_helper.get_complete_matching_info(gt_list, pred_list)
-        matched_pairs = hungarian_info["matched_pairs"]
-
-        # Count OBJECTS, not individual fields
-        tp_objects = 0  # Objects with similarity >= match_threshold
-        fd_objects = 0  # Objects with similarity < match_threshold
-        for gt_idx, pred_idx, similarity in matched_pairs:
-            if similarity >= match_threshold:
-                tp_objects += 1
-            else:
-                fd_objects += 1
-
-        # Count unmatched objects
-        matched_gt_indices = {idx for idx, _, _ in matched_pairs}
-        matched_pred_indices = {idx for _, idx, _ in matched_pairs}
-        fn_objects = len(gt_list) - len(matched_gt_indices)  # Unmatched GT objects
-        fa_objects = len(pred_list) - len(
-            matched_pred_indices
-        )  # Unmatched pred objects
-
-        # Build list-level metrics counting OBJECTS (not fields)
-        object_level_metrics = {
-            "tp": tp_objects,
-            "fa": fa_objects,
-            "fd": fd_objects,
-            "fp": fa_objects + fd_objects,  # Total false positives
-            "tn": 0,  # No true negatives at object level for non-empty lists
-            "fn": fn_objects,
-        }
-
-        return (
-            object_level_metrics,
-            matched_pairs,
-            matched_gt_indices,
-            matched_pred_indices,
-        )
-
     def _compare_unordered_lists(
         self,
         gt_list: List[Any],
@@ -1481,7 +1432,7 @@ class StructuredModel(BaseModel):
 
     def _classify_field_for_confusion_matrix(
         self, field_name: str, other_value: Any, threshold: float = None
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, int]:
         """Classify a field comparison according to the confusion matrix rules.
 
         This method delegates to ConfusionMatrixCalculator for the actual implementation.
@@ -1492,93 +1443,12 @@ class StructuredModel(BaseModel):
             threshold: Threshold for matching (uses field's threshold if None)
 
         Returns:
-            Dictionary with TP, FP, TN, FN, FD counts and derived metrics
+            Dictionary with the six counts: tp, fa, fd, fp, tn, fn
         """
         from .confusion_matrix_calculator import ConfusionMatrixCalculator
 
-        calculator = ConfusionMatrixCalculator(self)
-        return calculator.classify_field_for_confusion_matrix(
-            field_name, other_value, threshold
-        )
-
-    def _calculate_list_confusion_matrix(
-        self, field_name: str, other_list: List[Any]
-    ) -> Dict[str, Any]:
-        """Calculate confusion matrix for a list field, including nested field metrics.
-
-        This method delegates to ConfusionMatrixCalculator for the actual implementation.
-
-        Args:
-            field_name: Name of the list field being compared
-            other_list: Predicted list to compare with
-
-        Returns:
-            Dictionary with:
-            - Top-level TP, FP, TN, FN, FD, FA counts and derived metrics for the list field
-            - nested_fields: Dict with metrics for individual fields within list items (e.g., "transactions.date")
-            - non_matches: List of individual object-level non-matches for detailed analysis
-        """
-        from .confusion_matrix_calculator import ConfusionMatrixCalculator
-
-        calculator = ConfusionMatrixCalculator(self)
-        return calculator.calculate_list_confusion_matrix(field_name, other_list)
-
-    def _calculate_nested_field_metrics(
-        self,
-        list_field_name: str,
-        gt_list: List["StructuredModel"],
-        pred_list: List["StructuredModel"],
-        threshold: float,
-    ) -> Dict[str, Dict[str, Any]]:
-        """Calculate confusion matrix metrics for individual fields within list items.
-
-        This method delegates to ConfusionMatrixCalculator for the actual implementation.
-
-        THRESHOLD-GATED RECURSION: Only perform recursive field analysis for object pairs
-        with similarity >= StructuredModel.match_threshold. Poor matches and unmatched
-        items are treated as atomic units.
-
-        Args:
-            list_field_name: Name of the parent list field (e.g., "transactions")
-            gt_list: Ground truth list of StructuredModel objects
-            pred_list: Predicted list of StructuredModel objects
-            threshold: Matching threshold (not used for threshold-gating)
-
-        Returns:
-            Dictionary mapping nested field paths to their confusion matrix metrics
-            E.g., {"transactions.date": {...}, "transactions.description": {...}}
-        """
-        from .confusion_matrix_calculator import ConfusionMatrixCalculator
-
-        calculator = ConfusionMatrixCalculator(self)
-        return calculator.calculate_nested_field_metrics(
-            list_field_name, gt_list, pred_list, threshold
-        )
-
-    def _calculate_single_nested_field_metrics(
-        self,
-        parent_field_name: str,
-        gt_nested: "StructuredModel",
-        pred_nested: "StructuredModel",
-    ) -> Dict[str, Dict[str, Any]]:
-        """Calculate confusion matrix metrics for fields within a single nested StructuredModel.
-
-        This method delegates to ConfusionMatrixCalculator for the actual implementation.
-
-        Args:
-            parent_field_name: Name of the parent field (e.g., "address")
-            gt_nested: Ground truth nested StructuredModel
-            pred_nested: Predicted nested StructuredModel
-
-        Returns:
-            Dictionary mapping nested field paths to their confusion matrix metrics
-            E.g., {"address.street": {...}, "address.city": {...}}
-        """
-        from .confusion_matrix_calculator import ConfusionMatrixCalculator
-
-        calculator = ConfusionMatrixCalculator(self)
-        return calculator.calculate_single_nested_field_metrics(
-            parent_field_name, gt_nested, pred_nested
+        return ConfusionMatrixCalculator.classify_field_for_confusion_matrix(
+            self, field_name, other_value, threshold
         )
 
     def _collect_enhanced_non_matches(
@@ -1709,7 +1579,11 @@ class StructuredModel(BaseModel):
                 See
                 https://awslabs.github.io/stickler/Advanced/aggregate-metrics/
             document_non_matches: Whether to document non-matches for analysis
-            evaluator_format: Whether to format results for the evaluator
+            evaluator_format: Whether to format results for the evaluator.
+                Without ``document_non_matches=True`` its ``non_matches`` is
+                ``[]`` because no records were collected, not because none were
+                found, and a ``DeprecationWarning`` is emitted once per
+                process: from 1.0.2 the key is omitted in that case.
             recall_with_fd: If True, include FD in recall denominator (TP/(TP+FN+FD))
                             If False, use traditional recall (TP/(TP+FN))
             add_derived_metrics: Whether to add derived metrics to confusion matrix
@@ -1739,6 +1613,24 @@ class StructuredModel(BaseModel):
             - confidence_metrics: (optional) Confidence calibration metrics if requested
         """
         from .comparison_engine import ComparisonEngine
+
+        if (
+            evaluator_format
+            and not document_non_matches
+            and not in_list_item_metrics.get()
+        ):
+            # Once per process, like the other result-key deprecations: a bulk
+            # loop makes this call per document and the advice does not change.
+            warn_once(
+                "evaluator-format-uncollected-non-matches",
+                "",
+                "compare_with(evaluator_format=True) without "
+                "document_non_matches=True returns 'non_matches' as []: the "
+                "records were not collected, so it does not mean every field "
+                "matched. Pass document_non_matches=True to collect them. From "
+                "1.0.2 the 'non_matches' key is omitted unless "
+                "document_non_matches=True.",
+            )
 
         engine = ComparisonEngine(self)
         return engine.compare_with(
@@ -1775,6 +1667,7 @@ class StructuredModel(BaseModel):
         result: Dict[str, Any],
         other: "StructuredModel",
         recall_with_fd: bool = False,
+        recursive_result: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Format comparison results for evaluator compatibility.
 
@@ -1782,12 +1675,14 @@ class StructuredModel(BaseModel):
             result: Standard comparison result from compare_with
             other: The other model being compared
             recall_with_fd: Whether to include FD in recall denominator
+            recursive_result: The ``compare_recursive`` result, whose counts
+                give precision and recall
 
         Returns:
             Dictionary in evaluator format with overall, fields, confusion_matrix
         """
         return EvaluatorFormatHelper.format_for_evaluator(
-            self, result, other, recall_with_fd
+            self, result, other, recall_with_fd, recursive_result
         )
 
     def _calculate_list_item_metrics(
@@ -1889,6 +1784,7 @@ class StructuredModel(BaseModel):
         from .json_schema_field_converter import (
             PYTHON_TYPE_TO_JSON_TYPE,
             JsonSchemaFieldConverter,
+            add_exportable_default,
         )
 
         # schema/field_path unused for export operations - only needed for import
@@ -1920,11 +1816,23 @@ class StructuredModel(BaseModel):
                 # Defensive: unreachable through normal Pydantic model construction
                 raise ValueError(f"Field '{field_name}' has no type annotation")
 
-            # Unwrap Optional before type checking
-            field_type, _ = cls._unwrap_optional(field_type)
+            # Unwrap Optional and Annotated before type checking. Pydantic keeps
+            # Annotated inside a union, so `Annotated[Card, Field(...)] | None`
+            # is stored as `Optional[Annotated[Card, ...]]`, and without this
+            # the model missed the recursive branch below.
+            field_type = ConfigurationHelper.strip_annotation_wrappers(field_type)
 
+            # A union with a model arm, or a StructuredModel inside a nested
+            # list: written as 1.0.0 wrote it, with a warning, until 1.0.2.
+            if cls._warn_legacy_export(
+                field_info.annotation,
+                f"to_json_schema() field '{cls.__name__}.{field_name}'",
+            ):
+                property_schema = cls._legacy_json_schema_property(
+                    converter, field_info
+                )
             # Check if nested StructuredModel - recursively export to maintain full configuration
-            if cls._is_structured_model_type(field_type):
+            elif cls._is_structured_model_type(field_type):
                 property_schema = field_type.to_json_schema()
                 metadata = converter._extract_field_metadata(field_info)
                 metadata.pop("comparator", None)
@@ -1948,7 +1856,10 @@ class StructuredModel(BaseModel):
                 # such attribute -- an AttributeError instead of a schema. The
                 # primitive branch needs it too: `Optional[int]` is not a key in
                 # PYTHON_TYPE_TO_JSON_TYPE, so it fell through to "string".
-                element_type, element_is_nullable = cls._unwrap_optional(args[0])
+                # Annotated is stripped for the same reason, so
+                # `List[Annotated[Card, "m"]]` reaches the recursive branch.
+                _, element_is_nullable = cls._unwrap_optional(unwrap_annotated(args[0]))
+                element_type = ConfigurationHelper.strip_annotation_wrappers(args[0])
 
                 if cls._is_structured_model_type(element_type):
                     # List of StructuredModels - recursively export element schema
@@ -1959,6 +1870,9 @@ class StructuredModel(BaseModel):
                         "type": "array",
                         "items": items_schema,
                     }
+                    # Without the factory's `[]`, `default_factory=list`
+                    # imported back as None (#360).
+                    add_exportable_default(property_schema, field_info)
                     metadata = converter._extract_field_metadata(field_info)
                     metadata.pop("comparator", None)
                     # Drop the threshold for the same reason as the comparator:
@@ -1975,10 +1889,17 @@ class StructuredModel(BaseModel):
                     )
                     property_schema.update(extensions)
                 else:
-                    # Primitive list - build array schema manually
-                    json_element_type = PYTHON_TYPE_TO_JSON_TYPE.get(
-                        element_type, "string"
-                    )
+                    # List of scalars or mappings - build array schema manually.
+                    # A mapping element is a free-form `{"type": "object"}`, which
+                    # the importer reads back as `dict`. Falling through to "string"
+                    # re-imported `List[Dict[...]]` as `List[str]`, which then
+                    # rejected the data the original accepted (#333).
+                    if cls._is_mapping_element(args[0]):
+                        json_element_type = "object"
+                    else:
+                        json_element_type = PYTHON_TYPE_TO_JSON_TYPE.get(
+                            element_type, "string"
+                        )
                     property_schema = {
                         "type": "array",
                         "items": {
@@ -1987,12 +1908,24 @@ class StructuredModel(BaseModel):
                             else json_element_type
                         },
                     }
-                    # Extract and add stickler extensions from field metadata
-                    metadata = converter._extract_field_metadata(field_info)
+                    # As above. A literal default is still not exported here.
+                    add_exportable_default(property_schema, field_info)
+                    metadata = cls._list_export_metadata(
+                        converter, field_name, field_info, args[0]
+                    )
                     extensions = converter._build_comparison_extensions(
                         metadata, output_format="json_schema"
                     )
                     property_schema.update(extensions)
+                    # The element type above is "string" for a list of lists or
+                    # of plain models, which re-imported as List[str] and
+                    # rejected the original data (#349). Write the structure
+                    # instead, after refusing what neither export can write.
+                    cls._refuse_scalar_export(field_type)
+                    if get_origin(element_type) is list or (
+                        ConfigurationHelper.is_plain_model_annotation(element_type)
+                    ):
+                        property_schema["items"] = cls._json_type_schema(args[0])
             else:
                 # Primitive type - use converter for consistent formatting.
                 # field_type is already unwrapped above, so pass whether the
@@ -2009,6 +1942,49 @@ class StructuredModel(BaseModel):
                 schema["required"].append(field_name)
 
         return schema
+
+    @staticmethod
+    def _is_mapping_element(element) -> bool:
+        """Whether a list element exports as a mapping from ``to_json_schema()``.
+
+        Any mapping annotation, plus the type ``from_pydantic()`` declares a
+        mapping as: ``Annotated[Any, BeforeValidator(jsonable_mapping)]``
+        (``_WireDict`` in ``auto/builder.py``). It is ``Any`` so a malformed
+        prediction is scored rather than rejected, which hides the mapping from
+        :meth:`ConfigurationHelper.is_mapping_annotation`; its items then
+        exported as ``"string"`` and the re-imported model rejected its own data.
+        """
+        if ConfigurationHelper.is_mapping_annotation(element):
+            return True
+        inner, _ = unwrap_optional(element)
+        return get_origin(inner) is Annotated and any(
+            isinstance(m, BeforeValidator) and m.func is jsonable_mapping
+            for m in inner.__metadata__
+        )
+
+    @classmethod
+    def _list_export_metadata(
+        cls, converter, field_name: str, field_info, element_type
+    ) -> Dict[str, Any]:
+        """Comparison metadata to export for a list of scalars or mappings.
+
+        A list of mappings exports what the engine resolves, so each importer
+        rebuilds the field the engine scores. The raw attributes differ from it
+        for a field declared without ``ComparableField`` (none, so importers
+        applied their own defaults) and for a declared field whose annotation
+        resolved after class definition (Levenshtein, which the engine replaces
+        with ANLS* when it reads the field). Scalar lists keep the importer
+        defaults (#348).
+        """
+        if not cls._is_mapping_element(element_type):
+            return converter._extract_field_metadata(field_info)
+        resolved = ConfigurationHelper.get_comparison_info(cls, field_name)
+        return {
+            "comparator": resolved.comparator,
+            "threshold": resolved.threshold,
+            "weight": resolved.weight,
+            "clip_under_threshold": resolved.clip_under_threshold,
+        }
 
     @staticmethod
     def _unwrap_optional(field_type: Type) -> tuple:
@@ -2051,6 +2027,214 @@ class StructuredModel(BaseModel):
         except TypeError:
             return False
 
+    @staticmethod
+    def _model_export_shape(field_type: Type) -> Optional[str]:
+        """Classify an annotation the exporters cannot write by type.
+
+        Returns ``"scalar"`` for a StructuredModel reaching a scalar exporter
+        (it is written through its own ``to_json_schema()`` /
+        ``to_stickler_config()``, and as a scalar would lose its whole schema),
+        ``"nested_list"`` for a StructuredModel inside a nested list,
+        ``"union"`` for a union with a model arm, and ``None`` otherwise.
+        ``to_stickler_config()`` has no type for the last two, so both exports
+        treat them alike. ``Optional`` and ``Annotated`` are stripped at every
+        level.
+
+        Pass the field's whole annotation, not a list element: a nested list
+        is two list levels, and a model under one level is a list of models,
+        which the list branches write and a scalar exporter cannot.
+        """
+        strip = ConfigurationHelper.strip_annotation_wrappers
+        inner, depth = strip(field_type), 0
+        while get_origin(inner) is list and get_args(inner):
+            inner, depth = strip(get_args(inner)[0]), depth + 1
+        if isinstance(inner, type) and issubclass(inner, StructuredModel):
+            return "scalar" if depth < 2 else "nested_list"
+        if union_args(inner):
+            arms = [strip(arm) for arm in union_args(inner)]
+            if any(
+                isinstance(arm, type) and issubclass(arm, BaseModel) for arm in arms
+            ):
+                return "union"
+        return None
+
+    @staticmethod
+    def _refuse_scalar_export(field_type: Type) -> None:
+        """Raise for a StructuredModel reaching a scalar exporter.
+
+        See :meth:`_model_export_shape`. A union with a model arm and a
+        StructuredModel inside a nested list are not refused in 1.0.1: they
+        warn and export as 1.0.0 did (:meth:`_warn_legacy_export`).
+        """
+        if StructuredModel._model_export_shape(field_type) == "scalar":
+            raise ValueError(
+                f"Cannot export {field_type!r} as a scalar: it holds a "
+                f"StructuredModel, which the exporters write through its own "
+                f"to_json_schema() and to_stickler_config()."
+            )
+
+    @staticmethod
+    def _warn_legacy_export(field_type: Type, where: str, stacklevel: int = 3) -> bool:
+        """Warn and return True for a shape 1.0.1 still exports as 1.0.0 did.
+
+        A union with a model arm, or a StructuredModel inside a nested list,
+        has no type in ``to_stickler_config()``. 1.0.0 wrote both as a string
+        (or a list of strings), which re-imports as a different field (#349).
+        1.0.1 ships no breaking change, so it keeps that output and warns;
+        1.0.2 raises ``ValueError``.
+
+        ``warnings.warn``, not ``warn_once``: an export runs once per call, so
+        ordinary dedup by message is enough, as for the importer's warnings.
+        The default ``stacklevel`` reaches the caller of ``to_json_schema()``
+        or ``to_stickler_config()``.
+        """
+        shape = StructuredModel._model_export_shape(field_type)
+        if shape not in ("union", "nested_list"):
+            return False
+        what, fix = {
+            "union": (
+                "a union with a model arm",
+                "Declare the field as a single model type",
+            ),
+            "nested_list": (
+                "a StructuredModel inside a nested list",
+                "Wrap the inner list in its own StructuredModel (a list of rows, "
+                "each holding a list of models)",
+            ),
+        }[shape]
+        warnings.warn(
+            f"{where} cannot export {field_type!r}: to_stickler_config() has no "
+            f"type for {what}. It is written as 1.0.0 wrote it, typed as a "
+            f"string, so the re-imported model does not load or score this "
+            f"field as the original does. {fix}, or leave it out of the "
+            f"exported model. This becomes a ValueError in 1.0.2.",
+            UserWarning,
+            stacklevel=stacklevel,
+        )
+        return True
+
+    @staticmethod
+    def _legacy_json_schema_property(converter, field_info) -> Dict[str, Any]:
+        """What 1.0.0's ``to_json_schema()`` wrote for a field
+        :meth:`_warn_legacy_export` accepts.
+
+        1.0.0 unwrapped ``Optional`` once and nothing else, so these shapes
+        reached either its list branch, an array of ``"string"`` items with the
+        field's comparison extensions, or its scalar branch, a ``"string"``
+        property with the extensions, description, alias and examples. A
+        default is written only where every export branch writes one now: a
+        safe factory on a list (#360), which 1.0.0 could not declare.
+        """
+        from .json_schema_field_converter import (
+            PYTHON_TYPE_TO_JSON_TYPE,
+            add_exportable_default,
+        )
+
+        field_type, field_is_nullable = unwrap_optional(field_info.annotation)
+        extensions = converter._build_comparison_extensions(
+            converter._extract_field_metadata(field_info), output_format="json_schema"
+        )
+        if get_origin(field_type) is list and get_args(field_type):
+            element_type, element_is_nullable = unwrap_optional(get_args(field_type)[0])
+            json_type = PYTHON_TYPE_TO_JSON_TYPE.get(element_type, "string")
+            property_schema = {
+                "type": "array",
+                "items": {
+                    "type": [json_type, "null"] if element_is_nullable else json_type
+                },
+            }
+            add_exportable_default(property_schema, field_info)
+            property_schema.update(extensions)
+            return property_schema
+        json_type = PYTHON_TYPE_TO_JSON_TYPE.get(field_type, "string")
+        property_schema = {
+            "type": [json_type, "null"] if field_is_nullable else json_type
+        }
+        property_schema.update(extensions)
+        for key in ("description", "alias", "examples"):
+            if getattr(field_info, key):
+                property_schema[key] = getattr(field_info, key)
+        return property_schema
+
+    @staticmethod
+    def _legacy_stickler_field_config(converter, field_info) -> Dict[str, Any]:
+        """What 1.0.0's ``to_stickler_config()`` wrote for a field
+        :meth:`_warn_legacy_export` accepts.
+
+        ``"str"`` for a field, ``List[<element name>]`` for a list (``List[List]``,
+        ``List[Union]``, ``List[Annotated]``), with the field's comparison
+        settings, ``required``, a literal ``default`` as 1.0.0 wrote it, and the
+        description, alias and examples. A factory default, which 1.0.0 could not
+        declare, is written by the rule every other field uses (#360).
+        ``List[A | B]`` raised ``AttributeError`` in 1.0.0; it is written
+        ``List[Union]``, as ``List[Union[A, B]]`` is.
+        """
+        from pydantic.fields import PydanticUndefined
+
+        from .json_schema_field_converter import (
+            PYTHON_TYPE_TO_STICKLER_TYPE,
+            add_exportable_default,
+        )
+
+        field_type, _ = unwrap_optional(field_info.annotation)
+        if get_origin(field_type) is list and get_args(field_type):
+            element_type, _ = unwrap_optional(get_args(field_type)[0])
+            element_name = getattr(element_type, "__name__", None) or (
+                "Union" if union_args(element_type) else str(element_type)
+            )
+            stickler_type = f"List[{element_name}]"
+        else:
+            stickler_type = PYTHON_TYPE_TO_STICKLER_TYPE.get(field_type, "str")
+        field_config = {"type": stickler_type}
+        field_config.update(
+            converter._build_comparison_extensions(
+                converter._extract_field_metadata(field_info),
+                output_format="stickler_config",
+            )
+        )
+        field_config["required"] = field_info.is_required()
+        if not field_info.is_required():
+            if field_info.default is not PydanticUndefined:
+                field_config["default"] = field_info.default
+            else:
+                add_exportable_default(
+                    field_config, field_info, include_literal=True, stickler_config=True
+                )
+        for key in ("description", "alias", "examples"):
+            if getattr(field_info, key):
+                field_config[key] = getattr(field_info, key)
+        return field_config
+
+    @staticmethod
+    def _json_type_schema(element_type: Type) -> Dict[str, Any]:
+        """The JSON Schema ``items`` for a list element that is not a model.
+
+        A list is an array of its own element, and a mapping or plain
+        ``BaseModel`` is a free-form ``{"type": "object"}``, which
+        ``from_json_schema()`` reads back as ``dict``: both are scored as one
+        object (``ConfigurationHelper.is_object_grade_annotation``), and the
+        types of their values are not exported. Call it after
+        :meth:`_refuse_scalar_export`, which rejects what this cannot write.
+        """
+        from .json_schema_field_converter import PYTHON_TYPE_TO_JSON_TYPE
+
+        inner, nullable = unwrap_optional(unwrap_annotated(element_type))
+        inner = unwrap_annotated(inner)
+        if get_origin(inner) is list and get_args(inner):
+            schema = {
+                "type": "array",
+                "items": StructuredModel._json_type_schema(get_args(inner)[0]),
+            }
+        elif ConfigurationHelper.is_mapping_annotation(
+            inner
+        ) or ConfigurationHelper.is_plain_model_annotation(inner):
+            schema = {"type": "object"}
+        else:
+            schema = {"type": PYTHON_TYPE_TO_JSON_TYPE.get(inner, "string")}
+        if nullable:
+            schema["type"] = [schema["type"], "null"]
+        return schema
+
     @classmethod
     def to_stickler_config(cls) -> Dict[str, Any]:
         """Export model as custom Stickler JSON configuration.
@@ -2070,7 +2254,10 @@ class StructuredModel(BaseModel):
             >>> ReconstructedProduct = StructuredModel.model_from_json(config)
             >>> # ReconstructedProduct has identical comparison behavior
         """
-        from .json_schema_field_converter import JsonSchemaFieldConverter
+        from .json_schema_field_converter import (
+            JsonSchemaFieldConverter,
+            add_exportable_default,
+        )
 
         # schema/field_path unused for export operations - only needed for import
         converter = JsonSchemaFieldConverter(schema={}, field_path="")
@@ -2096,11 +2283,18 @@ class StructuredModel(BaseModel):
                 # Defensive: unreachable through normal Pydantic model construction
                 raise ValueError(f"Field '{field_name}' has no type annotation")
 
-            # Unwrap Optional before type checking
-            field_type, _ = cls._unwrap_optional(field_type)
+            # Unwrap Optional and Annotated before type checking, as in
+            # to_json_schema().
+            field_type = ConfigurationHelper.strip_annotation_wrappers(field_type)
 
+            # As in to_json_schema(): written as 1.0.0 wrote it until 1.0.2.
+            if cls._warn_legacy_export(
+                field_info.annotation,
+                f"to_stickler_config() field '{cls.__name__}.{field_name}'",
+            ):
+                field_config = cls._legacy_stickler_field_config(converter, field_info)
             # Check if nested StructuredModel - use "structured_model" type
-            if cls._is_structured_model_type(field_type):
+            elif cls._is_structured_model_type(field_type):
                 nested_config = field_type.to_stickler_config()
                 field_config = {
                     "type": "structured_model",
@@ -2129,8 +2323,11 @@ class StructuredModel(BaseModel):
                 # to_json_schema()'s list branch: the predicate below unwraps, so
                 # `List[Optional[Model]]` reached `to_stickler_config()` on the
                 # wrapper. The primitive branch below also reads
-                # `element_type.__name__`, which a union does not have.
-                element_type, _ = cls._unwrap_optional(args[0])
+                # `element_type.__name__`, which a union does not have. Annotated
+                # is stripped too, so `List[Annotated[Card, "m"]]` is a list of
+                # models.
+                _, element_is_nullable = cls._unwrap_optional(unwrap_annotated(args[0]))
+                element_type = ConfigurationHelper.strip_annotation_wrappers(args[0])
 
                 if cls._is_structured_model_type(element_type):
                     nested_config = element_type.to_stickler_config()
@@ -2144,6 +2341,23 @@ class StructuredModel(BaseModel):
                         field_config["match_threshold"] = nested_config[
                             "match_threshold"
                         ]
+                    # `required`, as field_to_stickler_config writes it:
+                    # model_from_json() reads a missing one as False, so a
+                    # required List[Model] rebuilt as optional.
+                    field_config["required"] = field_info.is_required()
+                    # A literal `[]` is written, as field_to_stickler_config
+                    # writes one: omitted, model_from_json() reads the missing
+                    # default as None and widens the field to Optional, so a
+                    # `List[Model]` turned nullable after a second round trip.
+                    # A non-empty literal holds model instances, which are not
+                    # JSON, so it is still not exported.
+                    literal = field_info.default
+                    add_exportable_default(
+                        field_config,
+                        field_info,
+                        include_literal=isinstance(literal, list) and not literal,
+                        stickler_config=True,
+                    )
                     metadata = converter._extract_field_metadata(field_info)
                     metadata.pop("comparator", None)
                     extensions = converter._build_comparison_extensions(
@@ -2151,11 +2365,48 @@ class StructuredModel(BaseModel):
                     )
                     field_config.update(extensions)
                 else:
-                    # Primitive list - pass element type, then fix up type string
+                    # Primitive list - pass element type, then fix up type string.
+                    # The whole field is checked first, since the converter
+                    # sees only the element.
+                    cls._refuse_scalar_export(field_type)
                     field_config = converter.field_to_stickler_config(
                         element_type, field_info
                     )
-                    field_config["type"] = f"List[{element_type.__name__}]"
+                    if ConfigurationHelper.is_mapping_annotation(element_type):
+                        # Every mapping element is written `Dict`, the spelling
+                        # `model_from_json()` reads. `__name__` wrote
+                        # `List[Mapping]` or `List[Counter]`, which it refused.
+                        # An optional element keeps its nullability, as
+                        # to_json_schema() does, or None elements are rejected.
+                        field_config["type"] = (
+                            "List[Optional[Dict]]"
+                            if element_is_nullable
+                            else "List[Dict]"
+                        )
+                        metadata = cls._list_export_metadata(
+                            converter, field_name, field_info, element_type
+                        )
+                        # Replace the raw attributes the converter wrote, so a
+                        # substituted comparator does not keep the old config.
+                        # Updating in place keeps a surviving config's key order.
+                        extensions = converter._build_comparison_extensions(
+                            metadata, output_format="stickler_config"
+                        )
+                        if "comparator_config" not in extensions:
+                            field_config.pop("comparator_config", None)
+                        field_config.update(extensions)
+                    else:
+                        # A plain model's class name is not a type
+                        # model_from_json() knows; it is written as `dict`, as
+                        # the singular field is.
+                        element_name = (
+                            "dict"
+                            if ConfigurationHelper.is_plain_model_annotation(
+                                element_type
+                            )
+                            else element_type.__name__
+                        )
+                        field_config["type"] = f"List[{element_name}]"
             else:
                 # Primitive type - use converter for consistent formatting
                 field_config = converter.field_to_stickler_config(

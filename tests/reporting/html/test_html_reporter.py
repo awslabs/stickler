@@ -434,3 +434,62 @@ class TestEvaluationHTMLReporterIntegration:
         assert 'name' in html_content
         assert 'price' in html_content
         assert 'category' in html_content
+
+
+def _dataframe_report(tmp_path, doc_ids):
+    """Build a report from a DataFrame with the given ids, embedding the JSONL."""
+    import json
+
+    import pandas as pd
+
+    from stickler import StructuredModel
+    from stickler.reporting.html.html_reporter import EvaluationHTMLReporter
+    from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
+        BulkStructuredModelEvaluator,
+    )
+
+    class Invoice(StructuredModel):
+        vendor: str
+
+    jsonl = tmp_path / "results.jsonl"
+    df = pd.DataFrame(
+        [
+            {
+                "doc_id": doc_id,
+                "expected": json.dumps({"vendor": "Acme"}),
+                "predicted": json.dumps({"vendor": "Globex" if i == 0 else "Acme"}),
+            }
+            for i, doc_id in enumerate(doc_ids)
+        ]
+    )
+    results = BulkStructuredModelEvaluator(
+        Invoice, individual_results_jsonl=str(jsonl)
+    ).evaluate_dataframe(df)
+    out = tmp_path / "report.html"
+    reporter = EvaluationHTMLReporter()
+    report = reporter.generate_report(
+        results, str(out), individual_results_jsonl_path=str(jsonl)
+    )
+    assert report.success, report.errors
+    return reporter, jsonl, out.read_text()
+
+
+def test_an_integer_doc_id_is_embedded_as_the_string_the_page_selects(tmp_path):
+    """The per-document view finds a document with ``d.doc_id === docId``, where
+    ``docId`` is the dropdown value, always a string. An id embedded as a number
+    matched nothing, so selecting it left every section on aggregate numbers."""
+    reporter, jsonl, page = _dataframe_report(tmp_path, [1001, 1002])
+    assert [d["doc_id"] for d in reporter._load_individual_results(str(jsonl))] == [
+        "1001",
+        "1002",
+    ]
+    assert '"doc_id": "1001"' in page
+    assert '"doc_id": 1001' not in page
+
+
+def test_the_pdf_viewer_disables_eval(tmp_path):
+    """pdf.js 3.11.174 runs script from a crafted font unless eval is off
+    (CVE-2024-4367). The viewer ships only with per-document data."""
+    _, _, page = _dataframe_report(tmp_path, ["doc1"])
+    assert "getDocument({ url, isEvalSupported: false })" in page
+    assert "getDocument(url)" not in page

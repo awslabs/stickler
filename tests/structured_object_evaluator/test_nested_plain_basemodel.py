@@ -1707,14 +1707,18 @@ class TestTheElementGateJudgesAPairNotAList:
         [{'a':1},{'b':2},{'c':3}, Plain('p')]     1.0    0.0          0.75
         ['x','y','z', Plain('p')]                 1.0    0.75         0.75
         [NoteSM]        vs [Note2SM]              1.0    1.0          1.0
-        [Plain, NoteSM] vs [Plain, Note2SM]       1.0    0.5          1.0
+        [Plain, NoteSM] vs [Plain, Note2SM]       1.0    0.0          0.5
+          same, comparator declared on `f`        1.0    0.5          1.0
 
     The string row is the shape the refusal is FOR: one element out of four cannot
     be scored, and the field loses a quarter. The dict row zeroed three elements
     that score 1.0 on their own, in the same list, on `dev`, and here the moment
-    the plain model is removed. The last row enforced the cross-class rule that
-    #327 is deliberately holding open, so the answer depended on whether an
-    unrelated plain model shared the list.
+    the plain model is removed. Both `[Plain, NoteSM]` rows enforced the
+    cross-class rule that #327 is deliberately holding open (bare: fd=2 under the
+    list-wide gate), so the answer depended on whether an unrelated plain model
+    shared the list. The bare row's 0.5 now is the refused `Plain` pair
+    (`[Plain]` vs `[Plain]` scores 0.0 bare), not that rule, which is why
+    `test_two_structured_model_classes_keep_the_declared_gap` uses `Declared`.
     """
 
     class Plain(BaseModel):
@@ -1799,6 +1803,23 @@ class TestTheElementGateJudgesAPairNotAList:
         ]["f"]
         assert alone == pytest.approx(1.0)
         assert beside_a_plain_model == pytest.approx(alone)
+
+    def test_the_bare_row_loses_the_refused_plain_pair(self):
+        """Pins the bare `[Plain, NoteSM]` row of the table above (#338).
+
+        The row drifted from behaviour once because nothing asserted it. The bare
+        0.5 is the refused `Plain` pair: `[Plain]` alone scores 0.0, and the
+        cross-class `NoteA`/`NoteB` pair still scores as a match (tp=1).
+        """
+        Bare = self._bare()
+        assert self._score(Bare, (self.Plain(sku="p"),)) == pytest.approx(0.0)
+        result = Bare(f=[self.Plain(sku="p"), self.NoteA(sku="a")]).compare_with(
+            Bare(f=[self.Plain(sku="p"), self.NoteB(sku="a")]),
+            include_confusion_matrix=True,
+        )
+        node = result["confusion_matrix"]["fields"]["f"]["overall"]
+        assert result["field_scores"]["f"] == pytest.approx(0.5)
+        assert (node["tp"], node["fd"]) == (1, 1)
 
     def test_a_plain_model_against_a_structured_model_is_still_a_mismatch(self):
         """The pair `and` would have waved through, which is why the rule reads `or`.
@@ -1894,26 +1915,8 @@ class TestTheGateDoesNotWarnAboutDiscardedPairs:
         assert self._mismatch_warnings(caught)
 
 
-class TestARefusedElementIsCountedButNotReported:
-    """The declared gap, pinned so it cannot widen unnoticed.
-
-    There is a sixth reader of the pair question and it cannot consult the gate.
-    The confusion-matrix counts come through the wrapped element comparator; the
-    item-level report comes through `ComparisonHelperBase.get_optimal_assignments`,
-    which runs its own `HungarianHelper.get_complete_matching_info(gt_list,
-    pred_list)` with no comparator argument at all. It scores the refused pair as a
-    match and emits nothing.
-
-    So the counts say one false discovery and the report says there is nothing to
-    report. An ordinary below-threshold element IS documented, which is what makes
-    the omission specific to a refusal.
-
-    This asserts the CURRENT behaviour. Fixing it means threading the field's
-    comparator into `get_optimal_assignments`, which changes `non_matches` for
-    every list of plain models, so it is its own change. When that lands this test
-    fails, which is the reminder to update the CHANGELOG's "Known gap" paragraph in
-    the same commit.
-    """
+class TestARefusedElementIsCountedAndReported:
+    """Regression for #332: rejected list pairs need an explanation and a count."""
 
     class Plain(BaseModel):
         sku: Optional[str] = None
@@ -1942,31 +1945,18 @@ class TestARefusedElementIsCountedButNotReported:
         assert result["field_scores"]["f"] == pytest.approx(0.0)
         assert (node["tp"], node["fd"]) == (0, 1)
 
-    def test_the_refusal_is_not_reported(self):
-        """The gap itself."""
+    def test_the_refusal_is_reported(self):
+        """The item-level explanation must agree with the false-discovery count."""
         result = self._result([self.Plain(sku="a")], [self.Other(sku="a")])
-        assert not (result.get("non_matches") or [])
+        entry, = result["non_matches"]
+        assert entry["field_path"] == "f[0]"
+        assert entry["non_match_type"] == "false_discovery"
+        assert entry["similarity_score"] == 0.0
 
     def test_an_ordinary_below_threshold_element_still_is_reported(self):
-        """The contrast that makes the gap specific rather than general.
-
-        Without this, the test above would also pass if non-match reporting were
-        broken outright, and the gap would look larger than it is.
-        """
+        """Ordinary below-threshold explanations remain available."""
         result = self._result(["aaa"], ["zzz"])
         assert result["non_matches"]
         assert any(
             "below threshold" in str(nm.get("reason", "")) for nm in result["non_matches"]
-        )
-
-    def test_the_changelog_still_declares_it(self):
-        """A gap the CHANGELOG stops mentioning is a gap that reads as fixed."""
-        from pathlib import Path
-
-        changelog = Path(__file__).resolve().parents[2] / "CHANGELOG.md"
-        text = " ".join(changelog.read_text().split())
-        assert "a refused list element is counted but not reported" in text.lower(), (
-            "CHANGELOG no longer declares that a refused element produces no "
-            "non-match record, which the tests above measure as still true. "
-            "Remove both together or neither."
         )

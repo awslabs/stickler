@@ -18,7 +18,6 @@ class DerivedMetricsCalculator:
     This class is part of the StructuredModel refactoring that extracts metrics
     calculation logic into dedicated helper classes. It works in conjunction with:
     
-    - ConfusionMatrixCalculator: Calculates basic confusion matrix metrics
     - AggregateMetricsCalculator: Calculates aggregate metrics by rolling up children
     - MetricsHelper: Provides the actual calculation logic for derived metrics
     - ConfusionMatrixBuilder: Orchestrates all metrics calculation

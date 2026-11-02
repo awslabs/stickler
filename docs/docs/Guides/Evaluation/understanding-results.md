@@ -46,7 +46,7 @@ Maps each field name to its similarity score (0.0 to 1.0). For nested objects, t
 
 ### Asking whether anything failed
 
-`overall_score` is the scalar summary, and for a single object-level verdict `stickler.evaluate()` returns an `EvalResult` whose `matched` attribute is `overall_score >= match_threshold`.
+`overall_score` is the scalar summary, and for a single object-level verdict `stickler.evaluate()` returns an `EvalResult` whose `matched` attribute is `overall_score >= match_threshold` (see [Meeting a Threshold](../../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold)).
 
 To ask whether anything at all went wrong, read **both** rollup nodes, because they scope different things:
 
@@ -104,7 +104,7 @@ The `confusion_matrix` object has four keys:
 
 - **`overall`** -- Metrics for this node's direct children. Where the field is a list, those children are item pairings rather than leaves.
 - **`fields`** -- Field-by-field breakdown, with nested structure for objects and lists.
-- **`non_matches`** -- Populated when `document_non_matches=True` (empty otherwise).
+- **`non_matches`** -- Always `[]`, a placeholder, also in evaluator-format output. With `document_non_matches=True` the records are in the result's top-level `non_matches`.
 - **`aggregate`** -- Primitive field metrics summed recursively below this node, excluding list items rejected at their element class's `match_threshold`. A single nested `StructuredModel` field is not excluded; its leaves are always counted. Where a list's items were *all* rejected the counts become object rows rather than primitive-field metrics, so check that before computing a leaf rate ([why](../../Advanced/aggregate-metrics.md#aggregate-counts-objects-for-an-all-rejected-list)). See [`overall` vs `aggregate`](#overall-vs-aggregate).
 
 ### `overall` vs `aggregate`
@@ -402,7 +402,7 @@ This is useful for comprehensive auditing of all comparisons, not just failures.
 The per-document `overall_score` above is a weighted average of field scores. When you aggregate across many documents with `BulkStructuredModelEvaluator.compute()`, the weight information is preserved via two keys:
 
 - **`metrics["weighted_overall_score"]`** (float) -- Arithmetic mean of each document's `overall_score`. Prefer this over `cm_f1` whenever your schema uses non-uniform `ComparableField(weight=...)` values: `cm_f1` treats every field-match equally, while `weighted_overall_score` preserves the declared per-field weights across the dataset.
-- **`field_metrics[path]["mean_score"]`** (float, when present) -- Arithmetic mean of each document's `threshold_applied_score` at that path, reported at every nested node that was actually scored. Paths with confusion-matrix counts but no score data (e.g., leaves inside `List[StructuredModel]`, where `compare_with()` only emits the score at the list parent) are surfaced without a `mean_score` key rather than as `0.0`.
+- **`field_metrics[path]["mean_score"]`** (float, when present) -- Arithmetic mean of each document's `threshold_applied_score` at that path, reported at every nested node that was actually scored. Paths with confusion-matrix counts but no score data are surfaced without a `mean_score` key rather than as `0.0`. Inside a `List[StructuredModel]` element, only the element's own `StructuredModel` and `List[StructuredModel]` fields (`items.addr`, `items.parts`) are scored, and each document's value is its first matched element pair's score, not a mean over pairs, so it depends on element order ([#428](https://github.com/awslabs/stickler/issues/428)). Every other path inside an element (`items.name`, `items.tags`, `items.addr.city`, `items.addr.geo`) has counts only. All of them count only element pairs that met the match threshold: `compare_with()` emits no element fields for a pair below it.
 
 ```python
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (

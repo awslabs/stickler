@@ -1,5 +1,9 @@
 """Tests for print_confusion_matrix, including empty-fields edge cases (issue #307)."""
 
+import re
+import sys
+import tempfile
+
 import pytest
 
 from stickler import StructuredModel
@@ -86,3 +90,23 @@ def test_print_confusion_matrix_normal_model_renders_fields(
     assert "FIELD-LEVEL METRICS" in captured.out
     assert "name" in captured.out
     assert "age" in captured.out
+
+
+def test_print_confusion_matrix_output_file_error_restores_stdout() -> None:
+    """When output_file write fails, sys.stdout must be restored and error propagated (issue #385)."""
+    gt = PersonModel(name="Alice", age=30)
+    pred = PersonModel(name="Bob", age=25)
+    cm = gt.compare_with(pred, include_confusion_matrix=True)
+
+    original_stdout = sys.stdout
+    assert not original_stdout.closed, "stdout should be open before the call"
+
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as tmp:
+        tmp_path = tmp.name
+
+    with pytest.raises(re.error, match="unterminated subpattern"):
+        print_confusion_matrix(cm, field_filter="(", output_file=tmp_path, show_details=True)
+
+    assert sys.stdout is original_stdout, "stdout should be restored to original"
+    assert not sys.stdout.closed, "stdout should still be open after error"
+    print("stdout is working")  # This should succeed

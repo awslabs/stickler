@@ -7,6 +7,8 @@ from typing import Any, Dict, Optional
 from stickler.comparators.base import BaseComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 
+from .threshold_helper import ThresholdHelper
+
 
 class ComparisonInfo:
     """Container for comparison configuration.
@@ -56,7 +58,11 @@ class ComparisonInfo:
         similarity = self.comparator.compare(value1, value2)
 
         # Apply threshold (if below threshold, return 0)
-        return 0.0 if similarity < self.threshold else similarity
+        return (
+            0.0
+            if ThresholdHelper.is_below_threshold(similarity, self.threshold)
+            else similarity
+        )
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -93,6 +99,7 @@ class ComparableFieldConfig:
         threshold: float = 0.5,
         weight: float = 1.0,
         clip_under_threshold: bool = True,
+        comparator_explicit: bool = False,
     ):
         """Initialize comparison configuration.
 
@@ -101,8 +108,12 @@ class ComparableFieldConfig:
             threshold: Minimum similarity score to consider a match (default: 0.5)
             weight: Weight of this field in the overall score (default: 1.0)
             clip_under_threshold: Whether to zero out scores below threshold (default: True)
+            comparator_explicit: Whether the field declared ``comparator``, rather
+                than it being inferred. A declared comparator is called for any
+                pair of non-structured values (#383).
         """
         self.comparator = comparator or LevenshteinComparator()
+        self.comparator_explicit = comparator_explicit
         self.threshold = threshold
         self.weight = weight
         self.clip_under_threshold = clip_under_threshold
@@ -125,7 +136,9 @@ class ComparableFieldConfig:
         similarity = self.comparator.compare(value1, value2)
 
         # Apply threshold if clip_under_threshold is enabled
-        if self.clip_under_threshold and similarity < self.threshold:
+        if self.clip_under_threshold and ThresholdHelper.is_below_threshold(
+            similarity, self.threshold
+        ):
             return 0.0
 
         return similarity

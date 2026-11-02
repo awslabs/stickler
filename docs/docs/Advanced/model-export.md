@@ -14,6 +14,36 @@ Stickler provides three methods for exporting model schemas. Two support round-t
 | `to_stickler_config()` | Custom Stickler JSON | Yes | `model_from_json()` | Hand-editing, version control |
 | `model_json_schema()` | Pydantic JSON Schema | No | N/A | API docs, LLM tool specs, runtime inspection |
 
+A plain Pydantic `BaseModel` field, or a list of them, is scored as one object and exports as a
+free-form object (`{"type": "object"}`, `"dict"` in a Stickler config). It re-imports as `dict` with
+its comparison settings, but its own field types are not exported, so the re-imported field does
+not coerce values. A list of lists exports as nested arrays; `to_stickler_config()` writes it as
+`List[List]`, without the inner element type. A plain model inside a nested list comes back as a
+`dict`, which can score slightly differently there. `to_stickler_config()` has no type for a union
+with a model arm (`Union[Card, Bank]`, `Union[Plain, str]`) or for a `StructuredModel` inside a
+nested list (`List[List[Card]]`). Both methods still write these as 1.0.0 did, typed as a string,
+which does not re-import as the original field, and emit a `UserWarning` naming the field. From
+1.0.2 both raise `ValueError` for them
+([#349](https://github.com/awslabs/stickler/issues/349)).
+
+A `Dict` field exports as `{"type": "object"}`, with `additionalProperties` for a primitive value
+type, and as `"Dict[str, int]"` in a Stickler config (`"dict"` when a key or value type has no config
+name). Through JSON Schema it re-imports as `dict`, so the value type is not enforced. A
+`default_factory` of `list`, `dict` or `set` on a list or mapping field exports as the value it
+produces (`[]`, `{}`, a set as a list) and re-imports as that default. Any other factory, or one on
+a field exported as a scalar such as `Set[str]`, exports no default and re-imports as `None`.
+
+A Stickler config has no nullable flag: `model_from_json()` makes a field `Optional` only when its
+default is `None`. So on an `Optional` field `to_stickler_config()` writes no empty `[]` or `{}`
+default, from a factory or written literally. The field re-imports nullable with a `None` default,
+which scores the same as the original's `[]` or `{}`, though the rebuilt instance holds `None`
+(`model_dump()` shows `null`). This covers an empty list or mapping default only. Any other default
+on an `Optional` field, such as `Optional[List[int]] = [1]` or `Optional[str] = ""`, is written and
+re-imports non-nullable, rejecting `None`. A `List[Model]` field is the exception: a non-empty
+literal (`[Sub(...)]`), a tuple, or a factory other than `list`, `dict` or `set` is not written, so
+the field re-imports as `Optional` with a `None` default and accepts `None`, which scores the same
+as `[]`. That holds whether or not the original was `Optional`.
+
 Both round-trip methods are also reachable from a plain Pydantic `BaseModel` that was never written
 as a `StructuredModel`, by converting first:
 
@@ -97,10 +127,12 @@ schema = Product.to_json_schema()
 
 The export is complete, not minimal: every field carries its weight, clip flag, and comparator
 configuration even where those were left at their defaults, and the root carries its match
-threshold. This is what makes the round trip exact — the re-imported model cannot drift if a default
-changes in a later release. `price` has no `x-aws-stickler-comparator-config` only because
+threshold. `price` has no `x-aws-stickler-comparator-config` only because
 `NumericComparator()` was constructed with no arguments to record. Fields declared `Optional` export
 as `{"type": ["string", "null"]}`; see [Optional fields and `null`](dynamic-models.md#optional-fields-and-null).
+Re-importing an export preserves comparison settings. A field that is not required (a bare `T`
+without `default=...`) is currently re-imported as nullable `Optional[T]`
+([#189](https://github.com/awslabs/stickler/issues/189)).
 
 ## to_stickler_config()
 
@@ -193,6 +225,24 @@ schema = Order.to_json_schema()
 # Stickler config includes LineItem fields under items.fields
 config = Order.to_stickler_config()
 ```
+
+A list of mappings (`List[Dict[str, str]]`, `List[Mapping[...]]`) exports free-form object items:
+`items: {"type": "object"}` from `to_json_schema()`, `List[Dict]` from `to_stickler_config()`. An
+optional element exports as `["object", "null"]` and `List[Optional[Dict]]`. They re-import as
+`List[dict]` and `List[Dict]` respectively (`List[Optional[dict]]` and `List[Optional[Dict]]` for an
+optional element) with the comparator, threshold, weight and clip the field resolves, declared or
+default, so it scores as the original did. The value type is not exported, so the re-imported
+field does not coerce its values.
+
+A model built with `from_pydantic()` exports the same way, with two differences. Its element accepts
+any value, so a malformed prediction is scored rather than rejected; `to_stickler_config()` keeps
+that by writing `List[Any]`, but the `to_json_schema()` re-import validates each element as a dict,
+so a prediction element that is not a mapping raises instead of scoring `0.0`. An `Optional` written
+inside `Annotated` (`List[Annotated[Optional[Dict], ...]]`) loses its `null`; write
+`Optional[Annotated[...]]` instead.
+
+A mapping field that is not in a list, and a list whose element is a union such as
+`List[Union[Dict, str]]`, still export as a string ([#349](https://github.com/awslabs/stickler/issues/349)).
 
 ## Round-Trip Examples
 

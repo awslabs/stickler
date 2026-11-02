@@ -5,7 +5,7 @@
 # automatic navigation generation from directory structure.
 
 # Declare phony targets (targets that don't represent files)
-.PHONY: install docs build deploy clean
+.PHONY: install docs build check deploy clean
 
 # install: Install all documentation dependencies
 # 
@@ -35,17 +35,18 @@ docs:
 
 # build: Build static site for production
 #
-# Generates the complete static site in the site/ directory. This validates:
-# - All Markdown files compile correctly
-# - Internal links resolve properly
-# - API documentation generates without errors
-# - Theme assets are bundled correctly
+# Generates the complete static site in site/ and reports diagnostics.
+# Warnings do not fail an ordinary build; use make check to enforce them.
 #
 # The site/ directory can be served by any static web server.
 #
 # Usage: make build
 build:
 	uv run mkdocs build
+
+# check: Build the site and enforce the pull-request documentation gate
+check:
+	uv run --frozen --only-group docs python check_links.py
 
 # deploy: Deploy site to GitHub Pages
 #

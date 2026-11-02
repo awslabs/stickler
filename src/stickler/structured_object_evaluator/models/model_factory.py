@@ -5,9 +5,11 @@ dynamic StructuredModel subclasses from JSON configuration. It uses the factory 
 to separate model creation concerns from the core StructuredModel class.
 """
 
-from typing import Any, Dict, Type
+from typing import Any, Dict, Optional, Type
 
 from pydantic import create_model
+
+from stickler.utils.deprecation import warn_once
 
 from .field_converter import (
     convert_fields_config,
@@ -15,6 +17,19 @@ from .field_converter import (
     validate_fields_config,
 )
 from .threshold_helper import model_identity, warn_if_threshold_is_zero
+
+#: Every key a top-level model config may carry, as read by ``create_model``.
+ACCEPTED_MODEL_CONFIG_KEYS = frozenset(
+    {"fields", "model_name", "match_threshold", "infer_unspecified_fields"}
+)
+
+#: Frames between ``warnings.warn`` and the user's ``model_from_json`` call, for
+#: the model-level unknown-key warning. ``warn_once``'s default of 3 assumes one
+#: wrapping call; this one is reached through four, so at 3 the warning was
+#: attributed to this module instead of to the line the reader can fix. Counted
+#: outward from ``warnings.warn``: warn_once, validate_config,
+#: create_model_from_json, model_from_json, caller.
+_UNKNOWN_KEY_STACKLEVEL = 5
 
 
 class ModelFactory:
@@ -33,7 +48,11 @@ class ModelFactory:
 
     @staticmethod
     def create_model_from_json(
-        config: Dict[str, Any], base_class: Type = None
+        config: Dict[str, Any],
+        base_class: Type = None,
+        *,
+        path_prefix: str = "",
+        model_id: Optional[str] = None,
     ) -> Type:
         """Create a StructuredModel subclass from JSON configuration.
         
@@ -76,6 +95,14 @@ class ModelFactory:
                    }
             base_class: The base class to extend (typically StructuredModel).
                        If None, will be imported to avoid circular dependency.
+            path_prefix: Dotted path of the field this model hangs off, ``""``
+                       for a root model and ``"billing."`` for the model built
+                       from a nested ``billing`` field. Internal: set by the
+                       nested-model recursion so a warning names the full path.
+            model_id: ``model_identity`` of the ROOT model, computed here when
+                       absent and passed down unchanged. Internal: it scopes the
+                       warn-once bookkeeping to one model, so a second model in
+                       the same process still reports its own misconfiguration.
 
         Returns:
             A fully functional StructuredModel subclass created with create_model()
@@ -119,8 +146,23 @@ class ModelFactory:
             from .structured_model import StructuredModel
             base_class = StructuredModel
 
+        # Computed once, at the root, and then passed down untouched: a nested
+        # model's synthesised name is derived from the field it hangs off, so two
+        # different configs each with a `billing` field would otherwise produce
+        # the same identity and share a warn-once slot. Field names are stringified
+        # because a non-string key must reach the ValueError below rather than
+        # raising TypeError out of the join inside `model_identity`.
+        if model_id is None:
+            fields = config.get("fields") if isinstance(config, dict) else None
+            model_id = model_identity(
+                config.get("model_name", "DynamicModel")
+                if isinstance(config, dict)
+                else "DynamicModel",
+                tuple(str(name) for name in fields) if isinstance(fields, dict) else (),
+            )
+
         # Validate configuration structure
-        ModelFactory.validate_config(config)
+        ModelFactory.validate_config(config, path_prefix=path_prefix, model_id=model_id)
 
         # Extract configuration values
         fields_config = config["fields"]
@@ -155,7 +197,9 @@ class ModelFactory:
             converter = get_global_converter()
 
             # First validate basic field configurations
-            validate_fields_config(fields_config)
+            validate_fields_config(
+                fields_config, path_prefix=path_prefix, model_id=model_id
+            )
 
             # Then validate nested schema rules
             for field_name, field_config in fields_config.items():
@@ -176,6 +220,8 @@ class ModelFactory:
                 fields_config,
                 infer_unspecified=infer_unspecified,
                 match_threshold=match_threshold,
+                path_prefix=path_prefix,
+                model_id=model_id,
             )
         except ValueError as e:
             raise ValueError(f"Error converting field configurations: {e}")
@@ -341,7 +387,9 @@ class ModelFactory:
         return DynamicClass
 
     @staticmethod
-    def validate_config(config: Dict[str, Any]) -> None:
+    def validate_config(
+        config: Dict[str, Any], *, path_prefix: str = "", model_id: str = ""
+    ) -> None:
         """Validate model configuration before creation.
         
         This method performs structural validation of the configuration dictionary
@@ -351,7 +399,11 @@ class ModelFactory:
         
         Args:
             config: Configuration dictionary to validate
-            
+            path_prefix: Dotted path of the field this model hangs off, ``""``
+                at the root. Part of the unknown-key warn-once key.
+            model_id: ``model_identity`` of the root model. Part of the same key,
+                so a second model carrying the same typo still reports it.
+
         Raises:
             ValueError: If configuration structure is invalid
             
@@ -372,6 +424,30 @@ class ModelFactory:
         # Validate required 'fields' key exists
         if "fields" not in config:
             raise ValueError("Configuration must contain 'fields' key")
+
+        # Same silent drop as at field level: 'match_threshhold' leaves the model
+        # at 0.7 and 'model_nam' leaves the class named DynamicModel, neither
+        # with any signal. Report and keep building.
+        unknown = set(config) - ACCEPTED_MODEL_CONFIG_KEYS
+        if unknown:
+            warn_once(
+                "model-config-unknown-keys",
+                # Keyed on the model's identity as well as the keys. Keyed on the
+                # key names alone, the first config in a process silenced every
+                # later one carrying the same typo. ``key=str`` because a
+                # non-string key must not turn this warning into a TypeError,
+                # against a docstring that documents ``Raises: ValueError``.
+                f"{model_id}|{path_prefix}|"
+                f"{','.join(str(k) for k in sorted(unknown, key=str))}",
+                f"Model config does not accept "
+                f"{', '.join(repr(k) for k in sorted(unknown, key=str))}; "
+                f"ignored. It accepts "
+                f"{', '.join(sorted(ACCEPTED_MODEL_CONFIG_KEYS))}. "
+                f"A misspelled key leaves the model at its default, so the "
+                f"value you wrote is not the value being used.",
+                category=UserWarning,
+                stacklevel=_UNKNOWN_KEY_STACKLEVEL,
+            )
 
         # Validate fields is a non-empty dictionary
         fields_config = config["fields"]

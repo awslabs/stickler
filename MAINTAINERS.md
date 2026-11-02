@@ -5,6 +5,7 @@
 | Name | GitHub | Affiliation |
 |------|--------|-------------|
 | Spencer Romo | [@sromoam](https://github.com/sromoam) | AWS |
+| Diego Galaviz | [@digalaviz](https://github.com/digalaviz) | AWS |
 
 ## Emeritus
 

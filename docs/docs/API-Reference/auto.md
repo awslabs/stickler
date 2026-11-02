@@ -49,7 +49,7 @@ above:
 | `recall` | `float` | `cm_recall` |
 | `f1` | `float` | `cm_f1` |
 | `accuracy` | `float` | `cm_accuracy` |
-| `matched` | `bool` | `overall_score >= match_threshold`. A convenience roll-up, not a per-field guarantee: individual fields can be below their thresholds while `matched` is `True`. Read `field_scores` or the confusion matrix for that. |
+| `matched` | `bool` | `overall_score >= match_threshold` (see [Meeting a Threshold](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold)). A convenience roll-up, not a per-field guarantee: individual fields can be below their thresholds while `matched` is `True`. Read `field_scores` or the confusion matrix for that. |
 | `confusion_matrix` | `dict` | The full confusion-matrix subtree |
 | `raw` | `dict` | The unmodified `compare_with()` result |
 

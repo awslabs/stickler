@@ -161,6 +161,15 @@ These raise `TypeError` with an actionable message at `eval_for` time:
   class would need itself as a field type before it exists.
 - **Empty models** (no fields to score).
 - **A field named `extra_fields`** (reserved by the comparison engine).
+- **A `RootModel`**, as the class passed in, a field, or a list element: its one
+  value has no field name to score it under. The message names the path
+  (`Holder.pt`, `Holder.items[]`). An explicitly configured `StructuredModel` is
+  never mirrored, so this does not reach inside one.
+
+A model that trips two of these reports whichever one its fields reach first, so
+the order above is not a precedence guarantee: a recursive model that also holds
+a `RootModel` reports recursion or the root, depending on which field is declared
+first. Both name a blocker the caller has to fix.
 
 ## Known limitations
 

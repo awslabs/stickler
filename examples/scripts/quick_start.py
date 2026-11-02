@@ -194,7 +194,12 @@ def demo_evaluator_detailed_analysis():
 
     print("Evaluating similar but not identical orders...")
 
-    result = gt_order.compare_with(pred_order, include_confusion_matrix=True, evaluator_format=True)
+    result = gt_order.compare_with(
+        pred_order,
+        include_confusion_matrix=True,
+        evaluator_format=True,
+        document_non_matches=True,
+    )
 
     print("\n📊 Overall Metrics:")
     print(f"  Precision: {result['overall']['precision']:.3f}")

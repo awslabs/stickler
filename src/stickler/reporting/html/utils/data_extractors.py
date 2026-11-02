@@ -62,20 +62,28 @@ class DataExtractor:
             return results.get('confusion_matrix', {}).get('overall', {})
     
     @staticmethod
-    def extract_non_matches(results: Union[Dict[str, Any], ProcessEvaluation]) -> List[Dict[str, Any]]:
+    def extract_non_matches(
+        results: Union[Dict[str, Any], ProcessEvaluation],
+    ) -> Optional[List[Dict[str, Any]]]:
         """
         Standardized non-matches extraction.
-        
+
         Args:
             results: Evaluation results (individual or bulk)
-            
+
         Returns:
-            List of non-match dictionaries
+            List of non-match dictionaries, or None when the results carry no
+            records at all. `compare_with()` only writes the `non_matches` key
+            when called with `document_non_matches=True`, and
+            `ProcessEvaluation.non_matches` is None when the bulk evaluator was
+            built with `document_non_matches=False`, so an empty list and no
+            list mean different things and only the first one means the
+            document was clean.
         """
         if isinstance(results, ProcessEvaluation):
-            return results.non_matches or []
+            return results.non_matches
         else:
-            return results.get('non_matches', [])
+            return results.get('non_matches')
     
     @staticmethod
     def get_document_count(results: Union[Dict[str, Any], ProcessEvaluation]) -> int:

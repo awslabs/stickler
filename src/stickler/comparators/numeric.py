@@ -139,9 +139,10 @@ class NumericComparator(BaseComparator):
             True if numbers are equal within tolerance, False otherwise
         """
         # Guard non-finite values before tolerance arithmetic: Decimal
-        # NaN/Infinity subtraction raises InvalidOperation. Semantics match
-        # the tolerance=0 path: NaN equals nothing (including NaN), infinite
-        # values match only exactly.
+        # NaN/Infinity subtraction raises InvalidOperation. A float NaN never
+        # gets here -- ``compare()`` reads it as missing (#367) -- so this only
+        # sees a Decimal NaN, which equals nothing. Infinite values match only
+        # exactly.
         if num1.is_nan() or num2.is_nan():
             return False
         if num1.is_infinite() or num2.is_infinite():
