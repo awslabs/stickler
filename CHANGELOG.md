@@ -9,7 +9,7 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
-## [1.0.1] - 2026-10-30
+## [1.0.1] - 2026-11-02
 
 ### Changed
 
