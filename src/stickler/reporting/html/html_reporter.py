@@ -307,10 +307,8 @@ class EvaluationHTMLReporter:
         return sections
     
     def _get_document_count(self, results: Union[Dict, ProcessEvaluation]) -> int:
-        """Get document count by counting unique doc_ids from available data."""
-        if isinstance(results, ProcessEvaluation):
-           return getattr(results, 'document_count', 1)
-        return 1
+        """Get document count from the results."""
+        return DataExtractor.get_document_count(results)
         
     def _generate_title(self, results: Union[Dict, ProcessEvaluation], is_bulk: bool) -> str:
         """Generate report title."""

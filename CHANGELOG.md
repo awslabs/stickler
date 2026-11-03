@@ -9,6 +9,15 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Fixed
+
+- **The HTML report's Executive Summary now colours its metric cards and shows
+  the right document count.** A guard on a method that does not exist kept every
+  card blue regardless of `color_thresholds`, and the Documents card ignored a
+  results dict's `document_count` key and could render `None`. The count is
+  now read in one place, `DataExtractor.get_document_count`
+  ([#467](https://github.com/awslabs/stickler/issues/467))
+
 ## [1.0.1] - 2026-11-02
 
 ### Changed

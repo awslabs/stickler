@@ -66,6 +66,55 @@ class TestSectionGenerator:
         
         assert '<div class="metric-value">1</div>' in result  # Default value
 
+    def test_executive_summary_colours_metric_cards_by_threshold(self):
+        """Each float metric card follows config.color_thresholds (#467)."""
+        from stickler.reporting.html.utils import ColorUtils
+
+        results = {'overall': {'cm_f1': 0.2, 'cm_precision': 0.95}}
+        generator = SectionGenerator(results, self.mock_viz_engine)
+        config = ReportConfig()
+
+        result = generator.generate_executive_summary(config)
+
+        poor = ColorUtils.get_performance_color(0.2, config.color_thresholds)
+        excellent = ColorUtils.get_performance_color(0.95, config.color_thresholds)
+        assert poor != excellent
+        assert f'style="color: {poor};">0.200' in result
+        assert f'style="color: {excellent};">0.950' in result
+
+    def test_executive_summary_colours_integer_metric_cards_by_threshold(self):
+        """Exact integer scores are metric values too, not uncoloured labels."""
+        from stickler.reporting.html.utils import ColorUtils
+
+        results = {'overall': {'cm_f1': 1, 'cm_recall': 0}}
+        generator = SectionGenerator(results, self.mock_viz_engine)
+        config = ReportConfig()
+
+        result = generator.generate_executive_summary(config)
+
+        excellent = ColorUtils.get_performance_color(1, config.color_thresholds)
+        poor = ColorUtils.get_performance_color(0, config.color_thresholds)
+        assert f'style="color: {excellent};">1.000' in result
+        assert f'style="color: {poor};">0.000' in result
+
+    def test_executive_summary_reads_document_count_from_dict(self):
+        """A results dict's document_count key is shown, not a default (#467)."""
+        results = {'overall': {}, 'document_count': 7}
+        generator = SectionGenerator(results, self.mock_viz_engine)
+
+        result = generator.generate_executive_summary(ReportConfig())
+
+        assert '<div class="metric-value">7</div>' in result
+
+    def test_executive_summary_never_renders_none_document_count(self):
+        """A ProcessEvaluation without document_count shows 1, not None (#467)."""
+        generator = SectionGenerator(ProcessEvaluation(metrics={}), self.mock_viz_engine)
+
+        result = generator.generate_executive_summary(ReportConfig())
+
+        assert '<div class="metric-value">1</div>' in result
+        assert 'None' not in result
+
     def test_executive_summary_escapes_the_document_count(self):
         """A document_count assigned after construction is not validated, so it is escaped."""
         results = ProcessEvaluation(document_count=3, metrics={})
