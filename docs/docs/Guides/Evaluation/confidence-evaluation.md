@@ -126,19 +126,19 @@ See [Bulk Evaluation: Map/Reduce](bulk-evaluation.md#mapreduce-single-doc-compar
 
 ## Silencing the legacy AUROC deprecation warning
 
-The legacy single-document `auroc_confidence_metric` result key emits a `DeprecationWarning` to point callers at the structured `confidence_metrics["overall"]["auroc"]["value"]` shape. If you've already migrated and want to silence the warning until it's removed, target it by module:
+`compare_with(add_confidence_metrics=True)` also writes a legacy `auroc_confidence_metric` key and emits a `DeprecationWarning` once per process, whether or not you read that key. Read `confidence_metrics["overall"]["auroc"]["value"]` instead, and silence the warning by its message:
 
 ```python
 import warnings
 
 warnings.filterwarnings(
     "ignore",
+    message="The 'auroc_confidence_metric' result key is deprecated",
     category=DeprecationWarning,
-    module="stickler.structured_object_evaluator.models.comparison_engine",
 )
 ```
 
-This is scoped to the comparison engine, so unrelated `DeprecationWarning`s from other libraries (or other parts of stickler) still surface.
+The warning is attributed to `structured_model.py` rather than to the comparison engine, so a `module=` filter on the comparison engine does not match it. Filtering by message keeps unrelated `DeprecationWarning`s from other libraries (or other parts of stickler) visible.
 
 ## Further Reading
 
