@@ -222,17 +222,19 @@ class JsonSchemaFieldConverter:
             field_type = unwrapped
             is_nullable = True
 
-        # A StructuredModel, or a union with a model arm, must never reach the
-        # scalar fallback below. `PYTHON_TYPE_TO_JSON_TYPE.get(..., "string")`
-        # would silently discard its schema, emitting one that rebuilds into a
-        # structurally different model. Raise rather than produce a wrong
-        # schema quietly.
+        # A StructuredModel must never reach the scalar fallback below.
+        # `PYTHON_TYPE_TO_JSON_TYPE.get(..., "string")` would silently discard
+        # its schema, emitting one that rebuilds into a structurally different
+        # model. Raise rather than produce a wrong schema quietly. A union with
+        # a model arm, or a model inside a nested list, is written as 1.0.0
+        # wrote it, as "string", with a warning; 1.0.2 raises.
         #
         # Deliberately scoped to models, not to every dict miss:
         # Decimal, UUID and enums legitimately export as "string".
         from .structured_model import StructuredModel
 
-        StructuredModel._refuse_scalar_export(field_type)
+        if not StructuredModel._warn_legacy_export(field_type, "field_to_property()"):
+            StructuredModel._refuse_scalar_export(field_type)
 
         # A mapping exports as an object, not the "string" fallback below: as
         # "string" it re-imported as `Optional[str]` and could not hold one.
@@ -296,11 +298,15 @@ class JsonSchemaFieldConverter:
         else:
             stickler_type = PYTHON_TYPE_TO_STICKLER_TYPE.get(field_type, "str")
         field_config = {"type": stickler_type}
-        # As in field_to_property(): a model or a union with a model arm cannot
-        # be written as a scalar, and a plain BaseModel is written as `dict`.
+        # As in field_to_property(): a model cannot be written as a scalar, a
+        # union with a model arm is written as "str" with a warning until
+        # 1.0.2, and a plain BaseModel is written as `dict`.
         from .structured_model import StructuredModel
 
-        StructuredModel._refuse_scalar_export(field_type)
+        if not StructuredModel._warn_legacy_export(
+            field_type, "field_to_stickler_config()"
+        ):
+            StructuredModel._refuse_scalar_export(field_type)
         if ConfigurationHelper.is_plain_model_annotation(field_type):
             field_config["type"] = "dict"
 
