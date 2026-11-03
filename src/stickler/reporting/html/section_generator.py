@@ -40,7 +40,11 @@ class SectionGenerator:
         for metric in key_metrics:
             if metric in metrics:
                 value = metrics[metric]
-                if isinstance(value, float):
+                # JSON and caller-provided results may represent an exact score
+                # as an int (for example, ``1``). Treat every real built-in
+                # numeric score consistently with the gauge and field views.
+                # Bool is an int subclass but is not a performance score.
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
                     display_value = f"{value:.3f}"
                     color = ColorUtils.get_performance_color(value, config.color_thresholds)
                 else:

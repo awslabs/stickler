@@ -82,6 +82,21 @@ class TestSectionGenerator:
         assert f'style="color: {poor};">0.200' in result
         assert f'style="color: {excellent};">0.950' in result
 
+    def test_executive_summary_colours_integer_metric_cards_by_threshold(self):
+        """Exact integer scores are metric values too, not uncoloured labels."""
+        from stickler.reporting.html.utils import ColorUtils
+
+        results = {'overall': {'cm_f1': 1, 'cm_recall': 0}}
+        generator = SectionGenerator(results, self.mock_viz_engine)
+        config = ReportConfig()
+
+        result = generator.generate_executive_summary(config)
+
+        excellent = ColorUtils.get_performance_color(1, config.color_thresholds)
+        poor = ColorUtils.get_performance_color(0, config.color_thresholds)
+        assert f'style="color: {excellent};">1.000' in result
+        assert f'style="color: {poor};">0.000' in result
+
     def test_executive_summary_reads_document_count_from_dict(self):
         """A results dict's document_count key is shown, not a default (#467)."""
         results = {'overall': {}, 'document_count': 7}
