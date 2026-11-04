@@ -47,7 +47,7 @@ Stickler's core comparators (Exact, Levenshtein, Numeric, Fuzzy) work out of the
 Uses AWS Bedrock Titan embeddings for cosine similarity.
 
 ```bash
-pip install stickler-eval[semantic]
+pip install "stickler-eval[semantic]"
 ```
 
 - AWS credentials configured (`aws configure` or environment variables)
@@ -58,7 +58,7 @@ pip install stickler-eval[semantic]
 Uses BERTScore for contextual similarity. Runs locally -- no cloud services needed.
 
 ```bash
-pip install stickler-eval[bert]
+pip install "stickler-eval[bert]"
 ```
 
 - GPU recommended for performance, but CPU works
@@ -68,7 +68,7 @@ pip install stickler-eval[bert]
 Uses AWS Bedrock via strands-agents for LLM-powered comparison.
 
 ```bash
-pip install stickler-eval[llm]
+pip install "stickler-eval[llm]"
 ```
 
 - AWS credentials configured
@@ -79,7 +79,7 @@ pip install stickler-eval[llm]
 Install everything at once:
 
 ```bash
-pip install stickler-eval[bert,semantic,llm]
+pip install "stickler-eval[bert,semantic,llm]"
 ```
 
 ## Verify Installation
