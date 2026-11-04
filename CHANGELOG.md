@@ -9,6 +9,11 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Fixed
+
+- `NumericComparator` treats booleans as non-numeric and returns `0.0` instead of
+  raising `decimal.InvalidOperation`, including in uncoerced model fields.
+
 ## [1.0.1] - 2026-11-02
 
 ### Changed
