@@ -1,26 +1,32 @@
 """Confidence accumulator for bulk evaluation."""
 
-import warnings
 from typing import Any, Dict, List, Optional
 
+from stickler.structured_object_evaluator.models._keyed_pairs_accumulator import (
+    _KeyedPairsAccumulator,
+)
 from stickler.structured_object_evaluator.models.confidence.calculator import (
     ConfidenceCalculator,
-    KeyedConfidencePairs,
 )
 from stickler.structured_object_evaluator.models.confidence.metrics import (
     ConfidenceMetric,
     ConfidencePair,
-)
-from stickler.structured_object_evaluator.models.post_comparison_accumulator import (
-    PostComparisonAccumulator,
 )
 from stickler.structured_object_evaluator.models.rich_value_helper import (
     RichValueHelper,
 )
 
 
-class ConfidenceAccumulator(PostComparisonAccumulator):
+class ConfidenceAccumulator(_KeyedPairsAccumulator):
     """Accumulates confidence pairs and computes aggregate confidence metrics."""
+
+    _pair_type = ConfidencePair
+    _state_keys = (
+        "keyed_confidence_pairs",
+        "confidence_fields_with",
+        "confidence_fields_total",
+    )
+    _warn_label = "ConfidenceAccumulator"
 
     def __init__(self, metrics: Optional[List[ConfidenceMetric]] = None):
         self._calculator = ConfidenceCalculator(metrics=metrics)
@@ -30,29 +36,15 @@ class ConfidenceAccumulator(PostComparisonAccumulator):
     def name(self) -> str:
         return "confidence_metrics"
 
-    def reset(self) -> None:
-        self._keyed_pairs: KeyedConfidencePairs = {}
-        self._fields_with: int = 0
-        self._fields_total: int = 0
-
     def accumulate(
         self,
         comparison_result: Dict[str, Any],
         prediction_raw: Optional[Dict[str, Any]],
     ) -> None:
-        field_comparisons = comparison_result.get("field_comparisons", [])
-        if not field_comparisons:
-            # When prediction_raw is present the caller clearly wanted
-            # confidence; warn so the misuse surfaces without killing the run.
-            if prediction_raw is not None:
-                warnings.warn(
-                    "ConfidenceAccumulator got prediction_raw but no "
-                    "field_comparisons; re-run compare_with("
-                    "document_field_comparisons=True).",
-                    UserWarning,
-                    stacklevel=2,
-                )
+        if not self._has_field_comparisons(comparison_result, prediction_raw):
             return
+
+        field_comparisons = comparison_result.get("field_comparisons", [])
 
         # Prefer the pre-extracted dict when compare_with provided it;
         # fall back to walking prediction_raw for older serialized results.
@@ -69,12 +61,15 @@ class ConfidenceAccumulator(PostComparisonAccumulator):
             field_comparisons, confidences
         )
 
-        if confidences:
-            for field_path, pairs in extraction.keyed_pairs.items():
-                self._keyed_pairs.setdefault(field_path, []).extend(pairs)
-
-        self._fields_with += extraction.fields_with_confidence
-        self._fields_total += extraction.fields_total
+        # Pairs are extended only when confidence values were present; the
+        # counters include every field seen, so a 0/N coverage signal survives.
+        # BBoxMAPAccumulator extends unconditionally — that difference lives
+        # here in accumulate, not in _extend.
+        self._extend(
+            extraction.keyed_pairs if confidences else {},
+            extraction.fields_with_confidence,
+            extraction.fields_total,
+        )
 
     def compute(self) -> Optional[Dict[str, Any]]:
         # Report coverage-only when fields were seen but none had confidence,
@@ -86,31 +81,3 @@ class ConfidenceAccumulator(PostComparisonAccumulator):
             fields_with_confidence=self._fields_with,
             fields_total=self._fields_total,
         )
-
-    def get_state(self) -> Dict[str, Any]:
-        return {
-            "keyed_confidence_pairs": {
-                field_path: [p.model_dump() for p in pairs]
-                for field_path, pairs in self._keyed_pairs.items()
-            },
-            "confidence_fields_with": self._fields_with,
-            "confidence_fields_total": self._fields_total,
-        }
-
-    def load_state(self, state: Dict[str, Any]) -> None:
-        self._keyed_pairs = {
-            field_path: [ConfidencePair(**p) for p in pairs]
-            for field_path, pairs in state.get("keyed_confidence_pairs", {}).items()
-        }
-        self._fields_with = state.get("confidence_fields_with", 0)
-        self._fields_total = state.get("confidence_fields_total", 0)
-
-    def merge_state(self, other_state: Dict[str, Any]) -> None:
-        for field_path, pairs in other_state.get(
-            "keyed_confidence_pairs", {}
-        ).items():
-            self._keyed_pairs.setdefault(field_path, []).extend(
-                [ConfidencePair(**p) for p in pairs]
-            )
-        self._fields_with += other_state.get("confidence_fields_with", 0)
-        self._fields_total += other_state.get("confidence_fields_total", 0)
