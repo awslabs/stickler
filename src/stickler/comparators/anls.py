@@ -253,17 +253,24 @@ class ANLSStarComparator(BaseComparator):
 
     Cost:
         Scoring a mapping structurally is not free, and it is dramatically more
-        expensive than the whole-object equality it replaces. Measured on a
-        200-key flat dict: **3.25 ms** per comparison, against 0.0001 ms for
-        ``ExactComparator`` over a canonical JSON string.
+        expensive than the whole-object equality it replaces. A 200-key flat
+        dict with 18-character values and one substituted character per value
+        took **2.05 ms** per comparison, against 0.00036 ms for
+        ``ExactComparator`` over precomputed canonical JSON strings.
+
+        These are medians of seven repeats on Linux, Python 3.12.14,
+        RapidFuzz 3.14.3, AMD EPYC 9V74; input construction is excluded.
+        Timings depend on string lengths, contents, and hardware.
 
         The case to watch is a dict field inside a ``List[Model]``, where
         Hungarian matching builds an n x m matrix and every cell pays the cost:
 
-            20 line items, 30-key dict  ->  220 ms for ONE document
+            20 line items, 30-key dict  ->  155 ms for ONE document
 
-        which is roughly 37 minutes over a 10,000-document corpus for that one
-        field. If that bites, the remedies are to declare a nested
+        Here each value has 16 characters, the prediction appends one character,
+        and the predicted items are reversed. That is roughly 26 minutes over a
+        10,000-document corpus for that one field. If that bites, the remedies
+        are to declare a nested
         ``StructuredModel`` for the keys you actually score, or to follow
         https://github.com/awslabs/stickler/issues/204, which proposes a batch
         comparator hook and a prefilter for exactly this n x m blow-up.

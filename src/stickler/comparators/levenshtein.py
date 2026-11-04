@@ -2,6 +2,8 @@
 
 from typing import Any, Dict, Optional
 
+from rapidfuzz.distance import Levenshtein
+
 from stickler.comparators.base import BaseComparator
 
 
@@ -85,9 +87,6 @@ class LevenshteinComparator(BaseComparator):
         dist = self._levenshtein_distance(s1, s2)
         str_length = max(len(s1), len(s2))
 
-        if str_length == 0:
-            return 1.0
-
         # Convert distance to similarity (1.0 - normalized_distance)
         return 1.0 - (float(dist) / float(str_length))
 
@@ -103,18 +102,4 @@ class LevenshteinComparator(BaseComparator):
         Returns:
             The Levenshtein distance as an integer
         """
-        if len(s1) > len(s2):
-            s1, s2 = s2, s1
-
-        distances = range(len(s1) + 1)
-        for i2, c2 in enumerate(s2):
-            distances_ = [i2 + 1]
-            for i1, c1 in enumerate(s1):
-                if c1 == c2:
-                    distances_.append(distances[i1])
-                else:
-                    distances_.append(
-                        1 + min((distances[i1], distances[i1 + 1], distances_[-1]))
-                    )
-            distances = distances_
-        return distances[-1]
+        return Levenshtein.distance(s1, s2)

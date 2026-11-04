@@ -9,6 +9,12 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Changed
+
+- `LevenshteinComparator` uses RapidFuzz's edit distance, accelerating string
+  comparisons and ANLS* leaf scoring while preserving public similarity scores.
+  [#510](https://github.com/awslabs/stickler/issues/510)
+
 ## [1.0.1] - 2026-11-02
 
 ### Changed
