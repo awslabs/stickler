@@ -683,6 +683,8 @@ Every extension, its default, and the default threshold for each field position 
 - **Dynamic model creation**: [`docs/StructuredModel_Dynamic_Creation.md`](docs/StructuredModel_Dynamic_Creation.md)
 - **Comparator details**: [`src/stickler/comparators/Comparators.md`](src/stickler/comparators/Comparators.md)
 
+> **Bulk reduce input:** `update_from_comparison_result()` and `aggregate_from_comparisons()` accept default `compare_with()` outputs (confusion matrix plus field comparisons), not `evaluator_format=True` output. Evaluator-format input is silently accepted and yields all-zero metrics.
+
 ## Examples
 
 Check out the `examples/` directory for more detailed usage examples and notebooks.
