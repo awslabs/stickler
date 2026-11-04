@@ -110,8 +110,6 @@ class ComparisonDispatcher:
                 "weight": float
             }
         """
-        from .structured_model import StructuredModel
-
         # ============================================================================
         # STEP 1: Get field configuration
         # ============================================================================
@@ -191,15 +189,6 @@ class ComparisonDispatcher:
         # ============================================================================
         # Route the comparison to the appropriate handler based on the runtime types
         # of the ground truth and prediction values. This is the core dispatch logic.
-        #
-        # TODO: Refactor to use a cleaner match-based dispatch pattern that separates
-        #       list handling from singleton handling more explicitly. Current flow works
-        #       correctly but mixes concerns (list null handling in STEP 3, type dispatch
-        #       here). A cleaner structure would:
-        #       1. Split into _dispatch_list_field() and _dispatch_singleton_field()
-        #       2. Use match statements for exhaustive case handling
-        #       3. Make the list vs singleton distinction the primary branch
-        #       See pseudocode in refactoring discussions for proposed structure.
 
         # CASE 1: A pair of non-structured values, for the field's comparator.
         # `scalar_pair_reaches_comparator` is the rule, shared with
@@ -242,84 +231,13 @@ class ComparisonDispatcher:
                 gt_val, pred_val, field_name, threshold
             )
 
-        # CASE 4: Both are dicts, whose keys the model did not declare
-        # A dict annotation says "I do not know these keys", so there is no
-        # per-key comparison config to apply and the whole mapping is scored as
-        # one unit. Routed through the primitive path deliberately: that method
-        # is only "primitive" in name -- it calls the field's configured
-        # comparator, classifies TP/FD against the FIELD threshold, and honours
-        # clip_under_threshold, which is exactly the treatment a dict needs.
-        #
-        # Before this branch existed, a dict fell through to the mismatched-types
-        # branch and scored
-        # 0.0 even against an identical copy of itself, and the comparator the
-        # field declared was never consulted (#297). Zero-config evaluation
-        # installs ANLSStarComparator here, which gives partial credit; see
-        # stickler.comparators.anls.
-        elif isinstance(gt_val, dict) and isinstance(pred_val, dict):
-            if not ConfigurationHelper.can_compare_object_pair(
-                self.model.__class__, field_name, info.comparator, gt_val, pred_val
-            ):
-                # Reachable via `Any` or a multi-arm union, or a mapping annotation
-                # (including Optional[Dict]) with an explicit comparator that
-                # prevents ANLS* substitution. Scored, warned, and not raised -- see
-                # ConfigurationHelper.can_score_object.
-                return self._not_comparable(weight)
-            return self.field_comparator.compare_primitive_with_scores(
-                gt_val, pred_val, field_name
-            )
-
-        # CASE 5: A nested plain pydantic BaseModel, which is not a StructuredModel
-        # so CASE 3 does not reach it.
-        #
-        # It fell through to the mismatched-types branch below and scored 0.0
-        # against an IDENTICAL object, reported as a false discovery: a perfect
-        # match that is also a failure, which is the contradiction #287 removed
-        # elsewhere. Meanwhile `List[plain BaseModel]` already scored correctly,
-        # because CASE 2 sends anything that is not a StructuredModel element to
-        # the primitive list comparator. So the singular and list forms of the
-        # same shape disagreed.
-        #
-        # Routed through the primitive path for the same reason CASE 4 sends a
-        # dict there: that method is only "primitive" in name. It calls the
-        # field's configured comparator, classifies TP/FD against the field
-        # threshold, and honours clip_under_threshold.
-        #
-        # This makes the two forms agree rather than introducing a third
-        # behaviour. Scoring a plain BaseModel structurally, field by field, is
-        # what `StructuredModel` is for and what `stickler.evaluate()` does by
-        # wrapping one; doing it here instead would make a nested plain model
-        # behave differently from the same model inside a list, trading this
-        # inconsistency for another. See #135.
-        #
-        # The models are passed through UNCONVERTED, exactly as CASE 4 passes a
-        # dict. Stringifying here looked equivalent because Levenshtein and Exact
-        # coerce internally anyway, but it silently defeats any comparator that
-        # reads structure: `ANLSStarComparator` scored 0.9091 on a stringified
-        # model against 0.5000 on the same model in a list, which is the very
-        # asymmetry this branch exists to remove. The comparator decides its own
-        # coercion; the dispatcher does not decide for it.
-        #
-        # Two conditions have to hold before the pair is scored, and both live in
-        # `ConfigurationHelper.can_compare_object_pair` rather than here: the two
-        # values must describe the same shape, and the field's comparator must be
-        # able to score an object at all. They are composed there because
-        # `compare()` reaches the same question through `compare_field_raw` and a
-        # list element reaches it through the Hungarian cost matrix, so spelling
-        # either rule here is how the readers drift apart -- which is exactly what
-        # happened twice while this branch was in review.
-        #
-        # A correctly annotated field never reaches the mismatch case: pydantic
-        # refuses a `Dog` for an `Optional[Cat]` field at construction. It fires
-        # where the annotation permitted both -- `Union[Cat, Dog]`, `Any`,
-        # `object` -- or where a subclass was supplied for its base, which
-        # `Optional[Base]` accepts.
-        #
-        # `info.comparator` is the one STEP 1 already resolved. Reading it again
-        # here cost a third `_get_comparison_info` for one field in one dispatch,
-        # and that call is not free: it builds a fresh `ANLSStarComparator` every
-        # time, once per cell of a Hungarian cost matrix.
-        elif isinstance(gt_val, BaseModel) and isinstance(pred_val, BaseModel):
+        # CASE 4/5: Dicts and plain BaseModels are scored as whole objects.
+        # The shared gate checks shape and comparator support (#297, #319).
+        # Pass values unchanged: the comparator decides coercion (#135).
+        # Reuse the resolved comparator without another configuration lookup.
+        elif (isinstance(gt_val, dict) and isinstance(pred_val, dict)) or (
+            isinstance(gt_val, BaseModel) and isinstance(pred_val, BaseModel)
+        ):
             if not ConfigurationHelper.can_compare_object_pair(
                 self.model.__class__, field_name, info.comparator, gt_val, pred_val
             ):
@@ -338,9 +256,7 @@ class ComparisonDispatcher:
     def _not_comparable(weight: float) -> Dict[str, Any]:
         """One false discovery, scoring 0.0: the pair cannot be compared.
 
-        The shape three branches return. Spelled once so a later change to the
-        counts cannot reach the type-mismatch branch and miss the two refusals,
-        which report the same verdict for a more specific reason.
+        Object-pair refusals and mismatched types share this result shape.
         """
         return {
             "overall": {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0},
