@@ -107,6 +107,8 @@ from stickler.structured_object_evaluator.models.bbox import (
     BBoxMAPAccumulator,
 )
 
+dataset = [(ground_truth, prediction)]  # (ground truth, prediction) model pairs
+
 evaluator = BulkStructuredModelEvaluator(
     accumulators=[BBoxMAPAccumulator()],
 )
@@ -144,7 +146,8 @@ for gt, pred in dataset:
 
 metrics = evaluator.compute().accumulator_metrics
 print(f"mAP:   {metrics['bbox_map_metrics']['mean_ap']:.3f}")
-print(f"AUROC: {metrics['confidence_metrics']['overall']['auroc']['value']:.3f}")
+auroc = metrics["confidence_metrics"]["overall"]["auroc"]["value"]
+print(f"AUROC: {auroc}")  # None when every field is right, or every field is wrong
 ```
 
 ### Single-document sanity check
@@ -228,13 +231,13 @@ This implementation matches the COCO/pycocotools **AP definition** — precision
 
 ```python
 {
-    "mean_ap": 0.667,       # mAP averaged over the IoU-threshold range
+    "mean_ap": 0.600,       # mAP averaged over the IoU-threshold range
     "map_50": 0.667,
     "map_75": 0.667,
     "iou_thresholds": [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95],
     "fields": {
         "vendor_name": {
-            "ap": 1.0, "ap_50": 1.0, "ap_75": 1.0, "mean_iou": 0.92,
+            "ap": 0.8, "ap_50": 1.0, "ap_75": 1.0, "mean_iou": 0.866,
             "num_gt": 1, "num_detections": 1
         },
         "invoice_number": {
@@ -242,7 +245,7 @@ This implementation matches the COCO/pycocotools **AP definition** — precision
             "num_gt": 1, "num_detections": 1
         },
         "total_amount": {
-            "ap": 0.0, "ap_50": 0.0, "ap_75": 0.0, "mean_iou": 0.05,
+            "ap": 0.0, "ap_50": 0.0, "ap_75": 0.0, "mean_iou": 0.0,
             "num_gt": 1, "num_detections": 1
         }
     },
@@ -253,6 +256,8 @@ This implementation matches the COCO/pycocotools **AP definition** — precision
     }
 }
 ```
+
+Read the `vendor_name` row closely: its IoU is 0.866, so it clears 8 of the 10 thresholds from 0.50 to 0.95 — AP 0.8 — while `ap_50` and `ap_75` are both 1.0. That gap is the reason the metric averages over a range instead of reporting a single threshold, and it is why `mean_ap` (0.600) sits below `map_50` (0.667) even though every box landed on its field.
 
 The single-document path nests this same structure under the `bbox_metrics` key of the `compare_with()` result.
 
