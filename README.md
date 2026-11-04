@@ -17,6 +17,8 @@ Whether you're extracting data from documents, performing ETL transformations, e
 pip install stickler-eval
 ```
 
+> **Note:** The documented filter for the legacy AUROC confidence-metric deprecation warning does not work. The warning is raised via `warn_once` with a `stacklevel` that attributes it to `structured_model.py`, not `comparison_engine`, so filtering by `module="stickler.structured_object_evaluator.models.comparison_engine"` never matches.
+
 That installs the comparison engine and confidence calibration, which is everything you need to score structured output: comparators, list matching, per-field metrics, and calibration metrics (AUROC, Brier score, ECE, error capture at budget). Genuinely optional features declare their own extras, so a default install does not pull an ML stack:
 
 | Extra | Adds | For |
