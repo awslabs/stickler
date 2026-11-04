@@ -13,7 +13,7 @@ and synonym substitution, but produces scores in a compressed range (typically
 0.75-1.0), so threshold tuning is critical.
 
 Requirements:
-- Install bert extras: uv sync --extra bert (or pip install stickler-eval[bert])
+- Install bert extras: uv sync --extra bert (or pip install "stickler-eval[bert]")
 - This installs: torch, bert-score, evaluate
 
 Note on first run:
@@ -29,7 +29,7 @@ except ImportError as e:
     print(f"Missing dependency: {e}")
     print(
         "Install bert extras with: uv sync --extra bert "
-        "(or pip install stickler-eval[bert])"
+        "(or pip install \"stickler-eval[bert]\")"
     )
     raise SystemExit(1)
 
