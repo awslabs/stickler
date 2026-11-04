@@ -687,6 +687,8 @@ Every extension, its default, and the default threshold for each field position 
 
 Check out the `examples/` directory for more detailed usage examples and notebooks.
 
+> **Best Practices note:** In calibration and weighting examples, use `ExactComparator` for identifiers (e.g. `invoice_id`) and `NumericComparator` for amounts (e.g. `total_amount`). Do not rely on `LevenshteinComparator` defaults for IDs or floats — `"INV-1"` vs `"INV-2"` and `"Acme Corp"` vs `"Acme Corporation"` must not count as matches.
+
 # A note for AI assisted coding agents
 - The project uses coding assistant agnostic context files, like README.md and AGENTS.md
 - When working in a directory, always look for a README.md and/or AGENTS.md file for important context about the directory/code contained within.
