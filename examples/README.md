@@ -104,6 +104,12 @@ This directory contains comprehensive examples demonstrating the core functional
   - Why `test_pass` gates on recall as well as score
   - Needs the evaluator: `pip install "strands-agents-evals[stickler]>=1.6.0"`
 
+- **`notebooks/Evaluate_A_Decider_Model.ipynb`** - Evaluate a decision model (Strands Decider, OpenJev, Jev)
+  - 100 support tickets; the System One questions are the eval schema (`model_from_questions`)
+  - Per-question accuracy and coverage, per-class metrics, confusion matrix, calibration
+  - Accept-or-escalate at a target accuracy, and bootstrap confidence intervals
+  - Stored responses are synthetic placeholders, so the scores measure no model; an optional cell runs Strands Decider locally
+
 - **`notebooks/Strands_Evals_FCC_Live_Agent.ipynb`** - The same evaluator against a live agent
   - Five real FCC invoices, downloaded from the HuggingFace datasets server at run time
   - Extracted by Claude Haiku through Bedrock, so it needs `AWS_PROFILE` with Bedrock access

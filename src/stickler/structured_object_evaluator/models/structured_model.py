@@ -39,6 +39,13 @@ from .threshold_helper import THRESHOLD_DOCS_URL
 from .threshold_helper import model_identity as _model_identity
 from .threshold_helper import warn_if_threshold_is_zero as _warn_if_threshold_is_zero
 
+
+def _is_decision_field_info(field_info: Any) -> bool:
+    """Whether a FieldInfo is a Choice, Score or Noul decision field."""
+    extra = getattr(field_info, "json_schema_extra", None)
+    return getattr(extra, "_decision_spec", None) is not None
+
+
 # Name of the internal field every StructuredModel carries to hold unmatched
 # input keys. It is not part of a model's data contract and must not appear in
 # an exported JSON Schema.
@@ -570,6 +577,25 @@ class StructuredModel(BaseModel):
         """
         super().__pydantic_init_subclass__(**kwargs)
         cls._install_object_grade_comparators()
+        cls._require_optional_decision_fields()
+
+    @classmethod
+    def _require_optional_decision_fields(cls) -> None:
+        """Reject a Choice, Score or Noul field that cannot hold None.
+
+        None means the question was not asked (gold) or not answered
+        (prediction), so a non-Optional decision field fails on real data.
+        """
+        for name, info in cls.model_fields.items():
+            if not _is_decision_field_info(info):
+                continue
+            annotation = unwrap_annotated(info.annotation)
+            if type(None) not in getattr(annotation, "__args__", ()) and annotation is not Any:
+                raise TypeError(
+                    f"Decision field {cls.__name__}.{name} must be Optional "
+                    f"(e.g. Optional[str]): None means the question was not "
+                    f"asked or not answered."
+                )
 
     def __init_subclass__(cls, **kwargs):
         """Validate field configurations when a StructuredModel subclass is defined."""
@@ -864,9 +890,15 @@ class StructuredModel(BaseModel):
             process_rich_values = True
 
         if process_rich_values:
+            # A System One answer on a decision field becomes a rich value: the
+            # predicted answer plus its probability. The answer object itself
+            # stays in __stickler_raw_json__ for the decision metrics.
+            from stickler.decisions.normalize import answers_to_rich_values
+
+            rich_data = answers_to_rich_values(cls, json_data)
             # Only process rich values on the top-level call
             processed_data, confidences, extras = RichValueHelper.process_rich_values(
-                json_data
+                rich_data
             )
             instance = ConfigurationHelper.from_json(cls, processed_data)
             if confidences:
@@ -1510,6 +1542,13 @@ class StructuredModel(BaseModel):
                     )
                     if is_absent(self_value) and is_absent(other_value):
                         continue
+
+                # A decision question with no gold answer was not asked, so it
+                # carries no weight even if the other side answered it.
+                if self_value is None and _is_decision_field_info(
+                    self.__class__.model_fields[field_name]
+                ):
+                    continue
 
                 # Get field configuration
                 info = self.__class__._get_comparison_info(field_name)

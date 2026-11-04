@@ -14,6 +14,7 @@ class ReportConfig(BaseModel):
     include_field_analysis: bool = True
     include_non_matches: bool = True
     include_confusion_matrix: bool = True
+    include_decision_metrics: bool = True  # shown only when results carry decision_metrics
     max_non_matches_displayed: int = 1000
     document_file_type: str = "image"
     image_thumbnail_size: int = 200

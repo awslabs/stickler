@@ -104,7 +104,7 @@ class EvaluationHTMLReporter:
                 output_path=output_path,
                 success=True,
                 generation_time_seconds=generation_time,
-                sections_included=self._get_sections_included(config),
+                sections_included=self._get_sections_included(config, evaluation_results),
                 metadata={
                     "is_bulk": is_bulk,
                     "document_count": self._get_document_count(evaluation_results),
@@ -152,6 +152,11 @@ class EvaluationHTMLReporter:
         
         if config.include_field_analysis:
             sections.append(section_generator.generate_field_analysis(config))
+
+        # Present only when the results carry decision metrics (#469); a report
+        # without them is byte-for-byte what it was before this section existed.
+        if config.include_decision_metrics and DataExtractor.extract_decision_metrics(results) is not None:
+            sections.append(section_generator.generate_decision_metrics())
         
         if config.include_confusion_matrix:
             sections.append(section_generator.generate_confusion_matrix())
@@ -293,13 +298,15 @@ class EvaluationHTMLReporter:
             logger.warning(f"CSS file {css_path} not found.")
         
     
-    def _get_sections_included(self, config: ReportConfig) -> List[str]:
+    def _get_sections_included(self, config: ReportConfig, results: Any = None) -> List[str]:
         """Get list of sections included in the report."""
         sections = []
         if config.include_executive_summary:
             sections.append("executive_summary")
         if config.include_field_analysis:
             sections.append("field_analysis")
+        if config.include_decision_metrics and DataExtractor.extract_decision_metrics(results) is not None:
+            sections.append("decision_metrics")
         if config.include_confusion_matrix:
             sections.append("confusion_matrix")
         if config.include_non_matches:

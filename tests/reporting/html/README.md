@@ -11,6 +11,7 @@ Tests for `src/stickler/reporting/html/`, whose own README documents the module.
 | `test_report_config.py` | `ReportConfig` validation |
 | `test_output_validation.py` | well-formedness and escaping of the emitted HTML |
 | `test_html_non_match_records.py` | the non-match section driven end to end, no mocks |
+| `test_decision_metrics_section.py` | the Decision Metrics section (#469) end to end: presence, byte-for-byte unchanged without it, escaping of hostile field names and labels, well-formedness |
 
 ## Mocking boundary, and why one file deliberately crosses it
 

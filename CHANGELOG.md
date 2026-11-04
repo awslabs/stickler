@@ -9,6 +9,32 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Added
+
+- `stickler.decisions`: evaluation for typed decision models that answer
+  System One questions (Strands Decider, OpenJev, Jev). `Choice`, `Score` and
+  `Noul` fields score the predicted answer, read from the answer's
+  `probabilities` (or `noul`), with confidence taken as the probability of the
+  predicted answer. A schema with decision fields gets
+  `ProcessEvaluation.decision_metrics` from `BulkStructuredModelEvaluator`
+  automatically: per-field correctness (accuracy, coverage, per-class
+  precision/recall/F1, macro-F1, confusion matrix; QWK and MAE for Score) and
+  calibration (AUROC, equal-mass ECE, multiclass Brier, NLL; Brier, log loss
+  and label AUROC for Noul; RPS for Score). `accept_or_escalate()` reports
+  coverage and accuracy at confidence thresholds, and `confidence_intervals()`
+  bootstraps every metric by document. Decision fields work in nested models
+  and lists of models, and must be `Optional`. A decision field whose gold is
+  `None` was not asked: it is left out of every decision metric, the confusion
+  matrix, `field_comparisons`, `field_scores` and the weight of
+  `overall_score`. Other fields are unchanged
+  ([#469](https://github.com/awslabs/stickler/issues/469))
+- `stickler.integrations.systemone`: `model_from_questions()` builds the eval
+  model from the questions sent to a System One model, and `from_systemone()`
+  passes a response's answers through. No dependency on `typesafe_sdk` or
+  `strands-decider`. A 100-ticket fixture and a recorder script are in
+  `examples/notebooks/fixtures/systemone/`
+  ([#469](https://github.com/awslabs/stickler/issues/469))
+
 ## [1.0.1] - 2026-11-02
 
 ### Changed
