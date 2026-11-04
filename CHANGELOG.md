@@ -9,6 +9,14 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Fixed
+
+- The docs recipe for silencing the `auroc_confidence_metric`
+  `DeprecationWarning` never matched it (it filtered on the comparison engine
+  module). It now filters by message, adds the pytest `filterwarnings` form, and
+  names the second `UserWarning` that `compare_with(add_confidence_metrics=True)`
+  emits.
+
 ## [1.0.1] - 2026-11-02
 
 ### Changed

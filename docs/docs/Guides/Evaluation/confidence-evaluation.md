@@ -126,7 +126,7 @@ See [Bulk Evaluation: Map/Reduce](bulk-evaluation.md#mapreduce-single-doc-compar
 
 ## Silencing the legacy AUROC deprecation warning
 
-`compare_with(add_confidence_metrics=True)` also writes a legacy `auroc_confidence_metric` key and emits a `DeprecationWarning` once per process, whether or not you read that key. Read `confidence_metrics["overall"]["auroc"]["value"]` instead, and silence the warning by its message:
+`compare_with(add_confidence_metrics=True)` also writes a legacy `auroc_confidence_metric` key and emits a `DeprecationWarning`, whether or not you read that key. Read `confidence_metrics["overall"]["auroc"]["value"]` instead, and silence the warning by its message:
 
 ```python
 import warnings
@@ -138,7 +138,26 @@ warnings.filterwarnings(
 )
 ```
 
-The warning is attributed to `structured_model.py` rather than to the comparison engine, so a `module=` filter on the comparison engine does not match it. Filtering by message keeps unrelated `DeprecationWarning`s from other libraries (or other parts of stickler) visible.
+Under pytest, a `warnings.filterwarnings(...)` call in your code does not silence it, because pytest applies its own warning filters around each test. Put the same filter in your pytest configuration instead:
+
+```toml
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:The 'auroc_confidence_metric' result key is deprecated:DeprecationWarning",
+]
+```
+
+The same call also emits a `UserWarning` ("Single-document confidence metrics are a quick sanity check..."). The filter above does not cover it; silence it with its own filter:
+
+```python
+warnings.filterwarnings(
+    "ignore",
+    message="Single-document confidence metrics are a quick sanity check",
+    category=UserWarning,
+)
+```
+
+Filtering by message keeps unrelated `DeprecationWarning`s from other libraries (or other parts of stickler) visible.
 
 ## Further Reading
 
