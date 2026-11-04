@@ -178,19 +178,7 @@ class ModelFactory:
                 f"{infer_unspecified!r}"
             )
 
-        # Validate model name
-        if not isinstance(model_name, str) or not model_name.isidentifier():
-            raise ValueError(
-                f"model_name must be a valid Python identifier, got: {model_name}"
-            )
-
-        # Validate match threshold
-        if not isinstance(match_threshold, (int, float)) or not (
-            0.0 <= match_threshold <= 1.0
-        ):
-            raise ValueError(
-                f"match_threshold must be a number between 0.0 and 1.0, got: {match_threshold}"
-            )
+        ModelFactory._validate_name_and_threshold(model_name, match_threshold)
 
         # Validate all field configurations before proceeding (including nested schema validation)
         try:
@@ -226,32 +214,8 @@ class ModelFactory:
         except ValueError as e:
             raise ValueError(f"Error converting field configurations: {e}")
 
-        # Create the dynamic model extending StructuredModel
-        try:
-            DynamicClass = create_model(
-                model_name,
-                __base__=base_class,  # Extend StructuredModel
-                **field_definitions,
-            )
-        except Exception as e:
-            raise ValueError(f"Error creating dynamic model: {e}")
-
-        # Set class-level attributes. Assigned after create_model, so
-        # StructuredModel.__init_subclass__ has already run and cannot see it --
-        # check here too or a config-driven match_threshold=0.0 warns nowhere.
-        DynamicClass.match_threshold = match_threshold
-        # Dedup on name plus field names, not on `id(DynamicClass)`. `model_name`
-        # defaults to "DynamicModel", so keying on the name alone would report
-        # the first anonymous config and silence every later one. But keying on
-        # object identity is worse: a new class object is created per call, so
-        # loading the same config in a loop floods stderr (measured: 200 loads,
-        # 192 warnings) and grows the process-global `_warned` set without bound
-        # -- the exact behaviour `warn_once` exists to prevent. Field names are
-        # stable across repeated loads of one config and differ between configs.
-        warn_if_threshold_is_zero(
-            match_threshold,
-            model_identity(model_name, field_definitions),
-            "match_threshold",
+        DynamicClass = ModelFactory._build(
+            model_name, field_definitions, match_threshold, base_class
         )
 
         # Add configuration metadata for debugging/introspection
@@ -327,19 +291,7 @@ class ModelFactory:
             from .structured_model import StructuredModel
             base_class = StructuredModel
 
-        # Validate model name
-        if not isinstance(model_name, str) or not model_name.isidentifier():
-            raise ValueError(
-                f"model_name must be a valid Python identifier, got: {model_name}"
-            )
-
-        # Validate match threshold
-        if not isinstance(match_threshold, (int, float)) or not (
-            0.0 <= match_threshold <= 1.0
-        ):
-            raise ValueError(
-                f"match_threshold must be a number between 0.0 and 1.0, got: {match_threshold}"
-            )
+        ModelFactory._validate_name_and_threshold(model_name, match_threshold)
 
         # Validate field_definitions structure
         if not isinstance(field_definitions, dict):
@@ -356,11 +308,40 @@ class ModelFactory:
                     f"got: {type(field_def)}"
                 )
 
+        return ModelFactory._build(
+            model_name, field_definitions, match_threshold, base_class
+        )
+
+    @staticmethod
+    def _validate_name_and_threshold(model_name: Any, match_threshold: Any) -> None:
+        """Validate the model name and match threshold, shared by both factory methods."""
+        # Validate model name
+        if not isinstance(model_name, str) or not model_name.isidentifier():
+            raise ValueError(
+                f"model_name must be a valid Python identifier, got: {model_name}"
+            )
+
+        # Validate match threshold
+        if not isinstance(match_threshold, (int, float)) or not (
+            0.0 <= match_threshold <= 1.0
+        ):
+            raise ValueError(
+                f"match_threshold must be a number between 0.0 and 1.0, got: {match_threshold}"
+            )
+
+    @staticmethod
+    def _build(
+        model_name: str,
+        field_definitions: Dict[str, tuple],
+        match_threshold: float,
+        base_class: Type,
+    ) -> Type:
+        """Create the dynamic model and apply the shared class-level tail."""
         # Create the dynamic model extending StructuredModel
         try:
             DynamicClass = create_model(
                 model_name,
-                __base__=base_class,
+                __base__=base_class,  # Extend StructuredModel
                 **field_definitions,
             )
         except Exception as e:
