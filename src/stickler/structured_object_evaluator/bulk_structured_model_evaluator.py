@@ -126,9 +126,25 @@ class BulkStructuredModelEvaluator:
 
         # Build accumulators list
         if accumulators is not None:
-            self._accumulators = accumulators
+            self._accumulators = list(accumulators)
         else:
             self._accumulators = [ConfidenceAccumulator(metrics=confidence_metrics)]
+
+        # A schema with Choice, Score or Noul fields gets the decision metrics
+        # without being asked, unless the caller already supplied them.
+        from stickler.decisions.accumulator import (
+            ACCUMULATOR_NAME as _DECISION_ACCUMULATOR,
+        )
+        from stickler.decisions.accumulator import (
+            DecisionAccumulator,
+        )
+        from stickler.decisions.primitives import has_decision_fields
+
+        self._has_decisions = has_decision_fields(target_schema)
+        if self._has_decisions and not any(
+            acc.name == _DECISION_ACCUMULATOR for acc in self._accumulators
+        ):
+            self._accumulators.append(DecisionAccumulator(target_schema))
 
         # Names key accumulator_metrics; duplicates would silently overwrite.
         name_counts = Counter(acc.name for acc in self._accumulators)
@@ -147,6 +163,20 @@ class BulkStructuredModelEvaluator:
                 print(
                     f"Individual results will be appended to: {self.individual_results_jsonl}"
                 )
+
+    def _jsonl_default(self, value: Any) -> Any:
+        """Serialise non-JSON values in a JSONL record.
+
+        ``str`` everywhere, for parity with ``save_metrics()``, except that a
+        schema with decision fields writes model instances as dicts: the
+        decision metrics read gold values out of whole-object rows when the
+        JSONL is replayed through ``update_from_comparison_result()``.
+        """
+        if self._has_decisions:
+            dump = getattr(value, "model_dump", None)
+            if callable(dump):
+                return dump()
+        return str(value)
 
     def reset(self) -> None:
         """
@@ -238,7 +268,9 @@ class BulkStructuredModelEvaluator:
                 # default=str for parity with save_metrics() — keeps
                 # numpy scalars and similar non-JSON-native values
                 # from crashing the writer.
-                self._jsonl_handle.write(json.dumps(record, default=str) + "\n")
+                self._jsonl_handle.write(
+                    json.dumps(record, default=self._jsonl_default) + "\n"
+                )
                 # Flush per line preserves crash-resilience: a process
                 # killed mid-run still leaves a complete-line JSONL.
                 self._jsonl_handle.flush()
@@ -639,6 +671,7 @@ class BulkStructuredModelEvaluator:
             total_time=total_time,
             non_matches=list(self._non_matches) if self.document_non_matches else None,
             confidence_metrics=confidence_metrics,
+            decision_metrics=accumulator_metrics.get("decision_metrics"),
             accumulator_metrics=accumulator_metrics or None,
             accumulator_errors=accumulator_errors,
         )
@@ -661,6 +694,7 @@ class BulkStructuredModelEvaluator:
             # matrix so `save_metrics()` is a complete snapshot of what
             # `compute()` would return, not a confusion-matrix-only dump.
             "confidence_metrics": process_eval.confidence_metrics,
+            "decision_metrics": process_eval.decision_metrics,
             "accumulator_metrics": process_eval.accumulator_metrics,
             "non_matches": process_eval.non_matches,
             "evaluation_summary": {

@@ -157,6 +157,8 @@ class ComparisonEngine:
         # Score percolation variables
         total_score = 0.0
         total_weight = 0.0
+        scored_fields = 0
+        unasked_fields = 0
 
         for field_name in self.model.__class__.model_fields:
             if field_name == "extra_fields":
@@ -168,6 +170,18 @@ class ComparisonEngine:
             # Enhanced dispatch returns both metrics AND scores
             field_result = dispatcher.dispatch_field_comparison(field_name, gt_val, pred_val)
 
+            # A decision question with no gold answer was not asked for this
+            # document: it adds no counts and carries no weight.
+            if gt_val is None and self._is_decision_field(field_name):
+                unasked_fields += 1
+                for counts in (field_result, field_result.get("overall"), field_result.get("aggregate")):
+                    if isinstance(counts, dict):
+                        for metric in ("tp", "fa", "fd", "fp", "tn", "fn"):
+                            if metric in counts:
+                                counts[metric] = 0
+                result["fields"][field_name] = field_result
+                continue
+
             result["fields"][field_name] = field_result
 
             # Simple aggregation to overall metrics
@@ -175,6 +189,7 @@ class ComparisonEngine:
 
             # Score percolation - aggregate scores upward
             if "similarity_score" in field_result and "weight" in field_result:
+                scored_fields += 1
                 weight = field_result["weight"]
                 threshold_applied_score = field_result["threshold_applied_score"]
                 total_score += threshold_applied_score * weight
@@ -188,6 +203,9 @@ class ComparisonEngine:
         # Calculate overall similarity score from percolated scores
         if total_weight > 0:
             result["overall"]["similarity_score"] = total_score / total_weight
+        elif unasked_fields and not scored_fields:
+            # Only unasked decisions: nothing disagreed, as compare() also says.
+            result["overall"]["similarity_score"] = 1.0
 
         return result
 
@@ -275,6 +293,9 @@ class ComparisonEngine:
         # Extract scoring information from recursive result
         field_scores = {}
         for field_name, field_result in recursive_result["fields"].items():
+            # An unasked decision field (gold None) has no score to report.
+            if getattr(self.model, field_name, None) is None and self._is_decision_field(field_name):
+                continue
             if isinstance(field_result, dict):
                 # Use threshold_applied_score when available, which respects clip_under_threshold setting
                 if "threshold_applied_score" in field_result:
@@ -315,7 +336,7 @@ class ComparisonEngine:
         # Add optional field comparison documentation
         if document_field_comparisons:
             # Use FieldComparisonCollector for comprehensive field-level comparisons
-            field_comparisons = self.field_comparison_collector.collect_field_comparisons(
+            field_comparisons = self._collect_field_comparisons(
                 recursive_result, other, report_context
             )
             result["field_comparisons"] = field_comparisons
@@ -335,10 +356,8 @@ class ComparisonEngine:
             # raises, but at the compare_with level we know the user wants
             # confidence and can wire the data through themselves.
             if "field_comparisons" not in result:
-                field_comparisons = (
-                    self.field_comparison_collector.collect_field_comparisons(
-                        recursive_result, other, report_context
-                    )
+                field_comparisons = self._collect_field_comparisons(
+                    recursive_result, other, report_context
                 )
                 result["field_comparisons"] = field_comparisons
 
@@ -389,10 +408,8 @@ class ComparisonEngine:
 
             # Auto-enable field_comparisons (mirrors add_confidence_metrics).
             if "field_comparisons" not in result:
-                field_comparisons = (
-                    self.field_comparison_collector.collect_field_comparisons(
-                        recursive_result, other, report_context
-                    )
+                field_comparisons = self._collect_field_comparisons(
+                    recursive_result, other, report_context
                 )
                 result["field_comparisons"] = field_comparisons
 
@@ -494,6 +511,38 @@ class ComparisonEngine:
                     overall[metric] += field_result[metric]
                 elif "overall" in field_result and metric in field_result["overall"]:
                     overall[metric] += field_result["overall"][metric]
+
+    def _collect_field_comparisons(self, recursive_result, other, report_context):
+        """field_comparisons rows, without rows for unasked decision questions.
+
+        A decision field whose gold is None was not asked, so it has no
+        comparison to report, and the confidence metrics must not pair it.
+        """
+        rows = self.field_comparison_collector.collect_field_comparisons(
+            recursive_result, other, report_context
+        )
+        from stickler.decisions.primitives import decision_paths, has_decision_fields
+
+        if not has_decision_fields(self.model.__class__):
+            return rows
+        import re
+
+        paths = decision_paths(self.model.__class__)
+        return [
+            row
+            for row in rows
+            if not (
+                isinstance(row, dict)
+                and row.get("expected_value") is None
+                and re.sub(r"\[\d+\]", "[]", str(row.get("expected_key") or row.get("actual_key") or "")) in paths
+            )
+        ]
+
+    def _is_decision_field(self, field_name: str) -> bool:
+        """Whether a field is a Choice, Score or Noul decision field."""
+        info = self.model.__class__.model_fields.get(field_name)
+        extra = getattr(info, "json_schema_extra", None)
+        return getattr(extra, "_decision_spec", None) is not None
 
     def _count_extra_fields_as_false_alarms(self, other: "StructuredModel") -> int:
         """Count hallucinated fields (extra fields) in the prediction as False Alarms.

@@ -8,6 +8,7 @@ The HTML reporting module generates comprehensive, interactive HTML reports from
 - **Field Analysis** - Per-field performance breakdown with color-coded charts
 - **Confusion Matrix** - Visual representation of classification results
 - **Non-Matches Analysis** - Detailed view of misclassified items
+- **Decision Metrics** - For Choice, Score and Noul fields (#469): a headline table, a reliability diagram and a risk-coverage plot per field
 - **Interactive Elements** - Expandable sections and detailed document views
 
 ## Quick Start
@@ -54,6 +55,7 @@ The `ReportConfig` class allows you to customize report generation:
 | `include_field_analysis` | bool | True | Include per-field performance breakdown |
 | `include_confusion_matrix` | bool | True | Include confusion matrix visualization |
 | `include_non_matches` | bool | True | Include detailed non-matches analysis |
+| `include_decision_metrics` | bool | True | Include the decision metrics section; rendered only when results carry `decision_metrics` |
 | `max_non_matches_displayed` | int | 1000 | Maximum number of non-matches to show |
 | `document_file_type` | str | "image" | Document display format: "image" or "pdf" |
 | `image_thumbnail_size` | int | 200 | Size of document image thumbnails (pixels) |
@@ -86,6 +88,7 @@ The reporter accepts two types of evaluation results:
 - **Field Analysis**: Performance breakdown by field with charts and tables
 - **Confusion Matrix**: Visual breakdown of true positives, false positives, etc.
 - **Non-Matches**: Detailed table of classification errors with context
+- **Decision Metrics**: Present only when `ProcessEvaluation.decision_metrics` exists; otherwise the page is byte-for-byte unchanged. Per field: coverage, accuracy, macro-F1 / F1 / QWK, AUROC, `ece_mass`, AURC; a reliability diagram from `ece_mass_bins`; a risk-coverage curve rebuilt from the per-decision `records`. Charts are inline SVG (no script, no CDN), with `<title>` tooltips. Field names and labels are user-controlled and pass through `html.escape`; numbers are cast to plain `float` before formatting.
 
 ## Advanced Usage
 

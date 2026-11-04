@@ -144,3 +144,4 @@ This is scoped to the comparison engine, so unrelated `DeprecationWarning`s from
 
 - [Confidence Metrics (Advanced)](../../Advanced/confidence-metrics.md): full technical reference
 - [Bulk Evaluation](bulk-evaluation.md): the bulk evaluator that powers dataset-level confidence metrics
+- [Evaluating Decision Models](decision-models.md): Choice, Score and Noul answers from System One models such as Strands Decider
