@@ -9,7 +9,7 @@ which provides detailed field-level comparison information including:
 - Integration with other flags (include_confusion_matrix, document_non_matches)
 """
 
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
@@ -194,6 +194,25 @@ class TestFieldComparisonCollection:
         assert score_comparison["expected_value"] is None
         assert score_comparison["actual_value"] == 95.0
         assert "false alarm" in score_comparison["reason"]
+
+    def test_not_comparable_field_is_not_reported_as_a_match(self):
+        """A zero threshold does not turn a type mismatch into a match."""
+
+        class AnyValue(StructuredModel):
+            value: Any = ComparableField(threshold=0.0)
+
+        result = AnyValue(value="abc").compare_with(
+            AnyValue(value=[1]),
+            include_confusion_matrix=True,
+            document_field_comparisons=True,
+        )
+
+        comparison = result["field_comparisons"][0]
+        overall = result["confusion_matrix"]["fields"]["value"]["overall"]
+
+        assert overall["fd"] == 1
+        assert comparison["match"] is False
+        assert comparison["reason"] == "not comparable"
 
     def test_nested_structured_model_field_comparisons(self):
         """Test field comparisons with nested StructuredModel objects."""
