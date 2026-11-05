@@ -1116,6 +1116,28 @@ class TestMixedTimezoneRangesDoNotCrash:
         assert isinstance(result, float)
 
 
+class TestAwareDateMatchesSameDayInRanges:
+    """A naive date borrows the aware side's tzinfo in range paths too."""
+
+    AWARE = "2024-01-01T23:00-05:00"  # 2024-01-02 04:00 UTC
+
+    def test_single_vs_single_reference(self):
+        cmp = DateComparator()
+        assert cmp.compare(self.AWARE, "2024-01-01") == 1.0
+        assert cmp.compare(self.AWARE, "2024-01-02") == 0.0
+
+    def test_range_vs_range(self):
+        cmp = DateComparator()
+        aware_range = f"{self.AWARE} to 2024-01-05"
+        assert cmp.compare(aware_range, "2024-01-01 to 2024-01-05") == 1.0
+        assert cmp.compare(aware_range, "2024-01-02 to 2024-01-05") == 0.8
+
+    def test_single_in_range_contains(self):
+        cmp = DateComparator(range_mode="contains")
+        assert cmp.compare(self.AWARE, "2023-12-31 to 2024-01-01") == 1.0
+        assert cmp.compare(self.AWARE, "2024-01-02 to 2024-01-03") == 0.0
+
+
 # ---------------------------------------------------------------------------
 # Constructor / config defaults
 # ---------------------------------------------------------------------------
