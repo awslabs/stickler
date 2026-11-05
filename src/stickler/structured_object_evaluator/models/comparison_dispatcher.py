@@ -345,6 +345,7 @@ class ComparisonDispatcher:
         return {
             "overall": {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0},
             "fields": {},
+            "_not_comparable": True,
             "raw_similarity_score": 0.0,
             "similarity_score": 0.0,
             "threshold_applied_score": 0.0,
