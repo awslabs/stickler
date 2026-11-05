@@ -194,10 +194,6 @@ def _wants_inference(field_config: Dict[str, Any], infer_unspecified: bool) -> b
 class FieldConverter:
     """Converter for JSON field configurations to Pydantic fields."""
 
-    def __init__(self):
-        """Initialize the field converter."""
-        pass
-
     def convert_field_config(
         self,
         field_name: str,
