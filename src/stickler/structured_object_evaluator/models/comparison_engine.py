@@ -349,7 +349,7 @@ class ComparisonEngine:
                 "confidence_metrics=[...]. Per-document metrics with few fields are "
                 "noisy and may return None (single-class) frequently.",
                 UserWarning,
-                stacklevel=2,
+                stacklevel=3,
             )
             calculator = ConfidenceCalculator(metrics=confidence_metrics)
             extraction = calculator.extract(result, other)
@@ -379,6 +379,7 @@ class ComparisonEngine:
                 "use "
                 "result['confidence_metrics']['overall']['auroc']['value'] "
                 "instead. The legacy key will be removed in 0.5.0.",
+                stacklevel=4,
             )
 
         # If add_bbox_metrics is requested, add bounding-box mAP metrics.
@@ -402,7 +403,7 @@ class ComparisonEngine:
                 "BulkStructuredModelEvaluator with "
                 "accumulators=[BBoxMAPAccumulator(...)].",
                 UserWarning,
-                stacklevel=2,
+                stacklevel=3,
             )
             if evaluator_format:
                 _warnings.warn(
@@ -410,7 +411,7 @@ class ComparisonEngine:
                     "the evaluator format rebuilds the result from a fixed key "
                     "set and drops 'bbox_metrics'.",
                     UserWarning,
-                    stacklevel=2,
+                    stacklevel=3,
                 )
             calculator = (
                 MAPCalculator(iou_thresholds=bbox_iou_thresholds)

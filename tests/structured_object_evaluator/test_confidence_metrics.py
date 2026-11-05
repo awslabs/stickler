@@ -13,6 +13,7 @@ Covers:
 - Bulk evaluator accumulation, levels, state, and merge
 """
 
+import warnings
 from typing import List
 
 import pytest
@@ -1090,6 +1091,27 @@ class TestSingleDocWarningAndConfig:
             gt.compare_with(
                 pred, add_confidence_metrics=True, document_field_comparisons=True,
             )
+
+    def test_confidence_warnings_point_to_the_caller(self):
+        """Warnings from the public API identify the user's call site."""
+        gt = Product(name="Widget", price=29.99, sku="ABC123")
+        pred = Product.from_json({
+            "name": {"_value": "Widget", "_confidence": 0.9},
+            "price": {"_value": 29.99, "_confidence": 0.8},
+            "sku": {"_value": "ABC123", "_confidence": 0.7},
+        })
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            gt.compare_with(pred, add_confidence_metrics=True)
+
+        confidence_warnings = [
+            warning
+            for warning in caught
+            if "confidence" in str(warning.message)
+        ]
+        assert confidence_warnings
+        assert all(warning.filename == __file__ for warning in confidence_warnings)
 
     def test_confidence_metrics_kwarg_configures_metrics(self):
         """Passing confidence_metrics=[...] to compare_with threads through."""
