@@ -7,6 +7,8 @@ import shutil
 import tempfile
 from unittest.mock import Mock, mock_open, patch
 
+import numpy as np
+
 from stickler.reporting.html.html_reporter import EvaluationHTMLReporter
 from stickler.reporting.html.report_config import ReportConfig
 from stickler.utils.process_evaluation import ProcessEvaluation
@@ -186,7 +188,33 @@ class TestEvaluationHTMLReporter:
         assert result.success is True
         assert output_path.is_file()
         assert 'alt="1001"' in output_path.read_text(encoding='utf-8')
-    
+
+    def test_generate_report_accepts_numpy_key_and_path_in_both_modes(self, tmp_path):
+        """generate_report succeeds with a DataFrame-shaped key and Path value (#454)."""
+        src = tmp_path / 'scan.png'
+        src.write_bytes(b'image data')
+
+        for file_type in ('image', 'pdf'):
+            output_path = tmp_path / f'report_{file_type}.html'
+            config = ReportConfig(
+                document_file_type=file_type,
+                include_executive_summary=False,
+                include_field_analysis=False,
+                include_non_matches=False,
+                include_confusion_matrix=False,
+            )
+
+            result = self.reporter.generate_report(
+                evaluation_results={},
+                output_path=str(output_path),
+                config=config,
+                document_files={np.int64(1001): src},
+            )
+
+            assert result.success is True
+            assert output_path.is_file()
+            assert '1001' in output_path.read_text(encoding='utf-8')
+
     def test_copy_files_to_report_dir_success(self):
         """Test successful file copying to report directory."""
         # Create temporary source files

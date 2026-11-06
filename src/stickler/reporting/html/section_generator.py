@@ -188,6 +188,8 @@ class SectionGenerator:
             html_string += '<div class="document-gallery">'
 
             for doc_id, pdf_path in document_images.items():
+                # Same coercion as the image branch above: escape needs str, and
+                # colliding converted keys render once per ordered input entry.
                 doc_id = str(doc_id)
                 pdf_path = str(pdf_path)
                 html_string += f'''
