@@ -2,7 +2,10 @@
 Tests for SectionGenerator class.
 """
 
+from pathlib import Path
 from unittest.mock import Mock, patch
+
+import numpy as np
 
 from stickler.reporting.html.report_config import ReportConfig
 from stickler.reporting.html.section_generator import SectionGenerator
@@ -351,6 +354,81 @@ class TestSectionGenerator:
         assert '</div></div>' in result
         # Should not contain any image items
         assert '<div class="image-item">' not in result
+
+    def test_generate_document_gallery_image_mode_coerces_int_key(self):
+        """Image gallery accepts an integer document_files key (issue #454)."""
+        document_images = {1001: 'images/scan.png'}
+        config = ReportConfig(document_file_type='image')
+
+        result = SectionGenerator.generate_document_gallery(document_images, config)
+
+        assert '<img src="images/scan.png" alt="1001">' in result
+        assert '<p><strong>1001</strong></p>' in result
+
+    def test_generate_document_gallery_image_mode_coerces_int_path(self):
+        """Image gallery accepts a non-str document_files path (issue #454)."""
+        document_images = {'doc-1': 1001}
+        config = ReportConfig(document_file_type='image')
+
+        result = SectionGenerator.generate_document_gallery(document_images, config)
+
+        assert '<img src="1001" alt="doc-1">' in result
+        assert '<p><strong>doc-1</strong></p>' in result
+
+    def test_generate_document_gallery_pdf_mode_coerces_int_key(self):
+        """PDF gallery accepts an integer document_files key (issue #454)."""
+        document_pdfs = {1001: 'pdfs/scan.pdf'}
+        config = ReportConfig(document_file_type='pdf')
+
+        result = SectionGenerator.generate_document_gallery(document_pdfs, config)
+
+        assert 'data-doc-id="1001"' in result
+        assert 'data-pdf-path="pdfs/scan.pdf"' in result
+        assert 'id="pdf-canvas-1001"' in result
+        assert '<p><strong>1001</strong></p>' in result
+
+    def test_generate_document_gallery_pdf_mode_coerces_int_path(self):
+        """PDF gallery accepts a non-str document_files path (issue #454)."""
+        document_pdfs = {'doc-1': 1001}
+        config = ReportConfig(document_file_type='pdf')
+
+        result = SectionGenerator.generate_document_gallery(document_pdfs, config)
+
+        assert 'data-doc-id="doc-1"' in result
+        assert 'data-pdf-path="1001"' in result
+        assert '<p><strong>doc-1</strong></p>' in result
+
+    def test_document_gallery_coerces_numpy_key_and_path_in_both_modes(self):
+        """The gallery accepts the DataFrame-shaped key and Path value from #454."""
+        document_files = {np.int64(1001): Path('assets/scan.png')}
+
+        image_result = SectionGenerator.generate_document_gallery(
+            document_files, ReportConfig(document_file_type='image')
+        )
+        pdf_result = SectionGenerator.generate_document_gallery(
+            document_files, ReportConfig(document_file_type='pdf')
+        )
+
+        assert '<img src="assets/scan.png" alt="1001">' in image_result
+        assert 'data-doc-id="1001"' in pdf_result
+        assert 'data-pdf-path="assets/scan.png"' in pdf_result
+
+    def test_document_gallery_preserves_entries_with_colliding_string_keys(self):
+        """Conversion preserves both ordered input entries when their keys collide."""
+        document_files = {1001: 'images/first.png', '1001': 'images/second.png'}
+
+        image_result = SectionGenerator.generate_document_gallery(
+            document_files, ReportConfig(document_file_type='image')
+        )
+        pdf_result = SectionGenerator.generate_document_gallery(
+            document_files, ReportConfig(document_file_type='pdf')
+        )
+
+        assert image_result.count('<div class="image-item">') == 2
+        assert image_result.index('images/first.png') < image_result.index('images/second.png')
+        assert image_result.count('alt="1001"') == 2
+        assert pdf_result.count('data-doc-id="1001"') == 2
+        assert pdf_result.index('images/first.png') < pdf_result.index('images/second.png')
 
 
 class TestSectionGeneratorIntegration:
