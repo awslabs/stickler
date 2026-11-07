@@ -5,9 +5,9 @@ Both accumulators warn when the caller passed ``prediction_raw`` but forgot
 the evaluator's ``accumulate`` call — otherwise the reader gets sent into
 whichever test happened to trigger it.
 
-The refactor in #517 moves the warn call one frame deeper (into a shared base),
-so its ``stacklevel`` has to go from 2 to 3. These tests pass before and after
-the refactor; they are the fence that catches a wrong stacklevel.
+The warn call sits one frame deeper once it moves into a shared base, so its
+``stacklevel`` has to move with it. These tests pass before and after such a
+move; they are the fence that catches a wrong stacklevel.
 """
 
 import linecache

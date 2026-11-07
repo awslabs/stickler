@@ -63,8 +63,7 @@ class ConfidenceAccumulator(_KeyedPairsAccumulator):
 
         # Pairs are extended only when confidence values were present; the
         # counters include every field seen, so a 0/N coverage signal survives.
-        # BBoxMAPAccumulator extends unconditionally — that difference lives
-        # here in accumulate, not in _extend.
+        # BBoxMAPAccumulator extends unconditionally.
         self._extend(
             extraction.keyed_pairs if confidences else {},
             extraction.fields_with_confidence,

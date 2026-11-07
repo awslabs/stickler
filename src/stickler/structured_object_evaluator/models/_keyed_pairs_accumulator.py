@@ -46,9 +46,9 @@ class _KeyedPairsAccumulator(PostComparisonAccumulator):
         ``document_field_comparisons=True``. Warn instead of raising: a bulk run
         over thousands of documents should not die on one malformed row.
 
-        ``stacklevel=3`` — ``warnings.warn`` (1) -> this helper (2) -> the
-        subclass's ``accumulate`` (3) -> ``bulk_structured_model_evaluator``,
-        which is where the call site lives and where the warning should point.
+        ``stacklevel=3``: level 1 is the ``warnings.warn`` line in this helper,
+        level 2 is the subclass's ``accumulate``, and level 3 is the evaluator's
+        call to it — which is where the warning should point.
         """
         if comparison_result.get("field_comparisons"):
             return True
