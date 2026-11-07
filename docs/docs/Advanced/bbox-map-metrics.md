@@ -147,7 +147,7 @@ for gt, pred in dataset:
 metrics = evaluator.compute().accumulator_metrics
 print(f"mAP:   {metrics['bbox_map_metrics']['mean_ap']:.3f}")
 auroc = metrics["confidence_metrics"]["overall"]["auroc"]["value"]
-print(f"AUROC: {auroc}")  # None when every field is right, or every field is wrong
+print(f"AUROC: {auroc}")  # None when undefined, e.g. every field right or every field wrong
 ```
 
 ### Single-document sanity check
@@ -231,7 +231,7 @@ This implementation matches the COCO/pycocotools **AP definition** — precision
 
 ```python
 {
-    "mean_ap": 0.600,       # mAP averaged over the IoU-threshold range
+    "mean_ap": 0.6,         # mAP averaged over the IoU-threshold range
     "map_50": 0.667,
     "map_75": 0.667,
     "iou_thresholds": [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95],
@@ -257,7 +257,7 @@ This implementation matches the COCO/pycocotools **AP definition** — precision
 }
 ```
 
-Read the `vendor_name` row closely: its IoU is 0.866, so it clears 8 of the 10 thresholds from 0.50 to 0.95 — AP 0.8 — while `ap_50` and `ap_75` are both 1.0. That gap is the reason the metric averages over a range instead of reporting a single threshold, and it is why `mean_ap` (0.600) sits below `map_50` (0.667) even though every box landed on its field.
+Read the `vendor_name` row closely: its IoU is 0.866, so it passes 8 of the 10 thresholds from 0.50 to 0.95, giving AP 0.8, while `ap_50` and `ap_75` are 1.0. That is why `mean_ap` (0.600) is below `map_50` (0.667).
 
 The single-document path nests this same structure under the `bbox_metrics` key of the `compare_with()` result.
 
