@@ -9,6 +9,15 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Security
+
+- **`print_confusion_matrix_html` now escapes its output.** It wrapped the
+  printed confusion matrix in `<pre>` as is, so a field name carrying markup,
+  declared in a JSON Schema or Stickler config or present in a hand-built
+  result, rendered as live HTML in a notebook. The text is now passed through
+  `html.escape`, and reads the same
+  ([#449](https://github.com/awslabs/stickler/issues/449))
+
 ## [1.0.1] - 2026-11-02
 
 ### Changed
