@@ -11,6 +11,10 @@ Each release links to full notes on the
 
 ### Fixed
 
+- Corrected introductory example scores, the default text comparator description,
+  and the sample amount in the documentation and README
+  ([#478](https://github.com/awslabs/stickler/issues/478)).
+
 - **The HTML report gallery now accepts non-string `document_files` keys and
   paths.** Integer and NumPy keys and `pathlib.Path` values no longer make the
   gallery step of `generate_report()` fail without writing a page

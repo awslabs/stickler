@@ -77,7 +77,7 @@ ground_truth_json = {
 
 prediction_json = {
     "shipment_id": "SHP-2024-001",  # Perfect match
-    "amount": 1247.48,  # Within tolerance
+    "amount": 1247.495,  # Within tolerance
     "line_items": [
         {"product": "USB Cord", "quantity": 5, "price": 12.99},  # Name variation
         {"product": "Wireless Mouse", "quantity": 2, "price": 29.99}  # Reordered
@@ -89,7 +89,7 @@ ground_truth = Invoice(**ground_truth_json)
 prediction = Invoice(**prediction_json)
 result = ground_truth.compare_with(prediction)
 
-print(f"Overall Score: {result['overall_score']:.3f}")  # 0.693
+print(f"Overall Score: {result['overall_score']:.3f}")  # 0.979
 print(f"Shipment ID: {result['field_scores']['shipment_id']:.3f}")  # 1.000 - exact match
 print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # 0.926 - Hungarian optimal matching
 ```
