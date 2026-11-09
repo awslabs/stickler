@@ -11,6 +11,9 @@ Each release links to full notes on the
 
 ### Fixed
 
+- Pretty printers restore stdout when rendering fails, propagate rendering errors,
+  and include the bulk summary in confusion-matrix file output.
+
 - **The HTML report gallery now accepts non-string `document_files` keys and
   paths.** Integer and NumPy keys and `pathlib.Path` values no longer make the
   gallery step of `generate_report()` fail without writing a page

@@ -342,45 +342,24 @@ def print_confusion_matrix(
     # Use normalized results for processing
     results = normalized_results
 
-    # Direct output to file if specified
-    if output_file:
-        try:
-            f = open(output_file, "w", encoding="utf-8")
-        except Exception as e:
-            print(f"Error opening output file: {e}")
-            return
+    try:
+        output = open(output_file, "w", encoding="utf-8") if output_file else None
+    except OSError as e:
+        print(f"Error opening output file: {e}")
+        return
 
-        with f, contextlib.redirect_stdout(f):
-            use_color = False  # Disable color for file output
-
-            # Print overall summary
+    with output if output is not None else contextlib.nullcontext():
+        with contextlib.redirect_stdout(output if output is not None else sys.stdout):
+            if output is not None:
+                use_color = False
             _print_overall_summary(results, use_color)
-
-            # Print field-level metrics if requested
+            if "bulk_info" in results:
+                _print_bulk_info_summary(results, use_color)
             if show_details:
                 _print_field_details(
                     results, field_filter, sort_by, use_color, nested_detail
                 )
-
-                # Print matrix visualization
                 _print_matrix_visualization(results, use_color)
-    else:
-        # Print to stdout
-        # Print overall summary
-        _print_overall_summary(results, use_color)
-
-        # Print bulk evaluation info if available
-        if "bulk_info" in results:
-            _print_bulk_info_summary(results, use_color)
-
-        # Print field-level metrics if requested
-        if show_details:
-            _print_field_details(
-                results, field_filter, sort_by, use_color, nested_detail
-            )
-
-            # Print matrix visualization
-            _print_matrix_visualization(results, use_color)
 
 
 def _print_overall_summary(results: Dict[str, Any], use_color: bool = True) -> None:
@@ -943,32 +922,19 @@ def print_non_matches(
             _print_no_non_matches(non_matches, use_color, results)
         return
 
-    # Direct output to file if specified
-    if output_file:
-        try:
-            with open(output_file, "w", encoding="utf-8") as f:
-                original_stdout = sys.stdout
-                sys.stdout = f
-                use_color = False  # Disable color for file output
+    try:
+        output = open(output_file, "w", encoding="utf-8") if output_file else None
+    except OSError as e:
+        print(f"Error opening output file: {e}")
+        return
 
-                _print_non_matches_content(
-                    non_matches,
-                    group_by,
-                    field_filter,
-                    show_summary,
-                    use_color,
-                    max_items,
-                )
-
-                # Restore stdout before context manager closes
-                sys.stdout = original_stdout
-        except Exception as e:
-            print(f"Error opening output file: {e}")
-            return
-    else:
-        _print_non_matches_content(
-            non_matches, group_by, field_filter, show_summary, use_color, max_items
-        )
+    with output if output is not None else contextlib.nullcontext():
+        with contextlib.redirect_stdout(output if output is not None else sys.stdout):
+            if output is not None:
+                use_color = False
+            _print_non_matches_content(
+                non_matches, group_by, field_filter, show_summary, use_color, max_items
+            )
 
 
 def _extract_non_matches(
@@ -1313,31 +1279,19 @@ def print_evaluation_results(
         use_color: Whether to use color in the output
         output_file: Optional file path to write the output to
     """
-    # Direct output to file if specified
-    if output_file:
-        try:
-            with open(output_file, "w", encoding="utf-8") as f:
-                original_stdout = sys.stdout
-                sys.stdout = f
-                use_color = False  # Disable color for file output
+    try:
+        output = open(output_file, "w", encoding="utf-8") if output_file else None
+    except OSError as e:
+        print(f"Error opening output file: {e}")
+        return
 
-                _print_evaluation_results_content(
-                    results,
-                    show_confusion_matrix,
-                    show_non_matches,
-                    show_aggregates,
-                    use_color,
-                )
-
-                # Restore stdout before context manager closes
-                sys.stdout = original_stdout
-        except Exception as e:
-            print(f"Error opening output file: {e}")
-            return
-    else:
-        _print_evaluation_results_content(
-            results, show_confusion_matrix, show_non_matches, show_aggregates, use_color
-        )
+    with output if output is not None else contextlib.nullcontext():
+        with contextlib.redirect_stdout(output if output is not None else sys.stdout):
+            if output is not None:
+                use_color = False
+            _print_evaluation_results_content(
+                results, show_confusion_matrix, show_non_matches, show_aggregates, use_color
+            )
 
 
 def _print_evaluation_results_content(
@@ -1388,19 +1342,14 @@ def print_confusion_matrix_html(
     # with richer HTML formatting, tables, and visualizations
 
     # For now, use the same output as the terminal version
-    import sys
     from io import StringIO
 
     # Capture output in a string
-    old_stdout = sys.stdout
     mystdout = StringIO()
-    sys.stdout = mystdout
-
-    print_confusion_matrix(
-        results, field_filter, use_color=False, nested_detail=nested_detail
-    )
-
-    sys.stdout = old_stdout
+    with contextlib.redirect_stdout(mystdout):
+        print_confusion_matrix(
+            results, field_filter, use_color=False, nested_detail=nested_detail
+        )
 
     # Return the captured output
     return f"<pre>{mystdout.getvalue()}</pre>"
