@@ -11,6 +11,10 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **The HTML report gallery now accepts non-string `document_files` keys and
+  paths.** Integer and NumPy keys and `pathlib.Path` values no longer make the
+  gallery step of `generate_report()` fail without writing a page
+  ([#454](https://github.com/awslabs/stickler/issues/454))
 - **The HTML report's Executive Summary now colours its metric cards and shows
   the right document count.** A guard on a method that does not exist kept every
   card blue regardless of `color_thresholds`, and the Documents card ignored a
