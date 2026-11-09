@@ -16,6 +16,10 @@ Each release links to full notes on the
   module). It now filters by message, adds the pytest `filterwarnings` form, and
   names the second `UserWarning` that `compare_with(add_confidence_metrics=True)`
   emits.
+- **The HTML report gallery now accepts non-string `document_files` keys and
+  paths.** Integer and NumPy keys and `pathlib.Path` values no longer make the
+  gallery step of `generate_report()` fail without writing a page
+  ([#454](https://github.com/awslabs/stickler/issues/454))
 
 ## [1.0.1] - 2026-11-02
 
