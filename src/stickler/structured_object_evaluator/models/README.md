@@ -14,6 +14,8 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   (`ComparableField`), per-field comparator/threshold/weight metadata.
 - `model_factory.py`, `field_converter.py`, `type_resolver.py`,
   `configuration_helper.py` — building models from Stickler's compact JSON config.
+  Scalar-union list exports retain the built-in scalar arms in a `List[Union[...]]`
+  type string; nullable union elements use `List[Optional[Union[...]]]`.
 - `json_schema_importer.py`, `json_schema_field_converter.py` — two-stage JSON
   Schema import. The maintained `json-schema-to-pydantic` library resolves
   standard schema types, references, combiners, and constraints;

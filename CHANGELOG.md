@@ -11,6 +11,12 @@ Each release links to full notes on the
 
 ### Fixed
 
+- Scalar-union lists such as `List[Union[int, str]]` now round-trip through
+  `to_stickler_config()` and `model_from_json()`. The exported type keeps each
+  built-in scalar arm, including nullable elements and the `int | str` spelling,
+  instead of writing the unusable `List[Union]`
+  ([#476](https://github.com/awslabs/stickler/issues/476)).
+
 - **The HTML report gallery now accepts non-string `document_files` keys and
   paths.** Integer and NumPy keys and `pathlib.Path` values no longer make the
   gallery step of `generate_report()` fail without writing a page
