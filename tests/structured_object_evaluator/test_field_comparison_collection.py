@@ -213,6 +213,25 @@ class TestFieldComparisonCollection:
         assert overall["fd"] == 1
         assert comparison["match"] is False
         assert comparison["reason"] == "not comparable"
+        assert "_not_comparable" not in result["confusion_matrix"]["fields"]["value"]
+
+    def test_nested_non_comparable_verdict_does_not_leak_internal_metadata(self):
+        class Leaf(StructuredModel):
+            value: Any = ComparableField(threshold=0.0)
+
+        class Parent(StructuredModel):
+            child: Leaf = ComparableField()
+
+        result = Parent(child=Leaf(value="abc")).compare_with(
+            Parent(child=Leaf(value=[1])),
+            include_confusion_matrix=True,
+            document_field_comparisons=True,
+        )
+        row = result["field_comparisons"][0]
+        assert row["expected_key"] == "child.value"
+        assert row["match"] is False
+        assert row["reason"] == "not comparable"
+        assert "_not_comparable" not in result["confusion_matrix"]["fields"]["child"]["fields"]["value"]
 
     def test_nested_structured_model_field_comparisons(self):
         """Test field comparisons with nested StructuredModel objects."""

@@ -264,7 +264,7 @@ class ComparisonDispatcher:
                 # (including Optional[Dict]) with an explicit comparator that
                 # prevents ANLS* substitution. Scored, warned, and not raised -- see
                 # ConfigurationHelper.can_score_object.
-                return self._not_comparable(weight)
+                return self._not_comparable(weight, field_name)
             return self.field_comparator.compare_primitive_with_scores(
                 gt_val, pred_val, field_name
             )
@@ -323,7 +323,7 @@ class ComparisonDispatcher:
             if not ConfigurationHelper.can_compare_object_pair(
                 self.model.__class__, field_name, info.comparator, gt_val, pred_val
             ):
-                return self._not_comparable(weight)
+                return self._not_comparable(weight, field_name)
 
             return self.field_comparator.compare_primitive_with_scores(
                 gt_val, pred_val, field_name
@@ -332,20 +332,20 @@ class ComparisonDispatcher:
         # CASE 6: Mismatched types (e.g., str vs int, list vs str, struct vs primitive)
         # This is a False Discovery - types don't match
         else:
-            return self._not_comparable(weight)
+            return self._not_comparable(weight, field_name)
 
-    @staticmethod
-    def _not_comparable(weight: float) -> Dict[str, Any]:
+    def _not_comparable(self, weight: float, field_name: str) -> Dict[str, Any]:
         """One false discovery, scoring 0.0: the pair cannot be compared.
 
         The shape three branches return. Spelled once so a later change to the
         counts cannot reach the type-mismatch branch and miss the two refusals,
         which report the same verdict for a more specific reason.
         """
+        if self.report_context is not None:
+            self.report_context.not_comparable.add(field_name)
         return {
             "overall": {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0},
             "fields": {},
-            "_not_comparable": True,
             "raw_similarity_score": 0.0,
             "similarity_score": 0.0,
             "threshold_applied_score": 0.0,

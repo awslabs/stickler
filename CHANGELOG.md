@@ -9,6 +9,12 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Fixed
+
+- Field comparison reports retain the dispatcher's non-comparable verdict at a
+  zero threshold, without exposing internal verdict metadata in confusion matrices
+  ([#509](https://github.com/awslabs/stickler/issues/509)).
+
 ## [1.0.1] - 2026-11-02
 
 ### Changed
