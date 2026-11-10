@@ -4,6 +4,7 @@ import json
 from typing import Annotated, List, Optional, Union
 
 import pytest
+from pydantic import Field
 
 from stickler import ComparableField, ExactComparator, StructuredModel
 
@@ -37,6 +38,21 @@ from stickler import ComparableField, ExactComparator, StructuredModel
             List[Annotated[Union[int, str], "element"]],
             [1, "01"],
             "List[Union[int, str]]",
+        ),
+        (
+            List[Optional[Annotated[Union[int, str], "element"]]],
+            [1, "01", None],
+            "List[Optional[Union[int, str]]]",
+        ),
+        (
+            list[Annotated[int | str, Field(description="element")] | None],
+            [1, "01", None],
+            "List[Optional[Union[int, str]]]",
+        ),
+        (
+            List[Annotated[Optional[Union[int, str]], "element"]],
+            [1, "01", None],
+            "List[Optional[Union[int, str]]]",
         ),
         (
             List[Union[Annotated[int, "integer"], str]],
