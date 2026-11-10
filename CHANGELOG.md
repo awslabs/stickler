@@ -16,6 +16,12 @@ Each release links to full notes on the
   gallery step of `generate_report()` fail without writing a page
   ([#454](https://github.com/awslabs/stickler/issues/454))
 
+- **The HTML report is fast to write again with `individual_results_jsonl_path`.**
+  1.0.1 escaped the report's embedded JSON with a `str.translate` table, which
+  is about ten times slower than `json.dumps` on large reports. The same escapes
+  are now applied with `str.replace`, and the page bytes are unchanged
+  ([#457](https://github.com/awslabs/stickler/issues/457))
+
 ## [1.0.1] - 2026-11-02
 
 ### Changed
