@@ -424,8 +424,9 @@ class DateComparator(BaseComparator):
         # allow_partial_year=True) the year on the year-less side is a
         # fictional 1900 placeholder, so we compare on (month, day) only.
         if year_match:
-            # Normalize all three to comparable naive days: endpoints and
-            # the single may differ in tz-awareness.
+            # Align the single against each endpoint separately: it and the
+            # endpoints may differ in tz-awareness, so it is normalized once
+            # per endpoint.
             s_lo, lo = self._normalize_day_pair(single.dt, rng.start.dt)
             s_hi, hi = self._normalize_day_pair(single.dt, rng.end.dt)
             inside = lo <= s_lo and s_hi <= hi
@@ -794,18 +795,6 @@ class DateComparator(BaseComparator):
             cls._truncate_day(a).replace(tzinfo=None),
             cls._truncate_day(b).replace(tzinfo=None),
         )
-
-    @staticmethod
-    def _normalize_day(dt: datetime) -> datetime:
-        """Collapse to a tz-naive midnight so any two dates are comparable.
-
-        Aware datetimes are converted to UTC first; the result is always
-        naive, so values that started with differing tz-awareness can be
-        ordered against each other without raising ``TypeError``.
-        """
-        if dt.tzinfo is not None:
-            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
-        return dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
     @classmethod
     def _dates_equal_day(cls, dt1: datetime, dt2: datetime) -> bool:
