@@ -3,7 +3,8 @@
 Quick reference for running and writing tests.
 
 The session-scoped guard in `conftest.py` requires `stickler` to import from
-this checkout's `src/` directory for every test. If an editable install points
+this checkout's `src/` directory. Otherwise it stops the run with exit code 4
+before any test runs, including `xfail` tests. If an editable install points
 elsewhere, run `uv sync --frozen` here or set `PYTHONPATH` to this checkout's
 `src/` before running pytest.
 

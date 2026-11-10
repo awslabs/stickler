@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 
-def _run_guard(tmp_path, test_directory, import_location):
+def _run_guard(tmp_path, test_directory, import_location, xfail=False):
     checkout = tmp_path / "checkout"
     tests = checkout / "tests"
     tests.mkdir(parents=True)
@@ -44,11 +44,15 @@ def _run_guard(tmp_path, test_directory, import_location):
     target = tests / test_directory / "test_probe.py"
     target.parent.mkdir(parents=True, exist_ok=True)
     marker = checkout / "test-body-ran"
-    target.write_text(
+    probe = (
         "from pathlib import Path\n\n"
-        "def test_probe():\n"
+        "import pytest\n\n"
+        + ("@pytest.mark.xfail(strict=True)\n" if xfail else "")
+        + "def test_probe():\n"
         f"    Path({str(marker)!r}).write_text('ran')\n"
+        + ("    assert False\n" if xfail else "")
     )
+    target.write_text(probe)
     env = {
         **os.environ,
         "PYTHONPATH": str(import_root),
@@ -70,17 +74,19 @@ def _run_guard(tmp_path, test_directory, import_location):
     "test_directory", ["", "structured_object_evaluator", "integrations"]
 )
 @pytest.mark.parametrize("import_location", ["other_checkout", "prefix_sibling"])
-def test_wrong_checkout_fails_before_test_body(
-    tmp_path, test_directory, import_location
+@pytest.mark.parametrize("xfail", [False, True], ids=["plain", "xfail"])
+def test_wrong_checkout_stops_before_test_body(
+    tmp_path, test_directory, import_location, xfail
 ):
     result, marker, imported, expected = _run_guard(
-        tmp_path, test_directory, import_location
+        tmp_path, test_directory, import_location, xfail=xfail
     )
 
-    assert result.returncode == pytest.ExitCode.TESTS_FAILED, (
-        result.stdout + result.stderr
-    )
-    assert "1 error" in result.stdout
+    output = result.stdout + result.stderr
+    assert result.returncode == pytest.ExitCode.USAGE_ERROR, output
+    assert output.count("not this checkout") == 1, output
+    assert "xfailed" not in output
+    assert "passed" not in output
     assert str(imported.resolve()) in result.stdout
     assert str(expected.resolve()) in result.stdout
     assert not marker.exists()
