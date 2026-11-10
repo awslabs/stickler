@@ -18,9 +18,8 @@
   ```
 
   Or pin it: `PYTHONPATH=/path/to/checkout/src python ...`, or `uv run --project /path/to/checkout`.
-- **Check the path, not `__version__`.** `dev` and the published release both report `0.7.0` until the 1.0 bump lands, so the version string cannot tell the two apart. The file path can.
-- `pip install stickler-eval` currently gives **0.7.0**, which is weeks behind `dev` and pre-1.0. This repo is also routinely checked out a dozen times at once, so an editable install can point at a different worktree than the one you are reading.
-- Known 0.7.0 vs `dev` divergences: schema-path comparator defaults (`format`/`enum`/`const` are read on `dev`, ignored in 0.7.0), the built-in comparator count (13 vs 11), extension-typo rejection (raises on `dev`, dropped silently in 0.7.0), and `EvalResult.matched` (`overall_score >= match_threshold` on `dev`, `all_fields_matched` in 0.7.0). Not exhaustive, and it grows until 1.0 publishes.
+- **Check the path, not `__version__`.** Between releases `dev` and the published release report the same version (both `1.0.1` today), so the version string cannot tell the two apart. The file path can.
+- `pip install stickler-eval` gives the latest release, which can be weeks behind `dev`. What `dev` has that the release lacks is listed under `[Unreleased]` in [CHANGELOG.md](./CHANGELOG.md). This repo is also routinely checked out a dozen times at once, so an editable install can point at a different worktree than the one you are reading.
 - A review that cites measured numbers should say which tree produced them. Measuring the wrong build produces internally consistent, confidently wrong conclusions, and it has twice sent a PR author to delete correct work. See [#342](https://github.com/awslabs/stickler/issues/342).
 
 ## Dependencies and `uv.lock`

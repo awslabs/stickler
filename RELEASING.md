@@ -21,9 +21,9 @@ Semantic versioning, judged by *content since the last release*
 
 | Bump | When |
 |------|------|
-| **patch** (0.X.Y → 0.X.Y+1) | Only fixes, dependency bumps, docs — no new public API |
-| **minor** (0.X → 0.X+1.0) | Additive features, no breaking changes (most common) |
-| **major** | Breaking API change, or an explicit "this is stable" decision |
+| **patch** (X.Y.Z → X.Y.Z+1) | Only fixes, dependency bumps, docs — no new public API |
+| **minor** (X.Y.Z → X.Y+1.0) | Additive features, no breaking changes |
+| **major** (X.Y.Z → X+1.0.0) | Breaking change to the public API |
 
 Check for unmerged dependabot security PRs first — consider merging them so
 they ride the same release.
