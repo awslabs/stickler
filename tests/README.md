@@ -38,6 +38,7 @@ pytest tests/ -n auto
 
 ```
 tests/
+├── test_readme_examples.py      # README examples, defaults and table coverage
 ├── test_top_level_exports.py      # Top-level package re-exports
 ├── test_docs_build.py             # Real MkDocs link-check acceptance builds
 ├── structured_object_evaluator/   # Core evaluation tests

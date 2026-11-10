@@ -9,6 +9,12 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Changed
+
+- Harden README example and default-value regression tests, including labeled
+  output, list-element matching thresholds and complete documentation-table
+  coverage ([#436](https://github.com/awslabs/stickler/issues/436)).
+
 ### Fixed
 
 - **The HTML report gallery now accepts non-string `document_files` keys and
