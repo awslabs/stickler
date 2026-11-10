@@ -12,8 +12,8 @@ Each release links to full notes on the
 ### Changed
 
 - Harden README example and default-value regression tests, including labeled
-  output, list-element matching thresholds and complete documentation-table
-  coverage ([#436](https://github.com/awslabs/stickler/issues/436)).
+  output, list-element matching thresholds and the README default and
+  comparator tables ([#436](https://github.com/awslabs/stickler/issues/436)).
 
 ### Fixed
 

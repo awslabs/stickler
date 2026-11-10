@@ -342,10 +342,17 @@ def test_readme_extension_defaults_match_schema(readme, undeclared):
         ),
         (r"`([0-9.]+)` for an object with `properties`", ["nested"]),
         (
-            r"`([0-9.]+)` for a free-form",
+            r"`([0-9.]+)` for a free-form\s+`\{\"type\": \"object\"\}`\s+\(or an array of them\)",
+            ["mapping", "mappings"],
+        ),
+        # The enum/const/format clause shares that number. Requiring it to
+        # follow the number with no new value in between means a README edit
+        # that gives the clause its own threshold has to update this pattern.
+        (
+            r"`([0-9.]+)` for a free-form\s+`\{\"type\": \"object\"\}`\s+"
+            r"\(or an array of them\)\s+and for any property or array\s+`items`\s+"
+            r"with\s+`enum`,\s+`const`,\s+or a string\s+`format`",
             [
-                "mapping",
-                "mappings",
                 "dated",
                 "timestamped",
                 "linked",
@@ -491,16 +498,19 @@ def test_new_table_row_requires_a_case():
 def test_model_list_matching_threshold_is_the_element_threshold():
     from stickler import ComparableField
 
+    # Element and parent thresholds differ, and neither is the 0.7 default,
+    # so returning the parent's match_threshold cannot pass.
     class Item(StructuredModel):
         value: str = ComparableField()
-        match_threshold = 0.7
+        match_threshold = 0.8
 
     class Document(StructuredModel):
         items: list[Item] | None = ComparableField()
+        match_threshold = 0.6
 
-    assert _matching_threshold(Document, "items") == 0.7
-    assert (0.698 >= _matching_threshold(Document, "items")) != (
-        0.702 >= _matching_threshold(Document, "items")
+    assert _matching_threshold(Document, "items") == 0.8
+    assert (0.798 >= _matching_threshold(Document, "items")) != (
+        0.802 >= _matching_threshold(Document, "items")
     )
 
 
@@ -523,17 +533,18 @@ def test_numeric_annotations_are_not_dropped_or_truncated(annotation, claimed):
 
 
 @pytest.mark.parametrize(
-    "measured, claimed", [(0.698, 0.702), (0.702, 0.698), (0.7, 0.699)]
+    "measured, claimed", [(0.798, 0.802), (0.802, 0.798), (0.8, 0.799)]
 )
 def test_example_verdict_check_uses_element_threshold(monkeypatch, measured, claimed):
     from stickler import ComparableField
 
     class Item(StructuredModel):
         value: str = ComparableField()
-        match_threshold = 0.7
+        match_threshold = 0.8
 
     class Document(StructuredModel):
         items: list[Item] = ComparableField()
+        match_threshold = 0.6
 
     assert Document._get_comparison_info("items").threshold == 0.5
     monkeypatch.setitem(
