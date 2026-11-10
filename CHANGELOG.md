@@ -18,6 +18,13 @@ Each release links to full notes on the
   the `non_matches` key from `compare_with(evaluator_format=True)` output when
   `document_non_matches` is not set. Until 1.1.0 these keep their 1.0.1
   behaviour, and their warnings now name 1.1.0.
+- `NumericComparator` reads a negative it used to read as positive: U+2212 and
+  other minus signs right before the number or a currency (`"−1250"`,
+  `"−AED 1250"`) or right after a currency symbol (`"$−1250"`), fullwidth
+  accounting parentheses (`"（1250）"`), and accounting parentheses with spaces
+  or invisible format characters around them (`" (1250) "`). A dash before a
+  word is a bullet and keeps its old reading (`"– Total: 1250"`)
+  ([#559](https://github.com/awslabs/stickler/issues/559))
 
 ### Fixed
 
@@ -55,6 +62,15 @@ Each release links to full notes on the
 
 - `NumericComparator` treats booleans as non-numeric and returns `0.0` instead of
   raising `decimal.InvalidOperation`, including in uncoerced model fields.
+- **`NumericComparator` reads digits in other scripts.** Digits outside ASCII
+  (Arabic-Indic, Persian, Devanagari, Thai, fullwidth, ...) were deleted before
+  parsing, so `"١٢٥٠"` never matched `"1250"` and `"١٢٥٠.50"` read as `0.50`. A
+  string written in such digits now reads as its number when it holds one
+  unambiguous number, and otherwise as no number, as before. A number whose
+  digits switch script reads as no number, unless it is the same amount
+  written twice (`"1250١٢٥٠"`). String values only: a `float`, `int` or
+  `Decimal` field rejects `"١٬٢٥٠٫٥٠"` before the comparator runs
+  ([#559](https://github.com/awslabs/stickler/issues/559))
 
 ### Security
 
