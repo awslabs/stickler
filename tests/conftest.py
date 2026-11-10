@@ -5,7 +5,7 @@ import pytest
 
 import stickler
 
-CHECKOUT_SRC = Path(__file__).resolve().parents[2] / "src"
+CHECKOUT_SRC = Path(__file__).resolve().parents[1] / "src"
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -20,6 +20,7 @@ def _stickler_is_this_checkout():
     if not imported.is_relative_to(CHECKOUT_SRC.resolve()):
         pytest.fail(
             f"stickler imported from {imported}, not this checkout ({CHECKOUT_SRC}). "
-            "Install strands-agents-evals without the [stickler] extra.",
+            "Run uv sync --frozen in this checkout, or set PYTHONPATH to its src/ "
+            "directory. Install strands-agents-evals without the [stickler] extra.",
             pytrace=False,
         )

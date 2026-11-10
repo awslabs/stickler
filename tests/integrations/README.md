@@ -11,7 +11,7 @@ makes every case pass instead of raising. Tests assert that keys exist.
 
 | File | Pins | Needs strands |
 | --- | --- | --- |
-| `conftest.py` | Fails every test here unless `stickler` is imported from this checkout | no |
+| [`../conftest.py`](../conftest.py) | Fails every test in the suite unless `stickler` is imported from this checkout | no |
 | `strands_corpus.py` | Models, cases, and `strands_test_pass`, a verbatim copy of 1.6.0's `_passed` | no |
 | `test_strands_evals_contract.py` | Import paths, `eval_for` kwargs, `evaluate`/`explain` shapes, every `EvalResult` attribute, `raw["confusion_matrix"]["overall"]` counts, `matched`, the guard, `aggregate_from_comparisons` | no |
 | `test_strands_evals_snapshot.py` + `strands_evals_snapshot.json` | Exact scores, verdicts and aggregate metrics for typical shapes | no |
