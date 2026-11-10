@@ -18,8 +18,8 @@
   ```
 
   Or pin it: `PYTHONPATH=/path/to/checkout/src python ...`, or `uv run --project /path/to/checkout`.
-- **Check the path, not `__version__`.** Between releases `dev` and the published release report the same version (both `1.0.1` today), so the version string cannot tell the two apart. The file path can.
-- `pip install stickler-eval` gives the latest release, which can be weeks behind `dev`. What `dev` has that the release lacks is listed under `[Unreleased]` in [CHANGELOG.md](./CHANGELOG.md). This repo is also routinely checked out a dozen times at once, so an editable install can point at a different worktree than the one you are reading.
+- **Check the path, not `__version__`.** `dev` and the latest PyPI release usually report the same version, so the version string cannot reliably tell the two apart. The file path can.
+- `pip install stickler-eval` gives the latest release, which can be weeks behind `dev`. For the exact difference in what gets installed, diff the latest release tag against `dev`: `git diff --stat vX.Y.Z origin/dev -- src/ pyproject.toml`. This repo is also routinely checked out a dozen times at once, so an editable install can point at a different worktree than the one you are reading.
 - A review that cites measured numbers should say which tree produced them. Measuring the wrong build produces internally consistent, confidently wrong conclusions, and it has twice sent a PR author to delete correct work. See [#342](https://github.com/awslabs/stickler/issues/342).
 
 ## Dependencies and `uv.lock`
