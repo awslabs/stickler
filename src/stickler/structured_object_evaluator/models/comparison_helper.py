@@ -449,10 +449,23 @@ class ComparisonHelper:
         matching_sink: Dict[str, Any] | None = None,
     ):
         """
-        Compare two lists as unordered collections using Hungarian matching.
+        Classify and score the already matched pairs of an unordered list comparison.
+
+        No matching happens here: the callers, such as ``compare_unordered_lists``,
+        pair the items first. A pair at or above the threshold is a true positive
+        and one below it a false discovery; the items left over on either side are
+        false negatives (ground truth) and false alarms (prediction).
 
         Args:
-            list1: First list
+            matched_pairs: ``(gt_index, pred_index, score)`` tuples, one per matched pair
+            gt_list: Ground truth list
+            pred_list: Prediction list
+            classification_threshold: Minimum score for a pair to count as a true positive
+            clip_under_threshold: Whether a sub-threshold pair contributes 0.0 to
+                ``overall_score`` rather than its own score
+            matching_sink: Optional side map populated with the pairs, the
+                threshold and the verdict for each pair
+
         Returns:
                 Dictionary with confusion matrix metrics including:
                 - tp: True positives (matches >= threshold)
