@@ -118,6 +118,15 @@ class TestSectionGenerator:
         assert '<div class="metric-value">1</div>' in result
         assert 'None' not in result
 
+    def test_executive_summary_does_not_score_a_bool_metric(self):
+        """bool is an int subclass, so True must not render as a coloured 1.000."""
+        generator = SectionGenerator({'overall': {'cm_f1': True}}, self.mock_viz_engine)
+
+        result = generator.generate_executive_summary(ReportConfig())
+
+        assert 'style="color: #010101;">True' in result
+        assert '1.000' not in result
+
     def test_executive_summary_escapes_the_document_count(self):
         """A document_count assigned after construction is not validated, so it is escaped."""
         results = ProcessEvaluation(document_count=3, metrics={})
