@@ -41,12 +41,38 @@ jobs:
         run: |
           # Mutable git tags can be repointed; pin to the release commit.
           uv tool install git+https://github.com/awslabs/automated-security-helper.git@e73de85c1db7f443276370c4a6f7501815756780 # v3.1.2
+      # Fails the job on any actionable finding (ASH exits 2). Reviewed false
+      # positives carry an inline `# nosec <rule>` with a reason.
       - name: Run ASH Security Scan
-        continue-on-error: true
         run: |
           ash --mode local
+      # ASH exits 0 when a scanner is MISSING or ERRORs, which would silently
+      # turn the gate off. Fail unless the core scanners actually ran. The
+      # per-scanner files are read because the aggregated JSON's `status` is
+      # unreliable (detect-secrets reads SKIPPED even when it ran).
+      - name: Require core ASH scanners to have run
+        if: ${{ !cancelled() }}
+        run: |
+          python3 -I - <<'EOF'
+          import json, pathlib, sys
+
+          bad = []
+          for name in ("bandit", "detect-secrets", "semgrep"):
+              path = pathlib.Path(".ash/ash_output/scanners", name, "source", "ASH.ScanResults.json")
+              try:
+                  status = json.loads(path.read_text()).get("status")
+              except (OSError, ValueError) as e:
+                  status = f"unreadable ({e.__class__.__name__})"
+              print(f"{name}: {status}")
+              if status not in ("PASSED", "FAILED"):
+                  bad.append(name)
+          if bad:
+              sys.exit(f"::error::ASH scanners did not run: {', '.join(bad)}")
+          EOF
+      # `always()` so a failed scan still hands its PR number to
+      # `security-pr-comment.yaml`, which posts the findings.
       - name: Save PR number
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: echo "$PR_NUMBER" > pr-number.txt
