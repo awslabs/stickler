@@ -4,7 +4,7 @@ It always wrote `"non_matches": []`, so "not collected" read as "no
 non-matches": `print_non_matches` printed a success message over a document
 with a wrong field (#413). 1.0.1 keeps 1.0.0's plain `[]`, so 1.0.0 callers
 (`result["non_matches"]`, `type(...) is list`, `yaml.safe_dump`) keep working,
-and warns once per process that 1.0.2 omits the key. Until then the printers
+and warns once per process that 1.1.0 omits the key. Until then the printers
 read that `[]` as 1.0.0 did. The HTML side of this lives in
 `tests/reporting/html/test_html_non_match_records.py`.
 """
@@ -37,7 +37,7 @@ WARNING_TEXT = (
     "compare_with(evaluator_format=True) without document_non_matches=True "
     "returns 'non_matches' as []: the records were not collected, so it does "
     "not mean every field matched. Pass document_non_matches=True to collect "
-    "them. From 1.0.2 the 'non_matches' key is omitted unless "
+    "them. From 1.1.0 the 'non_matches' key is omitted unless "
     "document_non_matches=True."
 )
 
@@ -147,7 +147,7 @@ def test_requested_and_none_found_is_an_empty_list():
 
 
 def test_printer_reads_unrequested_records_as_1_0_0_did(capsys):
-    """Known limit until 1.0.2: the `[]` cannot say "not collected"."""
+    """Known limit until 1.1.0: the `[]` cannot say "not collected"."""
     result, _ = compare(WRONG, evaluator_format=True)
     print_non_matches(result, use_color=False)
 

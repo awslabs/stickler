@@ -240,6 +240,14 @@ class TestDataExtractor:
         
         assert result == 1
     
+    def test_get_document_count_reads_dict_key(self):
+        """A results dict's document_count key is returned (#467)."""
+        assert DataExtractor.get_document_count({"document_count": 4}) == 4
+
+    def test_get_document_count_none_falls_back_to_one(self):
+        """A ProcessEvaluation whose document_count is None counts as 1 (#467)."""
+        assert DataExtractor.get_document_count(ProcessEvaluation(metrics={})) == 1
+
     def test_extract_similarity_score_overall_bulk(self):
         """Test overall similarity score extraction from ProcessEvaluation."""
         mock_process_eval = Mock(spec=ProcessEvaluation)

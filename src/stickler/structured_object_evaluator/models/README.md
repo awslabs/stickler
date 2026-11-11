@@ -61,7 +61,7 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   `evaluator_format_helper.py` — result shaping. Without
   `document_non_matches=True`, evaluator-format `non_matches` is `[]` (as in
   1.0.0) although no records were collected, so it reads as "none found" until
-  1.0.2 omits the key.
+  1.1.0 omits the key.
 
 **Metrics**
 - `confusion_matrix_builder.py`, `confusion_matrix_calculator.py`,
