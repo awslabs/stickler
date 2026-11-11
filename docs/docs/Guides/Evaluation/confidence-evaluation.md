@@ -138,12 +138,13 @@ warnings.filterwarnings(
 )
 ```
 
-Under pytest, a `warnings.filterwarnings(...)` call in your code does not silence it, because pytest applies its own warning filters around each test. Put the same filter in your pytest configuration instead:
+Under pytest, a `warnings.filterwarnings(...)` call at module import time is overridden by pytest's per-test filters. Set the filter inside a test or fixture, or use the pytest configuration below (including the separate `UserWarning` filter explained next):
 
 ```toml
 [tool.pytest.ini_options]
 filterwarnings = [
     "ignore:The 'auroc_confidence_metric' result key is deprecated:DeprecationWarning",
+    "ignore:Single-document confidence metrics are a quick sanity check:UserWarning",
 ]
 ```
 

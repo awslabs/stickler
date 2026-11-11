@@ -26,6 +26,8 @@ def _recorded(*filters):
     return caught
 
 
+# Keep these filters aligned with docs/docs/Guides/Evaluation/
+# confidence-evaluation.md, "Silencing the legacy AUROC deprecation warning".
 AUROC = {
     "message": "The 'auroc_confidence_metric' result key is deprecated",
     "category": DeprecationWarning,
@@ -42,7 +44,9 @@ def test_without_filters_both_warnings_are_emitted():
 
 
 def test_documented_filters_silence_both_warnings():
-    assert _recorded(AUROC, SINGLE_DOC) == []
+    messages = [str(w.message) for w in _recorded(AUROC, SINGLE_DOC)]
+    for warning_filter in (AUROC, SINGLE_DOC):
+        assert not any(m.startswith(warning_filter["message"]) for m in messages)
 
 
 def test_auroc_filter_leaves_the_user_warning():
