@@ -52,8 +52,9 @@ def _run_readme_example(heading: str):
         )
 
     out = io.StringIO()
+    # exec runs this repo's own README example, to check its printed numbers.
     with contextlib.redirect_stdout(out):
-        exec(code, namespace)
+        exec(code, namespace)  # noqa: S102  # nosec B102
     prints = [line for line in code.splitlines() if line.startswith("print(")]
     outputs = out.getvalue().splitlines()
     assert len(prints) == len(outputs)

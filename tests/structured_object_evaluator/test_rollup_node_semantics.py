@@ -1360,13 +1360,15 @@ class TestTheUnitLabelPublishedForRankingSections:
         unit = re.search(r"^\s*unit = (.+)$", page, re.M)
         assert cond and unit, "the ranking snippet lost its unit label"
 
+        # eval runs the two expressions from this repo's own docs page, so the
+        # test fails if the published snippet stops matching the code.
         def published_label(node: dict, section: str, object_lists: set) -> str:
-            counts_objects = eval(  # noqa: S307
+            counts_objects = eval(  # noqa: S307  # nosec B307
                 cond.group(1),
                 {},
                 {"data": node, "section": section, "OBJECT_LISTS": object_lists},
             )
-            return eval(unit.group(1), {}, {"counts_objects": counts_objects})  # noqa: S307
+            return eval(unit.group(1), {}, {"counts_objects": counts_objects})  # noqa: S307  # nosec B307
 
         header = _header_doc(item_count=2, rejected=2)
         clean = _header_doc(item_count=2, rejected=0)
