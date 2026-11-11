@@ -29,7 +29,8 @@ Each release links to full notes on the
   the right document count.** A guard on a method that does not exist kept every
   card blue regardless of `color_thresholds`, and the Documents card ignored a
   results dict's `document_count` key and could render `None`. The count is
-  now read in one place, `DataExtractor.get_document_count`
+  now read in one place, `DataExtractor.get_document_count`, so the bulk title
+  and `ReportResult.metadata["document_count"]` change the same way
   ([#467](https://github.com/awslabs/stickler/issues/467))
 
 - **The HTML report is fast to write again with `individual_results_jsonl_path`.**
