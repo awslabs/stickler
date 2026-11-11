@@ -1,7 +1,11 @@
-"""JSON Schema field converter for dynamic model creation.
+"""JSON Schema export helpers and the field converter entry point.
 
-This module provides utilities for converting JSON Schema properties to
-Pydantic Field instances with ComparableField functionality.
+This module mostly holds the export side: it turns Pydantic fields and their
+comparison metadata into JSON Schema properties with x-aws-stickler-*
+extensions (``StructuredModel.to_json_schema()``) and into Stickler config
+entries (``StructuredModel.to_stickler_config()``). Schema import is
+delegated to ``JsonSchemaImporter``; ``JsonSchemaFieldConverter`` keeps the
+import entry point for compatibility.
 """
 
 from typing import Any, Dict, List, Tuple, Type, get_args, get_origin
