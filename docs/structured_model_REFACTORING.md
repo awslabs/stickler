@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the architectural refactoring of the `StructuredModel` class from a monolithic ~2584-line implementation to a modular architecture using the delegation pattern. `StructuredModel` is now ~2030 lines (down from 2584, a ~21% reduction), and most of the comparison, metrics, and dynamic-model logic now lives in dedicated modules under `src/stickler/structured_object_evaluator/models/`. The public `compare`, `compare_with`, `from_json`, `from_json_schema`, `model_from_json`, `to_json_schema`, and `to_stickler_config` APIs are preserved.
+This document describes the architectural refactoring of the `StructuredModel` class from a monolithic ~2584-line implementation to a modular architecture using the delegation pattern. `StructuredModel` is now ~2320 lines (down from 2584, a ~10% reduction), and most of the comparison, metrics, and dynamic-model logic now lives in dedicated modules under `src/stickler/structured_object_evaluator/models/`. The public `compare`, `compare_with`, `from_json`, `from_json_schema`, `model_from_json`, `to_json_schema`, and `to_stickler_config` APIs are preserved.
 
 ## Table of Contents
 
@@ -34,7 +34,7 @@ StructuredModel (2584 lines)
 ### After Refactoring
 
 ```
-StructuredModel (~2030 lines)
+StructuredModel (~2320 lines)
 ├── Public API (compare, compare_with, compare_field_raw, from_json,
 │              model_from_json, from_json_schema, to_json_schema,
 │              to_stickler_config, model_json_schema)
@@ -44,7 +44,7 @@ StructuredModel (~2030 lines)
 ├── Thin delegating shims for legacy private methods
 └── Delegation to specialized components
 
-Specialized Components (selected — ~36 modules total in models/):
+Specialized Components (selected — ~38 modules total in models/):
 ├── Dynamic-model creation
 │   ├── ModelFactory                  - create_model_from_json / create_model_from_fields
 │   ├── JsonSchemaFieldConverter      - JSON Schema → field definitions
@@ -79,7 +79,7 @@ Specialized Components (selected — ~36 modules total in models/):
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        StructuredModel                          │
-│                       (Public API ~2030 lines)                  │
+│                       (Public API ~2320 lines)                  │
 │  • compare()  • compare_with()  • compare_field_raw()           │
 │  • from_json() / model_from_json() / from_json_schema()         │
 │  • to_json_schema() / to_stickler_config()                      │
@@ -177,7 +177,7 @@ Three wrappers that nothing called were removed in [#390](https://github.com/aws
 - `from_json_schema(schema)` - Create a dynamic subclass from a JSON Schema document with `x-aws-stickler-*` extensions
 - `to_json_schema()` / `to_stickler_config()` - Round-trip exporters back to either format
 
-**Size**: ~2030 lines (down from 2584)
+**Size**: ~2320 lines (down from 2584)
 
 ### 2. ModelFactory and JSON-Schema path
 
@@ -247,7 +247,7 @@ match (type(gt_val), type(pred_val)):
 
 ### 5-12. Other Components
 
-See the docstring on `StructuredModel` (`structured_model.py`) for the in-code component map. The most relevant ones are:
+The most relevant ones are:
 
 - `FieldComparator` - primitive & nested-StructuredModel field comparison
 - `PrimitiveListComparator` - lists of primitives via Hungarian matching
@@ -460,7 +460,7 @@ print("Field result:", field_result)
 
 The refactoring achieved:
 
-- **Significant size reduction** in `StructuredModel`: 2584 → ~2030 lines (~21%), with the rest now spread across dedicated components under `models/`.
+- **Significant size reduction** in `StructuredModel`: 2584 → ~2320 lines (~10%), with the rest now spread across dedicated components under `models/`.
 - **Delegation-over-inheritance architecture** with single-responsibility components for dynamic-model creation, comparison routing, list comparison, confusion-matrix metrics, derived metrics, non-match reporting, evaluator formatting, and confidence calibration.
 - **100% public-API backward compatibility** — `compare`, `compare_with`, `from_json`, `model_from_json`, `from_json_schema`, `to_json_schema`, `to_stickler_config`, and the remaining legacy private methods (as shims) all still work.
 - **Single-traversal optimization** preserved.

@@ -263,158 +263,39 @@ def _amend_clip_default(field_info: Any, extra: Any, clip: bool) -> None:
 class StructuredModel(BaseModel):
     """Base class for models with structured comparison capabilities.
 
-    This class extends Pydantic's BaseModel with the ability to compare
-    instances using configurable comparison metrics for each field.
+    Extends Pydantic's ``BaseModel`` so that two instances can be compared
+    field by field, with a configurable comparator, threshold and weight for
+    each field (see ``ComparableField``). The comparison logic lives in
+    dedicated helper modules that this class delegates to; see
+    ``docs/structured_model_REFACTORING.md`` for the component map.
 
-    Architecture - Delegation Pattern:
-    ----------------------------------
-    StructuredModel uses a delegation pattern where comparison logic is
-    distributed across specialized helper classes. This refactoring reduced
-    the class from 2584 lines to ~1486 lines while maintaining all
-    functionality. Several previously-monolithic concerns (recursive
-    comparison, dispatch, list comparison, confusion-matrix metrics,
-    non-match collection, evaluator formatting) now live in dedicated
-    components, with thin delegating shims kept on the model for backward
-    compatibility. See ``docs/structured_model_REFACTORING.md`` for the
-    full component map.
-
-    The delegation pattern works as follows:
-    1. StructuredModel maintains the public API (compare, compare_with, compare_field_raw)
-    2. All implementation details are delegated to specialized helper classes
-    3. Each helper class has a single, well-defined responsibility
-    4. Helpers receive the StructuredModel instance as a parameter (composition)
-    5. This avoids circular dependencies and keeps the architecture clean
-
-    Helper Classes and Their Responsibilities:
-    ------------------------------------------
-
-    **Model Creation:**
-    - ModelFactory: Creates dynamic StructuredModel subclasses from JSON configuration
-      - Validates configuration structure
-      - Converts field definitions to Pydantic fields
-      - Creates model classes using Pydantic's create_model()
-
-    **Comparison Orchestration:**
-    - ComparisonEngine: Main orchestrator for the comparison process
-      - Coordinates between dispatcher, collectors, and calculators
-      - Implements single-traversal optimization
-      - Manages compare_recursive and compare_with methods
-
-    **Field Comparison Routing:**
-    - ComparisonDispatcher: Routes field comparisons to appropriate handlers
-      - Uses match-statement based dispatch for clarity
-      - Handles null cases and type mismatches
-      - Delegates to specialized comparators based on field type
-
-    **Field-Level Comparison:**
-    - FieldComparator: Compares primitive and structured fields
-      - Handles string, int, float comparisons
-      - Handles nested StructuredModel comparisons
-      - Applies threshold-based binary classification
-
-    - PrimitiveListComparator: Compares lists of primitive values
-      - Uses Hungarian matching for optimal pairing
-      - Returns hierarchical structure for API consistency
-      - Handles empty list cases
-
-    - StructuredListComparator: Compares lists of StructuredModels
-      - Uses Hungarian matching with object-level similarity
-      - Performs threshold-gated recursive analysis
-      - Calculates nested field metrics
-
-    **Metrics Calculation:**
-    - ConfusionMatrixCalculator: Calculates confusion matrix metrics
-      - Computes TP, FP, TN, FN, FD, FA counts
-      - Classifies the non-list sub-fields of matched list items
-
-    - AggregateMetricsCalculator: Rolls up child metrics to parent nodes
-      - Performs recursive traversal of result tree
-      - Sums child aggregate metrics to parent
-      - Provides universal field-level granularity
-
-    - DerivedMetricsCalculator: Calculates derived metrics
-      - Computes precision, recall, F1, accuracy
-      - Supports both traditional and FD-inclusive recall
-      - Delegates to MetricsHelper for calculations
-
-    - ConfusionMatrixBuilder: Orchestrates all metrics calculation
-      - Coordinates the aggregate and derived calculators
-      - Ensures correct calculation order
-      - Builds complete confusion matrices
-
-    **Non-Match Documentation:**
-    - NonMatchCollector: Documents non-matching fields
-      - Collects object-level non-matches for lists
-      - Collects field-level non-matches (legacy format)
-      - Handles nested StructuredModel recursion
-
-    **Existing Helpers (Pre-Refactoring):**
-    - HungarianHelper: Hungarian algorithm for list matching
-    - MetricsHelper: Derived metrics calculation formulas
-    - ConfigurationHelper: Field configuration management
-    - ComparisonHelper: Comparison utility methods
-    - EvaluatorFormatHelper: Output formatting for evaluators
-    - NonMatchesHelper: Non-match collection utilities
-    - FieldHelper: Field type and null checking utilities
-
-    Benefits of Delegation Pattern:
-    --------------------------------
-    1. **Maintainability**: Each class has a single responsibility
-    2. **Testability**: Components can be tested in isolation
-    3. **Extensibility**: Easy to add new field types or metrics
-    4. **Readability**: Clear separation of concerns
-    5. **Performance**: No overhead - delegation is just function calls
-
-    Migration Notes:
-    ----------------
-    - All public APIs remain unchanged (complete backward compatibility)
-    - All tests pass without modification (80+ test files)
-    - Performance characteristics maintained (single-traversal optimization)
-    - No breaking changes for existing users
-
-    Features:
-    ---------
-    - Field-level comparison configuration via ComparableField
-    - Nested model comparison with recursive evaluation
-    - Integration with ANLS* comparators
-    - JSON schema generation with comparison metadata
-    - Unordered list comparison using Hungarian matching
-    - Confusion matrix metrics (TP, FP, FN, TN, FA, FD)
-    - Aggregate metrics rollup from nested fields
-    - Retention of extra fields not defined in the model
-    - Dynamic model creation from JSON configuration
-    - Threshold-gated recursive analysis for performance
-
-    Example Usage:
-    --------------
-    ```python
-    >>> from stickler import StructuredModel
-    >>> from stickler import ComparableField
-    >>> from stickler import LevenshteinComparator
-    >>>
-    >>> class Product(StructuredModel):
-    ...     name: str = ComparableField(
-    ...         comparator=LevenshteinComparator(),
-    ...         threshold=0.8,
-    ...         weight=2.0
-    ...     )
-    ...     price: float = ComparableField(
-    ...         comparator=NumericComparator(),
-    ...         threshold=0.9
-    ...     )
-    >>>
-    >>> gt = Product(name="Widget", price=29.99)
-    >>> pred = Product(name="Widgit", price=29.99)  # Typo in name
-    >>>
-    >>> # Simple comparison (returns overall similarity score)
-    >>> score = gt.compare(pred)
-    >>> print(f"Similarity: {score:.2f}")
-    >>>
-    >>> # Detailed comparison with confusion matrix
-    >>> result = gt.compare_with(pred, include_confusion_matrix=True)
-    >>> print(f"TP: {result['overall']['tp']}, FD: {result['overall']['fd']}")
-    >>> print(f"F1: {result['aggregate']['derived']['cm_f1']:.2f}")
-    ```
+    Example:
+        >>> from stickler import (
+        ...     ComparableField,
+        ...     LevenshteinComparator,
+        ...     NumericComparator,
+        ...     StructuredModel,
+        ... )
+        >>>
+        >>> class Product(StructuredModel):
+        ...     name: str = ComparableField(
+        ...         comparator=LevenshteinComparator(), threshold=0.8, weight=2.0
+        ...     )
+        ...     price: float = ComparableField(
+        ...         comparator=NumericComparator(), threshold=0.9
+        ...     )
+        >>>
+        >>> gt = Product(name="Widget", price=29.99)
+        >>> pred = Product(name="Widgit", price=29.99)  # Typo in name
+        >>>
+        >>> # Detailed comparison with confusion matrix
+        >>> result = gt.compare_with(pred, include_confusion_matrix=True)
+        >>> matrix = result["confusion_matrix"]
+        >>> overall = matrix["overall"]
+        >>> aggregate = matrix["aggregate"]
+        >>> derived = aggregate["derived"]
+        >>> print("TP:", overall["tp"], "FD:", overall["fd"])
+        >>> print("F1:", derived["cm_f1"])
     """
 
     # Default match threshold - can be overridden in subclasses
@@ -830,7 +711,7 @@ class StructuredModel(BaseModel):
             process_rich_values: Whether to unwrap rich values on this call.
                 Set to False for recursive calls where the parent already handled it.
             process_confidence: Deprecated alias for ``process_rich_values``;
-                emits a DeprecationWarning. Will be removed in 0.5.0.
+                emits a DeprecationWarning.
 
         Returns:
             StructuredModel instance created from the JSON data
@@ -905,13 +786,20 @@ class StructuredModel(BaseModel):
                    Optional keys:
                    - model_name: Name for the generated class (default: "DynamicModel")
                    - match_threshold: Overall matching threshold (default: 0.7)
+                   - infer_unspecified_fields: When true, a primitive field that
+                     names no comparator has its comparator and threshold inferred
+                     from its type and name instead of being rejected (default false)
 
                    Field configuration format:
                    {
                        "type": "str|int|float|bool|List[str]|etc.",  # Required
-                       "comparator": "LevenshteinComparator|ExactComparator|etc.",  # Optional
+                       "comparator": "LevenshteinComparator|ExactComparator|auto|etc.",
+                           # Required for a primitive field, unless
+                           # infer_unspecified_fields is true or the value is "auto"
+                       "comparator_config": {"key": "value"},  # Optional, comparator options
                        "threshold": 0.8,  # Optional, default 0.5
                        "weight": 2.0,     # Optional, default 1.0
+                       "clip_under_threshold": true,  # Optional, default true
                        "required": true,  # Optional, default false
                        "default": "value", # Optional
                        "description": "Field description",  # Optional
@@ -1056,12 +944,14 @@ class StructuredModel(BaseModel):
             ...             "type": "number",
             ...             "x-aws-stickler-comparator": "NumericComparator",
             ...             "x-aws-stickler-threshold": 0.95,
-            ...             "x-aws-stickler-clip-under-threshold": true
+            ...             "x-aws-stickler-clip-under-threshold": True
             ...         }
             ...     },
             ...     "required": ["name"]
             ... }
             >>> ProductModel = StructuredModel.from_json_schema(schema)
+            >>> product1 = ProductModel(name="Widget", price=29.99)
+            >>> product2 = ProductModel(name="Widgit", price=29.99)
             >>> result = product1.compare_with(product2)
             >>> # name field has weight=2.0, price field clips scores below 0.95
         """
@@ -1296,10 +1186,13 @@ class StructuredModel(BaseModel):
         """Compare two lists as unordered collections using Hungarian matching.
 
         Args:
-            list1: First list
-            list2: Second list
+            gt_list: Ground truth list
+            pred_list: Prediction list
             comparator: Comparator to use for item comparison
             threshold: Minimum score to consider a match
+            clip_under_threshold: Whether a sub-threshold element contributes 0.0
+                rather than its own score
+            field_name: Field being compared, used to name it in warnings
 
         Returns:
             Dictionary with confusion matrix metrics including:
@@ -1309,6 +1202,7 @@ class StructuredModel(BaseModel):
             - fn: False negatives (unmatched ground truth items)
             - fp: Total false positives (fd + fa)
             - overall_score: Similarity score for backward compatibility
+            - raw_overall_score: The same score with no element clipped
         """
         return ComparisonHelper.compare_unordered_lists(
             gt_list,
@@ -1364,12 +1258,10 @@ class StructuredModel(BaseModel):
         return ComparisonHelper.compare_field_raw(self, field_name, other_value)
 
     def compare_recursive(self, other: "StructuredModel") -> dict:
-        """The ONE clean recursive function that handles everything.
+        """Recursively compare this model with another in a single traversal.
 
-        Enhanced to capture BOTH confusion matrix metrics AND similarity scores
-        in a single traversal to eliminate double traversal inefficiency.
-
-        PHASE 2: Delegates to ComparisonEngine while maintaining identical behavior.
+        Captures both confusion matrix metrics and similarity scores in one pass.
+        Delegates to ``ComparisonEngine.compare_recursive``.
 
         Args:
             other: Another instance of the same model to compare with
@@ -1473,8 +1365,11 @@ class StructuredModel(BaseModel):
     def compare(self, other: "StructuredModel") -> float:
         """Compare this model with another and return a scalar similarity score.
 
-        Returns the overall weighted average score regardless of sufficient/necessary field matching.
-        This provides a more nuanced score for use in comparators.
+        Returns the weighted average of the raw field scores, without applying
+        field thresholds, and leaves out fields that are absent on both sides.
+        ``compare_with()["overall_score"]`` instead weights the
+        threshold-clipped ``field_scores`` over every field, so the two can
+        differ. This score is the one used for comparators and list matching.
 
         Args:
             other: Another instance of the same model to compare with
@@ -1482,9 +1377,7 @@ class StructuredModel(BaseModel):
         Returns:
             Similarity score between 0.0 and 1.0
         """
-        # We'll calculate the overall weighted score directly instead of using compare_with
-        # This ensures that sufficient/necessary field rules don't cause a zero score
-        # when at least some fields match
+        # Calculate the overall weighted score directly instead of using compare_with.
 
         total_score = 0.0
         total_weight = 0.0
@@ -1558,7 +1451,7 @@ class StructuredModel(BaseModel):
     ) -> Dict[str, Any]:
         """Compare this model with another instance using SINGLE TRAVERSAL optimization.
 
-        PHASE 2: Delegates to ComparisonEngine while maintaining identical behavior.
+        Delegates to ``ComparisonEngine.compare_with``.
 
         Args:
             other: Another instance of the same model to compare with
@@ -1579,7 +1472,10 @@ class StructuredModel(BaseModel):
                 See
                 https://awslabs.github.io/stickler/Advanced/aggregate-metrics/
             document_non_matches: Whether to document non-matches for analysis
-            evaluator_format: Whether to format results for the evaluator.
+            evaluator_format: Whether to format results for the evaluator. The
+                result is rebuilt from a fixed key set (``overall``, ``fields``,
+                ``confusion_matrix``, ``non_matches``), so every other key listed
+                under Returns is absent, even when its flag is set.
                 Without ``document_non_matches=True`` its ``non_matches`` is
                 ``[]`` because no records were collected, not because none were
                 found, and a ``DeprecationWarning`` is emitted once per
@@ -1604,13 +1500,20 @@ class StructuredModel(BaseModel):
                 Only used when add_bbox_metrics=True.
 
         Returns:
-            Dictionary with comparison results including:
+            Dictionary with comparison results including (with
+            ``evaluator_format=True`` only the keys named under that parameter):
             - field_scores: Scores for each field
             - overall_score: Weighted average score
             - confusion_matrix: (optional) Confusion matrix data if requested
             - non_matches: (optional) Non-match documentation if requested
-            - field_comparisons: (optional) Field level comparison information if requested
+            - field_comparisons: (optional) Field level comparison information; added by document_field_comparisons, add_confidence_metrics or add_bbox_metrics
             - confidence_metrics: (optional) Confidence calibration metrics if requested
+            - auroc_confidence_metric: (optional) Deprecated AUROC float, added alongside confidence_metrics when add_confidence_metrics=True
+            - bbox_metrics: (optional) Bounding-box mAP metrics if add_bbox_metrics=True
+            - prediction_raw: (optional) The JSON that other was built from, present when other was built by a top-level from_json call
+            - prediction_confidences: (optional) Confidence scores read from the rich values of other, keyed by field path, present only when there are any
+            - ground_truth_bboxes: (optional) The _bbox of each field of this model that has one, keyed by field path, present only when there are any
+            - prediction_bboxes: (optional) The same map for other
         """
         from .comparison_engine import ComparisonEngine
 

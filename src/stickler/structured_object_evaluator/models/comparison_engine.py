@@ -35,6 +35,8 @@ class ComparisonEngine:
         dispatcher: ComparisonDispatcher for routing field comparisons
         non_match_collector: NonMatchCollector for documenting non-matches
         confusion_matrix_builder: ConfusionMatrixBuilder for orchestrating metrics
+        field_comparison_collector: FieldComparisonCollector for documenting every
+            field-level comparison
     """
 
     def __init__(self, model: "StructuredModel"):
@@ -234,21 +236,45 @@ class ComparisonEngine:
                 gated: its leaves are always reported. See
                 https://awslabs.github.io/stickler/Advanced/aggregate-metrics/
             document_non_matches: Whether to document non-matches for analysis
-            evaluator_format: Whether to format results for the evaluator
+            evaluator_format: Whether to format results for the evaluator. The
+                result is rebuilt from a fixed key set (``overall``, ``fields``,
+                ``confusion_matrix``, ``non_matches``), so every other key listed
+                under Returns is absent, even when its flag is set.
             recall_with_fd: If True, include FD in recall denominator (TP/(TP+FN+FD))
                             If False, use traditional recall (TP/(TP+FN))
             add_derived_metrics: Whether to add derived metrics to confusion matrix
             document_field_comparisons: Whether to document all matches and non matches made in the comparison
+            add_confidence_metrics: Whether to add confidence calibration metrics.
+                Emits a UserWarning recommending BulkStructuredModelEvaluator for
+                statistically meaningful results.
+            confidence_metrics: Optional list of ConfidenceMetric instances to compute.
+                Defaults to [AUROCMetric()] if not provided. Only used when
+                add_confidence_metrics=True.
+            add_bbox_metrics: Whether to add bounding-box mAP metrics (single-doc
+                sanity check). Emits a UserWarning recommending
+                BulkStructuredModelEvaluator with BBoxMAPAccumulator for
+                statistically meaningful results.
+            bbox_iou_thresholds: A single IoU threshold or an iterable of them
+                for mAP. Defaults to the COCO range (0.50, 0.55, ..., 0.95).
+                Only used when add_bbox_metrics=True.
             
         Returns:
-            Dictionary with comparison results:
+            Dictionary with comparison results (with ``evaluator_format=True``
+            only the keys named under that parameter are returned):
             {
                 "field_scores": {"field_name": float, ...},
                 "overall_score": float,
                 "confusion_matrix": {...},  # If include_confusion_matrix=True
                 "non_matches": [...],  # If document_non_matches=True
-                "field_comparisons": [...] # If field_comparisons=True
-                "confidence_metrics": {...} # If add_confidence_metrics=True
+                "field_comparisons": [...],  # If document_field_comparisons=True,
+                                             # add_confidence_metrics=True or add_bbox_metrics=True
+                "confidence_metrics": {...},  # If add_confidence_metrics=True
+                "auroc_confidence_metric": float,  # Deprecated, with confidence_metrics
+                "bbox_metrics": {...},  # If add_bbox_metrics=True
+                "prediction_raw": {...},  # If other was built by a top-level from_json call
+                "prediction_confidences": {...},  # Only when other has any, keyed by field path
+                "ground_truth_bboxes": {...},  # Only when this model has any, keyed by field path
+                "prediction_bboxes": {...}  # Only when other has any, keyed by field path
             }
             
         Example:
