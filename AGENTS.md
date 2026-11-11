@@ -27,7 +27,13 @@
 - `uv.lock` is committed deliberately. Do not gitignore or delete it: every CI workflow runs `uv sync --frozen`, which fails immediately if the lockfile is absent.
 - It does not constrain consumers of the published package. Installers resolve the `dependencies` ranges in `pyproject.toml`, which is what the wheel metadata carries; the lockfile is uv-specific and governs only this repo's dev and CI environments.
 - It also carries the dependency cooldown (`exclude-newer`, `exclude-newer-span`) that the semgrep supply-chain rules check for, so removing it regresses the security scan.
-- **Prefer hand-editing the lines you need over running `uv lock`.** In this repo `uv lock` rewrites `exclude-newer` to `0001-01-01` and strips platform markers from the CUDA and nvidia entries. If you do run it, diff the result and restore both. Verify any edit with `uv lock --check`, which is the authoritative consistency check.
+- uv applies the cooldown only when resolving, from `[tool.uv] exclude-newer = "7 days"`; the lock's `exclude-newer-span = "P7D"` records it, and its absolute `exclude-newer` is unused when a span is present, so newer uv's `0001-01-01` placeholder is harmless. The `cooldown` job in `security.yaml` guards both settings and rejects lock entries a PR adds or changes that are under 7 days old.
+- **Emergency CVE patch inside the window:**
+  1. In `[tool.uv]`, add a dated exemption with the advisory link on the line above: `# https://github.com/advisories/GHSA-xxxx-xxxx-xxxx`, then `exclude-newer-package = { pkg = "2026-11-11T12:00:00Z" }`. Use a full `YYYY-MM-DDTHH:MM:SSZ` time at or after the fix's upload, never a span or `false`.
+  2. Run `uv lock --upgrade-package pkg`, then restore the CUDA/nvidia markers (next bullet). uv also records the exemption in uv.lock as `[options.exclude-newer-package]`.
+  3. Dependabot cannot add the exemption. Land it on `dev` first and have Dependabot recreate its PR (`@dependabot recreate`), or push the exemption onto Dependabot's branch.
+  4. After 7 days the `cooldown` job flags the exemption as stale. Remove both the pyproject entry and the lock's `[options.exclude-newer-package]` table, or `uv lock --check` fails.
+- **Prefer hand-editing the lines you need over running `uv lock`.** In this repo `uv lock` rewrites `exclude-newer` to `0001-01-01` (harmless, above) and strips platform markers from the CUDA and nvidia entries. If you do run it, diff the result and restore the markers. Verify any edit with `uv lock --check`, which is the authoritative consistency check.
 - The lockfile records this package's own `version`, so a release bump must update it alongside `pyproject.toml` and `src/stickler/__init__.py`. See [RELEASING.md](./RELEASING.md).
 
 ## README.md 

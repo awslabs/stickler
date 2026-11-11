@@ -17,6 +17,35 @@ permissions:
   contents: read
 
 jobs:
+  # uv enforces the cooldown only when it resolves, from pyproject's
+  # `exclude-newer`; `uv sync --frozen` installs whatever uv.lock holds. So check
+  # the settings, and that lock entries added or changed since the base (the PR
+  # base, or the previous tip on push) are past the window or carry a dated
+  # emergency exemption. Unchanged entries are never re-judged. An expired
+  # exemption fails pushes and PRs that touch pyproject.toml or uv.lock, and only
+  # warns on other PRs. The lock's absolute `exclude-newer` is unused.
+  cooldown:
+    name: Dependency cooldown
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the 7-day uv cooldown is intact
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # A base without uv.lock makes every entry new.
+          base_lock="$RUNNER_TEMP/base-uv.lock"
+          git fetch --no-tags --depth=1 origin "$BASE"
+          git show "$BASE:uv.lock" > "$base_lock" || rm -f "$base_lock"
+          flags=()
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] && git diff --quiet "$BASE" HEAD -- pyproject.toml uv.lock; then
+            flags=(--stale-exemption-warns)
+          fi
+          python3 -I .github/scripts/check_uv_cooldown.py "$base_lock" "${flags[@]}"
+
   security:
     runs-on: ubuntu-latest
     permissions:
