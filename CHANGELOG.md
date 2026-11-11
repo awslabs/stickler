@@ -9,6 +9,16 @@ Each release links to full notes on the
 
 ## [Unreleased]
 
+### Changed
+
+- The three changes that 1.0.1 announced for 1.0.2 now land in 1.1.0, because
+  patch releases ship no breaking changes. They are the `ValueError` for
+  exporting a union of models or a `StructuredModel` inside a nested list, the
+  `ValueError` for `match_threshold` on a primitive config field, and dropping
+  the `non_matches` key from `compare_with(evaluator_format=True)` output when
+  `document_non_matches` is not set. Until 1.1.0 these keep their 1.0.1
+  behaviour, and their warnings now name 1.1.0.
+
 ### Fixed
 
 - The docs recipe for silencing the `auroc_confidence_metric`
@@ -16,10 +26,26 @@ Each release links to full notes on the
   module). It now filters by message, adds the pytest `filterwarnings` form, and
   names the second `UserWarning` that `compare_with(add_confidence_metrics=True)`
   emits.
+- **Warnings emitted by `StructuredModel.compare_with()` now attribute to the caller's line.**
+  Passing `add_confidence_metrics=True` or `add_bbox_metrics=True` no longer points `UserWarning`
+  and the legacy `auroc_confidence_metric` `DeprecationWarning` at Stickler's internal `structured_model.py`
+  line ([#541](https://github.com/awslabs/stickler/issues/541)).
 - **The HTML report gallery now accepts non-string `document_files` keys and
   paths.** Integer and NumPy keys and `pathlib.Path` values no longer make the
   gallery step of `generate_report()` fail without writing a page
   ([#454](https://github.com/awslabs/stickler/issues/454))
+- **The HTML report's Executive Summary now colours its metric cards and shows
+  the right document count.** A guard on a method that does not exist kept every
+  card blue regardless of `color_thresholds`, and the Documents card ignored a
+  results dict's `document_count` key and could render `None`. The count is
+  now read in one place, `DataExtractor.get_document_count`
+  ([#467](https://github.com/awslabs/stickler/issues/467))
+
+- **The HTML report is fast to write again with `individual_results_jsonl_path`.**
+  1.0.1 escaped the report's embedded JSON with a `str.translate` table, which
+  is about ten times slower than `json.dumps` on large reports. The same escapes
+  are now applied with `str.replace`, and the page bytes are unchanged
+  ([#457](https://github.com/awslabs/stickler/issues/457))
 
 ## [1.0.1] - 2026-11-02
 
@@ -44,7 +70,7 @@ Each release links to full notes on the
   `UserWarning` naming the field on every export. `to_stickler_config()` on
   `List[A | B]`, which raised `AttributeError` in 1.0.0, now exports it as
   `List[Union]` with the same warning. This becomes a `ValueError`
-  in 1.0.2. `Optional` and `Annotated` are stripped before the type is chosen,
+  in 1.1.0. `Optional` and `Annotated` are stripped before the type is chosen,
   so a nested model or list of models declared as
   `Annotated[..., Field(...)] | None` exports as the model, and an annotated
   scalar such as `Annotated[int, Field(...)] | None` as its own type rather
@@ -106,7 +132,7 @@ Each release links to full notes on the
   `float` leaves that field at `threshold` 0.5 and scores it against a value
   the author never chose. The key is still ignored and the field scores as it
   did in 1.0.0. Use `threshold` on the field. This becomes a `ValueError` in
-  1.0.2, matching the JSON Schema path, which already refuses the same
+  1.1.0, matching the JSON Schema path, which already refuses the same
   misplacement. It stays accepted on the model and on a `structured_model`
   field, where it is read and where `to_stickler_config()` exports it
   ([#350](https://github.com/awslabs/stickler/issues/350))
@@ -189,7 +215,7 @@ Each release links to full notes on the
   collected, not that none were found: `print_non_matches` and the HTML report
   print `No non-matches found.` over it even for a document with a wrong field.
   The printers' "records were not collected" message (#298, #411) does not yet
-  apply to evaluator-format output; it applies once 1.0.2 omits the key there,
+  apply to evaluator-format output; it applies once 1.1.0 omits the key there,
   as the default `compare_with()` dict already does. To read records, pass
   `document_non_matches=True`. Scores and counts are unchanged
   ([#413](https://github.com/awslabs/stickler/issues/413))
