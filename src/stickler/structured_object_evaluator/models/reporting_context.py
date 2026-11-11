@@ -17,3 +17,4 @@ class ReportingContext:
     children: dict[str, "ReportingContext"] = field(default_factory=dict)
     recursive_result: dict[str, Any] = field(default_factory=dict)
     field_scores: dict[str, float] = field(default_factory=dict)
+    not_comparable: set[str] = field(default_factory=set)

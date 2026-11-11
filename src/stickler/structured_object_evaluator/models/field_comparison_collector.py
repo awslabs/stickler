@@ -145,14 +145,25 @@ class FieldComparisonCollector:
                     weight = field_result.get("weight", 1.0)
                     weighted_score = threshold_score * weight
                     
-                    # Determine if this is a match based on threshold
+                    # Reuse the dispatcher's verdict so type-mismatched values
+                    # cannot become matches merely because their threshold is 0.
                     info = self.model._get_comparison_info(field_name)
-                    is_match = bool(
+                    is_not_comparable = (
+                        field_name in report_context.not_comparable
+                        if report_context is not None
+                        else (
+                            field_result.get("overall", {}).get("fd", 0) > 0
+                            and ThresholdHelper.is_above_threshold(raw_score, info.threshold)
+                        )
+                    )
+                    is_match = not is_not_comparable and bool(
                         ThresholdHelper.is_above_threshold(raw_score, info.threshold)
                     )
                     
                     # Determine reason
-                    if is_match:
+                    if is_not_comparable:
+                        reason = "not comparable"
+                    elif is_match:
                         if math.isclose(raw_score, 1.0):
                             reason = "exact match"
                         else:

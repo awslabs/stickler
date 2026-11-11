@@ -21,6 +21,12 @@ Each release links to full notes on the
 
 ### Fixed
 
+- `field_comparisons` now reports a type-mismatched pair as `match: False` and
+  `reason: "not comparable"`, matching the confusion matrix's false discovery.
+  It was previously reported as a match at threshold 0.0, and with a
+  `below threshold` reason at positive thresholds
+  ([#509](https://github.com/awslabs/stickler/issues/509)).
+
 - **The HTML report gallery now accepts non-string `document_files` keys and
   paths.** Integer and NumPy keys and `pathlib.Path` values no longer make the
   gallery step of `generate_report()` fail without writing a page
