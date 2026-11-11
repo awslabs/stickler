@@ -260,7 +260,7 @@ class FieldConverter:
         # belongs on the object").
         #
         # 1.0.1 warns and ignores the key, as 1.0.0 ignored it, because 1.0.1
-        # ships no breaking change. 1.0.2 turns this into a `ValueError`, which
+        # ships no breaking change. 1.1.0 turns this into a `ValueError`, which
         # is what makes the two front doors agree.
         if "match_threshold" in field_config:
             # Names the model: Python's default filter shows a message once per
@@ -278,7 +278,7 @@ class FieldConverter:
                 f"ignored and the field scores at its 'threshold'. Use "
                 f"'threshold' for this field, or set 'match_threshold' on the "
                 f"model or on a 'structured_model' field. This becomes a "
-                f"ValueError in 1.0.2.",
+                f"ValueError in 1.1.0.",
                 category=UserWarning,
                 stacklevel=_MATCH_THRESHOLD_STACKLEVEL,
             )
