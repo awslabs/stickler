@@ -148,7 +148,7 @@ filterwarnings = [
 ]
 ```
 
-The same call also emits a `UserWarning` ("Single-document confidence metrics are a quick sanity check..."). The filter above does not cover it; silence it with its own filter:
+The same call also emits a `UserWarning` ("Single-document confidence metrics are a quick sanity check..."). The AUROC Python filter above does not cover it; silence it with its own filter:
 
 ```python
 warnings.filterwarnings(
