@@ -35,6 +35,9 @@ jobs:
       - name: Check the 7-day uv cooldown is intact
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          # A Dependabot PR that only Dependabot has pushed to. A human push makes
+          # github.actor a person, so the age check applies again.
+          DEPENDABOT_PR: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' }}
         run: |
           # A base without uv.lock makes every entry new.
           base_lock="$RUNNER_TEMP/base-uv.lock"
@@ -43,6 +46,9 @@ jobs:
           flags=()
           if [ "$GITHUB_EVENT_NAME" = pull_request ] && git diff --quiet "$BASE" HEAD -- pyproject.toml uv.lock; then
             flags=(--stale-exemption-warns)
+          fi
+          if [ "$DEPENDABOT_PR" = true ]; then
+            flags+=(--dependabot-pr)
           fi
           python3 -I .github/scripts/check_uv_cooldown.py "$base_lock" "${flags[@]}"
 

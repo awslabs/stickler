@@ -59,7 +59,7 @@ def entries(path):
     return out
 
 
-def main(base_lock, stale_warns=False):
+def main(base_lock, stale_warns=False, dependabot_pr=False):
     err, warn, exempt = [], [], {}
     text = open("pyproject.toml", encoding="utf-8").read()
     uv = tomllib.loads(text).get("tool", {}).get("uv", {})
@@ -123,6 +123,15 @@ def main(base_lock, stale_warns=False):
             print(
                 f"{name} {ver} ({newest:%Y-%m-%dT%H:%MZ}) admitted by its emergency exemption"
             )
+        elif dependabot_pr:
+            # Dependabot's own PRs: the auto-merge app merges only after a 7-day
+            # bake from PR creation, and never merges a PR whose checks failed, so
+            # failing here would block the fix for good. Settings checks above
+            # still apply.
+            print(
+                f"::notice::{name} {ver} ({newest:%Y-%m-%dT%H:%MZ}) is inside the window; "
+                "allowed on a Dependabot PR (the auto-merge app's 7-day bake applies)"
+            )
         else:
             err.append(
                 f"uv.lock: {name} {ver} was added or changed and uploaded {newest:%Y-%m-%dT%H:%MZ}, inside the 7-day window"
@@ -142,4 +151,8 @@ def main(base_lock, stale_warns=False):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], "--stale-exemption-warns" in sys.argv[2:])
+    main(
+        sys.argv[1],
+        "--stale-exemption-warns" in sys.argv[2:],
+        "--dependabot-pr" in sys.argv[2:],
+    )
