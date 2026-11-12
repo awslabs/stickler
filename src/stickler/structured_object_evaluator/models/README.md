@@ -73,6 +73,9 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   returning `(data, confidences, extras)`.
 - `post_comparison_accumulator.py` — `PostComparisonAccumulator`, the interface
   for bulk metric accumulators consumed by `BulkStructuredModelEvaluator`.
+- `_keyed_pairs_accumulator.py` — `_KeyedPairsAccumulator`, the shared state
+  handling (reset, serialization, load, merge) for accumulators keyed by field
+  path. Private: the two metric sub-packages below both subclass it.
 
 ## Metric sub-packages
 
