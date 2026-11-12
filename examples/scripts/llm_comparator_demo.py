@@ -14,8 +14,8 @@ Requirements:
 from stickler import (
     ComparableField,
     ExactComparator,
-    LLMComparator,
     LevenshteinComparator,
+    LLMComparator,
     StructuredModel,
 )
 
