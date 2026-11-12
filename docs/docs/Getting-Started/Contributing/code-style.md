@@ -46,7 +46,7 @@ The settings file configures VS Code to automatically format Python files on sav
 
 ### CI Integration
 
-Linting runs automatically on every push and pull request via GitHub Actions. While currently non-blocking, you should address linting issues before submitting PRs.
+Linting runs automatically on every push and pull request via GitHub Actions, and the job fails on any finding. Run `uv run ruff check .` before submitting a PR.
 
 ## Naming Conventions
 

@@ -21,6 +21,14 @@ Each release links to full notes on the
 
 ### Fixed
 
+- `DateComparator` now treats a naive date against a tz-aware one the same way
+  in range comparisons as for single dates: the aware side's own calendar date
+  is used and the naive side is read on that calendar
+  ([#508](https://github.com/awslabs/stickler/issues/508)). Before, the range containment and overlap paths read the
+  naive date as UTC, so the same aware date matched a different calendar day
+  against a range than against a single date. Range scores change only for
+  inputs that mix naive and tz-aware dates.
+
 - **Warnings emitted by `StructuredModel.compare_with()` now attribute to the caller's line.**
   Passing `add_confidence_metrics=True` or `add_bbox_metrics=True` no longer points `UserWarning`
   and the legacy `auroc_confidence_metric` `DeprecationWarning` at Stickler's internal `structured_model.py`
