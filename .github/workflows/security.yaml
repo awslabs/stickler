@@ -17,13 +17,12 @@ permissions:
   contents: read
 
 jobs:
-  # uv enforces the cooldown only when it resolves, from pyproject's
-  # `exclude-newer`; `uv sync --frozen` installs whatever uv.lock holds. So check
-  # the settings, and that lock entries added or changed since the base (the PR
-  # base, or the previous tip on push) are past the window or carry a dated
-  # emergency exemption. Unchanged entries are never re-judged. An expired
-  # exemption fails pushes and PRs that touch pyproject.toml or uv.lock, and only
-  # warns on other PRs. The lock's absolute `exclude-newer` is unused.
+  # uv applies the 7-day cooldown only when it resolves, from pyproject's
+  # `exclude-newer`. This guards the settings so the cooldown can't be
+  # weakened or dropped. It does not age-check individual lock entries: the
+  # Dependabot auto-merge app bakes its PRs 7 days, and lockfile changes from
+  # people are reviewed. Overrides passed on a workflow's command line (e.g.
+  # `--exclude-newer-package` in run_pytest.yaml) are not covered.
   cooldown:
     name: Dependency cooldown
     runs-on: ubuntu-latest
@@ -32,25 +31,40 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Check the 7-day uv cooldown is intact
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          # A Dependabot PR that only Dependabot has pushed to. A human push makes
-          # github.actor a person, so the age check applies again.
-          DEPENDABOT_PR: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' }}
+      - name: Check the 7-day uv cooldown settings
         run: |
-          # A base without uv.lock makes every entry new.
-          base_lock="$RUNNER_TEMP/base-uv.lock"
-          git fetch --no-tags --depth=1 origin "$BASE"
-          git show "$BASE:uv.lock" > "$base_lock" || rm -f "$base_lock"
-          flags=()
-          if [ "$GITHUB_EVENT_NAME" = pull_request ] && git diff --quiet "$BASE" HEAD -- pyproject.toml uv.lock; then
-            flags=(--stale-exemption-warns)
-          fi
-          if [ "$DEPENDABOT_PR" = true ]; then
-            flags+=(--dependabot-pr)
-          fi
-          python3 -I .github/scripts/check_uv_cooldown.py "$base_lock" "${flags[@]}"
+          python3 -I - <<'EOF'
+          import datetime as dt, os, re, sys, tomllib
+
+          err, warn = [], []
+          now = dt.datetime.now(dt.timezone.utc)
+          with open("pyproject.toml", "rb") as f:
+              uv = tomllib.load(f).get("tool", {}).get("uv", {})
+          if uv.get("exclude-newer") != "7 days":
+              err.append('pyproject.toml: [tool.uv] exclude-newer must be "7 days"')
+          elif next(iter(uv)) != "exclude-newer":
+              err.append("pyproject.toml: exclude-newer must be the first key in [tool.uv] (the semgrep cooldown rule only matches it there)")
+          for pkg, val in (uv.get("exclude-newer-package") or {}).items():
+              where = f"pyproject.toml: exclude-newer-package {pkg} = {val!r}"
+              if not (isinstance(val, str) and re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", val)):
+                  err.append(f"{where} must be a YYYY-MM-DDTHH:MM:SSZ timestamp; false or a span switches the cooldown off for it")
+              elif dt.datetime.fromisoformat(val) > now:
+                  err.append(f"{where} is in the future, which switches the cooldown off for it until then")
+              elif now - dt.datetime.fromisoformat(val) > dt.timedelta(days=7):
+                  warn.append(f"{where} is over 7 days old; remove it and uv.lock's [options.exclude-newer-package] entry")
+          if os.path.exists("uv.toml"):
+              err.append("uv.toml: it overrides [tool.uv]; remove it")
+          with open("uv.lock", "rb") as f:
+              if tomllib.load(f).get("options", {}).get("exclude-newer-span") != "P7D":
+                  err.append('uv.lock: [options] exclude-newer-span must be "P7D"')
+          for w in warn:
+              print(f"::warning::{w}")
+          for e in err:
+              print(f"::error::{e}")
+          if err:
+              sys.exit("Dependency cooldown weakened; see the uv.lock section of AGENTS.md.")
+          print('uv cooldown intact: exclude-newer = "7 days", span P7D')
+          EOF
 
   security:
     runs-on: ubuntu-latest
