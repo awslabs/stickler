@@ -225,6 +225,8 @@ Fields without confidence are silently skipped by the confidence module.
 Subclass `ConfidenceMetric` and implement `name` and `compute()`:
 
 ```python
+from typing import Any, Dict
+
 from stickler.structured_object_evaluator.models.confidence import (
     ConfidenceMetric, ConfidencePairs,
 )
