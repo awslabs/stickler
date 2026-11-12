@@ -260,10 +260,6 @@ class EvalSpec:
             }
         return out
 
-    def _explain_structured(self) -> Dict[str, Dict[str, Any]]:
-        """Explain a passthrough StructuredModel from its explicit config."""
-        return self.explain()
-
 
 def eval_for(
     cls: Type[BaseModel],
