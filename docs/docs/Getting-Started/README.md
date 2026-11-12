@@ -41,7 +41,7 @@ ground_truth_json = {
 
 prediction_json = {
     "shipment_id": "SHP-2024-001",  # Perfect match
-    "amount": 1247.48,  # Within tolerance
+    "amount": 1247.495,  # Within tolerance
     "line_items": [
         {"product": "USB Cord", "quantity": 5, "price": 12.99},  # Name variation
         {"product": "Wireless Mouse", "quantity": 2, "price": 29.99}  # Reordered
@@ -53,7 +53,7 @@ ground_truth = Invoice(**ground_truth_json)
 prediction = Invoice(**prediction_json)
 result = ground_truth.compare_with(prediction)
 
-print(f"Overall Score: {result['overall_score']:.3f}")  # 0.693
+print(f"Overall Score: {result['overall_score']:.3f}")  # 0.979
 print(f"Shipment ID: {result['field_scores']['shipment_id']:.3f}")  # 1.000 - exact match
 print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # 0.926 - Hungarian optimal matching
 ```
@@ -62,24 +62,22 @@ print(f"Line Items: {result['field_scores']['line_items']:.3f}")  # 0.926 - Hung
 
     **Console output:**
     ```
-    Overall Score: 0.693
+    Overall Score: 0.979
     Shipment ID: 1.000
     Line Items: 0.926
     ```
 
-    **Full result dictionary:**
+    **Result scores (rounded to three decimals):**
     ```json
     {
       "field_scores": {
         "shipment_id": 1.0,
-        "amount": 0.0,
+        "amount": 1.0,
         "line_items": 0.926
       },
-      "overall_score": 0.693
+      "overall_score": 0.979
     }
     ```
-
-    The `amount` field scores 0.0 because the default `clip_under_threshold` behavior zeros out the score — the difference between 1247.50 and 1247.48 exceeds the `NumericComparator`'s default absolute tolerance of 0.01, and the resulting score falls below the default threshold.
 
 ## What You Just Did
 

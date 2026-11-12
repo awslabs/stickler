@@ -21,6 +21,10 @@ Each release links to full notes on the
 
 ### Fixed
 
+- Corrected introductory example scores, the default text comparator description,
+  and the sample amount in the documentation and README
+  ([#478](https://github.com/awslabs/stickler/issues/478)).
+
 - **Warnings emitted by `StructuredModel.compare_with()` now attribute to the caller's line.**
   Passing `add_confidence_metrics=True` or `add_bbox_metrics=True` no longer points `UserWarning`
   and the legacy `auroc_confidence_metric` `DeprecationWarning` at Stickler's internal `structured_model.py`
