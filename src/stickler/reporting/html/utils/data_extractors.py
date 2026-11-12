@@ -97,10 +97,12 @@ class DataExtractor:
             Number of documents processed
         """
         if isinstance(results, ProcessEvaluation):
-            return getattr(results, 'document_count', 1)
+            count = getattr(results, 'document_count', None)
+        elif isinstance(results, dict):
+            count = results.get('document_count')
         else:
-            # For individual results, count is always 1
-            return 1
+            count = None
+        return 1 if count is None else count
     
     @staticmethod
     def extract_similarity_score(results: Union[Dict[str, Any], ProcessEvaluation], field_name: Optional[str] = None) -> float:
