@@ -17,12 +17,12 @@ permissions:
   contents: read
 
 jobs:
-  # uv applies the 7-day cooldown only when it resolves, from pyproject's
-  # `exclude-newer`. This guards the settings so the cooldown can't be
-  # weakened or dropped. It does not age-check individual lock entries: the
-  # Dependabot auto-merge app bakes its PRs 7 days, and lockfile changes from
-  # people are reviewed. Overrides passed on a workflow's command line (e.g.
-  # `--exclude-newer-package` in run_pytest.yaml) are not covered.
+  # uv applies the 7-day cooldown whenever it resolves, from pyproject's
+  # `exclude-newer`, and that includes the `uv lock` Dependabot runs for its
+  # PRs. This guards the settings so the cooldown can't be weakened or
+  # dropped. It does not age-check individual lock entries; lockfile changes
+  # from people are reviewed. Overrides passed on a workflow's command line
+  # (e.g. `--exclude-newer-package` in run_pytest.yaml) are not covered.
   cooldown:
     name: Dependency cooldown
     runs-on: ubuntu-latest
@@ -44,7 +44,15 @@ jobs:
               err.append('pyproject.toml: [tool.uv] exclude-newer must be "7 days"')
           elif next(iter(uv)) != "exclude-newer":
               err.append("pyproject.toml: exclude-newer must be the first key in [tool.uv] (the semgrep cooldown rule only matches it there)")
-          for pkg, val in (uv.get("exclude-newer-package") or {}).items():
+          pip = uv.get("pip") if isinstance(uv.get("pip"), dict) else {}
+          for key in ("exclude-newer", "exclude-newer-package"):
+              if key in pip:
+                  err.append(f"pyproject.toml: [tool.uv.pip] {key} overrides the cooldown for uv pip; remove it")
+          exemptions = uv.get("exclude-newer-package") or {}
+          if not isinstance(exemptions, dict):
+              err.append("pyproject.toml: [tool.uv] exclude-newer-package must be a table of package = timestamp")
+              exemptions = {}
+          for pkg, val in exemptions.items():
               where = f"pyproject.toml: exclude-newer-package {pkg} = {val!r}"
               if not (isinstance(val, str) and re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", val)):
                   err.append(f"{where} must be a YYYY-MM-DDTHH:MM:SSZ timestamp; false or a span switches the cooldown off for it")
