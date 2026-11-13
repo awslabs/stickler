@@ -128,19 +128,39 @@ See [Bulk Evaluation: Map/Reduce](bulk-evaluation.md#mapreduce-single-doc-compar
 
 ## Silencing the legacy AUROC deprecation warning
 
-The legacy single-document `auroc_confidence_metric` result key emits a `DeprecationWarning` to point callers at the structured `confidence_metrics["overall"]["auroc"]["value"]` shape. If you've already migrated and want to silence the warning until it's removed, target it by module:
+`compare_with(add_confidence_metrics=True)` also writes a legacy `auroc_confidence_metric` key and emits a `DeprecationWarning`, whether or not you read that key. Read `confidence_metrics["overall"]["auroc"]["value"]` instead, and silence the warning by its message:
 
 ```python
 import warnings
 
 warnings.filterwarnings(
     "ignore",
+    message="The 'auroc_confidence_metric' result key is deprecated",
     category=DeprecationWarning,
-    module="stickler.structured_object_evaluator.models.comparison_engine",
 )
 ```
 
-This is scoped to the comparison engine, so unrelated `DeprecationWarning`s from other libraries (or other parts of stickler) still surface.
+Under pytest, a `warnings.filterwarnings(...)` call at module import time is overridden by pytest's per-test filters. Set the filter inside a test or fixture, or use the pytest configuration below (including the separate `UserWarning` filter explained next):
+
+```toml
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:The 'auroc_confidence_metric' result key is deprecated:DeprecationWarning",
+    "ignore:Single-document confidence metrics are a quick sanity check:UserWarning",
+]
+```
+
+The same call also emits a `UserWarning` ("Single-document confidence metrics are a quick sanity check..."). The AUROC Python filter above does not cover it; silence it with its own filter:
+
+```python
+warnings.filterwarnings(
+    "ignore",
+    message="Single-document confidence metrics are a quick sanity check",
+    category=UserWarning,
+)
+```
+
+Filtering by message keeps unrelated `DeprecationWarning`s from other libraries (or other parts of stickler) visible.
 
 ## Further Reading
 

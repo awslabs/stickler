@@ -21,6 +21,11 @@ Each release links to full notes on the
 
 ### Fixed
 
+- The docs recipe for silencing the `auroc_confidence_metric`
+  `DeprecationWarning` never matched it (it filtered on the comparison engine
+  module). It now filters by message, adds the pytest `filterwarnings` form, and
+  names the second `UserWarning` that `compare_with(add_confidence_metrics=True)`
+  emits.
 - Pretty printers restore stdout when rendering fails, propagate rendering errors,
   and include the bulk summary in confusion-matrix file output.
 
