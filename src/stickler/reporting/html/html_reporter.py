@@ -5,6 +5,7 @@ Simple HTML reporter for evaluation results - v0.
 import html
 import json
 import logging
+import math
 import os
 import shutil
 import time
@@ -40,9 +41,50 @@ _SCRIPT_SAFE_ESCAPES = (
 )
 
 
+def _finite_or_null(value: Any, _path: Optional[set] = None) -> Any:
+    """Return ``value`` with every NaN or infinite float replaced by ``None``.
+
+    Non-finite float dict keys become the strings ``json.dumps`` already wrote
+    for them (``"NaN"``, ``"Infinity"``, ``"-Infinity"``), so only values change.
+    A container that contains itself raises the same ``ValueError`` as
+    ``json.dumps`` rather than recursing until ``RecursionError``.
+    """
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if not isinstance(value, (dict, list, tuple)):
+        return value
+    path = set() if _path is None else _path
+    if id(value) in path:
+        raise ValueError("Circular reference detected")
+    path.add(id(value))
+    if isinstance(value, dict):
+        result = {
+            (json.dumps(key) if isinstance(key, float) and not math.isfinite(key) else key): _finite_or_null(item, path)
+            for key, item in value.items()
+        }
+    else:
+        result = [_finite_or_null(item, path) for item in value]
+    path.discard(id(value))
+    return result
+
+
 def _json_for_script(value: Any) -> str:
-    """Serialize ``value`` as JSON that is safe to place inside ``<script>``."""
-    script_safe_json = json.dumps(value)
+    """Serialize ``value`` as JSON that is safe to place inside ``<script>``.
+
+    ``json.dumps`` writes NaN and infinities as bare ``NaN``/``Infinity``
+    tokens, which JavaScript accepts but JSON parsers reject, so a blank numeric
+    cell (NaN) made the embedded data invalid JSON. Those become ``null``, which
+    the page renders as an empty cell, as it already does for ``None`` (#450).
+    Finite data takes the first dump unchanged; only a payload that holds a
+    non-finite number pays for the sanitising pass.
+    """
+    try:
+        script_safe_json = json.dumps(value, allow_nan=False)
+    except ValueError as exc:
+        # Only json's non-finite error; a circular reference must still raise.
+        if not str(exc).startswith("Out of range float values"):
+            raise
+        script_safe_json = json.dumps(_finite_or_null(value), allow_nan=False)
     for unsafe_char, json_escape in _SCRIPT_SAFE_ESCAPES:
         script_safe_json = script_safe_json.replace(unsafe_char, json_escape)
     return script_safe_json

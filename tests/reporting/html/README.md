@@ -11,6 +11,8 @@ Tests for `src/stickler/reporting/html/`, whose own README documents the module.
 | `test_report_config.py` | `ReportConfig` validation |
 | `test_output_validation.py` | well-formedness and escaping of the emitted HTML |
 | `test_html_non_match_records.py` | the non-match section driven end to end, no mocks |
+| `test_script_embedding.py` | document data in `<script>` cannot end the block (#431), byte-identical escaping |
+| `test_script_embedding_nonfinite.py` | NaN/inf embed as `null`, so the payload parses as strict JSON (#450) |
 
 ## Mocking boundary, and why one file deliberately crosses it
 

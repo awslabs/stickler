@@ -21,6 +21,13 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **The HTML report's embedded document data is now valid JSON when a value is
+  NaN or infinite.** A blank numeric cell from pandas (NaN) used to reach the
+  page's `<script>` data as a bare `NaN` token, which JavaScript accepts but a
+  JSON parser rejects, so tools that extract and parse the payload failed. NaN,
+  `inf` and `-inf` are now written as `null`. The per-document view now
+  shows such a value as an empty cell, as it already did for
+  `None`, instead of `NaN` or `Infinity` ([#450](https://github.com/awslabs/stickler/issues/450)).
 - `DateComparator` now treats a naive date against a tz-aware one the same way
   in range comparisons as for single dates: the aware side's own calendar date
   is used and the naive side is read on that calendar
