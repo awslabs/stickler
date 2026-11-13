@@ -11,7 +11,7 @@ makes every case pass instead of raising. Tests assert that keys exist.
 
 | File | Pins | Needs strands |
 | --- | --- | --- |
-| `conftest.py` | Fails every test here unless `stickler` is imported from this checkout | no |
+| [`../conftest.py`](../conftest.py) | Stops the run (exit code 4) before any test unless `stickler` is imported from this checkout | no |
 | `strands_corpus.py` | Models, cases, and `strands_test_pass`, a verbatim copy of 1.6.0's `_passed` | no |
 | `test_strands_evals_contract.py` | Import paths, `eval_for` kwargs, `evaluate`/`explain` shapes, every `EvalResult` attribute, `raw["confusion_matrix"]["overall"]` counts, `matched`, the guard, `aggregate_from_comparisons` | no |
 | `test_strands_evals_snapshot.py` + `strands_evals_snapshot.json` | Exact scores, verdicts and aggregate metrics for typical shapes | no |
@@ -23,7 +23,7 @@ makes every case pass instead of raising. Tests assert that keys exist.
 pytest tests/integrations                   # e2e skips without strands_evals
 
 # e2e: install strands-agents-evals WITHOUT the [stickler] extra, which would
-# pull a PyPI stickler-eval over this checkout. Every test fails if it did.
+# pull a PyPI stickler-eval over this checkout. The guard stops the run if it did.
 # Same command as CI. -c holds every package in uv.lock's default (no-extras)
 # export at its locked version; packages locked only under extras (boto3,
 # httpx, ...) can move. The cutoff lets the pin through the [tool.uv] cooldown.
