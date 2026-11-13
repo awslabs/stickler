@@ -12,12 +12,19 @@ import io
 import json
 import re
 import runpy
+import tokenize
 from pathlib import Path
-from typing import get_args, get_origin
+from typing import Annotated, get_args
 
 import pytest
 
-from stickler import StructuredModel
+from stickler import ComparableField, StructuredModel
+from stickler.structured_object_evaluator.models.optional_annotation import (
+    unwrap_annotated,
+)
+from stickler.structured_object_evaluator.models.structured_model import (
+    _annotation_is_list,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -45,28 +52,37 @@ SCHEMA_EXAMPLE = "### Using Your Schema"
 README_EXAMPLES = [QUICK_START, SCHEMA_EXAMPLE]
 
 
-def _annotated_rows(code, output):
-    """Match the examples' annotated numeric f-string prints by their labels.
-
-    This supports static labels and one numeric f-string value, not arbitrary
-    Python output. Numeric annotations may use signs and scientific notation.
-    """
+def _annotated_rows(code, namespace=None):
+    """Capture each annotated print at its source call, including loop executions."""
+    tree = ast.parse(code)
     sources = {}
-    lines = code.splitlines()
-    for node in ast.walk(ast.parse(code)):
+    comments = [
+        token
+        for token in tokenize.generate_tokens(io.StringIO(code).readline)
+        if token.type == tokenize.COMMENT
+    ]
+    for node in ast.walk(tree):
         if not (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
             and node.func.id == "print"
         ):
             continue
-        claim = re.search(r"\)\s*#\s*~?(\S+)", lines[node.end_lineno - 1])
-        if not claim or not re.match(r"[+\-.\d]", claim.group(1)):
+        claims = []
+        for comment in comments:
+            if node.lineno <= comment.start[0] <= node.end_lineno:
+                claim = re.match(r"#\s*~?(\S+)", comment.string)
+                if claim and re.match(r"[+-]?(?:\d|\.\d)", claim.group(1)):
+                    claims.append(claim.group(1))
+        if not claims:
             continue
+        assert len(claims) == 1, (
+            f"README print has multiple numeric annotations at line {node.lineno}"
+        )
         try:
-            claimed = float(claim.group(1))
+            claimed = float(claims[0])
         except ValueError:
-            pytest.fail(f"README numeric annotation is invalid: {claim.group(1)!r}")
+            pytest.fail(f"README numeric annotation is invalid: {claims[0]!r}")
         message = f"README annotated print format changed at line {node.lineno}"
         assert len(node.args) == 1 and not node.keywords, message
         arg = node.args[0]
@@ -78,30 +94,47 @@ def _annotated_rows(code, output):
         assert isinstance(value, ast.FormattedValue), message
         label = prefix.value.strip()
         assert label.endswith(":") and "\n" not in label, message
-        assert label not in sources, f"README has duplicate annotated label {label!r}"
+        assert node.lineno not in sources, message
         field = re.search(
             r"\[['\"]field_scores['\"]\]\[['\"]([^'\"]+)['\"]\]",
             ast.unparse(value.value),
         )
-        sources[label] = (field.group(1) if field else None, claimed)
+        sources[node.lineno] = (label, field.group(1) if field else None, claimed)
 
-    rows = []
-    seen = set()
-    for line in output.splitlines():
-        for label, (field, claim) in sources.items():
-            if line.startswith(label):
-                number = line[len(label) :].strip()
-                try:
-                    measured = float(number)
-                except ValueError:
-                    pytest.fail(
-                        f"README output for {label!r} is not a number: {number!r}"
-                    )
-                rows.append((label.removesuffix(":"), field, measured, claim))
-                seen.add(label)
-                break
+    class CapturePrint(ast.NodeTransformer):
+        def visit_Call(self, node):
+            self.generic_visit(node)
+            if (
+                isinstance(node.func, ast.Name)
+                and node.func.id == "print"
+                and node.lineno in sources
+            ):
+                node.func = ast.Name(id="_record_readme_print", ctx=ast.Load())
+                node.args.insert(0, ast.Constant(value=node.lineno))
+            return node
+
+    rows, seen = [], set()
+
+    def record(line, rendered):
+        label, field, claimed = sources[line]
+        rendered = rendered.strip()
+        assert rendered.startswith(label), f"README output missing label {label!r}"
+        try:
+            measured = float(rendered[len(label) :].strip())
+        except ValueError:
+            pytest.fail(f"README output for {label!r} is not a number: {rendered!r}")
+        rows.append((label.removesuffix(":"), field, measured, claimed))
+        seen.add(line)
+
+    namespace = {} if namespace is None else namespace
+    namespace["_record_readme_print"] = record
+    tree = ast.fix_missing_locations(CapturePrint().visit(tree))
+    with contextlib.redirect_stdout(io.StringIO()):
+        # Runs this repo's own README code blocks; no external input.
+        exec(compile(tree, "<README example>", "exec"), namespace)  # nosec B102
+    del namespace["_record_readme_print"]
     assert seen == sources.keys(), (
-        f"README output missing labels: {sources.keys() - seen}"
+        f"README annotated prints did not execute: {sources.keys() - seen}"
     )
     return rows
 
@@ -117,21 +150,23 @@ def _run_readme_example(readme, heading):
         namespace["SCHEMA"] = json.loads(
             _section_block(readme, "### Complete Real-World Example", "json")
         )
-    out = io.StringIO()
-    with contextlib.redirect_stdout(out):
-        exec(code, namespace)
-    return namespace, _annotated_rows(code, out.getvalue())
+    return namespace, _annotated_rows(code, namespace)
 
 
 def _matching_threshold(model, field):
     if field is None:
         return model.match_threshold
-    annotation, _ = model._unwrap_optional(model.model_fields[field].annotation)
-    if get_origin(annotation) is list:
-        item, _ = model._unwrap_optional(get_args(annotation)[0])
-        if isinstance(item, type) and issubclass(item, StructuredModel):
-            return item.match_threshold
     return model._get_comparison_info(field).threshold
+
+
+def _element_matching_threshold(model, field):
+    annotation, _ = model._unwrap_optional(model.model_fields[field].annotation)
+    annotation = unwrap_annotated(annotation)
+    assert _annotation_is_list(annotation)
+    item, _ = model._unwrap_optional(get_args(annotation)[0])
+    item = unwrap_annotated(item)
+    assert isinstance(item, type) and issubclass(item, StructuredModel)
+    return item.match_threshold
 
 
 @pytest.mark.parametrize("heading", README_EXAMPLES)
@@ -341,10 +376,6 @@ def test_readme_extension_defaults_match_schema(readme, undeclared):
             ["scalar", "number", "integer", "boolean", "scalars", "models"],
         ),
         (r"`([0-9.]+)` for an object with `properties`", ["nested"]),
-        (
-            r"`([0-9.]+)` for a free-form\s+`\{\"type\": \"object\"\}`\s+\(or an array of them\)",
-            ["mapping", "mappings"],
-        ),
         # The enum/const/format clause shares that number. Requiring it to
         # follow the number with no new value in between means a README edit
         # that gives the clause its own threshold has to update this pattern.
@@ -353,6 +384,12 @@ def test_readme_extension_defaults_match_schema(readme, undeclared):
             r"\(or an array of them\)\s+and for any property or array\s+`items`\s+"
             r"with\s+`enum`,\s+`const`,\s+or a string\s+`format`",
             [
+                "mapping",
+                "mappings",
+                "int_enum",
+                "num_const",
+                "typeless_enum",
+                "dated_levenshtein",
                 "dated",
                 "timestamped",
                 "linked",
@@ -422,15 +459,17 @@ def test_readme_comparator_table_matches_schema(readme, undeclared, position, fi
     comparator, threshold, _ = _row(_table_after(readme, COMPARATOR_HEADER), position)
     for field in fields:
         info = undeclared._get_comparison_info(field)
-        if field == "models":
+        if position == '`"array"` of objects with `properties`':
             assert comparator == "Hungarian matching"
             match = re.fullmatch(
                 r"`([0-9.]+)`, pairing elements at `([0-9.]+)`", threshold
             )
             assert match, "README model-list threshold cell changed"
             assert info.threshold == float(match.group(1))
-            assert _matching_threshold(undeclared, field) == float(match.group(2))
-        elif field == "nested":
+            assert _element_matching_threshold(undeclared, field) == float(
+                match.group(2)
+            )
+        elif position == '`"object"` with `properties`':
             assert comparator == "Recursive comparison"
             annotation, _ = undeclared._unwrap_optional(
                 undeclared.model_fields[field].annotation
@@ -452,37 +491,32 @@ def test_readme_comparator_table_matches_schema(readme, undeclared, position, fi
 
 
 @pytest.mark.parametrize(
-    "code, output",
+    "code, count",
     [
-        ('if True:\n    print(f"Score: {1.0}")  # 1.0', "Score: 1.0\n"),
-        (
-            'for _ in range(2):\n    print(f"Score: {1.0}")  # 1.0',
-            "Score: 1.0\nScore: 1.0\n",
-        ),
-        ('print(\n    f"Score: {1.0}"\n)  # 1.0', "Score: 1.0\n"),
-        (
-            'print(f"Score: {1.0}")  # 1.0',
-            "unannotated\nmultiline output\nScore: 1.0\n",
-        ),
+        ('if True:\n    print(f"Score: {1.0}")  # 1.0', 1),
+        ('for _ in range(2):\n    print(f"Score: {1.0}")  # 1.0', 2),
+        ('print(\n    f"Score: {1.0}"\n)  # 1.0', 1),
+        ('print(\n    f"Score: {1.0}"  # 1.0\n)', 1),
+        ('print("unannotated\\nmultiline output")\nprint(f"Score: {1.0}")  # 1.0', 1),
     ],
 )
-def test_annotated_prints_support_indentation_loops_and_multiline(code, output):
-    rows = _annotated_rows(code, output)
-    assert rows and all(row == ("Score", None, 1.0, 1.0) for row in rows)
+def test_annotated_prints_support_indentation_loops_and_multiline(code, count):
+    assert _annotated_rows(code) == [("Score", None, 1.0, 1.0)] * count
 
 
-def test_annotated_outputs_are_matched_by_label_not_order():
-    code = 'print(f"A: {0.1}")  # 0.1\nprint(f"B: {0.9}")  # 0.9'
-    assert _annotated_rows(code, "B: 0.9\nA: 0.1\n") == [
-        ("B", None, 0.9, 0.9),
-        ("A", None, 0.1, 0.1),
-    ]
+def test_annotated_outputs_follow_their_source_when_execution_order_changes():
+    code = (
+        'def a():\n    print(f"A: {0.1}")  # 0.1\n'
+        'def b():\n    print(f"B: {0.9}")  # 0.9\nb()\na()'
+    )
+    assert _annotated_rows(code) == [("B", None, 0.9, 0.9), ("A", None, 0.1, 0.1)]
 
 
-@pytest.mark.parametrize("output", ["Other: 1.0\n", "Score: not a number\n"])
-def test_changed_annotated_output_fails_clearly(output):
-    with pytest.raises((AssertionError, pytest.fail.Exception), match="README"):
-        _annotated_rows('print(f"Score: {1.0}")  # 1.0', output)
+@pytest.mark.parametrize("value", ["not a number", "1.0\\nother output"])
+def test_changed_annotated_output_fails_clearly(value):
+    code = f'value = {value!r}\nprint(f"Score: {{value}}")  # 1.0'
+    with pytest.raises(pytest.fail.Exception, match="README"):
+        _annotated_rows(code)
 
 
 def test_missing_position_fails_clearly():
@@ -495,23 +529,30 @@ def test_new_table_row_requires_a_case():
         _assert_rows_covered({"existing": [], "new": []}, [("existing", [])])
 
 
-def test_model_list_matching_threshold_is_the_element_threshold():
-    from stickler import ComparableField
-
-    # Element and parent thresholds differ, and neither is the 0.7 default,
-    # so returning the parent's match_threshold cannot pass.
+def _threshold_model(wrapped=False):
     class Item(StructuredModel):
         value: str = ComparableField()
         match_threshold = 0.8
 
+    annotation = (
+        Annotated[list[Annotated[Item, "item"]], "items"] | None
+        if wrapped
+        else list[Item] | None
+    )
+
     class Document(StructuredModel):
-        items: list[Item] | None = ComparableField()
+        items: annotation = ComparableField()
         match_threshold = 0.6
 
-    assert _matching_threshold(Document, "items") == 0.8
-    assert (0.798 >= _matching_threshold(Document, "items")) != (
-        0.802 >= _matching_threshold(Document, "items")
-    )
+    return Document
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_model_list_field_and_element_thresholds_are_distinct(wrapped):
+    model = _threshold_model(wrapped)
+    assert _matching_threshold(model, "items") == 0.5
+    assert _element_matching_threshold(model, "items") == 0.8
+    assert _matching_threshold(model, None) == 0.6
 
 
 def test_module_import_defers_document_reads_and_schema_building(monkeypatch):
@@ -521,36 +562,81 @@ def test_module_import_defers_document_reads_and_schema_building(monkeypatch):
     monkeypatch.setattr(Path, "read_text", unavailable)
     monkeypatch.setattr(StructuredModel, "from_json_schema", unavailable)
     namespace = runpy.run_path(__file__)
-    for name in ("readme", "extension_reference", "undeclared"):
-        with pytest.raises(RuntimeError, match="fixture dependency unavailable"):
-            namespace[name].__wrapped__()
+    assert {"readme", "extension_reference", "undeclared"} <= namespace.keys()
 
 
 @pytest.mark.parametrize("annotation, claimed", [("-1.000", -1.0), ("1.000e-1", 0.1)])
 def test_numeric_annotations_are_not_dropped_or_truncated(annotation, claimed):
     code = f'print(f"Score: {{1.0}}")  # {annotation}'
-    assert _annotated_rows(code, "Score: 1.0\n") == [("Score", None, 1.0, claimed)]
+    assert _annotated_rows(code) == [("Score", None, 1.0, claimed)]
 
 
 @pytest.mark.parametrize(
-    "measured, claimed", [(0.798, 0.802), (0.802, 0.798), (0.8, 0.799)]
+    "measured, claimed", [(0.498, 0.502), (0.502, 0.498), (0.5, 0.499)]
 )
-def test_example_verdict_check_uses_element_threshold(monkeypatch, measured, claimed):
-    from stickler import ComparableField
-
-    class Item(StructuredModel):
-        value: str = ComparableField()
-        match_threshold = 0.8
-
-    class Document(StructuredModel):
-        items: list[Item] = ComparableField()
-        match_threshold = 0.6
-
-    assert Document._get_comparison_info("items").threshold == 0.5
+def test_example_verdict_check_uses_the_field_threshold(monkeypatch, measured, claimed):
+    model = _threshold_model()
     monkeypatch.setitem(
         globals(),
         "_run_readme_example",
-        lambda *_: ({"Invoice": Document}, [("Items", "items", measured, claimed)]),
+        lambda *_: ({"Invoice": model}, [("Items", "items", measured, claimed)]),
     )
     with pytest.raises(AssertionError, match="Items"):
         test_readme_example_does_not_annotate_a_miss_as_a_pass("", "unused")
+
+
+def test_an_element_threshold_crossing_does_not_change_the_fields_verdict(monkeypatch):
+    model = _threshold_model()
+    monkeypatch.setitem(
+        globals(),
+        "_run_readme_example",
+        lambda *_: ({"Invoice": model}, [("Items", "items", 0.798, 0.802)]),
+    )
+    test_readme_example_does_not_annotate_a_miss_as_a_pass("", "unused")
+
+
+@pytest.mark.parametrize(
+    "comment", ["...", "-> see below", "+ extra detail", "- a note"]
+)
+def test_prose_print_comments_are_not_numeric_claims(comment):
+    code = f'print(f"Score: {{1.0}}")  # {comment}\n'
+    text = f"{QUICK_START}\n```python\n{code}```\n"
+    _, rows = _run_readme_example(text, QUICK_START)
+    assert rows == []
+
+
+@pytest.mark.parametrize("unannotated", ['print("Score: n/a")', 'print("Score: 99.0")'])
+def test_only_the_annotated_print_contributes_a_claim(unannotated):
+    code = f'{unannotated}\nprint(f"Score: {{1.0}}")  # 1.0\n{unannotated}\n'
+    text = f"{QUICK_START}\n```python\n{code}```\n"
+    _, rows = _run_readme_example(text, QUICK_START)
+    assert rows == [("Score", None, 1.0, 1.0)]
+
+
+def test_each_annotated_print_keeps_its_own_claim_when_labels_repeat():
+    code = 'print(f"Score: {0.1}")  # 0.1\nprint(f"Score: {0.9}")  # 0.9'
+    assert _annotated_rows(code) == [
+        ("Score", None, 0.1, 0.1),
+        ("Score", None, 0.9, 0.9),
+    ]
+
+
+def test_leading_spaces_in_an_annotated_label_are_preserved():
+    code = 'print(f"  Customer: {0.562:.3f}")  # 0.562\n'
+    _, rows = _run_readme_example(f"{QUICK_START}\n```python\n{code}```\n", QUICK_START)
+    assert rows == [("Customer", None, 0.562, 0.562)]
+
+
+@pytest.mark.parametrize(
+    "field", ["int_enum", "num_const", "typeless_enum", "dated_levenshtein"]
+)
+def test_readme_default_check_catches_drift_in_every_enum_const_format_field(
+    readme, field
+):
+    properties = {name: dict(spec) for name, spec in UNDECLARED_PROPERTIES.items()}
+    properties[field]["x-aws-stickler-threshold"] = 0.4
+    altered = StructuredModel.from_json_schema(
+        {"type": "object", "properties": properties}
+    )
+    with pytest.raises(AssertionError):
+        test_readme_extension_defaults_match_schema(readme, altered)

@@ -6,8 +6,8 @@ CI/CD workflows for the Stickler project.
 | --- | --- | --- |
 | `run_pytest.yaml` | PR, push to `dev`/`main` | Test suite with coverage (installs `--extra llm --extra bert`) |
 | `run_pytest.yaml` (`strands-evals` job) | same | `tests/integrations` against `strands-agents-evals==1.6.0`, installed without its `[stickler]` extra so it tests this checkout, and constrained to `uv.lock` (default, no-extras export). The package is exempt from the 7-day cooldown up to a fixed cutoff after the pinned release; its dependencies are not |
-| `lint.yaml` | PR, push to `dev`/`main` | Ruff lint (non-blocking via `continue-on-error`) |
-| `security.yaml` | PR, push to `dev`/`main` | Bandit + ASH security scans; uploads `security-reports` artifact |
+| `lint.yaml` | PR, push to `dev`/`main` | Ruff lint; fails the job on any finding |
+| `security.yaml` | PR, push to `dev`/`main` | Bandit + ASH security scans; fails on any actionable ASH finding (reviewed false positives carry an inline `# nosec <rule>` with a reason) or if bandit, detect-secrets or semgrep did not run; uploads `security-reports` artifact even on failure |
 | `security-pr-comment.yaml` | `workflow_run` after Security Scan | Posts/updates the ASH summary as a PR comment |
 | `docs.yml` | push to `main` (src/docs paths) | Deploys MkDocs site to GitHub Pages |
 | `docs-check.yml` | PR (docs/source/dependency/workflow paths) | Builds docs with the docs group and rejects link/navigation diagnostics; cancels superseded builds; no deployment |

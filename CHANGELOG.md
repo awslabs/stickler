@@ -19,12 +19,20 @@ Each release links to full notes on the
   `document_non_matches` is not set. Until 1.1.0 these keep their 1.0.1
   behaviour, and their warnings now name 1.1.0.
 
-- Harden README example and default-value regression tests, including labeled
-  output, list-element matching thresholds and the README default and
-  comparator tables ([#436](https://github.com/awslabs/stickler/issues/436)).
-
 ### Fixed
 
+- `DateComparator` now treats a naive date against a tz-aware one the same way
+  in range comparisons as for single dates: the aware side's own calendar date
+  is used and the naive side is read on that calendar
+  ([#508](https://github.com/awslabs/stickler/issues/508)). Before, the range containment and overlap paths read the
+  naive date as UTC, so the same aware date matched a different calendar day
+  against a range than against a single date. Range scores change only for
+  inputs that mix naive and tz-aware dates.
+
+- **Warnings emitted by `StructuredModel.compare_with()` now attribute to the caller's line.**
+  Passing `add_confidence_metrics=True` or `add_bbox_metrics=True` no longer points `UserWarning`
+  and the legacy `auroc_confidence_metric` `DeprecationWarning` at Stickler's internal `structured_model.py`
+  line ([#541](https://github.com/awslabs/stickler/issues/541)).
 - **The HTML report gallery now accepts non-string `document_files` keys and
   paths.** Integer and NumPy keys and `pathlib.Path` values no longer make the
   gallery step of `generate_report()` fail without writing a page
@@ -41,6 +49,15 @@ Each release links to full notes on the
   is about ten times slower than `json.dumps` on large reports. The same escapes
   are now applied with `str.replace`, and the page bytes are unchanged
   ([#457](https://github.com/awslabs/stickler/issues/457))
+
+### Security
+
+- **`print_confusion_matrix_html` now escapes its output.** It wrapped the
+  printed confusion matrix in `<pre>` as is, so a field name carrying markup,
+  declared in a JSON Schema or Stickler config or present in a hand-built
+  result, rendered as live HTML in a notebook. The text is now passed through
+  `html.escape`, and reads the same
+  ([#449](https://github.com/awslabs/stickler/issues/449))
 
 ## [1.0.1] - 2026-11-02
 
