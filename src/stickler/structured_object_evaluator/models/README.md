@@ -12,10 +12,11 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   `from_json()` (rich-value unwrapping) and `compare_with()` (delegates to the engine).
 - `comparable_field.py`, `field.py`, `comparison_info.py` — field declaration
   (`ComparableField`), per-field comparator/threshold/weight metadata.
-- `model_factory.py`, `field_converter.py`, `type_resolver.py`,
-  `configuration_helper.py` — building models from Stickler's compact JSON config.
+- `model_factory.py`, `field_converter.py`, `type_resolver.py` — building models
+  from Stickler's compact JSON config.
   Scalar-union list exports retain the built-in scalar arms in a `List[Union[...]]`
   type string; nullable union elements use `List[Optional[Union[...]]]`.
+- `configuration_helper.py` — configuration helpers for comparison and ingestion.
 - `json_schema_importer.py`, `json_schema_field_converter.py` — two-stage JSON
   Schema import. The maintained `json-schema-to-pydantic` library resolves
   standard schema types, references, combiners, and constraints;
@@ -63,7 +64,7 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   `evaluator_format_helper.py` — result shaping. Without
   `document_non_matches=True`, evaluator-format `non_matches` is `[]` (as in
   1.0.0) although no records were collected, so it reads as "none found" until
-  1.0.2 omits the key.
+  1.1.0 omits the key.
 
 **Metrics**
 - `confusion_matrix_builder.py`, `confusion_matrix_calculator.py`,
@@ -75,6 +76,9 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   returning `(data, confidences, extras)`.
 - `post_comparison_accumulator.py` — `PostComparisonAccumulator`, the interface
   for bulk metric accumulators consumed by `BulkStructuredModelEvaluator`.
+- `_keyed_pairs_accumulator.py` — `_KeyedPairsAccumulator`, the shared state
+  handling (reset, serialization, load, merge) for accumulators keyed by field
+  path. Private: the two metric sub-packages below both subclass it.
 
 ## Metric sub-packages
 
