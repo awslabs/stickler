@@ -26,6 +26,10 @@ Each release links to full notes on the
   so it resolves to the same arm as `model_validate`
   ([#505](https://github.com/awslabs/stickler/issues/505)). Before, data shaped
   like `B` was built as `A`, and two different `B` values could score 1.0.
+
+- Pretty printers restore stdout when rendering fails, propagate rendering errors,
+  and include the bulk summary in confusion-matrix file output.
+
 - `DateComparator` now treats a naive date against a tz-aware one the same way
   in range comparisons as for single dates: the aware side's own calendar date
   is used and the naive side is read on that calendar
@@ -54,6 +58,9 @@ Each release links to full notes on the
   is about ten times slower than `json.dumps` on large reports. The same escapes
   are now applied with `str.replace`, and the page bytes are unchanged
   ([#457](https://github.com/awslabs/stickler/issues/457))
+
+- `NumericComparator` treats booleans as non-numeric and returns `0.0` instead of
+  raising `decimal.InvalidOperation`, including in uncoerced model fields.
 
 ### Security
 
