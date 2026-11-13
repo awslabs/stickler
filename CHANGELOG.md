@@ -21,6 +21,9 @@ Each release links to full notes on the
 
 ### Fixed
 
+- Pretty printers restore stdout when rendering fails, propagate rendering errors,
+  and include the bulk summary in confusion-matrix file output.
+
 - `DateComparator` now treats a naive date against a tz-aware one the same way
   in range comparisons as for single dates: the aware side's own calendar date
   is used and the naive side is read on that calendar
