@@ -21,6 +21,12 @@ Each release links to full notes on the
 
 ### Fixed
 
+- `StructuredModel.from_json` no longer forces the first model arm of a
+  `Union[A, B, None]` field: a dict is now left for pydantic's union validation,
+  so it resolves to the same arm as `model_validate`
+  ([#505](https://github.com/awslabs/stickler/issues/505)). Before, data shaped
+  like `B` was built as `A`, and two different `B` values could score 1.0.
+
 - Pretty printers restore stdout when rendering fails, propagate rendering errors,
   and include the bulk summary in confusion-matrix file output.
 
