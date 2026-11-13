@@ -53,6 +53,9 @@ Each release links to full notes on the
   are now applied with `str.replace`, and the page bytes are unchanged
   ([#457](https://github.com/awslabs/stickler/issues/457))
 
+- `NumericComparator` treats booleans as non-numeric and returns `0.0` instead of
+  raising `decimal.InvalidOperation`, including in uncoerced model fields.
+
 ### Security
 
 - **`print_confusion_matrix_html` now escapes its output.** It wrapped the
