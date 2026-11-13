@@ -107,7 +107,16 @@ class ConfigurationHelper:
                             structured_class = ConfigurationHelper._extract_structured_class_from_optional(
                                 annotation
                             )
-                            if structured_class:
+                            # With several model arms (Union[A, B, None]) the arm
+                            # cannot be chosen here; leave the dict for pydantic's
+                            # own union validation instead of forcing the first arm.
+                            if structured_class and (
+                                sum(
+                                    ConfigurationHelper._is_structured_model_class(arg)
+                                    for arg in union_args(annotation)
+                                )
+                                == 1
+                            ):
                                 data_copy[field_name] = (
                                     ConfigurationHelper._process_nested_structured_data(
                                         structured_class, nested_data
