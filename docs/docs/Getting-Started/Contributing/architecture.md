@@ -29,7 +29,8 @@ StructuredModel
 │       │       └── MetricsHelper       # Derived metrics (precision, recall, F1)
 │       ├── NonMatchCollector           # Non-match documentation
 │       ├── FieldComparisonCollector    # Field-level comparison docs
-│       └── ConfusionMatrixBuilder      # Aggregate metrics
+│       ├── AggregateMetricsCalculator  # Aggregate metrics
+│       └── DerivedMetricsCalculator    # Precision, recall, F1, accuracy
 │
 ├── ComparisonHelper          # List metrics & Hungarian integration
 │   └── ThresholdHelper       # Threshold comparison logic
@@ -49,7 +50,8 @@ StructuredModel
 | HungarianHelper | `models/hungarian_helper.py` |
 | NonMatchCollector | `models/non_match_collector.py` |
 | FieldComparisonCollector | `models/field_comparison_collector.py` |
-| ConfusionMatrixBuilder | `models/confusion_matrix_builder.py` |
+| AggregateMetricsCalculator | `models/aggregate_metrics_calculator.py` |
+| DerivedMetricsCalculator | `models/derived_metrics_calculator.py` |
 | NullHelper | `models/null_helper.py` |
 | ResultHelper | `models/result_helper.py` |
 | ThresholdHelper | `models/threshold_helper.py` |
@@ -328,7 +330,9 @@ Optional features are computed only when requested:
 ```python
 # See: comparison_engine.py:279-306
 if include_confusion_matrix:
-    confusion_matrix = self.confusion_matrix_builder.build_confusion_matrix(...)
+    confusion_matrix = AggregateMetricsCalculator().calculate_aggregate_metrics(...)
+    if add_derived_metrics:
+        confusion_matrix = DerivedMetricsCalculator().add_derived_metrics_to_result(...)
 if document_non_matches:
     non_matches = self.non_match_collector.collect_enhanced_non_matches(...)
 if document_field_comparisons:

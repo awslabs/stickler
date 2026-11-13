@@ -337,11 +337,6 @@ class StructuredModel(BaseModel):
       - Supports both traditional and FD-inclusive recall
       - Delegates to MetricsHelper for calculations
 
-    - ConfusionMatrixBuilder: Orchestrates all metrics calculation
-      - Coordinates the aggregate and derived calculators
-      - Ensures correct calculation order
-      - Builds complete confusion matrices
-
     **Non-Match Documentation:**
     - NonMatchCollector: Documents non-matching fields
       - Collects object-level non-matches for lists
