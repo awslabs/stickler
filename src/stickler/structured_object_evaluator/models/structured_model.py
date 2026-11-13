@@ -2235,6 +2235,31 @@ class StructuredModel(BaseModel):
             schema["type"] = [schema["type"], "null"]
         return schema
 
+    @staticmethod
+    def _scalar_union_config_type(
+        annotation: Type, nullable: bool = False
+    ) -> Optional[str]:
+        """Name a union of built-in scalars for the existing config resolver.
+
+        Keep unsupported unions on their legacy export path rather than
+        silently replacing an unrepresentable arm with a string. `nullable`
+        carries an `Optional` the caller already stripped, such as the outer
+        one in `Optional[Annotated[Union[int, str], ...]]`.
+        """
+        arms = union_args(annotation)
+        if not arms:
+            return None
+        names = []
+        for arm in arms:
+            arm = unwrap_annotated(arm)
+            if arm not in (str, int, float, bool, bytes):
+                return None
+            names.append(arm.__name__)
+        name = f"Union[{', '.join(names)}]"
+        if nullable or type(None) in get_args(annotation):
+            name = f"Optional[{name}]"
+        return name
+
     @classmethod
     def to_stickler_config(cls) -> Dict[str, Any]:
         """Export model as custom Stickler JSON configuration.
@@ -2395,6 +2420,12 @@ class StructuredModel(BaseModel):
                         if "comparator_config" not in extensions:
                             field_config.pop("comparator_config", None)
                         field_config.update(extensions)
+                    elif union_type := cls._scalar_union_config_type(
+                        element_type, nullable=element_is_nullable
+                    ):
+                        # __name__ loses all union arms (or is absent for |).
+                        # The importer already accepts parameterized unions.
+                        field_config["type"] = f"List[{union_type}]"
                     else:
                         # A plain model's class name is not a type
                         # model_from_json() knows; it is written as `dict`, as

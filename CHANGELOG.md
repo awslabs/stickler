@@ -21,6 +21,12 @@ Each release links to full notes on the
 
 ### Fixed
 
+- Scalar-union lists such as `List[Union[int, str]]` now round-trip through
+  `to_stickler_config()` and `model_from_json()`. The exported type keeps each
+  built-in scalar arm, including nullable elements and the `int | str` spelling,
+  instead of writing the unusable `List[Union]`
+  ([#476](https://github.com/awslabs/stickler/issues/476)).
+
 - `DateComparator` now treats a naive date against a tz-aware one the same way
   in range comparisons as for single dates: the aware side's own calendar date
   is used and the naive side is read on that calendar
