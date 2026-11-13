@@ -11,7 +11,7 @@ comparison logic.
 
 Note:
     This comparator requires the optional 'llm' dependencies. Install with:
-    pip install stickler-eval[llm]
+    pip install "stickler-eval[llm]"
 
 Example:
     Integration with StructuredModel:
@@ -112,7 +112,7 @@ class LLMComparator(BaseComparator):
         if not STRANDS_AVAILABLE:
             raise ImportError(
                 "LLMComparator requires the 'strands-agents' package. "
-                "Install it with: pip install stickler-eval[llm]"
+                "Install it with: pip install \"stickler-eval[llm]\""
             )
 
         if model is None:
