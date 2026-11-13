@@ -26,6 +26,9 @@ Each release links to full notes on the
   module). It now filters by message, adds the pytest `filterwarnings` form, and
   names the second `UserWarning` that `compare_with(add_confidence_metrics=True)`
   emits.
+- Pretty printers restore stdout when rendering fails, propagate rendering errors,
+  and include the bulk summary in confusion-matrix file output.
+
 - `DateComparator` now treats a naive date against a tz-aware one the same way
   in range comparisons as for single dates: the aware side's own calendar date
   is used and the naive side is read on that calendar
@@ -33,6 +36,7 @@ Each release links to full notes on the
   naive date as UTC, so the same aware date matched a different calendar day
   against a range than against a single date. Range scores change only for
   inputs that mix naive and tz-aware dates.
+
 - **Warnings emitted by `StructuredModel.compare_with()` now attribute to the caller's line.**
   Passing `add_confidence_metrics=True` or `add_bbox_metrics=True` no longer points `UserWarning`
   and the legacy `auroc_confidence_metric` `DeprecationWarning` at Stickler's internal `structured_model.py`
@@ -53,6 +57,9 @@ Each release links to full notes on the
   is about ten times slower than `json.dumps` on large reports. The same escapes
   are now applied with `str.replace`, and the page bytes are unchanged
   ([#457](https://github.com/awslabs/stickler/issues/457))
+
+- `NumericComparator` treats booleans as non-numeric and returns `0.0` instead of
+  raising `decimal.InvalidOperation`, including in uncoerced model fields.
 
 ### Security
 
