@@ -6,6 +6,7 @@ in a more readable and visually appealing format.
 """
 
 import contextlib
+import html
 import os
 import re
 import sys
@@ -1403,4 +1404,4 @@ def print_confusion_matrix_html(
     sys.stdout = old_stdout
 
     # Return the captured output
-    return f"<pre>{mystdout.getvalue()}</pre>"
+    return f"<pre>{html.escape(mystdout.getvalue())}</pre>"
