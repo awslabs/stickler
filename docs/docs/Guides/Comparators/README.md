@@ -134,6 +134,8 @@ class Contact(StructuredModel):
 
 Extracts numeric values from strings or numbers and compares them with configurable tolerance. Handles currency symbols, commas, and accounting notation (e.g., `(123)` for negative values). Returns 1.0 if the numbers match within tolerance, 0.0 otherwise.
 
+String values may use decimal digits in other scripts: `"١٬٢٥٠٫٥٠"` reads 1250.50. A string whose digits are all outside ASCII is read only when it holds one unambiguous number, and otherwise reads as no number. A value that also has ASCII digits is read as before, ignoring the other-script digits, with three exceptions: a number whose digits switch script, such as `"١٢٥٠.50"`, reads as no number unless it is the same amount written twice; minus signs such as U+2212 right before the number or a currency, or right after a currency symbol, and fullwidth accounting parentheses, mark a negative; and spaces and invisible format characters around accounting parentheses are ignored. A `float`, `int` or `Decimal` field rejects strings such as `"١٬٢٥٠٫٥٠"` before comparison, so declare the field `str` to compare them.
+
 **When to use:** Prices, quantities, measurements, or any numeric field where small differences are acceptable.
 
 ```python

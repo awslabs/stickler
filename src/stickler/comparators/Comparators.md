@@ -39,6 +39,7 @@ comparator = NumericComparator()
 - Specialized for comparing numeric values
 - Configurable absolute and relative tolerance for floating-point comparisons
 - Handles type conversion from strings
+- Reads decimal digits in other scripts in string values (`١٢٥٠` equals `1250`)
 - Ideal for financial data or measurement comparisons
 
 #### Date Comparator
