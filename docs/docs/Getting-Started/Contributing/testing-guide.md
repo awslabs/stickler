@@ -387,7 +387,7 @@ Tests run automatically on every push and pull request via GitHub Actions.
 
 2. **lint.yaml** - Runs Ruff linter
    - Checks code style
-   - Non-blocking (continue-on-error)
+   - Fails the job on any finding
 
 3. **security.yaml** - Security scanning
    - Runs Bandit for Python security issues

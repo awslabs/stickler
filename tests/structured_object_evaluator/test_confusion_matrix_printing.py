@@ -9,6 +9,7 @@ import pytest
 from stickler import StructuredModel
 from stickler.structured_object_evaluator.utils.pretty_print import (
     print_confusion_matrix,
+    print_confusion_matrix_html,
 )
 
 
@@ -110,3 +111,18 @@ def test_print_confusion_matrix_output_file_error_restores_stdout() -> None:
     assert sys.stdout is original_stdout, "stdout should be restored to original"
     assert not sys.stdout.closed, "stdout should still be open after error"
     print("stdout is working")  # This should succeed
+
+
+def test_print_confusion_matrix_html_escapes_markup_in_field_names() -> None:
+    """A field name carrying markup is shown as text, not rendered as HTML."""
+    markup_field_name = "</pre><script>alert(1)</script>"
+    person = PersonModel(name="Ada", age=36)
+    results = person.compare_with(person, include_confusion_matrix=True)
+    fields = results["confusion_matrix"]["fields"]
+    fields[markup_field_name] = fields["name"]
+
+    html_output = print_confusion_matrix_html(results)
+
+    assert "<script>" not in html_output
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html_output
+    assert html_output.count("</pre>") == 1
