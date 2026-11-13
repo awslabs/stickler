@@ -59,6 +59,7 @@ class LineItem(StructuredModel):
 
 - **Hungarian matching classification:** When comparing `List[StructuredModel]`, the Hungarian algorithm pairs ground-truth and prediction objects. Each pair's overall similarity is compared against `match_threshold` to classify as TP or FD.
 - **Recursive evaluation:** Only pairs meeting the threshold get field-by-field breakdown. Below-threshold pairs are treated as atomic FD.
+- **Bare-annotated fields:** A field declared without `ComparableField` (`name: str`) takes `match_threshold` as its field threshold, unless it is a nested model ([precedence](#precedence-in-one-line)).
 
 **Default:** `0.7`
 
@@ -125,7 +126,17 @@ In this example:
 
 ### Precedence, in one line
 
-Field threshold → threshold named on the comparator → `0.5`.
+Field threshold, then a threshold named on the comparator, then a default that depends on how the field is declared:
+
+| Declaration on a `StructuredModel` | Default threshold |
+|---|---|
+| `name: str = ComparableField()` | 0.5 |
+| `name: str` (bare annotation, including `int`, `List[str]` and `dict`) | the class `match_threshold` (0.7 unless set) |
+| `addr: Address` or `addrs: List[Address]` (bare nested model) | 0.9 |
+
+Bare `dict`, list-of-dict and list-of-plain-model fields do not zero low scores (`clip_under_threshold=False`): at a raw 0.6 they score 0.6 but still count as a false discovery against the 0.7 threshold.
+
+On the zero-config path, `stickler.evaluate` infers a threshold per field; `result.explain()` shows each one. For JSON Schema and Stickler config defaults, see [Dynamic Model Creation](../Advanced/dynamic-models.md).
 
 A comparator's *default* threshold is not part of that chain. `LevenshteinComparator()` does not contribute its 0.7, because those defaults were chosen for `binary_compare()` and were never audited as classification cutoffs. `DateComparator` is the clearest case: it defaults to `1.0` while awarding `0.7` partial credit for a match with no year, so adopting its default would clip its own feature to zero.
 
@@ -255,14 +266,9 @@ subject to any threshold, so:
   precision `0.667`
 - 2 against 1 still yields an FN, giving recall `0.5`
 
-**`match_threshold = 0.0` warns unconditionally**, because the value is used two
-ways: as the object-matching threshold for a `List[StructuredModel]` element,
-*and* as the default field threshold for any field with no explicit config. A
-plainly annotated `name: str` inherits it, so a standalone model with no list
-anywhere still reports `1.0` across the board. Declaring the field with
-`ComparableField()` instead takes an earlier branch that supplies a hardcoded
-`0.5`, which is why the value can look inert when probed that way (see
-[#237](https://github.com/awslabs/stickler/issues/237)).
+**`match_threshold = 0.0` warns on every model, list or not.** Besides pairing
+list elements, it becomes the threshold of every bare-annotated field
+([precedence](#precedence-in-one-line)).
 
 **Fix:** use a small positive value.
 
@@ -430,7 +436,7 @@ Recall (with FD) = TP / (TP + FN + FD) = 5 / (5 + 1 + 1) = 0.714
 |-----------|-----------|------------------|---------|
 | Comparator | `Comparator(threshold=...)` | TP/FD and clipping when the field sets no threshold; `binary_compare()` | varies, and a default is not adopted |
 | Field | `ComparableField(threshold=...)` | TP/FD for primitives, clipping | 0.5 |
-| Model | `match_threshold = ...` on class | Hungarian pairing | 0.7 |
+| Model | `match_threshold = ...` on class | Hungarian pairing and bare-field default | 0.7 |
 | Runtime | `evaluate(..., match_threshold=...)` | Overrides model threshold | 0.7 |
 
 ### Metric Formulas
