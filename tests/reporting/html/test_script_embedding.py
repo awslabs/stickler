@@ -125,3 +125,34 @@ def test_json_for_script_round_trips_and_leaves_no_markup(value):
     assert json.loads(out) == value
     for ch in "<>&\u2028\u2029":
         assert ch not in out
+
+
+# The 1.0.1 escape, kept as the oracle: the faster implementation must emit the
+# same bytes for every input, so the #431 guarantee does not depend on timing.
+_TRANSLATE_REFERENCE = str.maketrans(
+    {
+        "<": "\\u003c",
+        ">": "\\u003e",
+        "&": "\\u0026",
+        "\u2028": "\\u2028",
+        "\u2029": "\\u2029",
+    }
+)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        PAYLOAD,
+        "a & b <= c >= d",
+        "x\u2028y\u2029z",
+        "café 中文 😀 <b>",
+        "already escaped \\u003c and &amp;",
+        {"k</script>": ["<!--", "-->", 1.5, None, True]},
+        [{"reason": "score 0.91 >= threshold 0.8"}, {"reason": "0.2 < 0.5"}],
+        None,
+        "",
+    ],
+)
+def test_json_for_script_is_byte_identical_to_the_translate_escape(value):
+    assert _json_for_script(value) == json.dumps(value).translate(_TRANSLATE_REFERENCE)
