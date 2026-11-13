@@ -21,6 +21,13 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **The HTML report's PDF viewer loads documents whose IDs are not CSS
+  identifiers.** It found its canvas, loading, error, page-label and paging
+  elements with CSS selectors built from the document ID, so an ID such as
+  `invoice_1.pdf`, `inv 001` or `a:b` matched nothing or threw, and the gallery
+  stayed on "Loading PDF...". Those lookups now use the literal element ID
+  (Refs [#476](https://github.com/awslabs/stickler/issues/476))
+
 - Pretty printers restore stdout when rendering fails, propagate rendering errors,
   and include the bulk summary in confusion-matrix file output.
 

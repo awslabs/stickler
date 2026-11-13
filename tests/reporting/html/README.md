@@ -9,6 +9,7 @@ Tests for `src/stickler/reporting/html/`, whose own README documents the module.
 | `test_html_reporter.py` | `HTMLReporter` orchestration and file output |
 | `test_visualization_engine.py` | the chart and gauge fragments |
 | `test_report_config.py` | `ReportConfig` validation |
+| `test_pdf_document_ids.py` | PDF loading, navigation and failure display for literal document IDs, using the Node.js DOM/PDF.js adapter in `pdf_document_ids.cjs`; skips when Node.js is absent |
 | `test_output_validation.py` | well-formedness and escaping of the emitted HTML |
 | `test_html_non_match_records.py` | the non-match section driven end to end, no mocks |
 
