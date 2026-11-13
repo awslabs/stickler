@@ -1,6 +1,11 @@
 """Tests for NumericComparator."""
 
 
+from typing import Any
+
+import pytest
+
+from stickler import ComparableField, StructuredModel
 from stickler.comparators import NumericComparator
 
 
@@ -113,3 +118,25 @@ class TestNumericComparator:
         comparator = NumericComparator(threshold=0.5)
         assert comparator.binary_compare("123", "123") == (1, 0)
         assert comparator.binary_compare("123", "456") == (0, 1)
+
+
+@pytest.mark.parametrize("value", [True, False])
+@pytest.mark.parametrize("other", [0, 1, "0", "1", True, False])
+def test_boolean_is_not_numeric(value, other):
+    """Booleans must not become numeric matches in either operand position."""
+    comparator = NumericComparator(absolute_tolerance=5)
+    assert comparator.compare(value, other) == 0.0
+    assert comparator.compare(other, value) == 0.0
+
+
+@pytest.mark.parametrize("value, number", [(True, 1), (False, 0)])
+def test_boolean_in_any_field(value, number):
+    """A boolean in an uncoerced model field must not abort evaluation."""
+
+    class Model(StructuredModel):
+        flag: Any = ComparableField(comparator=NumericComparator())
+
+    boolean_model = Model(flag=value)
+    numeric_model = Model(flag=number)
+    assert boolean_model.compare_with(numeric_model)["overall_score"] == 0.0
+    assert numeric_model.compare_with(boolean_model)["overall_score"] == 0.0
