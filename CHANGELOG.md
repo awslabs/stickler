@@ -59,6 +59,16 @@ Each release links to full notes on the
   `html.escape`, and reads the same
   ([#449](https://github.com/awslabs/stickler/issues/449))
 
+### Documentation
+
+- Corrected the default field threshold on Thresholds and Metrics. The page
+  gave `0.5` for every field, which holds only for `ComparableField()`. A bare
+  annotation on a `StructuredModel` (`name: str`) takes the class
+  `match_threshold`, `0.7` unless set, and a bare nested model takes `0.9`. At
+  a raw similarity of `0.6`, `name: str` scores `0.0` and
+  `name: str = ComparableField()` scores `0.6`. Scoring is unchanged
+  ([#484](https://github.com/awslabs/stickler/issues/484))
+
 ## [1.0.1] - 2026-11-02
 
 ### Changed
