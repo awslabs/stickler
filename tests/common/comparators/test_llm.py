@@ -212,8 +212,75 @@ class TestLLMComparator:
 
         for response in ambiguous_responses:
             self._mock_agent_response(response)
-            result = self.comparator.compare("value1", "value2")
+            with pytest.warns(UserWarning, match="LLMComparator"):
+                result = self.comparator.compare("value1", "value2")
             assert result == 0.0, f"Failed for response: {response}"
+
+    # #506: the verdict is the normalised reply, compared exactly. A substring
+    # test scored "untrue" and "Not true" as matches.
+    @pytest.mark.parametrize(
+        "response",
+        [
+            "true",
+            "True",
+            " TRUE. ",
+            "`true`",
+            '"true"',
+            "'true'\n",
+            "**true**",
+            "**True**.",
+            "“true”",
+            "‘true’",
+            "\xa0true\xa0",
+            "_true_",
+        ],
+    )
+    def test_exact_true_verdict_scores_match(self, response, recwarn):
+        self._mock_agent_response(response)
+        assert self.comparator.compare("a", "b") == 1.0
+        assert not [w for w in recwarn if issubclass(w.category, UserWarning)]
+
+    @pytest.mark.parametrize("response", ["false", " False! ", "`FALSE`"])
+    def test_exact_false_verdict_scores_no_match(self, response, recwarn):
+        self._mock_agent_response(response)
+        assert self.comparator.compare("a", "b") == 0.0
+        assert not [w for w in recwarn if issubclass(w.category, UserWarning)]
+
+    @pytest.mark.parametrize(
+        "response",
+        [
+            "untrue",
+            "Not true",
+            "false (it is not true)",
+            "true or false",
+            "",
+            "True, they are equivalent.",
+            "true\n\nThe values are equivalent.",
+            '```json\n{"equivalent": true}\n```',
+        ],
+    )
+    def test_unparseable_verdict_scores_zero_and_warns(self, response):
+        self._mock_agent_response(response)
+        with pytest.warns(UserWarning, match="LLMComparator") as record:
+            assert self.comparator.compare("a", "b") == 0.0
+        assert repr(response) in str(record[0].message)
+        # Attributed to the caller of compare(), not to llm.py or base.py.
+        assert record[0].filename == __file__
+
+    def test_unparseable_verdict_warning_truncates_long_reply(self):
+        self._mock_agent_response("The values are equivalent. " * 20 + "true")
+        with pytest.warns(UserWarning, match="LLMComparator") as record:
+            assert self.comparator.compare("a", "b") == 0.0
+        message = str(record[0].message)
+        assert "..." in message
+        assert len(message) < 300
+
+    def test_get_comparison_details_uses_strict_verdict(self):
+        self._mock_agent_response("Not true")
+        with pytest.warns(UserWarning, match="LLMComparator"):
+            details = self.comparator.get_comparison_details("a", "b")
+        assert details["llm_response"] == "Not true"
+        assert details["comparison_result"] == 0.0
 
     def test_none_values(self):
         """Test that None values are handled properly."""

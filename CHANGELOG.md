@@ -21,6 +21,16 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **`LLMComparator` scores a reply as a match only when it is exactly `true`**
+  ([#506](https://github.com/awslabs/stickler/issues/506)). Scores change:
+  verbose replies such as `True, they are equivalent.` previously scored 1.0
+  and now score 0.0 with a `UserWarning`, and replies that only contained
+  "true" as a substring (`untrue`, `Not true`) no longer match. Formatted
+  replies still match: surrounding whitespace, quotes, backticks, markdown
+  emphasis and trailing punctuation are stripped and case is ignored, so
+  `**True**.` scores 1.0 and `"false"` scores 0.0. Any other reply scores 0.0
+  and warns, showing the start of the reply, rather than raising.
+
 - `DateComparator` now treats a naive date against a tz-aware one the same way
   in range comparisons as for single dates: the aware side's own calendar date
   is used and the naive side is read on that calendar
