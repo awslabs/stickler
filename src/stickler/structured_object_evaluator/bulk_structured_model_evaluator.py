@@ -31,6 +31,58 @@ from stickler.utils.process_evaluation import ProcessEvaluation
 logger = logging.getLogger(__name__)
 
 
+def _non_finite_to_none(value: Any) -> Any:
+    """Copy ``value`` with every NaN or infinite float *value* replaced by ``None``.
+
+    Walks with an explicit stack, so depth is not limited by the recursion
+    limit. Keys are left alone: ``json.dumps`` already writes a float key as a
+    quoted string, so renaming keys could only merge them. A memo by ``id``
+    copies a shared container once and keeps a cycle a cycle, so ``json.dumps``
+    still reports it.
+    """
+    memo: Dict[int, Any] = {}
+    pending: List[Tuple[Any, Any]] = []
+
+    def copy(item: Any) -> Any:
+        if isinstance(item, float):
+            return item if math.isfinite(item) else None
+        if not isinstance(item, (dict, list, tuple)):
+            return item
+        if id(item) not in memo:
+            memo[id(item)] = {} if isinstance(item, dict) else []
+            pending.append((item, memo[id(item)]))
+        return memo[id(item)]
+
+    result = copy(value)
+    while pending:
+        source, target = pending.pop()
+        if isinstance(source, dict):
+            for key, item in source.items():
+                target[key] = copy(item)
+        else:
+            target.extend([copy(item) for item in source])
+    return result
+
+
+def _jsonl_line(record: Dict[str, Any]) -> str:
+    """Serialize ``record`` as one strict-JSON line, writing NaN and infinities as null.
+
+    ``json.dumps`` writes them as bare ``NaN``/``Infinity``, which jq, JS
+    ``JSON.parse`` and Spark reject (#450); a blank pandas cell is NaN. Finite
+    records take the single dump. ``allow_nan=False`` raises ``ValueError`` only
+    for a non-finite float or a cycle, and a cycle raises again from the second
+    dump, so no message check is needed. ``default=str`` keeps numpy scalars and
+    similar values from crashing the writer, for parity with ``save_metrics()``.
+    """
+    try:
+        return json.dumps(record, default=str, allow_nan=False)
+    except ValueError:
+        # After the copy, a non-finite float can only be a dict key, which
+        # json.dumps writes as a quoted string, so the default allow_nan is
+        # still strict JSON.
+        return json.dumps(_non_finite_to_none(record), default=str)
+
+
 def _join_path(prefix: str, name: str) -> str:
     return f"{prefix}.{name}" if prefix else name
 
@@ -243,11 +295,16 @@ class BulkStructuredModelEvaluator:
                     self._jsonl_handle = open(
                         self.individual_results_jsonl, "a", encoding="utf-8"
                     )
-                record = {"doc_id": doc_id, "comparison_result": comparison_result}
-                # default=str for parity with save_metrics() — keeps
-                # numpy scalars and similar non-JSON-native values
-                # from crashing the writer.
-                self._jsonl_handle.write(json.dumps(record, default=str) + "\n")
+                # A missing value in a float id column is NaN. Written as null,
+                # the report could not select it; as "nan" it matches the id
+                # the report's tables show.
+                jsonl_id = (
+                    str(doc_id)
+                    if isinstance(doc_id, float) and not math.isfinite(doc_id)
+                    else doc_id
+                )
+                record = {"doc_id": jsonl_id, "comparison_result": comparison_result}
+                self._jsonl_handle.write(_jsonl_line(record) + "\n")
                 # Flush per line preserves crash-resilience: a process
                 # killed mid-run still leaves a complete-line JSONL.
                 self._jsonl_handle.flush()

@@ -12,7 +12,7 @@ Tests for `src/stickler/reporting/html/`, whose own README documents the module.
 | `test_output_validation.py` | well-formedness and escaping of the emitted HTML |
 | `test_html_non_match_records.py` | the non-match section driven end to end, no mocks |
 | `test_script_embedding.py` | document data in `<script>` cannot end the block (#431), byte-identical escaping |
-| `test_script_embedding_nonfinite.py` | NaN/inf embed as `null`, so the payload parses as strict JSON (#450) |
+| `test_script_embedding_nonfinite.py` | NaN/inf read from the JSONL as `null`, so the payload parses as strict JSON; one reaching `_json_for_script` raises (#450). The writer side is `../../structured_object_evaluator/test_jsonl_nonfinite.py` |
 
 ## Mocking boundary, and why one file deliberately crosses it
 

@@ -88,14 +88,29 @@ def test_a_none_doc_id_is_left_alone(tmp_path):
 def test_a_nan_doc_id_becomes_the_string_nan(tmp_path):
     """The real missing-value case, and it is not ``None``.
 
-    A float id column with one missing value reads back as ``NaN``, which
-    ``json.dumps`` writes as a bare ``NaN`` token. The conversion embeds it as the
-    string ``"nan"``; pinned so that choice stays visible.
+    A float id column with one missing value reads back as ``NaN``. The JSONL
+    writer stores it as the string ``"nan"``, the id the report's tables show,
+    rather than the ``null`` it writes for other non-finite values (#450), so
+    the document stays selectable. Pinned so that choice stays visible.
     """
+    jsonl = tmp_path / "results.jsonl"
+    evaluator = BulkStructuredModelEvaluator(
+        target_schema=Invoice, individual_results_jsonl=str(jsonl)
+    )
+    evaluator.update(Invoice(vendor="a"), Invoice(vendor="a"), doc_id=float("nan"))
+    evaluator.close()
+    assert json.loads(jsonl.read_text())["doc_id"] == "nan"
+    loaded = EvaluationHTMLReporter()._load_individual_results(str(jsonl))
+    assert loaded[0]["doc_id"] == "nan"
+
+
+def test_a_bare_nan_doc_id_from_an_older_file_reads_as_none(tmp_path):
+    """Files written before #450 hold a bare ``NaN`` token, which the reader
+    maps to ``None`` like any other non-finite value. Pinned as known behaviour."""
     jsonl = tmp_path / "results.jsonl"
     jsonl.write_text('{"doc_id": NaN}\n')
     loaded = EvaluationHTMLReporter()._load_individual_results(str(jsonl))
-    assert loaded[0]["doc_id"] == "nan"
+    assert loaded[0]["doc_id"] is None
 
 
 def test_a_record_without_a_doc_id_gains_no_key(tmp_path):

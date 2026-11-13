@@ -163,7 +163,7 @@ Each line in `results.jsonl` contains:
 {"doc_id": "doc_001", "comparison_result": {"field_scores": {...}, "overall_score": 0.92, ...}}
 ```
 
-This is the raw output of `compare_with(include_confusion_matrix=True)` for that pair, making it easy to analyze individual results after the fact.
+This is the raw output of `compare_with(include_confusion_matrix=True)` for that pair, making it easy to analyze individual results after the fact. NaN and infinite numbers are written as `null`, so every line is strict JSON that `jq`, JavaScript `JSON.parse` and Spark accept.
 
 Lines are appended only after the comparison has been successfully accumulated into the bulk evaluator's state, so the JSONL reflects "successfully accumulated" outcomes rather than "attempted" ones. Documents that error inside `update()` are recorded in the in-memory error list and do not produce a JSONL row.
 

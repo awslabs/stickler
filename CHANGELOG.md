@@ -21,13 +21,17 @@ Each release links to full notes on the
 
 ### Fixed
 
-- **The HTML report's embedded document data is now valid JSON when a value is
-  NaN or infinite.** A blank numeric cell from pandas (NaN) used to reach the
-  page's `<script>` data as a bare `NaN` token, which JavaScript accepts but a
-  JSON parser rejects, so tools that extract and parse the payload failed. NaN,
-  `inf` and `-inf` are now written as `null`. The per-document view now
-  shows such a value as an empty cell, as it already did for
-  `None`, instead of `NaN` or `Infinity` ([#450](https://github.com/awslabs/stickler/issues/450)).
+- **The individual-results JSONL file and the HTML report's embedded document
+  data are now valid JSON when a value is NaN or infinite.** A blank numeric
+  cell from pandas (NaN) was written as a bare `NaN` token, which JavaScript
+  evaluates but `jq`, `JSON.parse`, Spark and other strict parsers reject. The
+  `individual_results_jsonl` writer now writes NaN, `inf` and `-inf` as `null`,
+  except a NaN `doc_id`, which is written as `"nan"`, the id the report's
+  tables show. The report reads any such token left in an older file as
+  `null`. The per-document view shows these values as an empty cell, as it
+  already did for `None`, instead of `NaN` or `Infinity`. A NaN or infinite
+  `ComparableField` threshold is left out of the report's threshold data
+  ([#450](https://github.com/awslabs/stickler/issues/450)).
 - Pretty printers restore stdout when rendering fails, propagate rendering errors,
   and include the bulk summary in confusion-matrix file output.
 

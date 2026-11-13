@@ -41,50 +41,20 @@ _SCRIPT_SAFE_ESCAPES = (
 )
 
 
-def _finite_or_null(value: Any, _path: Optional[set] = None) -> Any:
-    """Return ``value`` with every NaN or infinite float replaced by ``None``.
-
-    Non-finite float dict keys become the strings ``json.dumps`` already wrote
-    for them (``"NaN"``, ``"Infinity"``, ``"-Infinity"``), so only values change.
-    A container that contains itself raises the same ``ValueError`` as
-    ``json.dumps`` rather than recursing until ``RecursionError``.
-    """
-    if isinstance(value, float):
-        return value if math.isfinite(value) else None
-    if not isinstance(value, (dict, list, tuple)):
-        return value
-    path = set() if _path is None else _path
-    if id(value) in path:
-        raise ValueError("Circular reference detected")
-    path.add(id(value))
-    if isinstance(value, dict):
-        result = {
-            (json.dumps(key) if isinstance(key, float) and not math.isfinite(key) else key): _finite_or_null(item, path)
-            for key, item in value.items()
-        }
-    else:
-        result = [_finite_or_null(item, path) for item in value]
-    path.discard(id(value))
-    return result
+def _null_constant(_constant: str) -> None:
+    """``parse_constant`` hook: read ``NaN``, ``Infinity`` and ``-Infinity`` as ``None``."""
+    return None
 
 
 def _json_for_script(value: Any) -> str:
     """Serialize ``value`` as JSON that is safe to place inside ``<script>``.
 
-    ``json.dumps`` writes NaN and infinities as bare ``NaN``/``Infinity``
-    tokens, which JavaScript accepts but JSON parsers reject, so a blank numeric
-    cell (NaN) made the embedded data invalid JSON. Those become ``null``, which
-    the page renders as an empty cell, as it already does for ``None`` (#450).
-    Finite data takes the first dump unchanged; only a payload that holds a
-    non-finite number pays for the sanitising pass.
+    ``allow_nan=False`` because ``NaN``/``Infinity`` tokens are not JSON: the
+    page would still run, but anything that extracts the payload and parses it
+    fails (#450). Non-finite numbers are turned into ``None`` where the data
+    enters the report, so one reaching here is a bug and raises ``ValueError``.
     """
-    try:
-        script_safe_json = json.dumps(value, allow_nan=False)
-    except ValueError as exc:
-        # Only json's non-finite error; a circular reference must still raise.
-        if not str(exc).startswith("Out of range float values"):
-            raise
-        script_safe_json = json.dumps(_finite_or_null(value), allow_nan=False)
+    script_safe_json = json.dumps(value, allow_nan=False)
     for unsafe_char, json_escape in _SCRIPT_SAFE_ESCAPES:
         script_safe_json = script_safe_json.replace(unsafe_char, json_escape)
     return script_safe_json
@@ -229,7 +199,9 @@ class EvaluationHTMLReporter:
                 for line in f:
                     line = line.strip()
                     if line:
-                        doc_data = json.loads(line)
+                        # The writer has written null since #450, but files
+                        # from older runs or other tools can hold bare NaN.
+                        doc_data = json.loads(line, parse_constant=_null_constant)
                         # The page finds the selected document by comparing ids
                         # as strings, and the tables write str(doc_id), so a
                         # numeric id (ordinary from a DataFrame) is embedded as
@@ -369,6 +341,15 @@ class EvaluationHTMLReporter:
     def _get_javascript(self, individual_docs: List[Dict], model_schema: StructuredModel) -> str:
         """Generate JavaScript section with external file reference and data initialization."""
         field_thresholds = DataExtractor.extract_all_field_thresholds(model_schema) if model_schema else None
+        if field_thresholds:
+            # A flat {field path: float} map. ComparableField accepts a NaN or
+            # infinite threshold, which is no usable threshold, so drop it as
+            # if unset rather than fail the report.
+            field_thresholds = {
+                path: threshold
+                for path, threshold in field_thresholds.items()
+                if not isinstance(threshold, float) or math.isfinite(threshold)
+            }
         
         # Convert documents and analysis to JSON for JavaScript
         docs_json = _json_for_script(individual_docs)
