@@ -65,6 +65,15 @@ Each release links to full notes on the
   `html.escape`, and reads the same
   ([#449](https://github.com/awslabs/stickler/issues/449))
 
+### Documentation
+
+- Amount examples no longer present a field threshold as rounding tolerance for
+  `NumericComparator`. It scores 1.0 or 0.0, so the README, Best Practices,
+  Evaluation and IDP Accelerator examples now set `absolute_tolerance=0.01` (or
+  `x-aws-stickler-comparator-config`) instead of `threshold=0.95`, and amounts
+  are out of the threshold tables
+  ([#479](https://github.com/awslabs/stickler/issues/479))
+
 ## [1.0.1] - 2026-11-02
 
 ### Changed
