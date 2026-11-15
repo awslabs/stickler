@@ -39,4 +39,3 @@ jobs:
         run: uv sync --group lint --frozen
       - name: Lint with Ruff
         run: uv run ruff check --output-format=github .
-        continue-on-error: true

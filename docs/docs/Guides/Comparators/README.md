@@ -740,40 +740,12 @@ for.
         super().__init__(threshold=threshold)
     ```
 
-```python
-from stickler import BaseComparator
-
-class BaseComparator(ABC):
-    #: The threshold to use when the caller does not name one. Override per class.
-    DEFAULT_THRESHOLD: float = 0.7
-
-    def __init__(self, threshold: Optional[float] = None):
-        # None, not a number, so a threshold the caller named stays
-        # distinguishable from one nobody asked for. See below.
-        self.threshold_was_set = threshold is not None
-        self.threshold = self.DEFAULT_THRESHOLD if threshold is None else threshold
-
-    def compare(self, str1: Any, str2: Any) -> float:
-        """Apply the shared None policy, then delegate to _compare."""
-        if str1 is None and str2 is None:
-            return 1.0
-        if str1 is None or str2 is None:
-            return 0.0
-        return self._compare(str1, str2)
-
-    @abstractmethod
-    def _compare(self, str1: Any, str2: Any) -> float:
-        """Compare two present values. Neither argument is ever None.
-
-        Args:
-            str1: First value, never None
-            str2: Second value, never None
-
-        Returns:
-            Similarity score between 0.0 and 1.0
-        """
-        pass
-```
+Subclass `BaseComparator`, set `DEFAULT_THRESHOLD`, and accept
+`threshold: Optional[float] = None` in your constructor. Pass `threshold`
+unchanged to `super().__init__`. Implement `_compare(a, b) -> float` to return a
+similarity score between `0.0` and `1.0`; neither argument is ever `None`.
+See the [BaseComparator API reference](../../API-Reference/comparators.md#stickler.comparators.BaseComparator)
+for the full interface.
 
 `BaseComparator` also provides:
 
@@ -795,7 +767,7 @@ The policy lives in `BaseComparator.compare` and nowhere else. You don't write a
 
 ```python
 import re
-from typing import Any
+from typing import Any, Optional
 from stickler import BaseComparator
 
 class RegexComparator(BaseComparator):
