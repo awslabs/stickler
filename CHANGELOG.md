@@ -26,7 +26,7 @@ Each release links to full notes on the
   cell from pandas (NaN) was written as a bare `NaN` token, which JavaScript
   evaluates but `jq`, `JSON.parse`, Spark and other strict parsers reject. The
   `individual_results_jsonl` writer now writes NaN, `inf` and `-inf` as `null`,
-  except a NaN `doc_id`, which is written as `"nan"`, the id the report's
+  except a non-finite `doc_id`, which is written as `"nan"` or `"inf"`, the id the report's
   tables show. The report reads any such token left in an older file as
   `null`. The per-document view shows these values as an empty cell, as it
   already did for `None`, instead of `NaN` or `Infinity`. A NaN or infinite

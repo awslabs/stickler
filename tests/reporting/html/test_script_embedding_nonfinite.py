@@ -16,6 +16,7 @@ See https://github.com/awslabs/stickler/issues/450
 
 import json
 import math
+import sys
 from typing import Optional
 
 import pytest
@@ -27,6 +28,11 @@ from stickler.reporting.html.html_reporter import (
 )
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
+)
+
+_JSON_DEEP_NESTING = pytest.mark.skipif(
+    sys.version_info < (3, 12),
+    reason="json's C encoder and decoder hit the recursion limit on 5000-deep input before 3.12",
 )
 
 NAN, INF = float("nan"), float("inf")
@@ -123,6 +129,7 @@ def test_overflowing_float_literals_render_as_null(tmp_path):
     ]
 
 
+@_JSON_DEEP_NESTING
 def test_deep_nesting_with_one_nan_reads_and_embeds(tmp_path):
     """Read and embed are both C json, so neither is bound by the recursion limit."""
     depth = 5000
