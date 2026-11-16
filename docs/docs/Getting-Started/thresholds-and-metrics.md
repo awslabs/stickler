@@ -276,8 +276,7 @@ field passes. That is why the `Doc` above reports precision, recall and F1 of
 `1.0`, although `name` scores only `0.125`. A `ComparableField()` field keeps
 its own `0.5` default, which `match_threshold` never reaches: declared that way,
 the same pair is a false discovery with precision `0.0`. That is why the value
-can look inert when probed with `ComparableField()` fields (see
-[#237](https://github.com/awslabs/stickler/issues/237)).
+can look inert when probed with `ComparableField()` fields.
 
 **Fix:** use a small positive value.
 
