@@ -46,6 +46,12 @@ def _null_constant(_constant: str) -> None:
     return None
 
 
+def _finite_float_or_null(text: str) -> Optional[float]:
+    """``parse_float`` hook: an overflowing literal such as ``1e999`` reads as ``None``, not inf."""
+    value = float(text)
+    return value if math.isfinite(value) else None
+
+
 def _json_for_script(value: Any) -> str:
     """Serialize ``value`` as JSON that is safe to place inside ``<script>``.
 
@@ -200,8 +206,13 @@ class EvaluationHTMLReporter:
                     line = line.strip()
                     if line:
                         # The writer has written null since #450, but files
-                        # from older runs or other tools can hold bare NaN.
-                        doc_data = json.loads(line, parse_constant=_null_constant)
+                        # from older runs or other tools can hold bare NaN,
+                        # or a literal like 1e999 that overflows to inf.
+                        doc_data = json.loads(
+                            line,
+                            parse_constant=_null_constant,
+                            parse_float=_finite_float_or_null,
+                        )
                         # The page finds the selected document by comparing ids
                         # as strings, and the tables write str(doc_id), so a
                         # numeric id (ordinary from a DataFrame) is embedded as

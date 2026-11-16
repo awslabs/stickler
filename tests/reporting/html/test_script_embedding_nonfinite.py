@@ -104,6 +104,25 @@ def test_a_jsonl_file_with_bare_non_finite_tokens_reads_them_as_none(tmp_path):
     assert strict_loads(_json_for_script([doc])) == [doc]
 
 
+def test_overflowing_float_literals_render_as_null(tmp_path):
+    """``1e999`` is valid JSON but parses to inf, which ``parse_constant`` never sees."""
+    jsonl = tmp_path / "results.jsonl"
+    jsonl.write_text(
+        '{"doc_id": "d", "comparison_result": '
+        '{"a": [1.5, {"b": [1e999, {"c": -1e999}]}], "x": 2.5}}\n'
+    )
+    docs, _ = _report_payloads(
+        tmp_path / "report.html", {"overall": {}, "fields": {}}, Invoice, jsonl
+    )
+
+    assert docs == [
+        {
+            "doc_id": "d",
+            "comparison_result": {"a": [1.5, {"b": [None, {"c": None}]}], "x": 2.5},
+        }
+    ]
+
+
 def test_deep_nesting_with_one_nan_reads_and_embeds(tmp_path):
     """Read and embed are both C json, so neither is bound by the recursion limit."""
     depth = 5000

@@ -87,8 +87,10 @@ def test_deep_nesting_with_one_nan_is_not_limited_by_recursion():
     assert node == [None]
 
 
-def test_a_nan_key_next_to_a_nan_string_key_keeps_both_values():
-    """Keys are left alone, so the two keys are not merged into one."""
+def test_a_nan_key_next_to_a_nan_string_key_writes_both_pairs():
+    """Keys are left alone, so the writer drops neither pair. The line then has
+    a duplicate ``"NaN"`` key, as on dev; a plain ``json.loads`` keeps the last,
+    so both are only visible through ``object_pairs_hook``."""
     line = _jsonl_line({NAN: 1, "NaN": 2, "v": NAN})
 
     assert strict_loads(line, object_pairs_hook=list) == [("NaN", 1), ("NaN", 2), ("v", None)]
