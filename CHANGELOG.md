@@ -31,6 +31,9 @@ Each release links to full notes on the
   `**True**.` scores 1.0 and `"false"` scores 0.0. Any other reply scores 0.0
   and warns, showing the start of the reply, rather than raising.
 
+- Pretty printers restore stdout when rendering fails, propagate rendering errors,
+  and include the bulk summary in confusion-matrix file output.
+
 - `DateComparator` now treats a naive date against a tz-aware one the same way
   in range comparisons as for single dates: the aware side's own calendar date
   is used and the naive side is read on that calendar
@@ -59,6 +62,9 @@ Each release links to full notes on the
   is about ten times slower than `json.dumps` on large reports. The same escapes
   are now applied with `str.replace`, and the page bytes are unchanged
   ([#457](https://github.com/awslabs/stickler/issues/457))
+
+- `NumericComparator` treats booleans as non-numeric and returns `0.0` instead of
+  raising `decimal.InvalidOperation`, including in uncoerced model fields.
 
 ### Security
 
