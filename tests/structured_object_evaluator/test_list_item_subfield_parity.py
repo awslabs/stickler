@@ -1,4 +1,4 @@
-"""A primitive sub-field of a list item is classified as it is outside a list.
+"""A sub-field of a list item is classified as it is outside a list.
 
 For each matched pair, `StructuredListComparator._handle_non_hierarchical_field`
 counted a primitive sub-field by calling the field's comparator directly, not
@@ -13,13 +13,16 @@ through `_dispatch_field_comparison`. That skipped the dispatcher's guards, so:
 - a list in an `Any` sub-field counted one unit instead of one per element;
 - a whitespace-only string counted as null.
 
-The assertions compare the list path to the top-level path, because parity is
-the requirement. See https://github.com/awslabs/stickler/issues/400
+The list path now goes through the dispatcher. Two rules hold on top of it: an
+empty list is null by its value, as `classification-logic.md` says, and a pair
+is read on its GT item's own fields, so a list of mixed model classes does not
+raise. Every expected count below is a literal, so a change to the dispatcher
+shows up here. See https://github.com/awslabs/stickler/issues/400
 """
 
 import datetime
 import warnings
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Union
 
 import pytest
 from pydantic import BaseModel
@@ -34,6 +37,13 @@ from stickler import (
 COUNTS = ("tp", "fa", "fd", "fp", "tn", "fn")
 
 
+def _expect(**counts):
+    """Six counts from the non-zero ones; `fp` is `fa + fd`."""
+    full = {k: counts.get(k, 0) for k in COUNTS}
+    full["fp"] = full["fa"] + full["fd"]
+    return full
+
+
 class Element(StructuredModel):
     key: str = ComparableField(threshold=1.0)
     value: Any = ComparableField()
@@ -42,10 +52,6 @@ class Element(StructuredModel):
 
 class Holder(StructuredModel):
     items: List[Element] = ComparableField()
-
-
-class Flat(StructuredModel):
-    value: Any = ComparableField()
 
 
 class MappingElement(StructuredModel):
@@ -62,52 +68,252 @@ class Point(BaseModel):
     x: int
 
 
-def _counts(node):
-    return {k: node["overall"][k] for k in COUNTS}
+def _counts(node, key="overall"):
+    return {k: node[key][k] for k in COUNTS}
 
 
-def _top_level(gt, pred):
-    result = Flat(value=gt).compare_with(
-        Flat(value=pred), include_confusion_matrix=True
-    )
-    return _counts(result["confusion_matrix"]["fields"]["value"])
-
-
-def _in_list(gt, pred, **kwargs):
-    return Holder(items=[Element(key="k", value=gt)]).compare_with(
-        Holder(items=[Element(key="k", value=pred)]),
+def _in_list(gt, pred, holder=Holder, element=Element, **kwargs):
+    return holder(items=[element(key="k", value=gt)]).compare_with(
+        holder(items=[element(key="k", value=pred)]),
         include_confusion_matrix=True,
         **kwargs,
     )
 
 
-def _in_list_counts(result):
-    items = result["confusion_matrix"]["fields"]["items"]
-    return _counts(items["fields"]["value"])
+def _value_node(result):
+    return result["confusion_matrix"]["fields"]["items"]["fields"]["value"]
 
 
 @pytest.mark.parametrize(
-    "gt, pred",
+    "gt, pred, expected",
     [
-        pytest.param({"text": "p"}, {"text": "q"}, id="dict"),
-        pytest.param({"text": "p"}, {"text": "p"}, id="identical-dict"),
-        pytest.param(("a", "b"), ("a", "c"), id="tuple"),
-        pytest.param({"a"}, {"b"}, id="set"),
-        pytest.param(b"ab", b"ab", id="bytes"),
-        pytest.param(Point(x=1), Point(x=2), id="plain-model"),
-        pytest.param(datetime.date(2020, 1, 1), "2020-01-01", id="date-vs-str"),
-        pytest.param(["a", "b"], ["a", "c"], id="list"),
-        pytest.param(["a", "b"], ["b", "a"], id="reordered-list"),
-        pytest.param("  ", "x", id="whitespace"),
-        pytest.param("  ", None, id="whitespace-vs-none"),
-        pytest.param("abc", "abd", id="str"),
-        pytest.param(None, "x", id="none-vs-str"),
+        pytest.param({"text": "p"}, {"text": "q"}, _expect(fd=1), id="dict"),
+        pytest.param({"text": "p"}, {"text": "p"}, _expect(fd=1), id="identical-dict"),
+        pytest.param(("a", "b"), ("a", "c"), _expect(fd=1), id="tuple"),
+        pytest.param({"a"}, {"b"}, _expect(fd=1), id="set"),
+        pytest.param(b"ab", b"ab", _expect(fd=1), id="bytes"),
+        pytest.param(Point(x=1), Point(x=2), _expect(fd=1), id="plain-model"),
+        pytest.param(
+            datetime.date(2020, 1, 1), "2020-01-01", _expect(fd=1), id="date-vs-str"
+        ),
+        pytest.param(["a", "b"], ["a", "c"], _expect(tp=1, fd=1), id="list"),
+        pytest.param(["a", "b"], ["b", "a"], _expect(tp=2), id="reordered-list"),
+        pytest.param(["a", "b"], [], _expect(fn=2), id="list-vs-empty"),
+        pytest.param([], ["a", "b"], _expect(fa=2), id="empty-vs-list"),
+        pytest.param("  ", "x", _expect(fd=1), id="whitespace"),
+        pytest.param("  ", None, _expect(fn=1), id="whitespace-vs-none"),
+        pytest.param((), None, _expect(fn=1), id="empty-tuple-vs-none"),
+        pytest.param(None, (), _expect(fa=1), id="none-vs-empty-tuple"),
+        pytest.param("abc", "abd", _expect(tp=1), id="str"),
+        pytest.param(None, "x", _expect(fa=1), id="none-vs-str"),
     ],
 )
-def test_sub_field_counts_as_at_top_level(gt, pred):
+def test_sub_field_counts(gt, pred, expected):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        assert _in_list_counts(_in_list(gt, pred)) == _top_level(gt, pred)
+        assert _counts(_value_node(_in_list(gt, pred))) == expected
+
+
+@pytest.mark.parametrize(
+    "gt, pred, expected",
+    [
+        pytest.param(None, [], _expect(tn=1), id="none-vs-empty"),
+        pytest.param([], None, _expect(tn=1), id="empty-vs-none"),
+        pytest.param([], [], _expect(tn=1), id="both-empty"),
+        pytest.param([None], [None], _expect(tn=1), id="only-none-elements"),
+        pytest.param("", [], _expect(tn=1), id="empty-str-vs-empty"),
+        pytest.param({}, [], _expect(tn=1), id="empty-dict-vs-empty"),
+        pytest.param(float("nan"), [], _expect(tn=1), id="nan-vs-empty"),
+        pytest.param("x", [], _expect(fn=1), id="str-vs-empty"),
+        pytest.param([], "x", _expect(fa=1), id="empty-vs-str"),
+    ],
+)
+def test_an_empty_list_in_an_any_sub_field_is_null(gt, pred, expected):
+    assert _counts(_value_node(_in_list(gt, pred))) == expected
+
+
+class Inner(StructuredModel):
+    a: str = ComparableField()
+    b: Optional[str] = ComparableField(default=None)
+
+
+class Other(StructuredModel):
+    c: str = ComparableField()
+
+
+class Search(StructuredModel):
+    query: str = ComparableField()
+
+
+class Browse(StructuredModel):
+    url: str = ComparableField()
+
+
+class ModelElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Any = ComparableField(threshold=0.9)
+    match_threshold = 0.4
+
+
+class ModelHolder(StructuredModel):
+    items: List[ModelElement] = ComparableField()
+
+
+class UnionElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Union[Search, Browse] = ComparableField(threshold=0.9)
+    match_threshold = 0.4
+
+
+class UnionHolder(StructuredModel):
+    items: List[UnionElement] = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "holder, element, gt, pred, overall, aggregate",
+    [
+        pytest.param(
+            ModelHolder,
+            ModelElement,
+            Inner(a="x", b="y"),
+            Inner(a="x", b="y"),
+            _expect(tp=1),
+            _expect(tp=2),
+            id="same-model",
+        ),
+        pytest.param(
+            ModelHolder,
+            ModelElement,
+            Inner(a="x", b="y"),
+            Inner(a="x", b="z"),
+            _expect(fd=1),
+            _expect(tp=1, fd=1),
+            id="model-below-threshold",
+        ),
+        pytest.param(
+            UnionHolder,
+            UnionElement,
+            Search(query="hotels"),
+            Search(query="motels"),
+            _expect(fd=1),
+            _expect(tp=1),
+            id="union-below-threshold",
+        ),
+        # Different classes: the object verdict is the item's score, which
+        # compare() gives as 1.0 when the two share no field, as at top level
+        # (#327). The leaves still report the miss.
+        pytest.param(
+            ModelHolder,
+            ModelElement,
+            Inner(a="x", b="y"),
+            Other(c="z"),
+            _expect(tp=1),
+            _expect(fn=2),
+            id="other-class",
+        ),
+        pytest.param(
+            UnionHolder,
+            UnionElement,
+            Search(query="hotels"),
+            Browse(url="x.com"),
+            _expect(tp=1),
+            _expect(fn=1),
+            id="union-other-class",
+        ),
+    ],
+)
+def test_a_model_in_a_sub_field_keeps_its_leaves(
+    holder, element, gt, pred, overall, aggregate
+):
+    node = _value_node(_in_list(gt, pred, holder=holder, element=element))
+    assert _counts(node) == overall
+    assert _counts(node, "aggregate") == aggregate
+
+    # The same field at top level, read from its own item.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        alone = element(key="k", value=gt).compare_with(
+            element(key="k", value=pred), include_confusion_matrix=True
+        )
+    top = alone["confusion_matrix"]["fields"]["value"]
+    assert _counts(top) == overall
+    assert _counts(top, "aggregate") == aggregate
+
+
+class Pet(StructuredModel):
+    name: str = ComparableField()
+
+
+class Cat(Pet):
+    lives: int = ComparableField()
+
+
+class Pets(StructuredModel):
+    pets: List[Pet] = ComparableField()
+
+
+class Actions(StructuredModel):
+    actions: List[Union[Search, Browse]] = ComparableField()
+
+
+def _list_fields(result, field):
+    fields = result["confusion_matrix"]["fields"][field]["fields"]
+    return {name: _counts(node) for name, node in fields.items()}
+
+
+def test_a_list_of_a_model_and_its_subclass_does_not_raise():
+    pets = [Cat(name="tom", lives=9), Pet(name="rex")]
+
+    result = Pets(pets=pets).compare_with(
+        Pets(pets=list(pets)), include_confusion_matrix=True
+    )
+
+    assert result["overall_score"] == 1.0
+    # `lives` is counted for the Cat pair only, which declares it.
+    assert _list_fields(result, "pets") == {
+        "name": _expect(tp=2),
+        "lives": _expect(tp=1),
+    }
+
+
+def test_a_list_of_a_model_union_does_not_raise():
+    actions = [Search(query="q"), Browse(url="u")]
+
+    result = Actions(actions=actions).compare_with(
+        Actions(actions=list(actions)), include_confusion_matrix=True
+    )
+
+    assert result["overall_score"] == 1.0
+    assert _list_fields(result, "actions") == {
+        "query": _expect(tp=1),
+        "url": _expect(tp=1),
+    }
+
+
+class OverridingElement(ModelElement):
+    def compare_with(self, other, **kwargs):
+        return super().compare_with(other, **kwargs)
+
+
+class OverridingHolder(StructuredModel):
+    items: List[OverridingElement] = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "holder, element",
+    [
+        pytest.param(ModelHolder, ModelElement, id="plain"),
+        pytest.param(OverridingHolder, OverridingElement, id="compare-with-override"),
+    ],
+)
+def test_a_dict_against_a_model_in_a_sub_field_list_does_not_raise(holder, element):
+    result = _in_list([Inner(a="x")], [{"a": "x"}], holder=holder, element=element)
+
+    node = _value_node(result)
+    # compare() skips a field the prediction lacks, so the pair is a TP, as
+    # at top level (#327). The leaves report the miss.
+    assert _counts(node) == _expect(tp=1)
+    assert _counts(node, "aggregate") == _expect(fn=1, tn=1)
 
 
 @pytest.mark.parametrize(
@@ -131,7 +337,7 @@ def test_sub_field_counts_agree_with_non_matches(gt, pred, expected):
         NonMatchType.FALSE_DISCOVERY: "fd",
         NonMatchType.FALSE_NEGATIVE: "fn",
     }[expected]
-    assert _in_list_counts(result)[count] == 1
+    assert _counts(_value_node(result))[count] == 1
 
 
 @pytest.mark.parametrize("include_confusion_matrix", [False, True])
