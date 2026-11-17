@@ -65,14 +65,16 @@ Each release links to full notes on the
   `compare_with()`, such as `[Inner(a="x"), "b"]` against itself.
   Nested-model and list-annotated sub-fields otherwise count as before.
 
-  One moved count is not settled. `[Inner(a="x")]` against `[{"a": "x"}]` in
-  an `Any` sub-field, whose element class overrides `compare_with()` to return
-  a score without recursing, did not raise and counted an FD. It now counts a
-  TP, as the same pair does without the override and at top level, and the
-  score is 1.0 before and after. That TP goes against the rule that objects of
-  different classes are an FD, which `StructuredModel` does not follow yet.
-  Whether a model paired with a non-model element keeps the TP or counts an
-  FD is still to be decided.
+  When a list element's class overrides `compare_with()` to return a score
+  without recursing, a list of models in its `Any` or `object` sub-field did
+  not raise against a list of non-models or of models of another class, and
+  counted one TP or FD with no subtree. `[Inner(a="x")]` against `["a"]`,
+  `[1]`, `[["a"]]` or `[{"a": "x"}]` was an FD, and against `[Other(c="z")]`
+  an FD at a field threshold of 0.9 and a TP at the default. Each now counts a
+  TP, with `a` an FN and `b` a TN under `aggregate`, as the same pair does
+  without the override and at top level, and the score is 1.0 before and
+  after. Like the other pairs above, they follow the field-by-field scoring
+  `StructuredModel` still uses for objects of different classes.
 
   Four cases still differ from top level:
   - in an `Any`, `object` or `Union[A, B]` sub-field, a model of another class
