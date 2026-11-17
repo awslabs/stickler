@@ -1723,7 +1723,11 @@ class TestValuesAreNotWalkedAsSchemas:
         ),
         "property-named-properties": (
             "#/x-models/T/properties/properties",
-            {"x-models": {"T": {"type": "object", "properties": {"properties": _TYPO}}}},
+            {
+                "x-models": {
+                    "T": {"type": "object", "properties": {"properties": _TYPO}}
+                }
+            },
             r"thresold.*on field 'x-models\.T\.properties'",
         ),
     }
