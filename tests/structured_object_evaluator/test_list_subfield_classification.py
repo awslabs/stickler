@@ -1,9 +1,11 @@
 """How a model in a sub-field of a matched ``List[StructuredModel]`` pair is classified.
 
-For each matched pair, ``StructuredListComparator._handle_non_hierarchical_field``
-classifies every non-list sub-field through the GT item's dispatcher, as at top
-level. A sub-field annotated ``Union[A, B]`` or ``Any`` is not routed as a nested
-model, so its model values reach the dispatcher, which compares them as models.
+For each matched pair, ``StructuredListComparator._dispatch_pairs`` classifies
+every sub-field through the GT item's dispatcher, as at top level, including
+``List[str]`` and nested-model sub-fields. A sub-field annotated ``Union[A, B]``
+or ``Any`` is not routed as a nested model, so its model values reach the
+dispatcher, which compares them as models. Two models of different classes
+there are classified by ``compare_with()`` instead, as before.
 """
 
 from typing import Any, List, Union

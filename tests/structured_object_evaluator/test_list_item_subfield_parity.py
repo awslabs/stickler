@@ -377,20 +377,22 @@ def test_a_list_of_a_model_union_does_not_raise():
     }
 
 
-class OverridingElement(ModelElement):
+class FixedScoreElement(ModelElement):
+    """Scores an item without recursing, as a custom `compare_with()` may."""
+
     def compare_with(self, other, **kwargs):
-        return super().compare_with(other, **kwargs)
+        return {"overall_score": 1.0}
 
 
-class OverridingHolder(StructuredModel):
-    items: List[OverridingElement] = ComparableField()
+class FixedScoreHolder(StructuredModel):
+    items: List[FixedScoreElement] = ComparableField()
 
 
 @pytest.mark.parametrize(
     "holder, element",
     [
         pytest.param(ModelHolder, ModelElement, id="plain"),
-        pytest.param(OverridingHolder, OverridingElement, id="compare-with-override"),
+        pytest.param(FixedScoreHolder, FixedScoreElement, id="compare-with-override"),
     ],
 )
 def test_a_dict_against_a_model_in_a_sub_field_list_does_not_raise(holder, element):
