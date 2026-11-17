@@ -2381,6 +2381,49 @@ class TestARefIntoADefinition:
                 }
             )
 
+    @pytest.mark.parametrize("name", ("definitions", "$defs"))
+    @pytest.mark.parametrize(
+        "sibling, value",
+        (
+            (
+                "items",
+                {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "x-aws-stickler-weight": 2.0,
+                },
+            ),
+            ("anyOf", {"type": "string"}),
+            ("patternProperties", {"type": "string"}),
+        ),
+        ids=("items", "anyOf", "patternProperties"),
+    )
+    def test_a_property_named_like_the_definitions_keyword_is_a_name(
+        self, name, sibling, value
+    ):
+        """`#/properties/definitions/properties/term` is a property of a
+        property, not a definition entry, so the holder's property map is not
+        walked as a schema and a member named like a keyword is a name. Imports
+        as on dev."""
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    name: {
+                        "type": "object",
+                        "properties": {"term": _PLAIN, sibling: value},
+                    },
+                    "featured": {"$ref": f"#/properties/{name}/properties/term"},
+                },
+            }
+        )
+        featured = _unwrap(model.model_fields["featured"].annotation)
+        assert (featured.__name__, featured.match_threshold) == ("term", 0.7)
+        holder = _unwrap(model.model_fields[name].annotation)
+        assert sibling in holder.model_fields
+        if sibling == "items":
+            assert holder._get_comparison_info("items").weight == 2.0
+
     # Another node of `W`, beside the `s` that `h` uses, with keys no class
     # reads, and the error a `$ref` to the whole of `W` raises for it.
     _SIBLINGS = (

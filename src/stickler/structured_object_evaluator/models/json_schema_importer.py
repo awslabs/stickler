@@ -307,11 +307,15 @@ def _resolve_local_ref(
     node: Any = schema
     entry: Optional[Tuple[str, ...]] = None
     entry_body: Any = None
+    readings = {"schema"}
     for index, part in enumerate(parts):
         if not isinstance(node, dict) or part not in node:
             return None, (), None, None
-        if index > 0 and parts[index - 1] in ("$defs", "definitions"):
+        # An entry only where the segment before was read as the keyword,
+        # not as a property NAMED `$defs` or `definitions`.
+        if readings & {"$defs", "definitions"}:
             entry, entry_body = parts[: index + 1], node[part]
+        readings = _next_readings(readings, part)
         node = node[part]
     return node, parts, entry, entry_body
 
@@ -375,23 +379,28 @@ def _is_property_pointer(pointer: Optional[Tuple[str, ...]]) -> bool:
     # index ("index"), or a name under the keyword held.
     readings = {"schema"}
     for part in pointer[:-1]:
-        following = set()
-        for expect in readings:
-            if expect == "member" or (
-                expect == "schema"
-                and part not in _NAMED_SCHEMA_KEYWORDS
-                and part not in _LISTED_SCHEMA_KEYWORDS
-                and part not in _SINGLE_SCHEMA_KEYWORDS
-            ):
-                following.update(("schema", "member"))
-            elif expect == "schema" and part in _NAMED_SCHEMA_KEYWORDS:
-                following.add(part)
-            elif expect == "schema" and part in _LISTED_SCHEMA_KEYWORDS:
-                following.add("index")
-            else:
-                following.add("schema")
-        readings = following
+        readings = _next_readings(readings, part)
     return "properties" in readings
+
+
+def _next_readings(readings: set, part: str) -> set:
+    """What the segment after `part` can be, in each reading of `part`."""
+    following = set()
+    for expect in readings:
+        if expect == "member" or (
+            expect == "schema"
+            and part not in _NAMED_SCHEMA_KEYWORDS
+            and part not in _LISTED_SCHEMA_KEYWORDS
+            and part not in _SINGLE_SCHEMA_KEYWORDS
+        ):
+            following.update(("schema", "member"))
+        elif expect == "schema" and part in _NAMED_SCHEMA_KEYWORDS:
+            following.add(part)
+        elif expect == "schema" and part in _LISTED_SCHEMA_KEYWORDS:
+            following.add("index")
+        else:
+            following.add("schema")
+    return following
 
 
 _COMBINERS = frozenset({"allOf", "anyOf", "oneOf"})
