@@ -134,6 +134,8 @@ class Contact(StructuredModel):
 
 Extracts numeric values from strings or numbers and compares them with configurable tolerance. Handles currency symbols, commas, and accounting notation (e.g., `(123)` for negative values). Returns 1.0 if the numbers match within tolerance, 0.0 otherwise.
 
+String values may use decimal digits in other scripts: `"١٬٢٥٠٫٥٠"` reads 1250.50, as `"1,250.50"` does. A value whose digits are all outside ASCII reads as no number unless it holds one unambiguous number. A value that also has ASCII digits reads its ASCII number and ignores its other-script digits (`"1,250.00 (١٬٢٥٠٫٠٠)"` reads 1250.00), but a number whose digits switch script, such as `"١٢٥٠.50"`, reads as no number unless it is the same amount written twice. A minus sign such as U+2212 marks a negative when it opens the value or follows a currency symbol (`"−1250"`, `"$−1250"`), as do accounting parentheses that are fullwidth or have spaces around them (`"（1250）"`, `" (1250) "`); `"(-1250)"` reads -1250. A compact form such as `"١٫٣ ألف"` reads the number shown (1.3), as `"1.3K"` does; one with a CJK numeral (`"１２万円"`) reads as no number. Declare the field `str`: a `float`, `int` or `Decimal` field rejects `"١٬٢٥٠٫٥٠"` before the comparator runs.
+
 **When to use:** Prices, quantities, measurements, or any numeric field where small differences are acceptable.
 
 ```python

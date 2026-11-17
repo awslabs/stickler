@@ -69,6 +69,26 @@ Each release links to full notes on the
 
 - `NumericComparator` treats booleans as non-numeric and returns `0.0` instead of
   raising `decimal.InvalidOperation`, including in uncoerced model fields.
+- **`NumericComparator` reads digits in other scripts.** Digits outside ASCII
+  (Arabic-Indic, Persian, Devanagari, Thai, fullwidth, ...) were deleted before
+  parsing, so `"١٢٥٠"` never matched `"1250"` and `"١٢٥٠.50"` read as `0.50`. A
+  string written in such digits now reads as its number when it holds one
+  unambiguous number, and otherwise as no number, as before. A number whose
+  digits switch script reads as no number, unless it is the same amount
+  written twice (`"1250١٢٥٠"`). A compact form such as `"١٫٣ ألف"` reads the
+  number shown, as `"1.3K"` does. String values only: a `float`, `int` or
+  `Decimal` field rejects `"١٬٢٥٠٫٥٠"` before the comparator runs
+  ([#559](https://github.com/awslabs/stickler/issues/559))
+- `NumericComparator` reads as negative some ASCII-digit values that it read
+  as positive: U+2212 and other minus signs that open the value, before the
+  number, a currency or a parenthesis (`"−1250"`, `"−AED 1250"`,
+  `"−(1250)"`, `"−.75"`), or come right after a currency symbol (`"$−1250"`);
+  fullwidth accounting parentheses (`"（1250）"`); accounting parentheses with
+  spaces or invisible format characters around them (`" (1250) "`); and a
+  negative inside accounting parentheses, which was negated twice
+  (`"(-1250)"`). A minus sign after a word keeps its old reading
+  (`"Total – 1250"` reads 1250)
+  ([#559](https://github.com/awslabs/stickler/issues/559))
 
 ### Security
 
