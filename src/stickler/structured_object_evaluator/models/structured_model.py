@@ -37,7 +37,6 @@ from .metrics_helper import MetricsHelper
 from .null_helper import NullHelper
 from .optional_annotation import union_args, unwrap_annotated, unwrap_optional
 from .rich_value_helper import RichValueHelper
-from .threshold_helper import THRESHOLD_DOCS_URL
 from .threshold_helper import model_identity as _model_identity
 from .threshold_helper import warn_if_threshold_is_zero as _warn_if_threshold_is_zero
 from .threshold_rule import (
@@ -45,6 +44,7 @@ from .threshold_rule import (
     SCHEMA,
     as_threshold,
     is_valid_threshold,
+    list_threshold_error,
     match_threshold_error,
     python_comparator_source,
     threshold_error,
@@ -674,24 +674,23 @@ class StructuredModel(BaseModel):
                                     field_type,
                                 )
                             if threshold_explicit:
-                                # Do not echo 0.0 back as advice: the threshold
-                                # test is `>=`, so `match_threshold = 0.0` makes
-                                # every paired object a true positive. Telling a
-                                # user to set it would walk them straight into
-                                # the misconfiguration warn_if_threshold_is_zero
-                                # exists to flag.
-                                remedy = (
-                                    "Set a positive 'match_threshold' on the list element "
-                                    "class (0.0 would classify every paired object as a "
-                                    f"true positive). See {THRESHOLD_DOCS_URL}"
-                                    if threshold == 0.0
-                                    else f"Set 'match_threshold = {threshold}' on the list element class."
-                                )
-                                raise ValueError(
-                                    f"Field '{field_name}' is a List[StructuredModel] and cannot have a "
-                                    f"'threshold' parameter in ComparableField. Hungarian matching uses each "
-                                    f"StructuredModel's 'match_threshold' class attribute instead. "
-                                    f"{remedy}"
+                                # The same template, naming the model and the
+                                # element class. It does not echo 0.0 back as
+                                # advice: the threshold test is `>=`, so
+                                # `match_threshold = 0.0` makes every paired
+                                # object a true positive, the misconfiguration
+                                # warn_if_threshold_is_zero exists to flag.
+                                raise list_threshold_error(
+                                    threshold,
+                                    spelling=PYTHON,
+                                    field=field_name,
+                                    model=cls.__name__,
+                                    element=_list_element_name(field_type),
+                                    set_at=getattr(
+                                        field_default.json_schema_extra,
+                                        "_set_at",
+                                        None,
+                                    ),
                                 )
 
                             # The same number, written on the comparator instead.

@@ -348,13 +348,48 @@ class TestTheLikelyFix:
             f"{RULE} {fix}"
         )
 
-    @pytest.mark.parametrize("kind", ["negative", "bool", "nan", "inf"])
-    def test_what_is_wrong_is_said_plainly(self, kind):
-        """With no guess at a number: none is likely."""
+    @pytest.mark.parametrize("kind", ["negative", "nan", "inf"])
+    @pytest.mark.parametrize("path", ["config field", "schema field"])
+    def test_with_no_likely_number_the_fix_gives_the_range(self, path, kind):
         value, _, _, wrong = BAD[kind]
-        message = _message(PATHS["schema field"][0], value)
-        assert wrong in message
-        assert message.endswith(RULE) or message.endswith(wrong)
+        message = _message(PATHS[path][0], value)
+        assert message.endswith(f"{wrong} Use a number from 0.0 to 1.0 instead.")
+
+    @pytest.mark.parametrize(
+        "path, fix",
+        [
+            ("python field", "Use 1.0 to require an exact match."),
+            ("config field", "Use 1.0 to require an exact match."),
+            (
+                "python comparator",
+                "To require an exact match, write LevenshteinComparator(threshold="
+                "1.0), or set ComparableField(threshold=1.0), which takes precedence.",
+            ),
+            (
+                "config comparator_config",
+                'To require an exact match, write 1.0 there, or set "threshold": '
+                "1.0 on the field, which takes precedence.",
+            ),
+        ],
+    )
+    def test_true_is_an_exact_match(self, path, fix):
+        """``true`` loaded as 1 on the importers, so 1.0 keeps that verdict."""
+        message = _message(PATHS[path][0], True)
+        assert "is a boolean, not a number." in message
+        assert message.endswith(fix) or fix + " (Set at" in message
+
+    def test_false_gets_the_range(self):
+        message = _message(PATHS["schema field"][0], False)
+        assert message.endswith(
+            "is a boolean, not a number. "
+            f"{RULE} Use a number from 0.0 to 1.0 instead."
+        )
+
+    def test_every_message_ends_with_a_fix(self):
+        for path, (build, _, _) in PATHS.items():
+            for kind, (value, *_rest) in BAD.items():
+                message = _message(build, value)
+                assert not message.endswith(RULE), (path, kind)
 
     @pytest.mark.parametrize("path", ["config field", "schema field"])
     def test_null_on_the_importers(self, path):
@@ -552,6 +587,44 @@ class TestANestedModelReadsOnlyTheComparatorsThreshold:
             "0.85 on the field."
         )
 
+    def test_config_with_a_named_comparator_removes_the_config(self):
+        """The 85 is in ``comparator_config``: removing ``comparator`` keeps it."""
+        message = _message(
+            lambda v: _config(
+                {
+                    "type": "structured_model",
+                    "comparator": "LevenshteinComparator",
+                    "comparator_config": {"threshold": v},
+                    "fields": {"a": _LEAF},
+                }
+            ),
+            85,
+        )
+        assert message.endswith(
+            '"comparator" has no effect on a nested model except for its '
+            'threshold. If 85 is a percentage, remove "comparator_config" and set '
+            '"threshold": 0.85 on the field.'
+        )
+
+    def test_schema_with_a_named_comparator_removes_the_config(self):
+        message = _message(
+            lambda v: _schema(
+                {
+                    "type": "object",
+                    "properties": {"a": _SLEAF},
+                    "x-aws-stickler-comparator": "LevenshteinComparator",
+                    "x-aws-stickler-comparator-config": {"threshold": v},
+                }
+            ),
+            -1,
+        )
+        assert message.endswith(
+            '"x-aws-stickler-comparator" has no effect on an object with '
+            'properties except for its threshold. Remove '
+            '"x-aws-stickler-comparator-config" and set "x-aws-stickler-threshold" '
+            "on the property to a number from 0.0 to 1.0."
+        )
+
     def test_schema(self):
         message = _message(PATHS["schema nested-object comparator-config"][0], 85)
         assert message.endswith(
@@ -652,6 +725,32 @@ class TestAListOfModels:
         message = str(caught.value)
         assert message.startswith("Invalid threshold for field 'items' of model 'Invoice': ")
         assert f"85 is above 1.0, so no pair would match. {note} {fix}" in message
+
+
+class TestAValidThresholdOnAListOfModels:
+    """Still refused, with the shared template naming the model and element class."""
+
+    def test_the_message(self):
+        line = inspect.currentframe().f_lineno + 2
+        with pytest.raises(ValueError) as caught:
+            _python(List[_Inner], ComparableField(threshold=0.9), name="Order", attr="items")
+        assert str(caught.value) == (
+            "Invalid threshold for field 'items' of model 'Order': "
+            "ComparableField(threshold=0.9) would have no effect. A "
+            "List[StructuredModel] field takes no threshold: its items are paired "
+            "on the element class's match_threshold. Set match_threshold = 0.9 on "
+            f"_Inner instead. (Set at test_threshold_validation.py:{line}.)"
+        )
+
+    def test_zero_is_not_echoed_back(self):
+        message = _message(
+            lambda v: _python(List[_Inner], ComparableField(threshold=v), attr="items"),
+            0.0,
+        )
+        assert (
+            "Set a positive match_threshold on _Inner instead: 0.0 would classify "
+            "every paired object as a true positive. See "
+        ) in message
 
 
 class TestTheMessageNamesTheModelAsTheAuthorDoes:
@@ -854,6 +953,64 @@ class TestAThresholdTheComparatorSetsItself:
             '"comparator" has no effect on a nested model except for its threshold. '
             'Remove it and set "threshold" on the field to a number from 0.0 to 1.0.'
         )
+
+
+class _FillsIn85(BaseComparator):
+    """Takes ``threshold``, and sets 85 itself when it is not passed."""
+
+    def __init__(self, threshold: Optional[float] = None):
+        super().__init__(threshold=85 if threshold is None else threshold)
+
+    def _compare(self, a, b):
+        return 1.0 if a == b else 0.0
+
+
+class TestACustomComparatorThatTakesAThreshold:
+    """Its call is not quoted: the author may not have written ``threshold=85``."""
+
+    def test_the_message_says_the_comparators_threshold(self):
+        message = _message(
+            lambda _: _python(str, ComparableField(comparator=_FillsIn85())), None
+        )
+        assert message.startswith(
+            HEAD + "the field sets no threshold, so it uses its comparator's "
+            f"threshold, which for _FillsIn85 is 85. {RULE} 85 is above 1.0, so "
+            "no pair would match. If 85 is a percentage, pass threshold=0.85 to "
+            "_FillsIn85, or set ComparableField(threshold=0.85), which takes "
+            "precedence. (Set at "
+        )
+        assert "_FillsIn85(threshold=" not in message
+
+    def test_a_stickler_comparator_is_quoted(self):
+        """Each built-in passes ``threshold`` through, so the call is the author's."""
+
+        class MyLevenshtein(LevenshteinComparator):
+            pass
+
+        message = _message(
+            lambda v: _python(
+                str, ComparableField(comparator=MyLevenshtein(threshold=v))
+            ),
+            85,
+        )
+        assert "so it uses MyLevenshtein(threshold=85)." in message
+
+    def test_every_built_in_passes_the_threshold_through(self):
+        """What quoting a built-in's call relies on."""
+        registry = comparator_registry._global_registry
+        checked = 0
+        for name in registry.list_available():
+            cls = registry.get(name)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                try:
+                    bare, named = cls(), cls(threshold=0.3)
+                except Exception:
+                    continue  # needs an extra or a required argument
+            assert bare.threshold_was_set is False, name
+            assert (named.threshold, named.threshold_was_set) == (0.3, True), name
+            checked += 1
+        assert checked >= 8
 
 
 class _Units(BaseComparator):

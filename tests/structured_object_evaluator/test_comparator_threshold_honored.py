@@ -330,7 +330,7 @@ class TestAListOfModelsStillAcceptsAComparator:
         class Item(StructuredModel):
             name: str = ComparableField(comparator=LevenshteinComparator())
 
-        with pytest.raises(ValueError, match="cannot have a 'threshold' parameter"):
+        with pytest.raises(ValueError, match=r"would have no effect\. A List\[StructuredModel\] field takes no threshold"):
 
             class Doc(StructuredModel):
                 items: list[Item] = ComparableField(threshold=0.9)
@@ -605,7 +605,7 @@ class TestAListOfModelsRefusesAFieldThresholdAtEveryValue:
         class Line(StructuredModel):
             sku: Optional[str] = ComparableField(default=None)
 
-        with pytest.raises(ValueError, match="cannot have a 'threshold' parameter"):
+        with pytest.raises(ValueError, match=r"would have no effect\. A List\[StructuredModel\] field takes no threshold"):
 
             class Doc(StructuredModel):
                 items: Optional[List[Line]] = ComparableField(
@@ -706,7 +706,7 @@ class TestAListOfModelsReportsASwallowedComparatorThreshold:
 
     def test_the_field_level_spelling_still_raises(self):
         """The two spellings must not swap places: one warns, one is an error."""
-        with pytest.raises(ValueError, match="cannot have a 'threshold' parameter"):
+        with pytest.raises(ValueError, match=r"would have no effect\. A List\[StructuredModel\] field takes no threshold"):
             type(
                 "Doc",
                 (StructuredModel,),

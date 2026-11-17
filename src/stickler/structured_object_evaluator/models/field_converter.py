@@ -292,12 +292,14 @@ def _raise_comparator_threshold(
     comparator's own constructor set it, and the message names the comparator
     instead. ``named`` says whether the author named the comparator or only gave
     a config, which decides what a nested model, which reads only the
-    threshold, should remove.
+    threshold, should remove: the key the value is in, which is the config
+    whenever it states the threshold.
     """
     # `{}` is the value; the doubled braces are the config's own.
     written = (
         '"' + config_key + '": {{"threshold": {}}}' if "threshold" in config else None
     )
+    carrier = f'"{comparator_key}"' if named else f'"{config_key}"'
     raise threshold_error(
         value,
         spelling=spelling,
@@ -306,7 +308,8 @@ def _raise_comparator_threshold(
         comparator=ComparatorSource(
             written=written,
             name=f'"{comparator_name}"',
-            carrier=f'"{comparator_key}"' if named else f'"{config_key}"',
+            carrier=carrier,
+            remove=f'"{config_key}"' if named and written else "it",
         ),
         nested=nested,
         defined_at=defined_at,

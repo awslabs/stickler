@@ -26,6 +26,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Optional
 
+from .threshold_helper import THRESHOLD_DOCS_URL
+
 #: ``src/stickler/``, with a trailing separator so ``stickler_ext/`` does not match.
 STICKLER_DIR = (
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -96,8 +98,8 @@ def normalize_threshold(value: Any) -> Any:
 class Spelling:
     """How one path quotes the keys and values a threshold message names.
 
-    Templates take the rendered value as ``{}``; ``list_fix`` also takes the
-    element class as ``{element}``.
+    Templates take the rendered value as ``{}``; ``list_fix`` and ``list_key``
+    also take the element class as ``{element}``.
     """
 
     as_json: bool
@@ -174,31 +176,43 @@ class ComparatorSource:
     """Where a threshold the field adopts from its comparator was written.
 
     ``written`` quotes it as the author did, with ``{}`` for the value, or is
-    ``None`` when the comparator's own constructor set it. ``name`` is the
-    comparator as the author named it. ``carrier`` is the key or object to
-    remove from a nested model, where only the threshold is read.
+    ``None`` when that is not known. ``name`` is the comparator as the author
+    named it. ``carrier`` is what has no effect on a nested model, where only
+    the threshold is read, and ``remove`` what to delete there to move the
+    threshold to the field: ``"it"`` for the carrier itself. ``takes_threshold``
+    says the author can pass the comparator a threshold, though ``written`` is
+    ``None`` because its constructor may also set one itself.
     """
 
     written: Optional[str]
     name: str
     carrier: str
+    remove: str = "it"
+    takes_threshold: bool = False
 
 
 def python_comparator_source(comparator: Any) -> ComparatorSource:
-    """``LevenshteinComparator(threshold={})``, if its constructor takes ``threshold``.
+    """``LevenshteinComparator(threshold={})`` for a comparator known to pass it through.
 
-    A constructor without that parameter set the threshold itself, so quoting
-    ``MaxDist(threshold=5)`` would name a call the author never wrote.
+    That is one whose constructor is stickler's own: each passes ``threshold``
+    to ``BaseComparator`` unchanged. Another may set the threshold itself, with
+    or without a ``threshold`` parameter, so quoting ``Strict(threshold=85)``
+    could name a call the author never wrote; the message says the
+    comparator's threshold is 85 instead.
     """
-    name = type(comparator).__name__
+    cls = type(comparator)
+    name = cls.__name__
     try:
-        takes_it = "threshold" in inspect.signature(type(comparator)).parameters
+        takes_it = "threshold" in inspect.signature(cls).parameters
     except (TypeError, ValueError):
         takes_it = False
+    owner = next((k for k in cls.__mro__ if "__init__" in k.__dict__), object)
+    passes_it_through = takes_it and owner.__module__.split(".")[0] == "stickler"
     return ComparatorSource(
-        written=f"{name}(threshold={{}})" if takes_it else None,
+        written=f"{name}(threshold={{}})" if passes_it_through else None,
         name=name,
         carrier=name,
+        takes_threshold=takes_it,
     )
 
 
@@ -249,11 +263,12 @@ def threshold_error(
     if comparator is None:
         parts = [f"{spelling.threshold.format(shown)} {found.verb}.", _RULE]
     else:
-        uses = (
-            comparator.written.format(shown)
-            if comparator.written
-            else f"the threshold its comparator {comparator.name} sets, {shown}"
-        )
+        if comparator.written:
+            uses = comparator.written.format(shown)
+        elif comparator.takes_threshold:
+            uses = f"its comparator's threshold, which for {comparator.name} is {shown}"
+        else:
+            uses = f"the threshold its comparator {comparator.name} sets, {shown}"
         parts = [f"{spelling.unset}, so it uses {uses}.", _RULE]
         if found.verb != _OUT_OF_RANGE:
             parts.append(f"{shown} {found.verb}.")
@@ -270,6 +285,44 @@ def threshold_error(
     if set_at:
         parts.append(f"(Set at {set_at}.)")
     return _error(head + " ".join(p for p in parts if p))
+
+
+def list_threshold_error(
+    value: Any,
+    *,
+    spelling: Spelling,
+    field: str,
+    model: Optional[str],
+    element: str,
+    set_at: Optional[str] = None,
+) -> ValueError:
+    """The error for a valid threshold written on a list of models.
+
+    It would decide nothing: Hungarian matching pairs the items on the element
+    class's ``match_threshold``. So the fix moves the number there, except 0.0,
+    which as a ``match_threshold`` makes every paired object a true positive.
+    """
+    shown = _render(value, spelling)
+    if value == 0:
+        fix = (
+            f"Set a positive {spelling.list_key.format(element=element)} instead: "
+            "0.0 would classify every paired object as a true positive. "
+            f"See {THRESHOLD_DOCS_URL}"
+        )
+    else:
+        where = spelling.list_fix.format(_plain(value, spelling), element=element)
+        fix = f"Set {where} instead."
+    parts = [
+        f"{spelling.threshold.format(shown)} would have no effect.",
+        spelling.list_note,
+        fix,
+    ]
+    if set_at:
+        parts.append(f"(Set at {set_at}.)")
+    return _error(
+        f"Invalid threshold for field {field!r}{_of_model(model, spelling)}: "
+        + " ".join(parts)
+    )
 
 
 def match_threshold_error(
@@ -302,6 +355,7 @@ def match_threshold_error(
 
 
 _OUT_OF_RANGE = "is out of range"
+_BOOLEAN = "is a boolean, not a number"
 
 
 @dataclass(frozen=True)
@@ -309,8 +363,8 @@ class _Diagnosis:
     """What is wrong with a value, and the number most likely meant.
 
     ``verb`` completes "<value> ...". ``reason`` says why ``suggestion`` is
-    likely: ``percent`` (85 for 0.85), ``exact`` (just above 1), ``unquote``
-    (a numeric string), ``percent_text`` ("85%"), ``null``.
+    likely: ``percent`` (85 for 0.85), ``exact`` (just above 1, or ``true``),
+    ``unquote`` (a numeric string), ``percent_text`` ("85%"), ``null``.
     ``subject`` is the number the reason quotes.
     """
 
@@ -323,7 +377,10 @@ class _Diagnosis:
 
 def _diagnose(value: Any, spelling: Spelling, *, pair: str) -> _Diagnosis:
     if isinstance(value, bool):
-        return _Diagnosis("is a boolean, not a number")
+        # `true` loaded as 1 on the importers, so 1.0 keeps what it did.
+        if value:
+            return _Diagnosis(_BOOLEAN, suggestion="1.0", reason="exact")
+        return _Diagnosis(_BOOLEAN)
     if value is None:
         return _Diagnosis("is not a number", reason="null")
     if isinstance(value, str):
@@ -422,7 +479,7 @@ def _own_fix(found: _Diagnosis, spelling: Spelling, *, match: bool = False) -> s
             "Use 1.0 to require an exact match; if you meant the field's weight, "
             f"set {spelling.weight.format(found.subject)}."
         )
-    return ""
+    return "Use a number from 0.0 to 1.0 instead."
 
 
 def _prefix(found: _Diagnosis) -> str:
@@ -440,9 +497,12 @@ def _suggestion(found: _Diagnosis, comparator: ComparatorSource) -> Optional[str
     """The number to suggest for a comparator's value, if any.
 
     None for a value the comparator's constructor set: the author did not write
-    it, so there is no telling what they meant.
+    it, so there is no telling what they meant. A comparator the author can
+    pass a threshold to may have been given this one, so it gets the guess.
     """
-    if found.reason == "null" or comparator.written is None:
+    if found.reason == "null" or not (
+        comparator.written or comparator.takes_threshold
+    ):
         return None
     return found.suggestion
 
@@ -452,7 +512,7 @@ def _comparator_fix(
 ) -> str:
     """Fix the comparator's value, or set the field's own, which takes precedence."""
     s = _suggestion(found, comparator)
-    if comparator.written is None:
+    if comparator.written is None and not comparator.takes_threshold:
         return (
             f"Set {spelling.threshold_key}{spelling.on_field} to a number from "
             "0.0 to 1.0, which takes precedence."
@@ -465,11 +525,12 @@ def _comparator_fix(
         )
         override = f"{spelling.threshold_key}{spelling.on_field}"
     else:
-        there = (
-            f"write {s} there"
-            if spelling.as_json
-            else f"write {comparator.written.format(s)}"
-        )
+        if spelling.as_json:
+            there = f"write {s} there"
+        elif comparator.written:
+            there = f"write {comparator.written.format(s)}"
+        else:
+            there = f"pass threshold={s} to {comparator.name}"
         override = f"{spelling.threshold.format(s)}{spelling.on_field}"
     return _sentence(
         f"{_prefix(found) if s else ''}{there}, or set {override}, which takes "
@@ -486,16 +547,17 @@ def _nested_fix(
         "threshold."
     )
     s = _suggestion(found, comparator)
+    remove = comparator.remove
     if s is None:
         return (
-            f"{note} Remove it and set {spelling.threshold_key}{spelling.on_field} "
-            "to a number from 0.0 to 1.0."
+            f"{note} Remove {remove} and set "
+            f"{spelling.threshold_key}{spelling.on_field} to a number from 0.0 to 1.0."
         )
     return (
         note
         + " "
         + _sentence(
-            f"{_prefix(found)}remove it and set "
+            f"{_prefix(found)}remove {remove} and set "
             f"{spelling.threshold.format(s)}{spelling.on_field}."
         )
     )
