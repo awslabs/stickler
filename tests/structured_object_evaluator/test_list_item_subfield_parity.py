@@ -16,9 +16,10 @@ through `_dispatch_field_comparison`. That skipped the dispatcher's guards, so:
 The list path now goes through the dispatcher. Three rules hold on top of it:
 an empty list is null by its value, as `classification-logic.md` says; a pair
 is read on its GT item's own fields, so a list of mixed model classes does not
-raise; and two models of different classes in an `Any` or `Union` sub-field
-are classified by `compare_with()`, as before. A sub-field keeps its nested
-`fields` only when every pair has them, so every pair counts under
+raise; and two models of different classes in a sub-field that is neither
+routed as a nested model nor list-annotated, such as `Any` or `Union[A, B]`,
+are classified by `compare_with()`, as before. Such a sub-field keeps its
+nested `fields` only when every pair has them, so every pair counts under
 `aggregate`. Every expected count below is a literal, so a change to the
 dispatcher shows up here. See https://github.com/awslabs/stickler/issues/400
 """
@@ -279,6 +280,85 @@ def test_a_model_of_another_class_in_a_sub_field_is_scored_by_compare_with(
     assert _counts(node) == expected
     assert _counts(node, "aggregate") == expected
     assert not node.get("fields")
+
+
+class OptionalUnionElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Optional[Union[Search, Browse]] = ComparableField(threshold=0.9)
+    match_threshold = 0.4
+
+
+class OptionalUnionHolder(StructuredModel):
+    items: List[OptionalUnionElement] = ComparableField()
+
+
+class ListArmUnionElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Union[Search, Browse, List[str]] = ComparableField(threshold=0.9)
+    match_threshold = 0.4
+
+
+class ListArmUnionHolder(StructuredModel):
+    items: List[ListArmUnionElement] = ComparableField()
+
+
+class ListArmAnyElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Union[Any, List[str]] = ComparableField(threshold=0.9)
+    match_threshold = 0.4
+
+
+class ListArmAnyHolder(StructuredModel):
+    items: List[ListArmAnyElement] = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "holder, element, gt, pred, aggregate",
+    [
+        pytest.param(
+            OptionalUnionHolder,
+            OptionalUnionElement,
+            Search(query="hotels"),
+            Browse(url="x.com"),
+            _expect(fn=1),
+            id="optional-union",
+        ),
+        pytest.param(
+            ListArmUnionHolder,
+            ListArmUnionElement,
+            Search(query="hotels"),
+            Browse(url="x.com"),
+            _expect(fn=1),
+            id="union-with-list-arm",
+        ),
+        pytest.param(
+            ListArmAnyHolder,
+            ListArmAnyElement,
+            Inner(a="x", b="y"),
+            Other(c="z"),
+            _expect(fn=2),
+            id="any-with-list-arm",
+        ),
+    ],
+)
+def test_another_class_in_a_nested_or_list_sub_field_counts_as_top_level(
+    holder, element, gt, pred, aggregate
+):
+    # A field routed as a nested model, or annotated as a list, sends every
+    # pair to the dispatcher, so the pair is a TP and its leaves report the
+    # fields the prediction lacks, as at top level (#327).
+    node = _value_node(_in_list(gt, pred, holder=holder, element=element))
+    assert _counts(node) == _expect(tp=1)
+    assert _counts(node, "aggregate") == aggregate
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        alone = element(key="k", value=gt).compare_with(
+            element(key="k", value=pred), include_confusion_matrix=True
+        )
+    top = alone["confusion_matrix"]["fields"]["value"]
+    assert _counts(top) == _expect(tp=1)
+    assert _counts(top, "aggregate") == aggregate
 
 
 def _pairs_in_list(gts, preds, holder=Holder, element=Element):

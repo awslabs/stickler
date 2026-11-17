@@ -374,8 +374,9 @@ class StructuredListComparator:
         Args:
             other_class_by_compare_with: Classify two models of different
                 classes by :func:`_other_class_result` instead of the
-                dispatcher. Set for a sub-field not routed as a nested model,
-                such as ``Any`` or ``Union[A, B]``.
+                dispatcher. Set for a sub-field that is neither routed as a
+                nested model nor list-annotated, such as ``Any`` or
+                ``Union[A, B]``.
         """
         pair_results = []
         for gt_idx, pred_idx, _ in matched_pairs:
@@ -577,29 +578,33 @@ class StructuredListComparator:
         Handles both true primitive fields (str, int, etc.) and simple list fields
         (List[str], List[int], etc.). Every pair is classified through
         _dispatch_field_comparison, as at top level, so a simple list field uses
-        PrimitiveListComparator for element-level comparison. A model held in an
-        ``Any`` or ``Union`` field keeps its nested ``fields`` for ``aggregate``
-        when every pair has them. A model of another class than the GT value is
-        classified by its ``compare_with()`` score and has no nested ``fields``.
+        PrimitiveListComparator for element-level comparison, and keeps its
+        nested ``fields``. In any other field, such as ``Any`` or
+        ``Union[A, B]``, a model keeps its nested ``fields`` for ``aggregate``
+        when every pair has them, and a model of another class than the GT
+        value is classified by its ``compare_with()`` score, with no nested
+        ``fields``.
 
         Args:
             owner: The model class that declares ``sub_field_name``.
 
         See: https://github.com/awslabs/stickler/issues/33
         """
+        is_simple_list = _annotation_is_list(owner.model_fields[sub_field_name].annotation)
         # Classify through the dispatcher, as top level does. Calling the
         # comparator directly skipped its guards, so a dict it cannot score
-        # raised instead of scoring an FD (#400).
+        # raised instead of scoring an FD (#400). A list-annotated field, such
+        # as `Union[A, B, List[str]]`, sent every pair to the dispatcher before
+        # too, including two models of different classes.
         pair_results = self._dispatch_pairs(
             sub_field_name,
             gt_list,
             pred_list,
             matched_pairs,
-            other_class_by_compare_with=True,
+            other_class_by_compare_with=not is_simple_list,
         )
         aggregated_result = self._recursive_aggregate_metrics(pair_results)
 
-        is_simple_list = _annotation_is_list(owner.model_fields[sub_field_name].annotation)
         # `aggregate` sums a node's children when it has any, so keep the
         # subtree only if every pair has one. Otherwise a pair with flat
         # counts, such as a model against `None`, would drop out of it.
