@@ -143,6 +143,9 @@ def test_sub_field_counts(gt, pred, expected):
         pytest.param(float("nan"), [], _expect(tn=1), id="nan-vs-empty"),
         pytest.param("x", [], _expect(fn=1), id="str-vs-empty"),
         pytest.param([], "x", _expect(fa=1), id="empty-vs-str"),
+        # A whitespace string and an empty tuple are values, not null.
+        pytest.param("  ", [], _expect(fn=1), id="whitespace-vs-empty"),
+        pytest.param([], (), _expect(fa=1), id="empty-vs-empty-tuple"),
     ],
 )
 @pytest.mark.parametrize(
