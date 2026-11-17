@@ -248,7 +248,7 @@ Weights are configured per-field via `ComparableField` metadata. Default weight 
 
 ### `clip_under_threshold`
 
-When enabled on a field (the default), a score below the threshold contributes 0.0 instead of its partial similarity. This holds for every field kind except `List[StructuredModel]`, where it currently has no effect ([#415](https://github.com/awslabs/stickler/issues/415)); the layer that applies it differs.
+When enabled on a field, a score below the threshold contributes 0.0 instead of its partial similarity. It is on by default, except on dict and plain-model fields and lists of them. It holds for every field kind except `List[StructuredModel]`, where it has no effect (see the warning below); the layer that applies it differs.
 
 For a primitive or a single nested `StructuredModel`, `FieldComparator` clips when producing `threshold_applied_score`, and the engine's percolation loop uses the already-clipped score:
 
