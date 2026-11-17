@@ -826,20 +826,75 @@ class FixedScoreHolder(StructuredModel):
     items: List[FixedScoreElement] = ComparableField()
 
 
-@pytest.mark.parametrize(
-    "holder, element",
-    [
-        pytest.param(ModelHolder, ModelElement, id="plain"),
-        pytest.param(FixedScoreHolder, FixedScoreElement, id="compare-with-override"),
-    ],
-)
-def test_a_dict_against_a_model_in_a_sub_field_list_does_not_raise(holder, element):
-    result = _in_list([Inner(a="x")], [{"a": "x"}], holder=holder, element=element)
+class FixedScoreObjectElement(StructuredModel):
+    """`FixedScoreElement` with an `object` sub-field."""
+
+    key: str = ComparableField(threshold=1.0)
+    value: object = ComparableField(threshold=0.9)
+    match_threshold = 0.4
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreObjectHolder(StructuredModel):
+    items: List[FixedScoreObjectElement] = ComparableField()
+
+
+class FixedScoreDefaultElement(Element):
+    """`FixedScoreElement` at the default field threshold."""
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class FixedScoreDefaultHolder(StructuredModel):
+    items: List[FixedScoreDefaultElement] = ComparableField()
+
+
+def test_a_dict_against_a_model_in_a_sub_field_list_does_not_raise():
+    result = _in_list(
+        [Inner(a="x")], [{"a": "x"}], holder=ModelHolder, element=ModelElement
+    )
 
     node = _value_node(result)
     # compare() skips a field the prediction lacks, so the pair is a TP, as
-    # at top level (#327). The leaves report the miss. This pins today's
-    # verdict, which the docs say is not decided yet: it may become an FD.
+    # at top level (#327). The leaves report the miss. The same pair under a
+    # fixed-score compare_with() is pinned below.
+    assert _counts(node) == _expect(tp=1)
+    assert _counts(node, "aggregate") == _expect(fn=1, tn=1)
+
+
+@pytest.mark.parametrize(
+    "holder, element",
+    [
+        pytest.param(FixedScoreHolder, FixedScoreElement, id="any"),
+        pytest.param(FixedScoreObjectHolder, FixedScoreObjectElement, id="object"),
+        pytest.param(
+            FixedScoreDefaultHolder, FixedScoreDefaultElement, id="default-threshold"
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "pred",
+    [
+        pytest.param(["a"], id="str"),
+        pytest.param([1], id="int"),
+        pytest.param([["a"]], id="list"),
+        pytest.param([{"a": "x"}], id="dict"),
+        pytest.param([Other(c="z")], id="other-class"),
+    ],
+)
+def test_a_fixed_score_element_counts_a_list_of_models_as_without_it(
+    holder, element, pred
+):
+    # The element's compare_with() returns a score without recursing. The
+    # pair still counts what it does without the override and at top level:
+    # a TP, with the leaves reporting the miss.
+    result = _in_list([Inner(a="x")], pred, holder=holder, element=element)
+
+    node = _value_node(result)
+    assert result["overall_score"] == 1.0
     assert _counts(node) == _expect(tp=1)
     assert _counts(node, "aggregate") == _expect(fn=1, tn=1)
 
