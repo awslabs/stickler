@@ -1911,6 +1911,27 @@ class TestTheRuntimeMatchThresholdIsOutsideTheRule:
         assert result.overall_score == 1.0
         assert result.matched is True
 
+    @pytest.mark.parametrize("value, warns", [(False, False), (0.0, True)])
+    def test_false_does_not_warn_that_the_threshold_is_zero(self, value, warns):
+        """``False`` builds with 0.0 but warns as little as it did; 0.0 still warns."""
+        import stickler
+        from pydantic import BaseModel
+
+        name = f"RuntimeZero{type(value).__name__.title()}"
+        line = type(f"{name}Line", (BaseModel,), {"__annotations__": {"sku": str}})
+        flat = type(
+            name,
+            (BaseModel,),
+            {"__annotations__": {"meta": dict, "lines": List[line]}},
+        )
+        pair = flat(meta={"a": 1}, lines=[line(sku="a")])
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = stickler.evaluate(pair, pair, match_threshold=value)
+        zero = [w for w in caught if "=0.0. The threshold test is" in str(w.message)]
+        assert bool(zero) is warns
+        assert (result.overall_score, result.matched) == (1.0, True)
+
     def test_a_structured_model_is_not_checked(self):
         import stickler
 

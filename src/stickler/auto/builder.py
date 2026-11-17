@@ -31,6 +31,7 @@ Results are cached in a ``WeakKeyDictionary`` keyed on
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import decimal
 import enum
@@ -58,6 +59,7 @@ from ..structured_object_evaluator.models.comparator_registry import (
 )
 from ..structured_object_evaluator.models.model_factory import ModelFactory
 from ..structured_object_evaluator.models.structured_model import StructuredModel
+from ..structured_object_evaluator.models.threshold_helper import threshold_from_a_bool
 from ..utils.canonical import (
     canonicalize_json,
     canonicalize_json_sorted,
@@ -106,6 +108,7 @@ def structured_model_for(
         raise TypeError(
             f"structured_model_for expects a pydantic BaseModel subclass, got {cls!r}"
         )
+    from_a_bool = isinstance(match_threshold, bool)
     match_threshold = _runtime_match_threshold(match_threshold)
 
     key = _cache_key(weight_hints, match_threshold)
@@ -113,12 +116,13 @@ def structured_model_for(
     if per_class is not None and key in per_class:
         return per_class[key]
 
-    shadow = _build(
-        cls,
-        weight_hints=weight_hints,
-        match_threshold=match_threshold,
-        _building=set(),
-    )
+    with threshold_from_a_bool() if from_a_bool else contextlib.nullcontext():
+        shadow = _build(
+            cls,
+            weight_hints=weight_hints,
+            match_threshold=match_threshold,
+            _building=set(),
+        )
 
     _CACHE.setdefault(cls, {})[key] = shadow
     return shadow
@@ -326,7 +330,9 @@ def _runtime_match_threshold(match_threshold: Any) -> Any:
     wrote.
 
     A ``bool`` is passed on as the ``float`` it counted as, which the shadow
-    classes accept and which scores the same.
+    classes accept and which scores the same. ``structured_model_for`` builds
+    them under ``threshold_from_a_bool``, so ``False`` does not warn that the
+    threshold is 0.0, as it did not before.
     """
     if not isinstance(match_threshold, (int, float)) or not (
         0.0 <= match_threshold <= 1.0
