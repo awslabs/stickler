@@ -58,10 +58,28 @@ Each release links to full notes on the
   tuned thresholds (`number` at `0.95` rather than `0.5`). An invalid value
   there (a match threshold of `1.5`, a name that is not an identifier) was
   ignored and now raises, as it does on `"object"`. Beside a `$ref`, the
-  rewrite also copied the `$ref` onto the null arm, so the node built a union of
-  two classes compared with `ExactComparator` (a one-character difference scored
-  `0.0`); it now builds one class and scores as `"object"` does (`0.9`). Part A of
+  rewrite also copied the `$ref` onto the null arm, so a node typed
+  `["object", "null"]` or `["array", "null"]` built a union of two types
+  compared with `ExactComparator` at `1.0` (a one-character difference scored
+  `0.0`). It now builds what the single type builds, and scores as it does:
+  `["object", "null"]` as `"object"` (`0.9`), and `["array", "null"]` as
+  `"array"`, so an array of objects is paired by Hungarian matching at field
+  threshold `0.5`, and a `$ref` to an object builds that class with
+  `LevenshteinComparator` at `0.7`. A list form holding both `"object"` and
+  `"array"` still builds a union compared with `ExactComparator`, of two arms
+  where it built three. Where the single type fails to import, the list form
+  now fails too, with the same error, where the union imported: a comparator
+  on an array whose `items` are such a node, or on an `anyOf` whose arm is one
+  that leads to an array of objects (an array of objects takes no comparator),
+  and a `$ref` to an array of objects with no properties. Part A of
   [#349](https://github.com/awslabs/stickler/issues/349)
+
+- A recursive `$ref` that no model is named after, such as one back to
+  `#/properties/kind` or to an array definition, now raises the `ValueError`
+  for a recursive model, naming the field, where it raised `PydanticUserError`.
+  Back to a property named `type`, it raised `PydanticInvalidForJsonSchema`, or
+  imported as a union of two types when that property is typed
+  `["object", "null"]` beside its `$ref`, and now raises too
 
 - `from_json_schema()` now checks an `x-aws-stickler-*` key on a `$defs` or
   `definitions` entry that a `$ref` reaches, as it does inline. The walk entered
@@ -99,11 +117,13 @@ Each release links to full notes on the
   checked and a dereferenced schema, which keeps the originals beside their
   inlined copies, imports as before. Its contents are checked, and so are the
   contents of its `$ref` targets, so a typo in one of its properties, or inside
-  an `x-*` node that only it references, still raises. An entry named like a
-  keyword is now read as an entry, where it was read as that keyword: a typo in
-  a property of an entry named `properties` now raises, and an unused entry
-  named `items`, `anyOf`, `allOf` or `patternProperties` no longer has its own
-  keys checked or its name rejected. Only a `$defs` or
+  an `x-*` node that only it references, still raises. A target that is a
+  `properties` map, such as `#/$defs/W/properties`, is read one property at a
+  time, so a property named like a keyword is a name there, as before. An
+  entry named like a keyword is now read as an entry, where it was read as that
+  keyword: a typo in a property of an entry named `properties` now raises, and
+  an unused entry named `items`, `anyOf`, `allOf` or `patternProperties` no
+  longer has its own keys checked or its name rejected. Only a `$defs` or
   `definitions` keyword of the root, or of a node reached from it through schema
   keywords, holds entries. One under `#/components/...`, inside an `x-*` payload
   or a data value, or a property named so, holds none, so a `$ref` into it
