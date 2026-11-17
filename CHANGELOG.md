@@ -36,6 +36,16 @@ Each release links to full notes on the
   already did for `None`, instead of `NaN` or `Infinity`. A NaN or infinite
   `ComparableField` threshold is left out of the report's threshold data
   ([#450](https://github.com/awslabs/stickler/issues/450)).
+
+- **`LLMComparator` scores a reply as a match only when it is exactly `true`**
+  ([#506](https://github.com/awslabs/stickler/issues/506)). Scores change:
+  verbose replies such as `True, they are equivalent.` previously scored 1.0
+  and now score 0.0 with a `UserWarning`, and replies that only contained
+  "true" as a substring (`untrue`, `Not true`) no longer match. Formatted
+  replies still match: surrounding whitespace, quotes, backticks, markdown
+  emphasis and trailing `.` `,` `;` `:` `!` `?` are stripped and case is
+  ignored, so `**True**.` scores 1.0 and `"false"` scores 0.0. Any other reply
+  scores 0.0 and warns, showing the start of the reply, rather than raising.
 - Corrected introductory example scores, the default text comparator description,
   and the sample amount in the documentation and README
   ([#478](https://github.com/awslabs/stickler/issues/478)).
@@ -83,6 +93,18 @@ Each release links to full notes on the
   result, rendered as live HTML in a notebook. The text is now passed through
   `html.escape`, and reads the same
   ([#449](https://github.com/awslabs/stickler/issues/449))
+
+### Documentation
+
+- Corrected the default field threshold on Thresholds and Metrics. The page
+  gave `0.5` for every field, which holds only for `ComparableField()`. A bare
+  annotation on a `StructuredModel` (`name: str`) takes the class
+  `match_threshold`, `0.7` unless set, and a bare `StructuredModel` field takes
+  `0.9`. At a raw similarity of `0.6`, `name: str` scores `0.0` and
+  `name: str = ComparableField()` scores `0.6`. The page also said a runtime
+  `match_threshold` overrides the element class's for list pairing; on a
+  `StructuredModel` it sets only `EvalResult.matched`. Scoring is unchanged
+  ([#484](https://github.com/awslabs/stickler/issues/484))
 
 ## [1.0.1] - 2026-11-02
 
@@ -840,7 +862,6 @@ Each release links to full notes on the
   `scikit-learn` is no longer a core dependency, and the `docsplit` extra now
   adds only pandas; SciPy remains isolated to the `semantic` extra
   ([#216](https://github.com/awslabs/stickler/issues/216)).
-
 
 - **Breaking:** `EvalResult.matched` is now `overall_score >= match_threshold`,
   defined directly rather than read from the removed `all_fields_matched` key.
