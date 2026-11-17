@@ -369,7 +369,7 @@ Minimum similarity score required for binary match classification.
 | **0.7 - 0.75** | Moderate tolerance | Descriptions, categories |
 | **0.5 - 0.6** | Flexible, variations OK | Notes, comments, metadata |
 
-Amounts are not in this table: `NumericComparator` scores 1.0 or 0.0, so set `absolute_tolerance` or `relative_tolerance` on the comparator instead of a threshold.
+Amounts are not in this table: `NumericComparator` scores 1.0 or 0.0, so set `absolute_tolerance` or `relative_tolerance` in `x-aws-stickler-comparator-config` (as in the example below) instead of a threshold.
 
 **Example:**
 
