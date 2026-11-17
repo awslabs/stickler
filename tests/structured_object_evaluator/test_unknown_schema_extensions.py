@@ -831,6 +831,20 @@ class TestDefinitionsAreChecked:
         with pytest.raises(ValueError, match="not read on definition '\\$defs.Inner'"):
             self._via("$defs", dict(body, **{"x-aws-stickler-match-threshold": 0.9}))
 
+    @pytest.mark.parametrize(
+        "body", (INNER, {"type": "string"}), ids=("object", "scalar")
+    )
+    def test_the_removed_aggregate_key_still_imports(self, body):
+        """Accepted and ignored, as on a field, so a schema that imported before
+        definitions were checked still imports."""
+        model = self._via("$defs", dict(body, **{"x-aws-stickler-aggregate": True}))
+        assert "inner" in model.model_fields
+
+    def test_the_removed_aggregate_key_is_not_advertised(self):
+        with pytest.raises(ValueError) as exc:
+            self._via("$defs", dict(self.INNER, **{"x-aws-stickler-nonsense": 1}))
+        assert "x-aws-stickler-aggregate" not in str(exc.value)
+
 
 _KEYED = dict(
     TestDefinitionsAreChecked.INNER,

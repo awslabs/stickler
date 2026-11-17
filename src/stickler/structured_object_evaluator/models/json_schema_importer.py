@@ -197,6 +197,9 @@ def _reject_unknown_extensions(
         "definition is its 'items' (its elements pair by this definition's "
         f"'x-aws-stickler-match-threshold'){no_root}"
     )
+    # Removed in #226 and ignored wherever it appears, so an older schema that
+    # carries it in a definition still imports, as it does on a field.
+    removed = frozenset({"x-aws-stickler-aggregate"})
     if scope in ("model", "definition"):
         # A definition is a type that several positions can `$ref`, and not all
         # of them read field keys (`items` does not). Honouring them there would
@@ -208,13 +211,14 @@ def _reject_unknown_extensions(
             misplaced = (("field", _DOCUMENTED_FIELD_EXTENSIONS),)
             where = f"object '{field_path}'"
         else:
+            accepted = accepted | removed
             misplaced = ((beside_ref_object, _DOCUMENTED_FIELD_EXTENSIONS),)
             where = f"definition '{field_path}'"
     elif scope == "value_definition":
         # A definition that generates no class (a scalar, an array, a combiner,
         # an alias `$ref`, a mapping) reads neither set. Accepting the model keys
         # here passed the check and then dropped them.
-        accepted = frozenset()
+        accepted = removed
         suggestible = frozenset()
         misplaced = (
             (beside_ref, _DOCUMENTED_FIELD_EXTENSIONS),

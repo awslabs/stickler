@@ -40,7 +40,8 @@ Each release links to full notes on the
 - **Breaking:** an `x-aws-stickler-*` key inside a `$defs` or `definitions`
   entry that a `$ref` reaches is now checked, as it is inline. The walk entered a
   definition without checking it, so `x-aws-stickler-thresold` there imported
-  silently where inline it raises. An entry no `$ref` reaches builds nothing and
+  silently where inline it raises. `x-aws-stickler-aggregate` is still accepted
+  and ignored there, as on a field. An entry no `$ref` reaches builds nothing and
   is not checked, so a dereferenced schema, which keeps the originals beside
   their inlined copies, imports as before; so does `$defs` inside `default` or
   `examples` data. A typo in a property of an unreached entry, or of a schema
