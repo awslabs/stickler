@@ -991,6 +991,14 @@ class JsonSchemaImporter:
         # entry is checked as a definition but its other contents read nothing.
         walked: Dict[Tuple[str, ...], bool] = {}
         pending: List[Tuple[Tuple[str, ...], Any, bool, bool]] = []
+        # Model keys beside a `$ref` at a position that reads them but where
+        # nothing is built, by identity; the nodes inside a definition entry
+        # that a `$ref` targets; and every hop after the first of a `$ref`
+        # chain from a position that builds a class. A target is walked with
+        # no scope, so a node in all three raises once the walk is done.
+        unbuilt: Dict[int, str] = {}
+        inner: set = set()
+        passed: List[int] = []
         # Definition entries a `$ref` reached, by identity, and every
         # `$defs`/`definitions` mapping passed, so the rest can be walked last.
         entries: set = set()
@@ -1079,6 +1087,7 @@ class JsonSchemaImporter:
                 # build it (`not`, `x-*`), so it is walked from here as well.
                 pending.append((entry, entry_body, False, True))
                 pending.append((target_parts, target, built, False))
+                inner.add(id(target))
             elif target is not None and target_parts:
                 # Outside `$defs` the target may sit where the walk does not
                 # build it (`components`) or does not go (`x-*`), so classes
@@ -1090,19 +1099,28 @@ class JsonSchemaImporter:
             if reads and built:
                 hops = list(chain(node, ""))
                 read.update(id(hop) for hop, _ in hops)
-                # The class is built from the `$ref` target, which reads its own
-                # model keys. Only the root reads the ones beside its `$ref`.
-                if isinstance(ref, str) and scope in ("model", "field_or_model"):
-                    declared = sorted(k for k in node if k in _KNOWN_MODEL_EXTENSIONS)
-                    if declared:
-                        # Through an alias, the class is the end of the chain.
-                        source = hops[-1][1] if len(hops) > 1 else f"'{ref}'"
-                        raise ValueError(
-                            f"Stickler extension '{declared[0]}' beside the '$ref' "
-                            f"at '{path}' is not read: the class is built from "
-                            f"{source}, which reads only its own keys. Put it "
-                            "there. Left in place it would be dropped silently."
-                        )
+                passed.extend(id(hop) for hop, _ in hops[1:])
+            # The class is built from the `$ref` target, which reads its own
+            # model keys. Only the root reads the ones beside its `$ref`.
+            if reads and isinstance(ref, str) and scope in ("model", "field_or_model"):
+                declared = sorted(k for k in node if k in _KNOWN_MODEL_EXTENSIONS)
+                if declared:
+                    hops = list(chain(node, ""))
+                    # Through an alias, the class is the end of the chain.
+                    source = hops[-1][1] if len(hops) > 1 else f"'{ref}'"
+                    message = (
+                        f"Stickler extension '{declared[0]}' beside the '$ref' "
+                        f"at '{path}' is not read: the class is built from "
+                        f"{source}, which reads only its own keys. Put it "
+                        "there. Left in place it would be dropped silently."
+                    )
+                    if built:
+                        raise ValueError(message)
+                    # Nothing is built here, but a `$ref` from a position that
+                    # builds a class may point at this node. Such a reference
+                    # walks it with no scope, so it is checked once the walk
+                    # is done.
+                    unbuilt.setdefault(id(node), message)
 
             if "patternProperties" in node:
                 location = f" at '{path}'" if path else ""
@@ -1214,6 +1232,13 @@ class JsonSchemaImporter:
                     if end is not body and "properties" in end:
                         scope = "alias_definition"
             walk(body, ".".join(pointer), scope, built, reads=False)
+
+        # A node inside an entry, such as `#/$defs/List/items`, is built from
+        # where it is referenced, but the entry's walk built nothing there, so
+        # model keys beside the node's own `$ref` passed unread.
+        for hop in passed:
+            if hop in inner and hop in unbuilt:
+                raise ValueError(unbuilt[hop])
 
         # An entry no `$ref` reaches is walked as it was before definitions were
         # checked: its own keys are left alone, and its contents are checked

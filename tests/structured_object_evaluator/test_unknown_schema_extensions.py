@@ -1942,6 +1942,119 @@ class TestModelKeysBesideANonRootRef:
             )
         assert "the class is built from definition '$defs.Row'" in str(exc.value)
 
+    # A node inside an entry that carries the keys beside its own `$ref`, and
+    # the error path the entry's walk gives it.
+    _NODES = {
+        "List": (
+            {
+                "type": "array",
+                "items": {
+                    "$ref": "#/$defs/Row",
+                    "x-aws-stickler-match-threshold": 0.93,
+                },
+            },
+            "#/$defs/List/items",
+            "$defs.List[]",
+        ),
+        "W": (
+            {
+                "type": "object",
+                "properties": {
+                    "inner": {
+                        "type": "object",
+                        "$ref": "#/$defs/Row",
+                        "x-aws-stickler-match-threshold": 0.93,
+                    }
+                },
+            },
+            "#/$defs/W/properties/inner",
+            "$defs.W.inner",
+        ),
+        "N": (
+            {
+                "type": "object",
+                "properties": {
+                    "inner": {
+                        "type": ["object", "null"],
+                        "$ref": "#/$defs/Row",
+                        "x-aws-stickler-match-threshold": 0.93,
+                    }
+                },
+            },
+            "#/$defs/N/properties/inner",
+            "$defs.N.inner",
+        ),
+    }
+
+    @classmethod
+    def _node_schema(cls, entry, use):
+        body, pointer, _ = cls._NODES[entry]
+        return {
+            "type": "object",
+            "properties": {"a": use(pointer)},
+            "$defs": {entry: body, "Row": TestDefinitionsAreChecked.INNER},
+        }
+
+    @pytest.mark.parametrize(
+        "entry, use",
+        (
+            ("List", lambda ref: {"$ref": ref}),
+            ("List", lambda ref: {"type": "array", "items": {"$ref": ref}}),
+            ("List", lambda ref: {"anyOf": [{"$ref": ref}, {"type": "null"}]}),
+            ("W", lambda ref: {"$ref": ref}),
+            ("W", lambda ref: {"type": "array", "items": {"$ref": ref}}),
+            ("N", lambda ref: {"$ref": ref}),
+            ("N", lambda ref: {"type": "array", "items": {"$ref": ref}}),
+            ("List", lambda ref: {"$ref": "#/$defs/List"}),
+            ("W", lambda ref: {"$ref": "#/$defs/W"}),
+            ("N", lambda ref: {"$ref": "#/$defs/N"}),
+        ),
+        ids=(
+            "items-node-from-property",
+            "items-node-from-items",
+            "items-node-from-anyOf-arm",
+            "property-node-from-property",
+            "property-node-from-items",
+            "nullable-node-from-property",
+            "nullable-node-from-items",
+            "whole-List",
+            "whole-W",
+            "whole-N",
+        ),
+    )
+    def test_on_a_node_inside_a_definition_it_raises(self, entry, use):
+        """A `$ref` to such a node built it at 0.7 (`items@0.7`, `inner@0.7`,
+        `DynamicModel@0.7`), dropping the keys, while a `$ref` to the whole
+        entry raised."""
+        with pytest.raises(ValueError) as exc:
+            StructuredModel.from_json_schema(self._node_schema(entry, use))
+        at = self._NODES[entry][2]
+        message = str(exc.value)
+        assert (
+            f"'x-aws-stickler-match-threshold' beside the '$ref' at '{at}' is not read"
+            in message
+        )
+        assert "the class is built from definition '$defs.Row'" in message
+
+    @pytest.mark.parametrize("entry", ("List", "W"))
+    @pytest.mark.parametrize(
+        "where",
+        (
+            lambda schema, ref: schema["properties"].update(
+                a={"type": "string", "not": {"$ref": ref}}
+            ),
+            lambda schema, ref: schema["$defs"].update(
+                U={"type": "object", "properties": {"u": {"$ref": ref}}}
+            ),
+        ),
+        ids=("under-not", "from-an-unused-definition"),
+    )
+    def test_where_nothing_is_built_from_the_node_it_imports(self, entry, where):
+        """A `$ref` that builds no class drops no keys, as on dev."""
+        schema = self._node_schema(entry, lambda ref: {"type": "string"})
+        where(schema, self._NODES[entry][1])
+        StructuredModel.from_json_schema(schema)
+
     def test_the_advice_works_through_an_alias(self):
         model = StructuredModel.from_json_schema(
             {
