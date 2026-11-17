@@ -106,6 +106,7 @@ def structured_model_for(
         raise TypeError(
             f"structured_model_for expects a pydantic BaseModel subclass, got {cls!r}"
         )
+    match_threshold = _runtime_match_threshold(match_threshold)
 
     key = _cache_key(weight_hints, match_threshold)
     per_class = _CACHE.get(cls)
@@ -311,6 +312,32 @@ def _collect_specs(
 
 
 # --- internals --------------------------------------------------------------
+
+
+def _runtime_match_threshold(match_threshold: Any) -> Any:
+    """Check the ``match_threshold`` given at evaluation time, as this builder always has.
+
+    ``evaluate()``, ``eval_for()`` and ``from_pydantic()`` reach this for a plain
+    pydantic model. The shared threshold rule (``threshold_rule``) covers the
+    class, config and schema paths only, so this keeps the older check and its
+    message, and lets through what it let through: a ``bool`` as 1 or 0.
+    Without this, the shadow classes built below would apply the shared rule
+    to the runtime value, under the name of a generated class the caller never
+    wrote.
+
+    A ``bool`` is passed on as the ``float`` it counted as, which the shadow
+    classes accept and which scores the same.
+    """
+    if not isinstance(match_threshold, (int, float)) or not (
+        0.0 <= match_threshold <= 1.0
+    ):
+        raise ValueError(
+            "match_threshold must be a number between 0.0 and 1.0, "
+            f"got: {match_threshold}"
+        )
+    if isinstance(match_threshold, bool):
+        return float(match_threshold)
+    return match_threshold
 
 
 def _build(

@@ -1344,3 +1344,75 @@ class TestExportAndReloadAreUnchanged:
                 attr="items",
             )
         assert model.to_stickler_config()["fields"]["items"]["threshold"] == 0.9
+
+
+class TestTheRuntimeMatchThresholdIsOutsideTheRule:
+    """``evaluate()``, ``eval_for()`` and ``from_pydantic()`` keep their own check.
+
+    For a plain pydantic model they build shadow classes, which the rule would
+    check under a generated name (``FlatEval``) the caller never wrote. So the
+    runtime value gets the check it always had, with its message, and a
+    ``bool`` still counts as 1 or 0. For a ``StructuredModel`` it is not checked.
+    """
+
+    @staticmethod
+    def _models():
+        from pydantic import BaseModel
+
+        class Addr(BaseModel):
+            city: str
+
+        class Line(BaseModel):
+            sku: str
+
+        class Flat(BaseModel):
+            vendor: str
+            total: float
+
+        class Nested(BaseModel):
+            vendor: str
+            addr: Addr
+
+        class Lines(BaseModel):
+            items: List[Line]
+
+        return {
+            "flat": Flat(vendor="ACME", total=1.0),
+            "nested": Nested(vendor="ACME", addr=Addr(city="X")),
+            "list": Lines(items=[Line(sku="a")]),
+        }
+
+    @pytest.mark.parametrize("value", [85, -1, "0.9", float("nan"), Decimal("0.9")])
+    @pytest.mark.parametrize("shape", ["flat", "nested", "list"])
+    def test_a_plain_model_raises_the_older_message(self, shape, value):
+        import stickler
+
+        model = self._models()[shape]
+        with pytest.raises(ValueError) as caught:
+            stickler.evaluate(model, model, match_threshold=value)
+        assert str(caught.value) == (
+            f"match_threshold must be a number between 0.0 and 1.0, got: {value}"
+        )
+        with pytest.raises(ValueError, match="^match_threshold must be a number"):
+            stickler.eval_for(type(model), match_threshold=value)
+
+    @pytest.mark.parametrize("value", [True, False, 1, 0.8])
+    @pytest.mark.parametrize("shape", ["flat", "nested", "list"])
+    def test_a_plain_model_accepts_what_it_accepted(self, shape, value):
+        import stickler
+
+        model = self._models()[shape]
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result = stickler.evaluate(model, model, match_threshold=value)
+            stickler.eval_for(type(model), match_threshold=value)
+        assert result.overall_score == 1.0
+        assert result.matched is True
+
+    def test_a_structured_model_is_not_checked(self):
+        import stickler
+
+        model = PATHS["python field"][0](0.9)
+        pair = model(vendor="Acme")
+        assert stickler.evaluate(pair, pair, match_threshold=85).matched is False
+        assert stickler.evaluate(pair, pair, match_threshold=True).matched is True
