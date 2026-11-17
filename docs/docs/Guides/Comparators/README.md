@@ -25,10 +25,10 @@ Precedence is field, then comparator, then `0.5`:
 
 The third row is the one to know: a comparator's *default* threshold is never adopted. Those defaults were chosen for `binary_compare()`, not as classification cutoffs, and at least one is actively wrong for the job. `DateComparator` defaults to `1.0` while awarding `0.7` partial credit for a match with no year, so adopting it would clip that feature to zero. If you want a comparator's default to act as the cutoff, name it.
 
-Whichever threshold the field uses must be a number from 0.0 to 1.0, or defining the class raises `ValueError`, also for a field declared as `Annotated[str, ComparableField(...)]`:
+Whichever threshold the field uses must be a number from 0.0 to 1.0, or defining the class raises `ValueError`, also for a field declared as `Annotated[str, ComparableField(...)]` or one whose type is defined further down the module:
 
 ```text
-ValueError: Invalid threshold for field 'vendor' of model 'Invoice': the field sets no threshold, so it uses LevenshteinComparator(threshold=85). A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so no pair would match. If 85 is a percentage, write LevenshteinComparator(threshold=0.85), or set ComparableField(threshold=0.85), which takes precedence. (Set at invoice_models.py:6.)
+ValueError: Invalid threshold for field 'vendor' of model 'Invoice': ComparableField sets no threshold, so the field adopts its comparator's: LevenshteinComparator(threshold=85). A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so even identical values would not match. If 85 is a percentage, write LevenshteinComparator(threshold=0.85), or ComparableField(threshold=0.85), which wins over the comparator's. (Set at invoice_models.py:6.)
 ```
 
 A comparator threshold the field overrides is not checked. See [Valid Threshold Values](../../Getting-Started/thresholds-and-metrics.md#valid-threshold-values).

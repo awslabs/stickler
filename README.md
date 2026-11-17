@@ -361,7 +361,7 @@ must be a number from 0.0 to 1.0. Anything else, such as `85`, `"0.9"` or `true`
 `ValueError` on import:
 
 ```text
-ValueError: Invalid threshold for field 'total_amount' of model 'Invoice': the field sets no "x-aws-stickler-threshold", so it uses "x-aws-stickler-comparator-config": {"threshold": 85}. A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so no pair would match. If 85 is a percentage, write 0.85 there, or set "x-aws-stickler-threshold": 0.85 on the property, which takes precedence.
+ValueError: Invalid threshold for field 'total_amount' of model 'Invoice': the field sets no "x-aws-stickler-threshold", so it adopts its comparator's: "x-aws-stickler-comparator-config": {"threshold": 85}. A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so even identical values would not match. If 85 is a percentage, write "x-aws-stickler-comparator-config": {"threshold": 0.85}, or "x-aws-stickler-threshold": 0.85 on the property, which wins over the comparator's.
 ```
 
 **How Threshold Works:**

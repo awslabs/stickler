@@ -83,7 +83,7 @@ spec = stickler.eval_for(Invoice, match_threshold=0.8)
 
 **Default:** `0.7`
 
-**Valid values:** a number from 0.0 to 1.0. Unlike the other three, this value is not checked, so pass one in range.
+**Valid values:** a number from 0.0 to 1.0. This value is outside the rule in [Valid Threshold Values](#valid-threshold-values). For a `StructuredModel` it is not checked, so pass one in range. For a plain pydantic model, an `int` or `float` outside 0.0 to 1.0, or a value of another type such as a string or a `Decimal`, raises `ValueError: match_threshold must be a number between 0.0 and 1.0`.
 
 ## Threshold Precedence
 
@@ -139,7 +139,7 @@ A comparator's *default* threshold is not part of that chain. `LevenshteinCompar
 
 ## Valid Threshold Values
 
-A threshold is a number from 0.0 to 1.0, inclusive: the minimum similarity score for a match. An `int` or `float` is used as given, and a `Decimal`, `Fraction` or numpy number is converted to `float`. `bool`, strings, NaN and infinity are not valid. The rule applies to the threshold the field ends up with, whether you set it on the field or the field adopts it from the comparator, and to `match_threshold`, on the class, the Stickler config and the JSON Schema:
+A threshold is a number from 0.0 to 1.0, inclusive: the minimum similarity score for a match. An `int` or `float` is used as given, and a `Decimal`, `Fraction`, numpy number or 0-d numpy array is converted with `float()`. Booleans (numpy's too), strings, NaN and infinity are not valid. The rule applies to the threshold the field ends up with, whether you set it on the field or the field adopts it from the comparator, and to `match_threshold`, on the class, the Stickler config and the JSON Schema:
 
 | Path | Field threshold | Adopted comparator threshold | Match threshold |
 |---|---|---|---|
@@ -147,13 +147,15 @@ A threshold is a number from 0.0 to 1.0, inclusive: the minimum similarity score
 | Stickler config | `"threshold"` | `"comparator_config": {"threshold": ...}` | `"match_threshold"` |
 | JSON Schema | `"x-aws-stickler-threshold"` | `"x-aws-stickler-comparator-config": {"threshold": ...}` | `"x-aws-stickler-match-threshold"` |
 
-Anything else, such as `85`, `1.5`, `-1`, `"0.9"`, `true`, NaN or infinity, raises `ValueError` when the class is defined or the config or schema is loaded, also on a field whose type is defined further down the module. Each path gives the same message, quoting the value as you wrote it. It names the model, the field, why the value fails, and the likely fix, and on the Python path the line of the `ComparableField` call:
+Anything else, such as `85`, `1.5`, `-1`, `"0.9"`, `true`, NaN or infinity, raises `ValueError` when the class is defined or the config or schema is loaded. Each path gives the same message, quoting the value as you wrote it. It names the model, the field, why the value fails, and the fix, and on the Python path where it was set:
 
 ```text
-ValueError: Invalid threshold for field 'vendor' of model 'Invoice': the field sets no threshold, so it uses LevenshteinComparator(threshold=85). A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so no pair would match. If 85 is a percentage, write LevenshteinComparator(threshold=0.85), or set ComparableField(threshold=0.85), which takes precedence. (Set at invoice_models.py:6.)
+ValueError: Invalid threshold for field 'vendor' of model 'Invoice': ComparableField sets no threshold, so the field adopts its comparator's: LevenshteinComparator(threshold=85). A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so even identical values would not match. If 85 is a percentage, write LevenshteinComparator(threshold=0.85), or ComparableField(threshold=0.85), which wins over the comparator's. (Set at invoice_models.py:6.)
 ```
 
-A comparator threshold the field does not adopt is not checked: when the field sets its own, the comparator's is not read, and on a `List[StructuredModel]` field (an array of objects in a schema) it is not consulted, since pairing uses `match_threshold`, and warns instead. A field threshold written on a list of models is still checked, and its message points at `match_threshold`. A comparator's constructor never checks its threshold, since a custom comparator may use `threshold` for something else. Nor is the runtime `match_threshold` passed to `evaluate()` or `eval_for()` checked.
+A comparator threshold the field does not adopt is not checked: when the field sets its own, the comparator's is not read, and on a `List[StructuredModel]` field (an array of objects in a schema) it is never used, since its items are matched up using `match_threshold`, so it warns instead. A field threshold on a list of models that breaks the rule raises, and the message says to remove it and use `match_threshold`. A comparator's constructor never checks its threshold, since a custom comparator may use `threshold` for something else, and the comparator keeps the value you passed. The runtime `match_threshold` of `evaluate()` and `eval_for()` is outside this rule; see [Runtime Match Threshold](#4-runtime-match-threshold).
+
+A field whose type is defined further down the module is checked when the class is defined, before that type exists, so stickler reads the field as adopting its comparator's threshold. Only a list of models does not, so there, and on a bare name for a list of models (`items: "ItemList"`, with `ItemList = List[Item]` below), an invalid comparator threshold raises where it would otherwise warn. The message says to remove the comparator in that case.
 
 ## Meeting a Threshold
 

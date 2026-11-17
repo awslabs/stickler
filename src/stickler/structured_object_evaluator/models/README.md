@@ -13,10 +13,11 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
 - `comparable_field.py`, `field.py`, `comparison_info.py` — field declaration
   (`ComparableField`), per-field comparator/threshold/weight metadata.
 - `threshold_rule.py`: the rule a threshold or `match_threshold` must meet
-  (a number from 0.0 to 1.0; `as_threshold` converts a `Decimal`, `Fraction`
-  or numpy number to `float`) and the one `ValueError` message all three
-  paths raise for it, spelled per path (`PYTHON`, `CONFIG`, `SCHEMA`). The
-  config importer's wrappers re-raise it unprefixed (`is_threshold_error`).
+  (a number from 0.0 to 1.0; `as_threshold` converts a `Decimal`, `Fraction`,
+  numpy number or 0-d array with `float()`) and the one `ValueError` message
+  all three paths raise for it, spelled per path (`PYTHON`, `CONFIG`,
+  `SCHEMA`), with where it was set (`location`). The config importer's
+  wrappers re-raise it unprefixed (`is_threshold_error`).
 - `model_factory.py`, `field_converter.py`, `type_resolver.py` — building models
   from Stickler's compact JSON config.
 - `configuration_helper.py` — configuration helpers for comparison and ingestion.

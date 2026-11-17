@@ -995,7 +995,9 @@ class StructuredModel(BaseModel):
         field once it resolves. Only a list of models does not adopt, so an
         invalid comparator threshold there raises, though it would only warn
         once resolved; the message says to remove the comparator in that case.
-        A PEP 695 alias is read as the type it names.
+        A bare name for a list of models (``items: "ItemList"``, with
+        ``ItemList = List[Item]`` below) reads the same way. A PEP 695 alias is
+        read as the type it names.
         """
         for field_name, field_info in cls.model_fields.items():
             if field_name == _EXTRA_FIELDS_KEY:

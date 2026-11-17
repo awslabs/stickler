@@ -259,7 +259,7 @@ must be a number from 0.0 to 1.0, and so must `match_threshold`. Anything else
 raises `ValueError` on load, with no prefix:
 
 ```text
-ValueError: Invalid threshold for field 'total' of model 'Invoice': the field sets no "threshold", so it uses "comparator_config": {"threshold": 85}. A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so no pair would match. If 85 is a percentage, write 0.85 there, or set "threshold": 0.85 on the field, which takes precedence.
+ValueError: Invalid threshold for field 'total' of model 'Invoice': the field sets no "threshold", so it adopts its comparator's: "comparator_config": {"threshold": 85}. A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so even identical values would not match. If 85 is a percentage, write "comparator_config": {"threshold": 0.85}, or "threshold": 0.85 on the field, which wins over the comparator's.
 ```
 
 When `threshold` is set, the `comparator_config` threshold is not read and not checked.
@@ -589,8 +589,8 @@ Every `model_from_json()` failure raises `ValueError`. Most are prefixed `Invali
 | `Field 'x' missing required 'type' parameter` | Field definition has no `type` | Add a `"type"` key |
 | `Unknown type: 'x'. Available types: [...]` | Unsupported type string | Use a listed type; the message enumerates them |
 | `Field 'x' with primitive type 'str' requires a 'comparator'` | Primitive field without a comparator | Add a `"comparator"` key, or set `"infer_unspecified_fields": true` (see [Inferring unspecified fields](#inferring-unspecified-fields)) |
-| `Invalid threshold for field 'x' of model 'Invoice': "threshold": 5.0 is out of range. ...` | A field threshold that is not a number from 0.0 to 1.0 | Use a value in 0.0--1.0; the message gives the likely fix |
-| `Invalid threshold for field 'x' of model 'Invoice': the field sets no "threshold", so it uses "comparator_config": {"threshold": 85}. ...` | The same, for a `comparator_config` threshold the field adopts. `from_json_schema()` raises the same way for `x-aws-stickler-threshold` and `x-aws-stickler-comparator-config` | Use a value in 0.0--1.0, or set the field's `threshold` |
+| `Invalid threshold for field 'x' of model 'Invoice': "threshold": 5.0 is out of range. ...` | A field threshold that is not a number from 0.0 to 1.0 | Use a value in 0.0--1.0; the message gives the fix |
+| `Invalid threshold for field 'x' of model 'Invoice': the field sets no "threshold", so it adopts its comparator's: "comparator_config": {"threshold": 85}. ...` | The same, for a `comparator_config` threshold the field adopts. `from_json_schema()` raises the same way for `x-aws-stickler-threshold` and `x-aws-stickler-comparator-config` | Use a value in 0.0--1.0, or set the field's `threshold` |
 | `Invalid match threshold for model 'Invoice': "match_threshold": 85 is out of range. ...` | A `match_threshold`, on the model or a nested-model field, that is not a number from 0.0 to 1.0 | Use a value in 0.0--1.0 |
 | `Unknown comparator: 'x'. Available: [...]` | Comparator name not registered | Use a class name from the list; `BERTComparator` and `LLMComparator` appear only when the `[bert]` and `[llm]` extras are installed |
 | `Field 'x' with type 'structured_model' requires a 'fields' configuration` | Nested model without its own `fields` | Add the nested `fields` block |

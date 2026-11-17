@@ -317,16 +317,20 @@ ComparableField(
 ```
 
 The threshold the field ends up with, `threshold` or one adopted from the comparator, must be a
-number from 0.0 to 1.0, and so must `match_threshold`. A `Decimal`, `Fraction` or numpy number is
-converted to `float` (`threshold_rule.as_threshold`). `StructuredModel` checks it when the class is
-defined, in `__pydantic_init_subclass__` over `model_fields`, so an `Annotated[...]` field and a
-module using `from __future__ import annotations` are covered; `ComparableField` does not know the
-model or the field name yet, and records its call site for the message. A field whose annotation
-is still a forward reference then is checked as adopting its comparator's threshold unless the
-annotation is visibly a list (`List["Item"]`, `"Optional[List[Item]]"`), since nothing re-checks
-it once it resolves. The importers check the same rule on load, with the shared message from
-`threshold_rule`. A comparator threshold the field overrides, or one on a `List[StructuredModel]`
-field, is not checked, and nor is the runtime `match_threshold` of `evaluate()` or `eval_for()`.
+number from 0.0 to 1.0, and so must `match_threshold`. A `Decimal`, `Fraction`, numpy number or
+0-d numpy array is converted with `float()` (`threshold_rule.as_threshold`), so a numpy float
+compares as it did; the comparator keeps the value it was given. `StructuredModel` checks it when
+the class is defined, in `__pydantic_init_subclass__` over `model_fields`, so an `Annotated[...]`
+field and a module using `from __future__ import annotations` are covered; `ComparableField` does
+not know the model or the field name yet, and records its call site for the message. A field whose
+annotation is still a forward reference then is checked as adopting its comparator's threshold,
+even when it is visibly a list (`List["Item"]`), since stickler cannot tell yet whether the element
+is a model and nothing re-checks it once it resolves; a PEP 695 alias is read as the type it names.
+The importers check the same rule on load, with the shared message from `threshold_rule`. A
+comparator threshold the field overrides, or one on a resolved `List[StructuredModel]` field, is not
+checked. The runtime `match_threshold` is outside the rule: for a plain pydantic model
+`stickler.auto.builder` keeps its own check (`match_threshold must be a number between 0.0 and
+1.0`), and for a `StructuredModel` it is not checked.
 
 `default_factory` is honored, for a mutable default such as `default_factory=list`. Combining
 it with a `default` value raises `TypeError`, as in Pydantic, `None` included. `default=...` and

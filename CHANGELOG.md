@@ -44,7 +44,8 @@ Each release links to full notes on the
       and on a field whose type is defined further down the module; a
       comparator threshold the field adopts, such as
       `LevenshteinComparator(threshold=85)`; and the `match_threshold` class
-      attribute. None was checked, so at 85 an identical pair scored 0.0 FD.
+      attribute, also as `ModelFactory.create_model_from_fields(match_threshold=...)`.
+      None was checked, so at 85 an identical pair scored 0.0 FD.
     - Stickler config: `"threshold"`, an adopted `"comparator_config"`
       threshold, and `"match_threshold"` on the model or a nested-model field.
     - JSON Schema: `x-aws-stickler-threshold`, an adopted
@@ -55,27 +56,37 @@ Each release links to full notes on the
     config and schema paths already refused a threshold out of range but
     accepted `true` as 1, also as a `match_threshold`, and a comparator-config
     threshold loaded whatever its value, because it was not read. A `Decimal`,
-    `Fraction` or numpy number from 0.0 to 1.0 now loads on every path as the
-    `float` it means: Python kept it unconverted, and the importers refused
-    it. The `match_threshold` passed to `evaluate()` or `eval_for()` is not
+    `Fraction`, numpy number or 0-d numpy array from 0.0 to 1.0 now loads on
+    every path, converted with `float()`, so a numpy float compares as before;
+    the comparator keeps the value it was given. Python kept such a value
+    unconverted, so a `Decimal` raised `TypeError` on a pair scoring below it,
+    and the importers refused it. The `match_threshold` passed to `evaluate()`
+    or `eval_for()` is outside this rule and unchanged: for a plain pydantic
+    model it keeps its own check, and for a `StructuredModel` it is not
     checked. Every path gives one message. It quotes the value as written,
-    names the model and the field, says why the value fails and gives the likely
-    fix; on the Python path it ends with the line of the `ComparableField` call.
-    The refusal of `ComparableField(threshold=...)` on a `List[StructuredModel]`
-    field uses the same message, naming the element class. On the config path
+    names the model and the field, says why the value fails and gives the fix
+    in full; on the Python path it ends with where the value was set. The
+    refusal of `ComparableField(threshold=...)` on a `List[StructuredModel]`
+    field uses the same template, says to remove it and names the element
+    class, and a valid one is headed `Unused threshold`. The warning for a
+    comparator threshold there names the model and the element class, and
+    points at the class rather than at `<frozen abc>`. On the config path
     it is no longer prefixed `Invalid field configuration:` or `Error
     converting field configurations:`, and a field inside a
     `list_structured_model` is named `items[].sku` there and in warnings, as on
     the schema path:
 
     ```text
-    Invalid threshold for field 'vendor' of model 'Invoice': the field sets no threshold, so it uses LevenshteinComparator(threshold=85). A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so no pair would match. If 85 is a percentage, write LevenshteinComparator(threshold=0.85), or set ComparableField(threshold=0.85), which takes precedence. (Set at invoice_models.py:6.)
+    Invalid threshold for field 'vendor' of model 'Invoice': ComparableField sets no threshold, so the field adopts its comparator's: LevenshteinComparator(threshold=85). A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so even identical values would not match. If 85 is a percentage, write LevenshteinComparator(threshold=0.85), or ComparableField(threshold=0.85), which wins over the comparator's. (Set at invoice_models.py:6.)
     ```
 
     A comparator threshold the field does not adopt is not checked: one a field
-    threshold overrides, or one on a list of models, which pairs on
-    `match_threshold`. `to_stickler_config()` leaves such an out-of-range value
-    off a `list_structured_model` field, so the export reloads.
+    threshold overrides, or one on a list of models, which matches its items
+    on `match_threshold`. A field whose type is defined further down the
+    module is read as adopting, since stickler cannot tell yet whether it is a
+    list of models, so there an invalid comparator threshold raises even on a
+    list of models. `to_stickler_config()` leaves an out-of-range comparator
+    threshold off a `list_structured_model` field, so the export reloads.
   - **A mapping field keeps its partial credit.** A `dict` field naming a
     comparator, or a list of them, defaulted to `clip_under_threshold: true`,
     so ANLS\* partial credit below the threshold was zeroed: 0.0 where Python
