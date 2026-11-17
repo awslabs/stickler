@@ -12,6 +12,10 @@ its `from_json()` ingestion and `compare_with()` comparison pipeline.
   `from_json()` (rich-value unwrapping) and `compare_with()` (delegates to the engine).
 - `comparable_field.py`, `field.py`, `comparison_info.py` — field declaration
   (`ComparableField`), per-field comparator/threshold/weight metadata.
+- `threshold_rule.py` — the rule a threshold or `match_threshold` must meet
+  (an `int` or `float` from 0.0 to 1.0) and the one `ValueError` message all
+  three paths raise for it, spelled per path (`PYTHON`, `CONFIG`, `SCHEMA`).
+  The config importer's wrappers re-raise it unprefixed (`is_threshold_error`).
 - `model_factory.py`, `field_converter.py`, `type_resolver.py` — building models
   from Stickler's compact JSON config.
 - `configuration_helper.py` — configuration helpers for comparison and ingestion.

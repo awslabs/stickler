@@ -64,10 +64,10 @@ When defining a `StructuredModel` subclass in Python, each field is declared wit
 
 See the [Comparators](../Comparators/README.md) section for the complete list and detailed descriptions.
 
-**`threshold`** -- Acts as a binary classification cutoff. A similarity score at or above the threshold counts as a True Positive; below it counts as a False Discovery. See [Meeting a Threshold](../../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold). Choose stricter thresholds (0.9--1.0) for critical fields and looser thresholds (0.5--0.7) for flexible fields. The field's threshold, set here or adopted from the comparator, must be a number from 0.0 to 1.0; anything else raises `ValueError` when the class is defined:
+**`threshold`** -- Acts as a binary classification cutoff. A similarity score at or above the threshold counts as a True Positive; below it counts as a False Discovery. See [Meeting a Threshold](../../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold). Choose stricter thresholds (0.9--1.0) for critical fields and looser thresholds (0.5--0.7) for flexible fields. The field's threshold, set here or adopted from the comparator, must be an `int` or `float` from 0.0 to 1.0; anything else raises `ValueError` when the class is defined:
 
 ```text
-ValueError: Invalid threshold for field 'vendor' of model 'Invoice': ComparableField(threshold=85) gives 85, but a threshold is a number from 0.0 to 1.0, the fraction of similarity a match needs. For 85%, use 0.85.
+ValueError: Invalid threshold for field 'vendor' of model 'Invoice': ComparableField(threshold=85) is out of range. A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so no pair would match. If 85 is a percentage, use 0.85. (Set at invoice_models.py:5.)
 ```
 
 See [Valid Threshold Values](../../Getting-Started/thresholds-and-metrics.md#valid-threshold-values).
@@ -193,7 +193,7 @@ Add these extensions to any property in your JSON Schema to control comparison b
 | Extension | Type | Default | Purpose |
 |-----------|------|---------|---------|
 | `x-aws-stickler-comparator` | string | Type-dependent | Comparison algorithm (e.g., `"ExactComparator"`, `"LevenshteinComparator"`). On an object with `properties`, which is scored field by field, it has no effect except for a threshold it names, and warns |
-| `x-aws-stickler-threshold` | number (0.0--1.0) | see below | Match classification cutoff. Read on a scalar, an object, and an array of scalars. **Ignored on an array of models** -- an array whose `items` declare `properties` -- where pairing is gated by the element class's `x-aws-stickler-match-threshold`, and a declared value warns there. Read, not ignored, on an array of free-form `{"type": "object"}` items |
+| `x-aws-stickler-threshold` | number (0.0--1.0) | see below | Match classification cutoff. Read on a scalar, an object, and an array of scalars. **Ignored on an array of models** -- an array whose `items` declare `properties` -- where pairing is gated by the element class's `x-aws-stickler-match-threshold`, and a declared value from 0.0 to 1.0 warns there; any other value raises, naming `x-aws-stickler-match-threshold`. Read, not ignored, on an array of free-form `{"type": "object"}` items |
 | `x-aws-stickler-weight` | number (> 0.0) | 1.0 | Field importance multiplier |
 | `x-aws-stickler-clip-under-threshold` | boolean | `true`, `false` on a free-form object or an array of them | Zero out scores below threshold |
 | `x-aws-stickler-model-name` | string | `"DynamicModel"` | Name of the generated Python class (root level) |
@@ -217,11 +217,12 @@ A scalar is plain when it has none of the keywords in the last row. Any other
 `format` (`email`, `hostname`, ...) leaves it plain. Declaring the key explicitly
 overrides the default in every position that reads it. Without it, a `threshold`
 in `x-aws-stickler-comparator-config` overrides the default instead, as it does
-on the Python path. Whichever the field uses must be a number from 0.0 to 1.0;
-any other value raises `ValueError` on import:
+on the Python path. Whichever the field uses must be an `int` or `float` from
+0.0 to 1.0; any other value raises `ValueError` on import, quoting the key as
+written:
 
 ```text
-ValueError: Invalid threshold for field 'total' of model 'Invoice': x-aws-stickler-comparator-config threshold gives 85, but a threshold is a number from 0.0 to 1.0, the fraction of similarity a match needs. For 85%, use 0.85. Or set x-aws-stickler-threshold to override the comparator's value.
+ValueError: Invalid threshold for field 'total' of model 'Invoice': the field sets no "x-aws-stickler-threshold", so it uses "x-aws-stickler-comparator-config": {"threshold": 85}. A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so no pair would match. If 85 is a percentage, write 0.85 there, or set "x-aws-stickler-threshold": 0.85 on the property, which takes precedence.
 ```
 
 When `x-aws-stickler-threshold` is set, the comparator's threshold is not read

@@ -357,11 +357,11 @@ comparator is declared. See the table in
 Minimum similarity score required for binary match classification.
 
 The threshold a property uses, this key or a `threshold` in `x-aws-stickler-comparator-config`,
-must be a number from 0.0 to 1.0. Anything else, such as `85`, `"0.9"` or `true`, raises
-`ValueError` on import:
+must be an `int` or `float` from 0.0 to 1.0. Anything else, such as `85`, `"0.9"` or `true`,
+raises `ValueError` on import:
 
 ```text
-ValueError: Invalid threshold for field 'total_amount' of model 'Invoice': x-aws-stickler-comparator-config threshold gives 85, but a threshold is a number from 0.0 to 1.0, the fraction of similarity a match needs. For 85%, use 0.85. Or set x-aws-stickler-threshold to override the comparator's value.
+ValueError: Invalid threshold for field 'total_amount' of model 'Invoice': the field sets no "x-aws-stickler-threshold", so it uses "x-aws-stickler-comparator-config": {"threshold": 85}. A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so no pair would match. If 85 is a percentage, write 0.85 there, or set "x-aws-stickler-threshold": 0.85 on the property, which takes precedence.
 ```
 
 **How Threshold Works:**
