@@ -230,7 +230,7 @@ result = gt.compare_with(pred)
 
 - `x-aws-stickler-comparator`: comparator **class name**, such as `"ExactComparator"`, `"FuzzyComparator"`, `"LevenshteinComparator"`, `"SemanticComparator"`. Lowercase aliases are not accepted and raise.
 - `x-aws-stickler-comparator-config`: keyword arguments for that comparator's constructor
-- `x-aws-stickler-threshold`: matching threshold, 0.0 to 1.0 (default: a `threshold` in `x-aws-stickler-comparator-config` if it is in 0.0 to 1.0, else the type default; an out-of-range one warns)
+- `x-aws-stickler-threshold`: matching threshold, 0.0 to 1.0 (default: a `threshold` in `x-aws-stickler-comparator-config` if it is a number from 0.0 to 1.0, else the type default; any other value warns)
 - `x-aws-stickler-weight`: field importance weight (default: 1.0)
 - `x-aws-stickler-clip-under-threshold`: clip scores below threshold to 0.0 (boolean, default: true; false on a free-form object or an array of them)
 

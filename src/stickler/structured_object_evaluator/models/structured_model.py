@@ -922,7 +922,7 @@ class StructuredModel(BaseModel):
                    {
                        "type": "str|int|float|bool|List[str]|etc.",  # Required
                        "comparator": "LevenshteinComparator|ExactComparator|etc.",  # Optional
-                       "comparator_config": {"threshold": 0.9},  # Optional; a threshold outside 0.0-1.0 is ignored with a UserWarning
+                       "comparator_config": {"threshold": 0.9},  # Optional; a threshold that is not a number from 0.0 to 1.0 is ignored with a UserWarning
                        "threshold": 0.8,  # Optional; default: comparator_config's threshold, else 0.5
                        "weight": 2.0,     # Optional, default 1.0
                        "required": true,  # Optional, default false
@@ -989,8 +989,8 @@ class StructuredModel(BaseModel):
         - x-aws-stickler-threshold: Similarity threshold for match/no-match (0.0-1.0,
           default: a threshold in x-aws-stickler-comparator-config, else the
           type default, such as 0.5 for a string and 0.7 for a nested object).
-          A comparator-config threshold outside 0.0-1.0 is ignored with a
-          UserWarning.
+          A comparator-config threshold that is not a number from 0.0 to 1.0
+          is ignored with a UserWarning.
         - x-aws-stickler-weight: Field importance in overall scoring (>0.0, default: 1.0)
         - x-aws-stickler-clip-under-threshold: Clip scores below threshold to 0.0
           (bool, default: true; false on a free-form object or an array of them)

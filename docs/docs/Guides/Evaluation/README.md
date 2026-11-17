@@ -216,7 +216,7 @@ ignored with a warning, and the default applies.
 `x-aws-stickler-clip-under-threshold` defaults to `true`, except on a free-form
 object or an array of them, where it defaults to `false` so a comparator such as
 `ANLSStarComparator` keeps its partial credit. The default `ExactComparator`
-scores those `0.0` or `1.0`, so clipping does not change them.
+scores each object `0.0` or `1.0`, so clipping does not change them.
 
 ### Example Schema
 
