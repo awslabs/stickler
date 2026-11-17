@@ -136,6 +136,44 @@ def test_an_empty_list_in_an_any_sub_field_is_null(gt, pred, expected):
     assert _counts(_value_node(_in_list(gt, pred))) == expected
 
 
+class StrOrListElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Optional[Union[str, List[str]]] = ComparableField()
+    match_threshold = 0.4
+
+
+class StrOrListHolder(StructuredModel):
+    items: List[StrOrListElement] = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "gt, pred, expected",
+    [
+        pytest.param(None, "", _expect(fa=1), id="none-vs-empty-str"),
+        pytest.param("", None, _expect(fn=1), id="empty-str-vs-none"),
+        pytest.param("", [], _expect(fn=1), id="empty-str-vs-empty-list"),
+        pytest.param("", ["a", "b"], _expect(fa=1), id="empty-str-vs-list"),
+        pytest.param(["a", "b"], "", _expect(fn=1), id="list-vs-empty-str"),
+        pytest.param(None, [], _expect(tn=1), id="none-vs-empty-list"),
+        pytest.param(["a", "b"], ["a", "c"], _expect(tp=1, fd=1), id="lists"),
+    ],
+)
+def test_a_list_annotated_sub_field_counts_as_top_level(gt, pred, expected):
+    # The dispatcher takes a list-annotated field's null rules from its
+    # annotation, so `""` is a value here, at top level and in a list alike.
+    # Only a field that is not list-annotated reads an empty list as null by
+    # its value.
+    node = _value_node(
+        _in_list(gt, pred, holder=StrOrListHolder, element=StrOrListElement)
+    )
+    assert _counts(node) == expected
+
+    alone = StrOrListElement(key="k", value=gt).compare_with(
+        StrOrListElement(key="k", value=pred), include_confusion_matrix=True
+    )
+    assert _counts(alone["confusion_matrix"]["fields"]["value"]) == expected
+
+
 class Inner(StructuredModel):
     a: str = ComparableField()
     b: Optional[str] = ComparableField(default=None)

@@ -358,25 +358,24 @@ class StructuredListComparator:
         gt_list: List["StructuredModel"],
         pred_list: List["StructuredModel"],
         matched_pairs: List,
-        other_class_by_compare_with: bool = False,
+        by_value: bool = False,
     ) -> List[Dict[str, Any]]:
         """Classify one sub-field of each matched pair, as at top level.
 
         Each pair goes through the GT item's dispatcher. A prediction of
         another class may not have the field, so it reads as missing, as at top
-        level. One rule differs: an empty list is null by its value, as the
-        classification docs say. The dispatcher reads ``[]`` as null only in a
-        list-annotated field, so in an ``Any`` field ``None`` vs ``[]`` would
-        be an FA. Here two absent values are a TN, and an absent list facing a
-        non-list reads as ``None``. Two lists still go to the list comparator,
-        which counts per element.
+        level.
 
         Args:
-            other_class_by_compare_with: Classify two models of different
-                classes by :func:`_other_class_result` instead of the
-                dispatcher. Set for a sub-field that is neither routed as a
-                nested model nor list-annotated, such as ``Any`` or
-                ``Union[A, B]``.
+            by_value: Read each pair by its values, for a sub-field that is
+                neither routed as a nested model nor list-annotated, such as
+                ``Any`` or ``Union[A, B]``. Two rules then differ from the
+                dispatcher, which picks null rules from the annotation. An
+                empty list is null, as the classification docs say, so two
+                absent values are a TN and an absent list facing a non-list
+                reads as ``None``; two lists still go to the list comparator.
+                Two models of different classes are classified by
+                :func:`_other_class_result`.
         """
         pair_results = []
         for gt_idx, pred_idx, _ in matched_pairs:
@@ -385,27 +384,29 @@ class StructuredListComparator:
                 gt_sub_value = getattr(gt_item, sub_field_name, None)
                 pred_sub_value = getattr(pred_list[pred_idx], sub_field_name, None)
 
-                if other_class_by_compare_with and _are_models_of_other_classes(
-                    gt_sub_value, pred_sub_value
-                ):
-                    pair_results.append(
-                        _other_class_result(
-                            gt_item, sub_field_name, gt_sub_value, pred_sub_value
+                if by_value:
+                    if _are_models_of_other_classes(gt_sub_value, pred_sub_value):
+                        pair_results.append(
+                            _other_class_result(
+                                gt_item, sub_field_name, gt_sub_value, pred_sub_value
+                            )
                         )
-                    )
-                    continue
+                        continue
 
-                gt_absent = _is_absent(gt_sub_value)
-                pred_absent = _is_absent(pred_sub_value)
-                if gt_absent and pred_absent:
-                    weight = gt_item._get_comparison_info(sub_field_name).weight
-                    pair_results.append(ResultHelper.create_true_negative_result(weight))
-                    continue
-                if not (
-                    isinstance(gt_sub_value, list) and isinstance(pred_sub_value, list)
-                ):
-                    gt_sub_value = None if gt_absent else gt_sub_value
-                    pred_sub_value = None if pred_absent else pred_sub_value
+                    gt_absent = _is_absent(gt_sub_value)
+                    pred_absent = _is_absent(pred_sub_value)
+                    if gt_absent and pred_absent:
+                        weight = gt_item._get_comparison_info(sub_field_name).weight
+                        pair_results.append(
+                            ResultHelper.create_true_negative_result(weight)
+                        )
+                        continue
+                    if not (
+                        isinstance(gt_sub_value, list)
+                        and isinstance(pred_sub_value, list)
+                    ):
+                        gt_sub_value = None if gt_absent else gt_sub_value
+                        pred_sub_value = None if pred_absent else pred_sub_value
 
                 pair_results.append(
                     gt_item._dispatch_field_comparison(
@@ -594,14 +595,14 @@ class StructuredListComparator:
         # Classify through the dispatcher, as top level does. Calling the
         # comparator directly skipped its guards, so a dict it cannot score
         # raised instead of scoring an FD (#400). A list-annotated field, such
-        # as `Union[A, B, List[str]]`, sent every pair to the dispatcher before
-        # too, including two models of different classes.
+        # as `Union[str, List[str]]`, already sent every pair straight to the
+        # dispatcher, so it is not read by value.
         pair_results = self._dispatch_pairs(
             sub_field_name,
             gt_list,
             pred_list,
             matched_pairs,
-            other_class_by_compare_with=not is_simple_list,
+            by_value=not is_simple_list,
         )
         aggregated_result = self._recursive_aggregate_metrics(pair_results)
 
