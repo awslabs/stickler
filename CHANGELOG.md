@@ -27,6 +27,10 @@ Each release links to full notes on the
   ([#505](https://github.com/awslabs/stickler/issues/505)). Before, data shaped
   like `B` was built as `A`, and two different `B` values could score 1.0.
 
+- Corrected introductory example scores, the default text comparator description,
+  and the sample amount in the documentation and README
+  ([#478](https://github.com/awslabs/stickler/issues/478)).
+
 - Pretty printers restore stdout when rendering fails, propagate rendering errors,
   and include the bulk summary in confusion-matrix file output.
 
