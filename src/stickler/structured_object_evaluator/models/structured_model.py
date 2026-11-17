@@ -10,8 +10,10 @@ from typing import (
     Any,
     ClassVar,
     Dict,
+    ForwardRef,
     Iterable,
     List,
+    Literal,
     Optional,
     Type,
     Union,
@@ -27,12 +29,7 @@ from stickler.comparators.base import BaseComparator
 from stickler.utils.canonical import jsonable_mapping
 from stickler.utils.deprecation import warn_once
 
-from .comparable_field import (
-    ComparableField,
-    _check_threshold,
-    _is_valid_threshold,
-    _named_comparator_threshold,
-)
+from .comparable_field import ComparableField, _named_comparator_threshold
 from .comparison_helper import ComparisonHelper, _maybe_absent
 from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper, in_list_item_metrics
@@ -43,6 +40,14 @@ from .rich_value_helper import RichValueHelper
 from .threshold_helper import THRESHOLD_DOCS_URL
 from .threshold_helper import model_identity as _model_identity
 from .threshold_helper import warn_if_threshold_is_zero as _warn_if_threshold_is_zero
+from .threshold_rule import (
+    PYTHON,
+    SCHEMA,
+    is_valid_threshold,
+    match_threshold_error,
+    python_comparator_source,
+    threshold_error,
+)
 
 # Name of the internal field every StructuredModel carries to hold unmatched
 # input keys. It is not part of a model's data contract and must not appear in
@@ -225,6 +230,32 @@ def _annotation_is_list(annotation: Any) -> bool:
     # is the package's single source for a union's non-None arms and returns
     # `()` for a non-union, so this also bottoms out the recursion.
     return any(_annotation_is_list(arg) for arg in union_args(annotation))
+
+
+def _is_unresolved(annotation: Any) -> bool:
+    """Whether ``annotation`` still holds a forward reference pydantic could not resolve.
+
+    ``Annotated`` metadata and ``Literal`` values may be strings, so only the
+    type positions are searched.
+    """
+    if isinstance(annotation, (str, ForwardRef)):
+        return True
+    origin = get_origin(annotation)
+    if origin is Literal:
+        return False
+    args = get_args(annotation)
+    if origin is Annotated:
+        args = args[:1]
+    return any(_is_unresolved(arg) for arg in args)
+
+
+def _list_element_name(annotation: Any) -> str:
+    """``Item`` for ``List[Item]``, ``Optional[List[Item]]`` or ``list[Item] | None``."""
+    for arm in (annotation, *union_args(annotation)):
+        if get_origin(arm) in (list, List) and get_args(arm):
+            element, _ = unwrap_optional(unwrap_annotated(get_args(arm)[0]))
+            return getattr(element, "__name__", "the element class")
+    return "the element class"
 
 
 def _amend_clip_default(field_info: Any, extra: Any, clip: bool) -> None:
@@ -574,6 +605,7 @@ class StructuredModel(BaseModel):
         divergence ``_install_object_grade_comparators`` exists to prevent.
         """
         super().__pydantic_init_subclass__(**kwargs)
+        cls._check_field_thresholds()
         cls._install_object_grade_comparators()
 
     def __init_subclass__(cls, **kwargs):
@@ -599,14 +631,6 @@ class StructuredModel(BaseModel):
                     field_default.json_schema_extra(temp_schema)
                     if "x-comparison" in temp_schema:
                         # This field was created with ComparableField function - validate constraints
-                        cls._check_field_threshold(
-                            field_name,
-                            field_default.json_schema_extra,
-                            temp_schema["x-comparison"].get("threshold"),
-                            is_list_of_models=cls._is_list_of_structured_model_type(
-                                field_type
-                            ),
-                        )
                         if cls._is_list_of_structured_model_type(field_type):
                             comparison_config = temp_schema["x-comparison"]
 
@@ -636,6 +660,18 @@ class StructuredModel(BaseModel):
                                 "_threshold_explicit",
                                 threshold != 0.5,
                             )
+                            if threshold_explicit and not is_valid_threshold(
+                                threshold
+                            ):
+                                # The range error, which points at
+                                # match_threshold with a number in range. The
+                                # one below would echo 85 back as advice.
+                                raise cls._threshold_error(
+                                    field_name,
+                                    field_default.json_schema_extra,
+                                    threshold,
+                                    field_type,
+                                )
                             if threshold_explicit:
                                 # Do not echo 0.0 back as advice: the threshold
                                 # test is `>=`, so `match_threshold = 0.0` makes
@@ -755,8 +791,17 @@ class StructuredModel(BaseModel):
                     )
 
         # `match_threshold` is a plain class attribute rather than a field, so
-        # it is not covered by the loop above.
+        # it is not covered by the loop above. `None` reads as unset, and a
+        # property or method is not a value to check.
         if "match_threshold" in cls.__dict__:
+            value = cls.__dict__["match_threshold"]
+            if not (
+                value is None
+                or callable(value)
+                or isinstance(value, (property, classmethod, staticmethod))
+                or is_valid_threshold(value)
+            ):
+                raise match_threshold_error(value, spelling=PYTHON, model=cls.__name__)
             _warn_if_threshold_is_zero(
                 cls.__dict__["match_threshold"],
                 _model_identity(cls.__name__, cls.__annotations__),
@@ -764,36 +809,70 @@ class StructuredModel(BaseModel):
             )
 
     @classmethod
-    def _check_field_threshold(
-        cls, field_name: str, extra: Any, threshold: Any, *, is_list_of_models: bool
-    ) -> None:
-        """Raise if the threshold ``ComparableField`` resolved cannot gate the field.
+    def _check_field_thresholds(cls) -> None:
+        """Raise if a field's threshold is not an int or float from 0.0 to 1.0.
 
-        Checked here rather than in ``ComparableField``, which does not know the
-        model or the field yet. The resolved value is checked, not the
-        comparator's own: when the field states a threshold, the comparator's
-        is never read (``binary_compare()`` is the only other reader, and the
-        evaluator does not call it). On a ``List[StructuredModel]`` field a
-        comparator threshold is not consulted either, since Hungarian matching
-        pairs on the element class's ``match_threshold``, so only the field's
-        own is checked there, as the importers do.
+        Runs from ``__pydantic_init_subclass__`` over ``model_fields``, not from
+        ``__init_subclass__`` over class attributes: ``model_fields`` holds the
+        metadata of an ``Annotated[str, ComparableField(...)]`` field, which has
+        no class attribute, and resolved annotations under
+        ``from __future__ import annotations``, where ``__annotations__`` holds
+        the string ``"List[Item]"``. ``ComparableField`` cannot check it, since
+        it does not know the model or the field yet.
+
+        The resolved value is checked, not the comparator's own: when the field
+        states a threshold, the comparator's is never read (``binary_compare()``
+        is its only other reader, and the evaluator does not call it). On a
+        ``List[StructuredModel]`` field a comparator threshold is not consulted
+        either, since Hungarian matching pairs on the element class's
+        ``match_threshold``, so only the field's own is checked there, as the
+        importers do. An annotation still unresolved (a forward reference)
+        cannot say whether it is that shape, so it is treated the same way.
         """
-        if _is_valid_threshold(threshold):
-            return
-        if getattr(extra, "_threshold_explicit", True):
-            source, field_key = f"ComparableField(threshold={threshold!r})", None
-        elif is_list_of_models:
-            return
-        else:
-            comparator = getattr(extra, "_comparator_instance", None)
-            source = f"{type(comparator).__name__}(threshold={threshold!r})"
-            field_key = "ComparableField(threshold=...)"
-        _check_threshold(
+        for field_name, field_info in cls.model_fields.items():
+            if field_name == _EXTRA_FIELDS_KEY:
+                continue
+            extra = field_info.json_schema_extra
+            metadata = getattr(extra, "_comparison_metadata", None)
+            if not callable(extra) or not isinstance(metadata, dict):
+                continue
+            threshold = metadata.get("threshold")
+            if is_valid_threshold(threshold):
+                continue
+            annotation = field_info.annotation
+            if not getattr(extra, "_threshold_explicit", True) and (
+                _is_unresolved(annotation)
+                or cls._is_list_of_structured_model_type(annotation)
+            ):
+                continue
+            raise cls._threshold_error(field_name, extra, threshold, annotation)
+
+    @classmethod
+    def _threshold_error(
+        cls, field_name: str, extra: Any, threshold: Any, annotation: Any
+    ) -> ValueError:
+        """The shared threshold error for ``field_name``, in Python spelling."""
+        comparator = None
+        if not getattr(extra, "_threshold_explicit", True):
+            comparator = python_comparator_source(
+                getattr(extra, "_comparator_instance", None)
+            )
+        list_element = None
+        if not _is_unresolved(annotation) and cls._is_list_of_structured_model_type(
+            annotation
+        ):
+            list_element = _list_element_name(annotation)
+        return threshold_error(
             threshold,
+            spelling=PYTHON,
             field=field_name,
             model=cls.__name__,
-            source=source,
-            field_key=field_key,
+            comparator=comparator,
+            nested=comparator is not None
+            and not _is_unresolved(annotation)
+            and cls._is_structured_model_type(annotation),
+            list_element=list_element,
+            set_at=getattr(extra, "_set_at", None),
         )
 
     def model_post_init(self, __context):
@@ -968,7 +1047,7 @@ class StructuredModel(BaseModel):
                    {
                        "type": "str|int|float|bool|List[str]|etc.",  # Required
                        "comparator": "LevenshteinComparator|ExactComparator|etc.",  # Optional
-                       "comparator_config": {"threshold": 0.9},  # Optional; a threshold the field adopts must be a number from 0.0 to 1.0, else ValueError
+                       "comparator_config": {"threshold": 0.9},  # Optional; a threshold the field adopts must be an int or float from 0.0 to 1.0, else ValueError
                        "threshold": 0.8,  # Optional; default: comparator_config's threshold, else 0.5
                        "weight": 2.0,     # Optional, default 1.0
                        "required": true,  # Optional, default false
@@ -1035,7 +1114,7 @@ class StructuredModel(BaseModel):
         - x-aws-stickler-threshold: Similarity threshold for match/no-match (0.0-1.0,
           default: a threshold in x-aws-stickler-comparator-config, else the
           type default, such as 0.5 for a string and 0.7 for a nested object).
-          Whichever threshold the field uses must be a number from 0.0 to 1.0;
+          Whichever threshold the field uses must be an int or float from 0.0 to 1.0;
           any other value raises ValueError naming the model and the field.
         - x-aws-stickler-weight: Field importance in overall scoring (>0.0, default: 1.0)
         - x-aws-stickler-clip-under-threshold: Clip scores below threshold to 0.0
@@ -1244,17 +1323,12 @@ class StructuredModel(BaseModel):
                 f"got: {model_name}"
             )
 
-        # Validate match threshold
-        if not isinstance(match_threshold, (int, float)):
-            raise ValueError(
-                f"x-aws-stickler-match-threshold must be a number, "
-                f"got: {type(match_threshold).__name__}"
-            )
+        # Validate match threshold, with the message every path shares.
+        if not is_valid_threshold(match_threshold):
+            from .json_schema_importer import schema_model_label
 
-        if not (0.0 <= match_threshold <= 1.0):
-            raise ValueError(
-                f"x-aws-stickler-match-threshold must be between 0.0 and 1.0, "
-                f"got: {match_threshold}"
+            raise match_threshold_error(
+                match_threshold, spelling=SCHEMA, model=schema_model_label(schema)
             )
 
         # Convert through the schema library. Composed/root-ref schemas may not
@@ -2435,6 +2509,12 @@ class StructuredModel(BaseModel):
                         metadata, output_format="stickler_config"
                     )
                     field_config.update(extensions)
+                    # Pairing reads `match_threshold`, never this threshold, so
+                    # one out of range is left out rather than written for
+                    # `model_from_json()` to refuse. Only a comparator can put
+                    # one here: `ComparableField(threshold=85)` raises.
+                    if not is_valid_threshold(field_config.get("threshold", 0.5)):
+                        del field_config["threshold"]
                 else:
                     # Primitive list - pass element type, then fix up type string.
                     # The whole field is checked first, since the converter

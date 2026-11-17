@@ -12,11 +12,19 @@ from pydantic import create_model
 from stickler.utils.deprecation import warn_once
 
 from .field_converter import (
+    _model_label,
     convert_fields_config,
     get_global_converter,
     validate_fields_config,
 )
 from .threshold_helper import model_identity, warn_if_threshold_is_zero
+from .threshold_rule import (
+    CONFIG,
+    PYTHON,
+    is_threshold_error,
+    is_valid_threshold,
+    match_threshold_error,
+)
 
 #: Every key a top-level model config may carry, as read by ``create_model``.
 ACCEPTED_MODEL_CONFIG_KEYS = frozenset(
@@ -85,7 +93,7 @@ class ModelFactory:
                    {
                        "type": "str|int|float|bool|List[str]|etc.",  # Required
                        "comparator": "LevenshteinComparator|ExactComparator|etc.",  # Optional
-                       "comparator_config": {"threshold": 0.9},  # Optional; a threshold the field adopts must be a number from 0.0 to 1.0, else ValueError
+                       "comparator_config": {"threshold": 0.9},  # Optional; a threshold the field adopts must be an int or float from 0.0 to 1.0, else ValueError
                        "threshold": 0.8,  # Optional; default: comparator_config's threshold, else 0.5
                        "weight": 2.0,     # Optional, default 1.0
                        "required": true,  # Optional, default false
@@ -179,7 +187,15 @@ class ModelFactory:
                 f"{infer_unspecified!r}"
             )
 
-        ModelFactory._validate_name_and_threshold(model_name, match_threshold)
+        # A nested model's `match_threshold` is written on the field it hangs
+        # off: `billing` for `billing.`, `items` for `items[].`.
+        ModelFactory._validate_name_and_threshold(
+            model_name,
+            match_threshold,
+            config=True,
+            field=path_prefix.rstrip(".").removesuffix("[]") or None,
+            model=_model_label(model_id),
+        )
 
         # Validate all field configurations before proceeding (including nested schema validation)
         try:
@@ -197,6 +213,10 @@ class ModelFactory:
                 )
 
         except ValueError as e:
+            if is_threshold_error(e):
+                # Already names the field and the model; a prefix would only
+                # repeat them, and nesting stacked one prefix per level.
+                raise
             raise ValueError(f"Invalid field configuration: {e}")
 
         # Convert field configurations to Pydantic field definitions
@@ -213,6 +233,8 @@ class ModelFactory:
                 model_id=model_id,
             )
         except ValueError as e:
+            if is_threshold_error(e):
+                raise
             raise ValueError(f"Error converting field configurations: {e}")
 
         DynamicClass = ModelFactory._build(
@@ -314,20 +336,35 @@ class ModelFactory:
         )
 
     @staticmethod
-    def _validate_name_and_threshold(model_name: Any, match_threshold: Any) -> None:
-        """Validate the model name and match threshold, shared by both factory methods."""
+    def _validate_name_and_threshold(
+        model_name: Any,
+        match_threshold: Any,
+        *,
+        config: bool = False,
+        field: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> None:
+        """Validate the model name and match threshold, shared by both factory methods.
+
+        ``config`` quotes the threshold as a Stickler config writes it, and
+        ``field`` names the nested-model field it sits on. ``model`` is the root
+        model's name; it defaults to ``model_name``.
+        """
         # Validate model name
         if not isinstance(model_name, str) or not model_name.isidentifier():
             raise ValueError(
                 f"model_name must be a valid Python identifier, got: {model_name}"
             )
 
-        # Validate match threshold
-        if not isinstance(match_threshold, (int, float)) or not (
-            0.0 <= match_threshold <= 1.0
-        ):
-            raise ValueError(
-                f"match_threshold must be a number between 0.0 and 1.0, got: {match_threshold}"
+        # Validate match threshold, with the message every path shares.
+        if not is_valid_threshold(match_threshold):
+            if model is None and field is None and model_name != "DynamicModel":
+                model = model_name
+            raise match_threshold_error(
+                match_threshold,
+                spelling=CONFIG if config else PYTHON,
+                model=model,
+                field=field,
             )
 
     @staticmethod
@@ -346,6 +383,10 @@ class ModelFactory:
                 **field_definitions,
             )
         except Exception as e:
+            # A threshold error from `StructuredModel`'s own check names the
+            # field and the model already.
+            if is_threshold_error(e):
+                raise
             raise ValueError(f"Error creating dynamic model: {e}")
 
         # Set class-level attributes. Assigned after create_model, so

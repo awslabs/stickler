@@ -4,7 +4,6 @@ This module provides utilities for converting JSON field configurations to
 Pydantic Field instances with ComparableField functionality.
 """
 
-import os
 import sys
 from collections.abc import Mapping
 from typing import Any, Dict, List, Optional, Tuple, Type, get_args, get_origin
@@ -15,12 +14,21 @@ from stickler.utils.deprecation import warn_once
 
 from .comparable_field import (
     ComparableField,
-    _check_threshold,
-    _is_valid_threshold,
     _mark_unstated,
     _named_comparator_threshold,
 )
 from .comparator_registry import create_comparator, normalize_comparator_config
+from .threshold_rule import (
+    CONFIG,
+    ComparatorSource,
+    Spelling,
+    is_threshold_error,
+    is_valid_threshold,
+    threshold_error,
+)
+from .threshold_rule import (
+    STICKLER_DIR as _STICKLER_DIR,
+)
 from .type_resolver import resolve_type_string
 
 # Prepended to an inferred spec whose field is a LIST, because inference reads the
@@ -177,14 +185,6 @@ def _nested_infer_flag(
     return declared
 
 
-#: ``src/stickler/``, with a trailing separator so a sibling such as
-#: ``stickler_ext/`` does not match. See `_stacklevel_outside_stickler`.
-_STICKLER_DIR = (
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    + os.sep
-)
-
-
 def _stacklevel_outside_stickler(*, through_warn_once: bool = False) -> int:
     """The ``stacklevel`` that attributes a warning to the first caller outside stickler.
 
@@ -236,7 +236,7 @@ def _nested_model_comparator_threshold(
     ``comparator`` is the instance built from a named comparator, or ``None`` when
     the field gives only a config. Returns the threshold to adopt or ``None``,
     the names of the config keys that have no effect, and a named threshold that
-    is not a number from 0.0 to 1.0 (``None`` if there is none). The caller
+    breaks the threshold rule (``None`` if there is none). The caller
     raises on that one unless the field states its own threshold, which wins.
     """
     named = (
@@ -244,10 +244,10 @@ def _nested_model_comparator_threshold(
         if comparator is not None
         else comparator_config.get("threshold")
     )
-    adopted = named if reads_threshold and _is_valid_threshold(named) else None
+    adopted = named if reads_threshold and is_valid_threshold(named) else None
     rejected = (
         named
-        if reads_threshold and named is not None and not _is_valid_threshold(named)
+        if reads_threshold and named is not None and not is_valid_threshold(named)
         else None
     )
     ignored = sorted(
@@ -258,40 +258,58 @@ def _nested_model_comparator_threshold(
     return adopted, ignored, rejected
 
 
-def _model_label(model_id: str) -> str:
-    """The model's name for an error: ``model_identity`` without its field list.
+def _model_label(model_id: str) -> Optional[str]:
+    """The model's name for an error, or ``None`` when the config gives none.
 
     ``model_identity`` appends ``(fields: ...)`` to an unnamed model so two of
-    them dedupe apart. A reader knows the class as ``DynamicModel``. A
-    ``model_name`` is an identifier, so it cannot contain the parenthesis.
+    them dedupe apart, and ``DynamicModel`` is a name the author never wrote.
+    A ``model_name`` is an identifier, so it cannot contain the parenthesis.
     """
-    return model_id.partition("(")[0]
+    label = model_id.partition("(")[0]
+    return None if label in ("", "DynamicModel") else label
 
 
-def _check_comparator_threshold(
+def _raise_comparator_threshold(
     value: Any,
-    comparator: Any,
     config: Mapping,
     *,
+    spelling: Spelling,
+    comparator_name: str,
+    comparator_key: str,
+    config_key: str,
+    named: bool,
     field: str,
-    model: str,
-    config_source: str,
-    field_key: str,
+    model: Optional[str],
+    nested: bool = False,
+    defined_at: Optional[str] = None,
 ) -> None:
-    """Raise if a comparator threshold the field adopts is not from 0.0 to 1.0.
+    """Raise for a comparator threshold the field adopts and that breaks the rule.
 
     Adopted unchecked, 85 failed every pair, ``"0.9"`` raised on every
-    ``compare_with`` and -1 passed every pair. ``config_source`` names the
-    config key, as the author wrote it; a threshold the comparator's own
-    constructor set is named by the comparator instead.
+    ``compare_with`` and -1 passed every pair. ``comparator_key`` and
+    ``config_key`` are the keys as this path spells them (``comparator``,
+    ``comparator_config``). When the config states no threshold, the
+    comparator's own constructor set it, and the message names the comparator
+    instead. ``named`` says whether the author named the comparator or only gave
+    a config, which decides what a nested model, which reads only the
+    threshold, should remove.
     """
-    source = (
-        config_source
-        if "threshold" in config
-        else f"comparator {type(comparator).__name__!r} (its own threshold)"
+    # `{}` is the value; the doubled braces are the config's own.
+    written = (
+        '"' + config_key + '": {{"threshold": {}}}' if "threshold" in config else None
     )
-    _check_threshold(
-        value, field=field, model=model, source=source, field_key=field_key
+    raise threshold_error(
+        value,
+        spelling=spelling,
+        field=field,
+        model=model,
+        comparator=ComparatorSource(
+            written=written,
+            name=f'"{comparator_name}"',
+            carrier=f'"{comparator_key}"' if named else f'"{config_key}"',
+        ),
+        nested=nested,
+        defined_at=defined_at,
     )
 
 
@@ -340,11 +358,11 @@ def _nested_model_keys_warning(
     if adopted is not None:
         return (
             f"{subject} {verb} no effect on {where} and "
-            f"{be} ignored, except for the threshold {adopted!r} it names, "
-            f"which gates this field: it is {shape}, scored field by field, so "
-            f"its comparator is never called. Set comparators on the {members} "
-            f"inside it, and set {threshold_key} to {adopted!r} to keep this "
-            "gate without the comparator."
+            f"{be} ignored, except for its threshold {adopted!r}, which this "
+            f"field uses: it is {shape}, scored field by field, so its "
+            f"comparator is never called. Set comparators on the {members} "
+            f"inside it, and set {threshold_key} to {adopted!r} to keep that "
+            "threshold without the comparator."
         )
     return (
         f"{subject} {verb} no effect on {where} and "
@@ -544,15 +562,19 @@ class FieldConverter:
         threshold = field_config.get("threshold")
         named = _named_comparator_threshold(comparator)
         if threshold is None and named is not None:
-            _check_comparator_threshold(
-                named,
-                comparator,
-                comparator_config,
-                field=field_path,
-                model=_model_label(model_id),
-                config_source="comparator_config.threshold",
-                field_key="the field's threshold",
-            )
+            if not is_valid_threshold(named):
+                written = field_config.get("comparator_config")
+                _raise_comparator_threshold(
+                    named,
+                    written if isinstance(written, Mapping) else {},
+                    spelling=CONFIG,
+                    comparator_name=comparator_name,
+                    comparator_key="comparator",
+                    config_key="comparator_config",
+                    named=declared_comparator is not None,
+                    field=field_path,
+                    model=_model_label(model_id),
+                )
         adopted = threshold is None and named is not None
         threshold_defaulted = threshold is None and not adopted and inferred is not None
         if threshold_defaulted:
@@ -694,10 +716,13 @@ class FieldConverter:
         # two fields called `city` in one config share a warn-once slot.
         from .model_factory import ModelFactory
 
+        # `items[].sku` for a field inside a list's element, as the JSON Schema
+        # importer writes it, so both importers name a nested field alike.
+        element = "[]" if type_string == "list_structured_model" else ""
         NestedModelClass = ModelFactory.create_model_from_json(
             nested_config,
             base_class=StructuredModel,
-            path_prefix=f"{path_prefix}{field_name}.",
+            path_prefix=f"{path_prefix}{field_name}{element}.",
             model_id=model_id,
         )
 
@@ -783,14 +808,18 @@ class FieldConverter:
                 ignored.append(_config_keys_phrase("comparator_config", ignored_keys))
         stated = "threshold" in field_config
         if rejected is not None and not stated:
-            _check_comparator_threshold(
+            _raise_comparator_threshold(
                 rejected,
-                named_comparator,
                 raw_config if isinstance(raw_config, Mapping) else {},
+                spelling=CONFIG,
+                comparator_name=field_config.get("comparator")
+                or "LevenshteinComparator",
+                comparator_key="comparator",
+                config_key="comparator_config",
+                named=named_comparator is not None,
                 field=field_path,
                 model=_model_label(model_id),
-                config_source="comparator_config.threshold",
-                field_key="the field's threshold",
+                nested=True,
             )
         if ignored:
             warn_once(
@@ -894,6 +923,9 @@ class FieldConverter:
                 )
                 field_definitions[field_name] = (field_type, pydantic_field)
             except ValueError as e:
+                if is_threshold_error(e):
+                    # Already names the field by its full path, and the model.
+                    raise
                 raise ValueError(f"Error processing field '{field_name}': {e}")
 
         return field_definitions
@@ -1001,12 +1033,15 @@ class FieldConverter:
                 raise ValueError(f"Invalid comparator for field '{field_name}': {e}")
 
         # Validate numeric parameters
-        if "threshold" in field_config:
-            _check_threshold(
+        if "threshold" in field_config and not is_valid_threshold(
+            field_config["threshold"]
+        ):
+            raise threshold_error(
                 field_config["threshold"],
+                spelling=CONFIG,
                 field=path,
                 model=_model_label(model_id),
-                source="threshold",
+                list_element="" if type_string == "list_structured_model" else None,
             )
         if "weight" in field_config:
             value = field_config["weight"]
@@ -1123,9 +1158,11 @@ class FieldConverter:
             nested_infer = _nested_infer_flag(
                 field_config, infer_unspecified, field_name
             )
+            # `items[].sku` inside a list's element, as the conversion names it.
+            element = "[]" if field_type == "list_structured_model" else ""
             for nested_field_name, nested_field_config in nested_fields.items():
                 self.validate_nested_field_schema(
-                    f"{field_name}.{nested_field_name}",
+                    f"{field_name}{element}.{nested_field_name}",
                     nested_field_config,
                     infer_unspecified=nested_infer,
                 )
