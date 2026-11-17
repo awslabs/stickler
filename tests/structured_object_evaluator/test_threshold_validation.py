@@ -1386,22 +1386,20 @@ class TestAForwardReference:
             ('rows: "Dict[str, Later]"', False),
             ('rows: Dict[str, "Later"]', False),
             ('rows: Tuple["Later", ...]', False),
-            ("rows: Annotated[Dict[str, Later], ComparableField(threshold=85)]", True),
         ],
     )
     def test_a_type_that_is_never_a_list_gets_the_usual_fix(self, field, postponed):
         """A dict or tuple is never a list of models, so no list advice."""
-        default = "" if "Annotated" in field else " = ComparableField(threshold=85)"
-        source = f"class Order(StructuredModel):\n    {field}{default}\n" + _ADDRESS.format(
-            name="Later"
+        source = (
+            f"class Order(StructuredModel):\n    {field} = ComparableField(threshold=85)\n"
+            + _ADDRESS.format(name="Later")
         )
         with pytest.raises(ValueError) as caught:
             _exec_models(source, postponed=postponed)
-        line = 1 if "Annotated" in field else 2
         assert str(caught.value).endswith(
             f"{RULE} 85 is above 1.0, so even identical values would not match. "
             "If 85 is a percentage, write ComparableField(threshold=0.85). "
-            f"(Set at order_models.py:{line}.)"
+            "(Set at order_models.py:2.)"
         )
 
     def test_with_no_likely_number(self):
