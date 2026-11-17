@@ -498,6 +498,74 @@ def test_a_list_of_a_model_union_does_not_raise():
     }
 
 
+def test_a_list_with_the_base_class_first_counts_the_subclass_fields():
+    result = Pets(pets=[Pet(name="rex"), Cat(name="tom", lives=9)]).compare_with(
+        Pets(pets=[Pet(name="rex"), Pet(name="tom")]), include_confusion_matrix=True
+    )
+
+    assert result["overall_score"] == 0.75
+    # The Cat pair is read on its own fields, so the missing `lives` counts.
+    assert _list_fields(result, "pets") == {
+        "name": _expect(tp=2),
+        "lives": _expect(fn=1),
+    }
+
+
+def test_a_model_union_pair_of_other_classes_pairs_as_a_tp():
+    # The pairing verdict comes from compare(), which skips the fields the
+    # prediction lacks, so the pair is a TP while the field scores 0.0 (#327).
+    result = Actions(actions=[Search(query="hotels")]).compare_with(
+        Actions(actions=[Browse(url="x.com")]), include_confusion_matrix=True
+    )
+
+    node = result["confusion_matrix"]["fields"]["actions"]
+    assert result["overall_score"] == 0.0
+    assert _counts(node) == _expect(tp=1)
+    assert _counts(node, "aggregate") == _expect(fn=1)
+    assert _list_fields(result, "actions") == {"query": _expect(fn=1)}
+
+
+class AnyField(StructuredModel):
+    value: Any = ComparableField()
+
+
+class ObjectField(StructuredModel):
+    value: object = ComparableField()
+
+
+class AnyOrListField(StructuredModel):
+    value: Union[Any, List[str]] = ComparableField()
+
+
+@pytest.mark.parametrize("model", [AnyField, ObjectField, AnyOrListField])
+@pytest.mark.parametrize(
+    "pred, overall",
+    [
+        pytest.param(["a"], _expect(tp=1), id="str"),
+        pytest.param([1, 2], _expect(tp=1, fa=1), id="numbers"),
+        pytest.param([{"a": "x"}], _expect(tp=1), id="dict"),
+        pytest.param([["a"]], _expect(tp=1), id="list"),
+    ],
+)
+def test_a_list_of_models_in_an_open_field_against_non_models_does_not_raise(
+    model, pred, overall
+):
+    result = model(value=[Inner(a="x")]).compare_with(
+        model(value=pred), include_confusion_matrix=True
+    )
+
+    node = result["confusion_matrix"]["fields"]["value"]
+    assert _counts(node) == overall
+    assert _counts(node, "aggregate") == _expect(fn=1, tn=1)
+
+
+def test_a_list_of_models_in_an_any_sub_field_against_non_models_does_not_raise():
+    node = _value_node(_in_list([Inner(a="x")], ["a"]))
+
+    assert _counts(node) == _expect(tp=1)
+    assert _counts(node, "aggregate") == _expect(fn=1, tn=1)
+
+
 class FixedScoreElement(ModelElement):
     """Scores an item without recursing, as a custom `compare_with()` may."""
 
