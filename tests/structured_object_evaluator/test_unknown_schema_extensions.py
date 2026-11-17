@@ -1048,6 +1048,78 @@ class TestModelKeysWhereNoClassIsBuiltFromThem:
             }
         )
 
+    _INSIDE = (
+        ({"allOf": [{"$ref": "#/components/schemas/Addr"}]}, "reached through 'allOf'"),
+        (
+            {
+                "type": "array",
+                "items": {
+                    "$ref": "#/components/schemas/Row",
+                    "x-aws-stickler-match-threshold": 0.93,
+                },
+            },
+            "beside the '$ref' at 'components.schemas.Holder.w[]'",
+        ),
+        (
+            {
+                "type": "object",
+                "$ref": "#/components/schemas/Row",
+                "x-aws-stickler-match-threshold": 0.93,
+            },
+            "beside the '$ref' at 'components.schemas.Holder.w'",
+        ),
+    )
+
+    @staticmethod
+    def _components(inner, reached):
+        props = {"a": {"type": "string"}}
+        if reached:
+            props["c"] = {"$ref": "#/components/schemas/Holder"}
+        holder = {"type": "object", "properties": {"w": inner}}
+        return {
+            "type": "object",
+            "properties": props,
+            "components": {
+                "schemas": {"Holder": holder, "Addr": _KEYED, "Row": _PLAIN}
+            },
+        }
+
+    @pytest.mark.parametrize(
+        "inner, error", _INSIDE, ids=("allOf-arm", "beside-items-ref", "typed-ref")
+    )
+    def test_inside_a_components_target_a_class_is_built_from(self, inner, error):
+        with pytest.raises(ValueError, match="x-aws-stickler-match-threshold") as exc:
+            self._import(self._components(inner, reached=True))
+        assert error in str(exc.value)
+
+    @pytest.mark.parametrize(
+        "inner", [inner for inner, _ in _INSIDE], ids=("allOf", "items", "typed")
+    )
+    def test_inside_a_components_target_nothing_references_is_left_alone(self, inner):
+        self._import(self._components(inner, reached=False))
+
+    def test_a_root_ref_to_a_components_target_raises(self):
+        with pytest.raises(ValueError) as exc:
+            self._import(
+                {
+                    "$ref": "#/components/schemas/Addr",
+                    "components": {"schemas": {"Addr": _KEYED}},
+                }
+            )
+        message = str(exc.value)
+        assert "on object 'components.schemas.Addr'" in message
+        assert "reached through the root '$ref'" in message
+
+    def test_a_root_ref_to_a_components_target_reads_the_root_keys(self):
+        model = self._import(
+            {
+                "$ref": "#/components/schemas/Addr",
+                "x-aws-stickler-match-threshold": 0.93,
+                "components": {"schemas": {"Addr": _PLAIN}},
+            }
+        )
+        assert model.match_threshold == 0.93
+
 
 class TestTheRootMustBeOneObject:
     """A union root crashed with `AttributeError: model_fields`."""

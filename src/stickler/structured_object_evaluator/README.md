@@ -252,8 +252,9 @@ it, beside the `$ref` or beside the combiner whose arm the `$ref` is (for `items
 or an arm of them, on the array property, which reads only the weight for an
 array of objects).
 Object-level keys beside a non-root `$ref` are not read (they go on the target),
-nor on an `allOf` arm or a definition reached only through `allOf` or a root
-`$ref`, so they raise.
+nor on an `allOf` arm or an object reached only through `allOf` or a root
+`$ref`, so they raise, inside a `#/components/...` target a class is built from
+as well.
 
 Comparator names accepted by `x-aws-stickler-comparator` are the registered class names:
 `LevenshteinComparator`, `ExactComparator`, `NormalizedComparator`, `PhoneComparator`,

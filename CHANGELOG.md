@@ -73,7 +73,9 @@ Each release links to full notes on the
   a position inside any `$ref` target, wherever the target sits
   (`#/components/...`, or under `not` or an `x-*` key in a definition); a
   `$ref` under `not`, `additionalProperties` or `if` builds nothing, so it does
-  not count. Each of these resolved the default in silence
+  not count. All three also apply inside a `$ref` target outside `$defs`
+  (`#/components/...`) once a position that builds a class references it. Each
+  of these resolved the default in silence
   (`x-aws-stickler-threshold: 0.88` in `$defs` gave `0.7`, `items: {"$ref":
   ..., "x-aws-stickler-match-threshold": 0.93}` built at `0.7`), so a schema
   that imported before and now raises loses no working configuration.
