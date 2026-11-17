@@ -26,10 +26,10 @@ dispatcher shows up here. See https://github.com/awslabs/stickler/issues/400
 
 import datetime
 import warnings
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Annotated, Any, Dict, List, Optional, Sequence, Union
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from stickler import (
     ComparableField,
@@ -414,6 +414,58 @@ def test_a_sequence_sub_field_counts_per_element_as_at_top_level(
     assert _counts(top) == overall
     assert _counts(top, "aggregate") == aggregate
     assert _field_names(top) == fields
+
+
+class AnnotatedModelElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Optional[Annotated[Inner, Field(description="A nested model.")]] = (
+        ComparableField(default=None, threshold=0.9)
+    )
+    match_threshold = 0.4
+
+
+class AnnotatedModelHolder(StructuredModel):
+    items: List[AnnotatedModelElement] = ComparableField()
+
+
+class OptionalModelElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Optional[Inner] = ComparableField(default=None, threshold=0.9)
+    match_threshold = 0.4
+
+
+class OptionalModelHolder(StructuredModel):
+    items: List[OptionalModelElement] = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "holder, element",
+    [
+        pytest.param(AnnotatedModelHolder, AnnotatedModelElement, id="annotated"),
+        pytest.param(OptionalModelHolder, OptionalModelElement, id="optional"),
+    ],
+)
+def test_an_annotated_optional_model_sub_field_counts_as_optional_model(
+    holder, element
+):
+    # `Annotated` inside `Optional` is not routed as a nested model, so the
+    # pair is read by value, and a model of the GT's class goes to the
+    # dispatcher. `a` scores about 0.83, under the field's 0.9, so both
+    # spellings count an FD with the fields kept, as at top level. The
+    # `Annotated` one counted a TP with no fields before.
+    gt, pred = Inner(a="hotel"), Inner(a="hotels")
+    node = _value_node(_in_list(gt, pred, holder=holder, element=element))
+    assert _counts(node) == _expect(fd=1)
+    assert _counts(node, "aggregate") == _expect(tp=1, tn=1)
+    assert _field_names(node) == {"a", "b"}
+
+    alone = element(key="k", value=gt).compare_with(
+        element(key="k", value=pred), include_confusion_matrix=True
+    )
+    top = alone["confusion_matrix"]["fields"]["value"]
+    assert _counts(top) == _expect(fd=1)
+    assert _counts(top, "aggregate") == _expect(tp=1, tn=1)
+    assert _field_names(top) == {"a", "b"}
 
 
 class Pet(StructuredModel):
