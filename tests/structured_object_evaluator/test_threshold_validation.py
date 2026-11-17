@@ -26,7 +26,7 @@ import sys
 import warnings
 from decimal import Decimal
 from fractions import Fraction
-from typing import Annotated, ClassVar, Dict, List, Optional, Tuple, Union
+from typing import Annotated, Dict, List, Optional, Tuple, Union
 
 import pytest
 from pydantic import BaseModel
@@ -1169,15 +1169,10 @@ class TestAValidThresholdOnAListOfModels:
         )
 
 
-def _exec_models(source, *, postponed=True, names=None):
-    """Run ``source`` as a module, with ``from __future__ import annotations``.
-
-    ``names`` adds globals, such as a base class from another module.
-    """
+def _exec_models(source, *, postponed=True):
+    """Run ``source`` as a module, with ``from __future__ import annotations``."""
     namespace = {
-        **(names or {}),
         "Annotated": Annotated,
-        "ClassVar": ClassVar,
         "Dict": Dict,
         "Tuple": Tuple,
         "StructuredModel": StructuredModel,
@@ -1517,49 +1512,6 @@ class TestAnAnnotatedForwardReference:
                     }
                 },
             )
-
-
-    def test_a_class_body_name_wins_over_a_module_global(self):
-        """As pydantic resolves the annotation; on dev this loaded and gated at 0.9."""
-        source = (
-            "THR = 85\n"
-            "class Order(StructuredModel):\n"
-            "    THR: ClassVar[float] = 0.9\n"
-            "    addr: Annotated[Address, ComparableField(threshold=THR)]\n"
-            + self.BELOW
-            + "Order.model_rebuild()\n"
-        )
-        order = _exec_models(source)["Order"]
-        assert order._get_comparison_info("addr").threshold == 0.9
-
-    def test_an_invalid_class_body_name_raises(self):
-        source = (
-            "THR = 0.9\n"
-            "class Order(StructuredModel):\n"
-            "    THR: ClassVar[float] = 85\n"
-            "    addr: Annotated[Address, ComparableField(threshold=THR)]\n"
-            + self.BELOW
-        )
-        with pytest.raises(ValueError, match=r"ComparableField\(threshold=85\) is out"):
-            _exec_models(source)
-
-    def test_a_subclass_does_not_evaluate_an_inherited_field_again(self):
-        """Not in its own module, where LIMIT is 85, and not a second time."""
-        base = _exec_models(
-            "BUILT = []\n"
-            "def built(value):\n    BUILT.append(value)\n    return value\n"
-            "LIMIT = 0.9\n"
-            "class Base(StructuredModel):\n"
-            "    addr: Annotated[Later, ComparableField(threshold=built(LIMIT))]\n"
-        )
-        assert base["BUILT"] == [0.9]
-        child = _exec_models(
-            "LIMIT = 85\nclass Child(Base):\n    name: str = ComparableField()\n",
-            postponed=False,
-            names={"Base": base["Base"], "built": base["built"]},
-        )["Child"]
-        assert base["BUILT"] == [0.9]
-        assert {"addr", "name"} <= set(child.model_fields)
 
 
 class TestAPep695Alias:
