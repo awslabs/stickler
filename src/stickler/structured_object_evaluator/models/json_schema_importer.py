@@ -973,8 +973,10 @@ class JsonSchemaImporter:
         Every `$ref` target is walked from the reference as well, so a class
         built inside it reads model keys wherever it sits: under `not` or an
         `x-*` key inside a definition, or outside `$defs` (`#/components/...`).
-        Only a whole definition entry is checked as a definition; any other
-        target has only its contents checked.
+        Only a whole definition entry is checked as a definition. Any other
+        target has its own keys checked only where the walk around it checks
+        them (a property, `items`, a combiner arm); elsewhere, such as under
+        `not` or an `x-*` key, only its contents are checked.
         """
         # Nodes whose model keys some class reads, by identity: every position
         # except an `allOf` arm and the root's own `$ref` target. Over-counting

@@ -37,10 +37,15 @@ Each release links to full notes on the
   `0.0`); it now builds one class and scores as `"object"` does (`0.9`). Part A of
   [#349](https://github.com/awslabs/stickler/issues/349)
 
-- **Breaking:** an `x-aws-stickler-*` key inside a `$defs` or `definitions`
-  entry that a `$ref` reaches is now checked, as it is inline. The walk entered a
-  definition without checking it, so `x-aws-stickler-thresold` there imported
-  silently where inline it raises. `x-aws-stickler-aggregate` is still accepted
+- **Breaking:** an `x-aws-stickler-*` key on a `$defs` or `definitions` entry
+  that a `$ref` reaches is now checked, as it is inline. The walk entered a
+  definition without checking its own keys, so `x-aws-stickler-thresold` there
+  imported silently where inline it raises. A `$ref` to a node inside an entry
+  also checks the entry, but checks the node's own keys only where the entry's
+  walk does (a property, `items` or a combiner arm). Under `not`, `if`, `then`,
+  `else`, `additionalProperties`, `dependentSchemas` or an `x-*` key, as in a
+  target outside `$defs` (`#/components/...`), a typo on the node still imports,
+  as before. `x-aws-stickler-aggregate` is still accepted
   and ignored there, as on a field. An entry no `$ref` reaches builds nothing, so
   its own keys are not checked and a dereferenced schema, which keeps the
   originals beside their inlined copies, imports as before. Its contents are

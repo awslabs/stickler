@@ -253,8 +253,8 @@ or an arm of them, on the array property, which reads only the weight for an
 array of objects).
 Object-level keys beside a non-root `$ref` are not read (they go on the target),
 nor on an `allOf` arm or an object reached only through `allOf` or a root
-`$ref`, so they raise, inside a `#/components/...` target a class is built from
-as well.
+`$ref`, so they raise there. The same holds inside a `#/components/...` target
+once a position that builds a class references it.
 
 Comparator names accepted by `x-aws-stickler-comparator` are the registered class names:
 `LevenshteinComparator`, `ExactComparator`, `NormalizedComparator`, `PhoneComparator`,
