@@ -1514,6 +1514,28 @@ class TestValuesAreNotWalkedAsSchemas:
             )
         assert "p" in model.model_fields
 
+    @pytest.mark.parametrize(
+        "config, ignored",
+        (
+            ({"properties": {"p": _TYPO}}, "'properties'"),
+            ({"patternProperties": {"^x": {"type": "string"}}}, "'patternProperties'"),
+        ),
+        ids=("typo", "patternProperties"),
+    )
+    def test_a_comparator_config_shaped_like_a_schema_imports(self, config, ignored):
+        """Walked as a schema, this config raised for the typo and for
+        `patternProperties`, though the comparator only ignores the keys."""
+        prop = {
+            "type": "string",
+            "x-aws-stickler-comparator": "ExactComparator",
+            "x-aws-stickler-comparator-config": config,
+        }
+        with pytest.warns(UserWarning, match=f"does not accept {ignored}"):
+            model = StructuredModel.from_json_schema(
+                {"type": "object", "properties": {"p": prop}}
+            )
+        assert "p" in model.model_fields
+
     def test_an_x_payload_a_ref_reaches_is_checked(self):
         """Once a `$ref` builds from it, the payload is a schema."""
         with pytest.raises(ValueError, match=r"thresold.*'x-models\.Team\.p'"):
