@@ -45,7 +45,9 @@ Each release links to full notes on the
       comparator threshold the field adopts, such as
       `LevenshteinComparator(threshold=85)`; and the `match_threshold` class
       attribute, also as `ModelFactory.create_model_from_fields(match_threshold=...)`.
-      None was checked, so at 85 an identical pair scored 0.0 FD.
+      None was checked: a field threshold of 85 scored an identical pair 0.0
+      FD, and a class `match_threshold` of 85 made every list pair of that
+      class an FD.
     - Stickler config: `"threshold"`, an adopted `"comparator_config"`
       threshold, and `"match_threshold"` on the model or a nested-model field.
     - JSON Schema: `x-aws-stickler-threshold`, an adopted
@@ -57,18 +59,20 @@ Each release links to full notes on the
     accepted `true` as 1, also as a `match_threshold`, and a comparator-config
     threshold loaded whatever its value, because it was not read. A `Decimal`,
     `Fraction`, numpy number or 0-d numpy array from 0.0 to 1.0 now loads on
-    every path, converted with `float()`, so a numpy float compares as before;
-    the comparator keeps the value it was given. Python kept such a value
+    every path, converted with `float()`; the comparator keeps the value it
+    was given. A numpy float16 or float32 threshold is then compared as a
+    Python float, not in its own dtype, so a score within its rounding below
+    the threshold is an FD where it was a TP. Python kept such a value
     unconverted, so a `Decimal` raised `TypeError` on a pair scoring below it,
     and the importers refused it. The `match_threshold` passed to `evaluate()`
-    or `eval_for()` is outside this rule and unchanged: for a plain pydantic
-    model it keeps its own check, and for a `StructuredModel` it is not
+    or `eval_for()` is outside this rule: for a plain pydantic model it keeps
+    its own check, now on every call, and for a `StructuredModel` it is not
     checked. Every path gives one message. It quotes the value as written,
     names the model and the field, says why the value fails and gives the fix
     in full; on the Python path it ends with where the value was set. The
     refusal of `ComparableField(threshold=...)` on a `List[StructuredModel]`
     field uses the same template, says to remove it and names the element
-    class, and a valid one is headed `Unused threshold`. The warning for a
+    class, and is headed `Unused threshold` whatever its value. The warning for a
     comparator threshold there names the model and the element class, and
     points at the class rather than at `<frozen abc>`. On the config path
     it is no longer prefixed `Invalid field configuration:` or `Error
