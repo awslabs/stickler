@@ -408,6 +408,16 @@ def _walk_position(pointer: Tuple[str, ...]) -> Tuple[str, Optional[str], bool]:
     return path, kind, under_x
 
 
+def _is_named_map(pointer: Tuple[str, ...]) -> bool:
+    """Whether the walk would meet the node at `pointer` as a map of schemas
+    by name, such as a `properties` map, reading each segment as it does: a
+    keyword wherever a schema holds it."""
+    reading = "schema"
+    for part in pointer:
+        reading = min(_next_readings({reading}, part) - {"member"})
+    return reading in _NAMED_SCHEMA_KEYWORDS
+
+
 def _position_after(position: str, key: Any) -> str:
     """What the value under `key` is, in a node at `position`: a "schema", a
     map of schemas by name ("names", or "definitions" for a set of
@@ -1184,9 +1194,12 @@ class JsonSchemaImporter:
         Every `$ref` target is walked from the reference as well, so a class
         built inside it reads model keys wherever it sits: under `not` or an
         `x-*` key inside a definition, or outside `$defs` (`#/components/...`).
-        Only a whole definition entry is checked as a definition. Any other
-        target has its own keys, model keys beside its `$ref` included, checked
-        only where the walk around it checks them: on a property or `items`
+        A target that is a map of schemas by name, such as
+        `#/$defs/W/properties`, is walked one member at a time, so a property
+        named like a keyword is a name there too. Only a whole definition
+        entry is checked as a definition. Any other target has its own keys,
+        model keys beside its `$ref` included, checked only where the walk
+        around it checks them: on a property or `items`
         node anywhere in a definition entry, under `not` or `then` too. Under
         an `x-*` key, which the walk does not enter, such a node has its own
         keys checked from the reference, but not model keys beside its `$ref`.
@@ -1457,6 +1470,19 @@ class JsonSchemaImporter:
                 return
             _reject_unknown_extensions(body, at, scope=scope)
 
+        def walk_target(pointer: Tuple[str, ...], body: Any, built: bool) -> None:
+            """Walk a `$ref` target for its contents. A map of schemas by name,
+            such as `#/$defs/W/properties`, is no schema, so it is walked one
+            member at a time, as the walk around it reads it: a property named
+            like a keyword (`oneOf`, `items`) is a name."""
+            at = ".".join(pointer)
+            if not (_is_named_map(pointer) and isinstance(body, dict)):
+                walk(body, at, None, built, False, _pointer_position(pointer))
+                return
+            for name, member in body.items():
+                position = _pointer_position((*pointer, name))
+                walk(member, f"{at}.{name}", None, built, False, position)
+
         read.add(id(schema))
         walk(schema, "", "model", reads=False)
         while pending:
@@ -1487,7 +1513,7 @@ class JsonSchemaImporter:
                 _reject_unknown_extensions(body, at, scope=scope, merges=merges)
             if not definition:
                 own_keys(pointer, body)
-            walk(body, at, None, built, False, _pointer_position(pointer))
+            walk_target(pointer, body, built)
 
         # A node inside an entry, such as `#/$defs/List/items`, is built from
         # where it is referenced, but the entry's walk built nothing there, so
@@ -1516,9 +1542,7 @@ class JsonSchemaImporter:
             walked[pointer] = False
             entries.add(id(body))
             own_keys(pointer, body)
-            walk(
-                body, ".".join(pointer), None, False, False, _pointer_position(pointer)
-            )
+            walk_target(pointer, body, False)
 
         # An object's model keys are read only where its class is built. An
         # `allOf` arm is merged into `AllOfModel`, and a root `$ref` builds the

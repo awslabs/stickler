@@ -1933,6 +1933,85 @@ class TestOnlyAKeywordOfASchemaHoldsDefinitions:
         )
 
 
+class TestARefToAMapOfSchemasReadsItsMembersAsNames:
+    """A `$ref` whose target is a `properties` map walks it one member at a
+    time, as the walk around it does.
+
+    Walked as a schema, a property named like a keyword was read as that
+    keyword, and each shape here raised where dev imports. Here the `$ref` is
+    an unused alias, which builds nothing.
+    """
+
+    KEYWORD_NAMES = pytest.mark.parametrize(
+        "name", ("oneOf", "anyOf", "allOf", "patternProperties")
+    )
+    # Where the `properties` map sits, and the pointer that names it.
+    HOLDERS = pytest.mark.parametrize(
+        "holder",
+        (
+            "",
+            "$defs/W",
+            "x-models/T",
+            "components/schemas/W",
+            "properties/a/default",
+        ),
+    )
+
+    @staticmethod
+    def _aliasing(holder, properties):
+        """A schema holding `properties` at `holder`, and an unused alias of
+        that map."""
+        schema = {"type": "object", "properties": {"a": dict(_PLAIN)}}
+        node = schema
+        for part in filter(None, holder.split("/")):
+            node = node.setdefault(part, {})
+        node.setdefault("properties", {}).update(properties)
+        pointer = f"#/{holder}/properties" if holder else "#/properties"
+        schema.setdefault("$defs", {})["P"] = {"$ref": pointer}
+        return schema
+
+    @KEYWORD_NAMES
+    @HOLDERS
+    def test_a_property_named_like_a_keyword_is_a_name(self, holder, name):
+        properties = {"s": {"type": "string"}, name: {"type": "string"}}
+        model = StructuredModel.from_json_schema(self._aliasing(holder, properties))
+        expected = {"a", "s", name} if holder == "" else {"a"}
+        assert set(model.model_fields) - {"extra_fields"} == expected
+
+    @pytest.mark.parametrize(
+        "name", ("items", "definitions", "$defs", "anyOf", "oneOf", "allOf")
+    )
+    def test_a_field_key_on_such_a_property_is_read(self, name):
+        """The key is valid on the property, and `r` builds `W` reading it."""
+        keyed = {
+            "type": "string",
+            "x-aws-stickler-threshold": 0.9,
+            "x-aws-stickler-comparator": "ExactComparator",
+        }
+        schema = {
+            "type": "object",
+            "properties": {"r": {"$ref": "#/$defs/W"}},
+            "$defs": {
+                "W": {"type": "object", "properties": {name: keyed}},
+                "P": {"$ref": "#/$defs/W/properties"},
+            },
+        }
+        model = StructuredModel.from_json_schema(schema)
+        w = _unwrap(model.model_fields["r"].annotation)
+        info = w._get_comparison_info(name)
+        assert (type(info.comparator).__name__, info.threshold) == (
+            "ExactComparator",
+            0.9,
+        )
+
+    @pytest.mark.parametrize("holder", ("$defs/W", "x-models/T"))
+    def test_a_typo_inside_a_member_still_raises(self, holder):
+        """Each member is still walked for its contents."""
+        member = {"type": "object", "properties": {"q": _TYPO}}
+        with pytest.raises(ValueError, match=r"thresold.*m\.q'"):
+            StructuredModel.from_json_schema(self._aliasing(holder, {"m": member}))
+
+
 class TestAllOfRaisesOnlyWhereNothingReadsTheKeys:
     """An `allOf` arm drops its model keys, but the object it names may not.
 
