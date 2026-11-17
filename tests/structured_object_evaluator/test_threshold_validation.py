@@ -1068,6 +1068,78 @@ class TestAValidThresholdOnAListOfModels:
             "true positive. See "
         ) in message
 
+    @pytest.mark.parametrize(
+        "threshold, change",
+        [
+            (0, "To change how items match, set _Sets06.match_threshold, now 0.6, "
+             "to another positive number: 0.0 would classify every paired object "
+             "as a true positive. See "),
+            (True, "To change how items match, set _Sets06.match_threshold, now "
+             "0.6, to another number from 0.0 to 1.0. (Set at "),
+            (float("nan"), "To change how items match, set _Sets06.match_threshold, "
+             "now 0.6, to another number from 0.0 to 1.0. (Set at "),
+        ],
+    )
+    def test_no_value_to_move_does_not_tell_the_element_class_to_keep_its_own(
+        self, threshold, change
+    ):
+        """0.6 is already positive, and already a number from 0.0 to 1.0."""
+        message = _message(
+            lambda v: _python(
+                List[_Sets06], ComparableField(threshold=v), name="Order", attr="items"
+            ),
+            threshold,
+        )
+        assert change in message
+
+    def test_an_element_class_at_zero_is_told_to_change(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # its own zero-threshold warning
+            zero = type(
+                "_AtZero",
+                (StructuredModel,),
+                {
+                    "__annotations__": {"sku": str},
+                    "match_threshold": 0.0,
+                    "sku": ComparableField(),
+                },
+            )
+        message = _message(
+            lambda v: _python(List[zero], ComparableField(threshold=v), attr="items"),
+            0.0,
+        )
+        assert (
+            "Remove threshold=0.0. To change how items match, set "
+            "_AtZero.match_threshold, now 0.0, to a positive number: 0.0 "
+            "classifies every paired object as a true positive. See "
+        ) in message
+
+    @pytest.mark.parametrize(
+        "threshold, change",
+        [
+            (0.0, "set _Sets06.match_threshold, now 0.6, to another positive "
+             "number: 0.0 would classify every paired object as a true positive."),
+            (True, "set _Sets06.match_threshold, now 0.6, to another number from "
+             "0.0 to 1.0."),
+        ],
+    )
+    def test_the_comparator_warning_words_it_the_same(self, threshold, change):
+        field = ComparableField(comparator=LevenshteinComparator(threshold=threshold))
+        name = f"WarnsSets06{type(threshold).__name__}"
+        with pytest.warns(UserWarning) as caught:
+            warnings.simplefilter("always")
+            type(
+                name,
+                (StructuredModel,),
+                {"__annotations__": {"items": List[_Sets06]}, "items": field},
+            )
+        [warning] = [
+            w for w in caught if f"{name}' is a List" in str(w.message)
+        ]
+        assert f"Remove the comparator. To change how items match, {change}" in str(
+            warning.message
+        )
+
 
 def _exec_models(source, *, postponed=True, names=None):
     """Run ``source`` as a module, with ``from __future__ import annotations``.

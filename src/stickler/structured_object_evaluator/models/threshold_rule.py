@@ -794,10 +794,11 @@ def _list_words(
         }
         if current is not None and not spelling.as_json:
             now = _plain(current, spelling)
+            other = "a" if current == 0 else "another"
             words["add"] = f"set {name}.match_threshold, now {now}, to {{}}"
             words["add_key"] = f"set {name}.match_threshold, now {now},"
-            words["add_any"] = f"{words['add_key']} to a number from 0.0 to 1.0"
-            words["positive"] = f"keep {name}.match_threshold, now {now}, positive"
+            words["add_any"] = f"{words['add_key']} to another number from 0.0 to 1.0"
+            words["positive"] = f"{words['add_key']} to {other} positive number"
             words["already"] = f"{name}.match_threshold is already {now}"
             words["current"] = current
     else:
@@ -868,10 +869,11 @@ def _list_add(value: Any, spelling: Spelling, words: dict, shown: str, *, valid:
     if valid:
         number = as_threshold(value)
         if number == 0:
+            # The element class may already be at 0.0, so say what 0.0 does.
+            classify = "classifies" if words.get("current") == 0 else "would classify"
             return (
-                words["positive"]
-                + ": 0.0 would classify every paired object as a true positive. "
-                f"See {THRESHOLD_DOCS_URL}"
+                f"{words['positive']}: 0.0 {classify} every paired object as a true "
+                f"positive. See {THRESHOLD_DOCS_URL}"
             )
         if "current" in words and number == words["current"]:
             return words["already"] + "."
