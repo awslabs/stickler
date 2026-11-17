@@ -88,7 +88,7 @@ When multiple thresholds could apply, here's which one wins:
 | **Nested object comparison** | Recurses into fields; each field uses its own field threshold |
 | **List element pairing** (`List[StructuredModel]`) | The element class's `match_threshold`; a runtime value does not override it |
 | **List element pairing** (zero-config `List[BaseModel]` and `List[dict]`) | Runtime match threshold if provided, else `0.7` |
-| **List element pairing** (primitive, dict, plain-model lists on a `StructuredModel`) | Field threshold, else a threshold named on the comparator, else the default for how the field is declared ([Precedence, in one line](#precedence-in-one-line)) |
+| **List element pairing** (primitive, dict, plain-model lists on a `StructuredModel`) | Field threshold, else a threshold named on the comparator, else `0.5` with `ComparableField()` or the class `match_threshold` without it ([Bar](../Advanced/classification-logic.md#list-contract)) |
 | **Score clipping** | Field threshold (when `clip_under_threshold=True`); lists follow the [Score](../Advanced/classification-logic.md#list-contract) rule |
 | **Binary classification (TP/FD)** for primitives | Field threshold |
 | **Binary classification (TP/FD)** for list pairs | The list element pairing bar above |
@@ -97,7 +97,7 @@ When multiple thresholds could apply, here's which one wins:
 ### Key Rules
 
 1. **Field threshold** controls primitive-level TP/FD classification and score clipping.
-2. **Match threshold** on the element class controls object-level TP/FD classification for list matching.
+2. **Match threshold** on the element class controls object-level TP/FD classification for `List[StructuredModel]` matching. Other lists use the pairing bars in the table above.
 3. **Runtime match threshold** sets the `matched` verdict. On a `StructuredModel` it reaches nothing else. On the zero-config path it also sets the `List[Model]` and `List[dict]` pairing bar and the threshold of nested plain-model and `dict` fields.
 4. **Comparator threshold** fills in for the field threshold when the field does not set one. A threshold on the field always wins, and a comparator's own default is never adopted.
 

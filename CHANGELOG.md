@@ -119,12 +119,12 @@ Each release links to full notes on the
   - A list field's element order does not matter, but a nested list element
     is compared as one value, and on the zero-config path it must match
     exactly, order included.
-  - The runtime `match_threshold` of `evaluate()` and `eval_for()` sets only
-    `matched` on a `StructuredModel` class
-    ([#416](https://github.com/awslabs/stickler/issues/416)). On a plain
-    pydantic class it also sets `List[Model]` and `List[dict]` pairing and the
+  - On a plain pydantic class, the runtime `match_threshold` of `evaluate()`
+    and `eval_for()` also sets `List[Model]` and `List[dict]` pairing and the
     threshold of nested plain-model and `dict` fields, while a primitive list
-    keeps its inferred threshold. The docstrings now say TP/FD, not TP/FN/FA.
+    keeps its inferred threshold; a `StructuredModel` class keeps its own
+    ([#416](https://github.com/awslabs/stickler/issues/416)). The docstrings
+    now say TP/FD, not TP/FN/FA.
   - `clip_under_threshold` has no effect on `List[StructuredModel]`, so an FD
     pair keeps its score, a known defect
     ([#415](https://github.com/awslabs/stickler/issues/415)).
