@@ -283,6 +283,16 @@ class Cat(Pet):
             _expect(fd=1),
             id="other-class",
         ),
+        # compare_with() reads `b`, which `Other` lacks, as None, so the unset
+        # `b` matches: 0.5, a TP at the default threshold of 0.5.
+        pytest.param(
+            Holder,
+            Element,
+            Inner(a="x"),
+            Other(c="z"),
+            _expect(tp=1),
+            id="other-class-default-threshold",
+        ),
         pytest.param(
             UnionHolder,
             UnionElement,
