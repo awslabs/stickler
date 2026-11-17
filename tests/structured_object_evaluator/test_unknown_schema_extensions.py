@@ -2190,7 +2190,11 @@ class TestARefIntoADefinition:
         ),
         (
             "#/x-models/anyOf/properties/inner",
-            {"x-models": {"anyOf": {"type": "object", "properties": {"inner": _KEYED}}}},
+            {
+                "x-models": {
+                    "anyOf": {"type": "object", "properties": {"inner": _KEYED}}
+                }
+            },
             "x-models.anyOf.properties.inner",
         ),
     )
