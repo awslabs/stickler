@@ -566,6 +566,27 @@ def test_a_list_of_models_in_an_any_sub_field_against_non_models_does_not_raise(
     assert _counts(node, "aggregate") == _expect(fn=1, tn=1)
 
 
+@pytest.mark.parametrize(
+    "compare",
+    [
+        pytest.param(
+            lambda gt, pred: AnyField(value=gt).compare_with(
+                AnyField(value=pred), include_confusion_matrix=True
+            ),
+            id="top-level",
+        ),
+        pytest.param(_in_list, id="sub-field"),
+    ],
+)
+def test_a_ground_truth_list_of_a_model_and_a_non_model_still_raises(compare):
+    # Scoring the list calls each matched GT item's compare_with(), which a
+    # non-model lacks, so field classification never sees such a pair. This
+    # raised before #400 too: only the prediction side's crash is fixed.
+    values = [Inner(a="x"), "b"]
+    with pytest.raises(AttributeError, match="compare_with"):
+        compare(values, list(values))
+
+
 class FixedScoreElement(ModelElement):
     """Scores an item without recursing, as a custom `compare_with()` may."""
 

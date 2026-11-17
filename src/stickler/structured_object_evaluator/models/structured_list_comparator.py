@@ -294,14 +294,15 @@ class StructuredListComparator:
             model_class = first_model.__class__
 
             # PHASE 3 FIX: Only process pairs that meet the match_threshold
-            # Filter to good matches only - poor matches get no recursive analysis
+            # Filter to good matches only - poor matches get no recursive analysis.
+            # Every matched GT item is a model here: scoring the list called
+            # each one's compare_with() first, which a non-model lacks.
             good_matched_pairs = [
                 (gt_idx, pred_idx, similarity)
                 for (gt_idx, pred_idx, similarity), is_match in zip(matched_pairs, verdicts)
                 if is_match
                 and gt_idx < len(gt_list)
                 and pred_idx < len(pred_list)
-                and isinstance(gt_list[gt_idx], StructuredModel)
             ]
 
             if good_matched_pairs:
