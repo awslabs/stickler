@@ -11,9 +11,109 @@ Each release links to full notes on the
 
 ### Changed
 
+- The three changes that 1.0.1 announced for 1.0.2 now land in 1.1.0, because
+  patch releases ship no breaking changes. They are the `ValueError` for
+  exporting a union of models or a `StructuredModel` inside a nested list, the
+  `ValueError` for `match_threshold` on a primitive config field, and dropping
+  the `non_matches` key from `compare_with(evaluator_format=True)` output when
+  `document_non_matches` is not set. Until 1.1.0 these keep their 1.0.1
+  behaviour, and their warnings now name 1.1.0.
+
 - `LevenshteinComparator` uses RapidFuzz's edit distance, accelerating string
   comparisons and ANLS* leaf scoring while preserving public similarity scores.
   [#510](https://github.com/awslabs/stickler/issues/510)
+
+### Fixed
+
+- **`LLMComparator` scores a reply as a match only when it is exactly `true`**
+  ([#506](https://github.com/awslabs/stickler/issues/506)). Scores change:
+  verbose replies such as `True, they are equivalent.` previously scored 1.0
+  and now score 0.0 with a `UserWarning`, and replies that only contained
+  "true" as a substring (`untrue`, `Not true`) no longer match. Formatted
+  replies still match: surrounding whitespace, quotes, backticks, markdown
+  emphasis and trailing `.` `,` `;` `:` `!` `?` are stripped and case is
+  ignored, so `**True**.` scores 1.0 and `"false"` scores 0.0. Any other reply
+  scores 0.0 and warns, showing the start of the reply, rather than raising.
+
+- Corrected introductory example scores, the default text comparator description,
+  and the sample amount in the documentation and README
+  ([#478](https://github.com/awslabs/stickler/issues/478)).
+
+- Pretty printers restore stdout when rendering fails, propagate rendering errors,
+  and include the bulk summary in confusion-matrix file output.
+
+- `DateComparator` now treats a naive date against a tz-aware one the same way
+  in range comparisons as for single dates: the aware side's own calendar date
+  is used and the naive side is read on that calendar
+  ([#508](https://github.com/awslabs/stickler/issues/508)). Before, the range containment and overlap paths read the
+  naive date as UTC, so the same aware date matched a different calendar day
+  against a range than against a single date. Range scores change only for
+  inputs that mix naive and tz-aware dates.
+
+- **Warnings emitted by `StructuredModel.compare_with()` now attribute to the caller's line.**
+  Passing `add_confidence_metrics=True` or `add_bbox_metrics=True` no longer points `UserWarning`
+  and the legacy `auroc_confidence_metric` `DeprecationWarning` at Stickler's internal `structured_model.py`
+  line ([#541](https://github.com/awslabs/stickler/issues/541)).
+- **The HTML report gallery now accepts non-string `document_files` keys and
+  paths.** Integer and NumPy keys and `pathlib.Path` values no longer make the
+  gallery step of `generate_report()` fail without writing a page
+  ([#454](https://github.com/awslabs/stickler/issues/454))
+- **The HTML report's Executive Summary now colours its metric cards and shows
+  the right document count.** A guard on a method that does not exist kept every
+  card blue regardless of `color_thresholds`, and the Documents card ignored a
+  results dict's `document_count` key and could render `None`. The count is
+  now read in one place, `DataExtractor.get_document_count`
+  ([#467](https://github.com/awslabs/stickler/issues/467))
+
+- **The HTML report is fast to write again with `individual_results_jsonl_path`.**
+  1.0.1 escaped the report's embedded JSON with a `str.translate` table, which
+  is about ten times slower than `json.dumps` on large reports. The same escapes
+  are now applied with `str.replace`, and the page bytes are unchanged
+  ([#457](https://github.com/awslabs/stickler/issues/457))
+
+- `NumericComparator` treats booleans as non-numeric and returns `0.0` instead of
+  raising `decimal.InvalidOperation`, including in uncoerced model fields.
+- **`NumericComparator` reads digits in other scripts.** Digits outside ASCII
+  (Arabic-Indic, Persian, Devanagari, Thai, fullwidth, ...) were deleted before
+  parsing, so `"١٢٥٠"` never matched `"1250"` and `"١٢٥٠.50"` read as `0.50`. A
+  string written in such digits now reads as its number when it holds one
+  unambiguous number, and otherwise as no number, as before. A number whose
+  digits switch script reads as no number, unless it is the same amount
+  written twice (`"1250١٢٥٠"`). A compact form such as `"١٫٣ ألف"` reads the
+  number shown, as `"1.3K"` does. String values only: a `float`, `int` or
+  `Decimal` field rejects `"١٬٢٥٠٫٥٠"` before the comparator runs
+  ([#559](https://github.com/awslabs/stickler/issues/559))
+- `NumericComparator` reads as negative some ASCII-digit values that it read
+  as positive: U+2212 and other minus signs that open the value, before the
+  number, a currency or a parenthesis (`"−1250"`, `"−AED 1250"`,
+  `"−(1250)"`, `"−.75"`), or come right after a currency symbol (`"$−1250"`);
+  fullwidth accounting parentheses (`"（1250）"`); accounting parentheses with
+  spaces or invisible format characters around them (`" (1250) "`); and a
+  negative inside accounting parentheses, which was negated twice
+  (`"(-1250)"`). A minus sign after a word keeps its old reading
+  (`"Total – 1250"` reads 1250)
+  ([#559](https://github.com/awslabs/stickler/issues/559))
+
+### Security
+
+- **`print_confusion_matrix_html` now escapes its output.** It wrapped the
+  printed confusion matrix in `<pre>` as is, so a field name carrying markup,
+  declared in a JSON Schema or Stickler config or present in a hand-built
+  result, rendered as live HTML in a notebook. The text is now passed through
+  `html.escape`, and reads the same
+  ([#449](https://github.com/awslabs/stickler/issues/449))
+
+### Documentation
+
+- Corrected the default field threshold on Thresholds and Metrics. The page
+  gave `0.5` for every field, which holds only for `ComparableField()`. A bare
+  annotation on a `StructuredModel` (`name: str`) takes the class
+  `match_threshold`, `0.7` unless set, and a bare `StructuredModel` field takes
+  `0.9`. At a raw similarity of `0.6`, `name: str` scores `0.0` and
+  `name: str = ComparableField()` scores `0.6`. The page also said a runtime
+  `match_threshold` overrides the element class's for list pairing; on a
+  `StructuredModel` it sets only `EvalResult.matched`. Scoring is unchanged
+  ([#484](https://github.com/awslabs/stickler/issues/484))
 
 ## [1.0.1] - 2026-11-02
 
@@ -38,7 +138,7 @@ Each release links to full notes on the
   `UserWarning` naming the field on every export. `to_stickler_config()` on
   `List[A | B]`, which raised `AttributeError` in 1.0.0, now exports it as
   `List[Union]` with the same warning. This becomes a `ValueError`
-  in 1.0.2. `Optional` and `Annotated` are stripped before the type is chosen,
+  in 1.1.0. `Optional` and `Annotated` are stripped before the type is chosen,
   so a nested model or list of models declared as
   `Annotated[..., Field(...)] | None` exports as the model, and an annotated
   scalar such as `Annotated[int, Field(...)] | None` as its own type rather
@@ -100,7 +200,7 @@ Each release links to full notes on the
   `float` leaves that field at `threshold` 0.5 and scores it against a value
   the author never chose. The key is still ignored and the field scores as it
   did in 1.0.0. Use `threshold` on the field. This becomes a `ValueError` in
-  1.0.2, matching the JSON Schema path, which already refuses the same
+  1.1.0, matching the JSON Schema path, which already refuses the same
   misplacement. It stays accepted on the model and on a `structured_model`
   field, where it is read and where `to_stickler_config()` exports it
   ([#350](https://github.com/awslabs/stickler/issues/350))
@@ -183,7 +283,7 @@ Each release links to full notes on the
   collected, not that none were found: `print_non_matches` and the HTML report
   print `No non-matches found.` over it even for a document with a wrong field.
   The printers' "records were not collected" message (#298, #411) does not yet
-  apply to evaluator-format output; it applies once 1.0.2 omits the key there,
+  apply to evaluator-format output; it applies once 1.1.0 omits the key there,
   as the default `compare_with()` dict already does. To read records, pass
   `document_non_matches=True`. Scores and counts are unchanged
   ([#413](https://github.com/awslabs/stickler/issues/413))

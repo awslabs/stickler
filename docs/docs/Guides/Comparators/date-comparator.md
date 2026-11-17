@@ -436,7 +436,7 @@ Native `datetime` and `date` objects are always treated as year-bearing.
 
 ### Timezones
 
-If both sides are tz-aware, they're normalized to UTC before comparison. If one side is naive and the other aware, the aware side's tzinfo is borrowed (matches numpy/pandas conventions).
+If both sides are tz-aware, they're normalized to UTC before comparison. If one side is naive and the other aware, the aware side keeps its own calendar date (no UTC conversion) and the naive side is read on that same calendar. This applies to range endpoints too, so a mixed naive/aware pair scores the same whether the other side is a single date or a range.
 
 ---
 

@@ -108,10 +108,10 @@ def test_a_bulk_result_with_records_lists_them():
 
 
 def test_an_evaluator_format_dict_without_records_reads_as_1_0_0_did():
-    """Known limit until 1.0.2: its `[]` cannot say "not collected" (#413).
+    """Known limit until 1.1.0: its `[]` cannot say "not collected" (#413).
 
     1.0.1 keeps 1.0.0's plain `"non_matches": []` so 1.0.0 callers keep
-    working, and the report reads it as 1.0.0 did. 1.0.2 omits the key, and
+    working, and the report reads it as 1.0.0 did. 1.1.0 omits the key, and
     the report then says the records were not collected.
     """
     gt, pred = _wrong_pair()

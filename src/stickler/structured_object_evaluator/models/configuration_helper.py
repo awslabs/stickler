@@ -1,7 +1,7 @@
-"""Configuration helper for StructuredModel field and schema operations.
+"""Configuration helpers for StructuredModel comparison and ingestion.
 
-This module provides utilities for handling field configuration, type checking,
-JSON processing, and schema generation for StructuredModel instances.
+Owns annotation predicates, read-time get_comparison_info, from_json ingestion,
+and the object-pair comparison gate.
 """
 
 import inspect
@@ -43,7 +43,7 @@ _COMPARATORS_THAT_CANNOT_SCORE_MAPPINGS = frozenset(
 
 
 class ConfigurationHelper:
-    """Helper class for StructuredModel configuration and schema operations."""
+    """Helper class for StructuredModel comparison configuration and ingestion."""
 
     @staticmethod
     def from_json(cls, json_data: Dict[str, Any]):
@@ -878,74 +878,6 @@ class ConfigurationHelper:
         return ComparableFieldConfig(
             comparator=LevenshteinComparator(), threshold=default_threshold, weight=1.0
         )
-
-    @staticmethod
-    def is_immediate_child(nested_path: str, field_name: str) -> bool:
-        """
-        Determines if nested_path is an immediate child of field_name.
-
-        Args:
-            nested_path (str): The nested path to check, e.g., 'owner.contact.phone'
-            field_name (str): The potential parent path, e.g., 'owner.contact'
-
-        Returns:
-            bool: True if nested_path is an immediate child of field_name, False otherwise
-        """
-        # Check if field_name is a prefix of nested_path
-        if not nested_path.startswith(field_name):
-            return False
-
-        # If field_name is a prefix, it should be followed by a dot
-        if len(field_name) >= len(nested_path):
-            return False
-
-        if nested_path[len(field_name)] != ".":
-            return False
-
-        # The remaining part after field_name and the dot should not contain any more dots
-        remaining = nested_path[len(field_name) + 1 :]
-        return "." not in remaining
-
-    @staticmethod
-    def generate_model_json_schema(cls, **kwargs):
-        """Override to add model-level comparison metadata.
-
-        Extends the standard Pydantic JSON schema with comparison metadata
-        at the field level.
-
-        Args:
-            cls: StructuredModel class
-            **kwargs: Arguments to pass to the parent method
-
-        Returns:
-            JSON schema with added comparison metadata
-        """
-        schema = super(cls, cls).model_json_schema(**kwargs)
-
-        # Add comparison metadata to each field in the schema
-        for field_name, field_info in cls.model_fields.items():
-            if field_name == "extra_fields":
-                continue
-
-            # Get the schema property for this field
-            if field_name not in schema.get("properties", {}):
-                continue
-
-            field_props = schema["properties"][field_name]
-
-            # Check for json_schema_extra function (ComparableField creates these)
-            if hasattr(field_info, "json_schema_extra") and callable(
-                field_info.json_schema_extra
-            ):
-                # Fallback: Check for json_schema_extra function
-                temp_schema = {}
-                field_info.json_schema_extra(temp_schema)
-
-                if "x-comparison" in temp_schema:
-                    # Copy the comparison metadata from the temp schema to the real schema
-                    field_props["x-comparison"] = temp_schema["x-comparison"]
-
-        return schema
 
     @staticmethod
     def _is_structured_model_class(annotation) -> bool:

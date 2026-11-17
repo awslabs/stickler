@@ -1583,7 +1583,7 @@ class StructuredModel(BaseModel):
                 Without ``document_non_matches=True`` its ``non_matches`` is
                 ``[]`` because no records were collected, not because none were
                 found, and a ``DeprecationWarning`` is emitted once per
-                process: from 1.0.2 the key is omitted in that case.
+                process: from 1.1.0 the key is omitted in that case.
             recall_with_fd: If True, include FD in recall denominator (TP/(TP+FN+FD))
                             If False, use traditional recall (TP/(TP+FN))
             add_derived_metrics: Whether to add derived metrics to confusion matrix
@@ -1628,7 +1628,7 @@ class StructuredModel(BaseModel):
                 "document_non_matches=True returns 'non_matches' as []: the "
                 "records were not collected, so it does not mean every field "
                 "matched. Pass document_non_matches=True to collect them. From "
-                "1.0.2 the 'non_matches' key is omitted unless "
+                "1.1.0 the 'non_matches' key is omitted unless "
                 "document_non_matches=True.",
             )
 
@@ -1823,7 +1823,7 @@ class StructuredModel(BaseModel):
             field_type = ConfigurationHelper.strip_annotation_wrappers(field_type)
 
             # A union with a model arm, or a StructuredModel inside a nested
-            # list: written as 1.0.0 wrote it, with a warning, until 1.0.2.
+            # list: written as 1.0.0 wrote it, with a warning, until 1.1.0.
             if cls._warn_legacy_export(
                 field_info.annotation,
                 f"to_json_schema() field '{cls.__name__}.{field_name}'",
@@ -2081,7 +2081,7 @@ class StructuredModel(BaseModel):
         has no type in ``to_stickler_config()``. 1.0.0 wrote both as a string
         (or a list of strings), which re-imports as a different field (#349).
         1.0.1 ships no breaking change, so it keeps that output and warns;
-        1.0.2 raises ``ValueError``.
+        1.1.0 raises ``ValueError``.
 
         ``warnings.warn``, not ``warn_once``: an export runs once per call, so
         ordinary dedup by message is enough, as for the importer's warnings.
@@ -2107,7 +2107,7 @@ class StructuredModel(BaseModel):
             f"type for {what}. It is written as 1.0.0 wrote it, typed as a "
             f"string, so the re-imported model does not load or score this "
             f"field as the original does. {fix}, or leave it out of the "
-            f"exported model. This becomes a ValueError in 1.0.2.",
+            f"exported model. This becomes a ValueError in 1.1.0.",
             UserWarning,
             stacklevel=stacklevel,
         )
@@ -2287,7 +2287,7 @@ class StructuredModel(BaseModel):
             # to_json_schema().
             field_type = ConfigurationHelper.strip_annotation_wrappers(field_type)
 
-            # As in to_json_schema(): written as 1.0.0 wrote it until 1.0.2.
+            # As in to_json_schema(): written as 1.0.0 wrote it until 1.1.0.
             if cls._warn_legacy_export(
                 field_info.annotation,
                 f"to_stickler_config() field '{cls.__name__}.{field_name}'",
