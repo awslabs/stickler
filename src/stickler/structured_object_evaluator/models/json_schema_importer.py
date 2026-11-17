@@ -466,7 +466,7 @@ class JsonSchemaImporter:
         except Exception as exc:
             raise ValueError(f"Invalid JSON Schema: {exc}") from exc
 
-        self._validate_supported_shapes(schema)
+        unread_warnings = self._validate_supported_shapes(schema)
         if (
             not properties
             and "properties" in self.schema
@@ -505,11 +505,19 @@ class JsonSchemaImporter:
                 )
             return {}
 
-        return self._convert_model_fields(
+        fields = self._convert_model_fields(
             source_model,
             field_path=self.field_path,
             building=set(),
         )
+        # Issued only once the import builds: one that fails anyway, such as a
+        # root `$ref` to a property typed `["object", "null"]`, would otherwise
+        # warn that a key "is ignored" with advice that cannot be followed. No
+        # fields fails the import at the caller.
+        if fields:
+            for message in unread_warnings:
+                warnings.warn(message, UserWarning)
+        return fields
 
     def _convert_model_fields(
         self,
@@ -1056,7 +1064,7 @@ class JsonSchemaImporter:
         return prepare(schema)
 
     @classmethod
-    def _validate_supported_shapes(cls, schema: Dict[str, Any]) -> None:
+    def _validate_supported_shapes(cls, schema: Dict[str, Any]) -> List[str]:
         """Reject shapes the comparison model cannot represent faithfully.
 
         Also where extension keys are checked, because this walk sees every node
@@ -1091,8 +1099,9 @@ class JsonSchemaImporter:
 
         Model keys no class reads raise, except on an object-typed property,
         a position the docs call valid for them: beside its `$ref`, or reached
-        only through the root `$ref` or an `allOf` arm. There they warn and
-        are dropped, as before, until 1.1.0.
+        only through the root `$ref` or an `allOf` arm. There they are dropped,
+        as before, with a warning until 1.1.0. The warnings are returned, for
+        the caller to issue once the import builds.
         """
         # Nodes whose model keys some class reads, by identity: every position
         # except an `allOf` arm and the root's own `$ref` target. Over-counting
@@ -1115,8 +1124,9 @@ class JsonSchemaImporter:
         unbuilt: Dict[int, Tuple[Any, ...]] = {}
         inner: set = set()
         passed: List[int] = []
-        # Warnings for model keys no class reads, by node and key, issued only
-        # once nothing raises.
+        # Warnings for model keys no class reads, by node and key. Returned, and
+        # issued only once the import builds, so an import that raises here or
+        # later gives none.
         deferred: Dict[Tuple[int, str], str] = {}
         # Definition entries a `$ref` reached, and later every body walked as
         # building nothing, by identity; and every `$defs`/`definitions`
@@ -1143,8 +1153,9 @@ class JsonSchemaImporter:
             warn: bool,
         ) -> None:
             """Raise for model keys no class reads. On an object-typed
-            property, where the docs call them valid, warn instead and keep
-            importing as before, until 1.1.0."""
+            property, where the docs call them valid, record a warning instead,
+            until 1.1.0, and let the import go on as before: it builds the
+            same class, or fails as it did, with no warning."""
             if not warn:
                 raise ValueError(
                     f"Stickler extension '{declared[0]}' {subject} is not "
@@ -1433,8 +1444,7 @@ class JsonSchemaImporter:
                 "beside the '$ref'.",
             )
 
-        for message in deferred.values():
-            warnings.warn(message, UserWarning)
+        return list(deferred.values())
 
     @staticmethod
     def _translate_import_error(message: str, schema: Dict[str, Any]) -> str:

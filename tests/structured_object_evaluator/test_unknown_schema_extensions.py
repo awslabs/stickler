@@ -2210,6 +2210,83 @@ class TestARefIntoADefinition:
                 f"reached through {reached}",
             )
 
+    # A property typed as a list form, inline or beside a `$ref`, in `D`.
+    _NULLABLE = (
+        {
+            "type": ["object", "null"],
+            "properties": {"z": {"type": "string"}},
+            "x-aws-stickler-match-threshold": 0.93,
+        },
+        {
+            "type": ["null", "object"],
+            "$ref": "#/$defs/Row",
+            "x-aws-stickler-match-threshold": 0.93,
+        },
+    )
+
+    @classmethod
+    def _nullable_schema(cls, k, use):
+        return dict(
+            use("#/$defs/D/properties/k"),
+            **{
+                "$defs": {
+                    "D": {
+                        "type": "object",
+                        "properties": {"s": {"type": "string"}, "k": k},
+                    },
+                    "Row": _PLAIN,
+                }
+            },
+        )
+
+    @pytest.mark.parametrize("k", _NULLABLE, ids=("nullable", "nullable-ref"))
+    @pytest.mark.parametrize(
+        "use, error",
+        (
+            (lambda ref: {"$ref": ref}, "must be a single object"),
+            (
+                lambda ref: {
+                    "type": "object",
+                    "properties": {"a": {"allOf": [{"$ref": ref}]}},
+                },
+                "at least one field",
+            ),
+            (lambda ref: {"allOf": [{"$ref": ref}]}, "at least one field"),
+        ),
+        ids=("root-ref", "allOf", "root-allOf"),
+    )
+    def test_where_the_import_fails_anyway_it_does_not_warn(self, k, use, error):
+        """These fail whatever the keys, as on dev (`AttributeError:
+        model_fields` for the root `$ref`), and the root cannot be nullable,
+        so a warning that the key is ignored, and where to put it, misleads."""
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with pytest.raises(ValueError, match=error):
+                StructuredModel.from_json_schema(self._nullable_schema(k, use))
+        assert not [w for w in caught if "1.1.0" in str(w.message)]
+
+    @pytest.mark.parametrize("k", _NULLABLE, ids=("nullable", "nullable-ref"))
+    def test_where_the_import_builds_beside_it_it_warns(self, k):
+        """A second arm builds `AllOfModel` at 0.7, as on dev."""
+        model, warned = _import_warning(
+            self._nullable_schema(
+                k,
+                lambda ref: {
+                    "type": "object",
+                    "properties": {
+                        "a": {"allOf": [{"$ref": ref}, _PLAIN]},
+                    },
+                },
+            )
+        )
+        a = _unwrap(model.model_fields["a"].annotation)
+        assert (a.__name__, a.match_threshold) == ("AllOfModel", 0.7)
+        assert _warned(
+            warned,
+            "on object '$defs.D.properties.k' is not read",
+            "reached through 'allOf' at 'a'",
+        )
+
     @pytest.mark.parametrize(
         "body",
         (
