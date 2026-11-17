@@ -36,7 +36,7 @@ A weighted average of all field scores, ranging from 0.0 to 1.0. Calculated as:
 overall_score = sum(field_score * field_weight) / sum(field_weights)
 ```
 
-Fields with `clip_under_threshold=True` (the default) contribute 0.0 if they score below their threshold, rather than their partial similarity. A list field is not clipped as a whole: the rule applies per element ([list contract](../../Advanced/classification-logic.md#list-contract)).
+Fields with `clip_under_threshold=True` (the default) contribute 0.0 if they score below their threshold, rather than their partial similarity. A list field follows the [Score](../../Advanced/classification-logic.md#list-contract) rule of the list contract instead.
 
 A field absent on both sides scores `1.0` and carries its full weight: a value the model correctly left blank is a value it got right. On a schema where most fields are usually empty this makes `overall_score` behave more like accuracy than like a hit rate. See [Sparse Objects](../../Getting-Started/thresholds-and-metrics.md#sparse-objects) for which metric answers which question.
 
@@ -370,7 +370,7 @@ For list fields (e.g., products, line items), non-match entries can be at the ob
 
 ## Field Comparisons
 
-When you pass `document_field_comparisons=True`, the result includes a `field_comparisons` list documenting every individual field comparison -- both matches and non-matches. For a list there is one row per primitive element or per leaf of a TP item, and one object row per FD, FN or FA item ([Reports](../../Advanced/classification-logic.md#list-contract)). Inside a list item, a nested list or object currently gets one row instead of being expanded ([#418](https://github.com/awslabs/stickler/issues/418)).
+When you pass `document_field_comparisons=True`, the result includes a `field_comparisons` list documenting every individual field comparison -- both matches and non-matches. For a list there is one row per primitive element or per leaf of a TP item, and one object row per FD, FN or FA item ([Reports](../../Advanced/classification-logic.md#list-contract)). Inside a list item, a nested list or object gets one row instead of being expanded, a [known gap](../../Advanced/classification-logic.md#list-contract).
 
 ```python
 result = ground_truth.compare_with(prediction, document_field_comparisons=True)
@@ -388,9 +388,9 @@ Each entry contains:
 | `expected_value` | any | The ground truth value. |
 | `actual_key` | string | Field path in prediction (may differ for list items due to Hungarian matching). |
 | `actual_value` | any | The predicted value. |
-| `match` | bool | Whether the row's own classification is TP or TN: a value or object row met its threshold; a list row had every element paired as a TP ([Reports](../../Advanced/classification-logic.md#list-contract)). On `dev` a list row inside a list item still carries the string `"True"`/`"False"` from its score against the field threshold, and primitive, dict and plain-model element rows come from an equality pairing; [#364](https://github.com/awslabs/stickler/pull/364) brings both to this rule. |
-| `score` | float | Raw similarity score. Inside a list item it is currently the clipped score ([#418](https://github.com/awslabs/stickler/issues/418)). |
-| `weighted_score` | float | The clipped score multiplied by the field's weight. A list element row ignores the list field's weight: a primitive element or object row carries its score unweighted, and a leaf of a TP item uses the leaf's own weight. |
+| `match` | bool | Whether the row's own classification is TP or TN: a value or object row met its threshold; a list row had every element paired as a TP ([Reports](../../Advanced/classification-logic.md#list-contract)). |
+| `score` | float | Raw similarity score. Inside a list item it is the clipped score, a [known gap](../../Advanced/classification-logic.md#list-contract). |
+| `weighted_score` | float | For a value row, the clipped score multiplied by the field's weight. A list element row ignores the list field's weight: a primitive element row carries its raw, unclipped similarity, an object row carries its score, and a leaf of a TP item uses the leaf's own weight. |
 | `reason` | string | Human-readable explanation. |
 
 This is useful for comprehensive auditing of all comparisons, not just failures.
