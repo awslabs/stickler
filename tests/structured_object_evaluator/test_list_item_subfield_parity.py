@@ -17,9 +17,10 @@ The list path now goes through the dispatcher. Three rules hold on top of it:
 an empty list is null by its value, as `classification-logic.md` says; a pair
 is read on its GT item's own fields, so a list of mixed model classes does not
 raise; and two models of different classes in an `Any` or `Union` sub-field
-are classified by `compare_with()`, as before. Every expected count below is a
-literal, so a change to the dispatcher shows up here. See
-https://github.com/awslabs/stickler/issues/400
+are classified by `compare_with()`, as before. A sub-field keeps its nested
+`fields` only when every pair has them, so every pair counts under
+`aggregate`. Every expected count below is a literal, so a change to the
+dispatcher shows up here. See https://github.com/awslabs/stickler/issues/400
 """
 
 import datetime
@@ -278,6 +279,60 @@ def test_a_model_of_another_class_in_a_sub_field_is_scored_by_compare_with(
     assert _counts(node) == expected
     assert _counts(node, "aggregate") == expected
     assert not node.get("fields")
+
+
+def _pairs_in_list(gts, preds, holder=Holder, element=Element):
+    def items(values):
+        return [element(key=f"k{i}", value=v) for i, v in enumerate(values)]
+
+    result = holder(items=items(gts)).compare_with(
+        holder(items=items(preds)), include_confusion_matrix=True
+    )
+    return result["confusion_matrix"]
+
+
+@pytest.mark.parametrize(
+    "holder, element, gts, preds, value, root",
+    [
+        pytest.param(
+            Holder,
+            Element,
+            [Inner(a="x"), Inner(a="y")],
+            [Inner(a="x"), None],
+            _expect(tp=1, fn=1),
+            _expect(tp=3, fn=1),
+            id="model-and-none",
+        ),
+        pytest.param(
+            Holder,
+            Element,
+            ["abc", Inner(a="x")],
+            ["abc", Inner(a="x")],
+            _expect(tp=2),
+            _expect(tp=4),
+            id="primitive-and-model",
+        ),
+        pytest.param(
+            ModelHolder,
+            ModelElement,
+            [Inner(a="x", b="y"), Inner(a="p", b="q")],
+            [Inner(a="x", b="y"), Other(c="z")],
+            _expect(tp=1, fd=1),
+            _expect(tp=3, fd=1),
+            id="same-and-other-class",
+        ),
+    ],
+)
+def test_a_sub_field_of_mixed_shapes_counts_every_pair(
+    holder, element, gts, preds, value, root
+):
+    # `aggregate` sums a node's children when it has any. If one pair kept a
+    # model's fields, the other pair's flat counts would drop out of it.
+    matrix = _pairs_in_list(gts, preds, holder=holder, element=element)
+    node = matrix["fields"]["items"]["fields"]["value"]
+    assert _counts(node) == value
+    assert _counts(node, "aggregate") == value
+    assert _counts(matrix, "aggregate") == root
 
 
 class Pets(StructuredModel):

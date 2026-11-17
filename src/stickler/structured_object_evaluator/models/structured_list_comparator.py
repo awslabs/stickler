@@ -578,9 +578,9 @@ class StructuredListComparator:
         (List[str], List[int], etc.). Every pair is classified through
         _dispatch_field_comparison, as at top level, so a simple list field uses
         PrimitiveListComparator for element-level comparison. A model held in an
-        ``Any`` or ``Union`` field keeps its nested ``fields`` for ``aggregate``.
-        A model of another class than the GT value is classified by its
-        ``compare_with()`` score and has no nested ``fields``.
+        ``Any`` or ``Union`` field keeps its nested ``fields`` for ``aggregate``
+        when every pair has them. A model of another class than the GT value is
+        classified by its ``compare_with()`` score and has no nested ``fields``.
 
         Args:
             owner: The model class that declares ``sub_field_name``.
@@ -600,8 +600,14 @@ class StructuredListComparator:
         aggregated_result = self._recursive_aggregate_metrics(pair_results)
 
         is_simple_list = _annotation_is_list(owner.model_fields[sub_field_name].annotation)
-        if not is_simple_list and not aggregated_result["fields"]:
-            # A primitive leaf: counts only, as before.
+        # `aggregate` sums a node's children when it has any, so keep the
+        # subtree only if every pair has one. Otherwise a pair with flat
+        # counts, such as a model against `None`, would drop out of it.
+        every_pair_has_fields = bool(pair_results) and all(
+            result.get("fields") for result in pair_results
+        )
+        if not is_simple_list and not every_pair_has_fields:
+            # A leaf: counts only, as before.
             return {"overall": aggregated_result["overall"]}
 
         self._add_derived_metrics_recursively(aggregated_result)
