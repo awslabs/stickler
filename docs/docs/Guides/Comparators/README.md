@@ -527,14 +527,21 @@ ends up a plain `str`. Read the result back with `to_json_schema()`, not from `m
 | JSON Schema Type | Default Comparator | Default Threshold | Rationale |
 |---|---|---|---|
 | `string` | LevenshteinComparator | 0.5 | Handles typos and minor variations |
-| `number` | NumericComparator | 0.5 | Tolerates small numeric differences |
-| `integer` | NumericComparator | 0.5 | Tolerates small numeric differences |
+| `number` | NumericComparator | 0.5 | Exact match unless a tolerance is set |
+| `integer` | NumericComparator | 0.5 | Exact match unless a tolerance is set |
 | `boolean` | ExactComparator | 0.5 | Must be exactly true or false (Exact returns only 0.0 or 1.0, so the threshold is immaterial) |
 | `string` + `"format": "date"` or `"date-time"` | DateComparator | 1.0 | Parses as `date`/`datetime`, so the field compares across formats |
 | `string` + `"enum"` or a single-value `const` | ExactComparator | 1.0 | Parses as an `Enum`/`Literal`, so only a listed value is valid |
 | `array` (primitives) | Based on item type | Based on item type | Inherits from element type |
 | `array` (objects) | Hungarian matching | 0.5, pairing elements at 0.7 | Optimal pairing of list elements |
 | `object` | Recursive comparison | 0.7 | Field-by-field nested comparison |
+
+`NumericComparator` defaults to a tolerance of 0, so a plain `{"type": "number"}` scores `100` vs
+`100.01` as 0.0. Set a tolerance to accept small differences; this scores the same pair 1.0:
+
+```json
+{"type": "number", "x-aws-stickler-comparator-config": {"tolerance": 0.01}}
+```
 
 A `format` the schema library does not map to a distinct type (`"email"`, `"hostname"`, `"duration"`)
 parses as `str`, so the field keeps LevenshteinComparator at 0.5. To check any of this on your own

@@ -307,8 +307,8 @@ even though the field on the built class ends up a plain `str` — read the choi
 | JSON Schema | Default Comparator | Default Threshold | Rationale |
 |------------------|-------------------|-------------------|-----------|
 | `"string"` | `LevenshteinComparator` | `0.5` | Handles typos and minor variations |
-| `"number"` | `NumericComparator` | `0.5` | Tolerates small numeric differences |
-| `"integer"` | `NumericComparator` | `0.5` | Tolerates small numeric differences |
+| `"number"` | `NumericComparator` | `0.5` | Exact match unless a tolerance is set in `x-aws-stickler-comparator-config` |
+| `"integer"` | `NumericComparator` | `0.5` | Exact match unless a tolerance is set in `x-aws-stickler-comparator-config` |
 | `"boolean"` | `ExactComparator` | `0.5` | Must be exactly true or false (Exact scores only 0.0 or 1.0, so the threshold is immaterial) |
 | `"format": "date"` or `"date-time"` | `DateComparator` | `1.0` | Parses as `date`/`datetime`, so dates compare as dates |
 | `"enum"`, `"const"`, `"format": "uri"`/`"uuid"`/`"time"` | `ExactComparator` | `1.0` | A closed set or an opaque identifier has no partial credit |
