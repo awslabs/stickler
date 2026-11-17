@@ -21,6 +21,7 @@ from .threshold_helper import model_identity, warn_if_threshold_is_zero
 from .threshold_rule import (
     CONFIG,
     PYTHON,
+    as_threshold,
     is_threshold_error,
     is_valid_threshold,
     match_threshold_error,
@@ -93,7 +94,7 @@ class ModelFactory:
                    {
                        "type": "str|int|float|bool|List[str]|etc.",  # Required
                        "comparator": "LevenshteinComparator|ExactComparator|etc.",  # Optional
-                       "comparator_config": {"threshold": 0.9},  # Optional; a threshold the field adopts must be an int or float from 0.0 to 1.0, else ValueError
+                       "comparator_config": {"threshold": 0.9},  # Optional; a threshold the field adopts must be a number from 0.0 to 1.0, else ValueError
                        "threshold": 0.8,  # Optional; default: comparator_config's threshold, else 0.5
                        "weight": 2.0,     # Optional, default 1.0
                        "required": true,  # Optional, default false
@@ -196,6 +197,9 @@ class ModelFactory:
             field=path_prefix.rstrip(".").removesuffix("[]") or None,
             model=_model_label(model_id),
         )
+        # A Decimal, Fraction or numpy number, as the float it means, before
+        # inference reads it as a mapping field's threshold.
+        match_threshold = as_threshold(match_threshold)
 
         # Validate all field configurations before proceeding (including nested schema validation)
         try:
@@ -392,7 +396,7 @@ class ModelFactory:
         # Set class-level attributes. Assigned after create_model, so
         # StructuredModel.__init_subclass__ has already run and cannot see it --
         # check here too or a config-driven match_threshold=0.0 warns nowhere.
-        DynamicClass.match_threshold = match_threshold
+        DynamicClass.match_threshold = as_threshold(match_threshold)
         # Dedup on name plus field names, not on `id(DynamicClass)`. `model_name`
         # defaults to "DynamicModel", so keying on the name alone would report
         # the first anonymous config and silence every later one. But keying on

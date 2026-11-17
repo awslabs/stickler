@@ -49,6 +49,7 @@ from .optional_annotation import is_union, unwrap_optional
 from .threshold_helper import model_identity
 from .threshold_rule import (
     SCHEMA,
+    as_threshold,
     is_valid_threshold,
     match_threshold_error,
     threshold_error,
@@ -331,14 +332,11 @@ class JsonSchemaImporter:
         # Range and type are validated by the caller
         # (`StructuredModel._from_json_schema_internal`, `_validate_model_config`);
         # a value that got here unvalidated must not reach inference, so anything
-        # that is not a plain number falls back to the default.
-        declared_threshold = schema.get("x-aws-stickler-match-threshold", 0.7)
-        self.match_threshold = (
-            declared_threshold
-            if isinstance(declared_threshold, (int, float))
-            and not isinstance(declared_threshold, bool)
-            else 0.7
+        # that is not a valid threshold falls back to the default.
+        declared_threshold = as_threshold(
+            schema.get("x-aws-stickler-match-threshold", 0.7)
         )
+        self.match_threshold = 0.7 if declared_threshold is None else declared_threshold
         # Read from the ROOT object and inherited by every nested model, so one
         # flag covers a whole document rather than being repeated at each level.
         # A nested object may override it for its own subtree; see
@@ -706,6 +704,7 @@ class JsonSchemaImporter:
                 f"'{field_path}', got: {nested_infer!r}"
             )
         self._validate_model_config(model_name, match_threshold, field_path)
+        match_threshold = as_threshold(match_threshold)
 
         # Restored in `finally`, because nested models are built through this same
         # instance: leaving the nested value in place would leak it onto the

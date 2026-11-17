@@ -11,7 +11,7 @@ from pydantic import Field
 from stickler.comparators.base import BaseComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 
-from .threshold_rule import caller_location
+from .threshold_rule import caller_location, normalize_threshold
 
 # The threshold a field gets when it names neither a threshold nor a comparator
 # threshold. Kept as a named constant rather than a literal because it is a
@@ -134,8 +134,9 @@ def ComparableField(
                       # see _named_comparator_threshold for why.
 
                   The threshold the field ends up with, its own or the
-                  comparator's, must be an int or float from 0.0 to 1.0.
-                  Anything else (85, -1, "0.9", True, NaN) raises
+                  comparator's, must be a number from 0.0 to 1.0; a
+                  ``Decimal``, ``Fraction`` or numpy number is converted to
+                  ``float``. Anything else (85, -1, "0.9", True, NaN) raises
                   ``ValueError`` when the ``StructuredModel`` class is
                   defined, naming the model, the field, the value and the
                   line of this call. See ``threshold_rule``.
@@ -212,6 +213,10 @@ def ComparableField(
             if from_comparator is not None
             else _LEGACY_DEFAULT_THRESHOLD
         )
+    # A valid Decimal, Fraction or numpy number becomes the float it means, so
+    # the metadata, `explain()` and both exports carry a float. An invalid one
+    # is kept as written, for the error the class raises when it is defined.
+    threshold = normalize_threshold(threshold)
 
     # Create serializable metadata for JSON schema compatibility
     serializable_metadata = {

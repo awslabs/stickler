@@ -1,12 +1,15 @@
 """The rule a threshold must meet, and the one error every path raises for it.
 
 A threshold that decides a match, a field's ``threshold`` or a model's
-``match_threshold``, is an ``int`` or ``float`` (not ``bool``) from 0.0 to 1.0
-inclusive, so NaN and infinity fail. The Python path checks it when the class
-is defined, and the Stickler-config and JSON Schema importers when they load,
-never during evaluation. All three raise ``ValueError`` with a message built
-here, so they word it alike and differ only in how they quote keys and values
-(:data:`PYTHON`, :data:`CONFIG`, :data:`SCHEMA`).
+``match_threshold``, is a real number (not ``bool``) from 0.0 to 1.0 inclusive,
+so NaN and infinity fail. An ``int`` or ``float`` is kept as given; a
+``Decimal``, ``Fraction`` or numpy number is converted to ``float``
+(:func:`as_threshold`). The Python path checks it when the class is defined,
+and the Stickler-config and JSON Schema importers when they load. All three
+raise ``ValueError`` with a message built here, so they word it alike and
+differ only in how they quote keys and values (:data:`PYTHON`, :data:`CONFIG`,
+:data:`SCHEMA`). The ``match_threshold`` passed to ``evaluate()`` or
+``eval_for()`` is not checked here.
 
 Only a value that becomes a threshold is checked. A comparator's constructor is
 not: a custom comparator may use ``threshold`` for something else, and the
@@ -58,13 +61,35 @@ def _error(message: str) -> ValueError:
     return error
 
 
+def as_threshold(value: Any) -> Optional[float]:
+    """``value`` as the threshold it sets, or ``None`` if it breaks the rule.
+
+    An ``int`` or ``float`` is returned as given. Another real number, such as
+    a ``Decimal``, a ``Fraction`` or a numpy scalar, means the same number, so
+    it is converted to ``float``, which every reader of a threshold and both
+    exporters handle. ``bool`` is refused: ``True`` is not a similarity.
+    """
+    if isinstance(value, bool) or not isinstance(value, (numbers.Real, Decimal)):
+        return None
+    number = value if type(value) in (int, float) else _as_float(value)
+    if number is None or not 0.0 <= number <= 1.0:
+        return None
+    return number
+
+
 def is_valid_threshold(value: Any) -> bool:
-    """Whether ``value`` can decide a match: an int or float from 0.0 to 1.0."""
-    return (
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and 0.0 <= value <= 1.0
-    )
+    """Whether ``value`` can decide a match: a real number from 0.0 to 1.0."""
+    return as_threshold(value) is not None
+
+
+def normalize_threshold(value: Any) -> Any:
+    """A valid threshold as :func:`as_threshold` gives it; anything else unchanged.
+
+    For a value that is checked later, by a caller that knows the model and the
+    field: an invalid one must reach that check, and its message, as written.
+    """
+    number = as_threshold(value)
+    return value if number is None else number
 
 
 @dataclass(frozen=True)
@@ -285,9 +310,8 @@ class _Diagnosis:
 
     ``verb`` completes "<value> ...". ``reason`` says why ``suggestion`` is
     likely: ``percent`` (85 for 0.85), ``exact`` (just above 1), ``unquote``
-    (a numeric string), ``percent_text`` ("85%"), ``float`` (a Decimal or a
-    numpy scalar), ``null``. ``subject`` is the number the reason quotes, and
-    ``convert`` says the suggestion must be passed as a float.
+    (a numeric string), ``percent_text`` ("85%"), ``null``.
+    ``subject`` is the number the reason quotes.
     """
 
     verb: str
@@ -295,7 +319,6 @@ class _Diagnosis:
     suggestion: Optional[str] = None
     reason: Optional[str] = None
     subject: str = ""
-    convert: bool = False
 
 
 def _diagnose(value: Any, spelling: Spelling, *, pair: str) -> _Diagnosis:
@@ -305,24 +328,14 @@ def _diagnose(value: Any, spelling: Spelling, *, pair: str) -> _Diagnosis:
         return _Diagnosis("is not a number", reason="null")
     if isinstance(value, str):
         return _diagnose_text(value)
-    if isinstance(value, (int, float)):
-        return _diagnose_number(value, spelling, pair=pair)
     if isinstance(value, (numbers.Real, Decimal)):
-        verb = f"is {_a_kind(value, spelling)}, not an int or float"
+        if type(value) in (int, float):
+            return _diagnose_number(value, spelling, pair=pair)
         number = _as_float(value)
-        if number is None:
-            return _Diagnosis(verb)
-        if is_valid_threshold(number):
-            return _Diagnosis(verb, suggestion=_plain(number, spelling), reason="float")
-        inner = _diagnose_number(number, spelling, pair=pair, text=_number_text(value))
-        return _Diagnosis(
-            verb,
-            detail=inner.detail,
-            suggestion=inner.suggestion,
-            reason=inner.reason,
-            subject=inner.subject,
-            convert=True,
-        )
+        if number is not None:
+            return _diagnose_number(
+                number, spelling, pair=pair, text=_number_text(value)
+            )
     return _Diagnosis(f"is {_a_kind(value, spelling)}, not a number")
 
 
@@ -330,6 +343,10 @@ def _diagnose_number(
     value: float, spelling: Spelling, *, pair: str, text: Optional[str] = None
 ) -> _Diagnosis:
     text = text or _plain(value, spelling)
+    if not isinstance(value, float):
+        # An int too large for a float would overflow `math.isnan`.
+        number = _as_float(value)
+        value = math.inf if number is None else number
     if math.isnan(value):
         detail = f"NaN fails every comparison, so no {pair} would match."
     elif value < 0:
@@ -376,7 +393,6 @@ def _diagnose_text(value: str) -> _Diagnosis:
             suggestion=repr(round(number / 100, 12)),
             reason="percent",
             subject=body,
-            convert=False,
         )
     return _Diagnosis(verb, reason="unquote")
 
@@ -384,11 +400,8 @@ def _diagnose_text(value: str) -> _Diagnosis:
 def _own_fix(found: _Diagnosis, spelling: Spelling, *, match: bool = False) -> str:
     """The fix when the value was written where the threshold is read."""
     s, reason = found.suggestion, found.reason
-    use = "pass the float" if found.convert else "use"
     if reason == "null":
         return "Remove the key to use the default, or write a number such as 0.8."
-    if reason == "float":
-        return f"Pass a float: {s}."
     if reason == "percent_text":
         return f"For {found.subject}, use {s}."
     if reason == "unquote":
@@ -399,7 +412,7 @@ def _own_fix(found: _Diagnosis, spelling: Spelling, *, match: bool = False) -> s
         )
     if reason == "percent":
         unquote = " without quotes" if found.verb.startswith("is a string") else ""
-        verb = "write" if unquote else use
+        verb = "write" if unquote else "use"
         return f"If {found.subject} is a percentage, {verb} {s}{unquote}."
     if reason == "exact":
         weight = _as_float(found.subject)
@@ -494,7 +507,6 @@ def _list_fix(found: _Diagnosis, spelling: Spelling, element: str) -> str:
         "percent",
         "percent_text",
         "unquote",
-        "float",
     ):
         where = spelling.list_fix.format(found.suggestion, element=element)
         fix = _sentence(f"{_prefix(found)}set {where} instead.")
@@ -560,6 +572,16 @@ def _render(value: Any, spelling: Spelling) -> str:
         text = "nan" if math.isnan(value) else ("-inf" if value < 0 else "inf")
         return f"float({text!r})"
     if spelling.as_json:
+        if (
+            isinstance(value, (numbers.Real, Decimal))
+            and not isinstance(value, bool)
+            and type(value) not in (int, float)
+        ):
+            # A Decimal, Fraction or numpy scalar, as the JSON number it means.
+            text = _number_text(value)
+            number = _as_float(value)
+            if text is not None or number is not None:
+                return text if text is not None else _plain(number, spelling)
         try:
             return json.dumps(value)
         except (TypeError, ValueError):

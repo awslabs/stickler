@@ -1,11 +1,12 @@
-"""A threshold must be an int or float from 0.0 to 1.0, on every path.
+"""A threshold must be a number from 0.0 to 1.0, on the class, config and schema.
 
 The rule covers the threshold a field ends up with, its own or one it adopts
-from the comparator, and ``match_threshold``. Anything else raises
+from the comparator, and ``match_threshold``. A ``Decimal``, ``Fraction`` or
+numpy number in range is converted to ``float``. Anything else raises
 ``ValueError`` when the class is defined or the config or schema is loaded,
-never during evaluation, with one message built by ``threshold_rule``. It
-quotes the value as the author wrote it, names the model and the field, says
-why the value fails and gives the likely fix.
+with one message built by ``threshold_rule``. It quotes the value as the
+author wrote it, names the model and the field, says why the value fails and
+gives the likely fix.
 
 Before, the Python path checked neither ``ComparableField(threshold=85)`` nor
 ``LevenshteinComparator(threshold=85)``, so an identical pair scored 0.0 FD;
@@ -369,29 +370,98 @@ class TestTheLikelyFix:
         assert model._get_comparison_info("vendor").threshold == 0.5
 
 
-class TestOtherNumberTypesAskForAFloat:
-    """``int`` or ``float`` only: ``numpy.float32`` did not serialize on export."""
+def _other_reals():
+    """In-range thresholds that are real numbers but not ``int`` or ``float``."""
+    values = [Decimal("0.9"), Fraction(9, 10)]
+    try:
+        import numpy as np
+    except ImportError:  # pragma: no cover - numpy is a dependency
+        return values
+    return values + [np.float32(0.9), np.float64(0.9), np.float16(0.9)]
 
-    @pytest.mark.parametrize("path", ["python field", "config field", "schema field"])
-    @pytest.mark.parametrize("value", [Decimal("0.9"), Fraction(9, 10)])
-    def test_in_range(self, path, value):
-        message = _message(PATHS[path][0], value)
-        assert f"is a {type(value).__name__}, not an int or float." in message
-        assert "Pass a float: 0.9." in message
 
-    def test_out_of_range(self):
+class TestOtherRealNumbersAreConvertedToFloat:
+    """A ``Decimal``, ``Fraction`` or numpy number means the same threshold.
+
+    The Python path loaded and scored it, so refusing it would break working
+    code, and the importers refused it. It is converted to ``float``, so
+    ``explain()`` and both exports carry a float.
+    """
+
+    @pytest.mark.parametrize("value", _other_reals(), ids=repr)
+    @pytest.mark.parametrize("path", list(PATHS))
+    def test_in_range_loads_as_a_float(self, path, value):
+        threshold = PATHS[path][0](value)._get_comparison_info("vendor").threshold
+        assert type(threshold) is float
+        assert threshold == 0.9
+
+    @pytest.mark.parametrize("value", _other_reals(), ids=repr)
+    @pytest.mark.parametrize("path", ["python", "config", "config nested", "schema"])
+    def test_a_match_threshold_loads_as_a_float(self, path, value):
+        model = TestMatchThreshold._builds()[path][0](value)
+        if path == "config nested":
+            model = model.model_fields["billing"].annotation
+            model = getattr(model, "__args__", (model,))[0]
+        assert type(model.match_threshold) is float
+        assert model.match_threshold == 0.9
+
+    def test_an_identical_pair_matches_and_both_exports_reload(self):
+        model = PATHS["python comparator"][0](Decimal("0.9"))
+        result = model(vendor="Acme").compare_with(
+            model(vendor="Acme"), include_confusion_matrix=True
+        )
+        assert result["confusion_matrix"]["overall"]["tp"] == 1
+        config = model.to_stickler_config()
+        json.dumps(config)
+        assert config["fields"]["vendor"]["threshold"] == 0.9
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            reloaded = StructuredModel.model_from_json(config)
+            from_schema = StructuredModel.from_json_schema(model.to_json_schema())
+        assert reloaded._get_comparison_info("vendor").threshold == 0.9
+        assert from_schema._get_comparison_info("vendor").threshold == 0.9
+
+    @pytest.mark.parametrize(
+        "value, python, as_json",
+        [
+            (Decimal("85"), "Decimal('85')", "85"),
+            (Fraction(17, 2), "Fraction(17, 2)", "8.5"),
+            (Decimal("NaN"), "Decimal('NaN')", "NaN"),
+            (Decimal("-1"), "Decimal('-1')", "-1"),
+        ],
+    )
+    def test_out_of_range_raises_quoting_the_value_as_written(
+        self, value, python, as_json
+    ):
+        """In Python as code; on the importers as the JSON number it means."""
+        assert _message(PATHS["python field"][0], value).startswith(
+            HEAD + f"ComparableField(threshold={python}) is out of range. "
+        )
+        assert _message(PATHS["config field"][0], value).startswith(
+            HEAD + f'"threshold": {as_json} is out of range. '
+        )
+        assert _message(PATHS["schema comparator-config"][0], value).startswith(
+            HEAD + 'the field sets no "x-aws-stickler-threshold", so it uses '
+            f'"x-aws-stickler-comparator-config": {{"threshold": {as_json}}}. '
+        )
+
+    def test_out_of_range_gets_the_percentage_fix(self):
         message = _message(PATHS["python field"][0], Decimal("85"))
-        assert "85 is above 1.0, so no pair would match. If 85 is a percentage, pass the float 0.85." in message
+        assert (
+            "85 is above 1.0, so no pair would match. If 85 is a percentage, "
+            "use 0.85."
+        ) in message
 
-    @pytest.mark.parametrize("path", ["python field", "config field", "schema field"])
-    def test_numpy(self, path):
+    def test_numpy_out_of_range_reads_as_json(self):
         np = pytest.importorskip("numpy")
-        message = _message(PATHS[path][0], np.float32(0.9))
-        assert "is a numpy.float32, not an int or float." in message
-        assert "Pass a float: 0.9." in message
-        assert PATHS[path][0](np.float64(0.85))._get_comparison_info(
-            "vendor"
-        ).threshold == 0.85
+        assert _message(PATHS["schema field"][0], np.float32(85.0)).startswith(
+            HEAD + '"x-aws-stickler-threshold": 85.0 is out of range. '
+        )
+
+    @pytest.mark.parametrize("value", ["0.9", True])
+    def test_bool_and_str_still_raise(self, value):
+        for path in PATHS:
+            _message(PATHS[path][0], value)
 
 
 class TestTheFieldThresholdWins:

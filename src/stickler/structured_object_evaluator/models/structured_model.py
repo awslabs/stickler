@@ -43,6 +43,7 @@ from .threshold_helper import warn_if_threshold_is_zero as _warn_if_threshold_is
 from .threshold_rule import (
     PYTHON,
     SCHEMA,
+    as_threshold,
     is_valid_threshold,
     match_threshold_error,
     python_comparator_source,
@@ -802,6 +803,10 @@ class StructuredModel(BaseModel):
                 or is_valid_threshold(value)
             ):
                 raise match_threshold_error(value, spelling=PYTHON, model=cls.__name__)
+            number = as_threshold(value)
+            if number is not None and number is not value:
+                # A Decimal, Fraction or numpy number, as the float it means.
+                cls.match_threshold = number
             _warn_if_threshold_is_zero(
                 cls.__dict__["match_threshold"],
                 _model_identity(cls.__name__, cls.__annotations__),
@@ -810,7 +815,7 @@ class StructuredModel(BaseModel):
 
     @classmethod
     def _check_field_thresholds(cls) -> None:
-        """Raise if a field's threshold is not an int or float from 0.0 to 1.0.
+        """Raise if a field's threshold is not a number from 0.0 to 1.0.
 
         Runs from ``__pydantic_init_subclass__`` over ``model_fields``, not from
         ``__init_subclass__`` over class attributes: ``model_fields`` holds the
@@ -1047,7 +1052,7 @@ class StructuredModel(BaseModel):
                    {
                        "type": "str|int|float|bool|List[str]|etc.",  # Required
                        "comparator": "LevenshteinComparator|ExactComparator|etc.",  # Optional
-                       "comparator_config": {"threshold": 0.9},  # Optional; a threshold the field adopts must be an int or float from 0.0 to 1.0, else ValueError
+                       "comparator_config": {"threshold": 0.9},  # Optional; a threshold the field adopts must be a number from 0.0 to 1.0, else ValueError
                        "threshold": 0.8,  # Optional; default: comparator_config's threshold, else 0.5
                        "weight": 2.0,     # Optional, default 1.0
                        "required": true,  # Optional, default false
@@ -1114,7 +1119,7 @@ class StructuredModel(BaseModel):
         - x-aws-stickler-threshold: Similarity threshold for match/no-match (0.0-1.0,
           default: a threshold in x-aws-stickler-comparator-config, else the
           type default, such as 0.5 for a string and 0.7 for a nested object).
-          Whichever threshold the field uses must be an int or float from 0.0 to 1.0;
+          Whichever threshold the field uses must be a number from 0.0 to 1.0;
           any other value raises ValueError naming the model and the field.
         - x-aws-stickler-weight: Field importance in overall scoring (>0.0, default: 1.0)
         - x-aws-stickler-clip-under-threshold: Clip scores below threshold to 0.0
