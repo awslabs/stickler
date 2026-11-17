@@ -1115,6 +1115,71 @@ class TestAllOfRaisesOnlyWhereNothingReadsTheKeys:
     def test_an_allof_that_builds_nothing_is_left_alone(self, schema):
         StructuredModel.from_json_schema(schema)
 
+    @staticmethod
+    def _team_schema(where, lead):
+        """`team` builds `Team` from a `$ref` outside `$defs`; `employee` reaches
+        `Addr` only through `allOf`."""
+        if where == "components":
+            team_ref, addr_ref = (
+                "#/components/schemas/Team",
+                "#/components/schemas/Addr",
+            )
+            holder = {"components": {"schemas": {"Addr": _KEYED}}}
+            teams = holder["components"]["schemas"]
+        else:
+            team_ref, addr_ref = "#/x-models/Team", "#/$defs/Addr"
+            holder = {"x-models": {}, "$defs": {"Addr": _KEYED}}
+            teams = holder["x-models"]
+        teams["Team"] = {
+            "type": "object",
+            "properties": {"lead": lead(addr_ref)},
+        }
+        return {
+            "type": "object",
+            "properties": {
+                "team": {"$ref": team_ref},
+                "employee": {"allOf": [{"$ref": addr_ref}]},
+            },
+            **holder,
+        }
+
+    @pytest.mark.parametrize("where", ("components", "x-models"))
+    def test_a_reader_inside_a_ref_target_outside_defs_counts(self, where):
+        """`team.lead` builds `Addr` from its keys, so the `allOf` drops nothing.
+
+        Only `$defs` entries were walked from their references, so a reader
+        inside `#/components/...`, or under an `x-*` key, did not count and the
+        import raised.
+        """
+        model = StructuredModel.from_json_schema(
+            self._team_schema(where, lambda ref: {"$ref": ref})
+        )
+        team = _unwrap(model.model_fields["team"].annotation)
+        lead = _unwrap(team.model_fields["lead"].annotation)
+        assert (lead.__name__, lead.match_threshold) == ("Renamed", 0.93)
+
+    @pytest.mark.parametrize("where", ("components", "x-models"))
+    @pytest.mark.parametrize(
+        "lead",
+        (
+            lambda ref: {"type": "string"},
+            lambda ref: {"type": "string", "not": {"$ref": ref}},
+        ),
+        ids=("no-reader", "not"),
+    )
+    def test_a_ref_target_outside_defs_without_a_reader_still_raises(self, where, lead):
+        with pytest.raises(ValueError, match="reached through 'allOf' at 'employee'"):
+            StructuredModel.from_json_schema(self._team_schema(where, lead))
+
+    def test_a_ref_target_reached_where_nothing_builds_does_not_count(self):
+        schema = self._team_schema("components", lambda ref: {"$ref": ref})
+        schema["properties"]["team"] = {
+            "type": "string",
+            "not": {"$ref": "#/components/schemas/Team"},
+        }
+        with pytest.raises(ValueError, match="reached through 'allOf' at 'employee'"):
+            StructuredModel.from_json_schema(schema)
+
     @pytest.mark.parametrize(
         "other",
         (

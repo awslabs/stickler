@@ -61,10 +61,10 @@ Each release links to full notes on the
   keys; on an `allOf` arm, inline or through `$ref`, which is merged into one
   class at the defaults; and on a definition reached through a root `$ref`,
   where the root reads the keys beside the `$ref` instead. The last two raise
-  only when no other position builds the same object from its keys; a `$ref`
-  under `not`, `additionalProperties` or `if` builds nothing, so it does not
-  count. Each of
-  these resolved the default in silence (`x-aws-stickler-threshold: 0.88` in
+  only when no other position builds the same object from its keys, including
+  a position inside a `$ref` target outside `$defs` (`#/components/...`); a
+  `$ref` under `not`, `additionalProperties` or `if` builds nothing, so it does
+  not count. Each of these resolved the default in silence (`x-aws-stickler-threshold: 0.88` in
   `$defs` gave `0.7`, `items: {"$ref": ..., "x-aws-stickler-match-threshold":
   0.93}` built at `0.7`), so a schema that imported before and now raises loses
   no working configuration.

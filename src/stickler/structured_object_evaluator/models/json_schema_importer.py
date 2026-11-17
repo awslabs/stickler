@@ -947,6 +947,12 @@ class JsonSchemaImporter:
         and an entry nothing references builds nothing, so checking those
         raised for keys that were read on the copies. Data keywords and `x-*`
         payloads are values, not schemas, and are not walked.
+
+        A `$ref` target outside `$defs`/`definitions` (`#/components/...`, or
+        under an `x-*` key) is walked from the reference as well, so a class
+        built inside it reads model keys like one built in a definition. Only
+        its contents are checked there: its own keys are not checked as a
+        definition's are.
         """
         # Nodes whose model keys some class reads, by identity: every position
         # except an `allOf` arm and the root's own `$ref` target. Over-counting
@@ -955,19 +961,22 @@ class JsonSchemaImporter:
         # `allOf` arms at positions that build a class, checked once every
         # reader is known.
         merged: List[Tuple[Any, str, str]] = []
-        # Definition entries reached by a `$ref`, by JSON pointer, and whether a
-        # position that builds a class reached them.
+        # `$ref` targets, by JSON pointer, and whether a position that builds a
+        # class reached them. A target inside a definition entry is queued as
+        # that whole entry, which is checked as a definition.
         walked: Dict[Tuple[str, ...], bool] = {}
-        pending: List[Tuple[Tuple[str, ...], Any, bool]] = []
+        pending: List[Tuple[Tuple[str, ...], Any, bool, bool]] = []
 
-        def resolve(ref: Any) -> Tuple[Any, str, Optional[Tuple[str, ...]], Any]:
-            """Resolve a local `$ref`: its node, its dotted path, and the
-            innermost definition entry that contains it, with that entry's body."""
+        def resolve(
+            ref: Any,
+        ) -> Tuple[Any, Tuple[str, ...], Optional[Tuple[str, ...]], Any]:
+            """Resolve a local `$ref`: its node, its pointer, and the innermost
+            definition entry that contains it, with that entry's body."""
             if not isinstance(ref, str) or not ref.startswith("#"):
-                return None, "", None, None
+                return None, (), None, None
             pointer = ref[1:]
             if pointer and not pointer.startswith("/"):
-                return None, "", None, None
+                return None, (), None, None
             parts = (
                 tuple(
                     part.replace("~1", "/").replace("~0", "~")
@@ -981,11 +990,11 @@ class JsonSchemaImporter:
             entry_body: Any = None
             for index, part in enumerate(parts):
                 if not isinstance(node, dict) or part not in node:
-                    return None, "", None, None
+                    return None, (), None, None
                 if index > 0 and parts[index - 1] in ("$defs", "definitions"):
                     entry, entry_body = parts[: index + 1], node[part]
                 node = node[part]
-            return node, ".".join(parts), entry, entry_body
+            return node, parts, entry, entry_body
 
         def chain(node: Any, where: str):
             """The node, then each alias it `$ref`s: every hop is the same class."""
@@ -994,7 +1003,7 @@ class JsonSchemaImporter:
                 seen.add(id(node))
                 yield node, where
                 node, target, entry, _ = resolve(node.get("$ref"))
-                where = f"{'definition' if entry else 'object'} '{target}'"
+                where = f"{'definition' if entry else 'object'} '{'.'.join(target)}'"
 
         def walk(
             node: Any,
@@ -1014,9 +1023,15 @@ class JsonSchemaImporter:
                 _reject_unknown_extensions(node, path or "(root)", scope=scope)
 
             ref = node.get("$ref")
-            target, target_path, entry, entry_body = resolve(ref)
+            target, target_parts, entry, entry_body = resolve(ref)
+            target_path = ".".join(target_parts)
             if entry is not None:
-                pending.append((entry, entry_body, built))
+                pending.append((entry, entry_body, built, True))
+            elif target is not None and target_parts:
+                # Outside `$defs` the target may sit where the walk does not
+                # build it (`components`) or does not go (`x-*`), so classes
+                # built inside it would not count as readers.
+                pending.append((target_parts, target, built, False))
             # Only a position that builds a class reads the model keys it
             # reaches: a `$ref` under `not` or `additionalProperties` builds
             # nothing, so it must not excuse an `allOf` that drops them.
@@ -1119,24 +1134,23 @@ class JsonSchemaImporter:
         read.add(id(schema))
         walk(schema, "", "model", reads=False)
         while pending:
-            entry, body, built = pending.pop()
-            if entry in walked and (walked[entry] or not built):
+            pointer, body, built, definition = pending.pop()
+            if pointer in walked and (walked[pointer] or not built):
                 continue
-            walked[entry] = built
-            # Checked like any other node. Walking a definition with no scope let
-            # a typo there import silently while the same typo inline raised. See
-            # #340. Only a body with `properties` generates a class: a
-            # `type: "object"` mapping becomes a `dict` field, judged against its
-            # parent's threshold, so it reads no model keys.
-            walk(
-                body,
-                ".".join(entry),
-                "definition"
-                if isinstance(body, dict) and "properties" in body
-                else "value_definition",
-                built,
-                reads=False,
-            )
+            walked[pointer] = built
+            scope: Optional[str] = None
+            if definition:
+                # Checked like any other node. Walking a definition with no scope
+                # let a typo there import silently while the same typo inline
+                # raised. See #340. Only a body with `properties` generates a
+                # class: a `type: "object"` mapping becomes a `dict` field, judged
+                # against its parent's threshold, so it reads no model keys.
+                scope = (
+                    "definition"
+                    if isinstance(body, dict) and "properties" in body
+                    else "value_definition"
+                )
+            walk(body, ".".join(pointer), scope, built, reads=False)
 
         # An object's model keys are read only where its class is built. An
         # `allOf` arm is merged into `AllOfModel`, and a root `$ref` builds the
@@ -1161,11 +1175,12 @@ class JsonSchemaImporter:
                 "match threshold, and no position sets them. Reference the object "
                 "directly, without 'allOf', to configure it.",
             )
-        root_target, root_target_path, _, _ = resolve(schema.get("$ref"))
+        root_target, root_target_parts, root_entry, _ = resolve(schema.get("$ref"))
         if isinstance(root_target, dict):
             check(
                 root_target,
-                f"definition '{root_target_path}'",
+                f"{'definition' if root_entry else 'object'} "
+                f"'{'.'.join(root_target_parts)}'",
                 "the root '$ref'",
                 "The root class reads the root's own keys: put it on the root, "
                 "beside the '$ref'.",
