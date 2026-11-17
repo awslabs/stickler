@@ -1025,6 +1025,7 @@ _KEYED = dict(
 )
 _PLAIN = {"type": "object", "properties": {"z": {"type": "string"}}}
 _TYPO = {"type": "string", "x-aws-stickler-thresold": 0.9}
+_TYPO_KEY = {"x-aws-stickler-thresold": 0.9}
 
 
 def _unused(body, namespace="$defs"):
@@ -2020,6 +2021,187 @@ class TestARefIntoADefinition:
                 }
             )
 
+    # Where the keyed object sits, as an object-typed property of something
+    # nothing builds, and the path the error names.
+    _PROPERTY_NODES = (
+        (
+            "#/$defs/Wrap/properties/inner",
+            {"$defs": {"Wrap": {"type": "object", "properties": {"inner": _KEYED}}}},
+            "$defs.Wrap.properties.inner",
+        ),
+        (
+            "#/components/schemas/Wrap/properties/inner",
+            {
+                "components": {
+                    "schemas": {
+                        "Wrap": {"type": "object", "properties": {"inner": _KEYED}}
+                    }
+                }
+            },
+            "components.schemas.Wrap.properties.inner",
+        ),
+        (
+            "#/$defs/L/items/properties/inner",
+            {
+                "$defs": {
+                    "L": {
+                        "type": "array",
+                        "items": {"type": "object", "properties": {"inner": _KEYED}},
+                    }
+                }
+            },
+            "$defs.L.items.properties.inner",
+        ),
+    )
+
+    @pytest.mark.parametrize(
+        "pointer, holder, target",
+        _PROPERTY_NODES,
+        ids=("defs-property", "components-property", "items-property"),
+    )
+    @pytest.mark.parametrize(
+        "make, reached",
+        (
+            (lambda ref: {"$ref": ref}, "the root '$ref'"),
+            (
+                lambda ref: {
+                    "type": "object",
+                    "properties": {"a": {"allOf": [{"$ref": ref}]}},
+                },
+                "'allOf' at 'a'",
+            ),
+        ),
+        ids=("root-ref", "allOf"),
+    )
+    def test_an_object_property_reached_only_this_way_raises(
+        self, pointer, holder, target, make, reached
+    ):
+        """Dev builds `DynamicModel` or `AllOfModel` at 0.7 here, dropping the
+        keys. They sit on an object-typed property, a position dev's docs call
+        valid for them, so the CHANGELOG lists this raise as breaking."""
+        with pytest.raises(ValueError) as exc:
+            StructuredModel.from_json_schema(dict(make(pointer), **holder))
+        message = str(exc.value)
+        assert f"on object '{target}' is not read" in message
+        assert f"reached through {reached}" in message
+
+    # Another node of `W`, beside the `s` that `h` uses, with keys no class
+    # reads, and the error a `$ref` to the whole of `W` raises for it.
+    _SIBLINGS = (
+        (
+            {
+                "type": "object",
+                "$ref": "#/$defs/Row",
+                "x-aws-stickler-match-threshold": 0.93,
+            },
+            "beside the '$ref' at '$defs.W.o' is not read",
+        ),
+        (
+            {
+                "type": "array",
+                "items": {
+                    "$ref": "#/$defs/Row",
+                    "x-aws-stickler-match-threshold": 0.93,
+                },
+            },
+            "beside the '$ref' at '$defs.W.o[]' is not read",
+        ),
+        (
+            {"allOf": [{"$ref": "#/$defs/Addr"}]},
+            "on definition '$defs.Addr' is not read when it is reached through "
+            "'allOf' at '$defs.W.o'",
+        ),
+    )
+
+    @staticmethod
+    def _sibling_schema(sibling, ref):
+        return {
+            "type": "object",
+            "properties": {"h": {"$ref": ref}},
+            "$defs": {
+                "W": {"type": "object", "properties": {"s": _PLAIN, "o": sibling}},
+                "Row": _PLAIN,
+                "Addr": _KEYED,
+            },
+        }
+
+    @pytest.mark.parametrize(
+        "sibling",
+        [sibling for sibling, _ in _SIBLINGS],
+        ids=("typed-ref", "items-ref", "allOf-arm"),
+    )
+    def test_the_rest_of_the_entry_builds_nothing(self, sibling):
+        """Only the node `h` references is built. The rest of `W` is walked
+        as an unused definition is, so keys no class reads there import, as on
+        dev."""
+        model = StructuredModel.from_json_schema(
+            self._sibling_schema(sibling, "#/$defs/W/properties/s")
+        )
+        assert _unwrap(model.model_fields["h"].annotation).match_threshold == 0.7
+
+    @pytest.mark.parametrize(
+        "sibling, error", _SIBLINGS, ids=("typed-ref", "items-ref", "allOf-arm")
+    )
+    def test_a_ref_to_the_whole_entry_builds_the_rest_and_raises(self, sibling, error):
+        with pytest.raises(ValueError) as exc:
+            StructuredModel.from_json_schema(self._sibling_schema(sibling, "#/$defs/W"))
+        assert error in str(exc.value)
+
+    def test_a_typo_in_the_rest_of_the_entry_still_raises(self):
+        with pytest.raises(ValueError, match=r"thresold.*'\$defs\.W\.o'"):
+            StructuredModel.from_json_schema(
+                self._sibling_schema(_TYPO, "#/$defs/W/properties/s")
+            )
+
+    @pytest.mark.parametrize(
+        "ref, holder",
+        (
+            (
+                "#/components/schemas/W/properties/inner",
+                {
+                    "schemas": {
+                        "W": {
+                            "type": "object",
+                            "properties": {"inner": dict(_PLAIN, **_TYPO_KEY)},
+                        }
+                    }
+                },
+            ),
+            (
+                "#/components/schemas/L/items",
+                {
+                    "schemas": {
+                        "L": {"type": "array", "items": dict(_PLAIN, **_TYPO_KEY)}
+                    }
+                },
+            ),
+        ),
+        ids=("property", "items"),
+    )
+    def test_outside_defs_a_typo_on_a_property_or_items_target_raises(
+        self, ref, holder
+    ):
+        """Caught where the class is built, as on dev."""
+        with pytest.raises(ValueError, match="x-aws-stickler-thresold"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {"h": {"$ref": ref}},
+                    "components": holder,
+                }
+            )
+
+    def test_outside_defs_a_typo_at_the_top_of_a_target_imports(self):
+        """Not checked, as on dev: only a whole `$defs` entry is checked as a
+        definition."""
+        StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {"h": {"$ref": "#/components/schemas/T"}},
+                "components": {"schemas": {"T": dict(_PLAIN, **_TYPO_KEY)}},
+            }
+        )
+
 
 class TestAListFormTypeBesideARef:
     """`["object", "null"]` beside a `$ref` builds one class, as `"object"` does.
@@ -2102,8 +2284,21 @@ class TestModelKeysBesideANonRootRef:
                 lambda ext: {"type": ["object", "null"], "$ref": "#/$defs/Row", **ext},
                 "a",
             ),
+            (
+                lambda ext: {"type": ["null", "object"], "$ref": "#/$defs/Row", **ext},
+                "a",
+            ),
+            (lambda ext: {"type": ["object"], "$ref": "#/$defs/Row", **ext}, "a"),
         ),
-        ids=("items", "anyOf", "oneOf", "object", "object-null"),
+        ids=(
+            "items",
+            "anyOf",
+            "oneOf",
+            "object",
+            "object-null",
+            "null-object",
+            "[object]",
+        ),
     )
     def test_it_raises_and_names_the_target(self, make, at, key, value):
         with pytest.raises(ValueError) as exc:
@@ -2272,3 +2467,81 @@ class TestModelKeysBesideANonRootRef:
             }
         )
         assert _unwrap(model.model_fields["a"].annotation).match_threshold == 0.93
+
+    @pytest.mark.parametrize(
+        "declared",
+        ("object", ["object", "null"], ["null", "object"], ["object"]),
+        ids=("object", "object-null", "null-object", "[object]"),
+    )
+    def test_on_a_property_node_typed_any_object_form_it_raises(self, declared):
+        """Dev builds `inner@0.7` or `DynamicModel@0.7`, dropping the keys."""
+        inner = {
+            "type": declared,
+            "$ref": "#/$defs/Row",
+            "x-aws-stickler-match-threshold": 0.93,
+        }
+        with pytest.raises(ValueError) as exc:
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {"h": {"$ref": "#/$defs/W/properties/inner"}},
+                    "$defs": {
+                        "W": {"type": "object", "properties": {"inner": inner}},
+                        "Row": TestDefinitionsAreChecked.INNER,
+                    },
+                }
+            )
+        assert "beside the '$ref' at '$defs.W.inner' is not read" in str(exc.value)
+
+    _ROW_REF = {"$ref": "#/$defs/Row", "x-aws-stickler-match-threshold": 0.93}
+
+    @pytest.mark.parametrize(
+        "ref, holder",
+        (
+            (
+                "#/$defs/W/not",
+                {"$defs": {"W": dict(_PLAIN, **{"not": _ROW_REF})}},
+            ),
+            (
+                "#/$defs/W/additionalProperties",
+                {"$defs": {"W": dict(_PLAIN, additionalProperties=_ROW_REF)}},
+            ),
+            (
+                "#/components/schemas/W/properties/inner",
+                {
+                    "components": {
+                        "schemas": {
+                            "W": {
+                                "type": "object",
+                                "properties": {"inner": dict(_ROW_REF, type="object")},
+                            }
+                        }
+                    }
+                },
+            ),
+            ("#/components/R", {"components": {"R": _ROW_REF}}),
+            ("#/x-models/R", {"x-models": {"R": _ROW_REF}}),
+        ),
+        ids=(
+            "defs-not",
+            "defs-additionalProperties",
+            "components-property",
+            "components-alias",
+            "x-models-alias",
+        ),
+    )
+    def test_on_a_target_whose_own_keys_are_unchecked_they_are_dropped(
+        self, ref, holder
+    ):
+        """The documented gap, as on dev. Only inside a `$defs` entry, on a
+        property or `items` node, is a target's own `$ref` checked, so here the
+        class is built from `Row` at the default."""
+        schema = {
+            "type": "object",
+            "properties": {"h": {"$ref": ref}},
+            "$defs": {"Row": TestDefinitionsAreChecked.INNER},
+        }
+        for key, value in holder.items():
+            schema.setdefault(key, {}).update(value)
+        model = StructuredModel.from_json_schema(schema)
+        assert _unwrap(model.model_fields["h"].annotation).match_threshold == 0.7
