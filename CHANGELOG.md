@@ -87,7 +87,7 @@ Each release links to full notes on the
     threshold of nested plain-model and `dict` fields, while a primitive list
     keeps its inferred threshold. The docstrings now say TP/FD, not TP/FN/FA.
   - `clip_under_threshold` has no effect on `List[StructuredModel]`, so an FD
-    pair keeps its score
+    pair keeps its score, a known defect
     ([#415](https://github.com/awslabs/stickler/issues/415)).
   - `clip_under_threshold` defaults to off, not on, for dict and plain-model
     fields declared in Python and for lists of them.
