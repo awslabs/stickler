@@ -119,9 +119,9 @@ A `$defs` (or `definitions`) entry is a type, not a property. A definition with
 property, `items` or `anyOf`/`oneOf` arm that `$ref`s it. Field-level keys describe one
 use of that type, so they go on the referencing property: beside the `$ref`, or beside the
 `anyOf`/`oneOf`/`allOf` when the `$ref` is one of its arms (for `allOf`, only an object
-with `properties` typed `"object"` or untyped, directly or through an alias: a one-arm
-`allOf` of anything else fails to import). Inside a definition they raise, as a
-misspelled key does. When the definition is an array's `items`, or an arm of them, they go
+with `properties`, directly or through an alias, where it and each alias hop to it are typed
+`"object"` or untyped: a one-arm `allOf` of anything else fails to import). Inside a
+definition they raise, as a misspelled key does. When the definition is an array's `items`, or an arm of them, they go
 on the array property, which for an array of objects reads only `x-aws-stickler-weight`;
 the elements pair by the definition's `x-aws-stickler-match-threshold`. The root is not a
 field, so a definition used as the root reads none. Any other definition (a scalar, an array, a
@@ -150,16 +150,23 @@ properties and other nested schemas still are, and so is whatever its `$ref`s po
 node, and the rest of the entry builds nothing in the same way.
 
 Object-level keys also raise at three positions where no class reads them. Beside a `$ref`
-(except at the root), the class is built from the target, so they go on the target. On a node
-that is itself a `$ref` target, this is checked only on a property or `items` node of a
-`$defs` entry; elsewhere, such as under `not` in an entry or at `#/components/R`, the keys
-beside its `$ref` are dropped. An
+(except at the root), the class is built from the target, so they go on the target. An
 `allOf` arm (inline or `$ref`) is merged into one class that nothing configures, and a root
 `$ref` builds the root class, which reads the keys beside that `$ref`; these two raise only
 if no other position builds the same object (a `$ref` under `not`, `additionalProperties`
-or `if` builds nothing). The same holds inside any `$ref` target that a position building
-a class references, wherever it sits: under `#/components/schemas/...`, or under `not`,
-`then`, `additionalProperties` or an `x-*` key in a `$defs` entry.
+or `if` builds nothing). On an object-typed property at these positions, such as
+`{"type": "object", "$ref": "#/$defs/Row", "x-aws-stickler-match-threshold": 0.93}` or a
+property that only a root `"$ref": "#/$defs/Wrap/properties/inner"` reaches, they are
+ignored with a `UserWarning` instead; it becomes a `ValueError` in 1.1.0. The same
+holds inside any `$ref` target that a position building a class references, wherever it
+sits, for example under `#/components/schemas/...`, or under `not`, `then`,
+`additionalProperties` or an `x-*` key in a `$defs` entry.
+
+A `$ref` target that is not a whole entry has the keys beside its own `$ref` checked only on
+a property or `items` node anywhere in a `$defs` entry, outside an `x-*` key, such as
+`#/$defs/List/items` or `#/$defs/W/not/items`. Elsewhere they are dropped: at the top of
+another node of an entry (`#/$defs/W/not`), under an `x-*` key, and outside `$defs`
+(`#/components/R`).
 
 With no extension specified, the property is parsed to a strict Python annotation and the comparator
 is chosen from that annotation, which is then widened back to the JSON value type so an invalid

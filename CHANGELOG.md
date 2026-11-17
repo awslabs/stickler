@@ -19,33 +19,23 @@ Each release links to full notes on the
   `document_non_matches` is not set. Until 1.1.0 these keep their 1.0.1
   behaviour, and their warnings now name 1.1.0.
 
-- **Breaking:** `from_json_schema()` now raises for `x-aws-stickler-model-name`,
-  `x-aws-stickler-match-threshold` or `x-aws-stickler-infer-unspecified` beside
-  a `$ref` on a property typed `"object"` or a list form that includes it
-  (`["object", "null"]`, `["null", "object"]`, `["object"]`), such as
-  `{"type": "object", "$ref": "#/$defs/Row", "x-aws-stickler-match-threshold":
-  0.93}`. The class is built from the `$ref` target, which reads only its own
-  keys, so these were dropped: the property built `Row` at `0.7`, or
-  `DynamicModel` at `0.7` for a list form. The error names the target to put
-  them on. This holds wherever such a property sits inside what a position
-  building a class references: a whole `$defs` entry or `#/components/...`
-  target, or a property node of a `$defs` entry
-  (`#/$defs/W/properties/inner`). The rest of an entry around such a node
-  builds nothing, so a property there imports, as in an unused definition.
-  Without a `type`, the same property already raised
-  ([#340](https://github.com/awslabs/stickler/issues/340))
-
-- **Breaking:** `from_json_schema()` now raises for `x-aws-stickler-model-name`,
+- `from_json_schema()` now warns for `x-aws-stickler-model-name`,
   `x-aws-stickler-match-threshold` or `x-aws-stickler-infer-unspecified` on an
-  object-typed property that no position builds, when it is reached only
-  through the root `$ref` or an `allOf` arm, such as
-  `{"$ref": "#/$defs/Wrap/properties/inner"}` or
-  `{"allOf": [{"$ref": "#/$defs/Wrap/properties/inner"}]}`. The root class reads
-  the keys beside the root's `$ref`, and `allOf` merges its arms into one class
-  at the defaults, so these were dropped: the schema built `DynamicModel` or
-  `AllOfModel` at `0.7`. The same holds for such a property under
-  `#/components/...` or under an entry's `items`. Where a position builds the
-  object that holds the property, its keys are read there and nothing raises
+  object-typed property where no class reads them, and imports as before, with
+  the keys dropped. One position is beside a `$ref` on a property typed
+  `"object"` or a list form that includes it (`["object", "null"]`), such as
+  `{"type": "object", "$ref": "#/$defs/Row", "x-aws-stickler-match-threshold":
+  0.93}`: the class is built from the target, which reads only its own keys, so
+  it builds `Row` at `0.7`. The other is an object-typed property that no
+  position builds, reached only through the root `$ref` or an `allOf` arm, such
+  as `{"$ref": "#/$defs/Wrap/properties/inner"}`: the root reads the keys beside
+  its `$ref`, and `allOf` merges its arms into one class at the defaults, so it
+  builds `DynamicModel` or `AllOfModel` at `0.7`. Both hold wherever the property
+  sits in what a position building a class references, for example in a `$defs`
+  entry, under `not`, `then` or an `x-*` key in one, under `#/components/...`, or
+  in an `x-*` payload such as `#/x-models/T`. The warning names the key, its
+  position and where it is read. It becomes a `ValueError` in 1.1.0, as at the
+  positions no doc names for these keys (see Fixed)
   ([#340](https://github.com/awslabs/stickler/issues/340))
 
 ### Fixed
@@ -78,22 +68,24 @@ Each release links to full notes on the
   `clip-under-threshold`) inside one now raises and names where it belongs: on
   the property that uses it, beside the `$ref`, or beside the
   `anyOf`/`oneOf`/`allOf` when the `$ref` is one of its arms (for `allOf`, only
-  an object with `properties` typed `"object"` or untyped, directly or through
-  an alias, since a one-arm `allOf` of anything else fails to import); for
-  `items`, or an arm of them, on the array property, which for an array of
-  objects reads only the weight. A definition used as the root reads no field
-  keys. Honouring it instead would make one key work on a property `$ref` and
+  an object with `properties`, directly or through an alias, where it and each
+  alias hop to it are typed `"object"` or untyped, since a one-arm `allOf` of
+  anything else fails to import); for `items`, or an arm of them, on the array
+  property, which for an array of objects reads only the weight. A definition
+  used as the root reads no field keys. Honouring it instead would make one key
+  work on a property `$ref` and
   vanish on an `items` `$ref`, which does not read field keys. Any other
   definition (a scalar, an array, a combiner, an alias `$ref`, a mapping)
   generates no class and reads neither set, so an object-level key there raises
   too. `x-aws-stickler-aggregate` is still accepted and ignored on a definition
   entry, as on a field. A `$ref` to a node inside an entry also checks the
-  entry, but checks the node's own keys only where the entry's walk does (a
-  property or `items`). Anywhere else, for example under `not`, `if`,
-  `contains` or an `x-*` key, a typo or a misplaced key on the node still
-  imports, as before. Outside `$defs` (`#/components/...`), a typo on a
-  property or `items` target is still caught where the class is built, and one
-  at the top of a target still imports. Only the node is built: the rest of
+  entry, but checks the node's own keys only where the entry's walk does: on a
+  property or `items` node anywhere in the entry, under `not` or `then` too,
+  outside an `x-*` key. At the top of another node (`#/$defs/W/not`) or under
+  an `x-*` key, a typo or a misplaced key on the node still imports, as
+  before. Outside `$defs` (`#/components/...`), a typo on a property or
+  `items` target is still caught where the class is built, and one at the top
+  of a target still imports. Only the node is built: the rest of
   the entry around it builds nothing, as an unused definition, so its contents
   are checked, but object-level keys there that no class reads import, as
   before. A field key on a property node is valid there, but another property
@@ -114,25 +106,34 @@ Each release links to full notes on the
   `anyOf`/`oneOf` arm, where the class is built from the target and reads the
   target's keys; on an `allOf` arm, inline or through `$ref`, which is merged
   into one class at the defaults; and on an object reached through a root
-  `$ref`, where the root reads the keys beside the `$ref` instead (for an
-  object-typed property reached these ways, see Changed). Beside a `$ref`, this
-  includes a node inside a `$defs` entry, such as `#/$defs/List/items`, that a
-  property, `items` or arm `$ref`s. On a target under `not` or
-  `additionalProperties` in an entry, or outside `$defs` (`#/components/R`),
-  the keys beside its `$ref` are still dropped, as before. The last two
+  `$ref`, where the root reads the keys beside the `$ref` instead. No doc names
+  these positions for the keys. On an object-typed property, which the docs
+  accept them on, they warn instead (see Changed). Beside a `$ref`, this
+  includes an `items` node anywhere in a `$defs` entry outside an `x-*` key,
+  such as `#/$defs/List/items` or `#/$defs/W/not/items`, that a property,
+  `items` or arm `$ref`s. At the top of another node of an entry
+  (`#/$defs/W/not`), under an `x-*` key, or outside `$defs` (`#/components/R`),
+  the keys beside the target's `$ref` are still dropped, as before. The last two
   raise only when no other position builds the same object from its keys,
   counting positions inside any `$ref` target; a `$ref` under `not`,
   `additionalProperties` or `if` builds nothing, so it does not count. All three
   also apply inside any `$ref` target that a position building a class
-  references, wherever it sits: under `#/components/...`, or under `not`,
-  `then`, `additionalProperties` or an `x-*` key in a `$defs` entry. Each of
-  these resolved the default in silence: `items: {"$ref": ...,
+  references, wherever it sits, for example under `#/components/...`, or under
+  `not`, `then`, `additionalProperties` or an `x-*` key in a `$defs` entry. Each
+  of these resolved the default in silence: `items: {"$ref": ...,
   "x-aws-stickler-match-threshold": 0.93}` built at `0.7`, and an `allOf` arm
   reaching a keyed definition built `AllOfModel` at `0.7`. The warning for
   `x-aws-stickler-threshold` on an array of models now names the definition
-  that `items` `$ref`s, where it said to declare the match threshold inside
-  `items`, which beside the `$ref` now raises
+  that `items` `$ref`s, inside an `allOf` arm and under a property name that
+  holds a `.` too, where it said to declare the match threshold inside `items`,
+  which beside the `$ref` now raises. Where it cannot find the property, it says
+  what holds for inline `items` and for a `$ref`
   ([#340](https://github.com/awslabs/stickler/issues/340))
+
+- An import error under `not`, `then`, `contains`, `additionalProperties` or
+  another keyword that builds no class now names that keyword in its path
+  (`'$defs.W.not[]'`, `'not.p'`), where it left the keyword out and so named a
+  node that does not exist (`'$defs.W[]'`, `'[]'`)
 
 - `from_json_schema()` no longer checks, as a schema, a value under an `x-*` key
   that no `$ref` reaches, or a schema-shaped value under `default`, `examples`,

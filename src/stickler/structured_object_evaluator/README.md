@@ -249,18 +249,23 @@ entry that a `$ref` reaches is checked (one nothing reaches has its nested
 schemas checked, not its own keys): with `properties` it reads only
 object-level keys, otherwise none. Field-level keys go on the property that
 uses the definition: beside the `$ref`, or beside the `anyOf`/`oneOf` whose arm
-the `$ref` is (and the `allOf`, for an object typed `"object"` or untyped). For
-`items`, or an arm of them, they go on the array property, which reads only the
-weight for an array of objects.
+the `$ref` is (and the `allOf`, for an object with `properties` when it and
+each alias hop to it are typed `"object"` or untyped). For `items`, or an arm
+of them, they go on the array property, which reads only the weight for an
+array of objects.
 Object-level keys beside a non-root `$ref` are not read (they go on the target),
 nor on an `allOf` arm or an object reached only through `allOf` or a root
-`$ref`, so they raise there. On a node that is itself a `$ref` target, the keys
-beside its `$ref` are checked only on a property or `items` node of a `$defs`
-entry, and dropped elsewhere (under `not`, or at `#/components/R`). The same
-holds inside any `$ref` target that a position building a class references,
-wherever it sits (`#/components/...`, or under `not`, `then`,
-`additionalProperties` or an `x-*` key in a `$defs` entry). A `$ref` to one
-node of an entry builds only that node, not the rest of the entry.
+`$ref`, so they raise there. On an object-typed property at these positions
+they are ignored with a warning instead, which becomes a `ValueError` in 1.1.0.
+The same holds inside any `$ref` target that a position building a class
+references, wherever it sits (for example `#/components/...`, or under `not`,
+`then`, `additionalProperties` or an `x-*` key in a `$defs` entry). On a `$ref`
+target that is not a whole entry, the keys beside its own `$ref` are checked on
+a property or `items` node anywhere in a `$defs` entry outside an `x-*` key
+(`#/$defs/W/not/items`), and dropped elsewhere: at the top of another node of
+an entry (`#/$defs/W/not`), under an `x-*` key, or outside `$defs`
+(`#/components/R`). A `$ref` to one node of an entry builds only that node,
+not the rest of the entry.
 
 Comparator names accepted by `x-aws-stickler-comparator` are the registered class names:
 `LevenshteinComparator`, `ExactComparator`, `NormalizedComparator`, `PhoneComparator`,
