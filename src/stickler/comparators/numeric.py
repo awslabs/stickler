@@ -12,6 +12,7 @@ class NumericComparator(BaseComparator):
 
     This comparator extracts and compares numeric values from strings or numbers.
     It supports relative and absolute tolerance for comparison.
+    Booleans are non-numeric inputs and score 0.0.
 
     Example:
         ```python
@@ -99,6 +100,9 @@ class NumericComparator(BaseComparator):
         Returns:
             Decimal value or None if no valid number could be extracted
         """
+        if isinstance(value, bool):
+            return None
+
         if isinstance(value, (int, float)):
             return Decimal(str(value))
 

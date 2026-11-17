@@ -44,7 +44,9 @@ class MyModel(StructuredModel):
     pass
 
 # Compare models
-results = ground_truth.compare_with(predictions, evaluator_format=True)
+results = ground_truth.compare_with(
+    predictions, evaluator_format=True, document_non_matches=True
+)
 
 # Pretty print the results
 from stickler.structured_object_evaluator.utils.pretty_print import print_confusion_matrix

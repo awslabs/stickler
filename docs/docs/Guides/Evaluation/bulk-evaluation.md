@@ -139,7 +139,7 @@ Because each document's `overall_score = Σ_f(score × weight) / Σ_f(weight)` a
 
 The denominator is the count of documents whose `overall_score` was a finite number: error docs (`update()` raised) and successful docs carrying a non-finite or missing `overall_score` are both excluded. With zero eligible documents the score is `0.0` — disambiguate via `document_count` when that matters.
 
-Per-field `mean_score` is reported at every nested path (leaf and object/list aggregate) where `threshold_applied_score` was observed in at least one document, averaging over just those documents. Paths with confusion-matrix counts but no score data (e.g., leaves inside `List[StructuredModel]`, where `compare_with()` only emits the score at the list parent) are surfaced without a `mean_score` key rather than reported as `0.0`.
+Per-field `mean_score` is reported at every nested path (leaf and object/list aggregate) where `threshold_applied_score` was observed in at least one document, averaging over just those documents. Paths with confusion-matrix counts but no score data are surfaced without a `mean_score` key rather than reported as `0.0`. Inside a `List[StructuredModel]` element, only the element's own `StructuredModel` and `List[StructuredModel]` fields (`items.addr`, `items.parts`) are scored, and each document's value is its first matched element pair's score, not a mean over pairs, so it depends on element order ([#428](https://github.com/awslabs/stickler/issues/428)). Every other path inside an element (`items.name`, `items.tags`, `items.addr.city`, `items.addr.geo`) has counts only. All of them count only element pairs that met the match threshold: `compare_with()` emits no element fields for a pair below it.
 
 ---
 

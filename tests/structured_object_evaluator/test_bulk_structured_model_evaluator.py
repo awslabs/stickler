@@ -1162,17 +1162,40 @@ class TestWeightedOverallScore:
         assert result.field_metrics["bar"].get("tp", 0) == 0
 
     def test_list_of_model_leaf_omits_mean_score_key(self):
-        """Leaves inside List[StructuredModel] get CM counts but no mean_score.
+        """In a List[StructuredModel] element only its own StructuredModel and
+        List[StructuredModel] fields get mean_score.
 
-        compare_with() only emits threshold_applied_score at the list parent,
-        so nested leaves never accumulate a score. The key is omitted rather
-        than reported as a misleading 0.0.
+        compare_with() scores the list parent and those fields (``items.addr``,
+        ``items.parts``), copied from the first matched pair (#428), but emits
+        every other path inside an element without threshold_applied_score:
+        leaves, primitive lists, a plain BaseModel field, and anything two levels
+        down (``items.addr.geo``, ``items.parts.sku``). Those get CM counts only,
+        and the key is omitted rather than reported as a misleading 0.0 (#249).
         """
         from typing import List as _List
+
+        from pydantic import BaseModel
+
+        class _Geo(StructuredModel):
+            lat: str = ComparableField(comparator=LevenshteinComparator())
+
+        class _Addr(StructuredModel):
+            city: str = ComparableField(comparator=LevenshteinComparator())
+            geo: _Geo = ComparableField()
+
+        class _Part(StructuredModel):
+            sku: str = ComparableField(comparator=LevenshteinComparator())
+
+        class _Plain(BaseModel):
+            note: str
 
         class _Line(StructuredModel):
             name: str = ComparableField(comparator=LevenshteinComparator(), weight=2.0)
             qty: int = ComparableField(comparator=NumericComparator(), weight=1.0)
+            tags: _List[str] = ComparableField()
+            addr: _Addr = ComparableField()
+            parts: _List[_Part] = ComparableField()
+            plain: _Plain = ComparableField()
 
         class _Order(StructuredModel):
             order_id: str = ComparableField(
@@ -1180,23 +1203,41 @@ class TestWeightedOverallScore:
             )
             items: _List[_Line] = ComparableField(weight=3.0)
 
-        gt = _Order(order_id="O-1", items=[_Line(name="apple", qty=1)])
-        pred = _Order(order_id="O-1", items=[_Line(name="apple", qty=1)])
+        line = _Line(
+            name="apple",
+            qty=1,
+            tags=["red"],
+            addr=_Addr(city="Oslo", geo=_Geo(lat="59.9")),
+            parts=[_Part(sku="A-1")],
+            plain=_Plain(note="n"),
+        )
+        gt = _Order(order_id="O-1", items=[line])
+        pred = _Order(order_id="O-1", items=[line])
 
         evaluator = BulkStructuredModelEvaluator(target_schema=_Order)
         evaluator.update(gt, pred)
         evaluator.update(gt, pred)
-        result = evaluator.compute()
+        fm = evaluator.compute().field_metrics
 
-        # Nested leaves get CM counts bubbled up...
-        assert "items.name" in result.field_metrics
-        assert result.field_metrics["items.name"].get("tp", 0) > 0
-        # ...but no mean_score because compare_with emits it only at the parent.
-        assert "mean_score" not in result.field_metrics["items.name"]
-        assert "mean_score" not in result.field_metrics["items.qty"]
-        # List parent and sibling leaves do surface mean_score.
-        assert "mean_score" in result.field_metrics["items"]
-        assert "mean_score" in result.field_metrics["order_id"]
+        unscored = (
+            "items.name",
+            "items.qty",
+            "items.tags",
+            "items.addr.city",
+            "items.addr.geo",
+            "items.addr.geo.lat",
+            "items.plain",
+            "items.parts.sku",
+        )
+        for path in unscored:
+            # CM counts bubble up...
+            assert fm[path].get("tp", 0) > 0, path
+            # ...but compare_with emits these paths unscored.
+            assert "mean_score" not in fm[path], path
+        # The list parent, the element's own StructuredModel and
+        # List[StructuredModel] fields, and top-level leaves do surface mean_score.
+        for path in ("items", "items.addr", "items.parts", "order_id"):
+            assert "mean_score" in fm[path], path
 
     def test_invalid_overall_score_skipped(self):
         """Non-numeric, non-finite, and bool overall_score are silently dropped.

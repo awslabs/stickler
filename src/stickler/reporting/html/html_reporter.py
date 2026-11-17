@@ -23,19 +23,29 @@ logger = logging.getLogger(__name__)
 # A browser ends a <script> block at the first `</script`, even inside a JSON
 # string, and `json.dumps` leaves `<` as is. Escaping these as `\uXXXX` keeps
 # the JSON identical to the page's JavaScript while no document value can end
-# the block early (#431). U+2028/U+2029 are line terminators in older JS.
-_SCRIPT_SAFE = str.maketrans({
-    "<": "\\u003c",
-    ">": "\\u003e",
-    "&": "\\u0026",
-    "\u2028": "\\u2028",
-    "\u2029": "\\u2029",
-})
+# the block early (#431). `json.dumps` already escapes U+2028/U+2029 under its
+# default `ensure_ascii=True`, so those two entries do not change today's
+# output; they are kept so the escapes stay correct if that ever changes, since
+# both are line terminators outside a JS string literal. The escapes are
+# applied with `str.replace`, not `str.translate`: `translate` with
+# multi-character replacements leaves CPython's ASCII fast path at the first
+# `<`, `>` or `&`, which made large reports about ten times slower to write
+# (#457).
+_SCRIPT_SAFE_ESCAPES = (
+    ("<", "\\u003c"),
+    (">", "\\u003e"),
+    ("&", "\\u0026"),
+    ("\u2028", "\\u2028"),
+    ("\u2029", "\\u2029"),
+)
 
 
 def _json_for_script(value: Any) -> str:
     """Serialize ``value`` as JSON that is safe to place inside ``<script>``."""
-    return json.dumps(value).translate(_SCRIPT_SAFE)
+    script_safe_json = json.dumps(value)
+    for unsafe_char, json_escape in _SCRIPT_SAFE_ESCAPES:
+        script_safe_json = script_safe_json.replace(unsafe_char, json_escape)
+    return script_safe_json
 
 
 class EvaluationHTMLReporter:
@@ -178,6 +188,14 @@ class EvaluationHTMLReporter:
                     line = line.strip()
                     if line:
                         doc_data = json.loads(line)
+                        # The page finds the selected document by comparing ids
+                        # as strings, and the tables write str(doc_id), so a
+                        # numeric id (ordinary from a DataFrame) is embedded as
+                        # one. Left as a number, selecting it matched nothing and
+                        # the page kept showing aggregate numbers.
+                        doc_id = doc_data.get("doc_id") if isinstance(doc_data, dict) else None
+                        if doc_id is not None and not isinstance(doc_id, str):
+                            doc_data["doc_id"] = str(doc_id)
                         individual_docs.append(doc_data)
         except Exception as e:
             logger.warning(f"Failed to load individual results from {jsonl_path}: {e}")
@@ -296,10 +314,8 @@ class EvaluationHTMLReporter:
         return sections
     
     def _get_document_count(self, results: Union[Dict, ProcessEvaluation]) -> int:
-        """Get document count by counting unique doc_ids from available data."""
-        if isinstance(results, ProcessEvaluation):
-           return getattr(results, 'document_count', 1)
-        return 1
+        """Get document count from the results."""
+        return DataExtractor.get_document_count(results)
         
     def _generate_title(self, results: Union[Dict, ProcessEvaluation], is_bulk: bool) -> str:
         """Generate report title."""

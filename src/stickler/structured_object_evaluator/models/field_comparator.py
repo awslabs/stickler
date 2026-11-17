@@ -13,6 +13,16 @@ if TYPE_CHECKING:
     from .structured_model import StructuredModel
 
 
+def _classify(raw: float, threshold: float, clip: bool) -> tuple[Dict[str, int], float]:
+    """Classify a compared field and apply its score-clipping policy."""
+    if ThresholdHelper.is_above_threshold(raw, threshold):
+        return {"tp": 1, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}, raw
+    return (
+        {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0},
+        0.0 if clip else raw,
+    )
+
+
 class FieldComparator:
     """Compares primitive and structured fields.
     
@@ -70,16 +80,9 @@ class FieldComparator:
         weight = info.weight
         threshold = info.threshold
 
-        # For binary classification metrics, always use threshold
-        if ThresholdHelper.is_above_threshold(raw_similarity, threshold):
-            metrics = {"tp": 1, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
-            threshold_applied_score = raw_similarity
-        else:
-            metrics = {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0}
-            # For score calculation, respect clip_under_threshold setting
-            threshold_applied_score = (
-                0.0 if info.clip_under_threshold else raw_similarity
-            )
+        metrics, threshold_applied_score = _classify(
+            raw_similarity, threshold, info.clip_under_threshold
+        )
 
         # UNIFIED STRUCTURE: Always use 'overall' for metrics
         # 'fields' key omitted for primitive leaf nodes (semantic meaning: not a parent container)
@@ -130,45 +133,19 @@ class FieldComparator:
         info = self.model._get_comparison_info(field_name)
         weight = info.weight
         
-        # CRITICAL FIX: For StructuredModel fields, object-level metrics should be based on
-        # object similarity, not rollup of nested field metrics
+        # Classify the object's similarity, separately from its nested field metrics.
 
         # Get object-level similarity score
         raw_score = gt_val.compare(pred_val)  # Overall object similarity
 
-        # Apply object-level binary classification based on threshold
-        if ThresholdHelper.is_above_threshold(raw_score, threshold):
-            # Object matches threshold -> True Positive
-            object_metrics = {"tp": 1, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
-            threshold_applied_score = raw_score
-        else:
-            # Object below threshold -> False Discovery
-            object_metrics = {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0}
-            threshold_applied_score = (
-                0.0 if info.clip_under_threshold else raw_score
-            )
+        object_metrics, threshold_applied_score = _classify(
+            raw_score, threshold, info.clip_under_threshold
+        )
 
         # Still generate nested field details for debugging, but don't roll them up
         # 
-        # TODO: PERFORMANCE ISSUE - Redundant traversal of nested object tree
-        #       This call to compare_recursive() creates a new ComparisonEngine and
-        #       re-traverses all nested fields, even though we're already in the middle
-        #       of a recursive traversal from the parent ComparisonEngine. This causes
-        #       O(n²) behavior for deeply nested structures.
-        #
-        #       Example: Invoice -> Contact -> Address
-        #       - Parent engine traverses Invoice fields
-        #       - Hits Contact field, calls this method
-        #       - This creates NEW engine to traverse Contact fields
-        #       - Hits Address field, creates ANOTHER new engine
-        #       - Each level re-traverses its subtree unnecessarily
-        #
-        #       Better approach: Pass dispatcher context down through recursion to avoid
-        #       creating new engines. This would require refactoring the recursion model
-        #       to be more explicit about context passing.
-        #
-        #       Impact: Moderate - primarily affects deeply nested structures (3+ levels)
-        #       Estimated overhead: 2-3x for structures with 3 levels of nesting
+        # TODO (#392): compare() walks the subtree for its score, then
+        # compare_recursive() walks it again for the nested details.
         from .comparison_engine import ComparisonEngine
         from .structured_model import StructuredModel
 

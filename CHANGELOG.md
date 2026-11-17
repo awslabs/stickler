@@ -11,74 +11,13 @@ Each release links to full notes on the
 
 ### Changed
 
-- **Breaking:** `to_json_schema()` and `to_stickler_config()` no longer write a
-  plain pydantic `BaseModel`, a list of lists or a union of models as a string.
-  Both fell back to `"string"` / `"str"` for a type they had no entry for, so
-  the re-imported model could not load the data the original accepted. A plain
-  model field, or a list of them, now exports as a free-form object
-  (`{"type": "object"}`, `"dict"` in a Stickler config), since it is scored as
-  one object the way a mapping is, and re-imports as `dict` with the
-  comparator, threshold, weight and clip setting it declared; its own field
-  types are not exported. A list of lists, including `List[List[Dict]]`,
-  exports as nested arrays. A consumer reading the exported schema sees these
-  types change. `to_stickler_config()` has no type for a union with a model
-  arm, such as the `Union[Card, Bank]` that `from_json_schema()` builds from a
-  multi-arm `anyOf`, or for a `StructuredModel` inside a nested list
-  (`List[List[Card]]`), so both methods now raise `ValueError` for these, to
-  keep one rule, where they returned a schema that could not load the original
-  data or (for the nested list, in the Stickler config) scored it differently.
-  `Optional` and `Annotated` are stripped before the type is chosen, so a
-  nested model or list of models declared as `Annotated[..., Field(...)] | None`
-  exports as the model, and an annotated scalar such as
-  `Annotated[int, Field(...)] | None` as its own type rather than a string. The
-  refusal reads the field, its list levels and the arms of a union, not other
-  containers: `Union[List[Card], str]`, `Union[Dict[str, Card], str]` and
-  `Tuple[Card, ...]` still export as `"string"`, `List[List[Dict[str, Card]]]`
-  exports without the model's schema, and a union leaf in a list of lists
-  (`List[List[Union[str, int]]]`) is still written as `"string"`.
-  Parts B and C of [#349](https://github.com/awslabs/stickler/issues/349)
-
-- **Breaking:** a `StructuredModel` field typed `date`, `datetime`, `time`,
-  `timedelta`, `Decimal`, `UUID` or `Enum` now reaches its comparator, and a
-  declared comparator is always called. The dispatcher treated only `str`,
-  `int` and `float` as scalars, so these fell through to the mismatched-types
-  case: an identical value scored `0.0` and counted as a false discovery, and
-  the declared comparator (including `DateComparator`) was never called. The
-  zero-config path (`stickler.evaluate()` on a plain pydantic model) was
-  unaffected, because its shadow models convert these values first.
-
-  `compare_with()` and `compare()` now share one rule, so the two no longer
-  disagree on such a pair. Results move for existing callers:
-  - **A declared comparator is called for any non-structured pair**, including
-    `bytes`, a custom class, a tuple or set, or a `date` against its ISO string
-    under `DateComparator`. In `compare_with()` these scored `0.0` without the
-    comparator being called.
-  - **An inferred comparator sees only `str`/`int`/`float`, numbers (`Decimal`
-    included), and related `date`/`time`/`timedelta`/`UUID`/`Enum` values.**
-    Anything else is a mismatch in both readers. `compare()`, which feeds list
-    matching, used to call the comparator for such a pair, so a `date` against
-    its ISO string, `bytes`, or an arbitrary object now score `0.0` there.
-  - **Enum members match only members of a related `Enum` class.** With an
-    inferred comparator, two different `IntEnum` or `StrEnum` classes, or a
-    member against a bare value, are now a mismatch where they used to compare
-    as `int`/`str`.
-  - **A `Decimal` is compared with an `int` or `float` as a number.**
-
-  `Tuple` and `Set` fields with an inferred comparator are unchanged
-  ([#391](https://github.com/awslabs/stickler/issues/391)), and #392 tracks
-  merging the two readers into one implementation
-  ([#383](https://github.com/awslabs/stickler/issues/383))
-
-- **Breaking:** `match_threshold` on a **primitive** field now raises
-  `ValueError`. It is the object-level threshold; nothing read it on a leaf, so
-  `"match_threshold": 0.99` beside a `float` left that field at `threshold` 0.5
-  and scored it against a value the author never chose. The JSON Schema path
-  already refuses the same misplacement, so the two front doors now agree. It
-  stays accepted on the model and on a `structured_model` field, where it is
-  read and where `to_stickler_config()` exports it. A config that builds today
-  and relies on this will start raising, though only one that was scoring
-  against a threshold its author did not choose
-  ([#350](https://github.com/awslabs/stickler/issues/350))
+- The three changes that 1.0.1 announced for 1.0.2 now land in 1.1.0, because
+  patch releases ship no breaking changes. They are the `ValueError` for
+  exporting a union of models or a `StructuredModel` inside a nested list, the
+  `ValueError` for `match_threshold` on a primitive config field, and dropping
+  the `non_matches` key from `compare_with(evaluator_format=True)` output when
+  `document_non_matches` is not set. Until 1.1.0 these keep their 1.0.1
+  behaviour, and their warnings now name 1.1.0.
 
 - **Breaking:** `from_json_schema()` now reads `x-aws-stickler-model-name`,
   `x-aws-stickler-match-threshold` and `x-aws-stickler-infer-unspecified` on a
@@ -138,6 +77,146 @@ Each release links to full notes on the
   `AttributeError: model_fields`. A nested `["object", "null"]` node is
   supported.
 
+### Fixed
+
+- Corrected introductory example scores, the default text comparator description,
+  and the sample amount in the documentation and README
+  ([#478](https://github.com/awslabs/stickler/issues/478)).
+
+- Pretty printers restore stdout when rendering fails, propagate rendering errors,
+  and include the bulk summary in confusion-matrix file output.
+
+- `DateComparator` now treats a naive date against a tz-aware one the same way
+  in range comparisons as for single dates: the aware side's own calendar date
+  is used and the naive side is read on that calendar
+  ([#508](https://github.com/awslabs/stickler/issues/508)). Before, the range containment and overlap paths read the
+  naive date as UTC, so the same aware date matched a different calendar day
+  against a range than against a single date. Range scores change only for
+  inputs that mix naive and tz-aware dates.
+
+- **Warnings emitted by `StructuredModel.compare_with()` now attribute to the caller's line.**
+  Passing `add_confidence_metrics=True` or `add_bbox_metrics=True` no longer points `UserWarning`
+  and the legacy `auroc_confidence_metric` `DeprecationWarning` at Stickler's internal `structured_model.py`
+  line ([#541](https://github.com/awslabs/stickler/issues/541)).
+- **The HTML report gallery now accepts non-string `document_files` keys and
+  paths.** Integer and NumPy keys and `pathlib.Path` values no longer make the
+  gallery step of `generate_report()` fail without writing a page
+  ([#454](https://github.com/awslabs/stickler/issues/454))
+- **The HTML report's Executive Summary now colours its metric cards and shows
+  the right document count.** A guard on a method that does not exist kept every
+  card blue regardless of `color_thresholds`, and the Documents card ignored a
+  results dict's `document_count` key and could render `None`. The count is
+  now read in one place, `DataExtractor.get_document_count`
+  ([#467](https://github.com/awslabs/stickler/issues/467))
+
+- **The HTML report is fast to write again with `individual_results_jsonl_path`.**
+  1.0.1 escaped the report's embedded JSON with a `str.translate` table, which
+  is about ten times slower than `json.dumps` on large reports. The same escapes
+  are now applied with `str.replace`, and the page bytes are unchanged
+  ([#457](https://github.com/awslabs/stickler/issues/457))
+
+- `NumericComparator` treats booleans as non-numeric and returns `0.0` instead of
+  raising `decimal.InvalidOperation`, including in uncoerced model fields.
+
+### Security
+
+- **`print_confusion_matrix_html` now escapes its output.** It wrapped the
+  printed confusion matrix in `<pre>` as is, so a field name carrying markup,
+  declared in a JSON Schema or Stickler config or present in a hand-built
+  result, rendered as live HTML in a notebook. The text is now passed through
+  `html.escape`, and reads the same
+  ([#449](https://github.com/awslabs/stickler/issues/449))
+
+## [1.0.1] - 2026-11-02
+
+### Changed
+
+- `to_json_schema()` and `to_stickler_config()` no longer write a plain
+  pydantic `BaseModel` or a list of lists as a string, and warn on a union of
+  models. Both fell back to `"string"` / `"str"` for a type they had no entry
+  for, so the re-imported model could not load the data the original accepted.
+  A plain model field, or a list of them, now exports as a free-form object
+  (`{"type": "object"}`, `"dict"` in a Stickler config), since it is scored as
+  one object the way a mapping is, and re-imports as `dict` with the
+  comparator, threshold, weight and clip setting it declared; its own field
+  types are not exported. A list of lists, including `List[List[Dict]]`,
+  exports as nested arrays. A consumer reading the exported schema sees these
+  types change. `to_stickler_config()` has no type for a union with a model
+  arm, such as the `Union[Card, Bank]` that `from_json_schema()` builds from a
+  multi-arm `anyOf`, or for a `StructuredModel` inside a nested list
+  (`List[List[Card]]`). Both methods still write these exactly as 1.0.0 did,
+  typed as a string, which cannot load the original data or (for the nested
+  list, in the Stickler config) scores it differently, and emit a
+  `UserWarning` naming the field on every export. `to_stickler_config()` on
+  `List[A | B]`, which raised `AttributeError` in 1.0.0, now exports it as
+  `List[Union]` with the same warning. This becomes a `ValueError`
+  in 1.1.0. `Optional` and `Annotated` are stripped before the type is chosen,
+  so a nested model or list of models declared as
+  `Annotated[..., Field(...)] | None` exports as the model, and an annotated
+  scalar such as `Annotated[int, Field(...)] | None` as its own type rather
+  than a string. The warning reads the field, its list levels and the arms of
+  a union, not other containers: `Union[List[Card], str]`,
+  `Union[Dict[str, Card], str]` and `Tuple[Card, ...]` still export as
+  `"string"` without one, `List[List[Dict[str, Card]]]` exports without the
+  model's schema, and a union leaf in a list of lists
+  (`List[List[Union[str, int]]]`) is still written as `"string"`.
+  Parts B and C of [#349](https://github.com/awslabs/stickler/issues/349)
+
+- A mapping field exports as a mapping. `to_json_schema()` wrote
+  a `Dict[...]` field as `"type": "string"` and `to_stickler_config()` as
+  `"type": "str"`, so the rebuilt model rejected every mapping, including the
+  `{}` its own `default_factory=dict` exported. They now write
+  `"type": "object"`, with `additionalProperties` for a primitive value type,
+  and `"Dict[str, str]"`, or `"dict"` when a key or value type has no config
+  name. A consumer reading the exported schema sees this type change. Through
+  JSON Schema the field rebuilds as `dict`, without the value type.
+  `List[Dict[...]]` items are not covered: `to_json_schema()` still exports
+  them as `"string"` (see
+  [#333](https://github.com/awslabs/stickler/issues/333))
+  ([#306](https://github.com/awslabs/stickler/issues/306))
+
+- A `StructuredModel` field typed `date`, `datetime`, `time`,
+  `timedelta`, `Decimal`, `UUID` or `Enum` now reaches its comparator, and a
+  declared comparator is always called. The dispatcher treated only `str`,
+  `int` and `float` as scalars, so these fell through to the mismatched-types
+  case: an identical value scored `0.0` and counted as a false discovery, and
+  the declared comparator (including `DateComparator`) was never called. The
+  zero-config path (`stickler.evaluate()` on a plain pydantic model) was
+  unaffected, because its shadow models convert these values first.
+
+  `compare_with()` and `compare()` now share one rule, so the two no longer
+  disagree on such a pair. Results move for existing callers:
+  - **A declared comparator is called for any non-structured pair**, including
+    `bytes`, a custom class, a tuple or set, or a `date` against its ISO string
+    under `DateComparator`. In `compare_with()` these scored `0.0` without the
+    comparator being called.
+  - **An inferred comparator sees only `str`/`int`/`float`, numbers (`Decimal`
+    included), and related `date`/`time`/`timedelta`/`UUID`/`Enum` values.**
+    Anything else is a mismatch in both readers. `compare()`, which feeds list
+    matching, used to call the comparator for such a pair, so a `date` against
+    its ISO string, `bytes`, or an arbitrary object now score `0.0` there.
+  - **Enum members match only members of a related `Enum` class.** With an
+    inferred comparator, two different `IntEnum` or `StrEnum` classes, or a
+    member against a bare value, are now a mismatch where they used to compare
+    as `int`/`str`.
+  - **A `Decimal` is compared with an `int` or `float` as a number.**
+
+  `Tuple` and `Set` fields with an inferred comparator are unchanged
+  ([#391](https://github.com/awslabs/stickler/issues/391)), and #392 tracks
+  merging the two readers into one implementation
+  ([#383](https://github.com/awslabs/stickler/issues/383))
+
+- `match_threshold` on a **primitive** field in a Stickler config now emits a
+  `UserWarning` naming the model and field, once per model and field path. It is the object-level
+  threshold; nothing reads it on a leaf, so `"match_threshold": 0.99` beside a
+  `float` leaves that field at `threshold` 0.5 and scores it against a value
+  the author never chose. The key is still ignored and the field scores as it
+  did in 1.0.0. Use `threshold` on the field. This becomes a `ValueError` in
+  1.1.0, matching the JSON Schema path, which already refuses the same
+  misplacement. It stays accepted on the model and on a `structured_model`
+  field, where it is read and where `to_stickler_config()` exports it
+  ([#350](https://github.com/awslabs/stickler/issues/350))
+
 - A field config that is not a mapping now raises `ValueError` naming the type
   it got, rather than reaching a containment test that gave an undocumented
   `TypeError`: `5` and `None` produced "argument of type 'int' is not iterable",
@@ -145,7 +224,7 @@ Each release links to full notes on the
   later on subscripting
   ([#350](https://github.com/awslabs/stickler/issues/350))
 
-- **Breaking:** a float `NaN` is now absent, the same as `None`. Two identical
+- A float `NaN` is now absent, the same as `None`. Two identical
   `NaN`s scored `0.0` and counted as a false discovery, because `NaN` equals
   nothing under IEEE 754. `NaN` vs `NaN` or `None` is now a true negative
   scoring `1.0`, `NaN` vs a number is a false alarm or false negative, and
@@ -159,7 +238,7 @@ Each release links to full notes on the
   [#443](https://github.com/awslabs/stickler/issues/443)
   ([#367](https://github.com/awslabs/stickler/issues/367))
 
-- **Breaking:** a `None` element in a list is now absent. It is left out
+- A `None` element in a list is now absent. It is left out
   before matching, so it is never paired, counted or scored, and a list of only
   `None` is an empty list. A float `NaN` element counts as `None`; an empty
   string is still a value. This holds for lists of models and of primitives,
@@ -184,7 +263,7 @@ Each release links to full notes on the
   ([#322](https://github.com/awslabs/stickler/issues/322)). See
   [`None` elements in a list](https://awslabs.github.io/stickler/Advanced/classification-logic/#none-elements-in-a-list)
 
-- **Breaking:** a score that floating-point arithmetic leaves just under its
+- A score that floating-point arithmetic leaves just under its
   threshold now gets the same verdict at every classification gate. A
   primitive list element allowed a `1e-10` tolerance, but a field, a nested
   model, a `List[StructuredModel]` pair, `EvalResult.matched` and
@@ -210,14 +289,15 @@ Each release links to full notes on the
   ([#417](https://github.com/awslabs/stickler/issues/417)). See
   [Meeting a Threshold](https://awslabs.github.io/stickler/Getting-Started/thresholds-and-metrics/#meeting-a-threshold)
 
-- **Breaking:** `evaluator_format=True` output carries `non_matches` only
-  with `document_non_matches=True`, as the default `compare_with()` dict does,
-  so `result["non_matches"]` without it now raises `KeyError`. It always wrote
-  `"non_matches": []`, so `print_non_matches` and the HTML report both said
-  `No non-matches found.` over a document with a wrong field, despite the #298
-  and #411 fixes. Both now say the records are missing. To read records, pass
-  `document_non_matches=True`; to tell "not collected" from "none found", test
-  `"non_matches" in result`. Scores and counts are unchanged
+- `compare_with(evaluator_format=True)` without `document_non_matches=True`
+  now emits a `DeprecationWarning`, once per process. Its `"non_matches": []`
+  is unchanged from 1.0.0, a plain list, but it means the records were not
+  collected, not that none were found: `print_non_matches` and the HTML report
+  print `No non-matches found.` over it even for a document with a wrong field.
+  The printers' "records were not collected" message (#298, #411) does not yet
+  apply to evaluator-format output; it applies once 1.1.0 omits the key there,
+  as the default `compare_with()` dict already does. To read records, pass
+  `document_non_matches=True`. Scores and counts are unchanged
   ([#413](https://github.com/awslabs/stickler/issues/413))
 
 - The Strands Evals golden snapshot now covers three `NaN` shapes
@@ -236,6 +316,13 @@ Each release links to full notes on the
 
 ### Fixed
 
+- **A once-per-process warning raises on every call under `-W error`.** The
+  helper recorded a warning as shown before showing it, so when the warning
+  filter turned it into an exception (`-W error`, or pytest's
+  `filterwarnings = error`) only the first call raised, every later one passed
+  silently, and a later `pytest.warns` saw nothing. Which test failed depended
+  on test order. A warning is now recorded only once it has been emitted.
+
 - **The HTML report's field performance table now escapes field names.** It
   wrote each name into the page as raw HTML, while the chart beside it escaped
   the same name, so a name containing `<`, `>` or `&` was read by the browser as
@@ -243,6 +330,12 @@ Each release links to full notes on the
   non-matches table truncates a long value before escaping it, so the cut can
   no longer split an entity such as `&amp;`
   ([#422](https://github.com/awslabs/stickler/issues/422))
+
+- **The HTML report's Executive Summary escapes its `Documents` count.** A
+  `document_count` assigned to a `ProcessEvaluation` after construction, or set
+  through `model_construct`, is not validated as an `int`, so a string assigned
+  there was written into the page unescaped. Document data does not reach this
+  value.
 
 - List reporting ([#332](https://github.com/awslabs/stickler/issues/332)):
   `non_matches` and `field_comparisons` reuse the pairings, scores, and
@@ -255,6 +348,36 @@ Each release links to full notes on the
   A nested list row inside a list element reports `match=False` when an element
   was a false discovery, false alarm or false negative, so `field_comparisons`
   agrees with `non_matches`.
+
+- **A `List[Dict[...]]` field exported by `to_json_schema()` can now load its
+  own data.** The element was exported as `items: {"type": "string"}`, so
+  `from_json_schema()` rebuilt the field as `List[str]` and raised
+  `ValidationError: Input should be a valid string` on the data the original
+  model accepted. A list whose element is any mapping (`Dict`, `dict`,
+  `Mapping`, optionally `Optional`) now exports `items: {"type": "object"}`
+  (`["object", "null"]` for an optional element) and re-imports as
+  `List[dict]` (`List[Optional[dict]]` for an optional element), including on
+  a model built with `from_pydantic()`, with the two limits the
+  [export guide](https://awslabs.github.io/stickler/Advanced/model-export/)
+  states. A consumer reading the exported schema
+  sees the `items` type change from `"string"` to `"object"`.
+  `to_stickler_config()` now writes a mapping element as `List[Dict]`
+  (`List[Optional[Dict]]` for an optional element), which `model_from_json()`
+  re-imports as written; it wrote `List[Mapping]` or `List[Counter]`, which
+  `model_from_json()` refused with `Unknown type`, and `List[dict]` for a
+  `dict` element, which loaded and is now written `List[Dict]` too. On a `from_pydantic()` model
+  it still writes `List[Any]`, which loads the same data. Both
+  exports now carry the comparator, threshold, weight and clip the field
+  resolves even when it is declared without `ComparableField`, so it scores as
+  the original did (`0.5` for one wrong key of two) unless the data relied on
+  coercion to the value type, which is not exported. Before, such a field could
+  not be re-imported: the JSON Schema path raised `ValidationError`, and
+  `model_from_json()` refused it for having no comparator. A declared
+  `ComparableField` whose annotation resolves only at `model_rebuild()` now
+  exports ANLS* with clip off, what the engine scores with, instead of
+  Levenshtein with clip on (`0.5`, not `0.95`, for the same data after the
+  round trip)
+  ([#333](https://github.com/awslabs/stickler/issues/333))
 
 - **A `RootModel` is now refused when the evaluator is built, instead of failing
   once per document or scoring a wrong value `1.0`.** `eval_for()` accepted one
@@ -349,6 +472,44 @@ Each release links to full notes on the
   ([#425](https://github.com/awslabs/stickler/issues/425))
   ([#411](https://github.com/awslabs/stickler/issues/411))
 
+- **`ComparableField` accepts `default_factory`.** It always forwarded its own
+  `default` to pydantic's `Field`, so the two collided and every collection field
+  raised `TypeError: cannot specify both default and default_factory` -- the case
+  pydantic's own documentation tells users to reach for. Supplying both a `default`
+  and a `default_factory` still raises, as it does in plain pydantic, except
+  `default=...` or `PydanticUndefined`, which pydantic ignores beside a factory,
+  so the field is optional
+  ([#306](https://github.com/awslabs/stickler/issues/306))
+
+  Both exporters were taught about factories at the same time, since nothing could
+  reach them while the field itself refused to build. `to_stickler_config()` wrote
+  `PydanticUndefined` through verbatim, so `json.dumps()` on the result raised and
+  the in-process round trip rebuilt the field as required; `to_json_schema()` dropped
+  the default instead, so `from_json_schema()` gave back `None` where the author
+  wrote `default_factory=list` and the failure surfaced at the first `.append()`.
+  Both now emit the value the factory produces, for `list`, `dict` and `set`, on a
+  field exported as a list or a mapping. A field exported as a scalar (`Set[str]` is
+  written as `"str"`) gets no default rather than one its rebuilt type rejects. Any
+  other factory is left unexported rather than called during an export. A set
+  default, from a factory or written literally, is emitted as a list, because JSON
+  has no set type. `to_stickler_config()` also writes `required` on a
+  `List[StructuredModel]` field now; without it a required list rebuilt as optional.
+  On an `Optional` field `to_stickler_config()` writes no empty `[]` or `{}`
+  default, since a config has no nullable flag and only a `None` default
+  rebuilds the field as `Optional`. The rebuilt field defaults to `None` where
+  the original had `[]` or `{}`; scores are identical, though `model_dump()`
+  shows `null`. Only an empty list or mapping default is covered: any other
+  default on an `Optional` field (`Optional[List[int]] = [1]`,
+  `Optional[str] = ""`) is written and still rebuilds non-nullable, as before.
+  `model_from_json()` now applies the widening to a `list_structured_model`
+  field too, which rebuilt as `List[Model]` and rejected `None`; an empty
+  literal `[]` on a non-Optional `List[Model]` is now exported, so that field
+  stays non-nullable. A `List[Model]` default that is not written (a non-empty
+  literal such as `[Sub(...)]`, a tuple, or a factory other than `list`,
+  `dict` or `set`) rebuilds as `Optional` with a `None` default, so the
+  rebuilt model now accepts `None` even where the original `List[Model]` was
+  not `Optional`; `None` scores the same as `[]`.
+
 - **`raw_similarity_score` on a primitive list node is now the unclipped
   score.** It carried the clipped, coverage-scaled mean, the same number as
   `threshold_applied_score`, so it contradicted its name and `compare()`, and
@@ -386,6 +547,15 @@ Each release links to full notes on the
   the metrics of a field that is not a list, are unchanged.
   Only evaluator-format output moves: scores and counts are unchanged
 
+- **The HTML report accepts a non-string document id.** `evaluate_dataframe`
+  reads `doc_id` straight off a DataFrame column, so an integer id, ordinary
+  from CSV, parquet or a database, made `generate_report()` return
+  `success=False` with no page written. The report now renders, and selecting
+  such a document in the Report View shows that document's numbers instead of
+  the aggregate. A `None` or missing id is left as is. A `document_files`
+  mapping keyed by a non-string id still fails in the document gallery
+  ([#454](https://github.com/awslabs/stickler/issues/454))
+
 ### Security
 
 - **A document value can no longer run as script in the HTML report.** With
@@ -399,6 +569,53 @@ Each release links to full notes on the
   are now written as `\uXXXX`, which the page's JavaScript reads as the same
   characters. Present since 0.1.3
   ([#431](https://github.com/awslabs/stickler/issues/431))
+
+- **A PDF in `document_files` can no longer run script in the HTML report.**
+  The report loads pdf.js 3.11.174, which is affected by CVE-2024-4367: with
+  eval allowed, a crafted font runs JavaScript in the page's origin when the
+  PDF is opened in the Report View. That needs the report served over HTTP(S),
+  which the reporter README recommends for PDFs. The viewer now passes
+  `isEvalSupported: false`, the upstream mitigation; pdf.js itself is not
+  upgraded. Present since 0.3.0, the first wheel that ships the viewer
+
+- **The field performance table escapes its confusion counts.**
+  `generate_report()` accepts a plain dict, so a caller assembling its own
+  metrics could put markup in the `tp`, `fd`, `fa` or `fn` cells and have a
+  browser parse it. Not reachable from document data
+
+### Performance
+
+- **A report generated with `individual_results_jsonl_path` takes longer to
+  write.** The escaping that keeps document data from ending the report's
+  `<script>` block runs over the whole embedded blob and takes a slower path
+  than the plain `json.dumps` it wraps: 467 ms against 42 ms at 1.0.0 for
+  1,000 documents, a 13.3 MB blob. Evaluation results are unaffected; this is
+  report-generation time only. A faster form with byte-identical output is
+  tracked in [#457](https://github.com/awslabs/stickler/issues/457)
+
+### Documentation
+
+- Corrected which paths in `BulkStructuredModelEvaluator` `field_metrics` get a
+  `mean_score`. The guides said `compare_with()` scores only the list parent of a
+  `List[StructuredModel]`. A list element's own `StructuredModel` and
+  `List[StructuredModel]` fields (`items.addr`, `items.parts`) are scored too,
+  but each document's value is its first matched element pair's score, not a
+  mean over pairs, so it depends on element order
+  ([#428](https://github.com/awslabs/stickler/issues/428)). Every other path
+  inside an element (`items.name`, `items.tags`, `items.addr.city`,
+  `items.addr.geo`, a plain `BaseModel` field) carries confusion-matrix counts
+  but no `mean_score`. All of them count only element pairs that met the
+  match threshold: a pair below it emits no element fields at all. Scoring is
+  unchanged ([#249](https://github.com/awslabs/stickler/issues/249))
+
+- Corrected the last row of the 1.0.0 table under "The element gate judges a
+  PAIR, not a list". Under its bare `Optional[List[Any]]` heading,
+  `[Plain, NoteSM]` vs `[Plain, Note2SM]` scores `0.5`, not `1.0`, and scored
+  `0.0`, not `0.5`, under the list-wide gate. The published `1.0`, `0.5`, `1.0`
+  hold only with a comparator declared on `f`. The bare `0.5` is the refused
+  `Plain` pair (`[Plain]` vs `[Plain]` scores `0.0` bare), not the cross-class
+  rule. Scoring is unchanged
+  ([#338](https://github.com/awslabs/stickler/issues/338))
 
 ## [1.0.0] - 2026-09-11
 
@@ -2722,7 +2939,8 @@ Initial public release: structured JSON comparison with configurable
 comparators, Hungarian-algorithm list matching, confusion-matrix metrics, and
 HTML reporting.
 
-[Unreleased]: https://github.com/awslabs/stickler/compare/v1.0.0...dev
+[Unreleased]: https://github.com/awslabs/stickler/compare/v1.0.1...dev
+[1.0.1]: https://github.com/awslabs/stickler/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/awslabs/stickler/compare/v0.7.0...v1.0.0
 [0.7.0]: https://github.com/awslabs/stickler/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/awslabs/stickler/compare/v0.5.0...v0.6.0

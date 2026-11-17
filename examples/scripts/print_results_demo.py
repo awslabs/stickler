@@ -113,7 +113,12 @@ def demo_evaluator_printing():
 
     print("Comparing orders with product lists...")
 
-    result = gt_order.compare_with(pred_order, include_confusion_matrix=True, evaluator_format=True)
+    result = gt_order.compare_with(
+        pred_order,
+        include_confusion_matrix=True,
+        evaluator_format=True,
+        document_non_matches=True,
+    )
 
     print("\n🎯 Using print_confusion_matrix() with evaluator format results:")
     print_confusion_matrix(result, show_details=True)
@@ -194,7 +199,12 @@ def demo_advanced_print_options():
         ],
     )
 
-    result = gt_order.compare_with(pred_order, include_confusion_matrix=True, evaluator_format=True)
+    result = gt_order.compare_with(
+        pred_order,
+        include_confusion_matrix=True,
+        evaluator_format=True,
+        document_non_matches=True,
+    )
 
     print("\n🎯 Standard output:")
     print_confusion_matrix(result, show_details=True)
