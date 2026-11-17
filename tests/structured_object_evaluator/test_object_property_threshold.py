@@ -513,7 +513,7 @@ class TestTheComparatorOnTheSameNodeWarns:
         assert any(
             m.startswith(
                 "'x-aws-stickler-comparator' has no effect on field 'inner' of "
-                "model 'DynamicModel(fields: inner)' and is ignored"
+                "model 'Parent' and is ignored"
             )
             for m in messages
         )

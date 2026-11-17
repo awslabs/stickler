@@ -590,7 +590,7 @@ class TestANamedComparatorOnANestedModelWarnsOnBothImporters:
             ),
             "schema": (
                 "'x-aws-stickler-comparator' has no effect on field 'f' of model "
-                "'DynamicModel(fields: f)' and is ignored, except for its "
+                "'Sch' and is ignored, except for its "
                 "threshold 0.9, which this field uses: it is an object with "
                 "properties, scored field by field, so its comparator is never "
                 "called. Set comparators on the properties inside it, and set "
@@ -712,20 +712,19 @@ class TestAListOfModelsReadsNoComparatorConfig:
         assert paths["config"][1] == [
             "'comparator_config' key 'threshold' has no effect on field 'f' of "
             "model 'Cfg' and is ignored: it is a list_structured_model field, "
-            "whose elements are "
-            "paired by Hungarian matching, so neither a comparator nor its "
-            "threshold is read for it. Set comparators on the fields inside each "
-            "element, and the pairing threshold with 'match_threshold' on this "
-            "field."
+            "which matches its items using 'match_threshold' on this field and "
+            "never calls a comparator. Set comparators on the fields inside each "
+            "element, and how items match with 'match_threshold' on this field, "
+            "a number from 0.0 to 1.0."
         ]
         assert paths["schema"][1] == [
             "'x-aws-stickler-comparator-config' key 'threshold' has no effect on "
-            "field 'f' of model 'DynamicModel(fields: f)' and is ignored: it is "
-            "an array of objects, whose elements "
-            "are paired by Hungarian matching, so neither a comparator nor its "
-            "threshold is read for it. Set comparators on the properties inside "
-            "each element, and the pairing threshold with "
-            "'x-aws-stickler-match-threshold' in its 'items'."
+            "field 'f' of model 'Sch' and is ignored: it is an array of "
+            "objects, which matches its items using "
+            "'x-aws-stickler-match-threshold' in its 'items' and never calls a "
+            "comparator. Set comparators on the properties inside each element, "
+            "and how items match with 'x-aws-stickler-match-threshold' in its "
+            "'items', a number from 0.0 to 1.0."
         ]
 
 
@@ -1082,6 +1081,6 @@ class TestNestedModelWarningsReachEveryModel:
             )
         )
         assert [w.filename for w in caught] == [__file__]
-        assert "field 'f.addr' of model 'DynamicModel(fields: f)'" in str(
+        assert "field 'f.addr' of model 'Sch'" in str(
             caught[0].message
         )

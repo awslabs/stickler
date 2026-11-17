@@ -352,11 +352,10 @@ def _nested_model_keys_warning(
     if is_list:
         return (
             f"{subject} {verb} no effect on {where} and "
-            f"{be} ignored: it is {shape}, whose "
-            "elements are paired by Hungarian matching, so neither a comparator "
-            "nor its threshold is read for it. Set comparators on the "
-            f"{members} inside each element, and the pairing threshold with "
-            f"{threshold_key}."
+            f"{be} ignored: it is {shape}, which matches its items using "
+            f"{threshold_key} and never calls a comparator. Set comparators on "
+            f"the {members} inside each element, and how items match with "
+            f"{threshold_key}, a number from 0.0 to 1.0."
         )
     if adopted is not None:
         return (

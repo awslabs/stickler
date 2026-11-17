@@ -323,7 +323,8 @@ class JsonSchemaImporter:
             root_name if isinstance(root_name, str) else "DynamicModel",
             [str(k) for k in properties] if isinstance(properties, dict) else (),
         )
-        # The name an error gives the model. See `schema_model_label`.
+        # The name an error, and a warning, gives the model: its title when it
+        # has no x-aws-stickler-model-name. See `schema_model_label`.
         self.model_label = schema_model_label(schema)
         # The object-level match threshold, which inference uses as the FIELD
         # threshold for a mapping field (a dict declines to name its keys, so it
@@ -494,7 +495,7 @@ class JsonSchemaImporter:
                         is_list=False,
                         members="properties",
                         threshold_key="'x-aws-stickler-threshold'",
-                        model_id=self.model_id,
+                        model_id=self.model_label or self.model_id,
                         adopted=comparator_threshold
                         if named is not None and not stated
                         else None,
@@ -804,7 +805,7 @@ class JsonSchemaImporter:
                     is_list=True,
                     members="properties",
                     threshold_key="'x-aws-stickler-match-threshold' in its 'items'",
-                    model_id=self.model_id,
+                    model_id=self.model_label or self.model_id,
                 ),
                 UserWarning,
                 stacklevel=_stacklevel_outside_stickler(),
