@@ -784,13 +784,24 @@ class JsonSchemaImporter:
             # the element class's gate is a different number, so echoing it would
             # tell the reader to overwrite a working configuration with the value
             # being discarded.
+            #
+            # When `items` is a `$ref`, "inside that property's 'items'" read
+            # as beside the `$ref`, where the key is not read either and now
+            # raises, so the message names the class the `$ref` builds from.
             if declared != _EXPORTED_ARRAY_THRESHOLD_SENTINEL:
+                sources = self._element_class_sources(field_path)
+                where = (
+                    f"declared on {' or '.join(sources)}, where its 'items' "
+                    "'$ref' leads"
+                    if sources
+                    else "declared inside that property's 'items'"
+                )
                 warnings.warn(
                     f"'x-aws-stickler-threshold': {declared} has no effect on "
                     f"array property '{field_path}' and is ignored. Pairing of "
                     f"array elements is gated by the element class's own "
-                    f"'x-aws-stickler-match-threshold', declared inside that "
-                    f"property's 'items'; set it there if that is what you meant.",
+                    f"'x-aws-stickler-match-threshold', {where}; set it there "
+                    "if that is what you meant.",
                     UserWarning,
                 )
 
@@ -1410,6 +1421,60 @@ class JsonSchemaImporter:
         if annotation is Decimal:
             return float
         return annotation
+
+    def _as_object(self, node: Any) -> Any:
+        """The object a raw node describes: through its `$ref` chain, and into
+        the one arm of an `anyOf`/`oneOf` that is not `null`."""
+        seen: set = set()
+        while isinstance(node, dict) and id(node) not in seen:
+            seen.add(id(node))
+            if "$ref" in node:
+                node = _resolve_local_ref(self.schema, node["$ref"])[0]
+                continue
+            arms = node.get("anyOf", node.get("oneOf"))
+            if "properties" in node or not isinstance(arms, list):
+                return node
+            arms = [arm for arm in arms if arm != {"type": "null"}]
+            if len(arms) != 1:
+                return node
+            node = arms[0]
+        return node if isinstance(node, dict) else None
+
+    def _element_class_sources(self, field_path: str) -> List[str]:
+        """Where the element class of the array property at `field_path` reads
+        its own keys, when its `items`, or an arm of them, is a `$ref`: the end
+        of each `$ref` chain. Empty when `items` is inline or the property is
+        not found in the raw schema."""
+        path = field_path
+        if self.field_path:
+            if not path.startswith(self.field_path):
+                return []
+            path = path[len(self.field_path) :].lstrip(".")
+        node: Any = self.schema
+        for segment in path.split(".") if path else ():
+            name, lists = segment, 0
+            while name.endswith("[]"):
+                name, lists = name[:-2], lists + 1
+            properties = (self._as_object(node) or {}).get("properties")
+            if not isinstance(properties, dict) or name not in properties:
+                return []
+            node = properties[name]
+            for _ in range(lists):
+                node = (self._as_object(node) or {}).get("items")
+        array = self._as_object(node) or {}
+        items = array.get("items")
+        if not isinstance(items, dict):
+            return []
+        arms = items.get("anyOf", items.get("oneOf"))
+        refs = [items] if "$ref" in items else arms if isinstance(arms, list) else []
+        sources: List[str] = []
+        for ref in refs:
+            if not isinstance(ref, dict) or "$ref" not in ref:
+                continue
+            hops = list(_ref_chain(self.schema, ref, ""))
+            if len(hops) > 1 and hops[-1][1] not in sources:
+                sources.append(hops[-1][1])
+        return sources
 
     @staticmethod
     def _is_model(annotation: Any) -> bool:

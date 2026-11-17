@@ -332,6 +332,103 @@ class TestAnArrayOfObjectsIgnoresItWithAWarning:
                 )
 
 
+class TestTheWarningNamesTheClassAnItemsRefBuildsFrom:
+    """Where `items` is a `$ref`, the warning names the definition to edit.
+
+    "Declared inside that property's 'items'" read as beside the `$ref`, where
+    the key is not read either: the class is built from the target, so the
+    import raises there and names the target. The two messages gave opposite
+    advice for the same key.
+    """
+
+    ROW = {"type": "object", "properties": {"b": {"type": "string"}}}
+
+    # How the array property reaches `Row`, and the path the warning names.
+    SHAPES = {
+        "ref": (
+            lambda rows: {"type": "object", "properties": {"rows": rows}},
+            {"$ref": "#/$defs/Row"},
+            "rows",
+        ),
+        "alias": (
+            lambda rows: {"type": "object", "properties": {"rows": rows}},
+            {"$ref": "#/$defs/Alias"},
+            "rows",
+        ),
+        "anyOf-arm": (
+            lambda rows: {"type": "object", "properties": {"rows": rows}},
+            {"anyOf": [{"$ref": "#/$defs/Row"}, {"type": "null"}]},
+            "rows",
+        ),
+        "inside-a-definition": (
+            lambda rows: {
+                "type": "object",
+                "properties": {"p": {"$ref": "#/$defs/P"}},
+                "$defs": {"P": {"type": "object", "properties": {"rows": rows}}},
+            },
+            {"$ref": "#/$defs/Row"},
+            "p.rows",
+        ),
+        "under-the-root-ref": (
+            lambda rows: {
+                "$ref": "#/$defs/P",
+                "$defs": {"P": {"type": "object", "properties": {"rows": rows}}},
+            },
+            {"$ref": "#/$defs/Row"},
+            "rows",
+        ),
+    }
+
+    @classmethod
+    def _schema(cls, shape, row, **extensions):
+        make, items, _ = cls.SHAPES[shape]
+        schema = make(dict({"type": "array", "items": items}, **extensions))
+        schema.setdefault("$defs", {}).update(
+            {"Row": row, "Alias": {"$ref": "#/$defs/Row"}}
+        )
+        return schema
+
+    @pytest.mark.parametrize("shape", SHAPES)
+    def test_it_names_the_definition(self, shape):
+        with pytest.warns(UserWarning, match="has no effect") as caught:
+            StructuredModel.from_json_schema(
+                self._schema(shape, self.ROW, **{"x-aws-stickler-threshold": 0.88})
+            )
+        message = str(caught[0].message)
+        assert f"array property '{self.SHAPES[shape][2]}'" in message
+        assert "declared on definition '$defs.Row'" in message
+        assert "inside that property's 'items'" not in message
+
+    @pytest.mark.parametrize("shape", SHAPES)
+    def test_following_it_works(self, shape):
+        model = StructuredModel.from_json_schema(
+            self._schema(
+                shape, dict(self.ROW, **{"x-aws-stickler-match-threshold": 0.88})
+            )
+        )
+        for name in self.SHAPES[shape][2].split("."):
+            element = model.model_fields[name].annotation
+            while getattr(element, "__args__", None):
+                element = next(arg for arg in element.__args__ if arg is not type(None))
+            model = element
+        assert model.match_threshold == 0.88
+
+    def test_inline_items_keep_the_items_advice(self):
+        with pytest.warns(UserWarning, match="inside that property's 'items'"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {
+                        "rows": {
+                            "type": "array",
+                            "items": self.ROW,
+                            "x-aws-stickler-threshold": 0.88,
+                        }
+                    },
+                }
+            )
+
+
 class TestOurOwnExportDoesNotWarn:
     """The warning must not fire on a schema stickler itself produced.
 
