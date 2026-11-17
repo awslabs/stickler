@@ -204,7 +204,7 @@ These are computed at every node of the result tree, from that node's own counts
 
 **Threshold boundary** -- A similarity score exactly equal to the threshold counts as a match (TP). So does a score less than `1e-10` under it, at every gate listed in [Meeting a Threshold](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold), so a rounding error such as `0.7 + 0.1` (`0.7999999999999999`) against `0.8` does not turn a TP into an FD.
 
-**List order** -- The order of a list's elements does not matter. The Hungarian algorithm finds the optimal pairing regardless of element position. A nested list element is compared as one whole value ([Pairing](#list-contract)).
+**List order** -- The order of a list field's elements does not matter. The Hungarian algorithm finds the optimal pairing regardless of element position. A nested list element is compared as one whole value ([Pairing](#list-contract)).
 
 **Nested lists** -- For `List[StructuredModel]`, the Hungarian algorithm pairs objects at the list level, then each TP pair is evaluated recursively ([Recursion](#list-contract)).
 

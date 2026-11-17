@@ -77,9 +77,9 @@ Each release links to full notes on the
   measured output:
   - A list declared without `ComparableField` pairs against the class
     `match_threshold` (`0.7` unless set), not `0.5`.
-  - A list's element order does not matter, but a nested list element is
-    compared as one value, and on the zero-config path it must match exactly,
-    order included.
+  - A list field's element order does not matter, but a nested list element
+    is compared as one value, and on the zero-config path it must match
+    exactly, order included.
   - The runtime `match_threshold` of `evaluate()` and `eval_for()` sets only
     `matched` on a `StructuredModel` class
     ([#416](https://github.com/awslabs/stickler/issues/416)). On a plain
