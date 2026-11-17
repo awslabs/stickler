@@ -613,6 +613,34 @@ class TestOtherRealNumbersAreConvertedToFloat:
         "dtype, below",
         [("float32", 0.89999997), ("float16", 0.8998)],
     )
+    def test_a_numpy_match_threshold_compares_as_a_python_float(self, dtype, below):
+        """A list pair scoring just below its float() value is an FD; dev: a TP."""
+        np = pytest.importorskip("numpy")
+        item = type(
+            f"Item{dtype}",
+            (StructuredModel,),
+            {
+                "__annotations__": {"sku": str},
+                "match_threshold": getattr(np, dtype)(0.9),
+                "sku": ComparableField(comparator=_Fixed(below), threshold=0.1),
+            },
+        )
+        order = type(
+            f"Order{dtype}",
+            (StructuredModel,),
+            {"__annotations__": {"items": List[item]}, "items": ComparableField()},
+        )
+        result = order(items=[item(sku="a")]).compare_with(
+            order(items=[item(sku="b")]), include_confusion_matrix=True
+        )
+        cell = result["confusion_matrix"]["fields"]["items"]["overall"]
+        assert below < item.match_threshold == float(getattr(np, dtype)(0.9))
+        assert (cell["tp"], cell["fd"]) == (0, 1)
+
+    @pytest.mark.parametrize(
+        "dtype, below",
+        [("float32", 0.89999997), ("float16", 0.8998)],
+    )
     def test_a_numpy_float16_or_float32_compares_as_a_python_float(self, dtype, below):
         """Its float() value is the threshold, so a score just below it is an FD.
 
