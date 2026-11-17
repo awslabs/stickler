@@ -4,6 +4,8 @@ This module provides the ComparableField function for creating fields in structu
 with comparison configuration parameters.
 """
 
+import math
+import numbers
 from typing import Any, Dict, Optional
 
 from pydantic import Field
@@ -73,17 +75,88 @@ def _named_comparator_threshold(comparator: BaseComparator) -> Optional[float]:
     return getattr(comparator, "threshold", None)
 
 
-def _is_valid_threshold(value: Any) -> bool:
-    """Whether ``value`` can gate a field: a real number from 0.0 to 1.0.
+def _number_text(value: float) -> str:
+    """``85`` for ``85`` or ``85.0``, else the repr, for an error message."""
+    return repr(int(value)) if float(value).is_integer() else repr(value)
 
-    The importers check a threshold named on a comparator with this before
-    adopting it, since only a field-level ``threshold`` is range-checked on
-    load. ``bool`` is refused although it is an ``int``; NaN fails the range.
+
+def _threshold_problem(value: Any) -> Optional[str]:
+    """Why ``value`` cannot gate a field, with the likely fix, or ``None``.
+
+    A threshold is a real number from 0.0 to 1.0. ``bool`` is refused although
+    it is an ``int``. ``numbers.Real`` rather than ``(int, float)`` so a numpy
+    scalar, which a Python model may pass, is still a number.
     """
-    return (
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and 0.0 <= value <= 1.0
+    if isinstance(value, bool):
+        return f"{value!r} is a boolean, not a number."
+    if isinstance(value, str):
+        try:
+            parsed = float(value)
+        except ValueError:
+            return f"{value!r} is a string, not a number."
+        if not math.isfinite(parsed):
+            return f"{value!r} is a string, not a number."
+        if _threshold_problem(parsed) is None:
+            return f"{value!r} is a string; write {value.strip()} without quotes."
+        hint = _threshold_problem(parsed)
+        return f"{value!r} is a string; write a number without quotes. {hint}"
+    if not isinstance(value, numbers.Real):
+        return f"{value!r} is a {type(value).__name__}, not a number."
+    if math.isnan(value):
+        return "NaN never compares, so no pair would match."
+    if value < 0:
+        return f"{value!r} is negative, so every pair would match."
+    if math.isinf(value):
+        return f"{value!r} is not finite, so no pair would match."
+    if value > 100:
+        return f"{value!r} is above 1.0, so no pair would match."
+    if value > 1:
+        return f"For {_number_text(value)}%, use {round(value / 100, 12)!r}."
+    return None
+
+
+def _is_valid_threshold(value: Any) -> bool:
+    """Whether ``value`` can gate a field: a real number from 0.0 to 1.0."""
+    return _threshold_problem(value) is None
+
+
+def _check_threshold(
+    value: Any,
+    *,
+    field: str,
+    model: str,
+    source: str,
+    field_key: Optional[str] = None,
+) -> None:
+    """Raise ``ValueError`` if ``value`` cannot be the threshold of ``field``.
+
+    One message for all three paths. ``source`` is where the value came from,
+    as the author wrote it: ``ComparableField(threshold=85)``,
+    ``comparator_config.threshold``, ``x-aws-stickler-threshold``.
+    ``field_key`` is given when the value came from a comparator: it names the
+    field-level setting that would override it.
+
+    Only a value that becomes the field's threshold is checked here, never a
+    comparator's own: a custom comparator may use ``threshold`` for something
+    else, and the evaluator reads a comparator's threshold only when the field
+    adopts it.
+    """
+    problem = _threshold_problem(value)
+    if problem is None:
+        return
+    shown = repr(value)
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        shown += f" ({type(value).__name__})"
+    where = f"field {field!r}" + (f" of model {model!r}" if model else "")
+    override = (
+        f" Or set {field_key} to override the comparator's value."
+        if field_key
+        else ""
+    )
+    raise ValueError(
+        f"Invalid threshold for {where}: {source} gives {shown}, but a threshold "
+        "is a number from 0.0 to 1.0, the fraction of similarity a match needs. "
+        f"{problem}{override}"
     )
 
 
@@ -144,6 +217,12 @@ def ComparableField(
                       ComparableField(comparator=ExactComparator())
                       # 0.5. A comparator's *default* threshold is not adopted;
                       # see _named_comparator_threshold for why.
+
+                  The threshold the field ends up with, its own or the
+                  comparator's, must be a number from 0.0 to 1.0. Anything
+                  else (85, -1, "0.9", True, NaN) raises ``ValueError`` when
+                  the ``StructuredModel`` class is defined, naming the model,
+                  the field and the value.
         weight: Weight of this field in overall score calculation (default: 1.0)
         default: Default value for the field (default: unset, which means
                  None, or what ``default_factory`` returns if one is given).

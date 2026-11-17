@@ -828,8 +828,8 @@ class TestErrorHandling:
                 schema["properties"], schema["required"]
             )
         
-        assert "x-aws-stickler-threshold must be a number between 0.0 and 1.0" in str(exc_info.value)
-        assert "1.5" in str(exc_info.value)
+        assert "a threshold is a number from 0.0 to 1.0" in str(exc_info.value)
+        assert "x-aws-stickler-threshold gives 1.5" in str(exc_info.value)
 
     def test_invalid_threshold_negative(self):
         """Test error when threshold is negative."""
@@ -851,7 +851,7 @@ class TestErrorHandling:
                 schema["properties"], schema["required"]
             )
         
-        assert "x-aws-stickler-threshold must be a number between 0.0 and 1.0" in str(exc_info.value)
+        assert "a threshold is a number from 0.0 to 1.0" in str(exc_info.value)
 
     def test_invalid_weight_value(self):
         """Test error when weight is not positive."""

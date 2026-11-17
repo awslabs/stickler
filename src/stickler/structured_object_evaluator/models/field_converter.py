@@ -14,8 +14,8 @@ from pydantic import Field
 from stickler.utils.deprecation import warn_once
 
 from .comparable_field import (
-    _LEGACY_DEFAULT_THRESHOLD,
     ComparableField,
+    _check_threshold,
     _is_valid_threshold,
     _mark_unstated,
     _named_comparator_threshold,
@@ -236,9 +236,8 @@ def _nested_model_comparator_threshold(
     ``comparator`` is the instance built from a named comparator, or ``None`` when
     the field gives only a config. Returns the threshold to adopt or ``None``,
     the names of the config keys that have no effect, and a named threshold that
-    is not a number from 0.0 to 1.0 (``None`` if there is none). That one is
-    reported by its value rather than raised on: these keys were accepted and
-    dropped before, so refusing one now would break a config that loads.
+    is not a number from 0.0 to 1.0 (``None`` if there is none). The caller
+    raises on that one unless the field states its own threshold, which wins.
     """
     named = (
         _named_comparator_threshold(comparator)
@@ -259,35 +258,41 @@ def _nested_model_comparator_threshold(
     return adopted, ignored, rejected
 
 
-def _rejected_threshold_warning(
-    field_path: str,
-    value: Any,
-    *,
-    model_id: str,
-    source: str,
-    default: Any,
-    threshold_key: str,
-) -> str:
-    """The warning for a comparator threshold that is not a number from 0.0 to 1.0.
+def _model_label(model_id: str) -> str:
+    """The model's name for an error: ``model_identity`` without its field list.
 
-    A field-level threshold out of range raises on load. A comparator threshold
-    was never adopted before, so it loaded whatever its value; it is now read,
-    and adopting ``85`` or ``"0.9"`` failed every pair or raised on every
-    ``compare_with``. It is ignored instead, which scores the field as before.
+    ``model_identity`` appends ``(fields: ...)`` to an unnamed model so two of
+    them dedupe apart. A reader knows the class as ``DynamicModel``. A
+    ``model_name`` is an identifier, so it cannot contain the parenthesis.
     """
-    return (
-        f"{source} {value!r} on field '{field_path}'{_of_model(model_id)} is not "
-        f"a number from 0.0 to 1.0, so it is ignored and the field keeps its "
-        f"default threshold of {default!r}. To gate the field, set "
-        f"{threshold_key} to a value from 0.0 to 1.0."
+    return model_id.partition("(")[0]
+
+
+def _check_comparator_threshold(
+    value: Any,
+    comparator: Any,
+    config: Mapping,
+    *,
+    field: str,
+    model: str,
+    config_source: str,
+    field_key: str,
+) -> None:
+    """Raise if a comparator threshold the field adopts is not from 0.0 to 1.0.
+
+    Adopted unchecked, 85 failed every pair, ``"0.9"`` raised on every
+    ``compare_with`` and -1 passed every pair. ``config_source`` names the
+    config key, as the author wrote it; a threshold the comparator's own
+    constructor set is named by the comparator instead.
+    """
+    source = (
+        config_source
+        if "threshold" in config
+        else f"comparator {type(comparator).__name__!r} (its own threshold)"
     )
-
-
-def _comparator_threshold_source(comparator: Any, config: Mapping, config_key: str):
-    """Where a comparator's named threshold was written, for a warning."""
-    if "threshold" in config:
-        return f"'{config_key}' threshold"
-    return f"The threshold set by comparator '{type(comparator).__name__}'"
+    _check_threshold(
+        value, field=field, model=model, source=source, field_key=field_key
+    )
 
 
 def _config_keys_phrase(config_key: str, keys: List[str]) -> str:
@@ -533,39 +538,25 @@ class FieldConverter:
         # comparator, then inference, so a comparator threshold outranks an
         # inferred one: the author wrote it.
         #
-        # A comparator threshold is adopted only if it could have been written
-        # as the field's `threshold`, which is range-checked on load. Otherwise
-        # it is ignored with a warning, and the field keeps the default it had
-        # before comparator thresholds were read, so nothing that loads raises.
+        # A comparator threshold the field adopts is checked as the field's own
+        # `threshold` is, and raises on load. A field `threshold` wins, so the
+        # comparator's is then not read and not checked.
         threshold = field_config.get("threshold")
         named = _named_comparator_threshold(comparator)
-        adopted = threshold is None and _is_valid_threshold(named)
-        threshold_defaulted = (
-            threshold is None
-            and not adopted
-            and (inferred is not None or named is not None)
-        )
-        if threshold_defaulted:
-            threshold = (
-                inferred.threshold if inferred is not None else _LEGACY_DEFAULT_THRESHOLD
+        if threshold is None and named is not None:
+            _check_comparator_threshold(
+                named,
+                comparator,
+                comparator_config,
+                field=field_path,
+                model=_model_label(model_id),
+                config_source="comparator_config.threshold",
+                field_key="the field's threshold",
             )
-            if named is not None:
-                warn_once(
-                    "field-config-comparator-threshold-out-of-range",
-                    f"{model_id}|{field_path}|{named!r}",
-                    _rejected_threshold_warning(
-                        field_path,
-                        named,
-                        model_id=model_id,
-                        source=_comparator_threshold_source(
-                            comparator, comparator_config, "comparator_config"
-                        ),
-                        default=threshold,
-                        threshold_key="'threshold'",
-                    ),
-                    category=UserWarning,
-                    stacklevel=_stacklevel_outside_stickler(through_warn_once=True),
-                )
+        adopted = threshold is None and named is not None
+        threshold_defaulted = threshold is None and not adopted and inferred is not None
+        if threshold_defaulted:
+            threshold = inferred.threshold
         weight = field_config.get("weight", inferred.weight if inferred else 1.0)
         clip_under_threshold = field_config.get("clip_under_threshold")
         clip_inferred = clip_under_threshold is None and inferred is not None
@@ -791,6 +782,16 @@ class FieldConverter:
             if ignored_keys:
                 ignored.append(_config_keys_phrase("comparator_config", ignored_keys))
         stated = "threshold" in field_config
+        if rejected is not None and not stated:
+            _check_comparator_threshold(
+                rejected,
+                named_comparator,
+                raw_config if isinstance(raw_config, Mapping) else {},
+                field=field_path,
+                model=_model_label(model_id),
+                config_source="comparator_config.threshold",
+                field_key="the field's threshold",
+            )
         if ignored:
             warn_once(
                 "nested-model-comparator-keys",
@@ -810,25 +811,6 @@ class FieldConverter:
                     adopted=comparator_threshold
                     if named_comparator is not None and not stated
                     else None,
-                ),
-                category=UserWarning,
-                stacklevel=_stacklevel_outside_stickler(through_warn_once=True),
-            )
-        if rejected is not None and not stated:
-            warn_once(
-                "nested-model-comparator-threshold-out-of-range",
-                f"{model_id}|{field_path}|{rejected!r}",
-                _rejected_threshold_warning(
-                    field_path,
-                    rejected,
-                    model_id=model_id,
-                    source=_comparator_threshold_source(
-                        named_comparator,
-                        raw_config if isinstance(raw_config, Mapping) else {},
-                        "comparator_config",
-                    ),
-                    default=0.7,
-                    threshold_key="'threshold'",
                 ),
                 category=UserWarning,
                 stacklevel=_stacklevel_outside_stickler(through_warn_once=True),
@@ -1019,22 +1001,23 @@ class FieldConverter:
                 raise ValueError(f"Invalid comparator for field '{field_name}': {e}")
 
         # Validate numeric parameters
-        numeric_params = ["threshold", "weight"]
-        for param in numeric_params:
-            if param in field_config:
-                value = field_config[param]
-                if not isinstance(value, (int, float)):
-                    raise ValueError(
-                        f"Field '{field_name}' parameter '{param}' must be numeric, got {type(value)}"
-                    )
-                if param == "threshold" and not (0.0 <= value <= 1.0):
-                    raise ValueError(
-                        f"Field '{field_name}' threshold must be between 0.0 and 1.0, got {value}"
-                    )
-                if param == "weight" and value < 0:
-                    raise ValueError(
-                        f"Field '{field_name}' weight must be non-negative, got {value}"
-                    )
+        if "threshold" in field_config:
+            _check_threshold(
+                field_config["threshold"],
+                field=path,
+                model=_model_label(model_id),
+                source="threshold",
+            )
+        if "weight" in field_config:
+            value = field_config["weight"]
+            if not isinstance(value, (int, float)):
+                raise ValueError(
+                    f"Field '{field_name}' parameter 'weight' must be numeric, got {type(value)}"
+                )
+            if value < 0:
+                raise ValueError(
+                    f"Field '{field_name}' weight must be non-negative, got {value}"
+                )
 
         # Validate boolean parameters
         boolean_params = ["required", "clip_under_threshold"]

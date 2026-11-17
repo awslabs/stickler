@@ -27,7 +27,12 @@ from stickler.comparators.base import BaseComparator
 from stickler.utils.canonical import jsonable_mapping
 from stickler.utils.deprecation import warn_once
 
-from .comparable_field import ComparableField, _named_comparator_threshold
+from .comparable_field import (
+    ComparableField,
+    _check_threshold,
+    _is_valid_threshold,
+    _named_comparator_threshold,
+)
 from .comparison_helper import ComparisonHelper, _maybe_absent
 from .configuration_helper import ConfigurationHelper
 from .evaluator_format_helper import EvaluatorFormatHelper, in_list_item_metrics
@@ -594,6 +599,14 @@ class StructuredModel(BaseModel):
                     field_default.json_schema_extra(temp_schema)
                     if "x-comparison" in temp_schema:
                         # This field was created with ComparableField function - validate constraints
+                        cls._check_field_threshold(
+                            field_name,
+                            field_default.json_schema_extra,
+                            temp_schema["x-comparison"].get("threshold"),
+                            is_list_of_models=cls._is_list_of_structured_model_type(
+                                field_type
+                            ),
+                        )
                         if cls._is_list_of_structured_model_type(field_type):
                             comparison_config = temp_schema["x-comparison"]
 
@@ -749,6 +762,39 @@ class StructuredModel(BaseModel):
                 _model_identity(cls.__name__, cls.__annotations__),
                 "match_threshold",
             )
+
+    @classmethod
+    def _check_field_threshold(
+        cls, field_name: str, extra: Any, threshold: Any, *, is_list_of_models: bool
+    ) -> None:
+        """Raise if the threshold ``ComparableField`` resolved cannot gate the field.
+
+        Checked here rather than in ``ComparableField``, which does not know the
+        model or the field yet. The resolved value is checked, not the
+        comparator's own: when the field states a threshold, the comparator's
+        is never read (``binary_compare()`` is the only other reader, and the
+        evaluator does not call it). On a ``List[StructuredModel]`` field a
+        comparator threshold is not consulted either, since Hungarian matching
+        pairs on the element class's ``match_threshold``, so only the field's
+        own is checked there, as the importers do.
+        """
+        if _is_valid_threshold(threshold):
+            return
+        if getattr(extra, "_threshold_explicit", True):
+            source, field_key = f"ComparableField(threshold={threshold!r})", None
+        elif is_list_of_models:
+            return
+        else:
+            comparator = getattr(extra, "_comparator_instance", None)
+            source = f"{type(comparator).__name__}(threshold={threshold!r})"
+            field_key = "ComparableField(threshold=...)"
+        _check_threshold(
+            threshold,
+            field=field_name,
+            model=cls.__name__,
+            source=source,
+            field_key=field_key,
+        )
 
     def model_post_init(self, __context):
         """Initialize confidence storage after model creation."""
@@ -922,7 +968,7 @@ class StructuredModel(BaseModel):
                    {
                        "type": "str|int|float|bool|List[str]|etc.",  # Required
                        "comparator": "LevenshteinComparator|ExactComparator|etc.",  # Optional
-                       "comparator_config": {"threshold": 0.9},  # Optional; a threshold that is not a number from 0.0 to 1.0 is ignored with a UserWarning
+                       "comparator_config": {"threshold": 0.9},  # Optional; a threshold the field adopts must be a number from 0.0 to 1.0, else ValueError
                        "threshold": 0.8,  # Optional; default: comparator_config's threshold, else 0.5
                        "weight": 2.0,     # Optional, default 1.0
                        "required": true,  # Optional, default false
@@ -989,8 +1035,8 @@ class StructuredModel(BaseModel):
         - x-aws-stickler-threshold: Similarity threshold for match/no-match (0.0-1.0,
           default: a threshold in x-aws-stickler-comparator-config, else the
           type default, such as 0.5 for a string and 0.7 for a nested object).
-          A comparator-config threshold that is not a number from 0.0 to 1.0
-          is ignored with a UserWarning.
+          Whichever threshold the field uses must be a number from 0.0 to 1.0;
+          any other value raises ValueError naming the model and the field.
         - x-aws-stickler-weight: Field importance in overall scoring (>0.0, default: 1.0)
         - x-aws-stickler-clip-under-threshold: Clip scores below threshold to 0.0
           (bool, default: true; false on a free-form object or an array of them)
