@@ -84,18 +84,18 @@ Each release links to full notes on the
   generates no class and reads neither set, so an object-level key there raises
   too. `x-aws-stickler-aggregate` is still accepted and ignored on a definition
   entry, as on a field. A `$ref` to a node inside an entry also checks the
-  entry, but checks the node's own keys only where the entry's walk does: on a
-  property or `items` node anywhere in the entry, under `not` or `then` too,
-  outside an `x-*` key. At the top of another node (`#/$defs/W/not`) or under
-  an `x-*` key, a typo or a misplaced key on the node still imports, as
-  before. Outside `$defs` (`#/components/...`), a typo on a property or
-  `items` target is still caught where the class is built, and one at the top
-  of a target still imports. Only the node is built: the rest of
-  the entry around it builds nothing, as an unused definition, so its contents
-  are checked, but object-level keys there that no class reads import, as
-  before. A field key on a property node is valid there, but another property
-  that `$ref`s the node does not read it: `{"$ref": "#/$defs/W/properties/s"}`
-  keeps the default threshold whatever `s` declares. An entry no `$ref` reaches
+  entry, but checks the node's own keys only on a property or `items` node
+  anywhere in the entry, under `not` or `then` too. At the top of another node
+  (`#/$defs/W/not`, `#/$defs/W/x-sub/T`), a typo or a misplaced key on the node
+  still imports, as before. A property or `items` target is checked as before,
+  under an `x-*` key or `#/components/...` too, and a typo at the top of a
+  target outside `$defs` (`#/x-models/T`) still imports. Only the node is
+  built: the rest of the entry around it builds nothing, as an unused
+  definition, so its contents are checked, but object-level keys there that no
+  class reads import, as before. A field key on a property node is valid
+  there, but another property that `$ref`s the node does not read it:
+  `{"$ref": "#/$defs/W/properties/s"}` keeps the default threshold whatever `s`
+  declares. An entry no `$ref` reaches
   builds nothing, so its own keys are not checked and a dereferenced schema,
   which keeps the originals beside their inlined copies, imports as before. Its
   contents are checked as before, and so are the targets of its `$ref`s, so a

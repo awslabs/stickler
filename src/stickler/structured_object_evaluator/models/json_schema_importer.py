@@ -383,6 +383,33 @@ def _is_property_pointer(pointer: Optional[Tuple[str, ...]]) -> bool:
     return "properties" in readings
 
 
+def _walk_position(pointer: Tuple[str, ...]) -> Tuple[str, Optional[str], bool]:
+    """Where the walk would meet the node at `pointer` if it entered every
+    key: the path it would name, "property" or "items" when the node is one,
+    and whether the pointer passes an `x-*` key of a schema.
+
+    Each segment is read as the walk reads it, a keyword wherever a schema
+    holds it, so a property NAMED `items` or `x-a` is a name."""
+    path, kind, under_x, reading = "", None, False, "schema"
+    for part in pointer:
+        kind = None
+        if reading == "index":
+            path = f"{path}[{part}]"
+        elif reading == "schema" and part in ("properties", *_COMBINERS):
+            pass
+        elif reading == "schema" and part == "items":
+            path, kind = f"{path}[]", "items"
+        else:
+            if reading == "properties":
+                kind = "property"
+            elif reading == "schema" and part.startswith("x-"):
+                under_x = True
+            path = f"{path}.{part}" if path else part
+        # The walk reads every value as a schema, never as a map of them.
+        reading = min(_next_readings({reading}, part) - {"member"})
+    return path, kind, under_x
+
+
 def _next_readings(readings: set, part: str) -> set:
     """What the segment after `part` can be, in each reading of `part`."""
     following = set()
@@ -1128,13 +1155,14 @@ class JsonSchemaImporter:
         Only a whole definition entry is checked as a definition. Any other
         target has its own keys, model keys beside its `$ref` included, checked
         only where the walk around it checks them: on a property or `items`
-        node anywhere in a definition entry, under `not` or `then` too, but
-        not under an `x-*` key. A target that is no property or `items` node
-        (`#/$defs/W/not`), one under an `x-*` key, and one outside `$defs` have
-        only their contents checked. A field key on a property node is valid
-        there, but only the object holding the node reads it: another property
-        that `$ref`s the node does not. The rest of the entry around a target
-        builds nothing, as an unused entry does.
+        node anywhere in a definition entry, under `not` or `then` too. Under
+        an `x-*` key, which the walk does not enter, such a node has its own
+        keys checked from the reference, but not model keys beside its `$ref`.
+        A target that is no property or `items` node (`#/$defs/W/not`,
+        `#/x-models/T`) has only its contents checked. A field key on a
+        property node is valid there, but only the object holding the node
+        reads it: another property that `$ref`s the node does not. The rest of
+        the entry around a target builds nothing, as an unused entry does.
 
         Model keys no class reads raise, except on an object-typed property,
         a position the docs call valid for them: beside its `$ref`, or reached
@@ -1379,6 +1407,20 @@ class JsonSchemaImporter:
                     child_scope, child_built = "model", built
                 walk(value, child_path, child_scope, child_built)
 
+        def own_keys(pointer: Tuple[str, ...], body: Any) -> None:
+            """Check a property or `items` target under an `x-*` key, which the
+            walk does not enter, with the path and scope it would have there."""
+            at, kind, under_x = _walk_position(pointer)
+            if not under_x or not isinstance(body, dict):
+                return
+            if kind == "property":
+                scope = "field_or_model" if _is_object_schema(body) else "field"
+            elif kind == "items":
+                scope = "model"
+            else:
+                return
+            _reject_unknown_extensions(body, at, scope=scope)
+
         read.add(id(schema))
         walk(schema, "", "model", reads=False)
         while pending:
@@ -1407,6 +1449,8 @@ class JsonSchemaImporter:
                 # otherwise: `["object", "null"]` fails to import there.
                 merges = all(hop.get("type", "object") == "object" for hop in hops)
                 _reject_unknown_extensions(body, at, scope=scope, merges=merges)
+            if not definition:
+                own_keys(pointer, body)
             walk(body, at, None, built, reads=False)
 
         # A node inside an entry, such as `#/$defs/List/items`, is built from
@@ -1435,6 +1479,7 @@ class JsonSchemaImporter:
                 continue
             walked[pointer] = False
             entries.add(id(body))
+            own_keys(pointer, body)
             walk(body, ".".join(pointer), None, False, reads=False)
 
         # An object's model keys are read only where its class is built. An

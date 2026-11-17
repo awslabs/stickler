@@ -1686,6 +1686,95 @@ class TestValuesAreNotWalkedAsSchemas:
                 }
             )
 
+    # A property or `items` node under an `x-*` key that a `$ref` points at,
+    # and the error dev raised for its own keys, with the walk's path.
+    _OWN_KEYS = {
+        "defs-x-sub-property": (
+            "#/$defs/W/x-sub/properties/p",
+            {"$defs": {"W": dict(_PLAIN, **{"x-sub": {"properties": {"p": _TYPO}}})}},
+            r"thresold.*on field '\$defs\.W\.x-sub\.p'",
+        ),
+        "x-models-property": (
+            "#/x-models/T/properties/p",
+            {"x-models": {"T": {"type": "object", "properties": {"p": _TYPO}}}},
+            r"thresold.*on field 'x-models\.T\.p'",
+        ),
+        "misplaced-key": (
+            "#/x-models/T/properties/p",
+            {
+                "x-models": {
+                    "T": {
+                        "type": "object",
+                        "properties": {
+                            "p": {
+                                "type": "string",
+                                "x-aws-stickler-match-threshold": 0.9,
+                            }
+                        },
+                    }
+                }
+            },
+            r"not read on field 'x-models\.T\.p'\. It belongs on the object",
+        ),
+        "x-models-items": (
+            "#/x-models/L/items",
+            {"x-models": {"L": {"type": "array", "items": dict(_PLAIN, **_TYPO_KEY)}}},
+            r"thresold.*on object 'x-models\.L\[\]'",
+        ),
+        "property-named-properties": (
+            "#/x-models/T/properties/properties",
+            {"x-models": {"T": {"type": "object", "properties": {"properties": _TYPO}}}},
+            r"thresold.*on field 'x-models\.T\.properties'",
+        ),
+    }
+
+    @pytest.mark.parametrize("case", sorted(_OWN_KEYS))
+    @pytest.mark.parametrize("held_by", ("property", "unused-definition"))
+    def test_a_property_or_items_node_a_ref_reaches_has_its_own_keys_checked(
+        self, case, held_by
+    ):
+        """As on dev, which walked the payload in place."""
+        pointer, holder, error = self._OWN_KEYS[case]
+        schema = {"type": "object", "properties": {"a": {"type": "string"}}}
+        ref = {"$ref": pointer}
+        if held_by == "property":
+            schema["properties"]["h"] = ref
+        else:
+            schema["$defs"] = {"U": {"type": "object", "properties": {"u": ref}}}
+        for key, value in holder.items():
+            schema.setdefault(key, {}).update(value)
+        with pytest.raises(ValueError, match=error):
+            StructuredModel.from_json_schema(schema)
+
+    def test_another_member_of_the_payload_is_not_checked(self):
+        StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {"t": {"$ref": "#/x-models/T"}},
+                "x-models": {
+                    "T": _PLAIN,
+                    "U": {"type": "object", "properties": {"p": _TYPO}},
+                },
+            }
+        )
+
+    @pytest.mark.parametrize("name", ("a", "x-a"))
+    def test_a_property_named_like_an_x_key_is_a_name(self, name):
+        """The `$ref` points into a data value, which is not checked, whatever
+        the property holding it is named."""
+        StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    name: {
+                        "type": "string",
+                        "default": {"type": "object", "properties": {"p": _TYPO}},
+                    },
+                    "h": {"$ref": f"#/properties/{name}/default/properties/p"},
+                },
+            }
+        )
+
     @pytest.mark.parametrize("holder", ("$defs", "default"))
     def test_an_x_payload_only_an_unused_definition_references_is_checked(self, holder):
         """An unused definition builds nothing, but its contents are checked as
@@ -2338,8 +2427,12 @@ class TestARefIntoADefinition:
         ids=("string", "array"),
     )
     def test_a_property_not_typed_object_still_raises(self, body):
-        """Dev's docs accept the keys only on an object-typed property."""
-        with pytest.raises(ValueError, match="reached through the root '\\$ref'"):
+        """Dev's docs accept the keys only on an object-typed property. The
+        node's own keys are checked as a field's, as on dev."""
+        with pytest.raises(
+            ValueError,
+            match=r"not read on field 'x-models\.Wrap\.inner'\. It belongs on the object",
+        ):
             StructuredModel.from_json_schema(
                 {
                     "$ref": "#/x-models/Wrap/properties/inner",
