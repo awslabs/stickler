@@ -31,11 +31,16 @@ Each release links to full notes on the
   as `{"$ref": "#/$defs/Wrap/properties/inner"}`: the root reads the keys beside
   its `$ref`, and `allOf` merges its arms into one class at the defaults, so it
   builds `DynamicModel` or `AllOfModel` at `0.7`. Both hold wherever the property
-  sits in what a position building a class references, for example in a `$defs`
-  entry, under `not`, `then` or an `x-*` key in one, under `#/components/...`, or
-  in an `x-*` payload such as `#/x-models/T`. The warning names the key, its
-  position and where it is read. It becomes a `ValueError` in 1.1.0, as at the
-  positions no doc names for these keys (see Fixed)
+  sits, for example in a `$defs` entry, under `not`, `then` or an `x-*` key in
+  one, under `#/components/...`, or in an `x-*` payload such as `#/x-models/T`.
+  One exception: where a property of the first kind is itself the target of a
+  `$ref` from a property, `items` or an `anyOf`/`oneOf` arm, the keys beside its
+  own `$ref` warn only on a property node of a `$defs` entry outside an `x-*`
+  key, and elsewhere are still dropped with no warning (see Fixed). An import
+  that fails anyway, such as a root `$ref` to a property typed
+  `["object", "null"]`, still fails, with no warning. The warning names the
+  key, its position and where it is read. It becomes a `ValueError` in 1.1.0, as
+  at the positions no doc names for these keys (see Fixed)
   ([#340](https://github.com/awslabs/stickler/issues/340))
 
 ### Fixed
@@ -133,7 +138,7 @@ Each release links to full notes on the
 - An import error under `not`, `then`, `contains`, `additionalProperties` or
   another keyword that builds no class now names that keyword in its path
   (`'$defs.W.not[]'`, `'not.p'`), where it left the keyword out and so named a
-  node that does not exist (`'$defs.W[]'`, `'[]'`)
+  node that does not exist (`'[]'`, `'p'`)
 
 - `from_json_schema()` no longer checks, as a schema, a value under an `x-*` key
   that no `$ref` reaches, or a schema-shaped value under `default`, `examples`,
