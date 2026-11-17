@@ -472,7 +472,7 @@ Relative importance of this field in aggregate scoring and weighted averages.
 **Required:** No  
 **Default:** `true`, except `false` for a free-form `{"type": "object"}` or an array of them
 
-Controls whether similarity scores below threshold are clipped to 0.0. Clipping is **on** for a scalar unless you turn it off, so a field scoring just under its threshold reports `0.0` rather than its raw similarity. A free-form object is judged key by key, so it keeps its partial credit unless you set `true`.
+Controls whether similarity scores below threshold are clipped to 0.0. Clipping is **on** for a scalar unless you turn it off, so a field scoring just under its threshold reports `0.0` rather than its raw similarity. A free-form object keeps the partial credit its comparator gives, such as `ANLSStarComparator`'s, unless you set `true`. The default `ExactComparator` scores it `0.0` or `1.0`, so clipping does not change it.
 
 **How Clipping Works:**
 - `true`: Scores below threshold are **set to 0.0** (hard cutoff)

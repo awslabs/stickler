@@ -76,8 +76,9 @@ Each release links to full notes on the
   it rather than a placeholder `LevenshteinComparator`. Nothing that loaded
   before raises. `comparator` on a `list_structured_model` field, and `"auto"`
   on any nested model, still raise. A property that is a union of objects
-  (`anyOf` with two object arms) is not covered: it reads both keys as the
-  Python path does for a `Union` field, and does not warn
+  (`anyOf` or `oneOf` with object arms) is not covered: as on the Python path
+  for a `Union` field, a comparator-config threshold gates it, and a named
+  comparator is installed and never called, with no nested-model warning
   ([#348](https://github.com/awslabs/stickler/issues/348))
 
 - Corrected introductory example scores, the default text comparator description,

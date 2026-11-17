@@ -186,7 +186,7 @@ Add these extensions to any property in your JSON Schema to control comparison b
 
 | Extension | Type | Default | Purpose |
 |-----------|------|---------|---------|
-| `x-aws-stickler-comparator` | string | Type-dependent | Comparison algorithm (e.g., `"ExactComparator"`, `"LevenshteinComparator"`). Has no effect, and warns, on an object with `properties`, which is scored field by field |
+| `x-aws-stickler-comparator` | string | Type-dependent | Comparison algorithm (e.g., `"ExactComparator"`, `"LevenshteinComparator"`). On an object with `properties`, which is scored field by field, it has no effect except for a threshold it names, and warns |
 | `x-aws-stickler-threshold` | number (0.0--1.0) | see below | Match classification cutoff. Read on a scalar, an object, and an array of scalars. **Ignored on an array of models** -- an array whose `items` declare `properties` -- where pairing is gated by the element class's `x-aws-stickler-match-threshold`, and a declared value warns there. Read, not ignored, on an array of free-form `{"type": "object"}` items |
 | `x-aws-stickler-weight` | number (> 0.0) | 1.0 | Field importance multiplier |
 | `x-aws-stickler-clip-under-threshold` | boolean | `true`, `false` on a free-form object or an array of them | Zero out scores below threshold |
@@ -212,9 +212,11 @@ A scalar is plain when it has none of the keywords in the last row. Any other
 overrides the default in every position that reads it. Without it, a `threshold`
 in `x-aws-stickler-comparator-config` overrides the default instead, as it does
 on the Python path, if it is a number from 0.0 to 1.0. Any other value is
-ignored with a warning, and the default applies. `x-aws-stickler-clip-under-threshold` defaults to `true`,
-except on a free-form object or an array of them, which keeps its partial credit
-and defaults to `false`.
+ignored with a warning, and the default applies.
+`x-aws-stickler-clip-under-threshold` defaults to `true`, except on a free-form
+object or an array of them, where it defaults to `false` so a comparator such as
+`ANLSStarComparator` keeps its partial credit. The default `ExactComparator`
+scores those `0.0` or `1.0`, so clipping does not change them.
 
 ### Example Schema
 
