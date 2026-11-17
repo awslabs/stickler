@@ -89,9 +89,11 @@ def as_threshold(value: Any) -> Optional[float]:
     a ``Decimal``, a ``Fraction``, a numpy scalar or a 0-d numpy array, means
     the same number, so it is converted with ``float()``, which every reader of
     a threshold handles. ``float()`` and not a round trip through ``str``:
-    ``np.float32(0.9)`` is 0.8999999761581421, and that is the number it
-    compared as before, so verdicts do not move. ``bool``, numpy booleans
-    included, is refused: ``True`` is not a similarity.
+    ``np.float32(0.9)`` is 0.8999999761581421, the number ``explain()`` and
+    both exports report. A numpy float16 or float32 is then compared as that
+    Python float, not in its own dtype, so a score within its rounding below
+    it is an FD where it was a TP. ``bool``, numpy booleans included, is
+    refused: ``True`` is not a similarity.
     """
     number = value if type(value) in (int, float) else _as_float(value)
     if number is None or not 0.0 <= number <= 1.0:

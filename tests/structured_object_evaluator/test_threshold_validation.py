@@ -22,6 +22,7 @@ import inspect
 import json
 import math
 import os
+import sys
 import warnings
 from decimal import Decimal
 from fractions import Fraction
@@ -513,6 +514,17 @@ class TestWhereTheMessageSaysItWasSet:
         )
 
 
+class _Fixed(BaseComparator):
+    """Scores every pair ``score``."""
+
+    def __init__(self, score: float, threshold: Optional[float] = None):
+        super().__init__(threshold=threshold)
+        self.score = score
+
+    def _compare(self, a, b):
+        return self.score
+
+
 def _other_reals():
     """In-range thresholds that are real numbers but not ``int`` or ``float``."""
     values = [Decimal("0.9"), Fraction(9, 10)]
@@ -534,8 +546,10 @@ class TestOtherRealNumbersAreConvertedToFloat:
 
     The Python path loaded and scored it, so refusing it would break working
     code, and the importers refused it. It is converted with ``float()``, not
-    through ``str``, so ``np.float32(0.9)`` compares as it did before; the
-    field's metadata and ``explain()`` carry a float.
+    through ``str``, and the field's metadata and ``explain()`` carry that
+    float. A numpy float16 or float32 is then compared as that Python float,
+    not in its own dtype as before, so a score within its rounding below the
+    threshold is an FD where it was a TP.
     """
 
     @pytest.mark.parametrize("value", _other_reals(), ids=repr)
@@ -571,8 +585,8 @@ class TestOtherRealNumbersAreConvertedToFloat:
         assert reloaded._get_comparison_info("vendor").threshold == 0.9
         assert from_schema._get_comparison_info("vendor").threshold == 0.9
 
-    def test_a_numpy_float32_keeps_the_verdict_it_had(self):
-        """0.8999999761581421, as it compared before: a 0.899999985 item matches."""
+    def test_a_numpy_float32_match_threshold_is_its_float(self):
+        """``match_threshold`` is 0.8999999761581421, so a 0.899999985 item matches."""
         np = pytest.importorskip("numpy")
         record = type(
             "Rec",
@@ -594,6 +608,34 @@ class TestOtherRealNumbersAreConvertedToFloat:
         )
         cell = result["confusion_matrix"]["fields"]["items"]["overall"]
         assert (cell["tp"], cell["fd"], cell["fp"]) == (1, 0, 0)
+
+    @pytest.mark.parametrize(
+        "dtype, below",
+        [("float32", 0.89999997), ("float16", 0.8998)],
+    )
+    def test_a_numpy_float16_or_float32_compares_as_a_python_float(self, dtype, below):
+        """Its float() value is the threshold, so a score just below it is an FD.
+
+        In the numpy dtype, as dev compared it, ``below`` rounds to the
+        threshold and was a TP.
+        """
+        np = pytest.importorskip("numpy")
+        threshold = getattr(np, dtype)(0.9)
+        assert below >= threshold  # in the dtype, as before
+        assert below < float(threshold)
+
+        def verdict(score):
+            model = _python(
+                str, ComparableField(comparator=_Fixed(score), threshold=threshold)
+            )
+            result = model(vendor="a").compare_with(
+                model(vendor="b"), include_confusion_matrix=True
+            )
+            cell = result["confusion_matrix"]["overall"]
+            return cell["tp"], cell["fd"]
+
+        assert verdict(below) == (0, 1)
+        assert verdict(float(threshold)) == (1, 0)
 
     def test_the_comparator_keeps_the_value_it_was_given(self):
         """Only the field's threshold is converted, as documented."""
@@ -1268,7 +1310,7 @@ class TestAnAnnotatedForwardReference:
 
 
 class TestAPep695Alias:
-    """Read as the type it names, as scoring reads it."""
+    """Read as the type it names once the type it names is defined, as scoring reads it."""
 
     @staticmethod
     def _order(threshold):
@@ -1291,6 +1333,27 @@ class TestAPep695Alias:
         order = self._order(85)
         pair = order(items=[_Inner(a="x")])
         assert pair.compare_with(pair)["overall_score"] == 1.0
+
+    @pytest.mark.skipif(sys.version_info < (3, 12), reason="the type statement")
+    @pytest.mark.parametrize("threshold, raises", [(85, True), (0.9, False)])
+    def test_an_alias_of_a_list_defined_later_is_checked_as_adopting(
+        self, threshold, raises
+    ):
+        """Before ``Later`` exists the alias cannot be read, so 85 raises; 0.9 loads."""
+        source = (
+            "type Items = list[Later]\n"
+            "class Order(StructuredModel):\n"
+            "    items: Items = ComparableField(\n"
+            f"        comparator=LevenshteinComparator(threshold={threshold})\n"
+            "    )\n" + _ADDRESS.format(name="Later")
+        )
+        if raises:
+            with pytest.raises(
+                ValueError, match="so even identical values would not match"
+            ):
+                _exec_models(source, postponed=False)
+        else:
+            _exec_models(source, postponed=False)
 
     def test_an_alias_of_a_scalar_adopts(self):
         from typing_extensions import TypeAliasType

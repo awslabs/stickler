@@ -1054,7 +1054,8 @@ class StructuredModel(BaseModel):
         that case.
         A bare name for a list of models (``items: "ItemList"``, with
         ``ItemList = List[Item]`` below) reads the same way. A PEP 695 alias is
-        read as the type it names once that type is defined.
+        read as the type it names once the type it names is defined; before
+        that, it is checked as adopting.
 
         An ``Annotated`` annotation pydantic could not resolve reaches it as one
         string, so its ``ComparableField`` does not exist yet; see

@@ -318,14 +318,19 @@ ComparableField(
 
 The threshold the field ends up with, `threshold` or one adopted from the comparator, must be a
 number from 0.0 to 1.0, and so must `match_threshold`. A `Decimal`, `Fraction`, numpy number or
-0-d numpy array is converted with `float()` (`threshold_rule.as_threshold`), so a numpy float
-compares as it did; the comparator keeps the value it was given. `StructuredModel` checks it when
-the class is defined, in `__pydantic_init_subclass__` over `model_fields`, so an `Annotated[...]`
-field and a module using `from __future__ import annotations` are covered; `ComparableField` does
-not know the model or the field name yet, and records its call site for the message. A field whose
-annotation is still a forward reference then is checked as adopting its comparator's threshold,
-even when it is visibly a list (`List["Item"]`), since stickler cannot tell yet whether the element
-is a model and nothing re-checks it once it resolves; a PEP 695 alias is read as the type it names.
+0-d numpy array is converted with `float()` (`threshold_rule.as_threshold`), and the comparator
+keeps the value it was given. A numpy float16 or float32 threshold is then compared as a Python
+float, not in its own dtype, so a score within its rounding below it is an FD where it was a TP.
+`StructuredModel` checks it when the class is defined, in `__pydantic_init_subclass__` over
+`model_fields`, so an `Annotated[...]` field and a module using `from __future__ import
+annotations` are covered; `ComparableField` does not know the model or the field name yet, and
+records its call site for the message. A field whose annotation is still a forward reference then
+is checked as adopting its comparator's threshold, even when it is visibly a list (`List["Item"]`),
+since stickler cannot tell yet whether the element is a model and nothing re-checks it once it
+resolves. pydantic holds an `Annotated` annotation it cannot resolve as one string, so only its
+metadata is evaluated, in the namespace of the `class` statement, to find the `ComparableField`
+(`_string_annotated_extra`); that message gives the `class` line. A PEP 695 alias is read as the
+type it names once the type it names is defined; before that, it is checked as adopting.
 The importers check the same rule on load, with the shared message from `threshold_rule`. A
 comparator threshold the field overrides, or one on a resolved `List[StructuredModel]` field, is not
 checked. The runtime `match_threshold` is outside the rule: for a plain pydantic model
