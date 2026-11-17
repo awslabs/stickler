@@ -97,9 +97,13 @@ Each release links to full notes on the
   `{"$ref": "#/$defs/W/properties/s"}` keeps the default threshold whatever `s`
   declares. An entry no `$ref` reaches builds nothing, so its own keys are not
   checked and a dereferenced schema, which keeps the originals beside their
-  inlined copies, imports as before. Its contents are checked as before, and so
-  are the contents of its `$ref` targets, so a typo in one of its properties, or
-  inside an `x-*` node that only it references, still raises. Only a `$defs` or
+  inlined copies, imports as before. Its contents are checked, and so are the
+  contents of its `$ref` targets, so a typo in one of its properties, or inside
+  an `x-*` node that only it references, still raises. An entry named like a
+  keyword is now read as an entry, where it was read as that keyword: a typo in
+  a property of an entry named `properties` now raises, and an unused entry
+  named `items`, `anyOf`, `allOf` or `patternProperties` no longer has its own
+  keys checked or its name rejected. Only a `$defs` or
   `definitions` keyword of the root, or of a node reached from it through schema
   keywords, holds entries. One under `#/components/...`, inside an `x-*` payload
   or a data value, or a property named so, holds none, so a `$ref` into it
