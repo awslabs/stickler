@@ -1549,6 +1549,43 @@ class TestValuesAreNotWalkedAsSchemas:
                 }
             )
 
+    @pytest.mark.parametrize("holder", ("$defs", "default"))
+    def test_an_x_payload_only_an_unused_definition_references_is_checked(self, holder):
+        """An unused definition builds nothing, but its contents are checked as
+        before, and that followed its `$ref`s: the typo raised before and imported
+        once the queue they went to was no longer drained."""
+        outer = {"type": "object", "properties": {"i": {"$ref": "#/x-models/Team"}}}
+        definitions = {"$defs": {"Outer": outer}}
+        with pytest.raises(ValueError, match=r"thresold.*'x-models\.Team\.p'"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {"a": {"type": "string"}},
+                    "x-models": {
+                        "Team": {"type": "object", "properties": {"p": _TYPO}}
+                    },
+                    **(definitions if holder == "$defs" else {holder: definitions}),
+                }
+            )
+
+    def test_an_x_payload_only_an_unused_definition_references_keeps_its_own_keys(
+        self,
+    ):
+        """Only its contents are checked: its own keys build nothing."""
+        StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {"a": {"type": "string"}},
+                "x-models": {"Team": dict(_PLAIN, **{"x-aws-stickler-thresold": 0.9})},
+                "$defs": {
+                    "Outer": {
+                        "type": "object",
+                        "properties": {"i": {"$ref": "#/x-models/Team"}},
+                    }
+                },
+            }
+        )
+
 
 class TestAllOfRaisesOnlyWhereNothingReadsTheKeys:
     """An `allOf` arm drops its model keys, but the object it names may not.

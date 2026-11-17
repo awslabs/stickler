@@ -999,8 +999,9 @@ class JsonSchemaImporter:
         unbuilt: Dict[int, str] = {}
         inner: set = set()
         passed: List[int] = []
-        # Definition entries a `$ref` reached, by identity, and every
-        # `$defs`/`definitions` mapping passed, so the rest can be walked last.
+        # Definition entries a `$ref` reached, and later every body walked as
+        # building nothing, by identity; and every `$defs`/`definitions`
+        # mapping passed, so the rest can be walked last.
         entries: set = set()
         mappings: List[Tuple[str, Dict[str, Any]]] = []
 
@@ -1243,13 +1244,23 @@ class JsonSchemaImporter:
         # An entry no `$ref` reaches is walked as it was before definitions were
         # checked: its own keys are left alone, and its contents are checked
         # like any other node, so a typo in one of its properties still raises.
-        # The queue is drained by now, so the `$ref`s it holds are not followed:
-        # it builds nothing, so they reach nothing.
-        while mappings:
-            at, mapping = mappings.pop()
-            for name, body in mapping.items():
-                if id(body) not in entries:
-                    walk(body, f"{at}.{name}", None, False, reads=False)
+        # It builds nothing, but the `$ref`s it holds were followed before, so
+        # their targets are walked for their contents too: a typo in an `x-*`
+        # payload that only an unused entry references still raises.
+        while mappings or pending:
+            if mappings:
+                at, mapping = mappings.pop()
+                for name, body in mapping.items():
+                    if id(body) not in entries:
+                        entries.add(id(body))
+                        walk(body, f"{at}.{name}", None, False, reads=False)
+                continue
+            pointer, body, _, _ = pending.pop()
+            if pointer in walked or id(body) in entries:
+                continue
+            walked[pointer] = False
+            entries.add(id(body))
+            walk(body, ".".join(pointer), None, False, reads=False)
 
         # An object's model keys are read only where its class is built. An
         # `allOf` arm is merged into `AllOfModel`, and a root `$ref` builds the
