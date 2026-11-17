@@ -68,23 +68,32 @@ Each release links to full notes on the
   `[Browse(url="x.com")]` now counts a TP, with `query` an FN under
   `aggregate`, while the field scores 0.0. A model against a non-model
   element, such as `[Inner(a="x")]` against `["a"]`, is a TP the same way. A
-  list with the base class first did not raise, and now also counts the
-  subclass's fields. A ground-truth list whose first element is a model still
-  raises `AttributeError` when a matched ground-truth element has no
-  `compare_with()`, such as `[Inner(a="x"), "b"]` against itself. A matched
-  ground-truth element that is not a model but has its own `compare_with()`,
-  such as a plain pydantic model, raised as well and now runs.
+  plain pydantic prediction element is the exception: scoring a model against
+  it still raises `TypeError`, as before. A list with the base class first did
+  not raise, and now also counts the subclass's fields. A ground-truth list
+  whose first element is a model still raises `AttributeError` when a matched
+  ground-truth element has no `compare_with()`, such as `[Inner(a="x"), "b"]`
+  against itself. A matched ground-truth element that is not a model but has
+  its own `compare_with()`, such as a plain pydantic model, raised as well
+  and now runs.
 
   When a list element's class overrides `compare_with()` to return a score
-  without recursing, a list of models in its `Any` or `object` sub-field did
-  not raise against a list of non-models or of models of another class, and
-  counted one TP or FD with no subtree. `[Inner(a="x")]` against `["a"]`,
-  `[1]`, `[["a"]]` or `[{"a": "x"}]` was an FD, and against `[Other(c="z")]`
-  an FD at a field threshold of 0.9 and a TP at the default. Each now counts a
-  TP, with `a` an FN and `b` a TN under `aggregate`, as the same pair does
-  without the override and at top level, and the score is 1.0 before and
-  after. Like the other pairs above, they follow the field-by-field scoring
-  `StructuredModel` still uses for objects of different classes.
+  without recursing, scoring the element never reaches its sub-fields. So a
+  list of models in its `Any` or `object` sub-field did not raise against a
+  list of non-models or of models of another class, and counted one TP or FD
+  from the comparator, with no subtree. Where the dispatcher can score such a
+  pair, it now counts what the same pair does without the override and at top
+  level. `[Inner(a="x")]` against `["a"]`, `[1]`, `[["a"]]` or `[{"a": "x"}]`
+  was an FD, and against `[Other(c="z")]` an FD at a field threshold of 0.9
+  and a TP at the default. Each now counts a TP, with `a` an FN and `b` a TN
+  under `aggregate`. Like the other pairs above, they follow the
+  field-by-field scoring `StructuredModel` still uses for objects of
+  different classes. Where the dispatcher raises, as it does at top level and
+  without the override, the pair still counts one TP or FD from the
+  comparator. That covers a ground-truth list holding a value without
+  `compare_with()`, such as `[Inner(a="x"), "b"]` against `["a", "b"]`, and a
+  list of models against plain pydantic models, such as `[Inner(a="x")]`
+  against `[Point(x=1)]`. The score is 1.0 before and after in every case.
 
   Four cases still differ from top level. The last three apply to a
   sub-field not routed as a nested model or a list, such as `Any`, `object`,
