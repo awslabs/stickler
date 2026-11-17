@@ -26,6 +26,7 @@ import math
 import numbers
 import os
 import sys
+import types
 import typing
 from dataclasses import dataclass
 from decimal import Decimal
@@ -294,15 +295,25 @@ def caller_location() -> Optional[str]:
     return location(frame.f_code.co_filename, frame.f_lineno)
 
 
-def outside_location() -> Optional[str]:
-    """Where the first frame outside stickler, pydantic and class machinery is.
+def outside_frame() -> Optional[types.FrameType]:
+    """The first frame outside stickler, pydantic and class machinery.
 
-    For a ``class`` statement that is its line, so a ``match_threshold`` error
-    can point at the class.
+    While a class is defined, that is the frame running its ``class``
+    statement.
     """
     frame = sys._getframe(1)
     while frame is not None and frame.f_code.co_filename.startswith(_MACHINERY):
         frame = frame.f_back
+    return frame
+
+
+def outside_location() -> Optional[str]:
+    """Where :func:`outside_frame` is.
+
+    For a ``class`` statement that is its line, so a ``match_threshold`` error
+    can point at the class.
+    """
+    frame = outside_frame()
     if frame is None:
         return None
     return location(frame.f_code.co_filename, frame.f_lineno)
