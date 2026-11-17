@@ -31,6 +31,10 @@ Each release links to full notes on the
   `**True**.` scores 1.0 and `"false"` scores 0.0. Any other reply scores 0.0
   and warns, showing the start of the reply, rather than raising.
 
+- Corrected introductory example scores, the default text comparator description,
+  and the sample amount in the documentation and README
+  ([#478](https://github.com/awslabs/stickler/issues/478)).
+
 - Pretty printers restore stdout when rendering fails, propagate rendering errors,
   and include the bulk summary in confusion-matrix file output.
 
