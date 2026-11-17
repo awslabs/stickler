@@ -60,8 +60,8 @@ Each release links to full notes on the
     threshold loaded whatever its value, because it was not read. A `Decimal`,
     `Fraction`, numpy number or 0-d numpy array from 0.0 to 1.0 now loads on
     every path, converted with `float()`; the comparator keeps the value it
-    was given. A numpy float16 or float32 threshold is then compared as a
-    Python float, not in its own dtype, so a score within its rounding below
+    was given. A numpy float16 or float32 threshold or `match_threshold` is
+    then compared as a Python float, not in its own dtype, so a score within its rounding below
     the threshold is an FD where it was a TP. Python kept such a value
     unconverted, so a `Decimal` raised `TypeError` on a pair scoring below it,
     and the importers refused it. The `match_threshold` passed to `evaluate()`
