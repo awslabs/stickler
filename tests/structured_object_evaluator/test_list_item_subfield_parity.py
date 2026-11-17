@@ -576,25 +576,66 @@ def test_a_list_of_models_in_an_any_sub_field_against_non_models_does_not_raise(
     assert _counts(node, "aggregate") == _expect(fn=1, tn=1)
 
 
-@pytest.mark.parametrize(
-    "compare",
-    [
-        pytest.param(
-            lambda gt, pred: AnyField(value=gt).compare_with(
-                AnyField(value=pred), include_confusion_matrix=True
-            ),
-            id="top-level",
-        ),
-        pytest.param(_in_list, id="sub-field"),
-    ],
-)
+def _at_top_level(gt, pred):
+    result = AnyField(value=gt).compare_with(
+        AnyField(value=pred), include_confusion_matrix=True
+    )
+    return result, result["confusion_matrix"]["fields"]["value"]
+
+
+def _as_sub_field(gt, pred):
+    result = _in_list(gt, pred)
+    return result, _value_node(result)
+
+
+WHERE = [
+    pytest.param(_at_top_level, id="top-level"),
+    pytest.param(_as_sub_field, id="sub-field"),
+]
+
+
+@pytest.mark.parametrize("compare", WHERE)
 def test_a_ground_truth_list_of_a_model_and_a_non_model_still_raises(compare):
     # Scoring the list calls each matched GT item's compare_with(), which a
-    # non-model lacks, so field classification never sees such a pair. This
+    # string lacks, so field classification never sees such a pair. This
     # raised before #400 too: only the prediction side's crash is fixed.
     values = [Inner(a="x"), "b"]
     with pytest.raises(AttributeError, match="compare_with"):
         compare(values, list(values))
+
+
+class Scored(BaseModel):
+    """Not a StructuredModel, but scores itself like one."""
+
+    a: str = "x"
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+
+class Duck:
+    """A plain class that scores itself like a StructuredModel."""
+
+    def compare_with(self, other, **kwargs):
+        return {"overall_score": 1.0}
+
+    def __eq__(self, other):
+        return isinstance(other, Duck)
+
+
+@pytest.mark.parametrize("compare", WHERE)
+@pytest.mark.parametrize("element", [Scored, Duck])
+def test_a_ground_truth_list_of_a_model_and_a_self_scoring_value_runs(
+    compare, element
+):
+    # The list scores, since every GT item has compare_with(). Field
+    # classification then skips the GT item that is not a StructuredModel,
+    # which has no dispatcher or declared fields to read.
+    values = [Inner(a="x"), element()]
+    result, node = compare(values, list(values))
+
+    assert result["overall_score"] == 1.0
+    assert _counts(node) == _expect(tp=2)
 
 
 class FixedScoreElement(ModelElement):

@@ -60,8 +60,9 @@ Each release links to full notes on the
   sub-field whose element class overrides `compare_with()` without
   recursing, which did not raise and counted an FD. A list with the base
   class first did not raise, and now also counts the subclass's fields. A
-  ground-truth list that mixes a model with a non-model, such as
-  `[Inner(a="x"), "b"]` against itself, still raises `AttributeError`.
+  ground-truth list that mixes a model with a value that has no
+  `compare_with()`, such as `[Inner(a="x"), "b"]` against itself, still
+  raises `AttributeError`.
   Nested-model and list-annotated sub-fields otherwise count as before.
 
   Four cases still differ from top level:
