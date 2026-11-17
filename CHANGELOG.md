@@ -48,15 +48,15 @@ Each release links to full notes on the
   In a list of models, whatever the sub-field's type, a matched prediction
   that lacked a field of the first ground-truth element's class raised
   `AttributeError`: a subclass listed before its base, `List[Union[A, B]]`, or
-  a list of models in an `Any` or `object` field, at top level or in a list
-  element, against a list holding a dict, string, number or list. The field
-  now reads as missing, and each pair is classified on its ground-truth
-  element's own fields. Such a pair still takes its object-level verdict from
-  `compare()`, which skips the fields the prediction lacks, so
-  `[Search(query="hotels")]` against `[Browse(url="x.com")]` now counts a TP,
-  with `query` an FN under `aggregate`, while the field scores 0.0. A model
-  against a non-model element, such as `[Inner(a="x")]` against `["a"]`, is a
-  TP the same way. So is `[Inner(a="x")]` against `[{"a": "x"}]` in an `Any`
+  a list of models in an `Any`, `object` or `List[Any]` field, at top level or
+  in a list element, against a list holding a dict, string, number, list or
+  model of another class. The field now reads as missing, and each pair is
+  classified on its ground-truth element's own fields. Such a pair still takes
+  its object-level verdict from `compare()`, which skips the fields the
+  prediction lacks, so `[Search(query="hotels")]` against
+  `[Browse(url="x.com")]` now counts a TP, with `query` an FN under
+  `aggregate`, while the field scores 0.0. A model against a non-model
+  element, such as `[Inner(a="x")]` against `["a"]`, is a TP the same way. So is `[Inner(a="x")]` against `[{"a": "x"}]` in an `Any`
   sub-field whose element class overrides `compare_with()` without
   recursing, which did not raise and counted an FD. A list with the base
   class first did not raise, and now also counts the subclass's fields. A
@@ -66,21 +66,21 @@ Each release links to full notes on the
   Nested-model and list-annotated sub-fields otherwise count as before.
 
   Four cases still differ from top level:
-  - in an `Any` or `Union[A, B]` sub-field, a model of another class still
-    takes its verdict from `compare_with()` against the field's threshold.
-    That reads a field the prediction lacks as `None`, so a `Search` against a
-    `Browse` scores 0.0 and stays an FD, while `Inner(a="x", b=None)` against
-    `Other(c="z")` scores 0.5, from `b`, and stays a TP at the default
-    threshold. It scores only the ground truth's own fields, so a `Pet`
+  - in an `Any`, `object` or `Union[A, B]` sub-field, a model of another class
+    still takes its verdict from `compare_with()` against the field's
+    threshold. That reads a field the prediction lacks as `None`, so a
+    `Search` against a `Browse` scores 0.0 and stays an FD, while
+    `Inner(a="x", b=None)` against `Other(c="z")` scores 0.5, from `b`, and
+    stays a TP at the default threshold. It scores only the ground truth's own fields, so a `Pet`
     against its subclass `Cat` stays a TP. In an `Optional` union of models or
     a union with a list arm, such a pair still counts as at top level;
   - when such a sub-field holds models in some pairs and `None`, a primitive
     or a model of another class in others, every pair stays one leaf under
     `aggregate`, so all pairs count but the models' fields do not;
   - a field the predicted element's class does not declare is not counted;
-  - an empty list in an `Any` sub-field counts as null, as the classification
-    docs say: `None` vs `[]` is a TN and `"x"` vs `[]` an FN, where top level
-    and `non_matches` give an FA and an FD
+  - an empty list in an `Any` or `object` sub-field counts as null, as the
+    classification docs say: `None` vs `[]` is a TN and `"x"` vs `[]` an FN,
+    where top level and `non_matches` give an FA and an FD
     ([#400](https://github.com/awslabs/stickler/issues/400))
 
 - Corrected introductory example scores, the default text comparator description,

@@ -58,6 +58,16 @@ class Holder(StructuredModel):
     items: List[Element] = ComparableField()
 
 
+class ObjectElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: object = ComparableField()
+    match_threshold = 0.4
+
+
+class ObjectHolder(StructuredModel):
+    items: List[ObjectElement] = ComparableField()
+
+
 class MappingElement(StructuredModel):
     key: str = ComparableField(threshold=1.0)
     value: Dict[str, str] = ComparableField(comparator=LevenshteinComparator())
@@ -135,8 +145,18 @@ def test_sub_field_counts(gt, pred, expected):
         pytest.param([], "x", _expect(fa=1), id="empty-vs-str"),
     ],
 )
-def test_an_empty_list_in_an_any_sub_field_is_null(gt, pred, expected):
-    assert _counts(_value_node(_in_list(gt, pred))) == expected
+@pytest.mark.parametrize(
+    "holder, element",
+    [
+        pytest.param(Holder, Element, id="any"),
+        pytest.param(ObjectHolder, ObjectElement, id="object"),
+    ],
+)
+def test_an_empty_list_in_an_open_sub_field_is_null(
+    holder, element, gt, pred, expected
+):
+    node = _value_node(_in_list(gt, pred, holder=holder, element=element))
+    assert _counts(node) == expected
 
 
 class StrOrListElement(StructuredModel):
@@ -282,6 +302,14 @@ class Cat(Pet):
             Other(c="z"),
             _expect(fd=1),
             id="other-class",
+        ),
+        pytest.param(
+            ObjectHolder,
+            ObjectElement,
+            Inner(a="x", b="y"),
+            Other(c="z"),
+            _expect(fd=1),
+            id="object-other-class",
         ),
         # compare_with() reads `b`, which `Other` lacks, as None, so the unset
         # `b` matches: 0.5, a TP at the default threshold of 0.5.
@@ -435,6 +463,15 @@ def _pairs_in_list(gts, preds, holder=Holder, element=Element):
             id="model-and-none",
         ),
         pytest.param(
+            ObjectHolder,
+            ObjectElement,
+            [Inner(a="x"), Inner(a="y")],
+            [Inner(a="x"), None],
+            _expect(tp=1, fn=1),
+            _expect(tp=3, fn=1),
+            id="object-model-and-none",
+        ),
+        pytest.param(
             Holder,
             Element,
             ["abc", Inner(a="x")],
@@ -571,6 +608,55 @@ def test_a_list_of_models_in_an_open_field_against_non_models_does_not_raise(
 
 def test_a_list_of_models_in_an_any_sub_field_against_non_models_does_not_raise():
     node = _value_node(_in_list([Inner(a="x")], ["a"]))
+
+    assert _counts(node) == _expect(tp=1)
+    assert _counts(node, "aggregate") == _expect(fn=1, tn=1)
+
+
+class ListAnyField(StructuredModel):
+    value: List[Any] = ComparableField()
+
+
+class ListAnyElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: List[Any] = ComparableField()
+    match_threshold = 0.4
+
+
+class ListAnyHolder(StructuredModel):
+    items: List[ListAnyElement] = ComparableField()
+
+
+@pytest.mark.parametrize("at_top_level", [True, False], ids=["top-level", "sub-field"])
+@pytest.mark.parametrize(
+    "field, holder, element, pred",
+    [
+        pytest.param(
+            ListAnyField, ListAnyHolder, ListAnyElement, ["a"], id="list-of-any-str"
+        ),
+        pytest.param(AnyField, Holder, Element, [Other(c="z")], id="any-other-class"),
+        pytest.param(
+            ObjectField,
+            ObjectHolder,
+            ObjectElement,
+            [Other(c="z")],
+            id="object-other-class",
+        ),
+    ],
+)
+def test_a_list_of_models_against_a_list_lacking_their_fields_does_not_raise(
+    field, holder, element, pred, at_top_level
+):
+    # The prediction lacks `a` and `b`, which read as missing. Pairing uses
+    # compare(), which skips them, so the pair is a TP (#327).
+    gt = [Inner(a="x")]
+    if at_top_level:
+        result = field(value=gt).compare_with(
+            field(value=pred), include_confusion_matrix=True
+        )
+        node = result["confusion_matrix"]["fields"]["value"]
+    else:
+        node = _value_node(_in_list(gt, pred, holder=holder, element=element))
 
     assert _counts(node) == _expect(tp=1)
     assert _counts(node, "aggregate") == _expect(fn=1, tn=1)
