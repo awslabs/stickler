@@ -184,18 +184,20 @@ def _reject_unknown_extensions(
     # so the message names the property for each way a definition is used. An
     # array of objects reads only the weight there, and pairs its elements by
     # the definition's match threshold. The root is no field, so it reads none.
-    uses = (
-        "property that uses this definition: beside its '$ref', or beside the "
-        "'anyOf', 'oneOf' or 'allOf' when the '$ref' is one of its arms"
-    )
+    # Only an object definition imports as an `allOf` arm, so only its message
+    # offers the `allOf`.
+    beside = "property that uses this definition: beside its '$ref', or beside the "
+    arm = "when the '$ref' is one of its arms"
     no_root = ". A definition used as the root reads no field keys"
     beside_ref = (
-        f"{uses}, or on the array property when the definition is its 'items'{no_root}"
+        f"{beside}'anyOf' or 'oneOf' {arm}, or on the array property when the "
+        f"definition is its 'items' or an arm of them{no_root}"
     )
     beside_ref_object = (
-        f"{uses}, or, for 'x-aws-stickler-weight', on the array property when the "
-        "definition is its 'items' (its elements pair by this definition's "
-        f"'x-aws-stickler-match-threshold'){no_root}"
+        f"{beside}'anyOf', 'oneOf' or 'allOf' {arm}. When the definition is an "
+        "array's 'items' or an arm of them, the array property reads only "
+        "'x-aws-stickler-weight', and the elements pair by this definition's "
+        f"'x-aws-stickler-match-threshold'{no_root}"
     )
     # Removed in #226 and ignored wherever it appears, so an older schema that
     # carries it in a definition still imports, as it does on a field.
@@ -394,9 +396,10 @@ class JsonSchemaImporter:
         if not (isinstance(source_model, type) and issubclass(source_model, BaseModel)):
             raise ValueError(
                 "The root of a JSON Schema must be a single object. A root typed "
-                "['object', 'null'], or a root anyOf/oneOf, is a union, and the "
-                "document being scored cannot be null or one of several shapes. "
-                "Type the root 'object'."
+                "['object', 'null'], a root anyOf/oneOf, or a root '$ref' to "
+                "either, is a union, and the document being scored cannot be null "
+                "or one of several shapes. Type the root, or what its '$ref' "
+                "names, 'object'."
             )
 
         if not source_model.model_fields:
@@ -1055,7 +1058,6 @@ class JsonSchemaImporter:
 
             ref = node.get("$ref")
             target, target_parts, entry, entry_body = resolve(ref)
-            target_path = ".".join(target_parts)
             if entry is not None and target_parts == entry:
                 pending.append((entry, entry_body, built, True))
             elif entry is not None:
@@ -1074,18 +1076,20 @@ class JsonSchemaImporter:
             # reaches: a `$ref` under `not` or `additionalProperties` builds
             # nothing, so it must not excuse an `allOf` that drops them.
             if reads and built:
-                read.update(id(hop) for hop, _ in chain(node, ""))
+                hops = list(chain(node, ""))
+                read.update(id(hop) for hop, _ in hops)
                 # The class is built from the `$ref` target, which reads its own
                 # model keys. Only the root reads the ones beside its `$ref`.
                 if isinstance(ref, str) and scope in ("model", "field_or_model"):
                     declared = sorted(k for k in node if k in _KNOWN_MODEL_EXTENSIONS)
                     if declared:
+                        # Through an alias, the class is the end of the chain.
+                        source = hops[-1][1] if len(hops) > 1 else f"'{ref}'"
                         raise ValueError(
                             f"Stickler extension '{declared[0]}' beside the '$ref' "
                             f"at '{path}' is not read: the class is built from "
-                            f"'{target_path or ref}', which reads only its own "
-                            "keys. Put it there. Left in place it would be dropped "
-                            "silently."
+                            f"{source}, which reads only its own keys. Put it "
+                            "there. Left in place it would be dropped silently."
                         )
 
             if "patternProperties" in node:

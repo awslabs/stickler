@@ -49,19 +49,20 @@ Each release links to full notes on the
   `default`, `examples`, `enum` or `const`, is no longer walked: a typo, a
   misplaced key, `patternProperties` or a keyword beside a combiner there raised
   before and now imports. A `$defs` entry inside one is still walked for its
-  contents, as before. A definition with
-  `properties` reads only the object-level keys, which configure the class it
-  generates for every property, `items` or `anyOf`/`oneOf` arm that `$ref`s it.
-  A field-level key (`comparator`, `comparator-config`, `threshold`, `weight`,
+  contents, as before. A definition with `properties` reads only the
+  object-level keys, which configure the class it generates for every property,
+  `items` or `anyOf`/`oneOf` arm that `$ref`s it. A field-level key
+  (`comparator`, `comparator-config`, `threshold`, `weight`,
   `clip-under-threshold`) inside one now raises and names where it belongs: on
   the property that uses it, beside the `$ref`, or beside the
-  `anyOf`/`oneOf`/`allOf` when the `$ref` is one of its arms; for `items`, on
-  the array property, which for an array of objects reads only the weight. A
-  definition used as the root reads no field keys. Honouring it instead would
-  make one key work on a property `$ref` and vanish on an `items` `$ref`, which
-  does not read field keys. Any other definition (a
-  scalar, an array, a combiner, an alias `$ref`, a mapping) generates no class
-  and reads neither set, so an object-level key there raises too. Object-level
+  `anyOf`/`oneOf`/`allOf` when the `$ref` is one of its arms (for `allOf`, only
+  an object with `properties`, directly or through an alias); for `items`, or an
+  arm of them, on the array property, which for an array of objects reads only
+  the weight. A definition used as the root reads no field keys. Honouring it
+  instead would make one key work on a property `$ref` and vanish on an `items`
+  `$ref`, which does not read field keys. Any other definition (a scalar, an
+  array, a combiner, an alias `$ref`, a mapping) generates no class and reads
+  neither set, so an object-level key there raises too. Object-level
   keys are also rejected where no class is built from them: beside a `$ref`
   anywhere but the root (on `items`, an `anyOf`/`oneOf` arm, or an object
   property), where the class is built from the target and reads the target's
@@ -80,10 +81,10 @@ Each release links to full notes on the
   Closes the known gap recorded for this key in 1.0.0
   ([#340](https://github.com/awslabs/stickler/issues/340))
 
-- A root schema typed `["object", "null"]`, or a root `anyOf`/`oneOf`, now
-  raises `ValueError` saying the root must be a single object, rather than
-  `AttributeError: model_fields`. A nested `["object", "null"]` node is
-  supported.
+- A root schema typed `["object", "null"]`, a root `anyOf`/`oneOf`, or a root
+  `$ref` to either, now raises `ValueError` saying the root must be a single
+  object, rather than `AttributeError: model_fields`. A nested
+  `["object", "null"]` node is supported.
 
 ### Fixed
 

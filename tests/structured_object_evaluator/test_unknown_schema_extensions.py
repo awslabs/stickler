@@ -724,25 +724,39 @@ class TestDefinitionsAreChecked:
                 ),
             )
 
-    def test_a_field_key_used_from_items_names_the_array_property(self):
-        """`items` does not read field keys, so beside the `$ref` is wrong there."""
+    _ITEMS = (
+        {"$ref": "#/$defs/Inner"},
+        {"anyOf": [{"$ref": "#/$defs/Inner"}, {"type": "null"}]},
+    )
+
+    @pytest.mark.parametrize("items", _ITEMS, ids=("ref", "anyOf-arm"))
+    @pytest.mark.parametrize(
+        "key, value",
+        (("x-aws-stickler-threshold", 0.9), ("x-aws-stickler-weight", 3.0)),
+    )
+    def test_a_field_key_used_from_items_names_the_array_property(
+        self, items, key, value
+    ):
+        """`items` does not read field keys, so beside the `$ref` is wrong there,
+        and an array of objects reads only the weight: the threshold's place is
+        taken by the definition's match threshold."""
         with pytest.raises(ValueError) as exc:
             StructuredModel.from_json_schema(
                 {
                     "type": "object",
-                    "properties": {
-                        "rows": {"type": "array", "items": {"$ref": "#/$defs/Inner"}}
-                    },
-                    "$defs": {
-                        "Inner": dict(self.INNER, **{"x-aws-stickler-weight": 3.0})
-                    },
+                    "properties": {"rows": {"type": "array", "items": items}},
+                    "$defs": {"Inner": dict(self.INNER, **{key: value})},
                 }
             )
-        assert "on the array property when the definition is its 'items'" in str(
-            exc.value
-        )
+        message = str(exc.value)
+        assert (
+            "When the definition is an array's 'items' or an arm of them, the array "
+            "property reads only 'x-aws-stickler-weight', and the elements pair by "
+            "this definition's 'x-aws-stickler-match-threshold'"
+        ) in message
 
-    def test_the_array_property_reads_it(self):
+    @pytest.mark.parametrize("items", _ITEMS, ids=("ref", "anyOf-arm"))
+    def test_the_array_property_reads_it(self, items):
         """Where the error sends the author for `items`."""
         model = StructuredModel.from_json_schema(
             {
@@ -750,7 +764,7 @@ class TestDefinitionsAreChecked:
                 "properties": {
                     "rows": {
                         "type": "array",
-                        "items": {"$ref": "#/$defs/Inner"},
+                        "items": items,
                         "x-aws-stickler-weight": 3.0,
                     }
                 },
@@ -759,14 +773,33 @@ class TestDefinitionsAreChecked:
         )
         assert model._get_comparison_info("rows").weight == 3.0
 
-    @pytest.mark.parametrize("combiner", ("anyOf", "oneOf", "allOf"))
     @pytest.mark.parametrize(
-        "body", (INNER, {"type": "string"}), ids=("object", "scalar")
+        "body, combiner, offered",
+        (
+            (INNER, "anyOf", "'anyOf', 'oneOf' or 'allOf'"),
+            (INNER, "oneOf", "'anyOf', 'oneOf' or 'allOf'"),
+            (INNER, "allOf", "'anyOf', 'oneOf' or 'allOf'"),
+            ({"type": "string"}, "anyOf", "'anyOf' or 'oneOf'"),
+            ({"type": "string"}, "oneOf", "'anyOf' or 'oneOf'"),
+            ({"type": "string"}, "allOf", "'anyOf' or 'oneOf'"),
+        ),
+        ids=(
+            "object-anyOf",
+            "object-oneOf",
+            "object-allOf",
+            "scalar-anyOf",
+            "scalar-oneOf",
+            "scalar-allOf",
+        ),
     )
     def test_a_field_key_used_from_a_combiner_arm_names_the_combiner(
-        self, combiner, body
+        self, body, combiner, offered
     ):
-        """Beside the arm's `$ref` raises again, so the error names the combiner."""
+        """Beside the arm's `$ref` raises again, so the error names the combiner.
+
+        A one-arm `allOf` of a scalar fails to import whatever its keys, so a
+        scalar definition is not sent there.
+        """
         arms = [{"$ref": "#/$defs/Inner"}]
         if combiner != "allOf":
             arms.append({"type": "null"})
@@ -778,13 +811,28 @@ class TestDefinitionsAreChecked:
                     "$defs": {"Inner": dict(body, **{"x-aws-stickler-threshold": 0.9})},
                 }
             )
-        assert (
-            "beside the 'anyOf', 'oneOf' or 'allOf' when the '$ref' is one of its arms"
-            in str(exc.value)
+        assert f"beside the {offered} when the '$ref' is one of its arms" in str(
+            exc.value
         )
 
-    @pytest.mark.parametrize("combiner", ("anyOf", "oneOf", "allOf"))
-    def test_the_property_beside_the_combiner_reads_it(self, combiner):
+    @pytest.mark.parametrize(
+        "body, combiner",
+        (
+            (INNER, "anyOf"),
+            (INNER, "oneOf"),
+            (INNER, "allOf"),
+            ({"type": "string"}, "anyOf"),
+            ({"type": "string"}, "oneOf"),
+        ),
+        ids=(
+            "object-anyOf",
+            "object-oneOf",
+            "object-allOf",
+            "scalar-anyOf",
+            "scalar-oneOf",
+        ),
+    )
+    def test_the_property_beside_the_combiner_reads_it(self, body, combiner):
         """Where the error sends the author for a combiner arm."""
         arms = [{"$ref": "#/$defs/Inner"}]
         if combiner != "allOf":
@@ -799,7 +847,7 @@ class TestDefinitionsAreChecked:
                         "x-aws-stickler-weight": 2.0,
                     }
                 },
-                "$defs": {"Inner": self.INNER},
+                "$defs": {"Inner": body},
             }
         )
         info = model._get_comparison_info("a")
@@ -1020,6 +1068,20 @@ class TestTheRootMustBeOneObject:
             schema["properties"] = {"c": {"type": "string"}}
         with pytest.raises(ValueError, match="root of a JSON Schema must be a single"):
             StructuredModel.from_json_schema(schema)
+
+    @pytest.mark.parametrize(
+        "body",
+        (dict(_PLAIN, type=["object", "null"]), {"anyOf": [_PLAIN, {"type": "null"}]}),
+        ids=("object-null", "anyOf"),
+    )
+    def test_a_root_ref_to_a_union_names_the_ref(self, body):
+        with pytest.raises(ValueError) as exc:
+            StructuredModel.from_json_schema(
+                {"$ref": "#/$defs/N", "$defs": {"N": body}}
+            )
+        message = str(exc.value)
+        assert "root of a JSON Schema must be a single" in message
+        assert "or a root '$ref' to either" in message
 
     def test_a_single_element_list_still_imports(self):
         model = StructuredModel.from_json_schema(
@@ -1633,3 +1695,45 @@ class TestModelKeysBesideANonRootRef:
         message = str(exc.value)
         assert f"'{key}' beside the '$ref' at '{at}' is not read" in message
         assert "'$defs.Row'" in message
+
+    def test_through_an_alias_it_names_the_end_of_the_chain(self):
+        """The alias reads no model keys, so naming it sent the author to a
+        position that raises too."""
+        with pytest.raises(ValueError) as exc:
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {
+                        "a": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/$defs/Alias",
+                                "x-aws-stickler-match-threshold": 0.93,
+                            },
+                        }
+                    },
+                    "$defs": {
+                        "Alias": {"$ref": "#/$defs/Row"},
+                        "Row": TestDefinitionsAreChecked.INNER,
+                    },
+                }
+            )
+        assert "the class is built from definition '$defs.Row'" in str(exc.value)
+
+    def test_the_advice_works_through_an_alias(self):
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "a": {"type": "array", "items": {"$ref": "#/$defs/Alias"}}
+                },
+                "$defs": {
+                    "Alias": {"$ref": "#/$defs/Row"},
+                    "Row": dict(
+                        TestDefinitionsAreChecked.INNER,
+                        **{"x-aws-stickler-match-threshold": 0.93},
+                    ),
+                },
+            }
+        )
+        assert _unwrap(model.model_fields["a"].annotation).match_threshold == 0.93
