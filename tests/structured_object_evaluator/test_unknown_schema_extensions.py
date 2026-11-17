@@ -2762,3 +2762,192 @@ class TestModelKeysBesideANonRootRef:
             schema.setdefault(key, {}).update(value)
         model = StructuredModel.from_json_schema(schema)
         assert _unwrap(model.model_fields["h"].annotation).match_threshold == 0.7
+
+
+class TestBesideARefUnderAKeywordOfAnEntry:
+    """A node of a `$defs` entry under `not`, `then`, `contains` or
+    `additionalProperties`, that a property or `items` `$ref`s, is checked as
+    a property or `items` node anywhere in the entry is.
+
+    Model keys beside the node's `$ref` raise on an `items` node, a position no
+    doc names for them, and warn on a property typed `"object"`, which dev's
+    docs call valid for them. Dev built both at 0.7 (`items@0.7`, `p@0.7`). The
+    error named `'$defs.W[]'` and `'$defs.W.p'`, nodes that do not exist: the
+    walk left the keyword out of the path, as it did for a typo there.
+    """
+
+    ROW = {"type": "object", "properties": {"b": {"type": "string"}}}
+    BESIDE = {"$ref": "#/$defs/Row", "x-aws-stickler-match-threshold": 0.93}
+    KEYWORDS = ("not", "then", "contains", "additionalProperties")
+    USES = (
+        lambda ref: {"$ref": ref},
+        lambda ref: {"type": "array", "items": {"$ref": ref}},
+    )
+
+    @classmethod
+    def _schema(cls, keyword, node, pointer, use):
+        w = {"type": "object", "properties": {"s": {"type": "string"}}}
+        w[keyword] = node
+        if keyword == "then":
+            w["if"] = {"required": ["s"]}
+        return {
+            "type": "object",
+            "properties": {"a": use(pointer)},
+            "$defs": {"W": w, "Row": cls.ROW},
+        }
+
+    @pytest.mark.parametrize("keyword", KEYWORDS)
+    @pytest.mark.parametrize("use", USES, ids=("from-property", "from-items"))
+    def test_on_an_items_node_it_raises_and_names_the_keyword(self, keyword, use):
+        node = {"type": "array", "items": self.BESIDE}
+        with pytest.raises(ValueError) as exc:
+            StructuredModel.from_json_schema(
+                self._schema(keyword, node, f"#/$defs/W/{keyword}/items", use)
+            )
+        message = str(exc.value)
+        assert (
+            "'x-aws-stickler-match-threshold' beside the '$ref' at "
+            f"'$defs.W.{keyword}[]' is not read" in message
+        )
+        assert "the class is built from definition '$defs.Row'" in message
+
+    @pytest.mark.parametrize("keyword", KEYWORDS)
+    @pytest.mark.parametrize("use", USES, ids=("from-property", "from-items"))
+    def test_on_an_object_typed_property_node_it_warns(self, keyword, use):
+        node = {"type": "object", "properties": {"p": dict(self.BESIDE, type="object")}}
+        model, warned = _import_warning(
+            self._schema(keyword, node, f"#/$defs/W/{keyword}/properties/p", use)
+        )
+        a = _unwrap(model.model_fields["a"].annotation)
+        assert (a.__name__, a.match_threshold) == ("p", 0.7)
+        assert _warned(
+            warned,
+            f"'x-aws-stickler-match-threshold' beside the '$ref' at '$defs.W.{keyword}.p'"
+            " is not read",
+        )
+
+    def test_under_a_keyword_of_a_nested_property_it_warns(self):
+        n = {
+            "type": "object",
+            "properties": {"q": {"type": "string"}},
+            "not": {
+                "type": "object",
+                "properties": {"p": dict(self.BESIDE, type="object")},
+            },
+        }
+        model, warned = _import_warning(
+            {
+                "type": "object",
+                "properties": {"a": {"$ref": "#/$defs/W/properties/n/not/properties/p"}},
+                "$defs": {
+                    "W": {"type": "object", "properties": {"n": n}},
+                    "Row": self.ROW,
+                },
+            }
+        )
+        a = _unwrap(model.model_fields["a"].annotation)
+        assert (a.__name__, a.match_threshold) == ("p", 0.7)
+        assert _warned(warned, "beside the '$ref' at '$defs.W.n.not.p' is not read")
+
+    @pytest.mark.parametrize(
+        "pointer, holder",
+        (
+            ("#/$defs/W/x-sub/T", {"x-sub": {"T": BESIDE}}),
+            (
+                "#/$defs/W/x-sub/T/properties/p",
+                {
+                    "x-sub": {
+                        "T": {
+                            "type": "object",
+                            "properties": {"p": dict(BESIDE, type="object")},
+                        }
+                    }
+                },
+            ),
+        ),
+        ids=("x-sub-node", "x-sub-property"),
+    )
+    def test_under_an_x_key_the_node_is_not_checked(self, pointer, holder):
+        """The known gap, as on dev: a node under an `x-*` key builds `Row` at
+        0.7, with no error and no warning."""
+        schema = {
+            "type": "object",
+            "properties": {"a": {"$ref": pointer}},
+            "$defs": {"W": dict(_PLAIN, **holder), "Row": self.ROW},
+        }
+        model, warned = _import_warning(schema)
+        assert _unwrap(model.model_fields["a"].annotation).match_threshold == 0.7
+        assert not warned
+
+    def test_outside_defs_a_property_node_is_not_checked(self):
+        """The known gap, as on dev, for `#/x-models/T/properties/p`."""
+        model, warned = _import_warning(
+            {
+                "type": "object",
+                "properties": {"a": {"$ref": "#/x-models/T/properties/p"}},
+                "$defs": {"Row": self.ROW},
+                "x-models": {
+                    "T": {
+                        "type": "object",
+                        "properties": {"p": dict(self.BESIDE, type="object")},
+                    }
+                },
+            }
+        )
+        assert _unwrap(model.model_fields["a"].annotation).match_threshold == 0.7
+        assert not warned
+
+    @pytest.mark.parametrize(
+        "schema, at",
+        (
+            (
+                dict(
+                    _PLAIN,
+                    **{"not": {"type": "array", "items": dict(_PLAIN, **_TYPO_KEY)}},
+                ),
+                "object 'not[]'",
+            ),
+            (
+                {
+                    "type": "object",
+                    "properties": {"a": {"$ref": "#/$defs/W"}},
+                    "$defs": {
+                        "W": dict(
+                            _PLAIN,
+                            **{
+                                "not": {
+                                    "type": "array",
+                                    "items": dict(_PLAIN, **_TYPO_KEY),
+                                }
+                            },
+                        )
+                    },
+                },
+                "object '$defs.W.not[]'",
+            ),
+            (
+                {
+                    "type": "object",
+                    "properties": {"a": {"$ref": "#/$defs/W"}},
+                    "$defs": {
+                        "W": dict(
+                            _PLAIN,
+                            **{
+                                "not": {
+                                    "type": "object",
+                                    "properties": {"p": _TYPO},
+                                }
+                            },
+                        )
+                    },
+                },
+                "field '$defs.W.not.p'",
+            ),
+        ),
+        ids=("root-not-items", "entry-not-items", "entry-not-property"),
+    )
+    def test_a_typo_under_a_keyword_names_it(self, schema, at):
+        """Dev named `'[]'` and `'p'` here."""
+        with pytest.raises(ValueError, match="x-aws-stickler-thresold") as exc:
+            StructuredModel.from_json_schema(schema)
+        assert f"on {at}." in str(exc.value)

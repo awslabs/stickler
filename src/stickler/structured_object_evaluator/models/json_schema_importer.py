@@ -1072,13 +1072,19 @@ class JsonSchemaImporter:
         `x-*` key inside a definition, or outside `$defs` (`#/components/...`).
         Only a whole definition entry is checked as a definition. Any other
         target has its own keys, model keys beside its `$ref` included, checked
-        only where the walk around it checks them (a property or `items` node
-        of a definition entry). Anywhere else, for example under `not`, `if`,
-        `contains` or an `x-*` key, or outside `$defs`, only its contents are
-        checked. A field key on a property node is valid there, but only the
-        object holding the node reads it: another property that `$ref`s the
-        node does not. The rest of the entry around a target builds nothing,
-        as an unused entry does.
+        only where the walk around it checks them: on a property or `items`
+        node anywhere in a definition entry, under `not` or `then` too, but
+        not under an `x-*` key. A target that is no property or `items` node
+        (`#/$defs/W/not`), one under an `x-*` key, and one outside `$defs` have
+        only their contents checked. A field key on a property node is valid
+        there, but only the object holding the node reads it: another property
+        that `$ref`s the node does not. The rest of the entry around a target
+        builds nothing, as an unused entry does.
+
+        Model keys no class reads raise, except on an object-typed property,
+        a position the docs call valid for them: beside its `$ref`, or reached
+        only through the root `$ref` or an `allOf` arm. There they warn and
+        are dropped, as before, until 1.1.0.
         """
         # Nodes whose model keys some class reads, by identity: every position
         # except an `allOf` arm and the root's own `$ref` target. Over-counting
@@ -1293,7 +1299,9 @@ class JsonSchemaImporter:
                             )
                         walk(arm, f"{path}[{index}]", "model", built, reads=False)
                     continue
-                child_path = path
+                # Named in the path, so an error under `not` or `then` points
+                # at a node that exists (`$defs.W.not[]`, not `$defs.W[]`).
+                child_path = f"{path}.{key}" if path else key
                 child_scope: Optional[str] = None
                 # Only these positions build part of the model. Anything else,
                 # such as `not` or `if`, is walked for its shape but builds no
@@ -1309,6 +1317,7 @@ class JsonSchemaImporter:
                 elif key in _COMBINERS or key in ("$defs", "definitions"):
                     # A `$defs` that is not a mapping is not a set of definitions;
                     # it is still walked, as before, rather than skipped.
+                    child_path = path
                     child_scope, child_built = "model", built
                 walk(value, child_path, child_scope, child_built)
 
