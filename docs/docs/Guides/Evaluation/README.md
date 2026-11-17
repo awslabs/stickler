@@ -189,7 +189,7 @@ Add these extensions to any property in your JSON Schema to control comparison b
 | `x-aws-stickler-comparator` | string | Type-dependent | Comparison algorithm (e.g., `"ExactComparator"`, `"LevenshteinComparator"`) |
 | `x-aws-stickler-threshold` | number (0.0--1.0) | see below | Match classification cutoff. Read on a scalar, an object, and an array of scalars. **Ignored on an array of models** -- an array whose `items` declare `properties` -- where pairing is gated by the element class's `x-aws-stickler-match-threshold`, and a declared value warns there (in Python, `ComparableField(threshold=...)` on a `List[StructuredModel]` raises `ValueError`). Read, not ignored, on an array of free-form `{"type": "object"}` items |
 | `x-aws-stickler-weight` | number (> 0.0) | 1.0 | Field importance multiplier |
-| `x-aws-stickler-clip-under-threshold` | boolean | `true`, unless inferred (see below) | Zero out scores below threshold |
+| `x-aws-stickler-clip-under-threshold` | boolean | `true` | Zero out scores below threshold. An inferred property takes it from inference (see below) |
 | `x-aws-stickler-model-name` | string | `"DynamicModel"` | Name of the generated Python class (root level) |
 | `x-aws-stickler-match-threshold` | number (0.0--1.0) | 0.7 | Model-level matching threshold for Hungarian algorithm (root level) |
 | `x-aws-stickler-infer-unspecified` | boolean | `false` | Infer a comparator, threshold, weight and clip setting for any property that names none, using the same rules `stickler.evaluate()` uses (root level) |
