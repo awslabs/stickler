@@ -162,6 +162,65 @@ def test_an_empty_list_in_an_open_sub_field_is_null(
     assert _counts(node) == expected
 
 
+@pytest.mark.parametrize(
+    "gt, pred, expected",
+    [
+        pytest.param("  ", "", _expect(fn=1), id="whitespace-vs-empty-str"),
+        pytest.param("", "  ", _expect(fa=1), id="empty-str-vs-whitespace"),
+        pytest.param((), {}, _expect(fn=1), id="empty-tuple-vs-empty-dict"),
+        pytest.param((), float("nan"), _expect(fn=1), id="empty-tuple-vs-nan"),
+        pytest.param(b"", "", _expect(fn=1), id="empty-bytes-vs-empty-str"),
+        pytest.param(set(), {}, _expect(fn=1), id="empty-set-vs-empty-dict"),
+        pytest.param("  ", "  ", _expect(tp=1), id="whitespace-vs-itself"),
+        pytest.param((), (), _expect(fd=1), id="empty-tuple-vs-itself"),
+    ],
+)
+@pytest.mark.parametrize(
+    "holder, element",
+    [
+        pytest.param(Holder, Element, id="any"),
+        pytest.param(ObjectHolder, ObjectElement, id="object"),
+    ],
+)
+def test_an_empty_value_in_an_open_sub_field_counts_as_at_top_level(
+    holder, element, gt, pred, expected
+):
+    # A whitespace string and an empty tuple, set or bytes are values, while
+    # "", {} and NaN are null, in a list element as at top level.
+    node = _value_node(_in_list(gt, pred, holder=holder, element=element))
+    assert _counts(node) == expected
+
+    alone = element(key="k", value=gt).compare_with(
+        element(key="k", value=pred), include_confusion_matrix=True
+    )
+    assert _counts(alone["confusion_matrix"]["fields"]["value"]) == expected
+
+
+class OptionalStrElement(StructuredModel):
+    key: str = ComparableField(threshold=1.0)
+    value: Optional[str] = ComparableField()
+    match_threshold = 0.4
+
+
+class OptionalStrHolder(StructuredModel):
+    items: List[OptionalStrElement] = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "gt, pred, expected",
+    [
+        pytest.param("  ", "", _expect(fn=1), id="whitespace-vs-empty-str"),
+        pytest.param("", "  ", _expect(fa=1), id="empty-str-vs-whitespace"),
+        pytest.param("  ", "  ", _expect(tp=1), id="whitespace-vs-itself"),
+    ],
+)
+def test_a_whitespace_string_in_a_str_sub_field_is_a_value(gt, pred, expected):
+    node = _value_node(
+        _in_list(gt, pred, holder=OptionalStrHolder, element=OptionalStrElement)
+    )
+    assert _counts(node) == expected
+
+
 class StrOrListElement(StructuredModel):
     key: str = ComparableField(threshold=1.0)
     value: Optional[Union[str, List[str]]] = ComparableField()

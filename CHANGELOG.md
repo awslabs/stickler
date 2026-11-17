@@ -35,9 +35,10 @@ Each release links to full notes on the
     under `LevenshteinComparator`, a plain pydantic model; under
     `FuzzyComparator` or `NormalizedComparator`, that or a dict;
   - an empty tuple, set or `bytes`, and a whitespace-only string, are values,
-    not null. Against `None`, or against `[]` or `[None]` in an `Any` or
-    `object` sub-field, they are an FN (or FA), not a TN, and `()` vs `()` is
-    an FD;
+    not null. Against a null value (`None`, `""`, `{}`, NaN, and `[]` or
+    `[None]` in an `Any` or `object` sub-field) they are an FN (or FA), not a
+    TN. `"  "` vs `"  "` is a TP, not a TN, `"  "` vs `"x"` an FD, not an FA,
+    and `()` vs `()` an FD, not a TN;
   - two lists in an `Any` sub-field count one per element, not one in total,
     so `["a", "b"]` vs `[]` is 2 FN, not 1;
   - a model of the ground truth's class in an `Any` or `Union[A, B]`
