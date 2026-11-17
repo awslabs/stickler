@@ -19,7 +19,21 @@ Each release links to full notes on the
   `document_non_matches` is not set. Until 1.1.0 these keep their 1.0.1
   behaviour, and their warnings now name 1.1.0.
 
-- **Breaking:** `from_json_schema()` now reads `x-aws-stickler-model-name`,
+- **Breaking:** `from_json_schema()` now raises for `x-aws-stickler-model-name`,
+  `x-aws-stickler-match-threshold` or `x-aws-stickler-infer-unspecified` beside
+  a `$ref` on a property typed `"object"` or `["object", "null"]`, such as
+  `{"type": "object", "$ref": "#/$defs/Row", "x-aws-stickler-match-threshold":
+  0.93}`. The class is built from the `$ref` target, which reads only its own
+  keys, so these were dropped: the property built `Row` at `0.7`, or
+  `DynamicModel` at `0.7` for the list form. The error names the target to put
+  them on. This holds wherever such a property sits, including inside a `$defs`
+  entry or a `#/components/...` target that a position building a class
+  references. Without a `type`, the same property already raised
+  ([#340](https://github.com/awslabs/stickler/issues/340))
+
+### Fixed
+
+- `from_json_schema()` now reads `x-aws-stickler-model-name`,
   `x-aws-stickler-match-threshold` and `x-aws-stickler-infer-unspecified` on a
   node typed `["object", "null"]`, as it does on `"object"`. The list form is
   rewritten to `anyOf` before parsing, and the keys stayed beside the `anyOf`
@@ -37,63 +51,75 @@ Each release links to full notes on the
   `0.0`); it now builds one class and scores as `"object"` does (`0.9`). Part A of
   [#349](https://github.com/awslabs/stickler/issues/349)
 
-- **Breaking:** an `x-aws-stickler-*` key on a `$defs` or `definitions` entry
-  that a `$ref` reaches is now checked, as it is inline. The walk entered a
-  definition without checking its own keys, so `x-aws-stickler-thresold` there
-  imported silently where inline it raises. A `$ref` to a node inside an entry
-  also checks the entry, but checks the node's own keys only where the entry's
-  walk does (a property, `items` or a combiner arm). Under `not`, `if`, `then`,
-  `else`, `additionalProperties`, `dependentSchemas` or an `x-*` key, as in a
-  target outside `$defs` (`#/components/...`), a typo or a misplaced key on the
-  node still imports, as before. `x-aws-stickler-aggregate` is still accepted
-  and ignored there, as on a field. An entry no `$ref` reaches builds nothing, so
-  its own keys are not checked and a dereferenced schema, which keeps the
-  originals beside their inlined copies, imports as before. Its contents are
-  checked as before, so a typo in one of its properties still raises. A schema
-  under an `x-*` key that no `$ref` reaches, or a schema-shaped value under
-  `default`, `examples`, `enum` or `const`, is no longer walked: a typo, a
-  misplaced key, `patternProperties` or a keyword beside a combiner there raised
-  before and now imports. A `$defs` entry inside one is still walked for its
-  contents, as before. A definition with `properties` reads only the
-  object-level keys, which configure the class it generates for every property,
-  `items` or `anyOf`/`oneOf` arm that `$ref`s it. A field-level key
+- `from_json_schema()` now checks an `x-aws-stickler-*` key on a `$defs` or
+  `definitions` entry that a `$ref` reaches, as it does inline. The walk entered
+  a definition without checking its own keys, so `x-aws-stickler-thresold` there
+  imported silently where inline it raises. A definition with `properties` reads
+  only the object-level keys, which configure the class it generates for every
+  property, `items` or `anyOf`/`oneOf` arm that `$ref`s it. A field-level key
   (`comparator`, `comparator-config`, `threshold`, `weight`,
   `clip-under-threshold`) inside one now raises and names where it belongs: on
   the property that uses it, beside the `$ref`, or beside the
   `anyOf`/`oneOf`/`allOf` when the `$ref` is one of its arms (for `allOf`, only
-  an object with `properties`, directly or through an alias); for `items`, or an
-  arm of them, on the array property, which for an array of objects reads only
-  the weight. A definition used as the root reads no field keys. Honouring it
-  instead would make one key work on a property `$ref` and vanish on an `items`
-  `$ref`, which does not read field keys. Any other definition (a scalar, an
-  array, a combiner, an alias `$ref`, a mapping) generates no class and reads
-  neither set, so an object-level key there raises too. Object-level
-  keys are also rejected where no class is built from them: beside a `$ref`
-  anywhere but the root (on `items`, an `anyOf`/`oneOf` arm, or an object
-  property), where the class is built from the target and reads the target's
-  keys; on an `allOf` arm, inline or through `$ref`, which is merged into one
-  class at the defaults; and on an object reached through a root `$ref`,
-  where the root reads the keys beside the `$ref` instead. The last two raise
-  only when no other position builds the same object from its keys, including
-  a position inside any `$ref` target, wherever the target sits
-  (`#/components/...`, or under `not` or an `x-*` key in a definition); a
-  `$ref` under `not`, `additionalProperties` or `if` builds nothing, so it does
-  not count. All three also apply inside a `$ref` target outside `$defs`
-  (`#/components/...`) once a position that builds a class references it. Each
-  of these resolved the default in silence
-  (`x-aws-stickler-threshold: 0.88` in `$defs` gave `0.7`, `items: {"$ref":
-  ..., "x-aws-stickler-match-threshold": 0.93}` built at `0.7`), so a schema
-  that imported before and now raises loses no working configuration.
-  `to_json_schema()` never writes `$defs`, so its exports are unaffected.
-  Closes the known gap recorded for this key in 1.0.0
+  an object with `properties` typed `"object"` or untyped, directly or through
+  an alias, since a one-arm `allOf` of anything else fails to import); for
+  `items`, or an arm of them, on the array property, which for an array of
+  objects reads only the weight. A definition used as the root reads no field
+  keys. Honouring it instead would make one key work on a property `$ref` and
+  vanish on an `items` `$ref`, which does not read field keys. Any other
+  definition (a scalar, an array, a combiner, an alias `$ref`, a mapping)
+  generates no class and reads neither set, so an object-level key there raises
+  too. `x-aws-stickler-aggregate` is still accepted and ignored on a definition
+  entry, as on a field. A `$ref` to a node inside an entry also checks the
+  entry, but checks the node's own keys only where the entry's walk does (a
+  property, `items` or a combiner arm). Anywhere else, for example under `not`,
+  `if`, `contains` or an `x-*` key, and in a target outside `$defs`
+  (`#/components/...`), a typo or a misplaced key on the node still imports, as
+  before. A field key on a property node is valid there, but another property
+  that `$ref`s the node does not read it: `{"$ref": "#/$defs/W/properties/s"}`
+  keeps the default threshold whatever `s` declares. An entry no `$ref` reaches
+  builds nothing, so its own keys are not checked and a dereferenced schema,
+  which keeps the originals beside their inlined copies, imports as before. Its
+  contents are checked as before, and so are the targets of its `$ref`s, so a
+  typo in one of its properties, or in an `x-*` payload that only it references,
+  still raises. Every key that now raises was dropped in silence
+  (`x-aws-stickler-threshold: 0.88` in `$defs` gave `0.7`). `to_json_schema()`
+  never writes `$defs`, so its exports are unaffected. Closes the known gap
+  recorded for this key in 1.0.0
+  ([#340](https://github.com/awslabs/stickler/issues/340))
+
+- `from_json_schema()` now raises for an object-level key at a position where no
+  class is built from it, where it was dropped: beside a `$ref` on `items` or an
+  `anyOf`/`oneOf` arm, where the class is built from the target and reads the
+  target's keys; on an `allOf` arm, inline or through `$ref`, which is merged
+  into one class at the defaults; and on an object reached through a root
+  `$ref`, where the root reads the keys beside the `$ref` instead. Beside a
+  `$ref`, this includes a node inside a `$defs` entry, such as
+  `#/$defs/List/items`, that a property, `items` or arm `$ref`s. The last two
+  raise only when no other position builds the same object from its keys,
+  counting positions inside any `$ref` target; a `$ref` under `not`,
+  `additionalProperties` or `if` builds nothing, so it does not count. All three
+  also apply inside any `$ref` target that a position building a class
+  references, wherever it sits: under `#/components/...`, or under `not`,
+  `then`, `additionalProperties` or an `x-*` key in a `$defs` entry. Each of
+  these resolved the default in silence: `items: {"$ref": ...,
+  "x-aws-stickler-match-threshold": 0.93}` built at `0.7`, and an `allOf` arm
+  reaching a keyed definition built `AllOfModel` at `0.7`
+  ([#340](https://github.com/awslabs/stickler/issues/340))
+
+- `from_json_schema()` no longer checks, as a schema, a value under an `x-*` key
+  that no `$ref` reaches, or a schema-shaped value under `default`, `examples`,
+  `enum` or `const`. Such a value is another tool's data or instance data, so a
+  typo, a misplaced key, `patternProperties` or a keyword beside a combiner
+  there no longer raises. Where a `$ref` points into an `x-*` payload, even from
+  an unused definition, the payload is checked, and a `$defs` entry inside one
+  is still walked for its contents, as before
   ([#340](https://github.com/awslabs/stickler/issues/340))
 
 - A root schema typed `["object", "null"]`, a root `anyOf`/`oneOf`, or a root
   `$ref` to either, now raises `ValueError` saying the root must be a single
   object, rather than `AttributeError: model_fields`. A nested
   `["object", "null"]` node is supported.
-
-### Fixed
 
 - Corrected introductory example scores, the default text comparator description,
   and the sample amount in the documentation and README
