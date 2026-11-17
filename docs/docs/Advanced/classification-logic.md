@@ -164,6 +164,16 @@ where a subclass arrived for its base, which `Optional[Pet]` accepts.
     unverified rather than as endorsed: annotate the field with a single model type
     if you need the guarantee today.
 
+    The same gap lets a pair in a list of models count a TP even when it scores
+    `0.0`. Pairing uses `compare()`, which skips the fields the prediction lacks,
+    so in a `List[Union[Search, Browse]]` field, `[Search(query="hotels")]`
+    against `[Browse(url="x.com")]` counts a TP, with `query` an FN under
+    `aggregate`, while the field scores `0.0`. A model paired with an element
+    that is not a model, such as a string, dict or list, is a TP the same way:
+    in an `Any` or `object` field, at top level or in a list element,
+    `[Inner(a="x", b=None)]` against `["a"]` counts a TP, with `a` an FN and `b`
+    a TN under `aggregate`.
+
     Whether a refused object should still *pair* inside a list, or should instead
     be counted as a missed ground truth plus an invented prediction, is the open
     question in [#321](https://github.com/awslabs/stickler/issues/321).
