@@ -73,7 +73,7 @@ result = stickler.evaluate(gt, pred, match_threshold=0.8)
 spec = stickler.eval_for(Invoice, match_threshold=0.8)
 ```
 
-**What it gates:** `EvalResult.matched` (`overall_score >= match_threshold`). On a `StructuredModel` class that is all it does: list pairing and field thresholds keep their class values. On a plain pydantic class (the zero-config path) it also becomes the `match_threshold` of every inferred element model, so it decides TP vs FD for `List[Model]` elements at every nesting level, and the field threshold of nested plain-model and `dict` fields. `spec.explain()` shows the resolved values. It never changes a similarity score or `overall_score`.
+**What it gates:** `EvalResult.matched` (`overall_score >= match_threshold`). On a `StructuredModel` class that is all it does: list pairing and field thresholds keep their class values. On a plain pydantic class (the zero-config path) it also decides TP vs FD for `List[Model]` and `List[dict]` elements at every nesting level, and sets the field threshold of nested plain-model and `dict` fields. A primitive list keeps its inferred threshold (`0.7` for `List[str]`). `spec.explain()` shows the resolved values. It never changes a similarity score or `overall_score`.
 
 **Default:** the class's `match_threshold` on a `StructuredModel`, else `0.7`
 
@@ -86,7 +86,7 @@ When multiple thresholds could apply, here's which one wins:
 | **Primitive field comparison** (str, int, float, and date, datetime, time, timedelta, Decimal, UUID, Enum) | Field threshold (`ComparableField(threshold=...)`), else a threshold named on the comparator |
 | **Nested object comparison** | Recurses into fields; each field uses its own field threshold |
 | **List element pairing** (`List[StructuredModel]`) | The element class's `match_threshold`; a runtime value does not override it |
-| **List element pairing** (zero-config `List[BaseModel]`) | Runtime match threshold if provided, else `0.7` |
+| **List element pairing** (zero-config `List[BaseModel]` and `List[dict]`) | Runtime match threshold if provided, else `0.7` |
 | **List element pairing** (primitive, dict, plain-model lists on a `StructuredModel`) | Field threshold, else a threshold named on the comparator, else `0.5` with `ComparableField()` or the class `match_threshold` without it ([Bar](../Advanced/classification-logic.md#list-contract)) |
 | **Score clipping** | Field threshold (when `clip_under_threshold=True`); lists follow the [Score](../Advanced/classification-logic.md#list-contract) rule |
 | **Binary classification (TP/FD)** for primitives | Field threshold |
@@ -97,7 +97,7 @@ When multiple thresholds could apply, here's which one wins:
 
 1. **Field threshold** controls primitive-level TP/FD classification and score clipping.
 2. **Match threshold** controls object-level TP/FD classification for list matching.
-3. **Runtime match threshold** sets `matched`. On the zero-config path it also sets the pairing bar of inferred element models and the threshold of nested plain-model and `dict` fields. It does not override a `StructuredModel` class's own `match_threshold`.
+3. **Runtime match threshold** sets `matched`. On the zero-config path it also sets the `List[Model]` and `List[dict]` pairing bar and the threshold of nested plain-model and `dict` fields. It does not override a `StructuredModel` class's own `match_threshold`.
 4. **Comparator threshold** fills in for the field threshold when the field does not set one. A threshold on the field always wins, and a comparator's own default is never adopted.
 
 ### Example: All Four in Action
@@ -442,7 +442,7 @@ Recall (with FD) = TP / (TP + FN + FD) = 5 / (5 + 1 + 1) = 0.714
 | Comparator | `Comparator(threshold=...)` | TP/FD and clipping when the field sets no threshold; `binary_compare()` | varies, and a default is not adopted |
 | Field | `ComparableField(threshold=...)` | TP/FD for primitives, clipping | 0.5 |
 | Model | `match_threshold = ...` on class | Hungarian pairing | 0.7 |
-| Runtime | `evaluate(..., match_threshold=...)` | `matched`; on the zero-config path also list pairing and nested plain-model and `dict` field thresholds | class `match_threshold`, else 0.7 |
+| Runtime | `evaluate(..., match_threshold=...)` | `matched`; on the zero-config path also `List[Model]` and `List[dict]` pairing and nested plain-model and `dict` field thresholds | class `match_threshold`, else 0.7 |
 
 ### Metric Formulas
 

@@ -280,10 +280,10 @@ def eval_for(
             business-criticality). Ignored for ``StructuredModel`` classes.
         match_threshold: The similarity score at or above which an OBJECT
             counts as a match. It drives ``EvalResult.matched``. For a plain
-            pydantic class it also becomes the ``match_threshold`` of every
-            inferred element model, so it decides TP vs FD for each
-            ``List[Model]`` element at every nesting level, and the field
-            threshold of nested plain-model and ``dict`` fields;
+            pydantic class it also decides TP vs FD for each ``List[Model]``
+            and ``List[dict]`` element at every nesting level, and sets the
+            field threshold of nested plain-model and ``dict`` fields; a
+            primitive list keeps its inferred threshold.
             ``EvalSpec.explain()`` shows the resolved values. On a
             ``StructuredModel`` class this value drives only ``matched``:
             list pairing and field thresholds keep their class values. It
@@ -334,8 +334,9 @@ def evaluate(
         weight_hints: Enable name-token weight heuristics (default off).
         match_threshold: The similarity score at or above which an object
             counts as a match (drives ``EvalResult.matched`` and, for a plain
-            pydantic class, list-element TP/FD classification and the field
-            threshold of nested plain-model and ``dict`` fields; on a
+            pydantic class, ``List[Model]`` and ``List[dict]`` element TP/FD
+            classification and the field threshold of nested plain-model and
+            ``dict`` fields; on a
             ``StructuredModel`` class it drives only ``matched``; does not
             change similarity scores). Left unset, a ``StructuredModel``'s own
             declaration wins; see :func:`eval_for`.
