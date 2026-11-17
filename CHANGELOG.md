@@ -21,8 +21,8 @@ Each release links to full notes on the
 
 - `from_json_schema()` now warns for `x-aws-stickler-model-name`,
   `x-aws-stickler-match-threshold` or `x-aws-stickler-infer-unspecified` on an
-  object-typed property where no class reads them, and imports as before, with
-  the keys dropped. One position is beside a `$ref` on a property typed
+  object-typed property where no class reads them. The keys are still dropped.
+  One position is beside a `$ref` on a property typed
   `"object"` or a list form that includes it (`["object", "null"]`), such as
   `{"type": "object", "$ref": "#/$defs/Row", "x-aws-stickler-match-threshold":
   0.93}`: the class is built from the target, which reads only its own keys, so
@@ -95,12 +95,12 @@ Each release links to full notes on the
   class reads import, as before. A field key on a property node is valid
   there, but another property that `$ref`s the node does not read it:
   `{"$ref": "#/$defs/W/properties/s"}` keeps the default threshold whatever `s`
-  declares. An entry no `$ref` reaches
-  builds nothing, so its own keys are not checked and a dereferenced schema,
-  which keeps the originals beside their inlined copies, imports as before. Its
-  contents are checked as before, and so are the targets of its `$ref`s, so a
-  typo in one of its properties, or in an `x-*` payload that only it references,
-  still raises. Every key that now raises was dropped in silence
+  declares. An entry no `$ref` reaches builds nothing, so its own keys are not
+  checked and a dereferenced schema, which keeps the originals beside their
+  inlined copies, imports as before. Its contents are checked as before, and so
+  are the contents of its `$ref` targets, so a typo in one of its properties, or
+  inside an `x-*` node that only it references, still raises. Every key that
+  now raises was dropped in silence
   (`x-aws-stickler-threshold: 0.88` in `$defs` gave `0.7`). `to_json_schema()`
   never writes `$defs`, so its exports are unaffected. Closes the known gap
   recorded for this key in 1.0.0
@@ -145,10 +145,11 @@ Each release links to full notes on the
   `enum` or `const`. Such a value is another tool's data or instance data, so a
   typo, a misplaced key, `patternProperties` or a keyword beside a combiner
   there no longer raises. Where a `$ref` from the schema or from a definition,
-  used or not, points into an `x-*` payload, the payload is checked, and a
-  `$defs` entry inside one is still walked for its contents, as before. A
-  `$ref` held in such a value is not followed, so a payload that only such a
-  `$ref` names is not checked either
+  used or not, points into an `x-*` payload, the node it points at is walked
+  for its contents, and a property or `items` node's own keys are checked too
+  (the payload's other members are not). A `$defs` entry inside one is still
+  walked for its contents, as before. A `$ref` held in such a value is not
+  followed, so a payload that only such a `$ref` names is not checked either
   ([#340](https://github.com/awslabs/stickler/issues/340))
 
 - A root schema typed `["object", "null"]`, a root `anyOf`/`oneOf`, or a root

@@ -1221,8 +1221,8 @@ class JsonSchemaImporter:
         ) -> None:
             """Raise for model keys no class reads. On an object-typed
             property, where the docs call them valid, record a warning instead,
-            until 1.1.0, and let the import go on: it builds the class dev
-            builds and warns, or it still fails and does not warn."""
+            until 1.1.0, and let the import go on: it builds what it builds
+            without the keys, and warns, or it still fails and does not warn."""
             if not warn:
                 raise ValueError(
                     f"Stickler extension '{declared[0]}' {subject} is not "

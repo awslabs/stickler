@@ -145,9 +145,10 @@ combiner, an alias, a mapping) generates no class, so it accepts neither set. Fo
 ```
 
 A definition that no `$ref` reaches builds nothing, so its own keys are not checked. Its
-properties and other nested schemas still are, and so is whatever its `$ref`s point to. A
-`$ref` to one node of an entry, such as `#/$defs/Wrap/properties/inner`, builds only that
-node, and the rest of the entry builds nothing in the same way.
+properties and other nested schemas still are, and so are the contents of whatever its
+`$ref`s point to. A `$ref` to one node of an entry, such as
+`#/$defs/Wrap/properties/inner`, builds only that node, and the rest of the entry builds
+nothing in the same way.
 
 Object-level keys also raise at three positions where no class reads them. Beside a `$ref`
 (except at the root), the class is built from the target, so they go on the target. An
