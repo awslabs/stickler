@@ -1172,7 +1172,6 @@ class TestAValidThresholdOnAListOfModels:
 def _exec_models(source, *, postponed=True):
     """Run ``source`` as a module, with ``from __future__ import annotations``."""
     namespace = {
-        "Annotated": Annotated,
         "Dict": Dict,
         "Tuple": Tuple,
         "StructuredModel": StructuredModel,
@@ -1407,111 +1406,6 @@ class TestAForwardReference:
             "of models is ignored. If it is not, write a number from 0.0 to 1.0 "
             "instead."
         ) in str(caught.value)
-
-
-class TestAnAnnotatedForwardReference:
-    """``Annotated[Address, ComparableField(...)]`` with ``Address`` defined below.
-
-    pydantic holds the whole annotation as one string until ``model_rebuild()``,
-    so the ``ComparableField`` in it does not exist when the class is defined.
-    Its metadata is evaluated then, and checked as adopting. On dev each of
-    these loaded and scored an identical pair 0.0, or raised ``TypeError``
-    for the string.
-    """
-
-    FIELDS = {
-        "a model below": "addr: Annotated[Address, {field}]",
-        "Optional, defaulting to None": "addr: Annotated[Optional[Address], {field}] = None",
-        "an alias of str below": "addr: Annotated[Code, {field}]",
-    }
-    BELOW = _ADDRESS.format(name="Address") + "Code = str\n"
-
-    @pytest.mark.parametrize("postponed", [True, False], ids=["postponed", "quoted"])
-    @pytest.mark.parametrize("shape", list(FIELDS))
-    @pytest.mark.parametrize("kind", ["percent", "string", "bool"])
-    def test_a_field_threshold_raises_at_class_definition(self, shape, kind, postponed):
-        value, in_python, _, wrong = BAD[kind]
-        annotation = self.FIELDS[shape].format(field=f"ComparableField(threshold={in_python})")
-        if not postponed:
-            name, _, rest = annotation.partition(": ")
-            rest, _, default = rest.partition(" = ")
-            annotation = f"{name}: {rest!r}" + (f" = {default}" if default else "")
-        source = f"class Order(StructuredModel):\n    {annotation}\n" + self.BELOW
-        with pytest.raises(ValueError) as caught:
-            _exec_models(source, postponed=postponed)
-        message = str(caught.value)
-        assert message.startswith(
-            "Invalid threshold for field 'addr' of model 'Order': "
-            f"ComparableField(threshold={in_python}) "
-        )
-        assert wrong in message
-        # The class line: the ComparableField call has no line of its own yet.
-        assert message.endswith("(Set at order_models.py:1.)")
-
-    def test_an_adopted_comparator_threshold_raises(self):
-        source = (
-            "class Order(StructuredModel):\n"
-            "    addr: Annotated[Address, ComparableField("
-            "comparator=LevenshteinComparator(threshold=85))]\n" + self.BELOW
-        )
-        with pytest.raises(ValueError) as caught:
-            _exec_models(source)
-        assert str(caught.value) == (
-            "Invalid threshold for field 'addr' of model 'Order': "
-            f"{ADOPTS}LevenshteinComparator(threshold=85). {RULE} 85 is above "
-            "1.0, so even identical values would not match. If 85 is a "
-            "percentage, write LevenshteinComparator(threshold=0.85), or "
-            "ComparableField(threshold=0.85), which wins over the comparator's. "
-            "(Set at order_models.py:1.)"
-        )
-
-    def test_a_list_of_models_below_says_to_remove_the_comparator(self):
-        source = (
-            "class Order(StructuredModel):\n"
-            "    items: Annotated[List[Later], ComparableField("
-            "comparator=LevenshteinComparator(threshold=85))]\n"
-            + _ADDRESS.format(name="Later")
-        )
-        with pytest.raises(ValueError) as caught:
-            _exec_models(source)
-        assert (
-            "Later is not defined yet, so stickler cannot tell whether it is a "
-            "StructuredModel. If it is, remove the comparator"
-        ) in str(caught.value)
-
-    def test_a_valid_one_loads_and_gates_once_resolved(self):
-        source = (
-            "class Order(StructuredModel):\n"
-            "    addr: Annotated[Address, ComparableField(threshold=0.6)]\n"
-            + self.BELOW
-            + "Order.model_rebuild()\n"
-        )
-        order = _exec_models(source)["Order"]
-        assert order._get_comparison_info("addr").threshold == 0.6
-
-    def test_metadata_that_names_a_value_defined_below_is_left_to_pydantic(self):
-        source = (
-            "class Order(StructuredModel):\n"
-            "    addr: Annotated[Address, ComparableField(threshold=LATER)]\n"
-            + self.BELOW
-            + "LATER = 0.6\nOrder.model_rebuild()\n"
-        )
-        order = _exec_models(source)["Order"]
-        assert order._get_comparison_info("addr").threshold == 0.6
-
-    def test_a_class_defined_in_a_function_reads_its_locals(self):
-        comparator = LevenshteinComparator(threshold=85)  # noqa: F841 - read by name
-
-        with pytest.raises(ValueError, match="so even identical values would not match"):
-            type(
-                "Order",
-                (StructuredModel,),
-                {
-                    "__annotations__": {
-                        "addr": "Annotated[Address, ComparableField(comparator=comparator)]"
-                    }
-                },
-            )
 
 
 class TestAPep695Alias:

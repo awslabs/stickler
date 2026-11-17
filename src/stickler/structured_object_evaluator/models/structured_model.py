@@ -4,7 +4,6 @@ This module provides the StructuredModel class for defining structured data mode
 with comparison configuration and evaluation capabilities.
 """
 
-import ast
 import warnings
 from typing import (
     Annotated,
@@ -48,7 +47,6 @@ from .threshold_rule import (
     list_comparator_warning,
     list_threshold_error,
     match_threshold_error,
-    outside_frame,
     outside_location,
     python_comparator_source,
     stacklevel_outside,
@@ -434,60 +432,6 @@ def _element_match_threshold(annotation: Any) -> Optional[float]:
                     value = klass.__dict__["match_threshold"]
                     return value if type(value) in (int, float) else None
     return None
-
-
-def _class_statement_namespace() -> tuple:
-    """``(globals, locals)`` of the ``class`` statement being run, or two empty dicts."""
-    frame = outside_frame()
-    if frame is None:
-        return {}, {}
-    return frame.f_globals, dict(frame.f_locals)
-
-
-def _string_annotated_extra(annotation: Any, namespace: tuple) -> Any:
-    """The ``ComparableField`` in an ``Annotated`` annotation pydantic left as a string.
-
-    ``addr: Annotated[Address, ComparableField(threshold=85)]`` under
-    ``from __future__ import annotations``, with ``Address`` defined below, is
-    one forward reference to pydantic, so the ``ComparableField`` is built only
-    by ``model_rebuild()``, and nothing checks it then. Only its metadata is
-    evaluated here, in the namespace of the ``class`` statement, as pydantic
-    will evaluate it: the type is left alone, so a name not defined yet is
-    never looked up. Returns the ``json_schema_extra`` of the last
-    ``ComparableField`` there, as pydantic merges them, or ``None`` when the
-    annotation is not ``Annotated`` or its metadata cannot be evaluated yet.
-    """
-    text = annotation.__forward_arg__ if isinstance(annotation, ForwardRef) else annotation
-    try:
-        node = ast.parse(text.strip(), mode="eval").body
-    except (SyntaxError, ValueError):
-        return None
-    if not isinstance(node, ast.Subscript) or not isinstance(node.slice, ast.Tuple):
-        return None
-    global_ns, local_ns = namespace
-
-    def evaluate(expression: ast.expr) -> Any:
-        code = compile(ast.Expression(expression), "<string>", "eval")
-        return eval(code, global_ns, local_ns)  # noqa: S307 - as pydantic does
-
-    found = None
-    for position, item in enumerate((node.value, *node.slice.elts[1:])):
-        try:
-            value = evaluate(item)
-        except Exception:  # not defined yet, or not ours to judge: pydantic will say
-            if position == 0:
-                return None
-            continue
-        if position == 0:
-            if value is not Annotated:
-                return None
-            continue
-        extra = getattr(value, "json_schema_extra", None)
-        if callable(extra) and isinstance(
-            getattr(extra, "_comparison_metadata", None), dict
-        ):
-            found = extra
-    return found
 
 
 def _amend_clip_default(field_info: Any, extra: Any, clip: bool) -> None:
@@ -1104,53 +1048,31 @@ class StructuredModel(BaseModel):
         only the fix for a field that adopts. A PEP 695 alias is
         read as the type it names once the type it names is defined; before
         that, it is checked as adopting.
-
-        An ``Annotated`` annotation pydantic could not resolve reaches it as one
-        string, so its ``ComparableField`` does not exist yet; see
-        `_string_annotated_extra`. Its "Set at" is the ``class`` line.
         """
-        namespace = None
         for field_name, field_info in cls.model_fields.items():
             if field_name == _EXTRA_FIELDS_KEY:
                 continue
             extra = field_info.json_schema_extra
-            annotation = field_info.annotation
-            set_at = None
-            if not callable(extra) and isinstance(annotation, (str, ForwardRef)):
-                if namespace is None:
-                    namespace = _class_statement_namespace()
-                extra = _string_annotated_extra(annotation, namespace)
-                set_at = outside_location()
             metadata = getattr(extra, "_comparison_metadata", None)
             if not callable(extra) or not isinstance(metadata, dict):
                 continue
             threshold = metadata.get("threshold")
             if is_valid_threshold(threshold):
                 continue
+            annotation = field_info.annotation
             if (
                 not getattr(extra, "_threshold_explicit", True)
                 and not _is_unresolved(annotation)
                 and cls._is_list_of_structured_model_type(_unalias(annotation))
             ):
                 continue
-            raise cls._threshold_error(
-                field_name, extra, threshold, annotation, set_at=set_at
-            )
+            raise cls._threshold_error(field_name, extra, threshold, annotation)
 
     @classmethod
     def _threshold_error(
-        cls,
-        field_name: str,
-        extra: Any,
-        threshold: Any,
-        annotation: Any,
-        *,
-        set_at: Optional[str] = None,
+        cls, field_name: str, extra: Any, threshold: Any, annotation: Any
     ) -> ValueError:
-        """The shared threshold error for ``field_name``, in Python spelling.
-
-        ``set_at`` stands in when the ``ComparableField`` call has no location.
-        """
+        """The shared threshold error for ``field_name``, in Python spelling."""
         comparator = None
         if not getattr(extra, "_threshold_explicit", True):
             comparator = python_comparator_source(
@@ -1193,7 +1115,7 @@ class StructuredModel(BaseModel):
             and (list_element is not None or bool(unresolved_name)),
             unresolved_name=unresolved_name or None,
             element_match_threshold=element_match_threshold,
-            set_at=getattr(extra, "_set_at", None) or set_at,
+            set_at=getattr(extra, "_set_at", None),
         )
 
     def model_post_init(self, __context):
