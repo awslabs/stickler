@@ -634,6 +634,43 @@ def test_a_model_union_pair_of_other_classes_pairs_as_a_tp():
     assert _list_fields(result, "actions") == {"query": _expect(fn=1)}
 
 
+class AStr(StructuredModel):
+    kind: str = ComparableField(default="a", threshold=1.0)
+    x: Optional[str] = ComparableField(default=None)
+    match_threshold = 0.1
+
+
+class BList(StructuredModel):
+    kind: str = ComparableField(default="b", threshold=1.0)
+    x: Optional[List[str]] = ComparableField(default=None)
+    match_threshold = 0.1
+
+
+class StrOrListItems(StructuredModel):
+    items: List[Union[AStr, BList]] = ComparableField()
+
+
+@pytest.mark.parametrize("a_first", [True, False], ids=["str-first", "list-first"])
+def test_a_field_two_union_classes_declare_differently_counts_per_element(a_first):
+    # `x` follows the first matched GT element that declares it, so with AStr
+    # first it is read by value, where BList's two lists counted one TP. Each
+    # pair now goes through its own GT item's dispatcher, which counts per
+    # element, as with BList first.
+    gt = [AStr(x="p"), BList(x=["a", "b"])]
+    pred = [AStr(x="p"), BList(x=["a", "c"])]
+    if not a_first:
+        gt, pred = gt[::-1], pred[::-1]
+
+    result = StrOrListItems(items=gt).compare_with(
+        StrOrListItems(items=pred), include_confusion_matrix=True
+    )
+
+    node = result["confusion_matrix"]["fields"]["items"]["fields"]["x"]
+    assert result["overall_score"] == 0.875
+    assert _counts(node) == _expect(tp=2, fd=1)
+    assert _counts(node, "aggregate") == _expect(tp=2, fd=1)
+
+
 class AnyField(StructuredModel):
     value: Any = ComparableField()
 
