@@ -62,7 +62,9 @@ Each release links to full notes on the
   list with the base class first did not raise, and now also counts the
   subclass's fields. A ground-truth list whose first element is a model still
   raises `AttributeError` when a matched ground-truth element has no
-  `compare_with()`, such as `[Inner(a="x"), "b"]` against itself.
+  `compare_with()`, such as `[Inner(a="x"), "b"]` against itself. A matched
+  ground-truth element that is not a model but has its own `compare_with()`,
+  such as a plain pydantic model, raised as well and now runs.
   Nested-model and list-annotated sub-fields otherwise count as before,
   except in a union of models whose classes declare one field with different
   annotations. That field follows the first matched ground-truth element that
