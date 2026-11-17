@@ -19,20 +19,34 @@ Each release links to full notes on the
   `document_non_matches` is not set. Until 1.1.0 these keep their 1.0.1
   behaviour, and their warnings now name 1.1.0.
 
-- **Breaking:** a primitive sub-field of a `List[StructuredModel]` element is
-  now classified as it is at top level. Its confusion-matrix counts called the
-  field's comparator directly, skipping the dispatcher's guards, so a dict its
-  comparator cannot score (in an `Any` or `Union` sub-field, or a `Dict` one
-  with an explicit `LevenshteinComparator`) raised `TypeError` out of
-  `compare_with()` instead of warning and scoring an FD. Counts move for working
-  inputs too, though scores do not, and now agree with `non_matches`:
+- **Breaking:** a sub-field of a `List[StructuredModel]` element is now
+  classified as it is at top level. Its counts called the field's comparator
+  directly, skipping the dispatcher's guards. Scores do not change. Counts do,
+  and now agree with `non_matches`:
+  - a dict its comparator cannot score (in an `Any` or `Union` sub-field, or a
+    `Dict` one with an explicit `LevenshteinComparator`) raised `TypeError` out
+    of `compare_with()`. It now warns and counts an FD;
+  - a list holding more than one model class, such as a subclass beside its
+    base or `List[Union[A, B]]`, raised `AttributeError`. Each pair is now
+    classified on its ground-truth element's own fields;
   - a pair the comparator is not given at top level is an FD, not a TP the
-    item's score did not credit (a TN if empty). With an inferred comparator
-    that is a tuple, a set, `bytes`, an arbitrary object, or a `date` against
-    its ISO string; under `LevenshteinComparator`, a plain pydantic model;
-    under `FuzzyComparator` or `NormalizedComparator`, that or a dict;
-  - a list in an `Any` sub-field counts one per element, not one in total;
-  - a whitespace-only string is a value, not null
+    item's score did not credit. With an inferred comparator that is a tuple,
+    a set, `bytes`, an arbitrary object, or a `date` against its ISO string;
+    under `LevenshteinComparator`, a plain pydantic model; under
+    `FuzzyComparator` or `NormalizedComparator`, that or a dict;
+  - an empty tuple, set or `bytes`, and a whitespace-only string, are values,
+    not null. Against `None` they are an FN (or FA), not a TN, and `()` vs `()`
+    is an FD;
+  - a list in an `Any` sub-field counts one per element, not one in total, so
+    `["a", "b"]` vs `[]` is 2 FN, not 1;
+  - a model in an `Any` or `Union` sub-field takes its verdict from the item's
+    score for that field, as at top level, not from its own `compare_with()`,
+    so it can move from FD to TP or back. A model of another class that shares
+    no field with the ground truth is now a TP, as at top level. The model's
+    own fields now appear under `aggregate`.
+
+  An empty list in an `Any` sub-field still counts as null, so there the counts
+  can still differ from `non_matches`
   ([#400](https://github.com/awslabs/stickler/issues/400))
 
 ### Fixed

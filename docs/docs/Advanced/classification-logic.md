@@ -159,6 +159,10 @@ where a subclass arrived for its base, which `Optional[Pet]` accepts.
                                            StructuredModel    1.0   TP
     ```
 
+    A nested object, including one in a field of a list element, is scored on the
+    fields both objects have, so two objects with no field in common score `1.0`.
+    Their fields under `aggregate` still count each missing one as an FN.
+
     That is the older behaviour rather than a deliberate exception, and closing it is
     tracked in [#327](https://github.com/awslabs/stickler/issues/327). Until then, treat a heterogeneous `StructuredModel` pair as
     unverified rather than as endorsed: annotate the field with a single model type
@@ -198,7 +202,7 @@ These are computed at every node of the result tree, from that node's own counts
 
 **List order** -- Order does not matter. The Hungarian algorithm finds the optimal pairing regardless of element position.
 
-**Nested lists** -- For `List[StructuredModel]`, the Hungarian algorithm pairs objects at the list level, then each matched pair is evaluated recursively. A field inside a list element is classified by the same rules as at top level.
+**Nested lists** -- For `List[StructuredModel]`, the Hungarian algorithm pairs objects at the list level, then each matched pair is evaluated recursively: every field the ground-truth element's class declares is classified by the rules on this page. A field only the predicted element has is not counted, where at top level it adds an FA to the root `overall`.
 
 **Missing vs. null fields** -- A missing field and a field explicitly set to `null` are handled the same way: if the other side has a non-null value, the result is FN or FA accordingly.
 
