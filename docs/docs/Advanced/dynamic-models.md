@@ -117,12 +117,14 @@ root `anyOf`/`oneOf`) raises.
 A `$defs` (or `definitions`) entry is a type, not a property. A definition with
 `properties` generates a class, and its object-level keys configure that class for every
 property, `items` or `anyOf`/`oneOf` arm that `$ref`s it. Field-level keys describe one
-use of that type, so they go beside the `$ref` on the referencing property; inside a
-definition they raise, as a misspelled key does. When the definition is an array's `items`,
-the array property reads only `x-aws-stickler-weight`, and the elements pair by the
-definition's `x-aws-stickler-match-threshold`. Any other definition (a scalar, an array, a combiner, an alias, a
-mapping) generates no class, so it accepts neither set. A definition is checked once a
-`$ref` reaches it; one nothing references is left alone:
+use of that type, so they go on the referencing property: beside the `$ref`, or beside the
+`anyOf`/`oneOf`/`allOf` when the `$ref` is one of its arms. Inside a definition they raise,
+as a misspelled key does. When the definition is an array's `items`, they go on the array
+property, which for an array of objects reads only `x-aws-stickler-weight`; the elements
+pair by the definition's `x-aws-stickler-match-threshold`. The root is not a field, so a
+definition used as the root reads none. Any other definition (a scalar, an array, a
+combiner, an alias, a mapping) generates no class, so it accepts neither set. A definition
+is checked once a `$ref` reaches it; one nothing references is left alone:
 
 ```python
 {

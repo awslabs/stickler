@@ -759,6 +759,65 @@ class TestDefinitionsAreChecked:
         )
         assert model._get_comparison_info("rows").weight == 3.0
 
+    @pytest.mark.parametrize("combiner", ("anyOf", "oneOf", "allOf"))
+    @pytest.mark.parametrize(
+        "body", (INNER, {"type": "string"}), ids=("object", "scalar")
+    )
+    def test_a_field_key_used_from_a_combiner_arm_names_the_combiner(
+        self, combiner, body
+    ):
+        """Beside the arm's `$ref` raises again, so the error names the combiner."""
+        arms = [{"$ref": "#/$defs/Inner"}]
+        if combiner != "allOf":
+            arms.append({"type": "null"})
+        with pytest.raises(ValueError) as exc:
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {"a": {combiner: arms}},
+                    "$defs": {"Inner": dict(body, **{"x-aws-stickler-threshold": 0.9})},
+                }
+            )
+        assert (
+            "beside the 'anyOf', 'oneOf' or 'allOf' when the '$ref' is one of its arms"
+            in str(exc.value)
+        )
+
+    @pytest.mark.parametrize("combiner", ("anyOf", "oneOf", "allOf"))
+    def test_the_property_beside_the_combiner_reads_it(self, combiner):
+        """Where the error sends the author for a combiner arm."""
+        arms = [{"$ref": "#/$defs/Inner"}]
+        if combiner != "allOf":
+            arms.append({"type": "null"})
+        model = StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "a": {
+                        combiner: arms,
+                        "x-aws-stickler-threshold": 0.9,
+                        "x-aws-stickler-weight": 2.0,
+                    }
+                },
+                "$defs": {"Inner": self.INNER},
+            }
+        )
+        info = model._get_comparison_info("a")
+        assert (info.threshold, info.weight) == (0.9, 2.0)
+
+    def test_a_definition_used_as_the_root_says_it_reads_no_field_keys(self):
+        """The root is no field, so no position beside a root `$ref` reads one."""
+        with pytest.raises(ValueError) as exc:
+            StructuredModel.from_json_schema(
+                {
+                    "$ref": "#/$defs/Inner",
+                    "$defs": {
+                        "Inner": dict(self.INNER, **{"x-aws-stickler-threshold": 0.9})
+                    },
+                }
+            )
+        assert "A definition used as the root reads no field keys" in str(exc.value)
+
     @pytest.mark.parametrize(
         "body",
         (

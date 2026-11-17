@@ -246,10 +246,12 @@ key raises and names the closest valid key for that position; unrelated `x-*`
 extensions from other tooling are left alone. A nested `["object", "null"]` node
 reads the same keys as an `"object"` one; the root must be `"object"`. A `$defs`
 entry that a `$ref` reaches is checked: with `properties` it reads only
-object-level keys, otherwise none; field-level keys go beside the `$ref` that
-uses it (for `items`, only the weight, on the array property). Object-level keys beside a
-non-root `$ref` are not read (they go on the target), nor on an `allOf` arm or a
-definition reached only through `allOf` or a root `$ref`, so they raise.
+object-level keys, otherwise none; field-level keys go on the property that uses
+it, beside the `$ref` or beside the combiner whose arm the `$ref` is (for `items`,
+on the array property, which reads only the weight for an array of objects).
+Object-level keys beside a non-root `$ref` are not read (they go on the target),
+nor on an `allOf` arm or a definition reached only through `allOf` or a root
+`$ref`, so they raise.
 
 Comparator names accepted by `x-aws-stickler-comparator` are the registered class names:
 `LevenshteinComparator`, `ExactComparator`, `NormalizedComparator`, `PhoneComparator`,

@@ -44,15 +44,17 @@ Each release links to full notes on the
   is not checked, so a dereferenced schema, which keeps the originals beside
   their inlined copies, imports as before; so does `$defs` inside `default` or
   `examples` data. A typo in a property of an unreached entry, or
-  `patternProperties` there, raised before and now imports. A definition with `properties` reads only the object-level keys,
-  which configure the class it generates for every property, `items` or
-  `anyOf`/`oneOf` arm that `$ref`s it. A field-level key (`comparator`,
-  `comparator-config`, `threshold`, `weight`, `clip-under-threshold`) inside
-  one now raises and names where it belongs: beside the `$ref` on the property
-  that uses it, or, for the weight, on the array property when it is used as
-  `items`. Honouring
-  it instead would make one key work on a property `$ref` and vanish on an
-  `items` `$ref`, which does not read field keys. Any other definition (a
+  `patternProperties` there, raised before and now imports. A definition with
+  `properties` reads only the object-level keys, which configure the class it
+  generates for every property, `items` or `anyOf`/`oneOf` arm that `$ref`s it.
+  A field-level key (`comparator`, `comparator-config`, `threshold`, `weight`,
+  `clip-under-threshold`) inside one now raises and names where it belongs: on
+  the property that uses it, beside the `$ref`, or beside the
+  `anyOf`/`oneOf`/`allOf` when the `$ref` is one of its arms; for `items`, on
+  the array property, which for an array of objects reads only the weight. A
+  definition used as the root reads no field keys. Honouring it instead would
+  make one key work on a property `$ref` and vanish on an `items` `$ref`, which
+  does not read field keys. Any other definition (a
   scalar, an array, a combiner, an alias `$ref`, a mapping) generates no class
   and reads neither set, so an object-level key there raises too. Object-level
   keys are also rejected where no class is built from them: beside a `$ref`
@@ -64,10 +66,10 @@ Each release links to full notes on the
   only when no other position builds the same object from its keys, including
   a position inside a `$ref` target outside `$defs` (`#/components/...`); a
   `$ref` under `not`, `additionalProperties` or `if` builds nothing, so it does
-  not count. Each of these resolved the default in silence (`x-aws-stickler-threshold: 0.88` in
-  `$defs` gave `0.7`, `items: {"$ref": ..., "x-aws-stickler-match-threshold":
-  0.93}` built at `0.7`), so a schema that imported before and now raises loses
-  no working configuration.
+  not count. Each of these resolved the default in silence
+  (`x-aws-stickler-threshold: 0.88` in `$defs` gave `0.7`, `items: {"$ref":
+  ..., "x-aws-stickler-match-threshold": 0.93}` built at `0.7`), so a schema
+  that imported before and now raises loses no working configuration.
   `to_json_schema()` never writes `$defs`, so its exports are unaffected.
   Closes the known gap recorded for this key in 1.0.0
   ([#340](https://github.com/awslabs/stickler/issues/340))

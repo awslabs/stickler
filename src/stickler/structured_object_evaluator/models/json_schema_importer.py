@@ -180,19 +180,22 @@ def _reject_unknown_extensions(
     # Each entry names a set of real keys that are not read here and where they
     # belong instead, so a misplaced key is answered with its position.
     misplaced: Tuple[Tuple[str, FrozenSet[str]], ...]
-    # `items` does not read field keys, so a definition used there takes them on
-    # the array property instead; the message has to name both positions. An
+    # Field keys are read on the property, never on a combiner arm or `items`,
+    # so the message names the property for each way a definition is used. An
     # array of objects reads only the weight there, and pairs its elements by
-    # the definition's match threshold.
+    # the definition's match threshold. The root is no field, so it reads none.
+    uses = (
+        "property that uses this definition: beside its '$ref', or beside the "
+        "'anyOf', 'oneOf' or 'allOf' when the '$ref' is one of its arms"
+    )
+    no_root = ". A definition used as the root reads no field keys"
     beside_ref = (
-        "property that uses this definition: beside its '$ref', or on the array "
-        "property when the definition is its 'items'"
+        f"{uses}, or on the array property when the definition is its 'items'{no_root}"
     )
     beside_ref_object = (
-        "property that uses this definition: beside its '$ref', or, for "
-        "'x-aws-stickler-weight', on the array property when the definition is "
-        "its 'items' (its elements pair by this definition's "
-        "'x-aws-stickler-match-threshold')"
+        f"{uses}, or, for 'x-aws-stickler-weight', on the array property when the "
+        "definition is its 'items' (its elements pair by this definition's "
+        f"'x-aws-stickler-match-threshold'){no_root}"
     )
     if scope in ("model", "definition"):
         # A definition is a type that several positions can `$ref`, and not all
