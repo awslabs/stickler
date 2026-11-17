@@ -35,7 +35,11 @@ Each release links to full notes on the
     `optional_structured_model` field and an object with `properties`, where
     `ComparableField(comparator=X(threshold=0.9))` also gates at 0.9; the
     config path dropped it there and the schema path did too
-    ([#334](https://github.com/awslabs/stickler/issues/334)).
+    ([#334](https://github.com/awslabs/stickler/issues/334)). A comparator
+    threshold that is not a number from 0.0 to 1.0 is not adopted: it emits a
+    `UserWarning` naming the field and the value, and the field keeps the
+    default it had, so its scores do not move and the model still reloads its
+    own export.
   - **A mapping field keeps its partial credit.** A `dict` field naming a
     comparator, or a list of them, defaulted to `clip_under_threshold: true`,
     so ANLS\* partial credit below the threshold was zeroed: 0.0 where Python
@@ -63,12 +67,17 @@ Each release links to full notes on the
   `-comparator-config` on an object with `properties` were dropped, and on an
   array of objects the config's `threshold` was reported by `explain()` as the
   field's explicit threshold though nothing read it. Every such key that is
-  not read now emits a `UserWarning` naming it and where the effective setting
-  goes (`threshold` / `x-aws-stickler-threshold` on an object, `match_threshold`
-  / `x-aws-stickler-match-threshold` on a list); a `threshold` in the config of
-  a single nested model is read (see Changed). Nothing that loaded before
-  raises. `comparator` on a `list_structured_model` field, and `"auto"` on any
-  nested model, still raise
+  not read now emits a `UserWarning` naming it, the model, and where the
+  effective setting goes (`threshold` / `x-aws-stickler-threshold` on an object,
+  `match_threshold` / `x-aws-stickler-match-threshold` on a list). A threshold
+  the comparator names on a single nested model, in its config or its own
+  constructor, is read (see Changed), and the warning gives its value. A named
+  comparator stays on the field, as on the Python path, so `explain()` reports
+  it rather than a placeholder `LevenshteinComparator`. Nothing that loaded
+  before raises. `comparator` on a `list_structured_model` field, and `"auto"`
+  on any nested model, still raise. A property that is a union of objects
+  (`anyOf` with two object arms) is not covered: it reads both keys as the
+  Python path does for a `Union` field, and does not warn
   ([#348](https://github.com/awslabs/stickler/issues/348))
 
 - Corrected introductory example scores, the default text comparator description,

@@ -106,7 +106,7 @@ The `x-aws-stickler-*` extensions control comparison behavior on each property:
 | `x-aws-stickler-comparator-config` | Keyword arguments for the comparator. On an object with `properties` only its `threshold` is read; on an array of models nothing is. Every key not read warns | `{"threshold": 0.9}` |
 | `x-aws-stickler-threshold` | Match threshold (0.0--1.0). Read on a scalar, an object, and an array of scalars; **ignored on an array of models** -- an array whose `items` declare `properties` -- where the element class's `x-aws-stickler-match-threshold` is the gate. Read, not ignored, on an array of free-form `{"type": "object"}` items, which become `List[dict]` | `0.8` |
 | `x-aws-stickler-weight` | Field importance weight | `2.0` |
-| `x-aws-stickler-clip-under-threshold` | Zero out scores below threshold. Defaults to `false` on a free-form object, which keeps its partial credit | `true` |
+| `x-aws-stickler-clip-under-threshold` | Zero out scores below threshold. Defaults to `false` on a free-form object or an array of them, which keeps its partial credit | `true` |
 | `x-aws-stickler-model-name` | Class name (object-level) | `"Invoice"` |
 | `x-aws-stickler-match-threshold` | Hungarian match threshold (object-level) | `0.75` |
 | `x-aws-stickler-infer-unspecified` | Infer comparators for properties that name none (object-level). See [Inferring unspecified fields](#inferring-unspecified-fields) | `true` |
@@ -251,11 +251,15 @@ Person = StructuredModel.model_from_json(person_config)
 
 A key the field leaves out resolves as it does on the Python path: a `threshold` in
 `comparator_config` is adopted when `threshold` is absent, and a `dict` field
-defaults to `clip_under_threshold: false`, so its partial credit survives.
+defaults to `clip_under_threshold: false`, so its partial credit survives. A
+`comparator_config` threshold that is not a number from 0.0 to 1.0 is not adopted:
+it warns, and the field keeps its default.
 
 A nested model is scored field by field, so a `comparator` on a `structured_model`
-or `optional_structured_model` field has no effect and warns. A `threshold` in its
-`comparator_config` is still read, as above. On a `list_structured_model` field,
+or `optional_structured_model` field has no effect and warns. A threshold it names,
+in `comparator_config` or its own constructor, is still read, as above, and the
+warning gives the value. The comparator stays on the field, as on the Python path,
+so `explain()` reports the one you wrote. On a `list_structured_model` field,
 `comparator` raises and `comparator_config` has no effect and warns: pairing is
 gated by `match_threshold`.
 
@@ -584,10 +588,11 @@ These diagnostics are a `UserWarning` rather than a `ValueError`, because the ke
 |-------|-------|-----|
 | `Field 'billing.city' does not accept 'threshhold' in its config; ignored.` | Unrecognized key on a field | Use one of the accepted keys the message lists |
 | `Model config does not accept 'match_threshhold'; ignored.` | Unrecognized key at the top level | Use one of `fields`, `model_name`, `match_threshold`, `infer_unspecified_fields` |
-| `'comparator' has no effect on field 'billing' and is ignored` | A comparator, or a `comparator_config` key other than `threshold`, on a nested model, or any `comparator_config` key on a list of them. `from_json_schema()` warns the same way, on every import, for `x-aws-stickler-comparator` and `-comparator-config` | Set comparators on the fields inside it, and the threshold with the key the message names |
+| `'comparator' has no effect on field 'billing' of model 'Invoice' and is ignored` | A comparator, or a `comparator_config` key other than `threshold`, on a nested model, or any `comparator_config` key on a list of them. `from_json_schema()` warns the same way for `x-aws-stickler-comparator` and `-comparator-config` | Set comparators on the fields inside it, and the threshold with the key the message names |
+| `'comparator_config' threshold 85 on field 'total' of model 'Invoice' is not a number from 0.0 to 1.0, so it is ignored` | A comparator threshold out of range or not a number. `from_json_schema()` warns the same way for `x-aws-stickler-comparator-config` | Use a value in 0.0--1.0, or set the field's `threshold` |
 | `'match_threshold' is not read on primitive field 'x'; ... ignored` | Object-level threshold written on a leaf; becomes a `ValueError` in 1.1.0 | Use `threshold` on the field, or move `match_threshold` to the model or a `structured_model` field |
 
-Each fires once per model, path and key, so repeated loads of the same config do not flood a batch run. Turn them into errors with `python -W error::UserWarning` to fail a build on a misspelled or misplaced key.
+Each names the model and fires once per model, path and key, so repeated loads of the same config do not flood a batch run. `from_json_schema()` does not deduplicate its own; Python's warning filter decides how often they show. Turn them into errors with `python -W error::UserWarning` to fail a build on a misspelled or misplaced key.
 
 ## See Also
 

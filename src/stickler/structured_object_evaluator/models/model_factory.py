@@ -85,7 +85,8 @@ class ModelFactory:
                    {
                        "type": "str|int|float|bool|List[str]|etc.",  # Required
                        "comparator": "LevenshteinComparator|ExactComparator|etc.",  # Optional
-                       "threshold": 0.8,  # Optional, default 0.5
+                       "comparator_config": {"threshold": 0.9},  # Optional
+                       "threshold": 0.8,  # Optional; default: comparator_config's threshold, else 0.5
                        "weight": 2.0,     # Optional, default 1.0
                        "required": true,  # Optional, default false
                        "default": "value", # Optional

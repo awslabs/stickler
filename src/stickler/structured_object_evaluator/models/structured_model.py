@@ -922,7 +922,8 @@ class StructuredModel(BaseModel):
                    {
                        "type": "str|int|float|bool|List[str]|etc.",  # Required
                        "comparator": "LevenshteinComparator|ExactComparator|etc.",  # Optional
-                       "threshold": 0.8,  # Optional, default 0.5
+                       "comparator_config": {"threshold": 0.9},  # Optional
+                       "threshold": 0.8,  # Optional; default: comparator_config's threshold, else 0.5
                        "weight": 2.0,     # Optional, default 1.0
                        "required": true,  # Optional, default false
                        "default": "value", # Optional
@@ -987,14 +988,18 @@ class StructuredModel(BaseModel):
         - x-aws-stickler-comparator-config: Keyword arguments for that comparator
         - x-aws-stickler-threshold: Similarity threshold for match/no-match (0.0-1.0,
           default: a threshold in x-aws-stickler-comparator-config, else the
-          type default, such as 0.5 for a string and 0.7 for a nested object)
+          type default, such as 0.5 for a string and 0.7 for a nested object).
+          A comparator-config threshold outside 0.0-1.0 is ignored with a
+          UserWarning.
         - x-aws-stickler-weight: Field importance in overall scoring (>0.0, default: 1.0)
         - x-aws-stickler-clip-under-threshold: Clip scores below threshold to 0.0
-          (bool, default: true; false on a free-form object)
+          (bool, default: true; false on a free-form object or an array of them)
 
         An object with properties is scored field by field, so a comparator on
         it, and any comparator-config key but threshold, has no effect and emits
-        a UserWarning. On an array of objects no comparator config is read.
+        a UserWarning; a threshold the comparator names still gates it. An array
+        of objects with properties reads no comparator config. A free-form
+        object, or an array of them, reads both keys.
 
         Model-Level Extensions:
         -----------------------

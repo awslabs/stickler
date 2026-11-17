@@ -161,7 +161,7 @@ def test_extension_reference_defaults_match_an_undeclared_schema():
     infos = [UNDECLARED._get_comparison_info(f) for f in UNDECLARED_PROPERTIES]
     assert (
         default["x-aws-stickler-clip-under-threshold"]
-        == "`true`, `false` on a free-form object"
+        == "`true`, `false` on a free-form object or an array of them"
     )
     free_form = {"mapping", "mappings"}
     assert all(

@@ -346,7 +346,9 @@ even though the field on the built class ends up a plain `str` — read the choi
 
 **Type:** `number` (0.0 to 1.0, inclusive)  
 **Required:** No  
-**Default:** position-dependent, not one number. `0.5` for a plain scalar, an array of plain
+**Default:** a `threshold` in `x-aws-stickler-comparator-config`, if it is a number from 0.0 to
+1.0 (any other value is ignored with a warning) and the property is not an array of models.
+Otherwise position-dependent, not one number. `0.5` for a plain scalar, an array of plain
 scalars, and an array of models; `0.7` for an object with `properties`; `1.0` for a free-form
 `{"type": "object"}` (or an array of them) and for any property or array `items` with `enum`,
 `const`, or a string `format` of `date`/`date-time`/`uri`/`uuid`/`time`, whether or not a
@@ -468,9 +470,9 @@ Relative importance of this field in aggregate scoring and weighted averages.
 
 **Type:** `boolean`  
 **Required:** No  
-**Default:** `true`
+**Default:** `true`, except `false` for a free-form `{"type": "object"}` or an array of them
 
-Controls whether similarity scores below threshold are clipped to 0.0. Clipping is **on** unless you turn it off, so a field scoring just under its threshold reports `0.0` rather than its raw similarity.
+Controls whether similarity scores below threshold are clipped to 0.0. Clipping is **on** for a scalar unless you turn it off, so a field scoring just under its threshold reports `0.0` rather than its raw similarity. A free-form object is judged key by key, so it keeps its partial credit unless you set `true`.
 
 **How Clipping Works:**
 - `true`: Scores below threshold are **set to 0.0** (hard cutoff)
