@@ -282,11 +282,12 @@ def eval_for(
             counts as a match. It drives ``EvalResult.matched``. For a plain
             pydantic class it also becomes the ``match_threshold`` of every
             inferred element model, so it decides TP vs FD for each
-            ``List[Model]`` element at every nesting level. A
-            ``StructuredModel`` element class keeps its own
-            ``match_threshold`` for that decision, so on a ``StructuredModel``
-            class this value drives only ``matched`` (#416). It does NOT
-            change per-field similarity scores or ``overall_score``.
+            ``List[Model]`` element at every nesting level, and the field
+            threshold of nested plain-model and ``dict`` fields;
+            ``EvalSpec.explain()`` shows the resolved values. On a
+            ``StructuredModel`` class this value drives only ``matched``:
+            list pairing and field thresholds keep their class values. It
+            does NOT change per-field similarity scores or ``overall_score``.
 
             Left unset, a ``StructuredModel`` subclass's own declared
             ``match_threshold`` wins, so the AS CONFIGURED promise above holds
@@ -333,9 +334,10 @@ def evaluate(
         weight_hints: Enable name-token weight heuristics (default off).
         match_threshold: The similarity score at or above which an object
             counts as a match (drives ``EvalResult.matched`` and, for a plain
-            pydantic class, list-element TP/FD classification; a
-            ``StructuredModel`` element class keeps its own; does not change
-            similarity scores). Left unset, a ``StructuredModel``'s own
+            pydantic class, list-element TP/FD classification and the field
+            threshold of nested plain-model and ``dict`` fields; on a
+            ``StructuredModel`` class it drives only ``matched``; does not
+            change similarity scores). Left unset, a ``StructuredModel``'s own
             declaration wins; see :func:`eval_for`.
 
     Returns:
