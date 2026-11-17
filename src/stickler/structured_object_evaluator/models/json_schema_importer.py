@@ -820,14 +820,22 @@ class JsonSchemaImporter:
             # When `items` is a `$ref`, "inside that property's 'items'" read
             # as beside the `$ref`, where the key is not read either and now
             # raises, so the message names the class the `$ref` builds from.
+            # Where the property is not found in the raw schema, the advice
+            # must hold for either shape.
             if declared != _EXPORTED_ARRAY_THRESHOLD_SENTINEL:
                 sources = self._element_class_sources(field_path)
-                where = (
-                    f"declared on {' or '.join(sources)}, where its 'items' "
-                    "'$ref' leads"
-                    if sources
-                    else "declared inside that property's 'items'"
-                )
+                if sources:
+                    where = (
+                        f"declared on {' or '.join(sources)}, where its 'items' "
+                        "'$ref' leads"
+                    )
+                elif sources is None:
+                    where = (
+                        "declared on the class its 'items' builds, which for a "
+                        "'$ref' is the definition it leads to"
+                    )
+                else:
+                    where = "declared inside that property's 'items'"
                 warnings.warn(
                     f"'x-aws-stickler-threshold': {declared} has no effect on "
                     f"array property '{field_path}' and is ignored. Pairing of "
@@ -1534,29 +1542,65 @@ class JsonSchemaImporter:
             node = arms[0]
         return node if isinstance(node, dict) else None
 
-    def _element_class_sources(self, field_path: str) -> List[str]:
+    def _object_properties(self, node: Any) -> List[Dict[str, Any]]:
+        """The `properties` of the object a raw node describes, its own and
+        those of its `allOf` arms, which the merged class holds as well."""
+        found: List[Dict[str, Any]] = []
+        stack, seen = [node], set()
+        while stack:
+            current = self._as_object(stack.pop())
+            if not isinstance(current, dict) or id(current) in seen:
+                continue
+            seen.add(id(current))
+            if isinstance(current.get("properties"), dict):
+                found.append(current["properties"])
+            if isinstance(current.get("allOf"), list):
+                stack.extend(reversed(current["allOf"]))
+        return found
+
+    def _properties_at(self, node: Any, path: str):
+        """The raw schema of each property at `path` below `node`.
+
+        `path` joins property names with '.' and marks an array's `items` with
+        '[]', so each name is matched whole: a name holding '.' is found, not
+        split into two. A path can then name more than one property (`a.b` as
+        the property `a.b`, or as `b` inside `a`), so every match is given."""
+        for properties in self._object_properties(node):
+            for name, child in properties.items():
+                if not isinstance(name, str) or not path.startswith(name):
+                    continue
+                rest = path[len(name) :]
+                while True:
+                    if not rest:
+                        yield child
+                        break
+                    if rest.startswith("."):
+                        yield from self._properties_at(child, rest[1:])
+                    if not rest.startswith("[]"):
+                        break
+                    child = (self._as_object(child) or {}).get("items")
+                    rest = rest[2:]
+
+    def _element_class_sources(self, field_path: str) -> Optional[List[str]]:
         """Where the element class of the array property at `field_path` reads
         its own keys, when its `items`, or an arm of them, is a `$ref`: the end
-        of each `$ref` chain. Empty when `items` is inline or the property is
-        not found in the raw schema."""
+        of each `$ref` chain. Empty when `items` is inline, and None when no
+        single array property is found at that path in the raw schema."""
         path = field_path
         if self.field_path:
             if not path.startswith(self.field_path):
-                return []
+                return None
             path = path[len(self.field_path) :].lstrip(".")
-        node: Any = self.schema
-        for segment in path.split(".") if path else ():
-            name, lists = segment, 0
-            while name.endswith("[]"):
-                name, lists = name[:-2], lists + 1
-            properties = (self._as_object(node) or {}).get("properties")
-            if not isinstance(properties, dict) or name not in properties:
-                return []
-            node = properties[name]
-            for _ in range(lists):
-                node = (self._as_object(node) or {}).get("items")
-        array = self._as_object(node) or {}
-        items = array.get("items")
+        arrays = {
+            id(array): array
+            for array in (
+                self._as_object(node) for node in self._properties_at(self.schema, path)
+            )
+            if isinstance(array, dict) and "items" in array
+        }
+        if len(arrays) != 1:
+            return None
+        items = next(iter(arrays.values()))["items"]
         if not isinstance(items, dict):
             return []
         arms = items.get("anyOf", items.get("oneOf"))

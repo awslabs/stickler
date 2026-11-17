@@ -343,22 +343,23 @@ class TestTheWarningNamesTheClassAnItemsRefBuildsFrom:
 
     ROW = {"type": "object", "properties": {"b": {"type": "string"}}}
 
-    # How the array property reaches `Row`, and the path the warning names.
+    # How the array property reaches `Row`, and the property names on the way
+    # to it, which the warning joins with '.'.
     SHAPES = {
         "ref": (
             lambda rows: {"type": "object", "properties": {"rows": rows}},
             {"$ref": "#/$defs/Row"},
-            "rows",
+            ("rows",),
         ),
         "alias": (
             lambda rows: {"type": "object", "properties": {"rows": rows}},
             {"$ref": "#/$defs/Alias"},
-            "rows",
+            ("rows",),
         ),
         "anyOf-arm": (
             lambda rows: {"type": "object", "properties": {"rows": rows}},
             {"anyOf": [{"$ref": "#/$defs/Row"}, {"type": "null"}]},
-            "rows",
+            ("rows",),
         ),
         "inside-a-definition": (
             lambda rows: {
@@ -367,7 +368,7 @@ class TestTheWarningNamesTheClassAnItemsRefBuildsFrom:
                 "$defs": {"P": {"type": "object", "properties": {"rows": rows}}},
             },
             {"$ref": "#/$defs/Row"},
-            "p.rows",
+            ("p", "rows"),
         ),
         "under-the-root-ref": (
             lambda rows: {
@@ -375,7 +376,33 @@ class TestTheWarningNamesTheClassAnItemsRefBuildsFrom:
                 "$defs": {"P": {"type": "object", "properties": {"rows": rows}}},
             },
             {"$ref": "#/$defs/Row"},
-            "rows",
+            ("rows",),
+        ),
+        "inside-an-allOf-arm": (
+            lambda rows: {
+                "type": "object",
+                "properties": {
+                    "o": {"allOf": [{"type": "object", "properties": {"rows": rows}}]}
+                },
+            },
+            {"$ref": "#/$defs/Row"},
+            ("o", "rows"),
+        ),
+        "a-name-with-a-dot": (
+            lambda rows: {"type": "object", "properties": {"a.b": rows}},
+            {"$ref": "#/$defs/Row"},
+            ("a.b",),
+        ),
+        "a-name-with-a-dot-beside-that-path": (
+            lambda rows: {
+                "type": "object",
+                "properties": {
+                    "a": {"type": "object", "properties": {"b": {"type": "string"}}},
+                    "a.b": rows,
+                },
+            },
+            {"$ref": "#/$defs/Row"},
+            ("a.b",),
         ),
     }
 
@@ -395,7 +422,7 @@ class TestTheWarningNamesTheClassAnItemsRefBuildsFrom:
                 self._schema(shape, self.ROW, **{"x-aws-stickler-threshold": 0.88})
             )
         message = str(caught[0].message)
-        assert f"array property '{self.SHAPES[shape][2]}'" in message
+        assert f"array property '{'.'.join(self.SHAPES[shape][2])}'" in message
         assert "declared on definition '$defs.Row'" in message
         assert "inside that property's 'items'" not in message
 
@@ -406,7 +433,7 @@ class TestTheWarningNamesTheClassAnItemsRefBuildsFrom:
                 shape, dict(self.ROW, **{"x-aws-stickler-match-threshold": 0.88})
             )
         )
-        for name in self.SHAPES[shape][2].split("."):
+        for name in self.SHAPES[shape][2]:
             element = model.model_fields[name].annotation
             while getattr(element, "__args__", None):
                 element = next(arg for arg in element.__args__ if arg is not type(None))
@@ -427,6 +454,37 @@ class TestTheWarningNamesTheClassAnItemsRefBuildsFrom:
                     },
                 }
             )
+
+    def test_where_the_property_is_not_found_the_advice_fits_either_shape(self):
+        """An object in a two-arm `anyOf` is not looked through, so the
+        warning cannot tell inline `items` from a `$ref`, and says what holds
+        for both rather than "inside that property's 'items'"."""
+        rows = {
+            "type": "array",
+            "items": {"$ref": "#/$defs/Row"},
+            "x-aws-stickler-threshold": 0.88,
+        }
+        with pytest.warns(UserWarning, match="has no effect") as caught:
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {
+                        "o": {
+                            "anyOf": [
+                                {"type": "object", "properties": {"rows": rows}},
+                                {"type": "object", "properties": {"z": {"type": "string"}}},
+                            ]
+                        }
+                    },
+                    "$defs": {"Row": self.ROW},
+                }
+            )
+        message = str(caught[0].message)
+        assert (
+            "declared on the class its 'items' builds, which for a '$ref' is the "
+            "definition it leads to" in message
+        )
+        assert "inside that property's 'items'" not in message
 
 
 class TestOurOwnExportDoesNotWarn:
