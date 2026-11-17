@@ -854,6 +854,16 @@ _KEYED = dict(
     },
 )
 _PLAIN = {"type": "object", "properties": {"z": {"type": "string"}}}
+_TYPO = {"type": "string", "x-aws-stickler-thresold": 0.9}
+
+
+def _unused(body, namespace="$defs"):
+    """A schema whose only definition nothing references."""
+    return {
+        "type": "object",
+        "properties": {"a": {"type": "string"}},
+        namespace: {"Unused": body},
+    }
 
 
 class TestModelKeysWhereNoClassIsBuiltFromThem:
@@ -1019,11 +1029,13 @@ class TestTheRootMustBeOneObject:
 
 
 class TestOnlyReachedDefinitionsAreChecked:
-    """A `$defs` entry is checked once a `$ref` reaches it, and not before.
+    """A `$defs` entry is checked as a definition once a `$ref` reaches it.
 
     A dereferenced schema inlines every `$ref` and keeps `$defs`, so the
     originals carry keys that are read on their inlined copies. Checking every
     entry raised on such a schema, which imported and scored correctly before.
+    An entry no `$ref` reaches is still walked for its contents, as before, so
+    a typo in one of its properties raises.
     """
 
     def test_a_dereferenced_schema_imports_and_reads_the_inlined_keys(self):
@@ -1069,7 +1081,7 @@ class TestOnlyReachedDefinitionsAreChecked:
         ),
         ids=("typo", "field-key", "model-key-on-scalar"),
     )
-    def test_an_unreferenced_definition_is_not_checked(self, body):
+    def test_the_own_keys_of_an_unreferenced_definition_are_not_checked(self, body):
         StructuredModel.from_json_schema(
             {
                 "type": "object",
@@ -1077,6 +1089,130 @@ class TestOnlyReachedDefinitionsAreChecked:
                 "$defs": {"Unused": body},
             }
         )
+
+    @pytest.mark.parametrize(
+        "schema, at",
+        (
+            (
+                _unused({"type": "object", "properties": {"p": _TYPO}}, "definitions"),
+                "field 'definitions.Unused.p'",
+            ),
+            (
+                _unused({"type": "object", "properties": {"p": _TYPO}}),
+                "field '$defs.Unused.p'",
+            ),
+            (
+                _unused(
+                    {
+                        "type": "object",
+                        "properties": {
+                            "p": {
+                                "type": "string",
+                                "x-aws-stickler-match-threshold": 0.9,
+                            }
+                        },
+                    }
+                ),
+                "field '$defs.Unused.p'",
+            ),
+            (
+                _unused({"type": "object", "patternProperties": {"^x": _PLAIN}}),
+                "at '$defs.Unused'",
+            ),
+            (
+                _unused({"anyOf": [_PLAIN], "type": "object"}),
+                "for field '$defs.Unused'",
+            ),
+            (
+                _unused({"allOf": [dict(_PLAIN, **{"x-aws-stickler-weight": 2.0})]}),
+                "object '$defs.Unused[0]'",
+            ),
+            (
+                _unused(
+                    dict(
+                        _PLAIN,
+                        **{
+                            "$defs": {
+                                "N": {"type": "object", "properties": {"p": _TYPO}}
+                            }
+                        },
+                    )
+                ),
+                "field '$defs.Unused.$defs.N.p'",
+            ),
+            (
+                {
+                    "type": "object",
+                    "properties": {"a": {"type": "string"}},
+                    "$defs": {
+                        "Outer": {
+                            "type": "object",
+                            "properties": {"i": {"$ref": "#/$defs/In"}},
+                        },
+                        "In": {"type": "object", "properties": {"p": _TYPO}},
+                    },
+                },
+                "field '$defs.In.p'",
+            ),
+            (
+                {
+                    "type": "object",
+                    "properties": {"a": {"$ref": "#/$defs/Outer"}},
+                    "$defs": {
+                        "Outer": dict(
+                            _PLAIN,
+                            **{
+                                "$defs": {
+                                    "N": {"type": "object", "properties": {"p": _TYPO}}
+                                }
+                            },
+                        )
+                    },
+                },
+                "field '$defs.Outer.$defs.N.p'",
+            ),
+        ),
+        ids=(
+            "definitions",
+            "typo",
+            "misplaced-key",
+            "patternProperties",
+            "combiner-sibling",
+            "allOf-arm",
+            "nested",
+            "reached-only-from-an-unused-entry",
+            "nested-in-a-reached-entry",
+        ),
+    )
+    def test_the_contents_of_an_unreferenced_definition_are_checked(self, schema, at):
+        """As before definitions were checked: only the entry's own keys are new."""
+        with pytest.raises(ValueError) as exc:
+            StructuredModel.from_json_schema(schema)
+        assert at in str(exc.value)
+
+    @pytest.mark.parametrize(
+        "body",
+        (
+            {"allOf": [_KEYED]},
+            {
+                "type": "object",
+                "properties": {
+                    "r": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/$defs/Row",
+                            "x-aws-stickler-match-threshold": 0.9,
+                        },
+                    }
+                },
+                "$defs": {"Row": _PLAIN},
+            },
+        ),
+        ids=("model-key-on-an-allOf-arm", "model-key-beside-a-ref"),
+    )
+    def test_an_unreferenced_definition_builds_nothing_to_drop(self, body):
+        """These raise only where a class is built, and nothing builds it."""
+        StructuredModel.from_json_schema(_unused(body))
 
     @pytest.mark.parametrize("keyword", ("default", "examples"))
     def test_definitions_inside_data_are_not_checked(self, keyword):
@@ -1094,6 +1230,21 @@ class TestOnlyReachedDefinitionsAreChecked:
                 },
             }
         )
+
+    @pytest.mark.parametrize("keyword", ("default", "x-vendor"))
+    def test_a_typo_in_a_definition_inside_data_still_raises(self, keyword):
+        """Data and `x-*` payloads are not walked, but a `$defs` entry inside one
+        was checked for its contents before, so it still is."""
+        with pytest.raises(ValueError, match=rf"field '{keyword}\.\$defs\.U\.p'"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {"a": {"type": "string"}},
+                    keyword: {
+                        "$defs": {"U": {"type": "object", "properties": {"p": _TYPO}}}
+                    },
+                }
+            )
 
     def test_a_definition_reached_through_another_is_checked(self):
         with pytest.raises(ValueError, match=r"thresold.*definition '\$defs\.Inner'"):

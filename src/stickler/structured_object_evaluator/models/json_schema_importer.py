@@ -949,11 +949,13 @@ class JsonSchemaImporter:
         `["object", "null"]` node was silently dropped while the same typo one
         level down raised.
 
-        A `$defs`/`definitions` entry is checked only once a `$ref` reaches it.
-        A dereferenced schema keeps the originals beside their inlined copies,
-        and an entry nothing references builds nothing, so checking those
-        raised for keys that were read on the copies. Data keywords and `x-*`
-        payloads are values, not schemas, and are not walked.
+        A `$defs`/`definitions` entry is checked as a definition once a `$ref`
+        reaches it. A dereferenced schema keeps the originals beside their
+        inlined copies, and an entry nothing references builds nothing, so
+        checking its own keys raised for keys that were read on the copies. Such
+        an entry is walked as before, for its contents only. Data keywords and
+        `x-*` payloads are values, not schemas, and are not walked, except for
+        an entry under `$defs` inside one, which was walked before as well.
 
         Every `$ref` target is walked from the reference as well, so a class
         built inside it reads model keys wherever it sits: under `not` or an
@@ -974,6 +976,10 @@ class JsonSchemaImporter:
         # entry is checked as a definition but its other contents read nothing.
         walked: Dict[Tuple[str, ...], bool] = {}
         pending: List[Tuple[Tuple[str, ...], Any, bool, bool]] = []
+        # Definition entries a `$ref` reached, by identity, and every
+        # `$defs`/`definitions` mapping passed, so the rest can be walked last.
+        entries: set = set()
+        mappings: List[Tuple[str, Dict[str, Any]]] = []
 
         def resolve(
             ref: Any,
@@ -1017,6 +1023,18 @@ class JsonSchemaImporter:
                 yield node, where
                 node, target, entry, _ = resolve(node.get("$ref"))
                 where = label(target, entry)
+
+        def collect(value: Any, path: str) -> None:
+            """The `$defs`/`definitions` mappings inside a value not walked."""
+            if isinstance(value, list):
+                for index, item in enumerate(value):
+                    collect(item, f"{path}[{index}]")
+            elif isinstance(value, dict):
+                for key, item in value.items():
+                    if key in ("$defs", "definitions") and isinstance(item, dict):
+                        mappings.append((f"{path}.{key}", item))
+                    else:
+                        collect(item, f"{path}.{key}")
 
         def walk(
             node: Any,
@@ -1101,8 +1119,12 @@ class JsonSchemaImporter:
                 if key in _DATA_KEYWORDS or (
                     isinstance(key, str) and key.startswith("x-")
                 ):
+                    # A value, not a schema. An entry under `$defs` inside one
+                    # is still walked last, as before.
+                    collect(value, f"{path}.{key}" if path else key)
                     continue
                 if key in ("$defs", "definitions") and isinstance(value, dict):
+                    mappings.append((f"{path}.{key}" if path else key, value))
                     continue
                 if key == "properties" and isinstance(value, dict):
                     for name, child in value.items():
@@ -1160,6 +1182,7 @@ class JsonSchemaImporter:
             walked[pointer] = built
             scope: Optional[str] = None
             if definition:
+                entries.add(id(body))
                 # Checked like any other node. Walking a definition with no scope
                 # let a typo there import silently while the same typo inline
                 # raised. See #340. Only a body with `properties` generates a
@@ -1171,6 +1194,17 @@ class JsonSchemaImporter:
                     else "value_definition"
                 )
             walk(body, ".".join(pointer), scope, built, reads=False)
+
+        # An entry no `$ref` reaches is walked as it was before definitions were
+        # checked: its own keys are left alone, and its contents are checked
+        # like any other node, so a typo in one of its properties still raises.
+        # The queue is drained by now, so the `$ref`s it holds are not followed:
+        # it builds nothing, so they reach nothing.
+        while mappings:
+            at, mapping = mappings.pop()
+            for name, body in mapping.items():
+                if id(body) not in entries:
+                    walk(body, f"{at}.{name}", None, False, reads=False)
 
         # An object's model keys are read only where its class is built. An
         # `allOf` arm is merged into `AllOfModel`, and a root `$ref` builds the

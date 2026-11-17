@@ -124,7 +124,8 @@ property, which for an array of objects reads only `x-aws-stickler-weight`; the 
 pair by the definition's `x-aws-stickler-match-threshold`. The root is not a field, so a
 definition used as the root reads none. Any other definition (a scalar, an array, a
 combiner, an alias, a mapping) generates no class, so it accepts neither set. A definition
-is checked once a `$ref` reaches it; one nothing references is left alone:
+that no `$ref` reaches builds nothing, so its own keys are not checked; its properties
+and other nested schemas still are. For example:
 
 ```python
 {

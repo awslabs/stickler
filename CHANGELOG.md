@@ -41,12 +41,15 @@ Each release links to full notes on the
   entry that a `$ref` reaches is now checked, as it is inline. The walk entered a
   definition without checking it, so `x-aws-stickler-thresold` there imported
   silently where inline it raises. `x-aws-stickler-aggregate` is still accepted
-  and ignored there, as on a field. An entry no `$ref` reaches builds nothing and
-  is not checked, so a dereferenced schema, which keeps the originals beside
-  their inlined copies, imports as before; so does `$defs` inside `default` or
-  `examples` data. A typo in a property of an unreached entry, or of a schema
-  under an `x-*` key that no `$ref` reaches, or `patternProperties` there,
-  raised before and now imports. A definition with
+  and ignored there, as on a field. An entry no `$ref` reaches builds nothing, so
+  its own keys are not checked and a dereferenced schema, which keeps the
+  originals beside their inlined copies, imports as before. Its contents are
+  checked as before, so a typo in one of its properties still raises. A schema
+  under an `x-*` key that no `$ref` reaches, or a schema-shaped value under
+  `default`, `examples`, `enum` or `const`, is no longer walked: a typo, a
+  misplaced key, `patternProperties` or a keyword beside a combiner there raised
+  before and now imports. A `$defs` entry inside one is still walked for its
+  contents, as before. A definition with
   `properties` reads only the object-level keys, which configure the class it
   generates for every property, `items` or `anyOf`/`oneOf` arm that `$ref`s it.
   A field-level key (`comparator`, `comparator-config`, `threshold`, `weight`,
