@@ -17,6 +17,77 @@ permissions:
   contents: read
 
 jobs:
+  # uv applies the 7-day cooldown whenever it resolves, from pyproject's
+  # `exclude-newer`, and that includes the `uv lock` Dependabot runs for its
+  # PRs. This checks the cooldown settings in pyproject.toml and uv.lock. It
+  # does not age-check individual lock entries (lockfile changes from people
+  # are reviewed), and it does not cover other ways around the cooldown:
+  # `[tool.uv.sources]` git/URL/path sources, direct-URL `pkg @ https://...`
+  # dependencies, `--exclude-newer`/`--exclude-newer-package` on a workflow's
+  # command line (as run_pytest.yaml does), or `UV_EXCLUDE_NEWER` /
+  # `UV_EXCLUDE_NEWER_PACKAGE` in a workflow's `env:`.
+  cooldown:
+    name: Dependency cooldown
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the 7-day uv cooldown settings
+        run: |
+          python3 -I - <<'EOF'
+          import datetime as dt, os, re, sys, tomllib
+
+          err, warn = [], []
+          now = dt.datetime.now(dt.timezone.utc)
+          with open("pyproject.toml", "rb") as f:
+              text = f.read().decode()
+          uv = tomllib.loads(text).get("tool", {}).get("uv", {})
+          # The first key line under the [tool.uv] header itself; subtables such
+          # as [tool.uv.sources] elsewhere in the file don't count.
+          body = re.split(r"(?m)^\[tool\.uv\][ \t]*(?:#.*)?$", text, maxsplit=1)
+          first = next((ln.strip() for ln in body[-1].splitlines() if ln.strip() and not ln.strip().startswith("#")), "") if len(body) == 2 else ""
+          if uv.get("exclude-newer") != "7 days":
+              err.append('pyproject.toml: [tool.uv] exclude-newer must be exactly "7 days"')
+          elif not re.match(r"exclude-newer\s*=", first):
+              err.append("pyproject.toml: exclude-newer must be the first key in [tool.uv] (the semgrep cooldown rule only matches it there)")
+          pip = uv.get("pip") if isinstance(uv.get("pip"), dict) else {}
+          for key in ("exclude-newer", "exclude-newer-package"):
+              if key in pip:
+                  err.append(f"pyproject.toml: [tool.uv.pip] {key} overrides the cooldown for uv pip; remove it")
+          exemptions = uv.get("exclude-newer-package") or {}
+          if not isinstance(exemptions, dict):
+              err.append("pyproject.toml: [tool.uv] exclude-newer-package must be a table of package = timestamp")
+              exemptions = {}
+          for pkg, val in exemptions.items():
+              where = f"pyproject.toml: exclude-newer-package {pkg} = {val!r}"
+              stamp = None
+              if isinstance(val, str) and re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", val):
+                  try:
+                      stamp = dt.datetime.fromisoformat(val)
+                  except ValueError:
+                      pass
+              if stamp is None:
+                  err.append(f"{where} must be a valid YYYY-MM-DDTHH:MM:SSZ timestamp; false or a span switches the cooldown off for it")
+              elif stamp > now:
+                  err.append(f"{where} is in the future, which switches the cooldown off for it until then")
+              elif now - stamp > dt.timedelta(days=7):
+                  warn.append(f"{where} is over 7 days old; remove it and uv.lock's [options.exclude-newer-package] entry")
+          if os.path.exists("uv.toml"):
+              err.append("uv.toml: it overrides [tool.uv]; remove it")
+          with open("uv.lock", "rb") as f:
+              if tomllib.load(f).get("options", {}).get("exclude-newer-span") != "P7D":
+                  err.append('uv.lock: [options] exclude-newer-span must be "P7D"')
+          for w in warn:
+              print(f"::warning::{w}")
+          for e in err:
+              print(f"::error::{e}")
+          if err:
+              sys.exit("Dependency cooldown weakened; see the uv.lock section of AGENTS.md.")
+          print('uv cooldown intact: exclude-newer = "7 days", span P7D')
+          EOF
+
   security:
     runs-on: ubuntu-latest
     permissions:
