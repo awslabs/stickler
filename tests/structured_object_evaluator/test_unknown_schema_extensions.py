@@ -2882,6 +2882,44 @@ class TestAListFormTypeBesideARef:
         )
         assert (child.__name__, child.match_threshold) == ("Renamed", 0.93)
 
+    @pytest.mark.parametrize("name", ("type", "kind"))
+    @pytest.mark.parametrize(
+        "declared",
+        (None, "object", ["object", "null"]),
+        ids=("untyped", "object", "object-null"),
+    )
+    def test_a_recursive_ref_raises_the_recursion_error(self, declared, name):
+        """A `$ref` back to `#/properties/<name>` is left unresolved by the
+        parser. Dev built the list form as a union of two classes, so it
+        imported, and the other forms raised a pydantic error, not a
+        `ValueError`. Named `type`, it resolved to the builtin."""
+        holder = {"$ref": "#/definitions/L"}
+        if declared is not None:
+            holder["type"] = declared
+        back = {"type": "array", "items": {"$ref": f"#/properties/{name}"}}
+        schema = {
+            "properties": {name: holder},
+            "definitions": {
+                "L": {"type": "array", "items": {"properties": {"e": back}}}
+            },
+        }
+        with pytest.raises(ValueError, match=rf"Recursive .* at '{name}\[\]\.e'"):
+            StructuredModel.from_json_schema(schema)
+
+    def test_a_recursive_ref_to_an_array_definition_raises_the_recursion_error(
+        self,
+    ):
+        """No model is named after an array definition, so the parser's name
+        for it stayed undefined, and dev raised a pydantic error."""
+        items = {"type": "object", "properties": {"e": {"$ref": "#/$defs/L"}}}
+        schema = {
+            "type": "object",
+            "properties": {"t": {"$ref": "#/$defs/L"}},
+            "$defs": {"L": {"type": "array", "items": items}},
+        }
+        with pytest.raises(ValueError, match=r"Recursive .* at 't\[\]\.e'"):
+            StructuredModel.from_json_schema(schema)
+
 
 class TestModelKeysBesideANonRootRef:
     """Model keys beside a `$ref` are read at the root and nowhere else.

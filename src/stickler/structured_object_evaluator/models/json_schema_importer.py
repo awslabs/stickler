@@ -26,7 +26,7 @@ from typing import (
 from uuid import UUID
 
 from json_schema_to_pydantic import create_model as create_pydantic_model
-from pydantic import AnyUrl, BaseModel, TypeAdapter
+from pydantic import AnyUrl, BaseModel, PydanticUserError, TypeAdapter
 from pydantic.fields import FieldInfo
 
 from .comparable_field import ComparableField
@@ -686,6 +686,7 @@ class JsonSchemaImporter:
                 )
             comparison_field = self._make_comparison_field(
                 field_info,
+                field_path=field_path,
                 comparator_name="LevenshteinComparator",
                 # Read the declared threshold, like `weight` and
                 # `clip_under_threshold` beside it. The literal used to stand
@@ -1031,6 +1032,7 @@ class JsonSchemaImporter:
 
         field = self._make_comparison_field(
             field_info,
+            field_path=field_path,
             comparator=comparator,
             threshold=extensions.get(
                 "threshold", inferred.threshold if inferred else threshold
@@ -1051,6 +1053,7 @@ class JsonSchemaImporter:
     def _make_comparison_field(
         source: FieldInfo,
         *,
+        field_path: str = "",
         comparator=None,
         comparator_name: Optional[str] = None,
         threshold: Optional[float],
@@ -1066,7 +1069,18 @@ class JsonSchemaImporter:
             source_extra = dict(source_extra)
             examples = source_extra.pop(_PRESERVED_EXAMPLES_KEY, examples)
 
-        parsed_schema = TypeAdapter(source.rebuild_annotation()).json_schema()
+        try:
+            parsed_schema = TypeAdapter(source.rebuild_annotation()).json_schema()
+        except PydanticUserError as exc:
+            # The parser leaves a `$ref` back into a type it is still building
+            # as a name, the pointer's last segment. Where no model has that
+            # name (an array definition, `#/properties/type`), the type stays
+            # undefined, or a builtin of that name is read in its place.
+            location = f" at '{field_path}'" if field_path else ""
+            raise ValueError(
+                "Recursive JSON Schema models are not supported by the comparison "
+                f"engine{location}. Use a bounded, non-recursive schema."
+            ) from exc
         schema_metadata = {
             key: deepcopy(value)
             for key, value in parsed_schema.items()
