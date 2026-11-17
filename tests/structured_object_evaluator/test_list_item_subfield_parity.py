@@ -13,11 +13,13 @@ through `_dispatch_field_comparison`. That skipped the dispatcher's guards, so:
 - a list in an `Any` sub-field counted one unit instead of one per element;
 - a whitespace-only string counted as null.
 
-The list path now goes through the dispatcher. Two rules hold on top of it: an
-empty list is null by its value, as `classification-logic.md` says, and a pair
+The list path now goes through the dispatcher. Three rules hold on top of it:
+an empty list is null by its value, as `classification-logic.md` says; a pair
 is read on its GT item's own fields, so a list of mixed model classes does not
-raise. Every expected count below is a literal, so a change to the dispatcher
-shows up here. See https://github.com/awslabs/stickler/issues/400
+raise; and two models of different classes in an `Any` or `Union` sub-field
+are classified by `compare_with()`, as before. Every expected count below is a
+literal, so a change to the dispatcher shows up here. See
+https://github.com/awslabs/stickler/issues/400
 """
 
 import datetime
@@ -199,27 +201,6 @@ class UnionHolder(StructuredModel):
             _expect(tp=1),
             id="union-below-threshold",
         ),
-        # Different classes: `value` is a TP because the item's score for it,
-        # from compare(), is 1.0 when the two share no field, as at top level
-        # (#327). The leaves still report the miss.
-        pytest.param(
-            ModelHolder,
-            ModelElement,
-            Inner(a="x", b="y"),
-            Other(c="z"),
-            _expect(tp=1),
-            _expect(fn=2),
-            id="other-class",
-        ),
-        pytest.param(
-            UnionHolder,
-            UnionElement,
-            Search(query="hotels"),
-            Browse(url="x.com"),
-            _expect(tp=1),
-            _expect(fn=1),
-            id="union-other-class",
-        ),
     ],
 )
 def test_a_model_in_a_sub_field_keeps_its_leaves(
@@ -246,6 +227,57 @@ class Pet(StructuredModel):
 
 class Cat(Pet):
     lives: int = ComparableField()
+
+
+@pytest.mark.parametrize(
+    "holder, element, gt, pred, expected",
+    [
+        pytest.param(
+            ModelHolder,
+            ModelElement,
+            Inner(a="x", b="y"),
+            Other(c="z"),
+            _expect(fd=1),
+            id="other-class",
+        ),
+        pytest.param(
+            UnionHolder,
+            UnionElement,
+            Search(query="hotels"),
+            Browse(url="x.com"),
+            _expect(fd=1),
+            id="union-other-class",
+        ),
+        pytest.param(
+            ModelHolder,
+            ModelElement,
+            Cat(name="tom", lives=9),
+            Pet(name="tom"),
+            _expect(fd=1),
+            id="base-for-subclass",
+        ),
+        # compare_with() scores the GT's own fields, and a Pet has only `name`.
+        # The exact-class rule does not cover StructuredModel yet (#327).
+        pytest.param(
+            ModelHolder,
+            ModelElement,
+            Pet(name="tom"),
+            Cat(name="tom", lives=9),
+            _expect(tp=1),
+            id="subclass-for-base",
+        ),
+    ],
+)
+def test_a_model_of_another_class_in_a_sub_field_is_scored_by_compare_with(
+    holder, element, gt, pred, expected
+):
+    # compare_with() reads a field the prediction lacks as missing. compare(),
+    # which the dispatcher uses, skips it, and would score `Inner(a, b)` vs
+    # `Other(c)` 1.0, a TP (#327). No nested fields are kept for such a pair.
+    node = _value_node(_in_list(gt, pred, holder=holder, element=element))
+    assert _counts(node) == expected
+    assert _counts(node, "aggregate") == expected
+    assert not node.get("fields")
 
 
 class Pets(StructuredModel):

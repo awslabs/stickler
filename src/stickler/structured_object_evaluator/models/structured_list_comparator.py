@@ -358,6 +358,7 @@ class StructuredListComparator:
         gt_list: List["StructuredModel"],
         pred_list: List["StructuredModel"],
         matched_pairs: List,
+        other_class_by_compare_with: bool = False,
     ) -> List[Dict[str, Any]]:
         """Classify one sub-field of each matched pair, as at top level.
 
@@ -369,6 +370,12 @@ class StructuredListComparator:
         be an FA. Here two absent values are a TN, and an absent list facing a
         non-list reads as ``None``. Two lists still go to the list comparator,
         which counts per element.
+
+        Args:
+            other_class_by_compare_with: Classify two models of different
+                classes by :func:`_other_class_result` instead of the
+                dispatcher. Set for a sub-field not routed as a nested model,
+                such as ``Any`` or ``Union[A, B]``.
         """
         pair_results = []
         for gt_idx, pred_idx, _ in matched_pairs:
@@ -376,6 +383,16 @@ class StructuredListComparator:
                 gt_item = gt_list[gt_idx]
                 gt_sub_value = getattr(gt_item, sub_field_name, None)
                 pred_sub_value = getattr(pred_list[pred_idx], sub_field_name, None)
+
+                if other_class_by_compare_with and _are_models_of_other_classes(
+                    gt_sub_value, pred_sub_value
+                ):
+                    pair_results.append(
+                        _other_class_result(
+                            gt_item, sub_field_name, gt_sub_value, pred_sub_value
+                        )
+                    )
+                    continue
 
                 gt_absent = _is_absent(gt_sub_value)
                 pred_absent = _is_absent(pred_sub_value)
@@ -560,8 +577,10 @@ class StructuredListComparator:
         Handles both true primitive fields (str, int, etc.) and simple list fields
         (List[str], List[int], etc.). Every pair is classified through
         _dispatch_field_comparison, as at top level, so a simple list field uses
-        PrimitiveListComparator for element-level comparison, and a model held in
-        an ``Any`` or ``Union`` field keeps its nested ``fields`` for ``aggregate``.
+        PrimitiveListComparator for element-level comparison. A model held in an
+        ``Any`` or ``Union`` field keeps its nested ``fields`` for ``aggregate``.
+        A model of another class than the GT value is classified by its
+        ``compare_with()`` score and has no nested ``fields``.
 
         Args:
             owner: The model class that declares ``sub_field_name``.
@@ -572,7 +591,11 @@ class StructuredListComparator:
         # comparator directly skipped its guards, so a dict it cannot score
         # raised instead of scoring an FD (#400).
         pair_results = self._dispatch_pairs(
-            sub_field_name, gt_list, pred_list, matched_pairs
+            sub_field_name,
+            gt_list,
+            pred_list,
+            matched_pairs,
+            other_class_by_compare_with=True,
         )
         aggregated_result = self._recursive_aggregate_metrics(pair_results)
 
@@ -590,6 +613,36 @@ def _is_absent(value: Any) -> bool:
     if isinstance(value, list):
         return NullHelper.is_effectively_null_for_lists(value)
     return NullHelper.is_effectively_null_for_primitives(value)
+
+
+def _are_models_of_other_classes(gt_value: Any, pred_value: Any) -> bool:
+    """Whether both values are models, of different exact classes."""
+    return (
+        isinstance(gt_value, StructuredModel)
+        and isinstance(pred_value, StructuredModel)
+        and type(gt_value) is not type(pred_value)
+    )
+
+
+def _other_class_result(
+    gt_item: "StructuredModel", sub_field_name: str, gt_value: Any, pred_value: Any
+) -> Dict[str, Any]:
+    """One TP or FD for two models of different classes in a list item.
+
+    The verdict is ``gt_value.compare_with(pred_value)`` against the field's
+    threshold. That reads a field the prediction lacks as
+    missing, so ``Search(query)`` vs ``Browse(url)`` scores 0.0, an FD. The
+    dispatcher would use ``compare()``, which skips such a field and scores
+    that pair 1.0 (#327). No nested ``fields`` are kept, so ``aggregate``
+    counts the pair as this one TP or FD.
+    """
+    threshold = gt_item._get_comparison_info(sub_field_name).threshold
+    score = gt_value.compare_with(pred_value)["overall_score"]
+    if ThresholdHelper.is_above_threshold(score, threshold):
+        counts = {"tp": 1, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
+    else:
+        counts = {"tp": 0, "fa": 0, "fd": 1, "fp": 1, "tn": 0, "fn": 0}
+    return {"overall": counts, "fields": {}}
 
 
 # Import needed at bottom to avoid circular imports
