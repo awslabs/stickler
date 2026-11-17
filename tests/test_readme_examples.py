@@ -153,19 +153,35 @@ def _run_readme_example(readme, heading):
     return namespace, _annotated_rows(code, namespace)
 
 
+def _model_list_element(model, field):
+    """The element class of a list-of-models field, else ``None``."""
+    annotation, _ = model._unwrap_optional(model.model_fields[field].annotation)
+    annotation = unwrap_annotated(annotation)
+    if not _annotation_is_list(annotation):
+        return None
+    item, _ = model._unwrap_optional(get_args(annotation)[0])
+    item = unwrap_annotated(item)
+    if isinstance(item, type) and issubclass(item, StructuredModel):
+        return item
+    return None
+
+
 def _matching_threshold(model, field):
+    """The threshold that decides the field's TP/FD.
+
+    A list-of-models field is decided by its element class's
+    ``match_threshold``, not by the field threshold (#436 item 2).
+    """
     if field is None:
         return model.match_threshold
+    if _model_list_element(model, field) is not None:
+        return _element_matching_threshold(model, field)
     return model._get_comparison_info(field).threshold
 
 
 def _element_matching_threshold(model, field):
-    annotation, _ = model._unwrap_optional(model.model_fields[field].annotation)
-    annotation = unwrap_annotated(annotation)
-    assert _annotation_is_list(annotation)
-    item, _ = model._unwrap_optional(get_args(annotation)[0])
-    item = unwrap_annotated(item)
-    assert isinstance(item, type) and issubclass(item, StructuredModel)
+    item = _model_list_element(model, field)
+    assert item is not None, f"{field!r} is not a list of models"
     return item.match_threshold
 
 
@@ -550,8 +566,9 @@ def _threshold_model(wrapped=False):
 @pytest.mark.parametrize("wrapped", [False, True])
 def test_model_list_field_and_element_thresholds_are_distinct(wrapped):
     model = _threshold_model(wrapped)
-    assert _matching_threshold(model, "items") == 0.5
+    assert model._get_comparison_info("items").threshold == 0.5
     assert _element_matching_threshold(model, "items") == 0.8
+    assert _matching_threshold(model, "items") == 0.8
     assert _matching_threshold(model, None) == 0.6
 
 
@@ -572,9 +589,12 @@ def test_numeric_annotations_are_not_dropped_or_truncated(annotation, claimed):
 
 
 @pytest.mark.parametrize(
-    "measured, claimed", [(0.498, 0.502), (0.502, 0.498), (0.5, 0.499)]
+    "measured, claimed", [(0.798, 0.802), (0.802, 0.798), (0.8, 0.799)]
 )
-def test_example_verdict_check_uses_the_field_threshold(monkeypatch, measured, claimed):
+def test_example_verdict_check_uses_the_element_match_threshold(
+    monkeypatch, measured, claimed
+):
+    """Crossing ``Item.match_threshold`` (0.8) flips the list field's TP/FD."""
     model = _threshold_model()
     monkeypatch.setitem(
         globals(),
@@ -585,12 +605,18 @@ def test_example_verdict_check_uses_the_field_threshold(monkeypatch, measured, c
         test_readme_example_does_not_annotate_a_miss_as_a_pass("", "unused")
 
 
-def test_an_element_threshold_crossing_does_not_change_the_fields_verdict(monkeypatch):
+@pytest.mark.parametrize(
+    "measured, claimed", [(0.498, 0.502), (0.502, 0.498), (0.5, 0.499)]
+)
+def test_a_field_threshold_crossing_does_not_change_a_model_lists_verdict(
+    monkeypatch, measured, claimed
+):
+    """The field threshold (0.5) does not decide a list of models."""
     model = _threshold_model()
     monkeypatch.setitem(
         globals(),
         "_run_readme_example",
-        lambda *_: ({"Invoice": model}, [("Items", "items", 0.798, 0.802)]),
+        lambda *_: ({"Invoice": model}, [("Items", "items", measured, claimed)]),
     )
     test_readme_example_does_not_annotate_a_miss_as_a_pass("", "unused")
 
