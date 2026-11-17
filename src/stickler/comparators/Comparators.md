@@ -39,6 +39,7 @@ comparator = NumericComparator()
 - Specialized for comparing numeric values
 - Configurable absolute and relative tolerance for floating-point comparisons
 - Handles type conversion from strings
+- Reads decimal digits in other scripts in string values (`١٢٥٠` equals `1250`)
 - Ideal for financial data or measurement comparisons
 
 #### Date Comparator
@@ -111,7 +112,7 @@ comparator = LLMComparator(
 - Uses LLM to determine semantic equivalence
 - Customizable prompt templates
 - Configurable temperature
-- Binary output (1.0 or 0.0)
+- Binary output: 1.0 only when the normalized reply is exactly `true`; any other reply scores 0.0 (with a `UserWarning` unless it is exactly `false`)
 - Note: Implementation in progress
 
 ### 4. Structured Data Comparators
