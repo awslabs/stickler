@@ -172,7 +172,11 @@ where a subclass arrived for its base, which `Optional[Pet]` accepts.
     that is not a model, such as a string, dict or list, is a TP the same way:
     in an `Any`, `object` or `List[Any]` field, at top level or in a list
     element, `[Inner(a="x", b=None)]` against `["a"]` counts a TP, with `a` an
-    FN and `b` a TN under `aggregate`.
+    FN and `b` a TN under `aggregate`. So does `[Inner(a="x", b=None)]`
+    against `[{"a": "x"}]`, also when the list element's class overrides
+    `compare_with()` to return a fixed score. Whether a model paired with a
+    non-model element should keep this TP or count an FD, as the rule above
+    says, is not decided yet, so treat the TP as unverified.
 
     Whether a refused object should still *pair* inside a list, or should instead
     be counted as a missed ground truth plus an invented prediction, is the open

@@ -750,7 +750,8 @@ def test_a_dict_against_a_model_in_a_sub_field_list_does_not_raise(holder, eleme
 
     node = _value_node(result)
     # compare() skips a field the prediction lacks, so the pair is a TP, as
-    # at top level (#327). The leaves report the miss.
+    # at top level (#327). The leaves report the miss. This pins today's
+    # verdict, which the docs say is not decided yet: it may become an FD.
     assert _counts(node) == _expect(tp=1)
     assert _counts(node, "aggregate") == _expect(fn=1, tn=1)
 

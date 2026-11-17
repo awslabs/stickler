@@ -57,14 +57,21 @@ Each release links to full notes on the
   prediction lacks, so `[Search(query="hotels")]` against
   `[Browse(url="x.com")]` now counts a TP, with `query` an FN under
   `aggregate`, while the field scores 0.0. A model against a non-model
-  element, such as `[Inner(a="x")]` against `["a"]`, is a TP the same way. So is `[Inner(a="x")]` against `[{"a": "x"}]` in an `Any`
-  sub-field whose element class overrides `compare_with()` without
-  recursing, which did not raise and counted an FD. A list with the base
-  class first did not raise, and now also counts the subclass's fields. A
-  ground-truth list that mixes a model with a value that has no
-  `compare_with()`, such as `[Inner(a="x"), "b"]` against itself, still
-  raises `AttributeError`.
-  Nested-model and list-annotated sub-fields otherwise count as before.
+  element, such as `[Inner(a="x")]` against `["a"]`, is a TP the same way. A
+  list with the base class first did not raise, and now also counts the
+  subclass's fields. A ground-truth list that mixes a model with a value that
+  has no `compare_with()`, such as `[Inner(a="x"), "b"]` against itself, still
+  raises `AttributeError`. Nested-model and list-annotated sub-fields
+  otherwise count as before.
+
+  One moved count is not settled. `[Inner(a="x")]` against `[{"a": "x"}]` in
+  an `Any` sub-field, whose element class overrides `compare_with()` to return
+  a score without recursing, did not raise and counted an FD. It now counts a
+  TP, as the same pair does without the override and at top level, and the
+  score is 1.0 before and after. That TP goes against the rule that objects of
+  different classes are an FD, which `StructuredModel` does not follow yet.
+  Whether a model paired with a non-model element keeps the TP or counts an
+  FD is still to be decided.
 
   Four cases still differ from top level:
   - in an `Any`, `object` or `Union[A, B]` sub-field, a model of another class
