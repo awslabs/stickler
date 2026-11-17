@@ -375,7 +375,8 @@ class StructuredListComparator:
                 absent values are a TN and an absent list facing a non-list
                 reads as ``None``; two lists still go to the list comparator.
                 Two models of different classes are classified by
-                :func:`_other_class_result`.
+                :func:`_other_class_result`, and two lists the dispatcher
+                cannot score by :func:`_comparator_result`.
         """
         pair_results = []
         for gt_idx, pred_idx, _ in matched_pairs:
@@ -408,11 +409,21 @@ class StructuredListComparator:
                         gt_sub_value = None if gt_absent else gt_sub_value
                         pred_sub_value = None if pred_absent else pred_sub_value
 
-                pair_results.append(
-                    gt_item._dispatch_field_comparison(
+                try:
+                    pair_result = gt_item._dispatch_field_comparison(
                         sub_field_name, gt_sub_value, pred_sub_value
                     )
-                )
+                except (AttributeError, TypeError):
+                    if not (
+                        by_value
+                        and isinstance(gt_sub_value, list)
+                        and isinstance(pred_sub_value, list)
+                    ):
+                        raise
+                    pair_result = _comparator_result(
+                        gt_item, sub_field_name, gt_sub_value, pred_sub_value
+                    )
+                pair_results.append(pair_result)
         return pair_results
 
     def _handle_hierarchical_field(
@@ -650,6 +661,32 @@ def _other_class_result(
     """
     threshold = gt_item._get_comparison_info(sub_field_name).threshold
     score = gt_value.compare_with(pred_value)["overall_score"]
+    return _tp_or_fd(score, threshold)
+
+
+def _comparator_result(
+    gt_item: "StructuredModel", sub_field_name: str, gt_value: list, pred_value: list
+) -> Dict[str, Any]:
+    """One TP or FD from the field's comparator, for two lists the dispatcher cannot score.
+
+    The dispatcher scores a list whose first GT element is a model as a list of
+    models. That raises when a matched GT element has no ``compare_with()``, or
+    when a prediction is a plain pydantic model. At top level, and in a list
+    item whose ``compare_with()`` recurses, scoring the item raises first. An
+    item whose ``compare_with()`` returns a score without recursing never
+    scores the field, so the pair keeps the count it had before #400: the
+    comparator's score for the two lists, absent elements dropped, against the
+    field's threshold. No nested ``fields`` are kept.
+    """
+    info = gt_item._get_comparison_info(sub_field_name)
+    score = info.comparator.compare(
+        NullHelper.present(gt_value), NullHelper.present(pred_value)
+    )
+    return _tp_or_fd(score, info.threshold)
+
+
+def _tp_or_fd(score: float, threshold: float) -> Dict[str, Any]:
+    """A TP if ``score`` meets ``threshold``, else an FD, with no nested ``fields``."""
     if ThresholdHelper.is_above_threshold(score, threshold):
         counts = {"tp": 1, "fa": 0, "fd": 0, "fp": 0, "tn": 0, "fn": 0}
     else:
