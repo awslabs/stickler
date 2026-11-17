@@ -21,6 +21,10 @@ Each release links to full notes on the
 
 ### Fixed
 
+- The Postal Codes guide now says postal codes are compared exactly only with
+  `stickler.evaluate`, and by edit distance on a hand-authored `StructuredModel`
+  or a JSON Schema `string` ([#492](https://github.com/awslabs/stickler/issues/492)).
+
 - Corrected introductory example scores, the default text comparator description,
   and the sample amount in the documentation and README
   ([#478](https://github.com/awslabs/stickler/issues/478)).
