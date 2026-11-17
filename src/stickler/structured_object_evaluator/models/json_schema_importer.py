@@ -184,8 +184,8 @@ def _reject_unknown_extensions(
     # so the message names the property for each way a definition is used. An
     # array of objects reads only the weight there, and pairs its elements by
     # the definition's match threshold. The root is no field, so it reads none.
-    # Only an object definition imports as an `allOf` arm, so only its message
-    # offers the `allOf`.
+    # Only an object definition, or an alias of one, imports as an `allOf` arm,
+    # so only their messages offer the `allOf`.
     beside = "property that uses this definition: beside its '$ref', or beside the "
     arm = "when the '$ref' is one of its arms"
     no_root = ". A definition used as the root reads no field keys"
@@ -193,11 +193,17 @@ def _reject_unknown_extensions(
         f"{beside}'anyOf' or 'oneOf' {arm}, or on the array property when the "
         f"definition is its 'items' or an arm of them{no_root}"
     )
-    beside_ref_object = (
+    of_objects = (
         f"{beside}'anyOf', 'oneOf' or 'allOf' {arm}. When the definition is an "
         "array's 'items' or an arm of them, the array property reads only "
-        "'x-aws-stickler-weight', and the elements pair by this definition's "
-        f"'x-aws-stickler-match-threshold'{no_root}"
+        "'x-aws-stickler-weight', and the elements pair by "
+    )
+    beside_ref_object = (
+        f"{of_objects}this definition's 'x-aws-stickler-match-threshold'{no_root}"
+    )
+    beside_ref_alias = (
+        f"{of_objects}the 'x-aws-stickler-match-threshold' of the object it "
+        f"aliases{no_root}"
     )
     # Removed in #226 and ignored wherever it appears, so an older schema that
     # carries it in a definition still imports, as it does on a field.
@@ -216,14 +222,18 @@ def _reject_unknown_extensions(
             accepted = accepted | removed
             misplaced = ((beside_ref_object, _DOCUMENTED_FIELD_EXTENSIONS),)
             where = f"definition '{field_path}'"
-    elif scope == "value_definition":
+    elif scope in ("value_definition", "alias_definition"):
         # A definition that generates no class (a scalar, an array, a combiner,
         # an alias `$ref`, a mapping) reads neither set. Accepting the model keys
-        # here passed the check and then dropped them.
+        # here passed the check and then dropped them. An alias of an object is
+        # used wherever the object is, so its field keys go where the object's do.
         accepted = removed
         suggestible = frozenset()
         misplaced = (
-            (beside_ref, _DOCUMENTED_FIELD_EXTENSIONS),
+            (
+                beside_ref_alias if scope == "alias_definition" else beside_ref,
+                _DOCUMENTED_FIELD_EXTENSIONS,
+            ),
             ("object definition with 'properties'", _KNOWN_MODEL_EXTENSIONS),
         )
         where = f"definition '{field_path}'"
@@ -1192,11 +1202,15 @@ class JsonSchemaImporter:
                 # raised. See #340. Only a body with `properties` generates a
                 # class: a `type: "object"` mapping becomes a `dict` field, judged
                 # against its parent's threshold, so it reads no model keys.
-                scope = (
-                    "definition"
-                    if isinstance(body, dict) and "properties" in body
-                    else "value_definition"
-                )
+                scope = "value_definition"
+                if isinstance(body, dict) and "properties" in body:
+                    scope = "definition"
+                elif isinstance(body, dict) and "$ref" in body:
+                    # An alias reads no keys either, but where it ends at an
+                    # object it can be used as one, so its advice says so.
+                    end = list(chain(body, ""))[-1][0]
+                    if end is not body and "properties" in end:
+                        scope = "alias_definition"
             walk(body, ".".join(pointer), scope, built, reads=False)
 
         # An entry no `$ref` reaches is walked as it was before definitions were

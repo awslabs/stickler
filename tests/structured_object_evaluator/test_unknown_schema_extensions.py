@@ -853,6 +853,54 @@ class TestDefinitionsAreChecked:
         info = model._get_comparison_info("a")
         assert (info.threshold, info.weight) == (0.9, 2.0)
 
+    @staticmethod
+    def _alias(end, alias_keys=None, **prop):
+        """`a` reaches `end` through the alias `$defs.Alias`."""
+        return StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {"a": prop or {"$ref": "#/$defs/Alias"}},
+                "$defs": {
+                    "Alias": {"$ref": "#/$defs/End", **(alias_keys or {})},
+                    "End": end,
+                },
+            }
+        )
+
+    @pytest.mark.parametrize(
+        "end, offered, pairs",
+        (
+            (
+                INNER,
+                "'anyOf', 'oneOf' or 'allOf'",
+                "the elements pair by the 'x-aws-stickler-match-threshold' of the "
+                "object it aliases",
+            ),
+            ({"type": "string"}, "'anyOf' or 'oneOf'", "on the array property"),
+        ),
+        ids=("object", "scalar"),
+    )
+    def test_a_field_key_on_an_alias_offers_what_its_end_accepts(
+        self, end, offered, pairs
+    ):
+        """An alias of an object is used as the object is, `allOf` included."""
+        with pytest.raises(ValueError) as exc:
+            self._alias(end, {"x-aws-stickler-threshold": 0.9})
+        message = str(exc.value)
+        assert "not read on definition '$defs.Alias'" in message
+        assert f"beside the {offered} when the '$ref' is one of its arms" in message
+        assert pairs in message
+
+    def test_the_allof_beside_an_alias_of_an_object_reads_it(self):
+        """Where the alias error sends the author for an `allOf`."""
+        model = self._alias(
+            self.INNER,
+            allOf=[{"$ref": "#/$defs/Alias"}],
+            **{"x-aws-stickler-threshold": 0.9, "x-aws-stickler-weight": 2.0},
+        )
+        info = model._get_comparison_info("a")
+        assert (info.threshold, info.weight) == (0.9, 2.0)
+
     def test_a_definition_used_as_the_root_says_it_reads_no_field_keys(self):
         """The root is no field, so no position beside a root `$ref` reads one."""
         with pytest.raises(ValueError) as exc:
