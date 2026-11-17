@@ -36,7 +36,7 @@ A weighted average of all field scores, ranging from 0.0 to 1.0. Calculated as:
 overall_score = sum(field_score * field_weight) / sum(field_weights)
 ```
 
-Fields with `clip_under_threshold=True` (the default, except on dict and plain-model fields declared in Python) contribute 0.0 if they score below their threshold, rather than their partial similarity. A list field follows the [Score](../../Advanced/classification-logic.md#list-contract) rule of the list contract instead.
+Fields with `clip_under_threshold=True` contribute 0.0 if they score below their threshold, rather than their partial similarity. On a `StructuredModel` declared in Python that is the default, except on dict and plain-model fields. JSON Schema and the zero-config path have their own defaults ([JSON Schema](README.md#extension-reference), [zero-config](../../API-Reference/auto.md#inference)). A list field follows the [Score](../../Advanced/classification-logic.md#list-contract) rule of the list contract instead.
 
 A field absent on both sides scores `1.0` and carries its full weight: a value the model correctly left blank is a value it got right. On a schema where most fields are usually empty this makes `overall_score` behave more like accuracy than like a hit rate. See [Sparse Objects](../../Getting-Started/thresholds-and-metrics.md#sparse-objects) for which metric answers which question.
 

@@ -73,7 +73,7 @@ result = stickler.evaluate(gt, pred, match_threshold=0.8)
 spec = stickler.eval_for(Invoice, match_threshold=0.8)
 ```
 
-**What it gates:** `EvalResult.matched` (`overall_score >= match_threshold`). On a `StructuredModel` class that is all it does: list pairing and field thresholds keep their class values. On a plain pydantic class (the zero-config path) it also decides TP vs FD for `List[Model]` and `List[dict]` elements at every nesting level, and sets the field threshold of nested plain-model and `dict` fields. A primitive list keeps its inferred threshold (`0.7` for `List[str]`). `spec.explain()` shows the resolved values. It never changes a similarity score or `overall_score`.
+**What it gates:** `EvalResult.matched` (`overall_score >= match_threshold`). On a `StructuredModel` class that is all it does: list pairing and field thresholds keep their class values. On a plain pydantic class (the zero-config path) it also decides TP vs FD for `List[Model]` and `List[dict]` elements at every nesting level, and sets the field threshold of nested plain-model and `dict` fields. A primitive list keeps the threshold inferred from its element type and field name (`0.7` for `tags: List[str]`, `0.6` for `notes: List[str]`). `spec.explain()` shows the resolved values. It never changes a similarity score or `overall_score`.
 
 **Default:** the class's `match_threshold` on a `StructuredModel`, else `0.7`
 

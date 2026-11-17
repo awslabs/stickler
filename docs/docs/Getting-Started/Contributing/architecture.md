@@ -248,7 +248,7 @@ Weights are configured per-field via `ComparableField` metadata. Default weight 
 
 ### `clip_under_threshold`
 
-When enabled on a field, a score below the threshold contributes 0.0 instead of its partial similarity. On a field declared in Python it is on by default, except on dict and plain-model fields and lists of them; JSON Schema has [its own defaults](../../Guides/Evaluation/README.md#extension-reference). It holds for every field kind except `List[StructuredModel]`, where it currently has no effect, a known gap (see the warning below); the layer that applies it differs.
+When enabled on a field, a score below the threshold contributes 0.0 instead of its partial similarity. On a `StructuredModel` declared in Python it is on by default, except on dict and plain-model fields and lists of them. JSON Schema and the zero-config path have their own defaults ([JSON Schema](../../Guides/Evaluation/README.md#extension-reference), [zero-config](../../API-Reference/auto.md#inference)). It holds for every field kind except `List[StructuredModel]`, where it currently has no effect, a known gap (see the warning below); the layer that applies it differs.
 
 For a primitive or a single nested `StructuredModel`, `FieldComparator` clips when producing `threshold_applied_score`, and the engine's percolation loop uses the already-clipped score:
 
