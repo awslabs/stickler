@@ -155,7 +155,7 @@ ValueError: Invalid threshold for field 'vendor' of model 'Invoice': ComparableF
 
 A comparator threshold the field does not adopt is not checked: when the field sets its own, the comparator's is not read, and on a `List[StructuredModel]` field (an array of objects in a schema) it is never used, since its items are matched up using `match_threshold`, so it warns instead. A field threshold on a list of models that breaks the rule raises, and the message says to remove it and use `match_threshold`. A comparator's constructor never checks its threshold, since a custom comparator may use `threshold` for something else, and the comparator keeps the value you passed. The runtime `match_threshold` of `evaluate()` and `eval_for()` is outside this rule; see [Runtime Match Threshold](#4-runtime-match-threshold).
 
-A field whose type is defined further down the module is checked when the class is defined, before that type exists, so stickler reads the field as adopting its comparator's threshold. Only a list of models does not, so there, and on a bare name for a list of models (`items: "ItemList"`, with `ItemList = List[Item]` below), an invalid comparator threshold raises where it would otherwise warn. The message says to remove the comparator in that case.
+A field whose type is defined further down the module is checked when the class is defined, before that type exists, so stickler reads the field as adopting its comparator's threshold. Only a list of models does not, so there, and on a bare name for a list of models (`items: "ItemList"`, with `ItemList = List[Item]` below), an invalid comparator threshold raises, though the field would ignore it once resolved. The message says to remove the comparator in that case.
 
 ## Meeting a Threshold
 

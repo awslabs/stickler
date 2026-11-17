@@ -993,8 +993,9 @@ class StructuredModel(BaseModel):
         threshold, even when it is visibly a list (``List["Item"]``): stickler
         cannot tell yet whether ``Item`` is a model, and nothing checks the
         field once it resolves. Only a list of models does not adopt, so an
-        invalid comparator threshold there raises, though it would only warn
-        once resolved; the message says to remove the comparator in that case.
+        invalid comparator threshold there raises, though the field would
+        ignore it once resolved; the message says to remove the comparator in
+        that case.
         A bare name for a list of models (``items: "ItemList"``, with
         ``ItemList = List[Item]`` below) reads the same way. A PEP 695 alias is
         read as the type it names.
