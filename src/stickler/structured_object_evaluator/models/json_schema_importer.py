@@ -30,19 +30,25 @@ from pydantic import AnyUrl, BaseModel, TypeAdapter
 from pydantic.fields import FieldInfo
 
 from .comparable_field import (
+    _LEGACY_DEFAULT_THRESHOLD,
     ComparableField,
+    _is_valid_threshold,
     _mark_unstated,
     _named_comparator_threshold,
 )
 from .comparator_registry import create_comparator, normalize_comparator_config
 from .field_converter import (
     AUTO_COMPARATOR,
+    _comparator_threshold_source,
     _config_keys_phrase,
     _nested_model_comparator_threshold,
     _nested_model_keys_warning,
+    _rejected_threshold_warning,
+    _stacklevel_outside_stickler,
 )
 from .model_factory import ModelFactory
 from .optional_annotation import is_union, unwrap_optional
+from .threshold_helper import model_identity
 
 _JSON_DEFAULTS = {
     str: ("LevenshteinComparator", 0.5),
@@ -285,6 +291,16 @@ class JsonSchemaImporter:
     ):
         self.schema = schema
         self.field_path = field_path
+        # Names the root model in this importer's warnings, as the config path
+        # does. `warnings.warn` shows a message once per text and line, so two
+        # schemas warning about the same property showed one warning between
+        # them. A non-identifier name is refused later, by the caller.
+        root_name = schema.get("x-aws-stickler-model-name", "DynamicModel")
+        properties = schema.get("properties")
+        self.model_id = model_identity(
+            root_name if isinstance(root_name, str) else "DynamicModel",
+            [str(k) for k in properties] if isinstance(properties, dict) else (),
+        )
         # The object-level match threshold, which inference uses as the FIELD
         # threshold for a mapping field (a dict declines to name its keys, so it
         # is judged as an object). Re-read here rather than passed in because
@@ -423,16 +439,17 @@ class JsonSchemaImporter:
                 )
             # Comparator keys resolve as they do on the Python path; see
             # `_nested_model_comparator_threshold`. The comparator is never
-            # called, so it is warned about rather than installed: dropped in
-            # silence, `explain()` reported the placeholder below as the author's
-            # explicit choice (#348). A threshold named in its config is read.
+            # called for scoring, so it is warned about, and installed as on the
+            # Python path: dropped in silence, `explain()` reported the
+            # placeholder below as the author's explicit choice (#348). A
+            # threshold it names, in its config or its constructor, is read.
             ignored = []
-            if "comparator" in extensions:
+            named = extensions.get("comparator")
+            config = extensions.get("comparator_config", {})
+            if named is not None:
                 ignored.append("'x-aws-stickler-comparator'")
-            comparator_threshold, ignored_keys = _nested_model_comparator_threshold(
-                extensions.get("comparator"),
-                extensions.get("comparator_config", {}),
-                reads_threshold=True,
+            comparator_threshold, ignored_keys, rejected = (
+                _nested_model_comparator_threshold(named, config, reads_threshold=True)
             )
             if ignored_keys:
                 ignored.append(
@@ -440,6 +457,7 @@ class JsonSchemaImporter:
                         "x-aws-stickler-comparator-config", ignored_keys
                     )
                 )
+            stated = "threshold" in extensions
             if ignored:
                 # `warnings.warn`, not `warn_once`, for the reason given in
                 # `_comparison_from_extensions`.
@@ -451,18 +469,42 @@ class JsonSchemaImporter:
                         is_list=False,
                         members="properties",
                         threshold_key="'x-aws-stickler-threshold'",
+                        model_id=self.model_id,
+                        adopted=comparator_threshold
+                        if named is not None and not stated
+                        else None,
                     ),
                     UserWarning,
+                    stacklevel=_stacklevel_outside_stickler(),
                 )
-            adopted = "threshold" not in extensions and comparator_threshold is not None
+            if rejected is not None and not stated:
+                warnings.warn(
+                    _rejected_threshold_warning(
+                        field_path,
+                        rejected,
+                        model_id=self.model_id,
+                        source=_comparator_threshold_source(
+                            named, config, "x-aws-stickler-comparator-config"
+                        ),
+                        default=0.7,
+                        threshold_key="'x-aws-stickler-threshold'",
+                    ),
+                    UserWarning,
+                    stacklevel=_stacklevel_outside_stickler(),
+                )
+            adopted = not stated and comparator_threshold is not None
+            if named is not None:
+                placeholder = named
+            else:
+                placeholder = create_comparator(
+                    "LevenshteinComparator",
+                    {"threshold": comparator_threshold} if adopted else {},
+                )
             comparison_field = self._make_comparison_field(
                 field_info,
                 # Unused for scoring. Carries an adopted comparator threshold so
                 # `ComparableField` resolves it as on the Python path.
-                comparator=create_comparator(
-                    "LevenshteinComparator",
-                    {"threshold": comparator_threshold} if adopted else {},
-                ),
+                comparator=placeholder,
                 # Read the declared threshold, like `weight` and
                 # `clip_under_threshold` beside it. The literal used to stand
                 # here unconditionally, so `x-aws-stickler-threshold` on an
@@ -727,10 +769,12 @@ class JsonSchemaImporter:
         if ignore_comparator_config and "comparator_config" in extensions:
             # A list of models reads no comparator config, as on the Python path,
             # which warns that a comparator threshold there is not consulted. The
-            # comparator, if named, is rebuilt without it, so its threshold does
-            # not reach the field either.
-            _, ignored_keys = _nested_model_comparator_threshold(
-                None, extensions.pop("comparator_config"), reads_threshold=False
+            # comparator is rebuilt without the config's `threshold`, so that
+            # does not reach the field either. Its other keys are kept, unread,
+            # so a comparator that requires one still builds as it did.
+            config = extensions.pop("comparator_config")
+            _, ignored_keys, _ = _nested_model_comparator_threshold(
+                None, config, reads_threshold=False
             )
             warnings.warn(
                 _nested_model_keys_warning(
@@ -744,17 +788,33 @@ class JsonSchemaImporter:
                     is_list=True,
                     members="properties",
                     threshold_key="'x-aws-stickler-match-threshold' in its 'items'",
+                    model_id=self.model_id,
                 ),
                 UserWarning,
+                stacklevel=_stacklevel_outside_stickler(),
             )
-            if "comparator" in extensions:
-                try:
-                    extensions["comparator"] = create_comparator(
-                        field_info.json_schema_extra["x-aws-stickler-comparator"], {}
-                    )
-                except TypeError as exc:
-                    # Raised ValueError before the config was dropped; keep it.
-                    raise ValueError(str(exc)) from exc
+            kept = {key: value for key, value in config.items() if key != "threshold"}
+            if kept:
+                extensions["comparator_config"] = kept
+            named = "comparator" in extensions
+            name = (
+                field_info.json_schema_extra["x-aws-stickler-comparator"]
+                if named
+                else comparator_name
+            )
+            try:
+                extensions["comparator"] = create_comparator(name, kept)
+            except Exception as exc:
+                # A ValueError naming the field, as `_extract_extensions` raises
+                # for a comparator that cannot be built from its config.
+                what = (
+                    f"x-aws-stickler-comparator '{name}'"
+                    if named
+                    else f"x-aws-stickler-comparator-config for '{name}'"
+                )
+                raise ValueError(
+                    f"Invalid {what} in field '{field_path}': {exc}"
+                ) from exc
 
         if annotation is None and extensions.get("infer"):
             # A list of objects is matched element-wise by Hungarian matching, so
@@ -831,21 +891,42 @@ class JsonSchemaImporter:
         # named in `x-aws-stickler-comparator-config` (#334). `None` lets
         # `ComparableField` adopt it. An unstated clip is likewise left `None`, so
         # an object-grade field gets its unclipped default (#348).
+        #
+        # A comparator threshold is adopted only if it could have been written
+        # as `x-aws-stickler-threshold`, which is range-checked on load.
+        # Otherwise it is ignored with a warning and the default applies, as it
+        # did before comparator thresholds were read, so nothing that loads
+        # raises.
         declared_threshold = extensions.get("threshold")
-        threshold_defaulted = (
-            declared_threshold is None
-            and _named_comparator_threshold(comparator) is None
-        )
+        named = _named_comparator_threshold(comparator)
+        adopted = declared_threshold is None and _is_valid_threshold(named)
+        threshold_defaulted = declared_threshold is None and not adopted
+        default_threshold = inferred.threshold if inferred else threshold
+        if threshold_defaulted and named is not None:
+            # A list of models passes no default; without a number here
+            # `ComparableField` would adopt the rejected value after all.
+            if default_threshold is None:
+                default_threshold = _LEGACY_DEFAULT_THRESHOLD
+            warnings.warn(
+                _rejected_threshold_warning(
+                    field_path,
+                    named,
+                    model_id=self.model_id,
+                    source=_comparator_threshold_source(
+                        comparator, author_config, "x-aws-stickler-comparator-config"
+                    ),
+                    default=default_threshold,
+                    threshold_key="'x-aws-stickler-threshold'",
+                ),
+                UserWarning,
+                stacklevel=_stacklevel_outside_stickler(),
+            )
         clip = extensions.get("clip_under_threshold")
         clip_inferred = clip is None and inferred is not None
         field = self._make_comparison_field(
             field_info,
             comparator=comparator,
-            threshold=(
-                (inferred.threshold if inferred else threshold)
-                if threshold_defaulted
-                else declared_threshold
-            ),
+            threshold=default_threshold if threshold_defaulted else declared_threshold,
             weight=extensions.get("weight", inferred.weight if inferred else 1.0),
             clip_under_threshold=(
                 inferred.clip_under_threshold if clip_inferred else clip

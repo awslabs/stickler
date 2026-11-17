@@ -489,11 +489,13 @@ class TestAnArrayOfFreeFormObjectsReadsIt:
 class TestTheComparatorOnTheSameNodeWarns:
     """`x-aws-stickler-comparator` on an object property warns (#348 item 7).
 
-    It used to be parsed, validated, then dropped: the object-typed branch passes
-    a fixed placeholder comparator, so `explain()` reported it as the author's
-    explicit choice. A nested model is scored by recursion, so the comparator is
-    never called, on the Python path too. It is warned about rather than refused,
-    because it loaded before. A threshold named in its config is read, as
+    It used to be parsed, validated, then dropped: the object-typed branch passed
+    a fixed placeholder comparator, so `explain()` reported a comparator the
+    author never wrote as their explicit choice. A nested model is scored by
+    recursion, so the comparator is never called, on the Python path too. It is
+    warned about rather than refused, because it loaded before, and installed as
+    `ComparableField(comparator=X())` installs it, so `explain()` reports what
+    the author wrote. A threshold it names is read, as
     `ComparableField(comparator=X(threshold=t))` reads it.
     """
 
@@ -504,19 +506,19 @@ class TestTheComparatorOnTheSameNodeWarns:
             model = StructuredModel.from_json_schema(schema)
         return model, [str(w.message) for w in caught]
 
-    def test_a_declared_comparator_warns_and_is_not_installed(self):
+    def test_a_declared_comparator_warns_and_is_installed_as_in_python(self):
         model, messages = self._import(
             _schema(**{"x-aws-stickler-comparator": "ExactComparator"})
         )
         assert any(
             m.startswith(
-                "'x-aws-stickler-comparator' has no effect on field 'inner' and "
-                "is ignored"
+                "'x-aws-stickler-comparator' has no effect on field 'inner' of "
+                "model 'DynamicModel(fields: inner)' and is ignored"
             )
             for m in messages
         )
         info = model._get_comparison_info("inner")
-        assert type(info.comparator).__name__ == "LevenshteinComparator"
+        assert type(info.comparator).__name__ == "ExactComparator"
         assert info.threshold == pytest.approx(0.7)
 
     def test_a_threshold_in_its_config_is_read_without_a_warning(self):
@@ -577,7 +579,7 @@ class TestTheComparatorOnTheSameNodeWarns:
         model, messages = self._import(schema)
         assert any("has no effect on field 'inner'" in m for m in messages)
         info = model._get_comparison_info("inner")
-        assert type(info.comparator).__name__ == "LevenshteinComparator"
+        assert type(info.comparator).__name__ == "ExactComparator"
 
     def test_a_free_form_object_still_honours_it(self):
         """No `properties`, so it is one value scored by its comparator."""

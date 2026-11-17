@@ -73,6 +73,20 @@ def _named_comparator_threshold(comparator: BaseComparator) -> Optional[float]:
     return getattr(comparator, "threshold", None)
 
 
+def _is_valid_threshold(value: Any) -> bool:
+    """Whether ``value`` can gate a field: a real number from 0.0 to 1.0.
+
+    The importers check a threshold named on a comparator with this before
+    adopting it, since only a field-level ``threshold`` is range-checked on
+    load. ``bool`` is refused although it is an ``int``; NaN fails the range.
+    """
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and 0.0 <= value <= 1.0
+    )
+
+
 def _mark_unstated(field, *, threshold: bool = False, clip: bool = False) -> None:
     """Record that an importer, not the author, supplied ``threshold`` / ``clip``.
 

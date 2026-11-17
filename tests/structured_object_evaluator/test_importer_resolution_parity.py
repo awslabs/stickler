@@ -28,8 +28,10 @@ import pytest
 
 import stickler
 from stickler.comparators.anls import ANLSStarComparator
+from stickler.comparators.base import BaseComparator
 from stickler.comparators.exact import ExactComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
+from stickler.structured_object_evaluator.models import comparator_registry
 from stickler.structured_object_evaluator.models.comparable_field import (
     ComparableField,
 )
@@ -576,32 +578,56 @@ class TestANamedComparatorOnANestedModelWarnsOnBothImporters:
         assert {_nested_verdict(m) for m, _ in paths.values()} == {(0, 1)}
 
     def test_both_importers_warn_in_the_same_words(self, paths):
+        """And name the threshold it carries, which removing it would drop."""
         expected = {
             "config": (
-                "'comparator' has no effect on field 'f' and is ignored: it is "
-                "a structured_model field, scored field by field, so its "
-                "comparator is never called. Set comparators on the fields "
-                "inside it, and this field's threshold with 'threshold'."
+                "'comparator' has no effect on field 'f' of model 'Cfg' and is "
+                "ignored, except for the threshold 0.9 it names, which gates this "
+                "field: it is a structured_model field, scored field by field, so "
+                "its comparator is never called. Set comparators on the fields "
+                "inside it, and set 'threshold' to 0.9 to keep this gate without "
+                "the comparator."
             ),
             "schema": (
-                "'x-aws-stickler-comparator' has no effect on field 'f' and is "
-                "ignored: it is an object with properties, scored field by "
-                "field, so its comparator is never called. Set comparators on "
-                "the properties inside it, and this field's threshold with "
-                "'x-aws-stickler-threshold'."
+                "'x-aws-stickler-comparator' has no effect on field 'f' of model "
+                "'DynamicModel(fields: f)' and is ignored, except for the "
+                "threshold 0.9 it names, which gates this field: it is an object "
+                "with properties, scored field by field, so its comparator is "
+                "never called. Set comparators on the properties inside it, and "
+                "set 'x-aws-stickler-threshold' to 0.9 to keep this gate without "
+                "the comparator."
             ),
         }
         assert {n: paths[n][1] for n in expected} == {
             n: [m] for n, m in expected.items()
         }
 
-    def test_explain_does_not_report_it_as_chosen(self, paths):
-        for name in ("config", "schema"):
-            model = paths[name][0]
-            assert type(_info(model).comparator).__name__ == "LevenshteinComparator"
-            assert stickler.eval_for(model).explain()["f"]["comparator"] != (
-                "ExactComparator"
+    def test_without_a_threshold_it_names_no_gate(self):
+        paths = _nested_paths(
+            config_keys={"comparator": "ExactComparator"},
+            schema_keys={"x-aws-stickler-comparator": "ExactComparator"},
+            python_field=lambda: ComparableField(comparator=ExactComparator()),
+        )
+        assert paths["config"][1] == [
+            "'comparator' has no effect on field 'f' of model 'Cfg' and is "
+            "ignored: it is a structured_model field, scored field by field, so "
+            "its comparator is never called. Set comparators on the fields "
+            "inside it, and this field's threshold with 'threshold'."
+        ]
+        assert _info(paths["config"][0]).threshold == 0.7
+
+    def test_explain_reports_it_as_the_python_path_does(self, paths):
+        """Not the placeholder: that is a comparator the author never wrote."""
+        reported = {
+            name: (
+                type(_info(model).comparator).__name__,
+                stickler.eval_for(model).explain()["f"]["comparator"],
             )
+            for name, (model, _) in paths.items()
+        }
+        assert reported == {
+            name: ("ExactComparator", "ExactComparator") for name in reported
+        }
 
     def test_any_other_config_key_is_named(self):
         _, messages = _imported(
@@ -615,9 +641,10 @@ class TestANamedComparatorOnANestedModelWarnsOnBothImporters:
         )
         assert messages == [
             "'comparator_config' key 'case_sensitive' has no effect on field 'f' "
-            "and is ignored: it is a structured_model field, scored field by "
-            "field, so its comparator is never called. Set comparators on the "
-            "fields inside it, and this field's threshold with 'threshold'."
+            "of model 'Cfg' and is ignored: it is a structured_model field, "
+            "scored field by field, so its comparator is never called. Set "
+            "comparators on the fields inside it, and this field's threshold "
+            "with 'threshold'."
         ]
 
     def test_a_config_that_is_not_a_mapping_warns_rather_than_raising(self):
@@ -679,8 +706,9 @@ class TestAListOfModelsReadsNoComparatorConfig:
 
     def test_both_importers_warn_and_name_the_key_to_use(self, paths):
         assert paths["config"][1] == [
-            "'comparator_config' key 'threshold' has no effect on field 'f' and "
-            "is ignored: it is a list_structured_model field, whose elements are "
+            "'comparator_config' key 'threshold' has no effect on field 'f' of "
+            "model 'Cfg' and is ignored: it is a list_structured_model field, "
+            "whose elements are "
             "paired by Hungarian matching, so neither a comparator nor its "
             "threshold is read for it. Set comparators on the fields inside each "
             "element, and the pairing threshold with 'match_threshold' on this "
@@ -688,9 +716,301 @@ class TestAListOfModelsReadsNoComparatorConfig:
         ]
         assert paths["schema"][1] == [
             "'x-aws-stickler-comparator-config' key 'threshold' has no effect on "
-            "field 'f' and is ignored: it is an array of objects, whose elements "
+            "field 'f' of model 'DynamicModel(fields: f)' and is ignored: it is "
+            "an array of objects, whose elements "
             "are paired by Hungarian matching, so neither a comparator nor its "
             "threshold is read for it. Set comparators on the properties inside "
             "each element, and the pairing threshold with "
             "'x-aws-stickler-match-threshold' in its 'items'."
         ]
+
+
+def _recorded(build, action="always"):
+    """Build under a fresh warn-once set, returning the warnings it raised."""
+    deprecation._warned.clear()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter(action)
+        model = build()
+    return model, caught
+
+
+@pytest.mark.parametrize("value", [85, "0.9", -1, 1.5])
+class TestAComparatorThresholdOutOfRangeIsIgnored:
+    """Adopted unchecked, 85 failed every pair, "0.9" raised on every
+    `compare_with`, -1 passed every pair, and the model could not reload its
+    own export. A field `threshold` is range-checked on load; a comparator
+    threshold was never read before, so refusing it would break a config that
+    loads. It is ignored with a warning, which scores the field as before.
+    """
+
+    @staticmethod
+    def _paths(value):
+        return {
+            "config": _recorded(
+                lambda: _config(
+                    {
+                        "type": "str",
+                        "comparator": "LevenshteinComparator",
+                        "comparator_config": {"threshold": value},
+                    }
+                )
+            ),
+            "schema": _recorded(
+                lambda: _schema(
+                    {
+                        "type": "string",
+                        "x-aws-stickler-comparator": "LevenshteinComparator",
+                        "x-aws-stickler-comparator-config": {"threshold": value},
+                    }
+                )
+            ),
+        }
+
+    def test_the_field_keeps_its_default_and_scores_as_before(self, value):
+        for model, _ in self._paths(value).values():
+            assert _info(model).threshold == 0.5
+            assert _verdict(model, "Acme Corp", "Acme Corp") == (1.0, 1, 0)
+            assert _verdict(model, "Acme Corp", "Zzz Inc")[1:] == (0, 1)
+
+    def test_the_warning_names_the_field_the_value_and_the_range(self, value):
+        paths = self._paths(value)
+        assert [str(w.message) for w in paths["config"][1]] == [
+            f"'comparator_config' threshold {value!r} on field 'f' of model "
+            "'Cfg' is not a number from 0.0 to 1.0, so it is ignored and the "
+            "field keeps its default threshold of 0.5. To gate the field, set "
+            "'threshold' to a value from 0.0 to 1.0."
+        ]
+        assert [str(w.message) for w in paths["schema"][1]] == [
+            f"'x-aws-stickler-comparator-config' threshold {value!r} on field "
+            "'f' of model 'DynamicModel(fields: f)' is not a number from 0.0 to "
+            "1.0, so it is ignored and the field keeps its default threshold of "
+            "0.5. To gate the field, set 'x-aws-stickler-threshold' to a value "
+            "from 0.0 to 1.0."
+        ]
+
+    def test_each_model_reloads_its_own_export(self, value):
+        paths = self._paths(value)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            again = StructuredModel.model_from_json(
+                paths["config"][0].to_stickler_config()
+            )
+            schema_again = StructuredModel.from_json_schema(
+                paths["schema"][0].to_json_schema()
+            )
+        assert _info(again).threshold == _info(schema_again).threshold == 0.5
+
+    def test_on_a_nested_model_it_names_the_value_not_no_effect(self, value):
+        """It was reported as "has no effect", pointing at a key that raises."""
+        paths = _nested_paths(
+            config_keys={"comparator_config": {"threshold": value}},
+            schema_keys={"x-aws-stickler-comparator-config": {"threshold": value}},
+            python_field=lambda: ComparableField(),
+        )
+        for name in ("config", "schema"):
+            model, no_effect = paths[name]
+            assert _info(model).threshold == 0.7
+            assert no_effect == []
+        _, caught = _recorded(
+            lambda: _config(
+                {
+                    "type": "structured_model",
+                    "comparator_config": {"threshold": value},
+                    "fields": {"a": _LEAF},
+                }
+            )
+        )
+        assert [str(w.message) for w in caught] == [
+            f"'comparator_config' threshold {value!r} on field 'f' of model "
+            "'Cfg' is not a number from 0.0 to 1.0, so it is ignored and the "
+            "field keeps its default threshold of 0.7. To gate the field, set "
+            "'threshold' to a value from 0.0 to 1.0."
+        ]
+
+
+class _Strict95(BaseComparator):
+    """Sets its own threshold, as a domain comparator might."""
+
+    def __init__(self):
+        super().__init__(threshold=0.95)
+
+    def _compare(self, a, b):
+        return 1.0 if a == b else 0.0
+
+
+@pytest.fixture
+def strict95():
+    name = "_Strict95ForParityTests"
+    comparator_registry._global_registry._registry[name] = _Strict95
+    yield name
+    comparator_registry._global_registry._registry.pop(name, None)
+
+
+class TestANestedModelAsksANamedComparatorForItsThreshold:
+    """With or without a config, on both importers, as on the Python path.
+
+    The config path asked only when `comparator_config` was present, so a
+    comparator that sets its own threshold gated at 0.95 in Python and on the
+    schema path, and at 0.7 from a config.
+    """
+
+    def test_the_three_paths_gate_at_it(self, strict95):
+        paths = _nested_paths(
+            config_keys={"comparator": strict95},
+            schema_keys={"x-aws-stickler-comparator": strict95},
+            python_field=lambda: ComparableField(comparator=_Strict95()),
+        )
+        # The child scores 0.5: a TP at 0.7, an FD at 0.95.
+        assert {n: _info(m).threshold for n, (m, _) in paths.items()} == {
+            "python": 0.95,
+            "config": 0.95,
+            "schema": 0.95,
+        }
+        assert {_nested_verdict(m) for m, _ in paths.values()} == {(0, 1)}
+        assert "set 'threshold' to 0.95 to keep this gate" in paths["config"][1][0]
+
+
+class TestAListOfModelsRebuildsItsComparatorWithTheRestOfItsConfig:
+    """Only the config's `threshold` is dropped there.
+
+    Rebuilt from `{}`, a comparator that requires another key raised a message
+    naming no field and blaming an argument the author supplied, and any other
+    exception escaped `from_json_schema`.
+    """
+
+    @staticmethod
+    def _schema(**keys):
+        return {
+            "type": "object",
+            "properties": {
+                "rows": {
+                    "type": "array",
+                    "items": {"type": "object", "properties": {"a": _SLEAF}},
+                    **keys,
+                }
+            },
+        }
+
+    def test_a_comparator_that_requires_a_key_still_builds(self, monkeypatch):
+        class LevenshteinComparator(BaseComparator):
+            def __init__(self, pattern, threshold: Optional[float] = None):
+                super().__init__(threshold=threshold)
+                self.pattern = pattern
+
+            def _compare(self, a, b):
+                return 1.0 if a == b else 0.0
+
+        monkeypatch.setitem(
+            comparator_registry._global_registry._registry,
+            "LevenshteinComparator",
+            LevenshteinComparator,
+        )
+        config = {"pattern": "x", "threshold": 0.9}
+        for keys in (
+            {"x-aws-stickler-comparator-config": config},
+            {
+                "x-aws-stickler-comparator": "LevenshteinComparator",
+                "x-aws-stickler-comparator-config": config,
+            },
+        ):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                model = StructuredModel.from_json_schema(self._schema(**keys))
+            info = model._get_comparison_info("rows")
+            assert info.comparator.pattern == "x"
+            assert info.threshold == 0.5
+
+    def test_any_failure_is_a_value_error_naming_the_field(self, monkeypatch):
+        class LevenshteinComparator(BaseComparator):
+            def __init__(self, **config):
+                raise RuntimeError("cannot build")
+
+            def _compare(self, a, b):
+                return 0.0
+
+        monkeypatch.setitem(
+            comparator_registry._global_registry._registry,
+            "LevenshteinComparator",
+            LevenshteinComparator,
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with pytest.raises(ValueError, match="in field 'rows': cannot build"):
+                StructuredModel.from_json_schema(
+                    self._schema(
+                        **{"x-aws-stickler-comparator-config": {"threshold": 0.9}}
+                    )
+                )
+
+
+class TestNestedModelWarningsReachEveryModel:
+    """Under Python's default filter, which shows a text once per line.
+
+    The text named no model and the warning was attributed to library code, so
+    a second model with the same field showed nothing.
+    """
+
+    def test_on_the_config_path(self):
+        def build():
+            for name in ("Invoice", "Receipt"):
+                _config_named(name)
+
+        def _config_named(name):
+            StructuredModel.model_from_json(
+                {
+                    "model_name": name,
+                    "fields": {
+                        "addr": {
+                            "type": "structured_model",
+                            "comparator": "ExactComparator",
+                            "fields": {"a": _LEAF},
+                        }
+                    },
+                }
+            )
+
+        _, caught = _recorded(build, action="default")
+        assert [("of model 'Invoice'" in str(w.message)) for w in caught] == [
+            True,
+            False,
+        ]
+        assert all(w.filename == __file__ for w in caught)
+
+    def test_on_the_schema_path(self):
+        def build():
+            for name in ("Invoice", "Receipt"):
+                StructuredModel.from_json_schema(
+                    {
+                        "type": "object",
+                        "x-aws-stickler-model-name": name,
+                        "properties": {
+                            "address": {
+                                "type": "object",
+                                "x-aws-stickler-comparator": "ExactComparator",
+                                "properties": {"a": _SLEAF},
+                            }
+                        },
+                    }
+                )
+
+        _, caught = _recorded(build, action="default")
+        assert len(caught) == 2
+        assert all(w.filename == __file__ for w in caught)
+
+    def test_two_levels_down_it_is_attributed_to_the_caller(self):
+        _, caught = _recorded(
+            lambda: _config(
+                {
+                    "type": "structured_model",
+                    "fields": {
+                        "addr": {
+                            "type": "structured_model",
+                            "comparator": "ExactComparator",
+                            "fields": {"a": _LEAF},
+                        }
+                    },
+                }
+            )
+        )
+        assert [w.filename for w in caught] == [__file__]
+        assert "field 'f.addr' of model 'Cfg'" in str(caught[0].message)
