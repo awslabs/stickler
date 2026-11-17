@@ -1328,6 +1328,86 @@ class TestOnlyReachedDefinitionsAreChecked:
             )
 
 
+class TestValuesAreNotWalkedAsSchemas:
+    """An `x-*` payload or a data keyword holds a value, not a schema.
+
+    Walking one as a schema raised for keys that nothing reads as Stickler
+    configuration: a vendor's own schema copy, or a comparator config whose
+    data happens to look like a schema.
+    """
+
+    _SHAPES = {
+        "typo": {"properties": {"p": _TYPO}},
+        "misplaced-key": {
+            "properties": {
+                "p": {"type": "string", "x-aws-stickler-match-threshold": 0.9}
+            }
+        },
+        "patternProperties": {"patternProperties": {"^x": {"type": "string"}}},
+        "combiner-sibling": {"anyOf": [_PLAIN], "type": "object"},
+    }
+
+    @pytest.mark.parametrize("shape", sorted(_SHAPES))
+    @pytest.mark.parametrize(
+        "keyword, on_root",
+        (
+            ("x-vendor", True),
+            ("x-vendor", False),
+            ("default", False),
+            ("examples", False),
+        ),
+        ids=("root-x-vendor", "property-x-vendor", "default", "examples"),
+    )
+    def test_a_schema_shaped_value_imports(self, keyword, on_root, shape):
+        value = self._SHAPES[shape]
+        if keyword == "examples":
+            value = [value]
+        schema = {"type": "object", "properties": {"a": dict(_PLAIN)}}
+        (schema if on_root else schema["properties"]["a"])[keyword] = value
+        StructuredModel.from_json_schema(schema)
+
+    @pytest.mark.parametrize("keyword", ("enum", "const"))
+    def test_a_schema_shaped_enum_or_const_imports(self, keyword):
+        value = {"properties": {"p": _TYPO}}
+        StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {"a": {keyword: [value] if keyword == "enum" else value}},
+            }
+        )
+
+    def test_a_comparator_config_shaped_like_allof_imports(self):
+        """The case from review: a config whose data is an `allOf` of model keys.
+
+        The comparator ignores the unknown parameter, with a warning.
+        """
+        prop = {
+            "type": "string",
+            "x-aws-stickler-comparator": "ExactComparator",
+            "x-aws-stickler-comparator-config": {
+                "allOf": [{"x-aws-stickler-model-name": "X"}]
+            },
+        }
+        with pytest.warns(UserWarning, match="does not accept 'allOf'"):
+            model = StructuredModel.from_json_schema(
+                {"type": "object", "properties": {"p": prop}}
+            )
+        assert "p" in model.model_fields
+
+    def test_an_x_payload_a_ref_reaches_is_checked(self):
+        """Once a `$ref` builds from it, the payload is a schema."""
+        with pytest.raises(ValueError, match=r"thresold.*'x-models\.Team\.p'"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {"t": {"$ref": "#/x-models/Team"}},
+                    "x-models": {
+                        "Team": {"type": "object", "properties": {"p": _TYPO}}
+                    },
+                }
+            )
+
+
 class TestAllOfRaisesOnlyWhereNothingReadsTheKeys:
     """An `allOf` arm drops its model keys, but the object it names may not.
 
