@@ -88,9 +88,10 @@ Each release links to full notes on the
     threshold. That reads a field the prediction lacks as `None`, so a
     `Search` against a `Browse` scores 0.0 and stays an FD, while
     `Inner(a="x", b=None)` against `Other(c="z")` scores 0.5, from `b`, and
-    stays a TP at the default threshold. It scores only the ground truth's own fields, so a `Pet`
-    against its subclass `Cat` stays a TP. In an `Optional` union of models or
-    a union with a list arm, such a pair still counts as at top level;
+    stays a TP at the default threshold. It scores only the ground truth's
+    own fields, so a `Pet` against its subclass `Cat` stays a TP. In an
+    `Optional` union of models or a union with a list arm, such a pair still
+    counts as at top level;
   - when such a sub-field holds models in some pairs and `None`, a primitive
     or a model of another class in others, every pair stays one leaf under
     `aggregate`, so all pairs count but the models' fields do not;
