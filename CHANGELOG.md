@@ -44,8 +44,8 @@ Each release links to full notes on the
   also checks the entry, but checks the node's own keys only where the entry's
   walk does (a property, `items` or a combiner arm). Under `not`, `if`, `then`,
   `else`, `additionalProperties`, `dependentSchemas` or an `x-*` key, as in a
-  target outside `$defs` (`#/components/...`), a typo on the node still imports,
-  as before. `x-aws-stickler-aggregate` is still accepted
+  target outside `$defs` (`#/components/...`), a typo or a misplaced key on the
+  node still imports, as before. `x-aws-stickler-aggregate` is still accepted
   and ignored there, as on a field. An entry no `$ref` reaches builds nothing, so
   its own keys are not checked and a dereferenced schema, which keeps the
   originals beside their inlined copies, imports as before. Its contents are
