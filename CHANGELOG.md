@@ -21,31 +21,40 @@ Each release links to full notes on the
 
 ### Fixed
 
-- A sub-field of a `List[StructuredModel]` element that is neither a nested
-  model nor list-annotated, such as `Any`, `Union[A, B]`, `Dict` or `str`, is
-  now classified through the same dispatcher as at top level. Its counts
-  called the field's comparator directly, skipping the dispatcher's guards.
-  Scores do not change. Counts do, to match top level:
+- A sub-field of a `List[StructuredModel]` element is now classified by the
+  same dispatcher as a top-level field, so its counts match top level, apart
+  from the four cases below. Scores do not change. A sub-field the list path
+  did not route as a nested model or a list took its counts from the field's
+  comparator directly, skipping the dispatcher's guards. That covers `Any`,
+  `object`, `Union[A, B]`, `Dict` and `str`, and also spellings such as
+  `Sequence[str]`, `Sequence[Inner]` and
+  `Optional[Annotated[Inner, Field(...)]]`. Where their counts differed from
+  top level, they now match it. For example:
   - a dict its comparator cannot score (in an `Any` or `Union[A, B]`
     sub-field, or a `Dict` one with an explicit `LevenshteinComparator`)
     raised `TypeError` out of `compare_with()`. It now warns and counts an FD;
-  - a pair the comparator is not given at top level is an FD, not a TP the
-    item's score did not credit. With an inferred comparator that is a tuple,
-    a set, `bytes`, an arbitrary object, or a `date` against its ISO string;
-    under `LevenshteinComparator`, a plain pydantic model; under
-    `FuzzyComparator` or `NormalizedComparator`, that or a dict;
-  - an empty tuple, set or `bytes`, and a whitespace-only string, are values,
-    not null. Against a null value (`None`, `""`, `{}`, NaN, and `[]` or
-    `[None]` in an `Any` or `object` sub-field) they are an FN (or FA), not a
-    TN. `"  "` vs `"  "` is a TP, not a TN, `"  "` vs `"x"` an FD, not an FA,
-    and `()` vs `()` an FD, not a TN;
-  - two lists in an `Any` sub-field count one per element, not one in total,
-    so `["a", "b"]` vs `[]` is 2 FN, not 1;
-  - a model of the ground truth's class in an `Any` or `Union[A, B]`
-    sub-field takes its verdict from the item's score for that field, as at
-    top level, not from its own `compare_with()`, so it can move from FD to TP
-    or back. Its fields now appear under `aggregate` when every pair of that
-    sub-field has them.
+  - a pair that top level does not give the field's comparator, inferred or
+    explicit, is an FD, not a TP the item's score did not credit. Examples
+    are a tuple, a `Decimal` or `UUID` against its string, members of two
+    `Enum` classes, and `Inner(a="x")` against `[Inner(a="x")]`;
+  - a value top level does not read as null, such as `()`, `frozenset()`,
+    `b" "` or `"  "`, is no longer a TN against a null one: `"  "` vs `None`
+    is an FN (the reverse an FA), and `"  "` vs `"  "` a TP;
+  - two lists count one per element, not one in total, and a list of models
+    now keeps its fields under `aggregate`, so `["a", "b"]` vs `[]` in an `Any`
+    or `Sequence[str]` sub-field is 2 FN, not 1;
+  - a model of the ground truth's class takes its verdict from the item's
+    score for that field, not from its own `compare_with()`, so it can move
+    from FD to TP or back. Its fields now appear under `aggregate` when every
+    pair of that sub-field has them. For example, `Inner(a="hotel")` against
+    `Inner(a="hotels")` at a field threshold of 0.9 is now an FD, not a TP, in
+    `Any` or `Optional[Annotated[Inner, Field(...)]]`, as it already was in
+    `Optional[Inner]`;
+  - a field that the classes of a union declare with different annotations
+    is read by the first matched ground-truth element that declares it. With
+    `AStr(x: Optional[str])` listed before `BList(x: Optional[List[str]])`,
+    `BList(x=["a", "b"])` against `BList(x=["a", "c"])` now counts `x` as
+    1 TP and 1 FD, not 1 TP, as it does with `BList` first.
 
   In a list of models, whatever the sub-field's type, a matched prediction
   that lacked a field of the first ground-truth element's class raised
@@ -65,13 +74,6 @@ Each release links to full notes on the
   `compare_with()`, such as `[Inner(a="x"), "b"]` against itself. A matched
   ground-truth element that is not a model but has its own `compare_with()`,
   such as a plain pydantic model, raised as well and now runs.
-  Nested-model and list-annotated sub-fields otherwise count as before,
-  except in a union of models whose classes declare one field with different
-  annotations. That field follows the first matched ground-truth element that
-  declares it. So with `AStr(x: Optional[str])` listed before
-  `BList(x: Optional[List[str]])`, `BList(x=["a", "b"])` against
-  `BList(x=["a", "c"])` now counts `x` as 1 TP and 1 FD, not 1 TP, as it does
-  with `BList` first.
 
   When a list element's class overrides `compare_with()` to return a score
   without recursing, a list of models in its `Any` or `object` sub-field did
@@ -84,23 +86,24 @@ Each release links to full notes on the
   after. Like the other pairs above, they follow the field-by-field scoring
   `StructuredModel` still uses for objects of different classes.
 
-  Four cases still differ from top level:
-  - in an `Any`, `object` or `Union[A, B]` sub-field, a model of another class
-    still takes its verdict from `compare_with()` against the field's
-    threshold. That reads a field the prediction lacks as `None`, so a
-    `Search` against a `Browse` scores 0.0 and stays an FD, while
-    `Inner(a="x", b=None)` against `Other(c="z")` scores 0.5, from `b`, and
-    stays a TP at the default threshold. It scores only the ground truth's
-    own fields, so a `Pet` against its subclass `Cat` stays a TP. In an
-    `Optional` union of models or a union with a list arm, such a pair still
-    counts as at top level;
-  - when such a sub-field holds models in some pairs and `None`, a primitive
-    or a model of another class in others, every pair stays one leaf under
-    `aggregate`, so all pairs count but the models' fields do not;
+  Four cases still differ from top level. The last three apply to a
+  sub-field not routed as a nested model or a list, such as `Any`, `object`,
+  `Union[A, B]` or `Sequence[str]`:
   - a field the predicted element's class does not declare is not counted;
-  - an empty list in an `Any` or `object` sub-field counts as null, as the
-    classification docs say: `None` vs `[]` is a TN and `"x"` vs `[]` an FN,
-    where top level and `non_matches` give an FA and an FD
+  - a model of another class still takes its verdict from `compare_with()`
+    against the field's threshold. That reads a field the prediction lacks as
+    `None`, so a `Search` against a `Browse` scores 0.0 and stays an FD,
+    while `Inner(a="x", b=None)` against `Other(c="z")` scores 0.5, from `b`,
+    and stays a TP at the default threshold. It scores only the ground
+    truth's own fields, so a `Pet` against its subclass `Cat` stays a TP. In
+    an `Optional` union of models or a union with a list arm, such a pair
+    counts as at top level;
+  - when the sub-field holds models in some pairs and `None`, a primitive or
+    a model of another class in others, every pair stays one leaf under
+    `aggregate`, so all pairs count but the models' fields do not;
+  - an empty list counts as null, as the classification docs say, so in an
+    `Any` sub-field `None` vs `[]` is a TN and `"x"` vs `[]` an FN, where top
+    level and `non_matches` give an FA and an FD
     ([#400](https://github.com/awslabs/stickler/issues/400))
 
 - **`LLMComparator` scores a reply as a match only when it is exactly `true`**
