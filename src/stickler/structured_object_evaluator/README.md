@@ -328,12 +328,11 @@ annotations` are covered; `ComparableField` does not know the model or the field
 records its call site for the message. A field whose annotation is still a forward reference then
 is checked as adopting its comparator's threshold, even when it is visibly a list (`List["Item"]`),
 since stickler cannot tell yet whether the element is a model and nothing re-checks it once it
-resolves. pydantic holds an `Annotated` annotation it cannot resolve as one string, so only its
-metadata is evaluated to find the `ComparableField` (`_string_annotated_extra`), as pydantic
-evaluates the class's own annotations: the class body, then the `class` statement's namespace and
-module (`_class_namespace`). A subclass does not evaluate an inherited field again. That message
-gives the `class` line. A PEP 695 alias is read as the
-type it names once the type it names is defined; before that, it is checked as adopting.
+resolves. An `Annotated` annotation that names something defined further down, its type or a value
+in its metadata, is not yet checked at class definition when it is a string (quoted whole, or under
+`from __future__ import annotations`): pydantic holds it as one string until `model_rebuild()`, so
+its `ComparableField` does not exist yet. A PEP 695 alias is read as the type it names once the
+type it names is defined; before that, it is checked as adopting.
 The importers check the same rule on load, with the shared message from `threshold_rule`. A
 comparator threshold the field overrides, or one on a resolved `List[StructuredModel]` field, is not
 checked. The runtime `match_threshold` is outside the rule: for a plain pydantic model

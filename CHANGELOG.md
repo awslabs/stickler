@@ -47,7 +47,10 @@ Each release links to full notes on the
       attribute, also as `ModelFactory.create_model_from_fields(match_threshold=...)`.
       None was checked: a field threshold of 85 scored an identical pair 0.0
       FD, and a class `match_threshold` of 85 made every list pair of that
-      class an FD.
+      class an FD. An `Annotated` field that names something defined further
+      down, its type or a value in its `ComparableField(...)`, is not yet
+      checked at class definition when its annotation is a string, as every
+      annotation is under `from __future__ import annotations`.
     - Stickler config: `"threshold"`, an adopted `"comparator_config"`
       threshold, and `"match_threshold"` on the model or a nested-model field.
     - JSON Schema: `x-aws-stickler-threshold`, an adopted

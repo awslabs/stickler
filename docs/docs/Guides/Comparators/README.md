@@ -25,7 +25,7 @@ Precedence is field, then comparator, then `0.5`:
 
 The third row is the one to know: a comparator's *default* threshold is never adopted. Those defaults were chosen for `binary_compare()`, not as classification cutoffs, and at least one is actively wrong for the job. `DateComparator` defaults to `1.0` while awarding `0.7` partial credit for a match with no year, so adopting it would clip that feature to zero. If you want a comparator's default to act as the cutoff, name it.
 
-Whichever threshold the field uses must be a number from 0.0 to 1.0, or defining the class raises `ValueError`, also for a field declared as `Annotated[str, ComparableField(...)]` or one whose type is defined further down the module:
+Whichever threshold the field uses must be a number from 0.0 to 1.0, or defining the class raises `ValueError`, also for a field declared as `Annotated[str, ComparableField(...)]` or one whose type is defined further down the module. An `Annotated` field that names something defined further down, its type or a value in its `ComparableField(...)`, is not yet checked at class definition when its annotation is a string, as every annotation is under `from __future__ import annotations`. The message reads:
 
 ```text
 ValueError: Invalid threshold for field 'vendor' of model 'Invoice': ComparableField sets no threshold, so the field adopts its comparator's: LevenshteinComparator(threshold=85). A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so even identical values would not match. If 85 is a percentage, write LevenshteinComparator(threshold=0.85), or ComparableField(threshold=0.85), which wins over the comparator's. (Set at invoice_models.py:6.)

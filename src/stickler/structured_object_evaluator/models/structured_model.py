@@ -1048,6 +1048,13 @@ class StructuredModel(BaseModel):
         only the fix for a field that adopts. A PEP 695 alias is
         read as the type it names once the type it names is defined; before
         that, it is checked as adopting.
+
+        An ``Annotated`` annotation that names something defined further down,
+        its type or a value in its metadata, is not yet checked when it is a
+        string (quoted whole, or under ``from __future__ import annotations``):
+        pydantic holds it as one string until ``model_rebuild()``, so its
+        ``ComparableField`` does not exist yet and ``json_schema_extra`` is
+        empty here.
         """
         for field_name, field_info in cls.model_fields.items():
             if field_name == _EXTRA_FIELDS_KEY:
