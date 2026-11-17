@@ -122,7 +122,9 @@ Each release links to full notes on the
   - On a plain pydantic class, the runtime `match_threshold` of `evaluate()`
     and `eval_for()` also sets `List[Model]` and `List[dict]` pairing and the
     threshold of nested plain-model and `dict` fields, while a primitive list
-    keeps its inferred threshold; a `StructuredModel` class keeps its own
+    keeps its inferred threshold. On a `StructuredModel` class it sets only
+    `matched`, and a `List[StructuredModel]` field pairs at the element
+    class's own `match_threshold` on either path
     ([#416](https://github.com/awslabs/stickler/issues/416)). The docstrings
     now say TP/FD, not TP/FN/FA.
   - `clip_under_threshold` has no effect on `List[StructuredModel]`, so an FD

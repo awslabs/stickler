@@ -98,7 +98,7 @@ When multiple thresholds could apply, here's which one wins:
 
 1. **Field threshold** controls primitive-level TP/FD classification and score clipping.
 2. **Match threshold** on the element class controls object-level TP/FD classification for `List[StructuredModel]` matching. Other lists use the pairing bars in the table above.
-3. **Runtime match threshold** sets the `matched` verdict. On a `StructuredModel` it reaches nothing else. On the zero-config path it also sets the `List[Model]` and `List[dict]` pairing bar and the threshold of nested plain-model and `dict` fields.
+3. **Runtime match threshold** sets the `matched` verdict. On a `StructuredModel` it reaches nothing else. On the zero-config path it also sets the `List[Model]` and `List[dict]` pairing bar and the threshold of nested plain-model and `dict` fields, but a `List[StructuredModel]` field still pairs at the element class's own `match_threshold`.
 4. **Comparator threshold** fills in for the field threshold when the field does not set one. A threshold on the field always wins, and a comparator's own default is never adopted.
 
 ### Example: All Four in Action
