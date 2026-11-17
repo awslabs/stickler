@@ -39,7 +39,7 @@ class Invoice(StructuredModel):
 **What it gates:**
 
 - **TP vs FD classification:** If `similarity >= threshold` (see [Meeting a Threshold](#meeting-a-threshold)), the field is a True Positive. Otherwise, it's a False Discovery.
-- **Score clipping:** When `clip_under_threshold=True` (the default), scores below the threshold are zeroed out in the weighted average.
+- **Score clipping:** When `clip_under_threshold=True` (the default), scores below the threshold are zeroed out in the weighted average. A list field follows the [Score](../Advanced/classification-logic.md#list-contract) rule of the list contract instead.
 
 **Default:** `0.5`
 
@@ -64,18 +64,18 @@ class LineItem(StructuredModel):
 
 ### 4. Runtime Match Threshold
 
-**What it is:** The `match_threshold` parameter passed to `evaluate()` or `EvalSpec`.
+**What it is:** The `match_threshold` parameter passed to `evaluate()` or `eval_for()`.
 
 ```python
 result = stickler.evaluate(gt, pred, match_threshold=0.8)
 
-# Or via EvalSpec
+# Or compile a reusable EvalSpec
 spec = stickler.eval_for(Invoice, match_threshold=0.8)
 ```
 
-**What it gates:** `EvalResult.matched` (`overall_score >= match_threshold`). On the zero-config path (a plain pydantic class) it also becomes the `match_threshold` of every inferred element model, so it decides TP vs FD for `List[Model]` elements at every nesting level. A `StructuredModel` element class keeps its own `match_threshold` for pairing, and the runtime value then drives only `matched` ([#416](https://github.com/awslabs/stickler/issues/416)).
+**What it gates:** `EvalResult.matched` (`overall_score >= match_threshold`). On a `StructuredModel` class that is all it does: list pairing and field thresholds keep their class values. On a plain pydantic class (the zero-config path) it also becomes the `match_threshold` of every inferred element model, so it decides TP vs FD for `List[Model]` elements at every nesting level, and the field threshold of nested plain-model and `dict` fields. `spec.explain()` shows the resolved values. It never changes a similarity score or `overall_score`.
 
-**Default:** `0.7`
+**Default:** the class's `match_threshold` on a `StructuredModel`, else `0.7`
 
 ## Threshold Precedence
 
@@ -85,23 +85,27 @@ When multiple thresholds could apply, here's which one wins:
 |-----------|------------------------|
 | **Primitive field comparison** (str, int, float, and date, datetime, time, timedelta, Decimal, UUID, Enum) | Field threshold (`ComparableField(threshold=...)`), else a threshold named on the comparator |
 | **Nested object comparison** | Recurses into fields; each field uses its own field threshold |
-| **List element pairing** (`List[StructuredModel]`) | Model match threshold of the element class (a runtime value does not override it, [#416](https://github.com/awslabs/stickler/issues/416)) |
+| **List element pairing** (`List[StructuredModel]`) | The element class's `match_threshold`; a runtime value does not override it |
 | **List element pairing** (zero-config `List[BaseModel]`) | Runtime match threshold if provided, else `0.7` |
-| **List element pairing** (primitive, dict, plain-model lists on a `StructuredModel`) | Field threshold, else a threshold named on the comparator, else `0.5` |
-| **Score clipping** | Field threshold (when `clip_under_threshold=True`); per element for lists ([list contract](../Advanced/classification-logic.md#list-contract)) |
+| **List element pairing** (primitive, dict, plain-model lists on a `StructuredModel`) | Field threshold, else a threshold named on the comparator, else `0.5` with `ComparableField()` or the class `match_threshold` without it ([Bar](../Advanced/classification-logic.md#list-contract)) |
+| **Score clipping** | Field threshold (when `clip_under_threshold=True`); lists follow the [Score](../Advanced/classification-logic.md#list-contract) rule |
 | **Binary classification (TP/FD)** for primitives | Field threshold |
 | **Binary classification (TP/FD)** for list pairs | The list element pairing bar above |
+| **Document `matched` verdict** | Runtime match threshold if provided, else the class's `match_threshold` on a `StructuredModel`, else `0.7` |
 
 ### Key Rules
 
 1. **Field threshold** controls primitive-level TP/FD classification and score clipping.
 2. **Match threshold** controls object-level TP/FD classification for list matching.
-3. **Runtime match threshold** sets `matched`, and the pairing bar of inferred element models on the zero-config path. It does not override a `StructuredModel` class's own `match_threshold` ([#416](https://github.com/awslabs/stickler/issues/416)).
+3. **Runtime match threshold** sets `matched`. On the zero-config path it also sets the pairing bar of inferred element models and the threshold of nested plain-model and `dict` fields. It does not override a `StructuredModel` class's own `match_threshold`.
 4. **Comparator threshold** fills in for the field threshold when the field does not set one. A threshold on the field always wins, and a comparator's own default is never adopted.
 
 ### Example: All Four in Action
 
 ```python
+from typing import List
+
+import stickler
 from stickler import StructuredModel, ComparableField, LevenshteinComparator
 
 class Product(StructuredModel):
@@ -115,14 +119,18 @@ class Product(StructuredModel):
 class Order(StructuredModel):
     products: List[Product] = ComparableField(weight=2.0)
 
-# (4) Runtime match threshold - drives `matched`; Product.match_threshold still gates pairing
+gt_order = Order(products=[Product(name="Wireless Mouse")])
+pred_order = Order(products=[Product(name="Wireless Mice")])  # similarity 0.786
+
+# (4) Runtime match threshold - gates result.matched only
 result = stickler.evaluate(gt_order, pred_order, match_threshold=0.8)
 ```
 
 In this example:
 
-- `name` similarity is compared against **0.8** (field threshold) for TP/FD
-- Product pairs are compared against **0.75** (`Product.match_threshold`) for list matching; the runtime **0.8** only decides `EvalResult.matched` ([#416](https://github.com/awslabs/stickler/issues/416))
+- `name` (0.786) is compared against **0.8** (field threshold): FD
+- The Product pair (0.786) is compared against **0.75** (`Product.match_threshold`): TP. The runtime 0.8 does not replace it.
+- `result.matched` is `overall_score >= 0.8` (runtime threshold). `overall_score` is `0.0`, because `name` is clipped below its 0.8, so `matched` is `False`.
 - The comparator's **0.5** is overridden by the field's **0.8**. Drop `threshold=0.8` from the field and the comparator's 0.5 governs instead.
 
 ### Precedence, in one line
@@ -390,7 +398,8 @@ Hungarian algorithm pairs:
 | SKU-C, "Widget Gamma" | SKU-X, "New Item" | 0.083 | < 0.7 | **FD** → atomic |
 
 Both lists hold three items, so the Hungarian algorithm pairs every one of them and
-no item is left over. **FN and FA are impossible for an equal-length list** --
+no item is left over. **FN and FA are impossible for an equal-length list** with
+no `None` elements, which are removed before pairing --
 `SKU-C` does not go missing, it gets paired with the only prediction left, scores
 `0.083`, and lands below `match_threshold` as a false discovery. Unmatched items
 appear only when the two lists differ in length.
@@ -433,7 +442,7 @@ Recall (with FD) = TP / (TP + FN + FD) = 5 / (5 + 1 + 1) = 0.714
 | Comparator | `Comparator(threshold=...)` | TP/FD and clipping when the field sets no threshold; `binary_compare()` | varies, and a default is not adopted |
 | Field | `ComparableField(threshold=...)` | TP/FD for primitives, clipping | 0.5 |
 | Model | `match_threshold = ...` on class | Hungarian pairing | 0.7 |
-| Runtime | `evaluate(..., match_threshold=...)` | Overrides model threshold | 0.7 |
+| Runtime | `evaluate(..., match_threshold=...)` | `matched`; on the zero-config path also list pairing and nested plain-model and `dict` field thresholds | class `match_threshold`, else 0.7 |
 
 ### Metric Formulas
 
