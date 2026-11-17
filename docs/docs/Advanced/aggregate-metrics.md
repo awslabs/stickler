@@ -144,8 +144,8 @@ Coinciding is not evidence that nothing was hidden, which is the separate and mo
     node is treated as a leaf and its `aggregate` becomes a copy of its own
     `overall`: one row per rejected item. The same holds for any list with no
     accepted item, so its FN and FA items count here as object rows too; beside an
-    accepted sibling they are left out of `aggregate` (`[A, B]` vs `[A]` reads
-    `overall tp=1 fn=1`, `aggregate tp=2`). The **unit of the count changes with the
+    accepted sibling they are left out of `aggregate` (with two-field items,
+    `[A, B]` vs `[A]` reads `overall tp=1 fn=1`, `aggregate tp=2`). The **unit of the count changes with the
     data**. This is decided per node, and needs only that one list's items to be
     rejected -- not the whole document:
 

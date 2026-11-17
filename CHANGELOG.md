@@ -97,7 +97,7 @@ Each release links to full notes on the
     its raw similarity, unweighted. Rows inside list items are described as
     they are today ([#418](https://github.com/awslabs/stickler/issues/418)).
   - The Hungarian matching example shows measured counts and the list score,
-    and its result block is runnable.
+    and its result block is checkable.
 
 ## [1.0.1] - 2026-11-02
 

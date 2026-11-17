@@ -370,7 +370,7 @@ For list fields (e.g., products, line items), non-match entries can be at the ob
 
 ## Field Comparisons
 
-When you pass `document_field_comparisons=True`, the result includes a `field_comparisons` list documenting every individual field comparison -- both matches and non-matches. For a list there is one row per primitive element or per leaf of a TP item, and one object row per FD, FN or FA item ([Reports](../../Advanced/classification-logic.md#list-contract)). Inside a list item, a nested list or object gets one row instead of being expanded, a [known gap](../../Advanced/classification-logic.md#list-contract).
+When you pass `document_field_comparisons=True`, the result includes a `field_comparisons` list documenting every individual field comparison -- both matches and non-matches. For a list there is one row per element of a primitive, dict or plain-model list, one row per leaf of a TP `StructuredModel` item, and one object row per FD, FN or FA item ([Reports](../../Advanced/classification-logic.md#list-contract)). Inside a list item, a nested list or object gets one row instead of being expanded, a [known gap](../../Advanced/classification-logic.md#list-contract).
 
 ```python
 result = ground_truth.compare_with(prediction, document_field_comparisons=True)
