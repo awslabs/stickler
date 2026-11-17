@@ -17,6 +17,7 @@ See https://github.com/awslabs/stickler/issues/210
 """
 
 import typing
+import warnings
 
 import pytest
 
@@ -161,6 +162,26 @@ def _unwrap(annotation):
         if not args:
             return annotation
         annotation = args[0]
+
+
+def _import_warning(schema):
+    """Import `schema`, giving the model and each warning that a model key is
+    not read and raises from 1.1.0. Assert on the model first: run against
+    dev's `src`, that assertion then passes and only the warning one fails."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = StructuredModel.from_json_schema(schema)
+    return model, [
+        str(w.message)
+        for w in caught
+        if issubclass(w.category, UserWarning)
+        and "this becomes a ValueError in 1.1.0" in str(w.message)
+    ]
+
+
+def _warned(warned, *parts):
+    """Whether one warning holds every part."""
+    return any(all(part in message for part in parts) for message in warned)
 
 
 class TestTheCheckReachesEveryPosition:
@@ -1208,12 +1229,22 @@ class TestModelKeysWhereNoClassIsBuiltFromThem:
         }
 
     @pytest.mark.parametrize(
-        "inner, error", _INSIDE, ids=("allOf-arm", "beside-items-ref", "typed-ref")
+        "inner, error", _INSIDE[:2], ids=("allOf-arm", "beside-items-ref")
     )
     def test_inside_a_components_target_a_class_is_built_from(self, inner, error):
         with pytest.raises(ValueError, match="x-aws-stickler-match-threshold") as exc:
             self._import(self._components(inner, reached=True))
         assert error in str(exc.value)
+
+    def test_on_an_object_typed_property_there_it_warns(self):
+        """A position dev's docs call valid for the keys, so it builds what
+        dev builds, `Row` at `0.7`, and warns until 1.1.0."""
+        inner, error = self._INSIDE[2]
+        model, warned = _import_warning(self._components(inner, reached=True))
+        holder = _unwrap(model.model_fields["c"].annotation)
+        w = _unwrap(holder.model_fields["w"].annotation)
+        assert (w.__name__, w.match_threshold) == ("Row", 0.7)
+        assert _warned(warned, "'x-aws-stickler-match-threshold'", error)
 
     @pytest.mark.parametrize(
         "inner", [inner for inner, _ in _INSIDE], ids=("allOf", "items", "typed")
@@ -1843,11 +1874,8 @@ class TestARefIntoADefinition:
 
     @pytest.mark.parametrize(
         "pointer, target",
-        (
-            ("#/$defs/Wrap/properties/inner", "$defs.Wrap.properties.inner"),
-            ("#/$defs/List/items", "$defs.List.items"),
-        ),
-        ids=("property", "items"),
+        (("#/$defs/List/items", "$defs.List.items"),),
+        ids=("items",),
     )
     @pytest.mark.parametrize(
         "make, reached",
@@ -1864,6 +1892,8 @@ class TestARefIntoADefinition:
         ids=("root-ref", "allOf"),
     )
     def test_keys_nothing_reads_raise(self, pointer, target, make, reached):
+        """An `items` node is a position no doc names for these keys. An
+        object-typed property warns instead (see `_PROPERTY_NODES`)."""
         with pytest.raises(ValueError) as exc:
             StructuredModel.from_json_schema(
                 dict(make(pointer), **{"$defs": self.DEFS})
@@ -1962,7 +1992,7 @@ class TestARefIntoADefinition:
 
     @pytest.mark.parametrize("where", ("not", "then", "additionalProperties", "x-sub"))
     @pytest.mark.parametrize(
-        "inner, error", _INSIDE, ids=("allOf-arm", "beside-items-ref", "typed-ref")
+        "inner, error", _INSIDE[:2], ids=("allOf-arm", "beside-items-ref")
     )
     def test_inside_a_node_a_class_is_built_from_the_checks_apply(
         self, where, inner, error
@@ -1976,6 +2006,22 @@ class TestARefIntoADefinition:
                 self._holder(where, inner, f"#/$defs/Holder{pointer}")
             )
         assert error.format(at=at) in str(exc.value)
+
+    @pytest.mark.parametrize("where", ("not", "then", "additionalProperties", "x-sub"))
+    def test_inside_a_node_an_object_typed_property_warns(self, where):
+        """Beside a `$ref` on a property typed `"object"`, a position dev's
+        docs call valid for the keys, so it builds what dev builds, `Row` at
+        `0.7`, and warns until 1.1.0."""
+        inner, error = self._INSIDE[2]
+        pointer = "/x-sub/T" if where == "x-sub" else f"/{where}"
+        at = "$defs.Holder" + pointer.replace("/", ".")
+        model, warned = _import_warning(
+            self._holder(where, inner, f"#/$defs/Holder{pointer}")
+        )
+        t = _unwrap(model.model_fields["t"].annotation)
+        w = _unwrap(t.model_fields["w"].annotation)
+        assert (w.__name__, w.match_threshold) == ("Row", 0.7)
+        assert _warned(warned, "'x-aws-stickler-match-threshold'", error.format(at=at))
 
     @pytest.mark.parametrize(
         "where, ref",
@@ -2052,38 +2098,142 @@ class TestARefIntoADefinition:
             },
             "$defs.L.items.properties.inner",
         ),
+        (
+            "#/x-models/Wrap/properties/inner",
+            {"x-models": {"Wrap": {"type": "object", "properties": {"inner": _KEYED}}}},
+            "x-models.Wrap.properties.inner",
+        ),
+        (
+            "#/$defs/Wrap/not/properties/inner",
+            {
+                "$defs": {
+                    "Wrap": dict(
+                        _PLAIN,
+                        **{"not": {"type": "object", "properties": {"inner": _KEYED}}},
+                    )
+                }
+            },
+            "$defs.Wrap.not.properties.inner",
+        ),
+        (
+            "#/$defs/Wrap/x-sub/T/properties/inner",
+            {
+                "$defs": {
+                    "Wrap": dict(
+                        _PLAIN,
+                        **{
+                            "x-sub": {
+                                "T": {"type": "object", "properties": {"inner": _KEYED}}
+                            }
+                        },
+                    )
+                }
+            },
+            "$defs.Wrap.x-sub.T.properties.inner",
+        ),
     )
 
     @pytest.mark.parametrize(
         "pointer, holder, target",
         _PROPERTY_NODES,
-        ids=("defs-property", "components-property", "items-property"),
+        ids=(
+            "defs-property",
+            "components-property",
+            "items-property",
+            "x-models-property",
+            "defs-not-property",
+            "defs-x-sub-property",
+        ),
     )
     @pytest.mark.parametrize(
-        "make, reached",
+        "make, built, reached",
         (
-            (lambda ref: {"$ref": ref}, "the root '$ref'"),
+            (lambda ref: {"$ref": ref}, lambda model: model, "the root '$ref'"),
             (
                 lambda ref: {
                     "type": "object",
                     "properties": {"a": {"allOf": [{"$ref": ref}]}},
                 },
+                lambda model: _unwrap(model.model_fields["a"].annotation),
                 "'allOf' at 'a'",
             ),
         ),
         ids=("root-ref", "allOf"),
     )
-    def test_an_object_property_reached_only_this_way_raises(
-        self, pointer, holder, target, make, reached
+    def test_an_object_property_reached_only_this_way_warns(
+        self, pointer, holder, target, make, built, reached
     ):
-        """Dev builds `DynamicModel` or `AllOfModel` at 0.7 here, dropping the
-        keys. They sit on an object-typed property, a position dev's docs call
-        valid for them, so the CHANGELOG lists this raise as breaking."""
-        with pytest.raises(ValueError) as exc:
-            StructuredModel.from_json_schema(dict(make(pointer), **holder))
-        message = str(exc.value)
-        assert f"on object '{target}' is not read" in message
-        assert f"reached through {reached}" in message
+        """The keys sit on an object-typed property, a position dev's docs
+        call valid for them, so this warns until 1.1.0 and builds what dev
+        builds: `DynamicModel` or `AllOfModel` at 0.7, the keys dropped."""
+        model, warned = _import_warning(dict(make(pointer), **holder))
+        cls = built(model)
+        assert (cls.__name__, cls.match_threshold) == (
+            "DynamicModel" if reached == "the root '$ref'" else "AllOfModel",
+            0.7,
+        )
+        for key in ("x-aws-stickler-match-threshold", "x-aws-stickler-model-name"):
+            assert _warned(
+                warned,
+                f"'{key}' on object '{target}' is not read",
+                f"reached through {reached}",
+            )
+
+    @pytest.mark.parametrize(
+        "body",
+        (
+            {"type": "string", "x-aws-stickler-match-threshold": 0.93},
+            {
+                "type": "array",
+                "items": {"type": "string"},
+                "x-aws-stickler-match-threshold": 0.93,
+            },
+        ),
+        ids=("string", "array"),
+    )
+    def test_a_property_not_typed_object_still_raises(self, body):
+        """Dev's docs accept the keys only on an object-typed property."""
+        with pytest.raises(ValueError, match="reached through the root '\\$ref'"):
+            StructuredModel.from_json_schema(
+                {
+                    "$ref": "#/x-models/Wrap/properties/inner",
+                    "x-models": {
+                        "Wrap": {"type": "object", "properties": {"inner": body}}
+                    },
+                    "$defs": {"Row": _PLAIN},
+                }
+            )
+
+    def test_a_property_named_properties_is_a_property(self):
+        model, warned = _import_warning(
+            {
+                "$ref": "#/$defs/Wrap/properties/properties",
+                "$defs": {
+                    "Wrap": {"type": "object", "properties": {"properties": _KEYED}}
+                },
+            }
+        )
+        assert (model.__name__, model.match_threshold) == ("DynamicModel", 0.7)
+        assert _warned(warned, "on object '$defs.Wrap.properties.properties'")
+
+    def test_the_items_of_a_property_named_properties_are_no_property(self):
+        """The pointer is read from the root, so `items` after a property
+        named `properties` is an `items` node, a position no doc names for
+        the keys."""
+        with pytest.raises(ValueError, match="reached through the root"):
+            StructuredModel.from_json_schema(
+                {
+                    "$ref": "#/$defs/Wrap/properties/properties/items",
+                    "$defs": {
+                        "Wrap": {
+                            "type": "object",
+                            "properties": {
+                                "properties": {"type": "array", "items": _KEYED}
+                            },
+                        }
+                    },
+                }
+            )
 
     # Another node of `W`, beside the `s` that `h` uses, with keys no class
     # reads, and the error a `$ref` to the whole of `W` raises for it.
@@ -2140,12 +2290,20 @@ class TestARefIntoADefinition:
         assert _unwrap(model.model_fields["h"].annotation).match_threshold == 0.7
 
     @pytest.mark.parametrize(
-        "sibling, error", _SIBLINGS, ids=("typed-ref", "items-ref", "allOf-arm")
+        "sibling, error", _SIBLINGS[1:], ids=("items-ref", "allOf-arm")
     )
     def test_a_ref_to_the_whole_entry_builds_the_rest_and_raises(self, sibling, error):
         with pytest.raises(ValueError) as exc:
             StructuredModel.from_json_schema(self._sibling_schema(sibling, "#/$defs/W"))
         assert error in str(exc.value)
+
+    def test_a_ref_to_the_whole_entry_warns_for_an_object_typed_property(self):
+        """As on dev, `o` builds `Row` at 0.7; the keys warn until 1.1.0."""
+        sibling, error = self._SIBLINGS[0]
+        model, warned = _import_warning(self._sibling_schema(sibling, "#/$defs/W"))
+        o = _unwrap(_unwrap(model.model_fields["h"].annotation).model_fields["o"].annotation)
+        assert (o.__name__, o.match_threshold) == ("Row", 0.7)
+        assert _warned(warned, error)
 
     def test_a_typo_in_the_rest_of_the_entry_still_raises(self):
         with pytest.raises(ValueError, match=r"thresold.*'\$defs\.W\.o'"):
@@ -2249,17 +2407,26 @@ class TestModelKeysBesideANonRootRef:
 
     Elsewhere the class is built from the `$ref` target, so the keys passed the
     check and were dropped: `items: {"$ref": Row, match-threshold: 0.93}`
-    built `Row` at 0.7.
+    built `Row` at 0.7. On `items` or a combiner arm, positions no doc names
+    for these keys, that raises. On a property typed `"object"`, which dev's
+    docs call valid for them, it warns until 1.1.0 and builds what dev builds.
     """
 
-    @pytest.mark.parametrize(
-        "key, value",
-        (
-            ("x-aws-stickler-model-name", "Renamed"),
-            ("x-aws-stickler-match-threshold", 0.93),
-            ("x-aws-stickler-infer-unspecified", True),
-        ),
+    _KEYS = (
+        ("x-aws-stickler-model-name", "Renamed"),
+        ("x-aws-stickler-match-threshold", 0.93),
+        ("x-aws-stickler-infer-unspecified", True),
     )
+
+    @staticmethod
+    def _schema(prop):
+        return {
+            "type": "object",
+            "properties": {"a": prop},
+            "$defs": {"Row": TestDefinitionsAreChecked.INNER},
+        }
+
+    @pytest.mark.parametrize("key, value", _KEYS)
     @pytest.mark.parametrize(
         "make, at",
         (
@@ -2279,39 +2446,78 @@ class TestModelKeysBesideANonRootRef:
                 },
                 "a[0]",
             ),
-            (lambda ext: {"type": "object", "$ref": "#/$defs/Row", **ext}, "a"),
-            (
-                lambda ext: {"type": ["object", "null"], "$ref": "#/$defs/Row", **ext},
-                "a",
-            ),
-            (
-                lambda ext: {"type": ["null", "object"], "$ref": "#/$defs/Row", **ext},
-                "a",
-            ),
-            (lambda ext: {"type": ["object"], "$ref": "#/$defs/Row", **ext}, "a"),
         ),
-        ids=(
-            "items",
-            "anyOf",
-            "oneOf",
-            "object",
-            "object-null",
-            "null-object",
-            "[object]",
-        ),
+        ids=("items", "anyOf", "oneOf"),
     )
     def test_it_raises_and_names_the_target(self, make, at, key, value):
         with pytest.raises(ValueError) as exc:
-            StructuredModel.from_json_schema(
-                {
-                    "type": "object",
-                    "properties": {"a": make({key: value})},
-                    "$defs": {"Row": TestDefinitionsAreChecked.INNER},
-                }
-            )
+            StructuredModel.from_json_schema(self._schema(make({key: value})))
         message = str(exc.value)
         assert f"'{key}' beside the '$ref' at '{at}' is not read" in message
         assert "'$defs.Row'" in message
+
+    @pytest.mark.parametrize("key, value", _KEYS)
+    @pytest.mark.parametrize(
+        "declared",
+        ("object", ["object", "null"], ["null", "object"], ["object"]),
+        ids=("object", "object-null", "null-object", "[object]"),
+    )
+    def test_on_an_object_typed_property_it_warns(self, declared, key, value):
+        """`Row` is titled `Inner`, so dev builds `Inner` at 0.7 for each."""
+        model, warned = _import_warning(
+            self._schema({"type": declared, "$ref": "#/$defs/Row", key: value})
+        )
+        a = _unwrap(model.model_fields["a"].annotation)
+        assert (a.__name__, a.match_threshold) == ("Inner", 0.7)
+        assert _warned(
+            warned,
+            f"'{key}' beside the '$ref' at 'a' is not read",
+            "the class is built from definition '$defs.Row'",
+            "Put it there.",
+        )
+
+    def test_the_warning_names_each_key(self):
+        model, warned = _import_warning(
+            self._schema(
+                {
+                    "type": "object",
+                    "$ref": "#/$defs/Row",
+                    "x-aws-stickler-model-name": "Renamed",
+                    "x-aws-stickler-match-threshold": 0.93,
+                }
+            )
+        )
+        a = _unwrap(model.model_fields["a"].annotation)
+        assert (a.__name__, a.match_threshold) == ("Inner", 0.7)
+        assert len(warned) == 2
+        for key in ("x-aws-stickler-match-threshold", "x-aws-stickler-model-name"):
+            assert _warned(warned, f"'{key}' beside the '$ref' at 'a'")
+
+    def test_where_another_check_raises_it_does_not_warn(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with pytest.raises(ValueError, match="beside the '\\$ref' at 'b\\[\\]'"):
+                StructuredModel.from_json_schema(
+                    {
+                        "type": "object",
+                        "properties": {
+                            "a": {
+                                "type": "object",
+                                "$ref": "#/$defs/Row",
+                                "x-aws-stickler-match-threshold": 0.93,
+                            },
+                            "b": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/$defs/Row",
+                                    "x-aws-stickler-match-threshold": 0.93,
+                                },
+                            },
+                        },
+                        "$defs": {"Row": TestDefinitionsAreChecked.INNER},
+                    }
+                )
+        assert not [w for w in caught if "1.1.0" in str(w.message)]
 
     def test_through_an_alias_it_names_the_end_of_the_chain(self):
         """The alias reads no model keys, so naming it sent the author to a
@@ -2391,45 +2597,55 @@ class TestModelKeysBesideANonRootRef:
         }
 
     @pytest.mark.parametrize(
-        "entry, use",
+        "use",
         (
-            ("List", lambda ref: {"$ref": ref}),
-            ("List", lambda ref: {"type": "array", "items": {"$ref": ref}}),
-            ("List", lambda ref: {"anyOf": [{"$ref": ref}, {"type": "null"}]}),
-            ("W", lambda ref: {"$ref": ref}),
-            ("W", lambda ref: {"type": "array", "items": {"$ref": ref}}),
-            ("N", lambda ref: {"$ref": ref}),
-            ("N", lambda ref: {"type": "array", "items": {"$ref": ref}}),
-            ("List", lambda ref: {"$ref": "#/$defs/List"}),
-            ("W", lambda ref: {"$ref": "#/$defs/W"}),
-            ("N", lambda ref: {"$ref": "#/$defs/N"}),
+            lambda ref: {"$ref": ref},
+            lambda ref: {"type": "array", "items": {"$ref": ref}},
+            lambda ref: {"anyOf": [{"$ref": ref}, {"type": "null"}]},
+            lambda ref: {"$ref": "#/$defs/List"},
         ),
-        ids=(
-            "items-node-from-property",
-            "items-node-from-items",
-            "items-node-from-anyOf-arm",
-            "property-node-from-property",
-            "property-node-from-items",
-            "nullable-node-from-property",
-            "nullable-node-from-items",
-            "whole-List",
-            "whole-W",
-            "whole-N",
-        ),
+        ids=("from-property", "from-items", "from-anyOf-arm", "whole-List"),
     )
-    def test_on_a_node_inside_a_definition_it_raises(self, entry, use):
-        """A `$ref` to such a node built it at 0.7 (`items@0.7`, `inner@0.7`,
-        `DynamicModel@0.7`), dropping the keys, while a `$ref` to the whole
-        entry raised."""
+    def test_on_an_items_node_inside_a_definition_it_raises(self, use):
+        """A `$ref` to such a node built it at 0.7 (`items@0.7`), dropping the
+        keys, while a `$ref` to the whole entry raised. `items` is a position
+        no doc names for these keys."""
         with pytest.raises(ValueError) as exc:
-            StructuredModel.from_json_schema(self._node_schema(entry, use))
-        at = self._NODES[entry][2]
+            StructuredModel.from_json_schema(self._node_schema("List", use))
         message = str(exc.value)
         assert (
-            f"'x-aws-stickler-match-threshold' beside the '$ref' at '{at}' is not read"
-            in message
+            "'x-aws-stickler-match-threshold' beside the '$ref' at '$defs.List[]' "
+            "is not read" in message
         )
         assert "the class is built from definition '$defs.Row'" in message
+
+    @pytest.mark.parametrize("entry", ("W", "N"), ids=("object", "nullable"))
+    @pytest.mark.parametrize(
+        "use, field",
+        (
+            (lambda entry, ref: {"$ref": ref}, ()),
+            (lambda entry, ref: {"type": "array", "items": {"$ref": ref}}, ()),
+            (lambda entry, ref: {"$ref": f"#/$defs/{entry}"}, ("inner",)),
+        ),
+        ids=("from-property", "from-items", "whole-entry"),
+    )
+    def test_on_an_object_typed_property_node_it_warns(self, entry, use, field):
+        """An object-typed property, a position dev's docs call valid for the
+        keys, so it builds what dev builds, `Inner` at 0.7, and warns until
+        1.1.0."""
+        model, warned = _import_warning(
+            self._node_schema(entry, lambda ref: use(entry, ref))
+        )
+        built = _unwrap(model.model_fields["a"].annotation)
+        for name in field:
+            built = _unwrap(built.model_fields[name].annotation)
+        assert (built.__name__, built.match_threshold) == ("Inner", 0.7)
+        at = self._NODES[entry][2]
+        assert _warned(
+            warned,
+            f"'x-aws-stickler-match-threshold' beside the '$ref' at '{at}' is not read",
+            "the class is built from definition '$defs.Row'",
+        )
 
     @pytest.mark.parametrize("entry", ("List", "W"))
     @pytest.mark.parametrize(
@@ -2473,25 +2689,26 @@ class TestModelKeysBesideANonRootRef:
         ("object", ["object", "null"], ["null", "object"], ["object"]),
         ids=("object", "object-null", "null-object", "[object]"),
     )
-    def test_on_a_property_node_typed_any_object_form_it_raises(self, declared):
-        """Dev builds `inner@0.7` or `DynamicModel@0.7`, dropping the keys."""
+    def test_on_a_property_node_typed_any_object_form_it_warns(self, declared):
+        """As on dev, `h` builds `Inner` at 0.7, the keys dropped."""
         inner = {
             "type": declared,
             "$ref": "#/$defs/Row",
             "x-aws-stickler-match-threshold": 0.93,
         }
-        with pytest.raises(ValueError) as exc:
-            StructuredModel.from_json_schema(
-                {
-                    "type": "object",
-                    "properties": {"h": {"$ref": "#/$defs/W/properties/inner"}},
-                    "$defs": {
-                        "W": {"type": "object", "properties": {"inner": inner}},
-                        "Row": TestDefinitionsAreChecked.INNER,
-                    },
-                }
-            )
-        assert "beside the '$ref' at '$defs.W.inner' is not read" in str(exc.value)
+        model, warned = _import_warning(
+            {
+                "type": "object",
+                "properties": {"h": {"$ref": "#/$defs/W/properties/inner"}},
+                "$defs": {
+                    "W": {"type": "object", "properties": {"inner": inner}},
+                    "Row": TestDefinitionsAreChecked.INNER,
+                },
+            }
+        )
+        h = _unwrap(model.model_fields["h"].annotation)
+        assert (h.__name__, h.match_threshold) == ("Inner", 0.7)
+        assert _warned(warned, "beside the '$ref' at '$defs.W.inner' is not read")
 
     _ROW_REF = {"$ref": "#/$defs/Row", "x-aws-stickler-match-threshold": 0.93}
 

@@ -322,14 +322,46 @@ def _ref_label(target: Tuple[str, ...], entry: Optional[Tuple[str, ...]]) -> str
     return f"{kind} '{'.'.join(target)}'"
 
 
-def _ref_chain(schema: Any, node: Any, where: str):
-    """The node, then each alias it `$ref`s: every hop is the same class."""
+def _ref_chain(
+    schema: Any, node: Any, where: str, pointer: Optional[Tuple[str, ...]] = None
+):
+    """The node, then each alias it `$ref`s: every hop is the same class. Each
+    hop comes with its label and its JSON pointer (`pointer` for the first,
+    None when that node is not a `$ref` target)."""
     seen: set = set()
     while isinstance(node, dict) and id(node) not in seen:
         seen.add(id(node))
-        yield node, where
-        node, target, entry, _ = _resolve_local_ref(schema, node.get("$ref"))
-        where = _ref_label(target, entry)
+        yield node, where, pointer
+        node, pointer, entry, _ = _resolve_local_ref(schema, node.get("$ref"))
+        where = _ref_label(pointer, entry)
+
+
+# Keywords whose value maps names to schemas, and those whose value lists them.
+_NAMED_SCHEMA_KEYWORDS = frozenset(
+    {"$defs", "definitions", "dependentSchemas", "patternProperties", "properties"}
+)
+_LISTED_SCHEMA_KEYWORDS = frozenset({"allOf", "anyOf", "oneOf", "prefixItems"})
+
+
+def _is_property_pointer(pointer: Optional[Tuple[str, ...]]) -> bool:
+    """Whether a JSON pointer ends at a property: a schema under some node's
+    `properties`. Read from the root, so a property NAMED `properties` is a
+    name, not the keyword."""
+    if not pointer:
+        return False
+    expect, holder, is_property = "schema", "", False
+    for part in pointer:
+        if expect == "name":
+            expect, is_property = "schema", holder == "properties"
+        elif expect == "index":
+            expect, is_property = "schema", False
+        else:
+            holder, is_property = part, False
+            if part in _NAMED_SCHEMA_KEYWORDS:
+                expect = "name"
+            elif part in _LISTED_SCHEMA_KEYWORDS:
+                expect = "index"
+    return is_property
 
 
 _COMBINERS = frozenset({"allOf", "anyOf", "oneOf"})
@@ -1065,10 +1097,13 @@ class JsonSchemaImporter:
         # nothing is built, by identity; the nodes inside a definition entry
         # that a `$ref` targets; and every hop after the first of a `$ref`
         # chain from a position that builds a class. A target is walked with
-        # no scope, so a node in all three raises once the walk is done.
-        unbuilt: Dict[int, str] = {}
+        # no scope, so a node in all three is reported once the walk is done.
+        unbuilt: Dict[int, Tuple[Any, ...]] = {}
         inner: set = set()
         passed: List[int] = []
+        # Warnings for model keys no class reads, by node and key, issued only
+        # once nothing raises.
+        deferred: Dict[Tuple[int, str], str] = {}
         # Definition entries a `$ref` reached, and later every body walked as
         # building nothing, by identity; and every `$defs`/`definitions`
         # mapping passed, so the rest can be walked last.
@@ -1082,8 +1117,33 @@ class JsonSchemaImporter:
 
         label = _ref_label
 
-        def chain(node: Any, where: str):
-            return _ref_chain(schema, node, where)
+        def chain(node: Any, where: str, pointer: Optional[Tuple[str, ...]] = None):
+            return _ref_chain(schema, node, where, pointer)
+
+        def unread(
+            node: Any,
+            declared: List[str],
+            subject: str,
+            reason: str,
+            advice: str,
+            warn: bool,
+        ) -> None:
+            """Raise for model keys no class reads. On an object-typed
+            property, where the docs call them valid, warn instead and keep
+            importing as before, until 1.1.0."""
+            if not warn:
+                raise ValueError(
+                    f"Stickler extension '{declared[0]}' {subject} is not "
+                    f"read{reason}. {advice} Left in place it would be dropped "
+                    "silently."
+                )
+            for key in declared:
+                deferred.setdefault(
+                    (id(node), key),
+                    f"Stickler extension '{key}' {subject} is not read{reason}. "
+                    f"{advice} It is ignored, and this becomes a ValueError in "
+                    "1.1.0.",
+                )
 
         def collect(value: Any, path: str) -> None:
             """The `$defs`/`definitions` mappings inside a value not walked."""
@@ -1136,8 +1196,8 @@ class JsonSchemaImporter:
             # nothing, so it must not excuse an `allOf` that drops them.
             if reads and built:
                 hops = list(chain(node, ""))
-                read.update(id(hop) for hop, _ in hops)
-                passed.extend(id(hop) for hop, _ in hops[1:])
+                read.update(id(hop) for hop, _, _ in hops)
+                passed.extend(id(hop) for hop, _, _ in hops[1:])
             # The class is built from the `$ref` target, which reads its own
             # model keys. Only the root reads the ones beside its `$ref`.
             if reads and isinstance(ref, str) and scope in ("model", "field_or_model"):
@@ -1146,19 +1206,26 @@ class JsonSchemaImporter:
                     hops = list(chain(node, ""))
                     # Through an alias, the class is the end of the chain.
                     source = hops[-1][1] if len(hops) > 1 else f"'{ref}'"
-                    message = (
-                        f"Stickler extension '{declared[0]}' beside the '$ref' "
-                        f"at '{path}' is not read: the class is built from "
-                        f"{source}, which reads only its own keys. Put it "
-                        "there. Left in place it would be dropped silently."
+                    # `items` and a combiner arm are positions no doc names
+                    # for these keys, so they raise. An object-typed property
+                    # is one the docs call valid for them, so it warns.
+                    found = (
+                        node,
+                        declared,
+                        f"beside the '$ref' at '{path}'",
+                        f": the class is built from {source}, which reads only "
+                        "its own keys",
+                        "Put it there.",
+                        scope == "field_or_model",
                     )
                     if built:
-                        raise ValueError(message)
-                    # Nothing is built here, but a `$ref` from a position that
-                    # builds a class may point at this node. Such a reference
-                    # walks it with no scope, so it is checked once the walk
-                    # is done.
-                    unbuilt.setdefault(id(node), message)
+                        unread(*found)
+                    else:
+                        # Nothing is built here, but a `$ref` from a position
+                        # that builds a class may point at this node. Such a
+                        # reference walks it with no scope, so it is checked
+                        # once the walk is done.
+                        unbuilt.setdefault(id(node), found)
 
             if "patternProperties" in node:
                 location = f" at '{path}'" if path else ""
@@ -1260,7 +1327,7 @@ class JsonSchemaImporter:
                 # raised. See #340. Only a body with `properties` generates a
                 # class: a `type: "object"` mapping becomes a `dict` field, judged
                 # against its parent's threshold, so it reads no model keys.
-                hops = [hop for hop, _ in chain(body, "")]
+                hops = [hop for hop, _, _ in chain(body, "")]
                 scope = "value_definition"
                 if "properties" in body:
                     scope = "definition"
@@ -1280,7 +1347,7 @@ class JsonSchemaImporter:
         # model keys beside the node's own `$ref` passed unread.
         for hop in passed:
             if hop in inner and hop in unbuilt:
-                raise ValueError(unbuilt[hop])
+                unread(*unbuilt[hop])
 
         # An entry no `$ref` reaches is walked as it was before definitions were
         # checked: its own keys are left alone, and its contents are checked
@@ -1306,21 +1373,33 @@ class JsonSchemaImporter:
         # An object's model keys are read only where its class is built. An
         # `allOf` arm is merged into `AllOfModel`, and a root `$ref` builds the
         # root class from the root's own keys, so keys there are dropped unless
-        # another position builds the same object. See #340.
-        def check(node: Any, where: str, reached: str, advice: str) -> None:
-            for hop, hop_where in chain(node, where):
+        # another position builds the same object. See #340. An object-typed
+        # property is a position the docs call valid for these keys, so there
+        # it warns until 1.1.0.
+        def check(
+            node: Any,
+            where: str,
+            pointer: Optional[Tuple[str, ...]],
+            reached: str,
+            advice: str,
+        ) -> None:
+            for hop, hop_where, hop_pointer in chain(node, where, pointer):
                 declared = sorted(key for key in hop if key in _KNOWN_MODEL_EXTENSIONS)
                 if declared and id(hop) not in read:
-                    raise ValueError(
-                        f"Stickler extension '{declared[0]}' on {hop_where} is not "
-                        f"read when it is reached through {reached}. {advice} "
-                        "Left in place it would be dropped silently."
+                    unread(
+                        hop,
+                        declared,
+                        f"on {hop_where}",
+                        f" when it is reached through {reached}",
+                        advice,
+                        _is_property_pointer(hop_pointer) and _is_object_schema(hop),
                     )
 
         for arm, arm_path, at in merged:
             check(
                 arm,
                 f"object '{arm_path}'",
+                None,
                 f"'allOf' at '{at}'",
                 "The arms are merged into one class with the default name and "
                 "match threshold, and no position sets them. Reference the object "
@@ -1331,10 +1410,14 @@ class JsonSchemaImporter:
             check(
                 root_target,
                 label(root_target_parts, root_entry),
+                root_target_parts,
                 "the root '$ref'",
                 "The root class reads the root's own keys: put it on the root, "
                 "beside the '$ref'.",
             )
+
+        for message in deferred.values():
+            warnings.warn(message, UserWarning)
 
     @staticmethod
     def _translate_import_error(message: str, schema: Dict[str, Any]) -> str:
