@@ -684,13 +684,42 @@ WHERE = [
 
 
 @pytest.mark.parametrize("compare", WHERE)
-def test_a_ground_truth_list_of_a_model_and_a_non_model_still_raises(compare):
-    # Scoring the list calls each matched GT item's compare_with(), which a
-    # string lacks, so field classification never sees such a pair. This
+@pytest.mark.parametrize("value", ["b", 1, {"a": "x"}], ids=["str", "int", "dict"])
+def test_a_ground_truth_list_of_a_model_and_a_non_model_still_raises(compare, value):
+    # The first GT element is a model, so the list is scored as a list of
+    # models, which calls each matched GT item's compare_with(). A value
+    # without one raises, so field classification never sees such a pair. This
     # raised before #400 too: only the prediction side's crash is fixed.
-    values = [Inner(a="x"), "b"]
+    values = [Inner(a="x"), value]
     with pytest.raises(AttributeError, match="compare_with"):
         compare(values, list(values))
+
+
+@pytest.mark.parametrize("compare", WHERE)
+@pytest.mark.parametrize(
+    "gt, pred, expected",
+    [
+        pytest.param(
+            ["b", Inner(a="x")],
+            ["b", Inner(a="x")],
+            _expect(tp=2),
+            id="non-model-first",
+        ),
+        pytest.param(
+            [Inner(a="x"), "b"],
+            [Inner(a="x")],
+            _expect(tp=1, fn=1),
+            id="non-model-unmatched",
+        ),
+    ],
+)
+def test_a_ground_truth_list_of_a_model_and_a_non_model_runs_otherwise(
+    compare, gt, pred, expected
+):
+    # The raise needs both a model as the first GT element and a matched GT
+    # element without compare_with(). Either alone runs.
+    _, node = compare(gt, pred)
+    assert _counts(node) == expected
 
 
 class Scored(BaseModel):
@@ -719,7 +748,7 @@ def test_a_ground_truth_list_of_a_model_and_a_self_scoring_value_runs(
 ):
     # The list scores, since every GT item has compare_with(). Field
     # classification then skips the GT item that is not a StructuredModel,
-    # which has no dispatcher or declared fields to read.
+    # which has no `_dispatch_field_comparison()` to call.
     values = [Inner(a="x"), element()]
     result, node = compare(values, list(values))
 

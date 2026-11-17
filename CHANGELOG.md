@@ -59,10 +59,10 @@ Each release links to full notes on the
   `aggregate`, while the field scores 0.0. A model against a non-model
   element, such as `[Inner(a="x")]` against `["a"]`, is a TP the same way. A
   list with the base class first did not raise, and now also counts the
-  subclass's fields. A ground-truth list that mixes a model with a value that
-  has no `compare_with()`, such as `[Inner(a="x"), "b"]` against itself, still
-  raises `AttributeError`. Nested-model and list-annotated sub-fields
-  otherwise count as before.
+  subclass's fields. A ground-truth list whose first element is a model still
+  raises `AttributeError` when a matched ground-truth element has no
+  `compare_with()`, such as `[Inner(a="x"), "b"]` against itself.
+  Nested-model and list-annotated sub-fields otherwise count as before.
 
   One moved count is not settled. `[Inner(a="x")]` against `[{"a": "x"}]` in
   an `Any` sub-field, whose element class overrides `compare_with()` to return
