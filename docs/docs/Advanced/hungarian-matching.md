@@ -180,26 +180,40 @@ The list's score is the sum of the pair scores over the longer list's length ([S
 ### Result Structure
 
 ```python
-"transactions": {
-    "overall": {
-        "tp": 1, "fd": 2, "fa": 0, "fn": 0, "fp": 2
-    },
-    "fields": {
-        # Only from the TP pair (GT[0] -> Pred[0])
-        "transaction_id": {"tp": 1, "fd": 0, "fa": 0, "fn": 0},
-        "description":    {"tp": 0, "fd": 1, "fa": 0, "fn": 0},  # 0.579 < 0.7
-        "amount":         {"tp": 1, "fd": 0, "fa": 0, "fn": 0}
-    }
+gt = Account(account_id="ACC-1", transactions=[
+    Transaction(transaction_id="TXN-001", description="Coffee shop payment", amount=4.95),
+    Transaction(transaction_id="TXN-002", description="Grocery store", amount=127.43),
+    Transaction(transaction_id="TXN-003", description="Gas station", amount=45.67),
+])
+pred = Account(account_id="ACC-1", transactions=[
+    Transaction(transaction_id="TXN-001", description="Coffee shop", amount=4.95),
+    Transaction(transaction_id="TXN-002", description="Online purchase", amount=89.99),
+    Transaction(transaction_id="TXN-004", description="Restaurant", amount=23.45),
+])
+result = gt.compare_with(pred, include_confusion_matrix=True)
+result["confusion_matrix"]["fields"]["transactions"]
+```
+
+With other keys left out, the counts are:
+
+```json
+{
+  "overall": { "tp": 1, "fd": 2, "fa": 0, "fn": 0, "fp": 2 },
+  "fields": {
+    "transaction_id": { "overall": { "tp": 1, "fd": 0, "fa": 0, "fn": 0 } },
+    "description":    { "overall": { "tp": 0, "fd": 1, "fa": 0, "fn": 0 } },
+    "amount":         { "overall": { "tp": 1, "fd": 0, "fa": 0, "fn": 0 } }
+  }
 }
 ```
 
-A TP pair can still hold a failing leaf: the pair cleared `match_threshold`, and its `description` did not clear its own `threshold`.
+The `fields` counts come only from the TP pair (GT[0] -> Pred[0]). A TP pair can still hold a failing leaf: the pair cleared `match_threshold`, and its `description` (0.579) did not clear its own `threshold` of 0.7.
 
 ## Key Architectural Principles
 
 ### Threshold Source
 
-The threshold for Hungarian classification comes from the element model's `match_threshold` class attribute (default 0.7). It is **not** taken from the `ComparableField` on the parent list field: `ComparableField(threshold=...)` on a `List[StructuredModel]` raises `ValueError` in Python, and `x-aws-stickler-threshold` on an array of models warns and is ignored.
+The threshold for Hungarian classification comes from the element model's `match_threshold` class attribute (default 0.7). It is **not** taken from the `ComparableField` on the parent list field: `ComparableField(threshold=...)` on a `List[StructuredModel]` raises `ValueError` in Python, and `x-aws-stickler-threshold` on an array of models is ignored.
 
 ### Metric Separation
 
