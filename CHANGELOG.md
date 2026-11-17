@@ -43,8 +43,9 @@ Each release links to full notes on the
   silently where inline it raises. An entry no `$ref` reaches builds nothing and
   is not checked, so a dereferenced schema, which keeps the originals beside
   their inlined copies, imports as before; so does `$defs` inside `default` or
-  `examples` data. A typo in a property of an unreached entry, or
-  `patternProperties` there, raised before and now imports. A definition with
+  `examples` data. A typo in a property of an unreached entry, or of a schema
+  under an `x-*` key that no `$ref` reaches, or `patternProperties` there,
+  raised before and now imports. A definition with
   `properties` reads only the object-level keys, which configure the class it
   generates for every property, `items` or `anyOf`/`oneOf` arm that `$ref`s it.
   A field-level key (`comparator`, `comparator-config`, `threshold`, `weight`,
