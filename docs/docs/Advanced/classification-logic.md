@@ -173,9 +173,16 @@ where a subclass arrived for its base, which `Optional[Pet]` accepts.
     in an `Any`, `object` or `List[Any]` field, at top level or in a list
     element, `[Inner(a="x", b=None)]` against `["a"]` counts a TP, with `a` an
     FN and `b` a TN under `aggregate`. So does `[Inner(a="x", b=None)]`
-    against `[{"a": "x"}]`. These pairs, and one against a model of another
-    class such as `[Other(c="z")]`, count a TP also when the list element's
-    class overrides `compare_with()` to return a fixed score.
+    against `[{"a": "x"}]`. A plain pydantic element is the exception: scoring
+    a model against one raises `TypeError`. These pairs, and one against a
+    model of another class such as `[Other(c="z")]`, count a TP also when the
+    list element's class overrides `compare_with()` to return a fixed score.
+    Such an element never scores its fields. So in a field read by value, such
+    as `Any` or `object` (see **Nested lists** below), where scoring the list
+    would raise, the field counts one TP or FD from its comparator instead.
+    That covers `[Inner(a="x", b=None)]` against a list of plain pydantic
+    models, and a ground-truth list holding a value without `compare_with()`,
+    such as `[Inner(a="x", b=None), "b"]` against `["a", "b"]`.
 
     Whether a refused object should still *pair* inside a list, or should instead
     be counted as a missed ground truth plus an invented prediction, is the open
