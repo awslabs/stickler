@@ -4,9 +4,10 @@ The rule covers the threshold a field ends up with, its own or one it adopts
 from the comparator, and ``match_threshold``. A ``Decimal``, ``Fraction`` or
 numpy number in range is converted to ``float``. Anything else raises
 ``ValueError`` when the class is defined or the config or schema is loaded,
-with one message built by ``threshold_rule``. It quotes the value as the
-author wrote it, names the model and the field, says why the value fails and
-gives the likely fix.
+also for a field whose annotation is still a forward reference then, with one
+message built by ``threshold_rule``. It quotes the value as the author wrote
+it, names the model and the field, says why the value fails and gives the
+likely fix.
 
 Before, the Python path checked neither ``ComparableField(threshold=85)`` nor
 ``LevenshteinComparator(threshold=85)``, so an identical pair scored 0.0 FD;
@@ -751,6 +752,143 @@ class TestAValidThresholdOnAListOfModels:
             "Set a positive match_threshold on _Inner instead: 0.0 would classify "
             "every paired object as a true positive. See "
         ) in message
+
+
+def _exec_models(source, *, postponed=True):
+    """Run ``source`` as a module, with ``from __future__ import annotations``."""
+    namespace = {
+        "StructuredModel": StructuredModel,
+        "ComparableField": ComparableField,
+        "LevenshteinComparator": LevenshteinComparator,
+        "List": List,
+        "Optional": Optional,
+    }
+    flags = __future__.annotations.compiler_flag if postponed else 0
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        exec(
+            compile(source, "order_models.py", "exec", flags=flags, dont_inherit=True),
+            namespace,
+        )
+    return namespace
+
+
+_ADDRESS = "class {name}(StructuredModel):\n    city: str = ComparableField()\n"
+
+
+class TestAForwardReference:
+    """Checked when the class is defined, before the reference resolves.
+
+    Nothing checks the field once it does, so an unresolved annotation is read
+    as adopting its comparator's threshold unless it is visibly a list.
+    """
+
+    FIELDS = {
+        "addr: Address": ("addr: Address", "Address", True),
+        '"Later"': ('later: "Later"', "Later", True),
+        'Optional["Address2"]': ('opt: Optional["Address2"]', "Address2", True),
+        "addr: Address, not postponed": ('addr: "Address"', "Address", False),
+    }
+
+    @staticmethod
+    def _source(field, target, threshold):
+        return (
+            "class Order(StructuredModel):\n"
+            f"    {field} = ComparableField(\n"
+            f"        comparator=LevenshteinComparator(threshold={threshold})\n"
+            "    )\n" + _ADDRESS.format(name=target)
+        )
+
+    @pytest.mark.parametrize("kind", ["percent", "string", "negative"])
+    @pytest.mark.parametrize("shape", list(FIELDS))
+    def test_an_adopted_comparator_threshold_raises(self, shape, kind):
+        field, target, postponed = self.FIELDS[shape]
+        value, in_python, _, wrong = BAD[kind]
+        with pytest.raises(ValueError) as caught:
+            _exec_models(self._source(field, target, in_python), postponed=postponed)
+        name = field.partition(":")[0]
+        message = str(caught.value)
+        assert message.startswith(
+            f"Invalid threshold for field '{name}' of model 'Order': the field "
+            f"sets no threshold, so it uses LevenshteinComparator(threshold={in_python}). "
+        )
+        assert wrong in message
+        assert message.endswith("(Set at order_models.py:2.)")
+
+    def test_the_documented_example(self):
+        with pytest.raises(ValueError) as caught:
+            _exec_models(self._source("addr: Address", "Address", 85))
+        assert str(caught.value) == (
+            "Invalid threshold for field 'addr' of model 'Order': the field sets no "
+            "threshold, so it uses LevenshteinComparator(threshold=85). "
+            f"{RULE} 85 is above 1.0, so no pair would match. If 85 is a "
+            "percentage, write LevenshteinComparator(threshold=0.85), or set "
+            "ComparableField(threshold=0.85), which takes precedence. "
+            "(Set at order_models.py:2.)"
+        )
+
+    @pytest.mark.parametrize("shape", list(FIELDS))
+    def test_a_valid_one_loads_and_gates_once_resolved(self, shape):
+        field, target, postponed = self.FIELDS[shape]
+        source = self._source(field, target, 0.9) + "Order.model_rebuild()\n"
+        order = _exec_models(source, postponed=postponed)["Order"]
+        assert order._get_comparison_info(field.partition(":")[0]).threshold == 0.9
+
+    @pytest.mark.parametrize(
+        "field, postponed",
+        [
+            ('items: List["Later"]', False),
+            ('items: Optional[List["Later"]]', False),
+            ("items: List[Later]", True),
+            ("items: Optional[List[Later]]", True),
+            ("items: list[Later] | None", True),
+        ],
+    )
+    def test_a_list_does_not_adopt_so_is_not_checked(self, field, postponed):
+        """A list of models pairs on ``match_threshold``, as when resolved."""
+        _exec_models(self._source(field, "Later", 85), postponed=postponed)
+
+    @pytest.mark.parametrize(
+        "field, element",
+        [
+            ("items: List[LaterItem]", "LaterItem"),
+            ('items: List["LaterItem"]', "LaterItem"),
+            ("items: Optional[List[LaterItem]]", "LaterItem"),
+            ("items: list[LaterItem] | None", "LaterItem"),
+        ],
+    )
+    def test_a_field_threshold_on_a_list_points_at_match_threshold(self, field, element):
+        """A 0.85 moved onto the field would load and decide nothing.
+
+        The element may not be a model, so the usual fix is kept as the
+        alternative.
+        """
+        source = (
+            f"class Order(StructuredModel):\n    {field} = ComparableField(threshold=85)\n"
+            + _ADDRESS.format(name="LaterItem")
+        )
+        with pytest.raises(ValueError) as caught:
+            _exec_models(source)
+        assert str(caught.value) == (
+            "Invalid threshold for field 'items' of model 'Order': "
+            f"ComparableField(threshold=85) is out of range. {RULE} 85 is above "
+            f"1.0, so no pair would match. If {element} is a StructuredModel, "
+            f"this field takes no threshold: its items are paired on {element}'s "
+            "match_threshold, so if 85 is a percentage, set match_threshold = "
+            f"0.85 on {element} instead. Otherwise, if 85 is a percentage, use "
+            "0.85. (Set at order_models.py:2.)"
+        )
+
+    def test_with_no_likely_number(self):
+        source = "class Order(StructuredModel):\n    items: List[LaterItem] = ComparableField(threshold=-1)\n"
+        with pytest.raises(ValueError) as caught:
+            _exec_models(source)
+        assert (
+            "If LaterItem is a StructuredModel, this field takes no threshold: its "
+            "items are paired on LaterItem's match_threshold, so set "
+            "match_threshold on LaterItem instead. Otherwise, use a number from "
+            "0.0 to 1.0."
+        ) in str(caught.value)
 
 
 class TestTheMessageNamesTheModelAsTheAuthorDoes:

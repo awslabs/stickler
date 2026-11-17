@@ -240,6 +240,7 @@ def threshold_error(
     comparator: Optional[ComparatorSource] = None,
     nested: bool = False,
     list_element: Optional[str] = None,
+    list_unresolved: bool = False,
     defined_at: Optional[str] = None,
     set_at: Optional[str] = None,
 ) -> ValueError:
@@ -248,9 +249,11 @@ def threshold_error(
     ``comparator`` is given when the field states no threshold and adopts the
     comparator's. ``nested`` when the field is a nested model, whose comparator
     is never called. ``list_element`` (the element class, or ``""``) when the
-    field is a list of models, which pairs on ``match_threshold`` instead.
-    ``defined_at`` is the JSON pointer of a property reached through a
-    ``$ref``, and ``set_at`` the ``file:line`` of a ``ComparableField`` call.
+    field is a list of models, which pairs on ``match_threshold`` instead, and
+    ``list_unresolved`` when it is a list of a class not defined yet, which may
+    or may not be a model. ``defined_at`` is the JSON pointer of a property
+    reached through a ``$ref``, and ``set_at`` the ``file:line`` of a
+    ``ComparableField`` call.
     """
     found = _diagnose(value, spelling, pair="pair")
     shown = _render(value, spelling)
@@ -274,7 +277,9 @@ def threshold_error(
             parts.append(f"{shown} {found.verb}.")
     if found.detail:
         parts.append(found.detail)
-    if list_element is not None and comparator is None:
+    if list_element is not None and comparator is None and list_unresolved:
+        parts.append(_unresolved_list_fix(found, spelling, list_element or _ELEMENT))
+    elif list_element is not None and comparator is None:
         parts.append(_list_fix(found, spelling, list_element))
     elif comparator is not None and nested:
         parts.append(_nested_fix(found, spelling, comparator))
@@ -356,6 +361,8 @@ def match_threshold_error(
 
 _OUT_OF_RANGE = "is out of range"
 _BOOLEAN = "is a boolean, not a number"
+#: What a list-of-models fix calls an element class it cannot name.
+_ELEMENT = "the element class"
 
 
 @dataclass(frozen=True)
@@ -563,18 +570,38 @@ def _nested_fix(
     )
 
 
+#: The reasons whose suggestion is a number worth moving to ``match_threshold``.
+_LIST_REASONS = ("percent", "percent_text", "unquote")
+
+
+def _list_match_threshold(found: _Diagnosis, spelling: Spelling, element: str) -> str:
+    """``set match_threshold = 0.85 on Item instead.``, opened by why that number."""
+    if found.suggestion and found.reason in _LIST_REASONS:
+        where = spelling.list_fix.format(found.suggestion, element=element)
+        return f"{_prefix(found)}set {where} instead."
+    return f"set {spelling.list_key.format(element=element)} instead."
+
+
 def _list_fix(found: _Diagnosis, spelling: Spelling, element: str) -> str:
     """A list of models pairs on ``match_threshold``: point there."""
-    if found.suggestion and found.reason in (
-        "percent",
-        "percent_text",
-        "unquote",
-    ):
-        where = spelling.list_fix.format(found.suggestion, element=element)
-        fix = _sentence(f"{_prefix(found)}set {where} instead.")
-    else:
-        fix = f"Set {spelling.list_key.format(element=element)} instead."
+    fix = _sentence(_list_match_threshold(found, spelling, element))
     return f"{spelling.list_note} {fix}"
+
+
+def _unresolved_list_fix(found: _Diagnosis, spelling: Spelling, element: str) -> str:
+    """A list of a class not defined yet: point at ``match_threshold`` if a model.
+
+    The field takes no threshold if the class is a ``StructuredModel``, and then
+    a number moved onto the field would load and decide nothing. Otherwise the
+    usual fix applies.
+    """
+    pairing = _list_match_threshold(found, spelling, element)
+    otherwise = _own_fix(found, spelling).replace(" instead.", ".")
+    return (
+        f"If {element} is a StructuredModel, this field takes no threshold: its "
+        f"items are paired on {element}'s match_threshold, so "
+        f"{_lower_first(pairing)} Otherwise, {_lower_first(otherwise)}"
+    )
 
 
 def _of_model(model: Optional[str], spelling: Spelling) -> str:
@@ -585,6 +612,10 @@ def _of_model(model: Optional[str], spelling: Spelling) -> str:
 
 def _sentence(text: str) -> str:
     return text[:1].upper() + text[1:]
+
+
+def _lower_first(text: str) -> str:
+    return text[:1].lower() + text[1:]
 
 
 def _number_text(value: Any) -> Optional[str]:

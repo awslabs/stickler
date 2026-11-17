@@ -251,12 +251,121 @@ def _is_unresolved(annotation: Any) -> bool:
 
 
 def _list_element_name(annotation: Any) -> str:
-    """``Item`` for ``List[Item]``, ``Optional[List[Item]]`` or ``list[Item] | None``."""
+    """``Item`` for ``List[Item]``, ``Optional[List[Item]]`` or ``list[Item] | None``.
+
+    Also for one still unresolved: ``List["Item"]``, or the string
+    ``"Optional[List[Item]]"`` that ``from __future__ import annotations`` leaves.
+    """
+    if isinstance(annotation, ForwardRef):
+        annotation = annotation.__forward_arg__
+    if isinstance(annotation, str):
+        return _string_list_element(annotation) or "the element class"
+    annotation = unwrap_annotated(annotation)
     for arm in (annotation, *union_args(annotation)):
+        arm = unwrap_annotated(arm)
+        if isinstance(arm, (str, ForwardRef)):
+            name = _list_element_name(arm)
+            if name != "the element class":
+                return name
         if get_origin(arm) in (list, List) and get_args(arm):
             element, _ = unwrap_optional(unwrap_annotated(get_args(arm)[0]))
+            if isinstance(element, ForwardRef):
+                element = element.__forward_arg__
+            if isinstance(element, str):
+                return _bare_name(element) or "the element class"
             return getattr(element, "__name__", "the element class")
     return "the element class"
+
+
+def _is_visibly_list(annotation: Any) -> bool:
+    """Whether ``annotation`` is a list, judged before its forward references resolve.
+
+    ``List[...]`` or ``list[...]``, also inside ``Optional``, a union or
+    ``Annotated``, whether as objects (``List["Item"]``) or as the string
+    ``from __future__ import annotations`` leaves (``"Optional[List[Item]]"``).
+    A bare name such as ``"Items"`` is not visibly a list, even if it later
+    resolves to one.
+    """
+    if isinstance(annotation, ForwardRef):
+        annotation = annotation.__forward_arg__
+    if isinstance(annotation, str):
+        return _string_is_list(annotation)
+    annotation = unwrap_annotated(annotation)
+    if get_origin(annotation) in (list, List) or annotation in (list, List):
+        return True
+    return any(_is_visibly_list(arm) for arm in union_args(annotation))
+
+
+def _unquote(text: str) -> str:
+    text = text.strip()
+    while len(text) >= 2 and text[0] == text[-1] and text[0] in "'\"":
+        text = text[1:-1].strip()
+    return text
+
+
+def _split_top_level(text: str, separator: str) -> List[str]:
+    """``text`` split on ``separator`` outside brackets: ``"A[B, C], D"`` on ``,``."""
+    parts, depth, start = [], 0, 0
+    for i, char in enumerate(text):
+        if char == "[":
+            depth += 1
+        elif char == "]":
+            depth -= 1
+        elif char == separator and depth == 0:
+            parts.append(text[start:i])
+            start = i + 1
+    parts.append(text[start:])
+    return [part.strip() for part in parts]
+
+
+def _subscript(text: str) -> tuple:
+    """``("List", "Item")`` for ``"typing.List[Item]"``; ``(text, None)`` if bare."""
+    text = _unquote(text)
+    if not text.endswith("]") or "[" not in text:
+        return text.rsplit(".", 1)[-1], None
+    head, _, inner = text[:-1].partition("[")
+    return head.strip().rsplit(".", 1)[-1], inner
+
+
+def _string_list_arm(text: str) -> Optional[str]:
+    """The ``[...]`` of the list arm of a string annotation, or ``None`` if none."""
+    text = _unquote(text)
+    arms = _split_top_level(text, "|")
+    if len(arms) > 1:
+        return next(
+            (inner for inner in map(_string_list_arm, arms) if inner is not None),
+            None,
+        )
+    head, inner = _subscript(text)
+    if inner is None:
+        return None
+    if head in ("List", "list"):
+        return inner
+    if head in ("Optional", "Union"):
+        return _string_list_arm("|".join(_split_top_level(inner, ",")))
+    if head == "Annotated":
+        return _string_list_arm(_split_top_level(inner, ",")[0])
+    return None
+
+
+def _string_is_list(text: str) -> bool:
+    return _string_list_arm(text) is not None
+
+
+def _bare_name(text: str) -> Optional[str]:
+    """``Item`` for ``"Item"``, ``"'Item'"``, ``"models.Item"`` or ``"Optional[Item]"``."""
+    head, inner = _subscript(text)
+    if inner is not None:
+        if head not in ("Optional", "Annotated"):
+            return None
+        return _bare_name(_split_top_level(inner, ",")[0])
+    name = _unquote(text)
+    return name if name.replace(".", "").replace("_", "a").isalnum() else None
+
+
+def _string_list_element(text: str) -> Optional[str]:
+    inner = _string_list_arm(text)
+    return None if inner is None else _bare_name(inner)
 
 
 def _amend_clip_default(field_info: Any, extra: Any, clip: bool) -> None:
@@ -830,8 +939,16 @@ class StructuredModel(BaseModel):
         ``List[StructuredModel]`` field a comparator threshold is not consulted
         either, since Hungarian matching pairs on the element class's
         ``match_threshold``, so only the field's own is checked there, as the
-        importers do. An annotation still unresolved (a forward reference)
-        cannot say whether it is that shape, so it is treated the same way.
+        importers do.
+
+        An annotation still unresolved (a forward reference, such as ``addr:
+        Address`` under ``from __future__ import annotations`` with ``Address``
+        defined below) is checked now, as one that adopts its comparator's
+        threshold, unless it is visibly a list (``List["Item"]``,
+        ``"Optional[List[Item]]"``). Nothing checks it once it resolves, and
+        only a list of models does not adopt. A bare name that resolves to a
+        list alias is the one shape this reads wrong, and only for an invalid
+        threshold.
         """
         for field_name, field_info in cls.model_fields.items():
             if field_name == _EXTRA_FIELDS_KEY:
@@ -845,8 +962,9 @@ class StructuredModel(BaseModel):
                 continue
             annotation = field_info.annotation
             if not getattr(extra, "_threshold_explicit", True) and (
-                _is_unresolved(annotation)
-                or cls._is_list_of_structured_model_type(annotation)
+                _is_visibly_list(annotation)
+                if _is_unresolved(annotation)
+                else cls._is_list_of_structured_model_type(annotation)
             ):
                 continue
             raise cls._threshold_error(field_name, extra, threshold, annotation)
@@ -861,9 +979,12 @@ class StructuredModel(BaseModel):
             comparator = python_comparator_source(
                 getattr(extra, "_comparator_instance", None)
             )
+        unresolved = _is_unresolved(annotation)
         list_element = None
-        if not _is_unresolved(annotation) and cls._is_list_of_structured_model_type(
-            annotation
+        if (
+            _is_visibly_list(annotation)
+            if unresolved
+            else cls._is_list_of_structured_model_type(annotation)
         ):
             list_element = _list_element_name(annotation)
         return threshold_error(
@@ -873,9 +994,10 @@ class StructuredModel(BaseModel):
             model=cls.__name__,
             comparator=comparator,
             nested=comparator is not None
-            and not _is_unresolved(annotation)
+            and not unresolved
             and cls._is_structured_model_type(annotation),
             list_element=list_element,
+            list_unresolved=unresolved,
             set_at=getattr(extra, "_set_at", None),
         )
 
