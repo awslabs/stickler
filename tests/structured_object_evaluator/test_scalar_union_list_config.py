@@ -1,12 +1,28 @@
 """Scalar-union lists retain their element types through a Stickler config."""
 
 import json
+import re
+from datetime import date
+from decimal import Decimal
 from typing import Annotated, List, Optional, Union
 
 import pytest
 from pydantic import Field
 
 from stickler import ComparableField, ExactComparator, StructuredModel
+
+
+def _normalized(type_name):
+    """Sort each ``Union[...]``'s arms.
+
+    ``typing`` caches aliases, so ``List[Union[int, str]]`` can come back as
+    ``List[Union[str, int]]`` if that spelling was created first in the process.
+    """
+    return re.sub(
+        r"Union\[([^\[\]]+)\]",
+        lambda m: "Union[" + ", ".join(sorted(m.group(1).split(", "))) + "]",
+        type_name,
+    )
 
 
 @pytest.mark.parametrize(
@@ -73,7 +89,7 @@ def test_scalar_union_list_survives_two_config_round_trips(
     for _ in range(2):
         config = json.loads(json.dumps(current.to_stickler_config()))
         rebuilt = StructuredModel.model_from_json(config)
-        assert config["fields"]["values"]["type"] == type_name
+        assert _normalized(config["fields"]["values"]["type"]) == _normalized(type_name)
         actual = rebuilt(values=values).values
         assert actual == values
         assert [type(value) for value in actual] == [type(value) for value in values]
@@ -125,3 +141,20 @@ def test_scalar_union_list_preserves_defaults_and_comparison_settings(
         assert result["overall_score"] == 0.5
         assert result["confusion_matrix"]["overall"]["tp"] == 1
         assert result["confusion_matrix"]["overall"]["fd"] == 1
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        List[Union[int, Decimal]],
+        list[int | Decimal],
+        List[Optional[Union[int, date]]],
+    ],
+)
+def test_unsupported_union_arm_keeps_legacy_list_union(annotation):
+    """An arm the config cannot name must not be exported as another type."""
+
+    class Original(StructuredModel):
+        values: annotation = ComparableField(default=..., comparator=ExactComparator())
+
+    assert Original.to_stickler_config()["fields"]["values"]["type"] == "List[Union]"

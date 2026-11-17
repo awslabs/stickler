@@ -2435,7 +2435,14 @@ class StructuredModel(BaseModel):
                             if ConfigurationHelper.is_plain_model_annotation(
                                 element_type
                             )
-                            else element_type.__name__
+                            # `A | B` has no __name__; write `Union`, as the
+                            # legacy export does for `List[Union[A, B]]`.
+                            else getattr(element_type, "__name__", None)
+                            or (
+                                "Union"
+                                if union_args(element_type)
+                                else str(element_type)
+                            )
                         )
                         field_config["type"] = f"List[{element_name}]"
             else:
