@@ -85,8 +85,9 @@ class TestUniformTextLeavesAndTheirCost:
     @pytest.mark.parametrize(
         "a,b,expected,label",
         [
-            # a 22-character bank account number, one character wrong
-            ("DE89370400440532013000", "DE89370400440532013001", 0.9545, "account no."),
+            # a 22-character bank account number, one character wrong. Low entropy
+            # on purpose: a realistic IBAN trips the secret scanner.
+            ("DE00000000000000000000", "DE00000000000000000001", 0.9545, "account no."),
             ("2024-01-15", "2024-01-16", 0.9000, "date one day off"),
             ("1000000", "2000000", 0.8571, "amount 2x wrong"),
             ("1234.56", "1234.57", 0.8571, "amount one cent off"),
@@ -107,7 +108,7 @@ class TestUniformTextLeavesAndTheirCost:
         """
         c = ANLSStarComparator()
         wrong_account_number = c.compare(
-            {"v": "DE89370400440532013000"}, {"v": "DE89370400440532013001"}
+            {"v": "DE00000000000000000000"}, {"v": "DE00000000000000000001"}
         )
         genuine_near_miss = c.compare(
             {"v": "Acme Corporation"}, {"v": "Acme Corp"}
@@ -119,7 +120,7 @@ class TestUniformTextLeavesAndTheirCost:
         for tau in (0.5, 0.85, 0.95):
             c = ANLSStarComparator(leaf_threshold=tau)
             account_number = c.compare(
-                {"v": "DE89370400440532013000"}, {"v": "DE89370400440532013001"}
+                {"v": "DE00000000000000000000"}, {"v": "DE00000000000000000001"}
             )
             text = c.compare({"v": "Acme Corporation"}, {"v": "Acme Corp"})
             if account_number == 0.0:
@@ -208,7 +209,7 @@ class TestValuesWithNoJsonForm:
             datetime.time(12, 30),
             Decimal("10.50"),
             uuid.UUID(int=1),
-            pathlib.Path("/tmp/x"),
+            pathlib.Path("data/x.json"),
             b"bytes",
             {1, 2},
         ],

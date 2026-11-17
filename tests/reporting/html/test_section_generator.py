@@ -2,7 +2,10 @@
 Tests for SectionGenerator class.
 """
 
+from pathlib import Path
 from unittest.mock import Mock, patch
+
+import numpy as np
 
 from stickler.reporting.html.report_config import ReportConfig
 from stickler.reporting.html.section_generator import SectionGenerator
@@ -65,7 +68,70 @@ class TestSectionGenerator:
         result = self.section_generator.generate_executive_summary(config)
         
         assert '<div class="metric-value">1</div>' in result  # Default value
-    
+
+    def test_executive_summary_colours_metric_cards_by_threshold(self):
+        """Each float metric card follows config.color_thresholds (#467)."""
+        from stickler.reporting.html.utils import ColorUtils
+
+        results = {'overall': {'cm_f1': 0.2, 'cm_precision': 0.95}}
+        generator = SectionGenerator(results, self.mock_viz_engine)
+        config = ReportConfig()
+
+        result = generator.generate_executive_summary(config)
+
+        poor = ColorUtils.get_performance_color(0.2, config.color_thresholds)
+        excellent = ColorUtils.get_performance_color(0.95, config.color_thresholds)
+        assert poor != excellent
+        assert f'style="color: {poor};">0.200' in result
+        assert f'style="color: {excellent};">0.950' in result
+
+    def test_executive_summary_colours_integer_metric_cards_by_threshold(self):
+        """Exact integer scores are metric values too, not uncoloured labels."""
+        from stickler.reporting.html.utils import ColorUtils
+
+        results = {'overall': {'cm_f1': 1, 'cm_recall': 0}}
+        generator = SectionGenerator(results, self.mock_viz_engine)
+        config = ReportConfig()
+
+        result = generator.generate_executive_summary(config)
+
+        excellent = ColorUtils.get_performance_color(1, config.color_thresholds)
+        poor = ColorUtils.get_performance_color(0, config.color_thresholds)
+        assert f'style="color: {excellent};">1.000' in result
+        assert f'style="color: {poor};">0.000' in result
+
+    def test_executive_summary_reads_document_count_from_dict(self):
+        """A results dict's document_count key is shown, not a default (#467)."""
+        results = {'overall': {}, 'document_count': 7}
+        generator = SectionGenerator(results, self.mock_viz_engine)
+
+        result = generator.generate_executive_summary(ReportConfig())
+
+        assert '<div class="metric-value">7</div>' in result
+
+    def test_executive_summary_never_renders_none_document_count(self):
+        """A ProcessEvaluation without document_count shows 1, not None (#467)."""
+        generator = SectionGenerator(ProcessEvaluation(metrics={}), self.mock_viz_engine)
+
+        result = generator.generate_executive_summary(ReportConfig())
+
+        assert '<div class="metric-value">1</div>' in result
+        assert 'None' not in result
+
+    def test_executive_summary_escapes_the_document_count(self):
+        """A document_count assigned after construction is not validated, so it is escaped."""
+        results = ProcessEvaluation(document_count=3, metrics={})
+        results.document_count = '<img src=x onerror=alert(1)>'
+        generator = SectionGenerator(results, self.mock_viz_engine)
+
+        result = generator.generate_executive_summary(ReportConfig())
+
+        assert '<img src=x onerror=alert(1)>' not in result
+        assert (
+            '<div class="metric-value">&lt;img src=x onerror=alert(1)&gt;</div>'
+            in result
+        )
+
     @patch('stickler.reporting.html.utils.data_extractors.DataExtractor.extract_field_metrics')
     def test_generate_field_analysis(self, mock_extract_field_metrics):
         """Test field analysis generation."""
@@ -263,20 +329,29 @@ class TestSectionGenerator:
 
     @patch('stickler.reporting.html.utils.data_extractors.DataExtractor.extract_non_matches')
     def test_generate_non_matches_truncation_never_splits_an_entity(self, mock_extract_non_matches):
-        """Truncate first, then escape, so the cut cannot land inside ``&amp;``."""
+        """Truncate first, then escape, so the cut cannot land inside ``&amp;``.
+
+        The fixture is 98 raw characters because ``section_generator`` truncates
+        at 100: under the limit raw, over it once ``&`` becomes ``&amp;``. That
+        is the only reason this test can tell the two orders apart. Raise the
+        truncation limit without raising the fixture and escape-then-truncate
+        also fits inside it, so the test keeps passing on the wrong order
+        instead of failing -- measured at ``[:200]``.
+        """
         mock_extract_non_matches.return_value = [
             {
                 'doc_id': 'doc1',
                 'field_path': 'description',
                 'non_match_type': 'MISMATCH',
                 'ground_truth_value': "x" * 97 + "&",
-                'prediction_value': 'short'
+                'prediction_value': "y" * 97 + "&"
             }
         ]
 
         result = self.section_generator.generate_non_matches(ReportConfig())
 
         assert "x" * 97 + "&amp;" in result
+        assert "y" * 97 + "&amp;" in result
         assert "&am<" not in result
 
     def test_generate_document_gallery_image_mode(self):
@@ -329,6 +404,81 @@ class TestSectionGenerator:
         # Should not contain any image items
         assert '<div class="image-item">' not in result
 
+    def test_generate_document_gallery_image_mode_coerces_int_key(self):
+        """Image gallery accepts an integer document_files key (issue #454)."""
+        document_images = {1001: 'images/scan.png'}
+        config = ReportConfig(document_file_type='image')
+
+        result = SectionGenerator.generate_document_gallery(document_images, config)
+
+        assert '<img src="images/scan.png" alt="1001">' in result
+        assert '<p><strong>1001</strong></p>' in result
+
+    def test_generate_document_gallery_image_mode_coerces_int_path(self):
+        """Image gallery accepts a non-str document_files path (issue #454)."""
+        document_images = {'doc-1': 1001}
+        config = ReportConfig(document_file_type='image')
+
+        result = SectionGenerator.generate_document_gallery(document_images, config)
+
+        assert '<img src="1001" alt="doc-1">' in result
+        assert '<p><strong>doc-1</strong></p>' in result
+
+    def test_generate_document_gallery_pdf_mode_coerces_int_key(self):
+        """PDF gallery accepts an integer document_files key (issue #454)."""
+        document_pdfs = {1001: 'pdfs/scan.pdf'}
+        config = ReportConfig(document_file_type='pdf')
+
+        result = SectionGenerator.generate_document_gallery(document_pdfs, config)
+
+        assert 'data-doc-id="1001"' in result
+        assert 'data-pdf-path="pdfs/scan.pdf"' in result
+        assert 'id="pdf-canvas-1001"' in result
+        assert '<p><strong>1001</strong></p>' in result
+
+    def test_generate_document_gallery_pdf_mode_coerces_int_path(self):
+        """PDF gallery accepts a non-str document_files path (issue #454)."""
+        document_pdfs = {'doc-1': 1001}
+        config = ReportConfig(document_file_type='pdf')
+
+        result = SectionGenerator.generate_document_gallery(document_pdfs, config)
+
+        assert 'data-doc-id="doc-1"' in result
+        assert 'data-pdf-path="1001"' in result
+        assert '<p><strong>doc-1</strong></p>' in result
+
+    def test_document_gallery_coerces_numpy_key_and_path_in_both_modes(self):
+        """The gallery accepts the DataFrame-shaped key and Path value from #454."""
+        document_files = {np.int64(1001): Path('assets/scan.png')}
+
+        image_result = SectionGenerator.generate_document_gallery(
+            document_files, ReportConfig(document_file_type='image')
+        )
+        pdf_result = SectionGenerator.generate_document_gallery(
+            document_files, ReportConfig(document_file_type='pdf')
+        )
+
+        assert '<img src="assets/scan.png" alt="1001">' in image_result
+        assert 'data-doc-id="1001"' in pdf_result
+        assert 'data-pdf-path="assets/scan.png"' in pdf_result
+
+    def test_document_gallery_preserves_entries_with_colliding_string_keys(self):
+        """Conversion preserves both ordered input entries when their keys collide."""
+        document_files = {1001: 'images/first.png', '1001': 'images/second.png'}
+
+        image_result = SectionGenerator.generate_document_gallery(
+            document_files, ReportConfig(document_file_type='image')
+        )
+        pdf_result = SectionGenerator.generate_document_gallery(
+            document_files, ReportConfig(document_file_type='pdf')
+        )
+
+        assert image_result.count('<div class="image-item">') == 2
+        assert image_result.index('images/first.png') < image_result.index('images/second.png')
+        assert image_result.count('alt="1001"') == 2
+        assert pdf_result.count('data-doc-id="1001"') == 2
+        assert pdf_result.index('images/first.png') < pdf_result.index('images/second.png')
+
 
 class TestSectionGeneratorIntegration:
     """Integration tests for SectionGenerator with real data structures."""
@@ -379,3 +529,62 @@ class TestSectionGeneratorIntegration:
         assert 'price' in field_analysis
         assert 'TP' in confusion_matrix
         assert 'category' in non_matches
+
+
+class TestNonStrDocId:
+    """A non-`str` doc_id must not take the whole report down.
+
+    `BulkStructuredModelEvaluator.update` annotates `doc_id` as `Optional[str]`, but
+    Python does not enforce that at runtime and `evaluate_dataframe` reads the value
+    straight off a DataFrame column (`doc_id = row.get("doc_id", ...)`). An integer
+    id — the ordinary case for one read from CSV, parquet or a database — used to
+    reach `html.escape` unconverted and raise, so `generate_report` returned
+    `success=False` and wrote no page at all.
+    """
+
+    def test_non_matches_table_renders_a_non_str_doc_id(self):
+        viz = Mock(spec=VisualizationEngine)
+        results = Mock(spec=ProcessEvaluation)
+        results.non_matches = [
+            {
+                "doc_id": 1001,
+                "field_path": 7,
+                "non_match_type": "NonMatchType.FALSE_DISCOVERY",
+                "ground_truth_value": "Acme",
+                "prediction_value": "Globex",
+            }
+        ]
+        html_out = SectionGenerator(results, viz).generate_non_matches(ReportConfig())
+        assert "1001" in html_out
+        assert ">7<" in html_out
+
+    def test_a_dataframe_with_an_integer_doc_id_still_produces_a_report(self, tmp_path):
+        import json
+
+        import pandas as pd
+
+        from stickler import StructuredModel
+        from stickler.reporting.html.html_reporter import EvaluationHTMLReporter
+        from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
+            BulkStructuredModelEvaluator,
+        )
+
+        class Invoice(StructuredModel):
+            vendor: str
+
+        df = pd.DataFrame(
+            [
+                {
+                    "doc_id": 1001,
+                    "expected": json.dumps({"vendor": "Acme"}),
+                    "predicted": json.dumps({"vendor": "Globex"}),
+                }
+            ]
+        )
+        results = BulkStructuredModelEvaluator(Invoice).evaluate_dataframe(df)
+        assert {type(nm.get("doc_id")) for nm in results.non_matches} == {int}
+
+        out = tmp_path / "report.html"
+        report = EvaluationHTMLReporter().generate_report(results, str(out))
+        assert report.success, report.errors
+        assert out.exists()

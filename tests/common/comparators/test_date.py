@@ -1116,6 +1116,48 @@ class TestMixedTimezoneRangesDoNotCrash:
         assert isinstance(result, float)
 
 
+class TestAwareDateMatchesSameDayInRanges:
+    """A naive date borrows the aware side's tzinfo in range paths too."""
+
+    AWARE = "2024-01-01T23:00-05:00"  # 2024-01-02 04:00 UTC
+
+    def test_single_vs_single_reference(self):
+        cmp = DateComparator()
+        assert cmp.compare(self.AWARE, "2024-01-01") == 1.0
+        assert cmp.compare(self.AWARE, "2024-01-02") == 0.0
+
+    def test_range_vs_range(self):
+        cmp = DateComparator()
+        aware_range = f"{self.AWARE} to 2024-01-05"
+        assert cmp.compare(aware_range, "2024-01-01 to 2024-01-05") == 1.0
+        assert cmp.compare(aware_range, "2024-01-02 to 2024-01-05") == 0.8
+
+    def test_single_in_range_contains(self):
+        cmp = DateComparator(range_mode="contains")
+        assert cmp.compare(self.AWARE, "2023-12-31 to 2024-01-01") == 1.0
+        assert cmp.compare(self.AWARE, "2024-01-02 to 2024-01-03") == 0.0
+
+    def test_swapped_argument_order(self):
+        cmp = DateComparator()
+        aware_range = f"{self.AWARE} to 2024-01-05"
+        assert cmp.compare("2024-01-01 to 2024-01-05", aware_range) == 1.0
+        assert cmp.compare("2024-01-02 to 2024-01-05", aware_range) == 0.8
+        contains = DateComparator(range_mode="contains")
+        assert contains.compare("2023-12-31 to 2024-01-01", self.AWARE) == 1.0
+        assert contains.compare("2024-01-02 to 2024-01-03", self.AWARE) == 0.0
+
+    def test_aware_end_naive_start(self):
+        cmp = DateComparator(range_mode="contains")
+        rng = f"2023-12-30 to {self.AWARE}"
+        assert cmp.compare("2024-01-01", rng) == 1.0
+        assert cmp.compare("2024-01-02", rng) == 0.0
+        assert cmp.compare(rng, "2024-01-01") == 1.0
+        assert cmp.compare(rng, "2024-01-02") == 0.0
+        graded = DateComparator()
+        assert graded.compare(rng, "2023-12-30 to 2024-01-01") == 1.0
+        assert graded.compare("2023-12-30 to 2024-01-01", rng) == 1.0
+
+
 # ---------------------------------------------------------------------------
 # Constructor / config defaults
 # ---------------------------------------------------------------------------

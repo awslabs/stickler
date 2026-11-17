@@ -53,7 +53,8 @@ def _run_readme_example(heading: str):
 
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
-        exec(code, namespace)
+        # Runs this repo's own README code blocks; no external input.
+        exec(code, namespace)  # nosec B102
     prints = [line for line in code.splitlines() if line.startswith("print(")]
     outputs = out.getvalue().splitlines()
     assert len(prints) == len(outputs)

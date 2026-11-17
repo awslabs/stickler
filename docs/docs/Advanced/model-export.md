@@ -21,7 +21,9 @@ not coerce values. A list of lists exports as nested arrays; `to_stickler_config
 `List[List]`, without the inner element type. A plain model inside a nested list comes back as a
 `dict`, which can score slightly differently there. `to_stickler_config()` has no type for a union
 with a model arm (`Union[Card, Bank]`, `Union[Plain, str]`) or for a `StructuredModel` inside a
-nested list (`List[List[Card]]`), so both methods raise for these, to keep one rule
+nested list (`List[List[Card]]`). Both methods still write these as 1.0.0 did, typed as a string,
+which does not re-import as the original field, and emit a `UserWarning` naming the field. From
+1.1.0 both raise `ValueError` for them
 ([#349](https://github.com/awslabs/stickler/issues/349)).
 
 A `Dict` field exports as `{"type": "object"}`, with `additionalProperties` for a primitive value
@@ -223,6 +225,24 @@ schema = Order.to_json_schema()
 # Stickler config includes LineItem fields under items.fields
 config = Order.to_stickler_config()
 ```
+
+A list of mappings (`List[Dict[str, str]]`, `List[Mapping[...]]`) exports free-form object items:
+`items: {"type": "object"}` from `to_json_schema()`, `List[Dict]` from `to_stickler_config()`. An
+optional element exports as `["object", "null"]` and `List[Optional[Dict]]`. They re-import as
+`List[dict]` and `List[Dict]` respectively (`List[Optional[dict]]` and `List[Optional[Dict]]` for an
+optional element) with the comparator, threshold, weight and clip the field resolves, declared or
+default, so it scores as the original did. The value type is not exported, so the re-imported
+field does not coerce its values.
+
+A model built with `from_pydantic()` exports the same way, with two differences. Its element accepts
+any value, so a malformed prediction is scored rather than rejected; `to_stickler_config()` keeps
+that by writing `List[Any]`, but the `to_json_schema()` re-import validates each element as a dict,
+so a prediction element that is not a mapping raises instead of scoring `0.0`. An `Optional` written
+inside `Annotated` (`List[Annotated[Optional[Dict], ...]]`) loses its `null`; write
+`Optional[Annotated[...]]` instead.
+
+A mapping field that is not in a list, and a list whose element is a union such as
+`List[Union[Dict, str]]`, still export as a string ([#349](https://github.com/awslabs/stickler/issues/349)).
 
 ## Round-Trip Examples
 
