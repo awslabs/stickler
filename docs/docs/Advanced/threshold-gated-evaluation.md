@@ -133,10 +133,11 @@ result = gt.compare_with(pred, include_confusion_matrix=True, document_non_match
 - Similarity: `0.1333`
 - Classification: **FD**, with no nested analysis
 
-Hungarian matching pairs every item when both lists have the same length, so
-these two are paired even though they share almost nothing. An item is left
-unmatched only when one list is longer once `None` elements are removed: without `New Product` in Pred, `Cable`
-would be an **FN**, and without `Cable` in GT, `New Product` would be an **FA**.
+Once `None` elements are removed, Hungarian matching pairs every item when both
+lists have the same length, so these two are paired even though they share
+almost nothing. An item is left unmatched only when one list is longer: without
+`New Product` in Pred, `Cable` would be an **FN**, and without `Cable` in GT,
+`New Product` would be an **FA**.
 Neither is broken down into fields.
 
 ## Result Structure

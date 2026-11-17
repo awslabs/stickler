@@ -402,7 +402,7 @@ no item is left over. **FN and FA are impossible for an equal-length list** with
 no `None` elements, which are removed before pairing --
 `SKU-C` does not go missing, it gets paired with the only prediction left, scores
 `0.083`, and lands below `match_threshold` as a false discovery. Unmatched items
-appear only when the two lists differ in length.
+appear only when the two lists differ in length once `None` elements are removed.
 
 Within each matched pair that *meets* the threshold, the fields (sku, description)
 are evaluated and contribute to the aggregate counts. A below-threshold pair is
