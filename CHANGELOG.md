@@ -19,11 +19,13 @@ Each release links to full notes on the
   `document_non_matches` is not set. Until 1.1.0 these keep their 1.0.1
   behaviour, and their warnings now name 1.1.0.
 
-- **Breaking:** a sub-field of a `List[StructuredModel]` element that is
-  neither a nested model nor list-annotated, such as `Any`, `Union[A, B]`,
-  `Dict` or `str`, is now classified through the same dispatcher as at top
-  level. Its counts called the field's comparator directly, skipping the
-  dispatcher's guards. Scores do not change. Counts do, to match top level:
+### Fixed
+
+- A sub-field of a `List[StructuredModel]` element that is neither a nested
+  model nor list-annotated, such as `Any`, `Union[A, B]`, `Dict` or `str`, is
+  now classified through the same dispatcher as at top level. Its counts
+  called the field's comparator directly, skipping the dispatcher's guards.
+  Scores do not change. Counts do, to match top level:
   - a dict its comparator cannot score (in an `Any` or `Union[A, B]`
     sub-field, or a `Dict` one with an explicit `LevenshteinComparator`)
     raised `TypeError` out of `compare_with()`. It now warns and counts an FD;
@@ -73,8 +75,6 @@ Each release links to full notes on the
     docs say: `None` vs `[]` is a TN and `"x"` vs `[]` an FN, where top level
     and `non_matches` give an FA and an FD
     ([#400](https://github.com/awslabs/stickler/issues/400))
-
-### Fixed
 
 - Corrected introductory example scores, the default text comparator description,
   and the sample amount in the documentation and README
