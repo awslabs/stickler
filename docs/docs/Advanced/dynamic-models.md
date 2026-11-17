@@ -145,10 +145,15 @@ combiner, an alias, a mapping) generates no class, so it accepts neither set. Fo
 ```
 
 A definition that no `$ref` reaches builds nothing, so its own keys are not checked. Its
-properties and other nested schemas still are, and so is whatever its `$ref`s point to.
+properties and other nested schemas still are, and so is whatever its `$ref`s point to. A
+`$ref` to one node of an entry, such as `#/$defs/Wrap/properties/inner`, builds only that
+node, and the rest of the entry builds nothing in the same way.
 
 Object-level keys also raise at three positions where no class reads them. Beside a `$ref`
-(except at the root), the class is built from the target, so they go on the target. An
+(except at the root), the class is built from the target, so they go on the target. On a node
+that is itself a `$ref` target, this is checked only on a property or `items` node of a
+`$defs` entry; elsewhere, such as under `not` in an entry or at `#/components/R`, the keys
+beside its `$ref` are dropped. An
 `allOf` arm (inline or `$ref`) is merged into one class that nothing configures, and a root
 `$ref` builds the root class, which reads the keys beside that `$ref`; these two raise only
 if no other position builds the same object (a `$ref` under `not`, `additionalProperties`

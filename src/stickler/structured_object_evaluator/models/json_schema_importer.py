@@ -1040,11 +1040,13 @@ class JsonSchemaImporter:
         `x-*` key inside a definition, or outside `$defs` (`#/components/...`).
         Only a whole definition entry is checked as a definition. Any other
         target has its own keys, model keys beside its `$ref` included, checked
-        only where the walk around it checks them (a property, `items`, a
-        combiner arm). Anywhere else, for example under `not`, `if`,
-        `contains` or an `x-*` key, only its contents are checked. A field key
-        on a property node is valid there, but only the object holding the
-        node reads it: another property that `$ref`s the node does not.
+        only where the walk around it checks them (a property or `items` node
+        of a definition entry). Anywhere else, for example under `not`, `if`,
+        `contains` or an `x-*` key, or outside `$defs`, only its contents are
+        checked. A field key on a property node is valid there, but only the
+        object holding the node reads it: another property that `$ref`s the
+        node does not. The rest of the entry around a target builds nothing,
+        as an unused entry does.
         """
         # Nodes whose model keys some class reads, by identity: every position
         # except an `allOf` arm and the root's own `$ref` target. Over-counting

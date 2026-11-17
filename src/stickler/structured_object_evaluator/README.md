@@ -234,7 +234,7 @@ result = gt.compare_with(pred)
 - `x-aws-stickler-weight`: field importance weight (default: 1.0)
 - `x-aws-stickler-clip-under-threshold`: clip scores below threshold to 0.0 (boolean, default: true)
 
-**Object-level extensions**, valid on the root schema or on any object-typed property:
+**Object-level extensions**, valid on the root schema or on any object-typed property that builds its own class (see below):
 
 - `x-aws-stickler-model-name`: the generated class name (default: `DynamicModel`)
 - `x-aws-stickler-match-threshold`: the score at which two objects count as the same object (default: 0.7)
@@ -254,9 +254,13 @@ the `$ref` is (and the `allOf`, for an object typed `"object"` or untyped). For
 weight for an array of objects.
 Object-level keys beside a non-root `$ref` are not read (they go on the target),
 nor on an `allOf` arm or an object reached only through `allOf` or a root
-`$ref`, so they raise there. The same holds inside any `$ref` target that a
-position building a class references, wherever it sits (`#/components/...`, or
-under `not`, `then`, `additionalProperties` or an `x-*` key in a `$defs` entry).
+`$ref`, so they raise there. On a node that is itself a `$ref` target, the keys
+beside its `$ref` are checked only on a property or `items` node of a `$defs`
+entry, and dropped elsewhere (under `not`, or at `#/components/R`). The same
+holds inside any `$ref` target that a position building a class references,
+wherever it sits (`#/components/...`, or under `not`, `then`,
+`additionalProperties` or an `x-*` key in a `$defs` entry). A `$ref` to one
+node of an entry builds only that node, not the rest of the entry.
 
 Comparator names accepted by `x-aws-stickler-comparator` are the registered class names:
 `LevenshteinComparator`, `ExactComparator`, `NormalizedComparator`, `PhoneComparator`,
