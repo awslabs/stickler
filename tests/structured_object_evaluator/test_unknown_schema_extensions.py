@@ -1246,6 +1246,37 @@ class TestModelKeysWhereNoClassIsBuiltFromThem:
         assert (w.__name__, w.match_threshold) == ("Row", 0.7)
         assert _warned(warned, "'x-aws-stickler-match-threshold'", error)
 
+    def test_inside_an_x_payload_an_object_typed_property_warns(self):
+        """`#/x-models/T` is walked once a `$ref` reaches it, as a
+        `#/components/...` target is. Dev builds `w` as `Row` at 0.7."""
+        model, warned = _import_warning(
+            {
+                "type": "object",
+                "properties": {"t": {"$ref": "#/x-models/T"}},
+                "$defs": {"Row": _PLAIN},
+                "x-models": {
+                    "T": {
+                        "type": "object",
+                        "properties": {
+                            "w": {
+                                "type": "object",
+                                "$ref": "#/$defs/Row",
+                                "x-aws-stickler-match-threshold": 0.93,
+                            }
+                        },
+                    }
+                },
+            }
+        )
+        t = _unwrap(model.model_fields["t"].annotation)
+        w = _unwrap(t.model_fields["w"].annotation)
+        assert (w.__name__, w.match_threshold) == ("Row", 0.7)
+        assert _warned(
+            warned,
+            "'x-aws-stickler-match-threshold' beside the '$ref' at 'x-models.T.w'",
+            "the class is built from definition '$defs.Row'",
+        )
+
     @pytest.mark.parametrize(
         "inner", [inner for inner, _ in _INSIDE], ids=("allOf", "items", "typed")
     )
