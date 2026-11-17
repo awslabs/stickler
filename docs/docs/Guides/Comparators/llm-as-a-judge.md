@@ -148,8 +148,9 @@ The `LLMComparator` sends both values to a Large Language Model and asks it to d
 
 1. A prompt is constructed with both values and optional evaluation guidelines using a Jinja2 template.
 2. The prompt is sent to an LLM via the `strands-agents` library and AWS Bedrock.
-3. The LLM responds with `"true"` or `"false"`.
-4. The response is mapped to 1.0 (equivalent) or 0.0 (not equivalent).
+3. The LLM is asked to reply with one word, `true` or `false`.
+4. The reply is normalized: surrounding whitespace, quotes, backticks and markdown emphasis (`*`, `_`) and any trailing `.` `,` `;` `:` `!` `?` are stripped, and case is ignored. Exactly `true` scores 1.0 and exactly `false` scores 0.0, so `**True**.` and `"false"` are read as verdicts.
+5. Any other reply, such as `untrue`, `Not true` or `True, they are equivalent.`, scores 0.0 and emits a `UserWarning` showing the start of the reply. It does not raise, so one verbose reply does not stop a bulk run.
 
 ### Setup
 
@@ -184,6 +185,8 @@ comparator = LLMComparator(
     )
 )
 ```
+
+Guidelines should only shape the judgment, not the reply format: the model must still answer with one word, and a reply that adds reasoning scores 0.0 with a warning (see step 5 above).
 
 ### Example
 
@@ -234,7 +237,8 @@ comparator = LLMComparator(
 
 details = comparator.get_comparison_details("St. John's Street", "Saint John's St")
 print(details["prompt"])              # The formatted prompt sent to the LLM
-print(details["llm_response"])        # Raw LLM response ("true" or "false")
+print(details["llm_response"])        # Raw reply from one LLM call, not normalized
+                                      # (the score below comes from a separate call)
 print(details["comparison_result"])   # Final score (1.0 or 0.0)
 ```
 
