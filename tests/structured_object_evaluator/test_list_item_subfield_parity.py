@@ -104,6 +104,9 @@ def _value_node(result):
         pytest.param(["a", "b"], ["b", "a"], _expect(tp=2), id="reordered-list"),
         pytest.param(["a", "b"], [], _expect(fn=2), id="list-vs-empty"),
         pytest.param([], ["a", "b"], _expect(fa=2), id="empty-vs-list"),
+        # One list is absent, so this is one value against `None`, as at top
+        # level. `non_matches` reports one FN per element.
+        pytest.param(["a", "b"], None, _expect(fn=1), id="list-vs-none"),
         pytest.param("  ", "x", _expect(fd=1), id="whitespace"),
         pytest.param("  ", None, _expect(fn=1), id="whitespace-vs-none"),
         pytest.param((), None, _expect(fn=1), id="empty-tuple-vs-none"),
