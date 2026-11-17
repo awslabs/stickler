@@ -5,6 +5,7 @@ with comparison configuration and evaluation capabilities.
 """
 
 import ast
+import sys
 import warnings
 from typing import (
     Annotated,
@@ -428,12 +429,35 @@ def _element_match_threshold(annotation: Any) -> Optional[float]:
     return None
 
 
-def _class_statement_namespace() -> tuple:
-    """``(globals, locals)`` of the ``class`` statement being run, or two empty dicts."""
+def _own_annotations(cls: type) -> Dict[str, Any]:
+    """The annotations ``cls`` declares itself, not those it inherits."""
+    if sys.version_info >= (3, 14):
+        import annotationlib
+
+        return annotationlib.get_annotations(
+            cls, format=annotationlib.Format.FORWARDREF
+        )
+    return cls.__dict__.get("__annotations__", {})
+
+
+def _class_namespace(cls: type) -> tuple:
+    """``(globals, locals)`` in which pydantic evaluates ``cls``'s own annotations.
+
+    As pydantic's ``NsResolver`` builds them: the class body first, then the
+    namespace the ``class`` statement ran in (a function's locals, say), then
+    the module's globals.
+    """
     frame = outside_frame()
     if frame is None:
-        return {}, {}
-    return frame.f_globals, dict(frame.f_locals)
+        module = sys.modules.get(cls.__module__)
+        global_ns, local_ns = (vars(module) if module else {}), {}
+    else:
+        global_ns, local_ns = frame.f_globals, dict(frame.f_locals)
+    for param in getattr(cls, "__type_params__", ()):
+        local_ns[param.__name__] = param
+    local_ns.update(vars(cls))
+    local_ns[cls.__name__] = cls
+    return global_ns, local_ns
 
 
 def _string_annotated_extra(annotation: Any, namespace: tuple) -> Any:
@@ -443,11 +467,11 @@ def _string_annotated_extra(annotation: Any, namespace: tuple) -> Any:
     ``from __future__ import annotations``, with ``Address`` defined below, is
     one forward reference to pydantic, so the ``ComparableField`` is built only
     by ``model_rebuild()``, and nothing checks it then. Only its metadata is
-    evaluated here, in the namespace of the ``class`` statement, as pydantic
-    will evaluate it: the type is left alone, so a name not defined yet is
-    never looked up. Returns the ``json_schema_extra`` of the last
-    ``ComparableField`` there, as pydantic merges them, or ``None`` when the
-    annotation is not ``Annotated`` or its metadata cannot be evaluated yet.
+    evaluated here, in ``namespace`` (see `_class_namespace`): the type is
+    left alone, so a name not defined yet is never looked up. Returns the
+    ``json_schema_extra`` of the last ``ComparableField`` there, as pydantic
+    merges them, or ``None`` when the annotation is not ``Annotated`` or its
+    metadata cannot be evaluated yet.
     """
     text = annotation.__forward_arg__ if isinstance(annotation, ForwardRef) else annotation
     try:
@@ -1098,9 +1122,13 @@ class StructuredModel(BaseModel):
 
         An ``Annotated`` annotation pydantic could not resolve reaches it as one
         string, so its ``ComparableField`` does not exist yet; see
-        `_string_annotated_extra`. Its "Set at" is the ``class`` line.
+        `_string_annotated_extra`. Its metadata is evaluated as pydantic
+        evaluates the class's own annotations: the class body, then the
+        ``class`` statement's namespace and module. Only the class that declares
+        the field evaluates it; a subclass does not again. Its "Set at" is the
+        ``class`` line.
         """
-        namespace = None
+        namespace = own = None
         for field_name, field_info in cls.model_fields.items():
             if field_name == _EXTRA_FIELDS_KEY:
                 continue
@@ -1108,8 +1136,14 @@ class StructuredModel(BaseModel):
             annotation = field_info.annotation
             set_at = None
             if not callable(extra) and isinstance(annotation, (str, ForwardRef)):
+                if own is None:
+                    own = _own_annotations(cls)
+                if field_name not in own:
+                    # Inherited: the class that declares it was checked when
+                    # it was defined, in its own namespace.
+                    continue
                 if namespace is None:
-                    namespace = _class_statement_namespace()
+                    namespace = _class_namespace(cls)
                 extra = _string_annotated_extra(annotation, namespace)
                 set_at = outside_location()
             metadata = getattr(extra, "_comparison_metadata", None)
