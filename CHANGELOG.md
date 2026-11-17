@@ -99,7 +99,11 @@ Each release links to full notes on the
   checked and a dereferenced schema, which keeps the originals beside their
   inlined copies, imports as before. Its contents are checked as before, and so
   are the contents of its `$ref` targets, so a typo in one of its properties, or
-  inside an `x-*` node that only it references, still raises. Every key that
+  inside an `x-*` node that only it references, still raises. Only a `$defs` or
+  `definitions` keyword of the root, or of a node reached from it through schema
+  keywords, holds entries. One under `#/components/...`, inside an `x-*` payload
+  or a data value, or a property named so, holds none, so a `$ref` into it
+  checks no definition, as before. Every key that
   now raises was dropped in silence
   (`x-aws-stickler-threshold: 0.88` in `$defs` gave `0.7`). `to_json_schema()`
   never writes `$defs`, so its exports are unaffected. Closes the known gap
@@ -147,9 +151,10 @@ Each release links to full notes on the
   there no longer raises. Where a `$ref` from the schema or from a definition,
   used or not, points into an `x-*` payload, the node it points at is walked
   for its contents, and a property or `items` node's own keys are checked too
-  (the payload's other members are not). A `$defs` entry inside one is still
-  walked for its contents, as before. A `$ref` held in such a value is not
-  followed, so a payload that only such a `$ref` names is not checked either
+  (the payload's other members are not). A `$defs` or `definitions` inside such
+  a value is part of it, so its entries are not walked either. A `$ref` held in
+  such a value is not followed, so a payload that only such a `$ref` names is
+  not checked either
   ([#340](https://github.com/awslabs/stickler/issues/340))
 
 - A root schema typed `["object", "null"]`, a root `anyOf`/`oneOf`, or a root

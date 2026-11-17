@@ -148,7 +148,9 @@ A definition that no `$ref` reaches builds nothing, so its own keys are not chec
 properties and other nested schemas still are, and so are the contents of whatever its
 `$ref`s point to. A `$ref` to one node of an entry, such as
 `#/$defs/Wrap/properties/inner`, builds only that node, and the rest of the entry builds
-nothing in the same way.
+nothing in the same way. Only a `$defs` or `definitions` keyword of the root, or of a schema
+nested in it through schema keywords, holds definitions. One under `components`, inside an
+`x-*` key or a data keyword such as `default`, or a property named so, holds none.
 
 Object-level keys also raise at three positions where no class reads them. Beside a `$ref`
 (except at the root), the class is built from the target, so they go on the target. An
