@@ -199,8 +199,8 @@ class UnionHolder(StructuredModel):
             _expect(tp=1),
             id="union-below-threshold",
         ),
-        # Different classes: the object verdict is the item's score, which
-        # compare() gives as 1.0 when the two share no field, as at top level
+        # Different classes: `value` is a TP because the item's score for it,
+        # from compare(), is 1.0 when the two share no field, as at top level
         # (#327). The leaves still report the miss.
         pytest.param(
             ModelHolder,
