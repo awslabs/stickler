@@ -43,20 +43,28 @@ Each release links to full notes on the
     or back. Its fields now appear under `aggregate` when every pair of that
     sub-field has them.
 
-  In every sub-field, a matched prediction that lacked a field of the first
-  ground-truth element's class raised `AttributeError`: a subclass listed
-  before its base, `List[Union[A, B]]`, or a dict against a model in a list
-  inside an `Any` sub-field. The field now reads as missing, and each pair is
-  classified on its ground-truth element's own fields. A list with the base
-  class first did not raise, and now also counts the subclass's fields.
-  Nested-model and list-annotated sub-fields otherwise count as before.
+  In a list of models, whatever the sub-field's type, a matched prediction
+  that lacked a field of the first ground-truth element's class raised
+  `AttributeError`: a subclass listed before its base, `List[Union[A, B]]`, or
+  a list of models in an `Any` or `object` field, at top level or in a list
+  element, against a list holding a dict, string, number or list. The field
+  now reads as missing, and each pair is classified on its ground-truth
+  element's own fields. Such a pair still takes its object-level verdict from
+  `compare()`, which skips the fields the prediction lacks, so
+  `[Search(query="hotels")]` against `[Browse(url="x.com")]` now counts a TP,
+  with `query` an FN under `aggregate`, while the field scores 0.0. A model
+  against a non-model element, such as `[Inner(a="x")]` against `["a"]`, is a
+  TP the same way. A list with the base class first did not raise, and now
+  also counts the subclass's fields. Nested-model and list-annotated
+  sub-fields otherwise count as before.
 
   Four cases still differ from top level:
   - in an `Any` or `Union[A, B]` sub-field, a model of another class still
     takes its verdict from `compare_with()`, which counts the fields the
-    prediction lacks, so a `Search` against a `Browse` stays an FD. In an
-    `Optional` union of models or a union with a list arm, such a pair still
-    counts as at top level;
+    prediction lacks, so a `Search` against a `Browse` stays an FD. It scores
+    only the ground truth's own fields, so a `Pet` against its subclass `Cat`
+    stays a TP. In an `Optional` union of models or a union with a list arm,
+    such a pair still counts as at top level;
   - when such a sub-field holds models in some pairs and `None`, a primitive
     or a model of another class in others, every pair stays one leaf under
     `aggregate`, so all pairs count but the models' fields do not;
