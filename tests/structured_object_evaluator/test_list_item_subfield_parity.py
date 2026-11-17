@@ -20,8 +20,10 @@ raise; and two models of different classes in a sub-field that is neither
 routed as a nested model nor list-annotated, such as `Any` or `Union[A, B]`,
 are classified by `compare_with()`, as before. Such a sub-field keeps its
 nested `fields` only when every pair has them, so every pair counts under
-`aggregate`. Every expected count below is a literal, so a change to the
-dispatcher shows up here. See https://github.com/awslabs/stickler/issues/400
+`aggregate`. Two lists in it that the dispatcher cannot score, which only an
+element whose `compare_with()` does not recurse reaches, count from the
+comparator, as before. Every expected count below is a literal, so a change
+to the dispatcher shows up here. See https://github.com/awslabs/stickler/issues/400
 """
 
 import datetime
@@ -1056,6 +1058,57 @@ def test_a_fixed_score_element_counts_a_list_of_models_as_without_it(
     assert result["overall_score"] == 1.0
     assert _counts(node) == _expect(tp=1)
     assert _counts(node, "aggregate") == _expect(fn=1, tn=1)
+
+
+FIXED_SCORE = [
+    pytest.param(FixedScoreHolder, FixedScoreElement, id="any"),
+    pytest.param(FixedScoreObjectHolder, FixedScoreObjectElement, id="object"),
+    pytest.param(
+        FixedScoreDefaultHolder, FixedScoreDefaultElement, id="default-threshold"
+    ),
+]
+
+
+def _assert_one_comparator_fd(result):
+    node = _value_node(result)
+    assert result["overall_score"] == 1.0
+    assert _counts(node) == _expect(fd=1)
+    assert _counts(node, "aggregate") == _expect(fd=1)
+    assert not node.get("fields")
+
+
+@pytest.mark.parametrize("holder, element", FIXED_SCORE)
+@pytest.mark.parametrize(
+    "value",
+    ["b", 1, {"a": "x"}, ["a"], Point(x=1)],
+    ids=["str", "int", "dict", "list", "pydantic"],
+)
+def test_a_fixed_score_element_counts_a_ground_truth_list_it_cannot_score_as_before(
+    holder, element, value
+):
+    # Scoring the list as a list of models raises on the matched GT value,
+    # which has no compare_with(), as at top level. This element's
+    # compare_with() never scores the field, so the pair counts as it did
+    # before #400: one FD from the field's comparator.
+    gt = [Inner(a="x"), value]
+    _assert_one_comparator_fd(_in_list(gt, ["a", "b"], holder=holder, element=element))
+
+
+@pytest.mark.parametrize("holder, element", FIXED_SCORE)
+@pytest.mark.parametrize(
+    "pred",
+    [[Point(x=1)], [Point(x=1), Point(x=2)]],
+    ids=["one", "two"],
+)
+def test_a_fixed_score_element_counts_a_list_of_models_against_plain_pydantic_as_before(
+    holder, element, pred
+):
+    # Inner.compare_with() raises TypeError on a plain pydantic model, as at
+    # top level. This element's compare_with() never scores the field, so the
+    # pair counts as it did before #400: one FD from the field's comparator.
+    _assert_one_comparator_fd(
+        _in_list([Inner(a="x")], pred, holder=holder, element=element)
+    )
 
 
 @pytest.mark.parametrize(
