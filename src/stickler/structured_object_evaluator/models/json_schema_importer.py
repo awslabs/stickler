@@ -341,27 +341,57 @@ _NAMED_SCHEMA_KEYWORDS = frozenset(
     {"$defs", "definitions", "dependentSchemas", "patternProperties", "properties"}
 )
 _LISTED_SCHEMA_KEYWORDS = frozenset({"allOf", "anyOf", "oneOf", "prefixItems"})
+# Keywords whose value is one schema.
+_SINGLE_SCHEMA_KEYWORDS = frozenset(
+    {
+        "additionalItems",
+        "additionalProperties",
+        "contains",
+        "else",
+        "if",
+        "items",
+        "not",
+        "propertyNames",
+        "then",
+        "unevaluatedItems",
+        "unevaluatedProperties",
+    }
+)
 
 
 def _is_property_pointer(pointer: Optional[Tuple[str, ...]]) -> bool:
     """Whether a JSON pointer ends at a property: a schema under some node's
     `properties`. Read from the root, so a property NAMED `properties` is a
-    name, not the keyword."""
+    name, not the keyword.
+
+    Under a key no schema has, such as `components` or an `x-*` payload, the
+    value may be a schema or a map of them, and a member of that map may be
+    named like a keyword (`#/components/schemas/properties/...`). There both
+    readings are kept, and the pointer is a property if either ends at one."""
     if not pointer:
         return False
-    expect, holder, is_property = "schema", "", False
-    for part in pointer:
-        if expect == "name":
-            expect, is_property = "schema", holder == "properties"
-        elif expect == "index":
-            expect, is_property = "schema", False
-        else:
-            holder, is_property = part, False
-            if part in _NAMED_SCHEMA_KEYWORDS:
-                expect = "name"
-            elif part in _LISTED_SCHEMA_KEYWORDS:
-                expect = "index"
-    return is_property
+    # What the next segment can be in each reading: a key of a schema
+    # ("schema"), a member of a map this reader does not know ("member"), an
+    # index ("index"), or a name under the keyword held.
+    readings = {"schema"}
+    for part in pointer[:-1]:
+        following = set()
+        for expect in readings:
+            if expect == "member" or (
+                expect == "schema"
+                and part not in _NAMED_SCHEMA_KEYWORDS
+                and part not in _LISTED_SCHEMA_KEYWORDS
+                and part not in _SINGLE_SCHEMA_KEYWORDS
+            ):
+                following.update(("schema", "member"))
+            elif expect == "schema" and part in _NAMED_SCHEMA_KEYWORDS:
+                following.add(part)
+            elif expect == "schema" and part in _LISTED_SCHEMA_KEYWORDS:
+                following.add("index")
+            else:
+                following.add("schema")
+        readings = following
+    return "properties" in readings
 
 
 _COMBINERS = frozenset({"allOf", "anyOf", "oneOf"})

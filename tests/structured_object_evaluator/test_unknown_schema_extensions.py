@@ -2162,6 +2162,37 @@ class TestARefIntoADefinition:
             },
             "$defs.Wrap.x-sub.T.properties.inner",
         ),
+        # A member of a map that no schema keyword holds, named like a keyword.
+        (
+            "#/components/schemas/properties/properties/inner",
+            {
+                "components": {
+                    "schemas": {
+                        "properties": {
+                            "type": "object",
+                            "properties": {"inner": _KEYED},
+                        }
+                    }
+                }
+            },
+            "components.schemas.properties.properties.inner",
+        ),
+        (
+            "#/components/schemas/allOf/properties/inner",
+            {
+                "components": {
+                    "schemas": {
+                        "allOf": {"type": "object", "properties": {"inner": _KEYED}}
+                    }
+                }
+            },
+            "components.schemas.allOf.properties.inner",
+        ),
+        (
+            "#/x-models/anyOf/properties/inner",
+            {"x-models": {"anyOf": {"type": "object", "properties": {"inner": _KEYED}}}},
+            "x-models.anyOf.properties.inner",
+        ),
     )
 
     @pytest.mark.parametrize(
@@ -2174,6 +2205,9 @@ class TestARefIntoADefinition:
             "x-models-property",
             "defs-not-property",
             "defs-x-sub-property",
+            "components-member-named-properties",
+            "components-member-named-allOf",
+            "x-models-member-named-anyOf",
         ),
     )
     @pytest.mark.parametrize(
