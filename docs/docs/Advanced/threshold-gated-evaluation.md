@@ -135,7 +135,7 @@ result = gt.compare_with(pred, include_confusion_matrix=True, document_non_match
 
 Hungarian matching pairs every item when both lists have the same length, so
 these two are paired even though they share almost nothing. An item is left
-unmatched only when one list is longer: without `New Product` in Pred, `Cable`
+unmatched only when one list is longer once `None` elements are removed: without `New Product` in Pred, `Cable`
 would be an **FN**, and without `Cable` in GT, `New Product` would be an **FA**.
 Neither is broken down into fields.
 
@@ -189,7 +189,7 @@ The dispatcher uses pattern matching on null states for early exits, then routes
 Scores percolate upward from leaf fields to the top-level result using weighted averaging:
 
 1. Each field comparison produces a raw similarity score (0.0 -- 1.0).
-2. The score is optionally clipped to 0 if below the field threshold (`clip_under_threshold`).
+2. The score is optionally clipped to 0 if below the field threshold (`clip_under_threshold`). A list field follows the [Score](classification-logic.md#list-contract) rule of the list contract instead.
 3. Clipped scores are multiplied by the field weight and summed.
 4. The overall similarity is `total_weighted_score / total_weight`.
 
