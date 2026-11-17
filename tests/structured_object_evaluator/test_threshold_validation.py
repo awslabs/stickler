@@ -1322,15 +1322,17 @@ class TestAForwardReference:
         )
 
     @pytest.mark.parametrize(
-        "field, name, below",
+        "field, name, below, postponed",
         [
-            ('items: "ItemList"', "ItemList", "ItemList = List[LaterItem]\n"),
-            ('vendor: "Vendor"', "Vendor", "class Vendor(str):\n    pass\n"),
-            ('rows: "Dict[str, Later]"', "The field's type", ""),
+            ('items: "ItemList"', "ItemList", "ItemList = List[LaterItem]\n", False),
+            ('vendor: "Vendor"', "Vendor", "class Vendor(str):\n    pass\n", False),
+            ('opt: "Vendor | None"', "Vendor", "class Vendor(str):\n    pass\n", False),
+            ("opt: Vendor | None", "Vendor", "class Vendor(str):\n    pass\n", True),
+            ("opt: Optional[Vendor]", "Vendor", "class Vendor(str):\n    pass\n", True),
         ],
     )
     def test_a_field_threshold_on_a_bare_name_says_what_to_do_either_way(
-        self, field, name, below
+        self, field, name, below, postponed
     ):
         """It may name a list of models, where 0.85 would load and decide nothing."""
         source = (
@@ -1339,7 +1341,7 @@ class TestAForwardReference:
             + below
         )
         with pytest.raises(ValueError) as caught:
-            _exec_models(source, postponed=False)
+            _exec_models(source, postponed=postponed)
         assert str(caught.value).endswith(
             f"{RULE} 85 is above 1.0, so even identical values would not match. "
             f"{name} is not defined yet, so stickler cannot tell whether it is a "
@@ -1347,6 +1349,31 @@ class TestAForwardReference:
             "match_threshold = 0.85 to the element class: a threshold on a list "
             "of models is ignored. If it is not, write "
             "ComparableField(threshold=0.85). (Set at order_models.py:2.)"
+        )
+
+    @pytest.mark.parametrize(
+        "field, postponed",
+        [
+            ("rows: Dict[str, Later]", True),
+            ('rows: "Dict[str, Later]"', False),
+            ('rows: Dict[str, "Later"]', False),
+            ('rows: Tuple["Later", ...]', False),
+            ("rows: Annotated[Dict[str, Later], ComparableField(threshold=85)]", True),
+        ],
+    )
+    def test_a_type_that_is_never_a_list_gets_the_usual_fix(self, field, postponed):
+        """A dict or tuple is never a list of models, so no list advice."""
+        default = "" if "Annotated" in field else " = ComparableField(threshold=85)"
+        source = f"class Order(StructuredModel):\n    {field}{default}\n" + _ADDRESS.format(
+            name="Later"
+        )
+        with pytest.raises(ValueError) as caught:
+            _exec_models(source, postponed=postponed)
+        line = 1 if "Annotated" in field else 2
+        assert str(caught.value).endswith(
+            f"{RULE} 85 is above 1.0, so even identical values would not match. "
+            "If 85 is a percentage, write ComparableField(threshold=0.85). "
+            f"(Set at order_models.py:{line}.)"
         )
 
     def test_with_no_likely_number(self):

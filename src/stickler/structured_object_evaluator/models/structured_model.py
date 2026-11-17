@@ -381,13 +381,21 @@ def _string_is_list(text: str) -> bool:
 
 
 def _bare_name(text: str) -> Optional[str]:
-    """``Item`` for ``"Item"``, ``"'Item'"``, ``"models.Item"`` or ``"Optional[Item]"``."""
-    head, inner = _subscript(text)
+    """``Item`` for ``"Item"``, ``"'Item'"``, ``"models.Item"``, ``"Optional[Item]"``
+    or ``"Item | None"``."""
+    arms = [
+        arm for arm in _split_top_level(_unquote(text), "|") if _unquote(arm) != "None"
+    ]
+    if len(arms) != 1:
+        return None
+    head, inner = _subscript(arms[0])
     if inner is not None:
+        if head == "Union":
+            return _bare_name("|".join(_split_top_level(inner, ",")))
         if head not in ("Optional", "Annotated"):
             return None
         return _bare_name(_split_top_level(inner, ",")[0])
-    name = _unquote(text)
+    name = _unquote(arms[0])
     return name if name.replace(".", "").replace("_", "a").isalnum() else None
 
 
@@ -1113,10 +1121,11 @@ class StructuredModel(BaseModel):
         cannot tell yet whether ``Item`` is a model, and nothing checks the
         field once it resolves. Only a list of models does not adopt, so an
         invalid comparator threshold there raises, though the field would
-        ignore it once resolved; the message says to remove the comparator in
-        that case.
+        ignore it once resolved. When the annotation is visibly a list, the
+        message says to remove the comparator if the element is a model.
         A bare name for a list of models (``items: "ItemList"``, with
-        ``ItemList = List[Item]`` below) reads the same way. A PEP 695 alias is
+        ``ItemList = List[Item]`` below) raises too, but its message gives
+        only the fix for a field that adopts. A PEP 695 alias is
         read as the type it names once the type it names is defined; before
         that, it is checked as adopting.
 
@@ -1202,6 +1211,9 @@ class StructuredModel(BaseModel):
         if nested:
             inner = unwrap_optional(unwrap_annotated(resolved))[0]
             nested_model = getattr(inner, "__name__", None)
+        # One name not defined yet may be an alias of a list of models;
+        # ``Dict[str, Later]`` or ``Tuple[Later, ...]`` never is.
+        unresolved_name = _unresolved_type_name(annotation) if unresolved else ""
         return threshold_error(
             threshold,
             spelling=PYTHON,
@@ -1211,8 +1223,9 @@ class StructuredModel(BaseModel):
             nested=nested,
             nested_model=nested_model,
             list_element=list_element,
-            list_unresolved=unresolved,
-            unresolved_name=_unresolved_type_name(annotation) if unresolved else None,
+            list_unresolved=unresolved
+            and (list_element is not None or bool(unresolved_name)),
+            unresolved_name=unresolved_name or None,
             element_match_threshold=element_match_threshold,
             set_at=getattr(extra, "_set_at", None) or set_at,
         )

@@ -361,8 +361,8 @@ def threshold_error(
     matches its items on ``match_threshold`` instead, and ``list_unresolved``
     when it is a list of a class not defined yet, which may or may not be a
     model. ``list_unresolved`` with no ``list_element`` is a type not defined
-    yet that is not visibly a list, named by ``unresolved_name`` (or ``""``),
-    which may still name one. ``element_match_threshold`` is the
+    yet that is not visibly a list but may name one, such as an alias, named
+    by ``unresolved_name`` (or ``""``). ``element_match_threshold`` is the
     ``match_threshold`` the element class sets itself, if any.
     ``defined_at`` is the JSON pointer of a property reached through a
     ``$ref``, and ``set_at`` the location of a ``ComparableField`` call.
