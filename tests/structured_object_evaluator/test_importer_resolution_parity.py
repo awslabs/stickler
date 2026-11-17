@@ -582,20 +582,20 @@ class TestANamedComparatorOnANestedModelWarnsOnBothImporters:
         expected = {
             "config": (
                 "'comparator' has no effect on field 'f' of model 'Cfg' and is "
-                "ignored, except for the threshold 0.9 it names, which gates this "
-                "field: it is a structured_model field, scored field by field, so "
-                "its comparator is never called. Set comparators on the fields "
-                "inside it, and set 'threshold' to 0.9 to keep this gate without "
-                "the comparator."
+                "ignored, except for its threshold 0.9, which this field uses: "
+                "it is a structured_model field, scored field by field, so its "
+                "comparator is never called. Set comparators on the fields "
+                "inside it, and set 'threshold' to 0.9 to keep that threshold "
+                "without the comparator."
             ),
             "schema": (
                 "'x-aws-stickler-comparator' has no effect on field 'f' of model "
-                "'DynamicModel(fields: f)' and is ignored, except for the "
-                "threshold 0.9 it names, which gates this field: it is an object "
-                "with properties, scored field by field, so its comparator is "
-                "never called. Set comparators on the properties inside it, and "
-                "set 'x-aws-stickler-threshold' to 0.9 to keep this gate without "
-                "the comparator."
+                "'DynamicModel(fields: f)' and is ignored, except for its "
+                "threshold 0.9, which this field uses: it is an object with "
+                "properties, scored field by field, so its comparator is never "
+                "called. Set comparators on the properties inside it, and set "
+                "'x-aws-stickler-threshold' to 0.9 to keep that threshold "
+                "without the comparator."
             ),
         }
         assert {n: paths[n][1] for n in expected} == {
@@ -777,7 +777,7 @@ class TestANestedModelAsksANamedComparatorForItsThreshold:
             "schema": 0.95,
         }
         assert {_nested_verdict(m) for m, _ in paths.values()} == {(0, 1)}
-        assert "set 'threshold' to 0.95 to keep this gate" in paths["config"][1][0]
+        assert "set 'threshold' to 0.95 to keep that threshold" in paths["config"][1][0]
 
 
 class _Counting(BaseComparator):

@@ -168,7 +168,7 @@ class TestFromJsonSchemaValidation:
             }
         }
         
-        with pytest.raises(ValueError, match="must be a number"):
+        with pytest.raises(ValueError, match="is a string, not a number"):
             StructuredModel.from_json_schema(schema)
 
     def test_match_threshold_out_of_range_raises_error(self):
@@ -181,7 +181,7 @@ class TestFromJsonSchemaValidation:
             }
         }
         
-        with pytest.raises(ValueError, match="between 0.0 and 1.0"):
+        with pytest.raises(ValueError, match="is out of range.*from 0.0 to 1.0"):
             StructuredModel.from_json_schema(schema)
 
 
