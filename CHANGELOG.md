@@ -56,9 +56,13 @@ Each release links to full notes on the
   `[Search(query="hotels")]` against `[Browse(url="x.com")]` now counts a TP,
   with `query` an FN under `aggregate`, while the field scores 0.0. A model
   against a non-model element, such as `[Inner(a="x")]` against `["a"]`, is a
-  TP the same way. A list with the base class first did not raise, and now
-  also counts the subclass's fields. Nested-model and list-annotated
-  sub-fields otherwise count as before.
+  TP the same way. So is `[Inner(a="x")]` against `[{"a": "x"}]` in an `Any`
+  sub-field whose element class overrides `compare_with()` without
+  recursing, which did not raise and counted an FD. A list with the base
+  class first did not raise, and now also counts the subclass's fields. A
+  ground-truth list that mixes a model with a non-model, such as
+  `[Inner(a="x"), "b"]` against itself, still raises `AttributeError`.
+  Nested-model and list-annotated sub-fields otherwise count as before.
 
   Four cases still differ from top level:
   - in an `Any` or `Union[A, B]` sub-field, a model of another class still
