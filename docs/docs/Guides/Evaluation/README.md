@@ -64,7 +64,7 @@ When defining a `StructuredModel` subclass in Python, each field is declared wit
 
 See the [Comparators](../Comparators/README.md) section for the complete list and detailed descriptions.
 
-**`threshold`** -- Acts as a binary classification cutoff. A similarity score at or above the threshold counts as a True Positive; below it counts as a False Discovery. See [Meeting a Threshold](../../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold). Choose stricter thresholds (0.9--1.0) for critical fields and looser thresholds (0.5--0.7) for flexible fields. The field's threshold, set here or adopted from the comparator, must be an `int` or `float` from 0.0 to 1.0; anything else raises `ValueError` when the class is defined:
+**`threshold`** -- Acts as a binary classification cutoff. A similarity score at or above the threshold counts as a True Positive; below it counts as a False Discovery. See [Meeting a Threshold](../../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold). Choose stricter thresholds (0.9--1.0) for critical fields and looser thresholds (0.5--0.7) for flexible fields. The field's threshold, set here or adopted from the comparator, must be a number from 0.0 to 1.0; anything else raises `ValueError` when the class is defined:
 
 ```text
 ValueError: Invalid threshold for field 'vendor' of model 'Invoice': ComparableField(threshold=85) is out of range. A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so no pair would match. If 85 is a percentage, use 0.85. (Set at invoice_models.py:5.)
@@ -217,9 +217,8 @@ A scalar is plain when it has none of the keywords in the last row. Any other
 `format` (`email`, `hostname`, ...) leaves it plain. Declaring the key explicitly
 overrides the default in every position that reads it. Without it, a `threshold`
 in `x-aws-stickler-comparator-config` overrides the default instead, as it does
-on the Python path. Whichever the field uses must be an `int` or `float` from
-0.0 to 1.0; any other value raises `ValueError` on import, quoting the key as
-written:
+on the Python path. Whichever the field uses must be a number from 0.0 to 1.0;
+any other value raises `ValueError` on import, quoting the key as written:
 
 ```text
 ValueError: Invalid threshold for field 'total' of model 'Invoice': the field sets no "x-aws-stickler-threshold", so it uses "x-aws-stickler-comparator-config": {"threshold": 85}. A threshold is the minimum similarity score for a match, from 0.0 to 1.0. 85 is above 1.0, so no pair would match. If 85 is a percentage, write 0.85 there, or set "x-aws-stickler-threshold": 0.85 on the property, which takes precedence.

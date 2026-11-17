@@ -37,16 +37,14 @@ Each release links to full notes on the
     config path dropped it there and the schema path did too
     ([#334](https://github.com/awslabs/stickler/issues/334)). An adopted
     comparator threshold is checked as a field threshold is; see the next item.
-  - **A threshold that is not an `int` or `float` from 0.0 to 1.0 raises
-    `ValueError` when the class is defined or the config or schema is loaded,
-    on every path, never during evaluation.** It applies to the threshold the
-    field ends up with, and to `match_threshold`:
-    - Python: `ComparableField(threshold=...)`, also inside `Annotated[...]`; a
+  - **A threshold that is not a number from 0.0 to 1.0 raises `ValueError`
+    when the class is defined or the config or schema is loaded.** It applies
+    to the threshold the field ends up with, and to `match_threshold`:
+    - Python: `ComparableField(threshold=...)`, also inside `Annotated[...]`
+      and on a field whose type is defined further down the module; a
       comparator threshold the field adopts, such as
       `LevenshteinComparator(threshold=85)`; and the `match_threshold` class
-      attribute. None was checked, so at 85 an identical pair scored 0.0 FD. A
-      `Decimal`, `Fraction` or `numpy.float32` threshold, which loaded, now
-      raises and asks for a float (`numpy.float64` is a float and loads).
+      attribute. None was checked, so at 85 an identical pair scored 0.0 FD.
     - Stickler config: `"threshold"`, an adopted `"comparator_config"`
       threshold, and `"match_threshold"` on the model or a nested-model field.
     - JSON Schema: `x-aws-stickler-threshold`, an adopted
@@ -56,11 +54,17 @@ Each release links to full notes on the
     `85`, `1.5`, `-1`, `"0.9"`, `true`, NaN and infinity all raise. Before, the
     config and schema paths already refused a threshold out of range but
     accepted `true` as 1, also as a `match_threshold`, and a comparator-config
-    threshold loaded whatever its value, because it was not read. Every path gives one message. It quotes the value as written,
+    threshold loaded whatever its value, because it was not read. A `Decimal`,
+    `Fraction` or numpy number from 0.0 to 1.0 now loads on every path as the
+    `float` it means: Python kept it unconverted, and the importers refused
+    it. The `match_threshold` passed to `evaluate()` or `eval_for()` is not
+    checked. Every path gives one message. It quotes the value as written,
     names the model and the field, says why the value fails and gives the likely
     fix; on the Python path it ends with the line of the `ComparableField` call.
-    On the config path it is no longer prefixed `Invalid field configuration:`
-    or `Error converting field configurations:`, and a field inside a
+    The refusal of `ComparableField(threshold=...)` on a `List[StructuredModel]`
+    field uses the same message, naming the element class. On the config path
+    it is no longer prefixed `Invalid field configuration:` or `Error
+    converting field configurations:`, and a field inside a
     `list_structured_model` is named `items[].sku` there and in warnings, as on
     the schema path:
 
@@ -106,12 +110,13 @@ Each release links to full notes on the
   constructor, is read (see Changed), and the warning gives its value. A named
   comparator stays on the field, as on the Python path, so `explain()` reports
   it rather than a placeholder `LevenshteinComparator`. Nothing that loaded
-  before raises, except a comparator threshold that is not an `int` or `float`
-  from 0.0 to 1.0 (see Changed). `comparator` on a `list_structured_model` field, and `"auto"`
-  on any nested model, still raise. A property that is a union of objects
-  (`anyOf` or `oneOf` with object arms) is not covered: as on the Python path
-  for a `Union` field, a comparator-config threshold gates it, and a named
-  comparator is installed and never called, with no nested-model warning
+  before raises, except a comparator threshold that is not a number from 0.0
+  to 1.0 (see Changed). `comparator` on a `list_structured_model` field, and
+  `"auto"` on any nested model, still raise. A property that is a union of
+  objects (`anyOf` or `oneOf` whose arms declare `properties`) is not covered:
+  as on the Python path for a `Union` field, a comparator-config threshold
+  gates it, and a named comparator is installed and never called, with no
+  nested-model warning
   ([#348](https://github.com/awslabs/stickler/issues/348))
 
 - Corrected introductory example scores, the default text comparator description,
