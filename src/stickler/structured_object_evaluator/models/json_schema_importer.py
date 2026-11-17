@@ -307,15 +307,13 @@ def _resolve_local_ref(
     node: Any = schema
     entry: Optional[Tuple[str, ...]] = None
     entry_body: Any = None
-    readings = {"schema"}
+    position = "schema"
     for index, part in enumerate(parts):
         if not isinstance(node, dict) or part not in node:
             return None, (), None, None
-        # An entry only where the segment before was read as the keyword,
-        # not as a property NAMED `$defs` or `definitions`.
-        if readings & {"$defs", "definitions"}:
+        if position == "definitions":
             entry, entry_body = parts[: index + 1], node[part]
-        readings = _next_readings(readings, part)
+        position = _position_after(position, part)
         node = node[part]
     return node, parts, entry, entry_body
 
@@ -408,6 +406,39 @@ def _walk_position(pointer: Tuple[str, ...]) -> Tuple[str, Optional[str], bool]:
         # The walk reads every value as a schema, never as a map of them.
         reading = min(_next_readings({reading}, part) - {"member"})
     return path, kind, under_x
+
+
+def _position_after(position: str, key: Any) -> str:
+    """What the value under `key` is, in a node at `position`: a "schema", a
+    map of schemas by name ("names", or "definitions" for a set of
+    definitions), a "list" of schemas, or a "value" that is none of these.
+
+    Only the root, and a node reached from it through schema keywords, is a
+    schema. So a `$defs` or `definitions` key holds definitions only as a
+    keyword of one, never as a property name, a member of a map no schema
+    keyword holds (`components`), or anywhere inside an `x-*` payload or a
+    data keyword."""
+    if position in ("names", "definitions", "list"):
+        return "schema"
+    if position != "schema":
+        return "value"
+    if key in ("$defs", "definitions"):
+        return "definitions"
+    if key in _NAMED_SCHEMA_KEYWORDS:
+        return "names"
+    if key in _LISTED_SCHEMA_KEYWORDS:
+        return "list"
+    if key in _SINGLE_SCHEMA_KEYWORDS:
+        return "schema"
+    return "value"
+
+
+def _pointer_position(pointer: Tuple[str, ...]) -> str:
+    """What the node at a JSON pointer is, as `_position_after` reads it."""
+    position = "schema"
+    for part in pointer:
+        position = _position_after(position, part)
+    return position
 
 
 def _next_readings(readings: set, part: str) -> set:
@@ -1146,8 +1177,9 @@ class JsonSchemaImporter:
         checking its own keys raised for keys that were read on the copies. Such
         an entry is walked as before, for its contents only, and so are the
         targets of its `$ref`s. Data keywords and `x-*` payloads are values, not
-        schemas, and are not walked, except where a `$ref` points into one and
-        for an entry under `$defs` inside one, which was walked before as well.
+        schemas, and are not walked, except where a `$ref` points into one. Only
+        a `$defs` or `definitions` keyword of a schema holds entries (see
+        `_position_after`); one named so anywhere else is not a set of them.
 
         Every `$ref` target is walked from the reference as well, so a class
         built inside it reads model keys wherever it sits: under `not` or an
@@ -1196,8 +1228,8 @@ class JsonSchemaImporter:
         # later gives none.
         deferred: Dict[Tuple[int, str], str] = {}
         # Definition entries a `$ref` reached, and later every body walked as
-        # building nothing, by identity; and every `$defs`/`definitions`
-        # mapping passed, so the rest can be walked last.
+        # building nothing, by identity; and every set of definitions passed,
+        # so the rest can be walked last.
         entries: set = set()
         mappings: List[Tuple[str, Dict[str, Any]]] = []
 
@@ -1237,28 +1269,20 @@ class JsonSchemaImporter:
                     "1.1.0.",
                 )
 
-        def collect(value: Any, path: str) -> None:
-            """The `$defs`/`definitions` mappings inside a value not walked."""
-            if isinstance(value, list):
-                for index, item in enumerate(value):
-                    collect(item, f"{path}[{index}]")
-            elif isinstance(value, dict):
-                for key, item in value.items():
-                    if key in ("$defs", "definitions") and isinstance(item, dict):
-                        mappings.append((f"{path}.{key}", item))
-                    else:
-                        collect(item, f"{path}.{key}")
-
         def walk(
             node: Any,
             path: str,
             scope: Optional[str] = "model",
             built: bool = True,
             reads: bool = True,
+            position: str = "schema",
         ) -> None:
+            # `position` is what the node is, as `_position_after` reads it,
+            # whatever scope the walk reads it with.
             if isinstance(node, list):
+                item = "value" if position == "value" else "schema"
                 for index, value in enumerate(node):
-                    walk(value, f"{path}[{index}]", scope, built, reads)
+                    walk(value, f"{path}[{index}]", scope, built, reads, item)
                 return
             if not isinstance(node, dict):
                 return
@@ -1350,12 +1374,16 @@ class JsonSchemaImporter:
                 if key in _DATA_KEYWORDS or (
                     isinstance(key, str) and key.startswith("x-")
                 ):
-                    # A value, not a schema. An entry under `$defs` inside one
-                    # is still walked last, as before.
-                    collect(value, f"{path}.{key}" if path else key)
-                    continue
+                    continue  # a value, not a schema
+                inside = _position_after(position, key)
                 if key in ("$defs", "definitions") and isinstance(value, dict):
-                    mappings.append((f"{path}.{key}" if path else key, value))
+                    at = f"{path}.{key}" if path else key
+                    if inside == "definitions":
+                        mappings.append((at, value))
+                    else:
+                        # Named like the keyword, but no schema holds it, so it
+                        # is walked as before and builds nothing.
+                        walk(value, at, "model", False, position=inside)
                     continue
                 if key == "properties" and isinstance(value, dict):
                     for name, child in value.items():
@@ -1367,6 +1395,7 @@ class JsonSchemaImporter:
                             f"{path}.{name}" if path else name,
                             "field_or_model" if _is_object_schema(child) else "field",
                             built,
+                            position=_position_after(inside, name),
                         )
                     continue
                 if key == "allOf" and isinstance(value, list):
@@ -1383,7 +1412,14 @@ class JsonSchemaImporter:
                                     path or "(root)",
                                 )
                             )
-                        walk(arm, f"{path}[{index}]", "model", built, reads=False)
+                        walk(
+                            arm,
+                            f"{path}[{index}]",
+                            "model",
+                            built,
+                            reads=False,
+                            position=_position_after(inside, index),
+                        )
                     continue
                 # Named in the path, so an error under `not` or `then` points
                 # at a node that exists (`$defs.W.not[]`, not `$defs.W[]`).
@@ -1405,7 +1441,7 @@ class JsonSchemaImporter:
                     # it is still walked, as before, rather than skipped.
                     child_path = path
                     child_scope, child_built = "model", built
-                walk(value, child_path, child_scope, child_built)
+                walk(value, child_path, child_scope, child_built, position=inside)
 
         def own_keys(pointer: Tuple[str, ...], body: Any) -> None:
             """Check a property or `items` target under an `x-*` key, which the
@@ -1451,7 +1487,7 @@ class JsonSchemaImporter:
                 _reject_unknown_extensions(body, at, scope=scope, merges=merges)
             if not definition:
                 own_keys(pointer, body)
-            walk(body, at, None, built, reads=False)
+            walk(body, at, None, built, False, _pointer_position(pointer))
 
         # A node inside an entry, such as `#/$defs/List/items`, is built from
         # where it is referenced, but the entry's walk built nothing there, so
@@ -1480,7 +1516,9 @@ class JsonSchemaImporter:
             walked[pointer] = False
             entries.add(id(body))
             own_keys(pointer, body)
-            walk(body, ".".join(pointer), None, False, reads=False)
+            walk(
+                body, ".".join(pointer), None, False, False, _pointer_position(pointer)
+            )
 
         # An object's model keys are read only where its class is built. An
         # `allOf` arm is merged into `AllOfModel`, and a root `$ref` builds the

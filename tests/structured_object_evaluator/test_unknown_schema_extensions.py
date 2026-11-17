@@ -1533,6 +1533,20 @@ class TestOnlyReachedDefinitionsAreChecked:
         """These raise only where a class is built, and nothing builds it."""
         StructuredModel.from_json_schema(_unused(body))
 
+    def test_an_entry_named_like_a_keyword_is_an_entry(self):
+        """Dev read an entry named `properties` as that keyword of the
+        mapping, so its own properties were never checked."""
+        with pytest.raises(ValueError, match=r"field '\$defs\.properties\.p'"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {"a": {"type": "string"}},
+                    "$defs": {
+                        "properties": {"type": "object", "properties": {"p": _TYPO}}
+                    },
+                }
+            )
+
     @pytest.mark.parametrize("keyword", ("default", "examples"))
     def test_definitions_inside_data_are_not_checked(self, keyword):
         data = {"a": "x", "$defs": {"X": {"x-aws-stickler-weight": 2.0}}}
@@ -1551,19 +1565,18 @@ class TestOnlyReachedDefinitionsAreChecked:
         )
 
     @pytest.mark.parametrize("keyword", ("default", "x-vendor"))
-    def test_a_typo_in_a_definition_inside_data_still_raises(self, keyword):
-        """Data and `x-*` payloads are not walked, but a `$defs` entry inside one
-        was checked for its contents before, so it still is."""
-        with pytest.raises(ValueError, match=rf"field '{keyword}\.\$defs\.U\.p'"):
-            StructuredModel.from_json_schema(
-                {
-                    "type": "object",
-                    "properties": {"a": {"type": "string"}},
-                    keyword: {
-                        "$defs": {"U": {"type": "object", "properties": {"p": _TYPO}}}
-                    },
-                }
-            )
+    def test_a_typo_in_a_definition_inside_data_imports(self, keyword):
+        """A `$defs` inside data or an `x-*` payload is part of that value, not
+        a set of definitions, so it is not walked either."""
+        StructuredModel.from_json_schema(
+            {
+                "type": "object",
+                "properties": {"a": {"type": "string"}},
+                keyword: {
+                    "$defs": {"U": {"type": "object", "properties": {"p": _TYPO}}}
+                },
+            }
+        )
 
     def test_a_definition_reached_through_another_is_checked(self):
         with pytest.raises(ValueError, match=r"thresold.*definition '\$defs\.Inner'"):
@@ -1779,24 +1792,29 @@ class TestValuesAreNotWalkedAsSchemas:
             }
         )
 
-    @pytest.mark.parametrize("holder", ("$defs", "default"))
-    def test_an_x_payload_only_an_unused_definition_references_is_checked(self, holder):
+    @staticmethod
+    def _team_via(holder):
+        """A typo in `x-models.Team`, which only `Outer` references, with
+        `Outer` under `$defs` at `holder`: the root, or a data value."""
+        outer = {"type": "object", "properties": {"i": {"$ref": "#/x-models/Team"}}}
+        definitions = {"$defs": {"Outer": outer}}
+        return {
+            "type": "object",
+            "properties": {"a": {"type": "string"}},
+            "x-models": {"Team": {"type": "object", "properties": {"p": _TYPO}}},
+            **(definitions if holder is None else {holder: definitions}),
+        }
+
+    def test_an_x_payload_only_an_unused_definition_references_is_checked(self):
         """An unused definition builds nothing, but its contents are checked as
         before, and that followed its `$ref`s: the typo raised before and imported
         once the queue they went to was no longer drained."""
-        outer = {"type": "object", "properties": {"i": {"$ref": "#/x-models/Team"}}}
-        definitions = {"$defs": {"Outer": outer}}
         with pytest.raises(ValueError, match=r"thresold.*'x-models\.Team\.p'"):
-            StructuredModel.from_json_schema(
-                {
-                    "type": "object",
-                    "properties": {"a": {"type": "string"}},
-                    "x-models": {
-                        "Team": {"type": "object", "properties": {"p": _TYPO}}
-                    },
-                    **(definitions if holder == "$defs" else {holder: definitions}),
-                }
-            )
+            StructuredModel.from_json_schema(self._team_via(None))
+
+    def test_a_ref_in_a_definition_inside_data_is_not_followed(self):
+        """That `$defs` is part of the data, so its `$ref` is a value too."""
+        StructuredModel.from_json_schema(self._team_via("default"))
 
     def test_an_x_payload_only_an_unused_definition_references_keeps_its_own_keys(
         self,
@@ -1814,6 +1832,104 @@ class TestValuesAreNotWalkedAsSchemas:
                     }
                 },
             }
+        )
+
+
+class TestOnlyAKeywordOfASchemaHoldsDefinitions:
+    """A `$defs` or `definitions` key holds definitions only as a keyword of a
+    schema: the root, or a node reached from it through schema keywords.
+
+    Read anywhere else as a set of definitions, a property, member or value
+    named so had its entries checked as definitions or walked as schemas, and
+    each shape here raised where dev imports.
+    """
+
+    NAMES = pytest.mark.parametrize("name", ("definitions", "$defs"))
+    # A schema whose property `items` carries a field key: valid on a
+    # property, but not read on an `items` node, so it raises if `properties`
+    # is walked as a schema.
+    NAMED_ITEMS = {
+        "type": "object",
+        "properties": {"items": {"type": "string", "x-aws-stickler-weight": 2.0}},
+    }
+
+    @staticmethod
+    def _under(where, value):
+        """`value` at `where`, a `/`-separated path from the root."""
+        schema = {"type": "object", "properties": {"a": {"type": "string"}}}
+        holder = schema
+        *parents, last = where.split("/")
+        for part in parents:
+            holder = holder.setdefault(part, {})
+        holder[last] = value
+        return schema
+
+    @NAMES
+    @pytest.mark.parametrize("where", ("components/schemas", "x-models"))
+    def test_a_property_named_like_it_under_a_member_is_a_name(self, where, name):
+        """`#/components/schemas/G/properties/definitions/...` names a property
+        of `G`, not a definition entry."""
+        beside = {"$ref": "#/$defs/Row", "x-aws-stickler-match-threshold": 0.93}
+        holder = {"type": "array", "items": beside}
+        schema = self._under(
+            f"{where}/G",
+            {
+                "type": "object",
+                "properties": {name: {"type": "object", "properties": {"q": holder}}},
+            },
+        )
+        schema["properties"]["h"] = {
+            "$ref": f"#/{where}/G/properties/{name}/properties/q/items"
+        }
+        schema["$defs"] = {"Row": dict(_PLAIN, title="Row")}
+        model = StructuredModel.from_json_schema(schema)
+        h = _unwrap(model.model_fields["h"].annotation)
+        assert (h.__name__, h.match_threshold) == ("Row", 0.7)
+
+    @NAMES
+    @pytest.mark.parametrize(
+        "where, checked",
+        (("components/schemas", False), ("x-models", False), ("$defs", True)),
+    )
+    def test_a_keyword_of_a_member_holds_none(self, where, checked, name):
+        """`G` under `components` or an `x-*` key is reached through no schema
+        keyword, so its own `$defs` is not a set of definitions, and a `$ref`
+        into it checks no definition, as on dev. Under `$defs`, `G` is one."""
+        schema = self._under(
+            f"{where}/G",
+            dict(_PLAIN, **{name: {"X": dict(_PLAIN, **_TYPO_KEY)}}),
+        )
+        schema["properties"]["h"] = {"$ref": f"#/{where}/G/{name}/X"}
+        if checked:
+            with pytest.raises(ValueError, match="thresold.*on definition"):
+                StructuredModel.from_json_schema(schema)
+        else:
+            StructuredModel.from_json_schema(schema)
+
+    @NAMES
+    @pytest.mark.parametrize(
+        "keyword", ("x-models", "examples", "default", "enum", "const")
+    )
+    def test_one_inside_a_value_is_part_of_the_value(self, keyword, name):
+        if keyword == "x-models":
+            schema = self._under(
+                "x-models/T",
+                {"type": "object", "properties": {name: self.NAMED_ITEMS}},
+            )
+        else:
+            data = {name: {"properties": self.NAMED_ITEMS["properties"]}}
+            value = [data] if keyword in ("examples", "enum") else data
+            # `enum` and `const` build a `Literal`, which an object type would
+            # make unhashable.
+            d = {} if keyword in ("enum", "const") else dict(_PLAIN)
+            schema = self._under("properties/d", dict(d, **{keyword: value}))
+        StructuredModel.from_json_schema(schema)
+
+    @NAMES
+    def test_a_member_named_like_it_is_a_schema(self, name):
+        """`components.schemas.definitions` is a schema named `definitions`."""
+        StructuredModel.from_json_schema(
+            self._under(f"components/schemas/{name}", self.NAMED_ITEMS)
         )
 
 
