@@ -57,7 +57,6 @@ Specialized Components (selected — ~36 modules total in models/):
 │   └── StructuredListComparator      - Lists of StructuredModels (Hungarian)
 ├── Metrics
 │   ├── ConfusionMatrixBuilder        - Runs the aggregate and derived calculators
-│   ├── ConfusionMatrixCalculator     - TP/FP/TN/FN/FD/FA
 │   ├── AggregateMetricsCalculator    - Rolls up child metrics
 │   └── DerivedMetricsCalculator      - Precision / recall / F1 / accuracy
 ├── Reporting
@@ -252,7 +251,7 @@ See the docstring on `StructuredModel` (`structured_model.py`) for the in-code c
 - `FieldComparator` - primitive & nested-StructuredModel field comparison
 - `PrimitiveListComparator` - lists of primitives via Hungarian matching
 - `StructuredListComparator` - lists of StructuredModels via Hungarian + threshold-gated nested analysis
-- `ConfusionMatrixBuilder` / `ConfusionMatrixCalculator` / `AggregateMetricsCalculator` / `DerivedMetricsCalculator`
+- `ConfusionMatrixBuilder` / `AggregateMetricsCalculator` / `DerivedMetricsCalculator`
 - `NonMatchCollector` and `FieldComparisonCollector`
 - `EvaluatorFormatHelper`
 - `models/confidence/` - the confidence-calibration pipeline used when `compare_with(add_confidence_metrics=True, ...)`
@@ -376,7 +375,6 @@ These methods still exist on `StructuredModel` as thin delegating shims for back
 | `_handle_list_field_dispatch`         | `ComparisonDispatcher.handle_list_field_dispatch`                |
 | `compare_recursive`                   | `ComparisonEngine.compare_recursive`                             |
 | `compare_with`                        | `ComparisonEngine.compare_with`                                  |
-| `_classify_field_for_confusion_matrix`| `ConfusionMatrixCalculator.classify_field_for_confusion_matrix`  |
 | `_add_derived_metrics_to_result`      | `DerivedMetricsCalculator.add_derived_metrics_to_result`         |
 | `_collect_enhanced_non_matches`       | `NonMatchCollector.collect_enhanced_non_matches`                 |
 | `_format_for_evaluator`               | `EvaluatorFormatHelper.format_for_evaluator`                     |
