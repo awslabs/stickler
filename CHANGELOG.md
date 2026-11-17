@@ -24,11 +24,15 @@ Each release links to full notes on the
 - **The individual-results JSONL file and the HTML report's embedded document
   data are now valid JSON when a value is NaN or infinite.** A blank numeric
   cell from pandas (NaN) was written as a bare `NaN` token, which JavaScript
-  evaluates but `jq`, `JSON.parse`, Spark and other strict parsers reject. The
+  evaluates but `JSON.parse` and other strict parsers reject. The
   `individual_results_jsonl` writer now writes NaN, `inf` and `-inf` as `null`,
-  except a non-finite `doc_id`, which is written as `"nan"` or `"inf"`, the id the report's
-  tables show. The report reads any such token left in an older file as
-  `null`. The per-document view shows these values as an empty cell, as it
+  with two exceptions written as the string `"nan"`, `"inf"` or `"-inf"`: a
+  `doc_id`, which matches the id the report's tables show, and a confidence
+  (`_confidence` in `prediction_raw`, and `prediction_confidences`), so
+  replaying the file still rejects that document's confidences as `update()`
+  does rather than counting it as having none. The report reads any such token
+  left in an older file as `null`, except a `doc_id`, which keeps its string so
+  the document stays selectable. The per-document view shows these values as an empty cell, as it
   already did for `None`, instead of `NaN` or `Infinity`. A NaN or infinite
   `ComparableField` threshold is left out of the report's threshold data
   ([#450](https://github.com/awslabs/stickler/issues/450)).

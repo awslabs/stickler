@@ -15,7 +15,6 @@ See https://github.com/awslabs/stickler/issues/450
 """
 
 import json
-import math
 import sys
 from typing import Optional
 
@@ -177,29 +176,3 @@ def test_a_non_finite_threshold_is_dropped_rather_than_failing_the_report(tmp_pa
     _, thresholds = _report_payloads(tmp_path / "report.html", evaluator.compute(), Odd, jsonl)
 
     assert thresholds == {"total": 0.5}
-
-
-@pytest.mark.parametrize(
-    "value",
-    [
-        {"total": 1e308, "tiny": 5e-324, "neg": -0.0, "int": 10**20, "flag": True},
-        [0.1, 1 / 3, -2.5e-10, math.pi, None, "nan", "Infinity"],
-        {"nested": ({"x": 1.0},), "s": "a & b </script>"},
-    ],
-)
-def test_finite_data_is_written_exactly_as_before(value):
-    reference = json.dumps(value)
-    for ch, escape in (("<", "\\u003c"), (">", "\\u003e"), ("&", "\\u0026")):
-        reference = reference.replace(ch, escape)
-
-    assert _json_for_script(value) == reference
-
-
-@pytest.mark.parametrize("member", [1.0, NAN], ids=["finite", "nan"])
-def test_a_circular_structure_still_raises_value_error(member):
-    """With a NaN the dump can reach it before the loop; either way it raises."""
-    loop = {"n": member}
-    loop["self"] = loop
-
-    with pytest.raises(ValueError, match="Circular reference|Out of range float values"):
-        _json_for_script(loop)

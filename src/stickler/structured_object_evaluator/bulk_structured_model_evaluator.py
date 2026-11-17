@@ -25,14 +25,31 @@ from stickler.structured_object_evaluator.models.confidence.accumulator import (
 from stickler.structured_object_evaluator.models.post_comparison_accumulator import (
     PostComparisonAccumulator,
 )
+from stickler.structured_object_evaluator.models.rich_value_helper import (
+    RichValueHelper,
+)
 from stickler.structured_object_evaluator.models.structured_model import StructuredModel
 from stickler.utils.process_evaluation import ProcessEvaluation
 
 logger = logging.getLogger(__name__)
 
 
-def _non_finite_to_none(value: Any) -> Any:
-    """Copy ``value`` with every NaN or infinite float *value* replaced by ``None``.
+# Keys under which a float is a confidence. prediction_confidences is the
+# {field path: confidence} map compare_with() adds; _confidence is the
+# rich-value key in prediction_raw.
+_CONFIDENCE_KEYS = frozenset(
+    {RichValueHelper.CONFIDENCE_KEY, "prediction_confidences"}
+)
+
+
+def _replace_non_finite(value: Any) -> Any:
+    """Copy ``value`` with every NaN or infinite float *value* replaced.
+
+    A non-finite float becomes ``None``, except a confidence (anything under a
+    ``_CONFIDENCE_KEYS`` key), which becomes its string: ``"nan"``, ``"inf"`` or
+    ``"-inf"``. Replay reads a null confidence as "no confidence" and counts
+    the document's other confidences, but rejects a string as ``update()``
+    rejects the float, so both paths record the same accumulator error.
 
     Walks with an explicit stack, so depth is not limited by the recursion
     limit. Keys are left alone: ``json.dumps`` already writes a float key as a
@@ -41,38 +58,41 @@ def _non_finite_to_none(value: Any) -> Any:
     still reports it.
     """
     memo: Dict[int, Any] = {}
-    pending: List[Tuple[Any, Any]] = []
+    pending: List[Tuple[Any, Any, bool]] = []
 
-    def copy(item: Any) -> Any:
+    def copy(item: Any, is_confidence: bool) -> Any:
         if isinstance(item, float):
-            return item if math.isfinite(item) else None
+            if math.isfinite(item):
+                return item
+            return str(item) if is_confidence else None
         if not isinstance(item, (dict, list, tuple)):
             return item
         if id(item) not in memo:
             memo[id(item)] = {} if isinstance(item, dict) else []
-            pending.append((item, memo[id(item)]))
+            pending.append((item, memo[id(item)], is_confidence))
         return memo[id(item)]
 
-    result = copy(value)
+    result = copy(value, False)
     while pending:
-        source, target = pending.pop()
+        source, target, is_confidence = pending.pop()
         if isinstance(source, dict):
             for key, item in source.items():
-                target[key] = copy(item)
+                target[key] = copy(item, is_confidence or key in _CONFIDENCE_KEYS)
         else:
-            target.extend([copy(item) for item in source])
+            target.extend([copy(item, is_confidence) for item in source])
     return result
 
 
 def _jsonl_line(record: Dict[str, Any]) -> str:
-    """Serialize ``record`` as one strict-JSON line, writing NaN and infinities as null.
+    """Serialize ``record`` as one strict-JSON line; see ``_replace_non_finite``.
 
-    ``json.dumps`` writes them as bare ``NaN``/``Infinity``, which jq, JS
-    ``JSON.parse`` and Spark reject (#450); a blank pandas cell is NaN. Finite
-    records take the single dump. ``allow_nan=False`` raises ``ValueError`` only
-    for a non-finite float or a cycle, and a cycle raises again from the second
-    dump, so no message check is needed. ``default=str`` keeps numpy scalars and
-    similar values from crashing the writer, for parity with ``save_metrics()``.
+    ``json.dumps`` writes NaN and infinities as bare ``NaN``/``Infinity``, which
+    JS ``JSON.parse`` and other strict parsers reject (#450); a
+    blank pandas cell is NaN. Finite records take the single dump.
+    ``allow_nan=False`` raises ``ValueError`` only for a non-finite float or a
+    cycle, and a cycle raises again from the second dump, so no message check
+    is needed. ``default=str`` keeps numpy scalars and similar values from
+    crashing the writer, for parity with ``save_metrics()``.
     """
     try:
         return json.dumps(record, default=str, allow_nan=False)
@@ -80,7 +100,7 @@ def _jsonl_line(record: Dict[str, Any]) -> str:
         # After the copy, a non-finite float can only be a dict key, which
         # json.dumps writes as a quoted string, so the default allow_nan is
         # still strict JSON.
-        return json.dumps(_non_finite_to_none(record), default=str)
+        return json.dumps(_replace_non_finite(record), default=str)
 
 
 def _join_path(prefix: str, name: str) -> str:

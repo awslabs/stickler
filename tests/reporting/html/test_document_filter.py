@@ -104,13 +104,21 @@ def test_a_nan_doc_id_becomes_the_string_nan(tmp_path):
     assert loaded[0]["doc_id"] == "nan"
 
 
-def test_a_bare_nan_doc_id_from_an_older_file_reads_as_none(tmp_path):
-    """Files written before #450 hold a bare ``NaN`` token, which the reader
-    maps to ``None`` like any other non-finite value. Pinned as known behaviour."""
+def test_a_bare_non_finite_doc_id_from_an_older_file_stays_selectable(tmp_path):
+    """Files written before #450 hold bare ``NaN``/``Infinity`` tokens. Other
+    values read as ``None``, but an id keeps the string the tables show, so the
+    document can still be picked in the per-document view."""
     jsonl = tmp_path / "results.jsonl"
-    jsonl.write_text('{"doc_id": NaN}\n')
+    jsonl.write_text(
+        '{"doc_id": NaN, "v": NaN}\n'
+        '{"doc_id": Infinity}\n'
+        '{"doc_id": -Infinity}\n'
+        '{"doc_id": 1e999}\n'
+        '{"doc_id": 1.5}\n'
+    )
     loaded = EvaluationHTMLReporter()._load_individual_results(str(jsonl))
-    assert loaded[0]["doc_id"] is None
+    assert [record["doc_id"] for record in loaded] == ["nan", "inf", "-inf", "inf", "1.5"]
+    assert loaded[0]["v"] is None
 
 
 def test_a_record_without_a_doc_id_gains_no_key(tmp_path):

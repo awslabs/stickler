@@ -219,6 +219,11 @@ class EvaluationHTMLReporter:
                         # one. Left as a number, selecting it matched nothing and
                         # the page kept showing aggregate numbers.
                         doc_id = doc_data.get("doc_id") if isinstance(doc_data, dict) else None
+                        if doc_id is None and isinstance(doc_data, dict) and "doc_id" in doc_data:
+                            # A bare NaN or Infinity id from an older file
+                            # read as None above. Re-read the line (rare) to
+                            # keep the "nan"/"inf"/"-inf" the tables show.
+                            doc_id = json.loads(line).get("doc_id")
                         if doc_id is not None and not isinstance(doc_id, str):
                             doc_data["doc_id"] = str(doc_id)
                         individual_docs.append(doc_data)

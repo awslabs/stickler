@@ -1,8 +1,10 @@
 """The individual-results JSONL is strict JSON even when a value is NaN or infinite.
 
 ``json.dumps`` writes non-finite floats as bare ``NaN``/``Infinity`` tokens,
-which jq, JavaScript ``JSON.parse`` and Spark reject. A blank pandas cell is
-NaN, so this is the ordinary case. The writer now writes ``null``.
+which JavaScript ``JSON.parse`` and other strict parsers reject. A blank pandas cell is
+NaN, so this is the ordinary case. The writer now writes ``null``, except a
+confidence, written as ``"nan"``/``"inf"``/``"-inf"`` so replay still rejects it
+(replay parity is tested in ``test_prediction_raw_roundtrip.py``).
 
 Python's ``json.loads`` accepts ``NaN`` by default, so these tests parse with
 ``parse_constant`` raising, which is what a strict parser does.
@@ -22,6 +24,7 @@ from stickler import ComparableField, StructuredModel
 from stickler.structured_object_evaluator.bulk_structured_model_evaluator import (
     BulkStructuredModelEvaluator,
     _jsonl_line,
+    _replace_non_finite,
 )
 
 _JSON_DEEP_NESTING = pytest.mark.skipif(
@@ -109,6 +112,35 @@ def test_shared_containers_are_copied_once_and_stay_shared():
         "a": {"x": None},
         "b": [{"x": None}, {"x": None}],
     }
+
+
+def test_the_copy_alone_is_not_limited_by_recursion():
+    """No 3.12 skip: this checks the explicit stack, not ``json``'s C code."""
+    depth = 5000
+    value = {"_confidence": [INF]}
+    for _ in range(depth):
+        value = [value]
+
+    node = _replace_non_finite(value)
+    for _ in range(depth):
+        (node,) = node
+    assert node == {"_confidence": ["inf"]}
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ({"_value": NAN, "_confidence": NAN}, {"_value": None, "_confidence": "nan"}),
+        ({"_confidence": np.float64("-inf")}, {"_confidence": "-inf"}),
+        (
+            {"prediction_confidences": {"a": INF, "b.c": 0.5}, "v": INF},
+            {"prediction_confidences": {"a": "inf", "b.c": 0.5}, "v": None},
+        ),
+    ],
+)
+def test_a_non_finite_confidence_is_written_as_a_string(value, expected):
+    """Null would read back as "no confidence"; a string still fails validation."""
+    assert strict_loads(_jsonl_line(value)) == expected
 
 
 @pytest.mark.parametrize("member", [1.0, NAN], ids=["finite", "nan"])
