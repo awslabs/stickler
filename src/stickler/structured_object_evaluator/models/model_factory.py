@@ -25,6 +25,7 @@ from .threshold_rule import (
     is_threshold_error,
     is_valid_threshold,
     match_threshold_error,
+    outside_location,
 )
 
 #: Every key a top-level model config may carry, as read by ``create_model``.
@@ -369,6 +370,7 @@ class ModelFactory:
                 spelling=CONFIG if config else PYTHON,
                 model=model,
                 field=field,
+                set_at=None if config else outside_location(),
             )
 
     @staticmethod

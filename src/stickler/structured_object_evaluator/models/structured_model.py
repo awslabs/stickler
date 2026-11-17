@@ -44,9 +44,12 @@ from .threshold_rule import (
     SCHEMA,
     as_threshold,
     is_valid_threshold,
+    list_comparator_warning,
     list_threshold_error,
     match_threshold_error,
+    outside_location,
     python_comparator_source,
+    stacklevel_outside,
     threshold_error,
 )
 
@@ -250,6 +253,26 @@ def _is_unresolved(annotation: Any) -> bool:
     return any(_is_unresolved(arg) for arg in args)
 
 
+def _unalias(annotation: Any) -> Any:
+    """``list[Item]`` for a PEP 695 alias ``type Items = list[Item]``, also in a union.
+
+    pydantic keeps the alias as the field's annotation, so a list test on it
+    answers False although the field is scored as the list it names. An alias
+    whose value names a class not defined yet is left as it is.
+    """
+    for _ in range(10):
+        if type(annotation).__name__ != "TypeAliasType":
+            break
+        try:
+            annotation = annotation.__value__
+        except NameError:
+            return annotation
+    arms = get_args(annotation) if union_args(annotation) else ()
+    if arms and any(type(arm).__name__ == "TypeAliasType" for arm in arms):
+        return Union[tuple(_unalias(arm) for arm in arms)]
+    return annotation
+
+
 def _list_element_name(annotation: Any) -> str:
     """``Item`` for ``List[Item]``, ``Optional[List[Item]]`` or ``list[Item] | None``.
 
@@ -273,7 +296,9 @@ def _list_element_name(annotation: Any) -> str:
                 element = element.__forward_arg__
             if isinstance(element, str):
                 return _bare_name(element) or "the element class"
-            return getattr(element, "__name__", "the element class")
+            if not isinstance(element, type):
+                return "the element class"  # a union of classes, say
+            return element.__name__
     return "the element class"
 
 
@@ -790,7 +815,11 @@ class StructuredModel(BaseModel):
                                 # object a true positive, the misconfiguration
                                 # warn_if_threshold_is_zero exists to flag.
                                 raise list_threshold_error(
-                                    threshold,
+                                    getattr(
+                                        field_default.json_schema_extra,
+                                        "_threshold_as_written",
+                                        threshold,
+                                    ),
                                     spelling=PYTHON,
                                     field=field_name,
                                     model=cls.__name__,
@@ -840,16 +869,28 @@ class StructuredModel(BaseModel):
                                 # warns. The sibling `_warn_if_threshold_is_zero`
                                 # call below uses this helper for exactly that
                                 # reason, and I keyed on the name anyway.
+                                comparator = getattr(
+                                    field_default.json_schema_extra,
+                                    "_comparator_instance",
+                                    None,
+                                )
                                 warn_once(
                                     "list-of-models-comparator-threshold",
                                     f"{_model_identity(cls.__name__, cls.__annotations__)}"
                                     f".{field_name}",
-                                    f"Field '{field_name}' is a List[StructuredModel], so the "
-                                    f"threshold set on its comparator is not consulted: "
-                                    f"Hungarian matching pairs items using the element class's "
-                                    f"'match_threshold'. Set 'match_threshold' on the element "
-                                    f"class if you meant to change how items are paired.",
+                                    list_comparator_warning(
+                                        _named_comparator_threshold(comparator),
+                                        comparator=python_comparator_source(
+                                            comparator
+                                        ),
+                                        field=field_name,
+                                        model=cls.__name__,
+                                        element=_list_element_name(field_type),
+                                    ),
                                     category=UserWarning,
+                                    stacklevel=stacklevel_outside(
+                                        through_warn_once=True
+                                    ),
                                 )
 
                             # Comparator validation - only flag if explicitly set to non-default type
@@ -910,7 +951,12 @@ class StructuredModel(BaseModel):
                 or isinstance(value, (property, classmethod, staticmethod))
                 or is_valid_threshold(value)
             ):
-                raise match_threshold_error(value, spelling=PYTHON, model=cls.__name__)
+                raise match_threshold_error(
+                    value,
+                    spelling=PYTHON,
+                    model=cls.__name__,
+                    set_at=outside_location(),
+                )
             number = as_threshold(value)
             if number is not None and number is not value:
                 # A Decimal, Fraction or numpy number, as the float it means.
@@ -944,11 +990,12 @@ class StructuredModel(BaseModel):
         An annotation still unresolved (a forward reference, such as ``addr:
         Address`` under ``from __future__ import annotations`` with ``Address``
         defined below) is checked now, as one that adopts its comparator's
-        threshold, unless it is visibly a list (``List["Item"]``,
-        ``"Optional[List[Item]]"``). Nothing checks it once it resolves, and
-        only a list of models does not adopt. A bare name that resolves to a
-        list alias is the one shape this reads wrong, and only for an invalid
-        threshold.
+        threshold, even when it is visibly a list (``List["Item"]``): stickler
+        cannot tell yet whether ``Item`` is a model, and nothing checks the
+        field once it resolves. Only a list of models does not adopt, so an
+        invalid comparator threshold there raises, though it would only warn
+        once resolved; the message says to remove the comparator in that case.
+        A PEP 695 alias is read as the type it names.
         """
         for field_name, field_info in cls.model_fields.items():
             if field_name == _EXTRA_FIELDS_KEY:
@@ -961,10 +1008,10 @@ class StructuredModel(BaseModel):
             if is_valid_threshold(threshold):
                 continue
             annotation = field_info.annotation
-            if not getattr(extra, "_threshold_explicit", True) and (
-                _is_visibly_list(annotation)
-                if _is_unresolved(annotation)
-                else cls._is_list_of_structured_model_type(annotation)
+            if (
+                not getattr(extra, "_threshold_explicit", True)
+                and not _is_unresolved(annotation)
+                and cls._is_list_of_structured_model_type(_unalias(annotation))
             ):
                 continue
             raise cls._threshold_error(field_name, extra, threshold, annotation)
@@ -980,22 +1027,31 @@ class StructuredModel(BaseModel):
                 getattr(extra, "_comparator_instance", None)
             )
         unresolved = _is_unresolved(annotation)
+        resolved = _unalias(annotation)
         list_element = None
         if (
             _is_visibly_list(annotation)
             if unresolved
-            else cls._is_list_of_structured_model_type(annotation)
+            else cls._is_list_of_structured_model_type(resolved)
         ):
-            list_element = _list_element_name(annotation)
+            list_element = _list_element_name(resolved)
+        nested = (
+            comparator is not None
+            and not unresolved
+            and cls._is_structured_model_type(resolved)
+        )
+        nested_model = None
+        if nested:
+            inner = unwrap_optional(unwrap_annotated(resolved))[0]
+            nested_model = getattr(inner, "__name__", None)
         return threshold_error(
             threshold,
             spelling=PYTHON,
             field=field_name,
             model=cls.__name__,
             comparator=comparator,
-            nested=comparator is not None
-            and not unresolved
-            and cls._is_structured_model_type(annotation),
+            nested=nested,
+            nested_model=nested_model,
             list_element=list_element,
             list_unresolved=unresolved,
             set_at=getattr(extra, "_set_at", None),

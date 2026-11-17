@@ -37,12 +37,13 @@ class TestStructuredModelValidation:
 
         error_message = str(exc_info.value)
         assert error_message.startswith(
-            "Invalid threshold for field 'products' of model 'OrderWithThreshold': "
-            "ComparableField(threshold=0.9) would have no effect. A "
-            "List[StructuredModel] field takes no threshold: its items are paired "
-            "on the element class's match_threshold. Set match_threshold = 0.9 on "
-            "Product instead. (Set at test_model_validation.py:"
+            "Unused threshold for field 'products' of model 'OrderWithThreshold': "
+            "ComparableField(threshold=0.9) has no effect on a List[Product] "
+            "field: its items are matched up using Product.match_threshold. "
+            "Remove threshold=0.9. To change how items match, add "
+            "match_threshold = 0.9 to the body of class Product. (Set at "
         )
+        assert "test_model_validation.py:" in error_message
 
     def test_comparator_validation_on_list_structured_model_field(self):
         """Test that comparator parameter on List[StructuredModel] fields raises ValueError."""
@@ -94,7 +95,7 @@ class TestStructuredModelValidation:
 
         error_message = str(exc_info.value)
         # Should catch the threshold error first
-        assert "ComparableField(threshold=0.9) would have no effect" in error_message
+        assert "ComparableField(threshold=0.9) has no effect" in error_message
 
     def test_valid_list_structured_model_field_creation(self):
         """Test that valid List[StructuredModel] fields can be created without errors."""
@@ -174,7 +175,7 @@ class TestStructuredModelValidation:
                 )
 
         error_message = str(exc_info.value)
-        assert "Set match_threshold = 0.95 on Product instead." in error_message
+        assert "add match_threshold = 0.95 to the body of class Product." in error_message
 
     def test_validation_works_with_different_threshold_values(self):
         """Test that validation catches different threshold values correctly."""

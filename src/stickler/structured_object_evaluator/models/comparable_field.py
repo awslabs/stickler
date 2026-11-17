@@ -213,9 +213,14 @@ def ComparableField(
             if from_comparator is not None
             else _LEGACY_DEFAULT_THRESHOLD
         )
-    # A valid Decimal, Fraction or numpy number becomes the float it means, so
-    # the metadata, `explain()` and both exports carry a float. An invalid one
-    # is kept as written, for the error the class raises when it is defined.
+    # A valid Decimal, Fraction or numpy number becomes the float `float()`
+    # gives, so the field's metadata, `explain()` and the field threshold both
+    # exports write are a float. The comparator keeps the value it was given:
+    # one that exports its own threshold (ANLSStarComparator's config) still
+    # writes it as given. An invalid one is kept as written, for the error the
+    # class raises when it is defined. So is the value as written, for the
+    # error a List[StructuredModel] field raises for a valid one.
+    threshold_as_written = threshold
     threshold = normalize_threshold(threshold)
 
     # Create serializable metadata for JSON schema compatibility
@@ -246,6 +251,7 @@ def ComparableField(
     # the class is defined and so would otherwise point only at its `class` line.
     set_at = caller_location()
     json_schema_extra_func._set_at = set_at
+    json_schema_extra_func._threshold_as_written = threshold_as_written
 
     # Merge with existing json_schema_extra if provided
     existing_json_schema_extra = field_kwargs.get("json_schema_extra", {})
@@ -265,6 +271,7 @@ def ComparableField(
         enhanced_json_schema_extra._clip_under_threshold = clip_under_threshold
         enhanced_json_schema_extra._comparison_metadata = serializable_metadata
         enhanced_json_schema_extra._set_at = set_at
+        enhanced_json_schema_extra._threshold_as_written = threshold_as_written
         final_json_schema_extra = enhanced_json_schema_extra
     elif isinstance(existing_json_schema_extra, dict):
 
@@ -282,6 +289,7 @@ def ComparableField(
         enhanced_json_schema_extra._clip_under_threshold = clip_under_threshold
         enhanced_json_schema_extra._comparison_metadata = serializable_metadata
         enhanced_json_schema_extra._set_at = set_at
+        enhanced_json_schema_extra._threshold_as_written = threshold_as_written
         final_json_schema_extra = enhanced_json_schema_extra
     else:
         final_json_schema_extra = json_schema_extra_func
