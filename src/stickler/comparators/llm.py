@@ -242,18 +242,18 @@ class LLMComparator(BaseComparator):
             value2: Second value to compare. Can be any type that converts to string.
 
         Returns:
-            float: Binary similarity score:
-                - 1.0 if the LLM replies exactly ``true``
-                - 0.0 if the LLM replies exactly ``false``
-                - 0.0, with a ``UserWarning``, for any other reply. Before
-                  comparing, surrounding whitespace, quotes, backticks and
-                  markdown emphasis and trailing punctuation are stripped and
-                  case is ignored.
-                - 0.0 if an error occurs during comparison
+            float: 1.0 if the normalized reply is exactly ``true``, otherwise 0.0.
+                Normalizing strips surrounding whitespace, quotes, backticks and
+                markdown emphasis, strips trailing ``.,;:!?``, and ignores case. A
+                reply that is neither ``true`` nor ``false`` also emits a
+                ``UserWarning``.
+
+        Raises:
+            NoCredentialsError: If AWS credentials are not found.
+            Exception: Any other error from the LLM call is re-raised.
 
         Note:
-            - Error handling: Returns 0.0 for any exceptions during LLM calls
-            - Cost consideration: Each call incurs API costs and latency
+            Cost consideration: Each call incurs API costs and latency.
 
         Example:
             >>> comparator = LLMComparator()

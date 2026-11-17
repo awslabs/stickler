@@ -485,7 +485,7 @@ The default model is `distilbert-base-uncased`, loaded globally via the `evaluat
 
 ### LLMComparator
 
-Uses a Large Language Model (via AWS Bedrock and the `strands-agents` library) to perform intelligent semantic comparisons. The LLM receives both values and optional evaluation guidelines, then returns a binary equivalence judgment: 1.0 only when the normalised reply is exactly `true`, otherwise 0.0 (with a `UserWarning` when the reply is neither `true` nor `false`). See [LLM-as-a-Judge](llm-as-a-judge.md#llmcomparator) for the exact rule. This is the most flexible comparator but also the most expensive.
+Uses a Large Language Model (via AWS Bedrock and the `strands-agents` library) to perform intelligent semantic comparisons. The LLM receives both values and optional evaluation guidelines, then returns a binary equivalence judgment: 1.0 only when the normalized reply is exactly `true`, otherwise 0.0 (with a `UserWarning` when the reply is neither `true` nor `false`). See [LLM-as-a-Judge](llm-as-a-judge.md#llmcomparator) for the exact rule. This is the most flexible comparator but also the most expensive.
 
 **When to use:** Complex comparisons that require reasoning, domain-specific logic, or understanding of abbreviations and conventions. See [LLM-as-a-Judge Comparators](llm-as-a-judge.md) for a detailed guide.
 

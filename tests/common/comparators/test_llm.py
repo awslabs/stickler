@@ -216,7 +216,7 @@ class TestLLMComparator:
                 result = self.comparator.compare("value1", "value2")
             assert result == 0.0, f"Failed for response: {response}"
 
-    # #506: the verdict is the normalised reply, compared exactly. A substring
+    # #506: the verdict is the normalized reply, compared exactly. A substring
     # test scored "untrue" and "Not true" as matches.
     @pytest.mark.parametrize(
         "response",
