@@ -25,7 +25,7 @@ class ConfidencePair(BaseModel):
     similarity: float   # Raw comparator similarity score (0.0–1.0)
 ```
 
-`is_match` is threshold-gated: `raw_score >= ComparableField.threshold`. This means a field with similarity 0.65 and threshold 0.7 is `is_match=False`, even though it's partially correct. The `similarity` field preserves the continuous score for future metrics that want to correlate confidence with degree of correctness rather than binary match.
+`is_match` is threshold-gated: `raw_score >= ComparableField.threshold`, with the rounding tolerance described in [Meeting a Threshold](https://awslabs.github.io/stickler/Getting-Started/thresholds-and-metrics/#meeting-a-threshold). This means a field with similarity 0.65 and threshold 0.7 is `is_match=False`, even though it's partially correct. The `similarity` field preserves the continuous score for future metrics that want to correlate confidence with degree of correctness rather than binary match.
 
 ## Adding a New Metric
 

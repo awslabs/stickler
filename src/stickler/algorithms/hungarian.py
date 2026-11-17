@@ -289,15 +289,21 @@ class HungarianMatcher:
             other convention, so the same counts read lower here than they do
             as ``cm_recall`` there.
 
-            The threshold test here is a bare ``>=``. ``ThresholdHelper`` and
-            ``ComparisonHelper`` use a tolerant test that accepts a score up
-            to ``1e-10`` under the threshold, so a score inside that window is
-            a TP there and an FD here.
+            The threshold test is ``ThresholdHelper.is_above_threshold``, the
+            one every classification gate listed in Meeting a Threshold uses.
+            It accepts a score up to ``1e-10`` under the threshold, so
+            ``0.7 + 0.1`` against ``0.8`` is a TP.
 
             ``match_threshold=0.0`` is used elsewhere as a capture all
             sentinel. Every score satisfies ``>= 0.0``, so ``tp`` then counts
             pairs rather than true positives and must not be read.
         """
+        # Imported here so stickler.algorithms does not load the evaluator
+        # package at import time; the evaluator imports this module.
+        from stickler.structured_object_evaluator.models.threshold_helper import (
+            ThresholdHelper,
+        )
+
         prepared_list1, prepared_list2 = self._prepare_lists(list1, list2)
         m, n = len(prepared_list1), len(prepared_list2)
 
@@ -322,7 +328,11 @@ class HungarianMatcher:
         # cover max(m, n) items once each. The threshold splits the pairs into
         # tp and fd. It does not un-match them, which is why a paired item
         # never reaches fn or fa.
-        tp = sum(1 for _, _, score in matched_pairs if score >= self.match_threshold)
+        tp = sum(
+            1
+            for _, _, score in matched_pairs
+            if ThresholdHelper.is_above_threshold(score, self.match_threshold)
+        )
         k = len(matched_pairs)
         fd, fn, fa = k - tp, m - k, n - k
         fp = fd + fa

@@ -15,7 +15,7 @@ class SectionGenerator:
     def generate_executive_summary(self, config: ReportConfig) -> str:
         """Generate executive summary section."""
         metrics = DataExtractor.extract_overall_metrics(self.results)
-        doc_count =  getattr(self.results, 'document_count', 1)
+        doc_count = DataExtractor.get_document_count(self.results)
 
         html_string = """
         <div class="section">
@@ -30,7 +30,7 @@ class SectionGenerator:
         html_string += f"""
             <div class="summary-grid">
                 <div class="metric-card">
-                    <div class="metric-value">{doc_count}</div>
+                    <div class="metric-value">{html.escape(str(doc_count))}</div>
                     <div class="metric-label">Documents</div>
                 </div>
         """
@@ -40,9 +40,13 @@ class SectionGenerator:
         for metric in key_metrics:
             if metric in metrics:
                 value = metrics[metric]
-                if isinstance(value, float):
+                # JSON and caller-provided results may represent an exact score
+                # as an int (for example, ``1``). Treat every real built-in
+                # numeric score consistently with the gauge and field views.
+                # Bool is an int subclass but is not a performance score.
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
                     display_value = f"{value:.3f}"
-                    color = ColorUtils.get_performance_color(value, config.color_thresholds) if hasattr(self.viz_engine, '_get_performance_color') else '#007bff'
+                    color = ColorUtils.get_performance_color(value, config.color_thresholds)
                 else:
                     display_value = str(value)
                     color = "#010101"
@@ -134,8 +138,8 @@ class SectionGenerator:
         '''
         
         for nm in displayed:
-            doc_id = html.escape(nm.get('doc_id', 'N/A'))
-            field_path = html.escape(nm.get('field_path', 'N/A'))
+            doc_id = html.escape(str(nm.get('doc_id', 'N/A')))
+            field_path = html.escape(str(nm.get('field_path', 'N/A')))
             non_match_type = html.escape(str(nm.get('non_match_type', 'N/A')).replace('NonMatchType.',''))
             ground_truth_value = html.escape(str(nm.get('ground_truth_value', 'None'))[:100])  # Truncate long values
             prediction_value = html.escape(str(nm.get('prediction_value', 'None'))[:100])
@@ -169,6 +173,12 @@ class SectionGenerator:
             html_string += '<div class="document-gallery">'
             
             for doc_id, image_path in document_images.items():
+                # Coerce before escape: html.escape requires str; int keys/paths
+                # (same shape as JSONL doc_id after 1.0.1) must not crash the gallery.
+                # Conversion can make distinct input keys render identically; preserve
+                # every ordered mapping entry rather than silently dropping one.
+                doc_id = str(doc_id)
+                image_path = str(image_path)
                 html_string += f'''
                     <div class="image-item">
                         <img src="{html.escape(image_path)}" alt="{html.escape(doc_id)}">
@@ -182,6 +192,10 @@ class SectionGenerator:
             html_string += '<div class="document-gallery">'
 
             for doc_id, pdf_path in document_images.items():
+                # Same coercion as the image branch above: escape needs str, and
+                # colliding converted keys render once per ordered input entry.
+                doc_id = str(doc_id)
+                pdf_path = str(pdf_path)
                 html_string += f'''
                     <div class="pdf-item" data-doc-id="{html.escape(doc_id)}" data-pdf-path="{html.escape(pdf_path)}">
                         <div class="pdf-container">

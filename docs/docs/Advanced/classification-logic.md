@@ -39,7 +39,7 @@ False Alarm (FA) and False Discovery (FD) together make up the broader False Pos
 Lists use the [Hungarian algorithm](hungarian-matching.md) for optimal element pairing.
 
 1. **Empty lists**: `[] vs []` is TN; `[] vs [items]` produces one FA per item; `[items] vs []` produces one FN per item.
-2. **Matched elements**: similarity >= threshold is TP; below threshold is FD.
+2. **Matched elements**: similarity >= threshold is TP; below threshold is FD. See [Meeting a Threshold](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold).
 3. **Unmatched elements**: leftover GT elements are FN; leftover EST elements are FA.
 4. **`None` elements**: absent, so they are not matched or counted. A list of only `None` is an empty list. See [`None` elements in a list](#none-elements-in-a-list).
 
@@ -97,7 +97,7 @@ Result: TP=0, FA=0, FN=0, FD=3
 
 ### Nested Objects
 
-Nested objects are evaluated recursively, field by field.
+Nested objects are evaluated recursively, field by field, with `>=` as described in [Meeting a Threshold](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold).
 
 | Condition | Classification |
 |-----------|---------------|
@@ -194,7 +194,7 @@ These are computed at every node of the result tree, from that node's own counts
 
 **TN in object matching** -- A TN is absence of evidence, not evidence of a match. Fields absent on both sides are excluded from the weighted object similarity used by Hungarian matching. If every field is absent, the similarity is defined as `1.0`.
 
-**Threshold boundary** -- A similarity score exactly equal to the threshold counts as a match (TP).
+**Threshold boundary** -- A similarity score exactly equal to the threshold counts as a match (TP). So does a score less than `1e-10` under it, at every gate listed in [Meeting a Threshold](../Getting-Started/thresholds-and-metrics.md#meeting-a-threshold), so a rounding error such as `0.7 + 0.1` (`0.7999999999999999`) against `0.8` does not turn a TP into an FD.
 
 **List order** -- Order does not matter. The Hungarian algorithm finds the optimal pairing regardless of element position.
 

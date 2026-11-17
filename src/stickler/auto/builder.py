@@ -128,6 +128,7 @@ def specs_for(
     *,
     weight_hints: bool = False,
     match_threshold: float = 0.7,
+    _check_buildable: bool = True,
 ) -> Dict[str, InferredSpec]:
     """Return the inferred spec per field (for ``.explain()``), keyed by
     dotted path.
@@ -137,7 +138,24 @@ def specs_for(
     under a dotted path (``lines.sku``), so every comparator decision at every
     depth is auditable. Primitive-list fields report the spec of the ELEMENT
     type, matching what the builder actually installs.
+
+    Raises the same ``TypeError`` as :func:`structured_model_for` for any class
+    it refuses, such as a ``RootModel``: specs for a model that cannot be built
+    would describe paths that are never scored. A ``StructuredModel`` is used
+    as configured and never built, so it is not checked.
+
+    ``_check_buildable=False`` skips that check, for ``EvalSpec.explain()``: a
+    spec either holds the shadow the builder already built, so the check
+    cannot fail, or a hand-written ``eval_model``, which the builder's verdict
+    on ``cls`` does not bear on.
     """
+    if _check_buildable and not (
+        isinstance(cls, type) and issubclass(cls, StructuredModel)
+    ):
+        # Cached, so this is free when the builder already ran (#423).
+        structured_model_for(
+            cls, weight_hints=weight_hints, match_threshold=match_threshold
+        )
     registry = get_global_registry()
     result: Dict[str, InferredSpec] = {}
     _collect_specs(

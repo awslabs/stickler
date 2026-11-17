@@ -7,6 +7,8 @@ from typing import Any, Dict, Optional
 from stickler.comparators.base import BaseComparator
 from stickler.comparators.levenshtein import LevenshteinComparator
 
+from .threshold_helper import ThresholdHelper
+
 
 class ComparisonInfo:
     """Container for comparison configuration.
@@ -56,7 +58,11 @@ class ComparisonInfo:
         similarity = self.comparator.compare(value1, value2)
 
         # Apply threshold (if below threshold, return 0)
-        return 0.0 if similarity < self.threshold else similarity
+        return (
+            0.0
+            if ThresholdHelper.is_below_threshold(similarity, self.threshold)
+            else similarity
+        )
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -130,7 +136,9 @@ class ComparableFieldConfig:
         similarity = self.comparator.compare(value1, value2)
 
         # Apply threshold if clip_under_threshold is enabled
-        if self.clip_under_threshold and similarity < self.threshold:
+        if self.clip_under_threshold and ThresholdHelper.is_below_threshold(
+            similarity, self.threshold
+        ):
             return 0.0
 
         return similarity
