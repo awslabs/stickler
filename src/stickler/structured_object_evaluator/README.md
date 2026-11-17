@@ -230,7 +230,7 @@ result = gt.compare_with(pred)
 
 - `x-aws-stickler-comparator`: comparator **class name**, such as `"ExactComparator"`, `"FuzzyComparator"`, `"LevenshteinComparator"`, `"SemanticComparator"`. Lowercase aliases are not accepted and raise.
 - `x-aws-stickler-comparator-config`: keyword arguments for that comparator's constructor
-- `x-aws-stickler-threshold`: matching threshold, 0.0 to 1.0 (default: a `threshold` in `x-aws-stickler-comparator-config` if it is a number from 0.0 to 1.0, else the type default; any other value warns)
+- `x-aws-stickler-threshold`: matching threshold, 0.0 to 1.0 (default: a `threshold` in `x-aws-stickler-comparator-config`, else the type default). Whichever the field uses must be a number from 0.0 to 1.0, or the import raises `ValueError` naming the model, the field and the key
 - `x-aws-stickler-weight`: field importance weight (default: 1.0)
 - `x-aws-stickler-clip-under-threshold`: clip scores below threshold to 0.0 (boolean, default: true; false on a free-form object or an array of them)
 
@@ -315,6 +315,12 @@ ComparableField(
                                          # prediction scores rather than failing validation
 )
 ```
+
+The threshold the field ends up with, `threshold` or one adopted from the comparator, must be a
+number from 0.0 to 1.0. `StructuredModel.__init_subclass__` checks it when the class is defined,
+because `ComparableField` does not know the model or the field name yet; the importers check the
+same rule on load, with the shared message from `comparable_field._check_threshold`. A comparator
+threshold the field overrides, or one on a `List[StructuredModel]` field, is not checked.
 
 `default_factory` is honored, for a mutable default such as `default_factory=list`. Combining
 it with a `default` value raises `TypeError`, as in Pydantic, `None` included. `default=...` and

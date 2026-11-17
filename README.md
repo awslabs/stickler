@@ -346,9 +346,8 @@ even though the field on the built class ends up a plain `str` — read the choi
 
 **Type:** `number` (0.0 to 1.0, inclusive)  
 **Required:** No  
-**Default:** a `threshold` in `x-aws-stickler-comparator-config`, if it is a number from 0.0 to
-1.0 (any other value is ignored with a warning) and the property is not an array of models.
-Otherwise position-dependent, not one number. `0.5` for a plain scalar, an array of plain
+**Default:** a `threshold` in `x-aws-stickler-comparator-config`, unless the property is an
+array of models. Otherwise position-dependent, not one number. `0.5` for a plain scalar, an array of plain
 scalars, and an array of models; `0.7` for an object with `properties`; `1.0` for a free-form
 `{"type": "object"}` (or an array of them) and for any property or array `items` with `enum`,
 `const`, or a string `format` of `date`/`date-time`/`uri`/`uuid`/`time`, whether or not a
@@ -356,6 +355,14 @@ comparator is declared. See the table in
 [Evaluation](https://awslabs.github.io/stickler/Guides/Evaluation/#extension-reference).
 
 Minimum similarity score required for binary match classification.
+
+The threshold a property uses, this key or a `threshold` in `x-aws-stickler-comparator-config`,
+must be a number from 0.0 to 1.0. Anything else, such as `85`, `"0.9"` or `true`, raises
+`ValueError` on import:
+
+```text
+ValueError: Invalid threshold for field 'total_amount' of model 'Invoice': x-aws-stickler-comparator-config threshold gives 85, but a threshold is a number from 0.0 to 1.0, the fraction of similarity a match needs. For 85%, use 0.85. Or set x-aws-stickler-threshold to override the comparator's value.
+```
 
 **How Threshold Works:**
 - Similarity score **≥ threshold** → Classified as **MATCH** (True Positive or True Negative)

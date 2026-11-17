@@ -24,6 +24,8 @@ comparator = LevenshteinComparator(threshold=0.8)
 
 A threshold on the field always wins. And only a threshold you *named* is adopted: a comparator's own default is not, because those defaults were never chosen as classification cutoffs. `LevenshteinComparator(threshold=0.8)` gives the field 0.8; a bare `LevenshteinComparator()` leaves it at the field default of 0.5, not the comparator's 0.7.
 
+An adopted comparator threshold must be a [valid threshold](#valid-threshold-values), as the field's own must.
+
 ### 2. Field Threshold
 
 **What it is:** The threshold set on a `ComparableField`.
@@ -42,6 +44,8 @@ class Invoice(StructuredModel):
 - **Score clipping:** When `clip_under_threshold=True` (the default), scores below the threshold are zeroed out in the weighted average.
 
 **Default:** `0.5`
+
+**Valid values:** a number from 0.0 to 1.0. See [Valid Threshold Values](#valid-threshold-values).
 
 ### 3. Model Match Threshold
 
@@ -128,6 +132,24 @@ In this example:
 Field threshold → threshold named on the comparator → `0.5`.
 
 A comparator's *default* threshold is not part of that chain. `LevenshteinComparator()` does not contribute its 0.7, because those defaults were chosen for `binary_compare()` and were never audited as classification cutoffs. `DateComparator` is the clearest case: it defaults to `1.0` while awarding `0.7` partial credit for a match with no year, so adopting its default would clip its own feature to zero.
+
+## Valid Threshold Values
+
+A field's threshold is a number from 0.0 to 1.0: the fraction of similarity a match needs. The rule applies to the threshold the field ends up with, whether you set it on the field or the field adopts it from the comparator, on every path:
+
+| Path | Field threshold | Adopted comparator threshold |
+|---|---|---|
+| Python | `ComparableField(threshold=...)` | `LevenshteinComparator(threshold=...)` |
+| Stickler config | `threshold` | `comparator_config.threshold` |
+| JSON Schema | `x-aws-stickler-threshold` | `x-aws-stickler-comparator-config` threshold |
+
+Anything else, such as `85`, `1.5`, `-1`, `"0.9"`, `True`, NaN or infinity, raises `ValueError` when the class is defined or the config or schema is loaded, never during evaluation. The message names the model, the field, where the value came from, and the likely fix:
+
+```text
+ValueError: Invalid threshold for field 'vendor' of model 'Invoice': LevenshteinComparator(threshold=85) gives 85, but a threshold is a number from 0.0 to 1.0, the fraction of similarity a match needs. For 85%, use 0.85. Or set ComparableField(threshold=...) to override the comparator's value.
+```
+
+A comparator threshold the field does not adopt is not checked: when the field sets its own, the comparator's is not read, and on a `List[StructuredModel]` field it is not consulted (pairing uses `match_threshold`) and warns instead. A comparator's constructor never checks it, since a custom comparator may use `threshold` for something else.
 
 ## Meeting a Threshold
 

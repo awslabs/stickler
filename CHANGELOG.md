@@ -35,11 +35,31 @@ Each release links to full notes on the
     `optional_structured_model` field and an object with `properties`, where
     `ComparableField(comparator=X(threshold=0.9))` also gates at 0.9; the
     config path dropped it there and the schema path did too
-    ([#334](https://github.com/awslabs/stickler/issues/334)). A comparator
-    threshold that is not a number from 0.0 to 1.0 is not adopted: it emits a
-    `UserWarning` naming the field and the value, and the field keeps the
-    default it had, so its scores do not move and the model still reloads its
-    own export.
+    ([#334](https://github.com/awslabs/stickler/issues/334)). An adopted
+    comparator threshold is checked as a field threshold is; see the next item.
+  - **A threshold that is not a number from 0.0 to 1.0 raises `ValueError`
+    when the class is defined or the config or schema is loaded, on every
+    path.** It applies to the threshold the field ends up with:
+    - Python: `ComparableField(threshold=...)`, and a comparator threshold the
+      field adopts, such as `LevenshteinComparator(threshold=85)`. Neither was
+      checked, so at 85 an identical pair scored 0.0 FD.
+    - Stickler config: `threshold`, and an adopted `comparator_config.threshold`.
+    - JSON Schema: `x-aws-stickler-threshold`, and an adopted
+      `x-aws-stickler-comparator-config` threshold.
+
+    `85`, `1.5`, `-1`, `"0.9"`, `true`, NaN and infinity all raise. Before, the
+    config and schema paths already refused a field threshold out of range but
+    accepted `true` as 1, and a comparator-config threshold loaded whatever its
+    value, because it was not read. The message names the model, the field,
+    where the value came from, and the likely fix:
+
+    ```text
+    Invalid threshold for field 'vendor' of model 'Invoice': LevenshteinComparator(threshold=85) gives 85, but a threshold is a number from 0.0 to 1.0, the fraction of similarity a match needs. For 85%, use 0.85. Or set ComparableField(threshold=...) to override the comparator's value.
+    ```
+
+    A comparator threshold the field does not adopt is not checked: one a field
+    threshold overrides, or one on a list of models, which pairs on
+    `match_threshold`.
   - **A mapping field keeps its partial credit.** A `dict` field naming a
     comparator, or a list of them, defaulted to `clip_under_threshold: true`,
     so ANLS\* partial credit below the threshold was zeroed: 0.0 where Python
@@ -74,7 +94,8 @@ Each release links to full notes on the
   constructor, is read (see Changed), and the warning gives its value. A named
   comparator stays on the field, as on the Python path, so `explain()` reports
   it rather than a placeholder `LevenshteinComparator`. Nothing that loaded
-  before raises. `comparator` on a `list_structured_model` field, and `"auto"`
+  before raises, except a comparator threshold that is not a number from 0.0
+  to 1.0 (see Changed). `comparator` on a `list_structured_model` field, and `"auto"`
   on any nested model, still raise. A property that is a union of objects
   (`anyOf` or `oneOf` with object arms) is not covered: as on the Python path
   for a `Union` field, a comparator-config threshold gates it, and a named
