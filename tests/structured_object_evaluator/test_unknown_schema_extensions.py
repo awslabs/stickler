@@ -867,29 +867,103 @@ class TestDefinitionsAreChecked:
             }
         )
 
+    _OF_ALIAS = (
+        "the elements pair by the 'x-aws-stickler-match-threshold' of the "
+        "object it aliases"
+    )
+    # A one-arm `allOf` of these fails with `field_definitions must contain at
+    # least one field`, directly or through an alias.
+    _LIST_TYPED = (["object", "null"], ["null", "object"], ["object"])
+
     @pytest.mark.parametrize(
         "end, offered, pairs",
         (
+            (INNER, "'anyOf', 'oneOf' or 'allOf'", _OF_ALIAS),
             (
-                INNER,
+                {"properties": INNER["properties"]},
                 "'anyOf', 'oneOf' or 'allOf'",
-                "the elements pair by the 'x-aws-stickler-match-threshold' of the "
-                "object it aliases",
+                _OF_ALIAS,
             ),
+            (dict(INNER, type=_LIST_TYPED[0]), "'anyOf' or 'oneOf'", _OF_ALIAS),
+            (dict(INNER, type=_LIST_TYPED[1]), "'anyOf' or 'oneOf'", _OF_ALIAS),
+            (dict(INNER, type=_LIST_TYPED[2]), "'anyOf' or 'oneOf'", _OF_ALIAS),
             ({"type": "string"}, "'anyOf' or 'oneOf'", "on the array property"),
         ),
-        ids=("object", "scalar"),
+        ids=(
+            "object",
+            "untyped",
+            "object-null",
+            "null-object",
+            "one-element-list",
+            "scalar",
+        ),
     )
     def test_a_field_key_on_an_alias_offers_what_its_end_accepts(
         self, end, offered, pairs
     ):
-        """An alias of an object is used as the object is, `allOf` included."""
+        """An alias of an object is used as the object is, `allOf` included when
+        a one-arm `allOf` of the object imports."""
         with pytest.raises(ValueError) as exc:
             self._alias(end, {"x-aws-stickler-threshold": 0.9})
         message = str(exc.value)
         assert "not read on definition '$defs.Alias'" in message
         assert f"beside the {offered} when the '$ref' is one of its arms" in message
         assert pairs in message
+
+    @pytest.mark.parametrize("declared", _LIST_TYPED, ids=lambda t: "-".join(t))
+    def test_a_field_key_on_a_list_typed_definition_offers_no_allof(self, declared):
+        with pytest.raises(ValueError) as exc:
+            self._via(
+                "$defs",
+                dict(self.INNER, type=declared, **{"x-aws-stickler-weight": 2.0}),
+            )
+        message = str(exc.value)
+        assert "beside the 'anyOf' or 'oneOf' when the '$ref' is one of its arms" in (
+            message
+        )
+        assert "this definition's 'x-aws-stickler-match-threshold'" in message
+
+    def test_an_alias_typed_as_a_list_offers_no_allof(self):
+        """Each hop counts: the alias's own list form breaks the `allOf` too."""
+        with pytest.raises(ValueError) as exc:
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {"a": {"$ref": "#/$defs/Alias"}},
+                    "$defs": {
+                        "Alias": {
+                            "type": ["object", "null"],
+                            "$ref": "#/$defs/End",
+                            "x-aws-stickler-weight": 2.0,
+                        },
+                        "End": self.INNER,
+                    },
+                }
+            )
+        assert "beside the 'anyOf' or 'oneOf' when" in str(exc.value)
+
+    @pytest.mark.parametrize("declared", _LIST_TYPED, ids=lambda t: "-".join(t))
+    @pytest.mark.parametrize("alias", (False, True), ids=("direct", "alias"))
+    def test_a_one_arm_allof_of_a_list_typed_definition_fails(self, declared, alias):
+        """Why the advice leaves the `allOf` out. If this starts importing, the
+        advice can offer it again."""
+        with pytest.raises(ValueError, match="at least one field"):
+            StructuredModel.from_json_schema(
+                {
+                    "type": "object",
+                    "properties": {
+                        "a": {
+                            "allOf": [{"$ref": f"#/$defs/{'A' if alias else 'N'}"}],
+                            "x-aws-stickler-threshold": 0.9,
+                            "x-aws-stickler-weight": 2.0,
+                        }
+                    },
+                    "$defs": {
+                        "N": dict(self.INNER, type=declared),
+                        "A": {"$ref": "#/$defs/N"},
+                    },
+                }
+            )
 
     def test_the_allof_beside_an_alias_of_an_object_reads_it(self):
         """Where the alias error sends the author for an `allOf`."""

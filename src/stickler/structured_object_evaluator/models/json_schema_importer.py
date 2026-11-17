@@ -159,6 +159,7 @@ def _reject_unknown_extensions(
     field_path: str,
     *,
     scope: str = "field",
+    merges: bool = True,
 ) -> None:
     """Raise for any extension-shaped key this importer does not honour here.
 
@@ -173,6 +174,10 @@ def _reject_unknown_extensions(
     the same key on a scalar field is dropped. Accepting both everywhere made the
     check pass on keys that do nothing, so a valid-but-misplaced key was exactly
     as silent as the typo it was mistaken for.
+
+    `merges` says whether a one-arm `allOf` of this definition imports, so
+    whether the advice for a field key may offer one. It does only when the
+    definition, and each alias hop to its end, is typed `"object"` or untyped.
     """
     if not isinstance(extra, dict):
         return
@@ -184,8 +189,9 @@ def _reject_unknown_extensions(
     # so the message names the property for each way a definition is used. An
     # array of objects reads only the weight there, and pairs its elements by
     # the definition's match threshold. The root is no field, so it reads none.
-    # Only an object definition, or an alias of one, imports as an `allOf` arm,
-    # so only their messages offer the `allOf`.
+    # A one-arm `allOf` fails to import unless it names an object typed
+    # `"object"` or untyped, so only such a definition, or an alias of one, is
+    # offered the `allOf`.
     beside = "property that uses this definition: beside its '$ref', or beside the "
     arm = "when the '$ref' is one of its arms"
     no_root = ". A definition used as the root reads no field keys"
@@ -193,8 +199,9 @@ def _reject_unknown_extensions(
         f"{beside}'anyOf' or 'oneOf' {arm}, or on the array property when the "
         f"definition is its 'items' or an arm of them{no_root}"
     )
+    combiners = "'anyOf', 'oneOf' or 'allOf'" if merges else "'anyOf' or 'oneOf'"
     of_objects = (
-        f"{beside}'anyOf', 'oneOf' or 'allOf' {arm}. When the definition is an "
+        f"{beside}{combiners} {arm}. When the definition is an "
         "array's 'items' or an arm of them, the array property reads only "
         "'x-aws-stickler-weight', and the elements pair by "
     )
@@ -1215,24 +1222,28 @@ class JsonSchemaImporter:
             if pointer in walked and (walked[pointer] or not built):
                 continue
             walked[pointer] = built
-            scope: Optional[str] = None
-            if definition:
+            at = ".".join(pointer)
+            if definition and isinstance(body, dict):
                 entries.add(id(body))
                 # Checked like any other node. Walking a definition with no scope
                 # let a typo there import silently while the same typo inline
                 # raised. See #340. Only a body with `properties` generates a
                 # class: a `type: "object"` mapping becomes a `dict` field, judged
                 # against its parent's threshold, so it reads no model keys.
+                hops = [hop for hop, _ in chain(body, "")]
                 scope = "value_definition"
-                if isinstance(body, dict) and "properties" in body:
+                if "properties" in body:
                     scope = "definition"
-                elif isinstance(body, dict) and "$ref" in body:
+                elif "$ref" in body and hops[-1] is not body:
                     # An alias reads no keys either, but where it ends at an
                     # object it can be used as one, so its advice says so.
-                    end = list(chain(body, ""))[-1][0]
-                    if end is not body and "properties" in end:
+                    if "properties" in hops[-1]:
                         scope = "alias_definition"
-            walk(body, ".".join(pointer), scope, built, reads=False)
+                # A one-arm `allOf` builds the object only if no hop is typed
+                # otherwise: `["object", "null"]` fails to import there.
+                merges = all(hop.get("type", "object") == "object" for hop in hops)
+                _reject_unknown_extensions(body, at, scope=scope, merges=merges)
+            walk(body, at, None, built, reads=False)
 
         # A node inside an entry, such as `#/$defs/List/items`, is built from
         # where it is referenced, but the entry's walk built nothing there, so
